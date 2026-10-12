@@ -105,3 +105,81 @@ fn checkpoints_are_disposable_caches() {
     assert_eq!(without.document(), l.document());
     assert_eq!(with.log(), without.log());
 }
+
+#[test]
+fn a_torn_tail_left_by_a_crash_is_cut_before_the_next_save() {
+    let (mut l, mut ids) = ledger_with_edits(1);
+    let mut store = TestStore::new(MemoryMedium::default());
+    store.save(&mut l).unwrap();
+    // A process died mid-append: the medium ends with part of a record.
+    let mut medium = store.medium.clone();
+    medium.append(b"{\"id\":\"00").unwrap();
+    // Reopen (a new store over the same bytes), edit, save, reopen.
+    let mut store = TestStore::new(medium);
+    let mut l = store.open(5).unwrap();
+    l.commit(
+        Author::User,
+        "after crash",
+        vec![Op::CreateComponent { id: ids.fresh(), component: Component::default() }],
+    )
+    .unwrap();
+    store.save(&mut l).unwrap();
+    let reopened = TestStore::new(store.medium.clone()).open(5).unwrap();
+    assert_eq!(reopened.document(), l.document());
+    assert_eq!(reopened.head(), l.head());
+}
+
+#[test]
+fn a_complete_record_without_its_newline_is_not_yet_stored() {
+    let (mut l, mut ids) = ledger_with_edits(1);
+    let mut store = TestStore::new(MemoryMedium::default());
+    store.save(&mut l).unwrap();
+    let head = l.head();
+    l.commit(
+        Author::User,
+        "unterminated",
+        vec![Op::CreateComponent { id: ids.fresh(), component: Component::default() }],
+    )
+    .unwrap();
+    let mut medium = store.medium.clone();
+    medium.append(&serde_json::to_vec(l.log().last().unwrap()).unwrap()).unwrap();
+    let store = TestStore::new(medium);
+    assert_eq!(store.open(1).unwrap().head(), head, "only newline-terminated records count");
+}
+
+#[test]
+fn save_as_to_an_empty_medium_writes_the_whole_history() {
+    let (mut l, _) = ledger_with_edits(2);
+    let mut first = TestStore::new(MemoryMedium::default());
+    first.save(&mut l).unwrap();
+    assert!(!l.is_unsaved());
+    let mut second = TestStore::new(MemoryMedium::default());
+    second.save(&mut l).unwrap();
+    let copy = second.open(1).unwrap();
+    assert_eq!(copy.document(), l.document());
+    assert_eq!(copy.log(), l.log());
+}
+
+#[test]
+fn a_store_refuses_another_projects_history() {
+    let (mut a, _) = ledger_with_edits(1);
+    let mut store = TestStore::new(MemoryMedium::default());
+    store.save(&mut a).unwrap();
+    let mut b = Ledger::new(77);
+    b.commit(
+        Author::User,
+        "other",
+        vec![Op::AddPage { id: ecad_model::PageId(1), page: Page { title: "x".into() }, index: 0 }],
+    )
+    .unwrap();
+    assert!(store.save(&mut b).is_err());
+    assert!(b.is_unsaved());
+}
+
+#[test]
+fn an_unknown_schema_version_is_refused() {
+    let mut medium = MemoryMedium::default();
+    medium.append(b"{\"test_store_format\":1,\"schema_version\":999}\n").unwrap();
+    let store = TestStore::new(medium);
+    assert!(store.open(1).unwrap_err().to_string().contains("schema version 999"));
+}
