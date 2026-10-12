@@ -68,7 +68,8 @@ impl CadApp {
     /// about each drawing first and quit once all are dealt with. Returns whether the close has to
     /// wait (the caller then cancels the window close).
     pub fn request_quit(&mut self) -> bool {
-        if self.quit_confirmed || !self.session.docs.iter().any(|d| d.is_dirty()) {
+        // ECAD-SEAM(owner): owned documents answer through their owner.
+        if self.quit_confirmed || !self.session.has_unsaved_work() {
             return false;
         }
         if self.closing.is_none() {
@@ -112,7 +113,8 @@ impl CadApp {
                     let _ = self.run("document.switch", json!({ "index": i }));
                 }
                 let r = self.run("qsave", Value::Null);
-                let saved = r.is_ok() && self.doc_index(uid).and_then(|i| self.session.docs.get(i)).is_some_and(|d| !d.is_dirty());
+                // ECAD-SEAM(owner): owned documents answer through their owner.
+                let saved = r.is_ok() && self.doc_index(uid).is_some_and(|i| !self.session.doc_unsaved(i));
                 match (saved, self.doc_index(uid)) {
                     (true, Some(i)) => {
                         self.close_front(i);
@@ -174,7 +176,8 @@ impl CadApp {
                 }
                 continue;
             };
-            if self.session.docs.get(i).is_some_and(|d| d.is_dirty()) {
+            // ECAD-SEAM(owner): owned documents answer through their owner.
+            if self.session.close_needs_prompt(i) {
                 // Show the drawing being asked about.
                 if self.session.active != i {
                     let _ = self.run("document.switch", json!({ "index": i }));

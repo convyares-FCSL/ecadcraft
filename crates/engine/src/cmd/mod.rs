@@ -165,6 +165,7 @@ pub fn has_selection(s: &Session) -> std::result::Result<(), String> {
 pub fn command_specs() -> &'static [CommandSpec] {
     static SPECS: std::sync::OnceLock<Vec<CommandSpec>> = std::sync::OnceLock::new();
     SPECS.get_or_init(|| {
+        SPECS_BUILT.store(true, std::sync::atomic::Ordering::Release);
         let mut v = Vec::new();
         v.extend(file::specs());
         v.extend(file::alias_specs());
@@ -198,9 +199,28 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(table::specs());
         v.extend(tolerance::specs());
         v.extend(constraints::specs());
+        // ECAD-SEAM(owner): commands supplied by the embedder, after the built-in ones.
+        v.extend(EXTENSION_SPECS.get().into_iter().flat_map(|f| f()));
         v
     })
 }
+
+/// ECAD-SEAM(owner): the embedder's extra commands.
+static EXTENSION_SPECS: std::sync::OnceLock<fn() -> Vec<CommandSpec>> = std::sync::OnceLock::new();
+
+/// Install the embedder's extra commands (ECAD-SEAM(owner)). They reach the command line, menus,
+/// scripts, the control channel and MCP like built-in commands. Must be called once, before the
+/// first use of the command list; returns `false` if commands were already installed or the list
+/// was already built (the call then has no effect). An id that is already taken is ignored by
+/// lookups, which find the built-in command first.
+pub fn set_extension_commands(f: fn() -> Vec<CommandSpec>) -> bool {
+    if SPECS_BUILT.load(std::sync::atomic::Ordering::Acquire) {
+        return false;
+    }
+    EXTENSION_SPECS.set(f).is_ok()
+}
+
+static SPECS_BUILT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn find_command(id: &str) -> Option<&'static CommandSpec> {
     let l = id.to_ascii_lowercase();

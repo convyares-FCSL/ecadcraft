@@ -270,6 +270,10 @@ fn run_close(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("close", "no such drawing"));
     }
     s.cancel();
+    // ECAD-SEAM(owner): tell the owner its document goes away.
+    if let Some(uid) = s.docs.get(i).map(|d| d.uid) {
+        crate::ext::closing(s, uid);
+    }
     s.docs.remove(i);
     if i < s.active {
         // An earlier drawing went away: the active one shifted down by one.
@@ -283,6 +287,10 @@ fn run_close(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn run_closeall(s: &mut Session, _p: &Value) -> Result<Value> {
     s.cancel();
+    // ECAD-SEAM(owner): tell owners their documents go away.
+    for uid in s.docs.iter().map(|d| d.uid).collect::<Vec<_>>() {
+        crate::ext::closing(s, uid);
+    }
     s.docs.clear();
     s.active = 0;
     ok()
@@ -466,10 +474,18 @@ fn save_reporting(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> R
 }
 
 fn run_qsave_reporting(s: &mut Session, p: &Value) -> Result<Value> {
+    // ECAD-SEAM(owner): an owned document is saved by its owner.
+    if let Some(r) = crate::ext::save(s, str_param(p, "path"), false) {
+        return r;
+    }
     save_reporting(s, p, run_save)
 }
 
 fn run_saveas_reporting(s: &mut Session, p: &Value) -> Result<Value> {
+    // ECAD-SEAM(owner): an owned document is saved by its owner.
+    if let Some(r) = crate::ext::save(s, str_param(p, "path"), true) {
+        return r;
+    }
     save_reporting(s, p, run_saveas)
 }
 

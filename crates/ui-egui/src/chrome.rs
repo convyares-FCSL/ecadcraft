@@ -241,8 +241,9 @@ pub fn file_tabs(app: &mut CadApp, ui: &mut egui::Ui) {
         }
         let mut switch_to = None;
         let mut close = None;
+        // ECAD-SEAM(owner): owned documents answer through their owner.
         let titles: Vec<(usize, String, bool, bool)> =
-            app.session.docs.iter().enumerate().map(|(i, d)| (i, d.title.clone(), d.is_dirty(), i == app.session.active)).collect();
+            app.session.docs.iter().enumerate().map(|(i, d)| (i, d.title.clone(), app.session.doc_unsaved(i), i == app.session.active)).collect();
         for (i, title, dirty, active) in titles {
             let (c, x, resp) = tab(ui, &title, dirty, active && !app.ui.start_tab, true, 170.0, ui.id().with(("tab", i)));
             crate::shortcut_menus::attach(app, &resp, |app| crate::shortcut_menus::drawing_tab_entries(app, i));
