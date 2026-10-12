@@ -145,9 +145,21 @@ pub(crate) fn now_ms() -> Option<u64> {
     }
 }
 
-/// A seed for IDs: the clock where one exists.
+/// A seed for IDs that differs for every call: a per-process counter mixed with the clock and,
+/// natively, the process id. Two projects created in the same millisecond, or on wasm (no clock),
+/// still get different ID streams.
 pub fn session_seed() -> u64 {
-    now_ms().unwrap_or(0x5EED) ^ 0xA5A5_5A5A_1234_5678
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(not(target_arch = "wasm32"))]
+    let pid = u64::from(std::process::id());
+    #[cfg(target_arch = "wasm32")]
+    let pid = 0_u64;
+    // SplitMix64 finaliser over the combined inputs, so nearby values give unrelated seeds.
+    let mut z = now_ms().unwrap_or(0x5EED) ^ pid.rotate_left(40) ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
 }
 
 fn base_drawing() -> Drawing {
