@@ -1,0 +1,169 @@
+<!doctype html>
+<!--
+  ECAD inspector: a read-only developer viewer for ecad-inspect snapshots (format "ecad-inspect/1").
+  Load one or more JSON snapshot files; nothing is sent anywhere and nothing can be changed.
+  Snapshots come from the `ecadinspect` command (control channel / engine.execute) or from
+  `cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECAD Inspector</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1b1f24; --muted: #5d6670; --line: #d8dde3; --panel: #f5f7f9;
+  --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; --accent: #0b6bcb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --fg: #e3e7ec; --muted: #9aa4ae; --line: #2a3139; --panel: #171c22;
+    --ok: #4ac26b; --bad: #ff6b6b; --warn: #e3b341; --accent: #6cb6ff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --fg: #e3e7ec; --muted: #9aa4ae; --line: #2a3139; --panel: #171c22;
+  --ok: #4ac26b; --bad: #ff6b6b; --warn: #e3b341; --accent: #6cb6ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+header, main { padding: 12px 16px; }
+header { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+h1 { font-size: 16px; margin: 0; }
+h2 { font-size: 14px; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+header label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+input[type="file"] { max-width: 100%; }
+select, input, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.wrap { overflow-x: auto; }
+.ok { color: var(--ok); } .bad { color: var(--bad); font-weight: 600; } .warn { color: var(--warn); }
+.pill { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+details > summary { cursor: pointer; }
+pre { background: var(--panel); padding: 6px; margin: 4px 0; overflow-x: auto; font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 24px; }
+#drop { border: 1px dashed var(--line); padding: 24px; text-align: center; color: var(--muted); }
+mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ECAD Inspector <span class="pill">read-only</span></h1>
+  <label>Open snapshots… <input id="files" type="file" accept=".json,application/json" multiple></label>
+  <label>Snapshot <select id="pick"></select></label>
+  <label>Search IDs and labels <input id="q" type="search" placeholder="id, short id or label"></label>
+</header>
+<main id="out"><div id="drop">Drop ecad-inspect JSON snapshots here, or use “Open snapshots…”.</div></main>
+<script>
+"use strict";
+const snaps = [];
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const short = (hex) => (hex && hex.length === 32 ? hex.slice(0, 8) : hex);
+
+async function load(files) {
+  for (const f of files) {
+    try {
+      const s = JSON.parse(await f.text());
+      if (s.format !== "ecad-inspect/1") throw new Error("not an ecad-inspect/1 snapshot");
+      s._file = f.name;
+      snaps.push(s);
+    } catch (e) {
+      alert(`${f.name}: ${e.message}`);
+    }
+  }
+  snaps.sort((a, b) => a.seq - b.seq || (a.kind === "live") - (b.kind === "live"));
+  $("pick").innerHTML = snaps.map((s, i) => `<option value="${i}">${esc(s.project)} · ${esc(s.label)} · ${esc(s._file)}</option>`).join("");
+  $("pick").value = String(snaps.length - 1);
+  render();
+}
+
+function labelIndex(s) {
+  const m = new Map();
+  for (const x of s.index) m.set(x.id, x);
+  return m;
+}
+
+function render() {
+  const s = snaps[Number($("pick").value)];
+  if (!s) return;
+  const q = $("q").value.trim().toLowerCase();
+  const idx = labelIndex(s);
+  const name = (hex) => {
+    const x = idx.get(hex);
+    const text = x ? `${x.label} <span class="mono">(${esc(x.short)})</span>` : `<span class="mono">${esc(short(hex))}</span>`;
+    return q && ((x && x.label.toLowerCase().includes(q)) || hex.includes(q) || (x && x.short.includes(q))) ? `<mark>${text}</mark>` : text;
+  };
+  const d = s.document;
+  const ok = (b) => (b === null || b === undefined ? `<span class="warn">n/a</span>` : b ? `<span class="ok">yes</span>` : `<span class="bad">NO</span>`);
+  const checks = s.checks;
+  let h = `<div class="grid"><div>
+    <h2>Project</h2><table>
+    <tr><th>Project</th><td>${esc(s.project)}</td></tr>
+    <tr><th>Snapshot</th><td>${esc(s.label)} (${esc(s.kind)})</td></tr>
+    <tr><th>Sequence shown</th><td>${s.seq}</td></tr>
+    <tr><th>Head / persisted</th><td>${s.head} / ${s.persisted} ${s.unsaved ? '<span class="warn">unsaved</span>' : '<span class="ok">saved</span>'}</td></tr>
+    <tr><th>Versions</th><td>product ${esc(s.product_version)}, schema ${esc(s.schema_version)}</td></tr>
+    <tr><th>CADCraft commit</th><td class="mono">${esc(short(s.upstream || ""))}</td></tr>
+    </table></div><div>
+    <h2>Checks</h2><table>
+    <tr><th>Replay equals live</th><td>${ok(checks.replay_equals_live)}</td></tr>
+    <tr><th>Invariants hold</th><td>${ok(checks.invariants_hold)}</td></tr>
+    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${checks.mismatches.length}</span>` : '<span class="ok">0</span>'}</td></tr>
+    <tr><th>Nets (derived)</th><td>${checks.nets.length}</td></tr>
+    </table></div></div>
+    <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
+    ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${p.mapped_handles ?? ""}</td></tr>`).join("")}</table></div>`;
+
+  const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
+  const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
+  h += `<h2>Components and terminals</h2><div class="wrap"><table><tr><th>Component</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
+  for (const [c, comp] of Object.entries(d.components)) {
+    const ts = termsOf(c);
+    if (!match([c, ...ts.map(([t]) => t)])) continue;
+    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Component === c);
+    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
+      <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
+  }
+  h += `</table></div><h2>Conductors</h2><div class="wrap"><table><tr><th>Conductor</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
+  for (const [w, c] of Object.entries(d.conductors)) {
+    if (!match([w, ...c.ends.filter(Boolean)])) continue;
+    const cables = Object.entries(d.cables).filter(([, k]) => k.members.some((m) => m.conductor === w)).map(([k]) => name(k));
+    const shown = Object.values(d.representations).some((r) => r.subject.Conductor === w);
+    h += `<tr><td>${name(w)}</td><td>${c.ends[0] ? name(c.ends[0]) : '<span class="muted">open</span>'}</td><td>${c.ends[1] ? name(c.ends[1]) : "open"}</td>
+      <td>${cables.join(", ")}</td><td>${shown ? "yes" : '<span class="warn">not shown</span>'}</td></tr>`;
+  }
+  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Members (in order)</th></tr>`;
+  for (const [k, c] of Object.entries(d.cables)) {
+    if (!match([k, ...c.members.map((m) => m.conductor)])) continue;
+    h += `<tr><td>${name(k)}</td><td>${c.members.map((m) => name(m.conductor) + (m.core ? ` core ${esc(m.core)}` : "")).join("<br>")}</td></tr>`;
+  }
+  h += `</table></div><h2>Transactions (1-${s.seq})</h2>`;
+  for (const t of [...s.transactions].reverse()) {
+    const kind = typeof t.kind === "string" ? t.kind : Object.keys(t.kind)[0] + " of " + short(Object.values(t.kind)[0].of);
+    const txt = JSON.stringify(t.ops);
+    if (q && !txt.toLowerCase().includes(q) && !t.label.toLowerCase().includes(q)) continue;
+    h += `<details><summary><b>${t.seq}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${t.ops.length} ops</summary>
+      ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
+  }
+  h += `<h2>Runtime events (diagnostics, not design history)</h2><div class="wrap"><table><tr><th>#</th><th>Kind</th><th>Command</th><th>Seq</th><th>Page</th><th>Message</th></tr>`;
+  const failing = new Set(["Refused", "SaveFailed", "ProjectionFailed", "PageUnavailable", "FidelityMismatch", "Recovered"]);
+  for (const e of [...s.events].reverse()) {
+    if (q && !JSON.stringify(e).toLowerCase().includes(q)) continue;
+    h += `<tr><td>${e.n}</td><td class="${failing.has(e.kind) ? "bad" : ""}">${esc(e.kind)}</td><td class="mono">${esc(e.command)}</td><td>${e.seq}</td><td>${e.page ? name(e.page) : ""}</td><td>${esc(e.message)}</td></tr>`;
+  }
+  h += `</table></div>`;
+  if (checks.mismatches.length) h += `<h2>Mismatches</h2><pre>${esc(JSON.stringify(checks.mismatches, null, 1))}</pre>`;
+  $("out").innerHTML = h;
+}
+
+$("files").addEventListener("change", (e) => load(e.target.files));
+$("pick").addEventListener("change", render);
+$("q").addEventListener("input", render);
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => { e.preventDefault(); load(e.dataTransfer.files); });
+</script>
+</body>
+</html>
