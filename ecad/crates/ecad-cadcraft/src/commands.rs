@@ -101,6 +101,48 @@ fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
         .ok_or_else(|| format!("`{key}` (hex id) is required"))
 }
 
+/// An optional ID parameter: absent or `null` is `None`; anything else must be a valid hex ID, so a
+/// typo is an error rather than "not given".
+fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, String> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(_) => id(p, key).map(Some),
+    }
+}
+
+/// A list of IDs: every entry must parse, and the list may hold at most `max`; checked before
+/// anything is collected.
+fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, String> {
+    let a = p.get(key).and_then(Value::as_array).ok_or_else(|| format!("`{key}` (array of hex ids) is required"))?;
+    if a.len() > max {
+        return Err(format!("at most {max} entries in `{key}` per call"));
+    }
+    a.iter()
+        .map(|v| {
+            v.as_str()
+                .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
+                .map(T::from)
+                .ok_or_else(|| format!("`{v}` in `{key}` is not a valid hex id"))
+        })
+        .collect()
+}
+
+/// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
+fn opt_typed<'a, T>(
+    p: &'a Value,
+    key: &str,
+    what: &str,
+    get: impl Fn(&'a Value) -> Option<T>,
+) -> Result<Option<T>, String> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => get(v).map(Some).ok_or_else(|| format!("`{key}` must be {what}")),
+    }
+}
+
+/// Most points one WIRE accepts.
+const MAX_WIRE_POINTS: usize = 10_000;
+
 fn point(v: &Value) -> Option<Pt> {
     let a = v.as_array()?;
     let (x, y) = (a.first()?.as_f64()?, a.get(1)?.as_f64()?);
@@ -204,11 +246,14 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
 }
 
 fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let pts: Vec<Pt> = params
-        .get("points")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().take(10_000).filter_map(point).collect())
-        .unwrap_or_default();
+    let raw = params.get("points").and_then(Value::as_array).ok_or_else(|| err("`points` [[x,y], …] is required"))?;
+    if raw.len() > MAX_WIRE_POINTS {
+        return Err(err(format!("at most {MAX_WIRE_POINTS} points per wire")));
+    }
+    let pts: Vec<Pt> = raw
+        .iter()
+        .map(|v| point(v).ok_or_else(|| err(format!("`{v}` is not a finite [x,y] point"))))
+        .collect::<cadcraft_engine::Result<_>>()?;
     if pts.len() < 2 {
         return Err(err("`points` needs at least two [x,y] points"));
     }
@@ -359,12 +404,18 @@ fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
 
 fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let key = params.get("key").and_then(Value::as_str).ok_or_else(|| err("`key` is required"))?.to_string();
-    let value = params.get("value").and_then(Value::as_str).map(str::to_string);
-    let object = if let Ok(c) = id(params, "component") {
+    // `null` clears the property; a missing value or another type is an error, never a clear.
+    let value = match params.get("value") {
+        Some(Value::Null) => None,
+        Some(Value::String(v)) => Some(v.clone()),
+        Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
+        None => return Err(err("`value` is required (a string, or null to clear the property)")),
+    };
+    let object = if let Some(c) = opt_id(params, "component").map_err(err)? {
         ObjectRef::Component(c)
-    } else if let Ok(c) = id(params, "conductor") {
+    } else if let Some(c) = opt_id(params, "conductor").map_err(err)? {
         ObjectRef::Conductor(c)
-    } else if let Ok(c) = id(params, "cable") {
+    } else if let Some(c) = opt_id(params, "cable").map_err(err)? {
         ObjectRef::Cable(c)
     } else {
         return Err(err("`component`, `conductor` or `cable` (hex id) is required"));
@@ -390,25 +441,13 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 const MAX_CABLE_MEMBERS: usize = 10_000;
 
 fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("conductors").and_then(Value::as_array).is_some_and(|a| a.len() > MAX_CABLE_MEMBERS) {
-        return Err(err(format!("at most {MAX_CABLE_MEMBERS} conductors per call")));
-    }
-    let conductors: Vec<ConductorId> = params
-        .get("conductors")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .filter_map(|t| u128::from_str_radix(t, 16).ok())
-                .map(ConductorId)
-                .collect()
-        })
-        .unwrap_or_default();
+    let conductors: Vec<ConductorId> = id_list(params, "conductors", MAX_CABLE_MEMBERS).map_err(err)?;
     if conductors.is_empty() {
         return Err(err("`conductors` (hex ids) is required"));
     }
-    let existing: Option<CableId> = id(params, "cable").ok();
-    let tag = params.get("tag").and_then(Value::as_str).map(str::to_string);
+    // Only an absent `cable` creates one; a malformed ID is an error, never a new cable.
+    let existing: Option<CableId> = opt_id(params, "cable").map_err(err)?;
+    let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
@@ -453,9 +492,11 @@ pub fn builtin_coil() -> Definition {
 
 fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
-    let degrees = params.get("rotation").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
-    let mirror = params.get("mirror").and_then(Value::as_bool).unwrap_or(false);
-    let wanted: Option<DefinitionId> = id(params, "definition").ok();
+    let degrees = opt_typed(params, "rotation", "a finite number of degrees", |v| v.as_f64().filter(|d| d.is_finite()))
+        .map_err(err)?
+        .unwrap_or(0.0);
+    let mirror = opt_typed(params, "mirror", "true or false", Value::as_bool).map_err(err)?.unwrap_or(false);
+    let wanted: Option<DefinitionId> = opt_id(params, "definition").map_err(err)?;
     with_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
