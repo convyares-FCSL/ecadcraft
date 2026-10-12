@@ -359,6 +359,15 @@ impl Document {
                 _ => {}
             }
         }
+        for (id, d) in &self.definitions {
+            if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
+                return bad(format!("definition {id} has non-finite geometry"));
+            }
+            let keys: BTreeSet<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+            if keys.len() != d.terminals.len() {
+                return bad(format!("definition {id} repeats a terminal key"));
+            }
+        }
         for (id, t) in &self.terminals {
             if !self.components.contains_key(&t.component) {
                 return bad(format!("terminal {id} belongs to a missing component"));
@@ -397,14 +406,24 @@ impl Document {
             }
             match r.form {
                 Form::Symbol => {
-                    let ok = r.items.len() == 1
-                        && r.connection_points.is_empty()
-                        && r.items
-                            .first()
-                            .and_then(|i| self.items.get(i))
-                            .is_some_and(|i| matches!(i.kind, ItemKind::Symbol(_)));
-                    if !ok {
+                    let instance = match r.items.as_slice() {
+                        [only] if r.connection_points.is_empty() => match self.items.get(only).map(|i| &i.kind) {
+                            Some(ItemKind::Symbol(inst)) => Some(inst),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let Some(inst) = instance else {
                         return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
+                    };
+                    // The symbol shown must be the component's own definition.
+                    let Subject::Component(c) = r.subject else {
+                        return bad(format!("symbol representation {id} must depict a component"));
+                    };
+                    if self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                        return bad(format!(
+                            "symbol representation {id} shows a definition its component does not use"
+                        ));
                     }
                 }
                 Form::Drawn => {

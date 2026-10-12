@@ -102,47 +102,104 @@ struct Header {
     schema_version: u32,
 }
 
+/// What the medium holds, counting complete (newline-terminated) records only.
+struct Scan {
+    /// Byte offset just after the last complete record.
+    good_len: u64,
+    header: Option<Header>,
+    log: Vec<Transaction>,
+}
+
+/// Read complete records. Bytes after the last newline are a torn write and are ignored (FILE-03):
+/// a record only counts once its terminating newline is durable.
+fn scan(bytes: &[u8]) -> Result<Scan> {
+    let complete_end = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    let complete = bytes.get(..complete_end).unwrap_or_default();
+    let mut lines = complete.split(|b| *b == b'\n').filter(|l| !l.is_empty());
+    let header: Header = match lines.next() {
+        Some(l) => serde_json::from_slice(l).map_err(|e| StoreError::Format(format!("header: {e}")))?,
+        None => return Ok(Scan { good_len: 0, header: None, log: Vec::new() }),
+    };
+    if header.test_store_format != TEST_STORE_FORMAT {
+        return Err(StoreError::Format(format!("test store format {} is not supported", header.test_store_format)));
+    }
+    if header.schema_version != ecad_model::SCHEMA_VERSION {
+        return Err(StoreError::Format(format!(
+            "schema version {} is not supported (this build reads {})",
+            header.schema_version,
+            ecad_model::SCHEMA_VERSION
+        )));
+    }
+    let mut log = Vec::new();
+    for (i, l) in lines.enumerate() {
+        log.push(
+            serde_json::from_slice::<Transaction>(l)
+                .map_err(|e| StoreError::Format(format!("transaction line {}: {e}", i + 1)))?,
+        );
+    }
+    Ok(Scan { good_len: complete_end as u64, header: Some(header), log })
+}
+
 /// The test-only store.
 ///
 /// # Semantics
-/// - [`TestStore::save`] appends every transaction after the ledger's persisted position, flushes,
-///   and only then calls [`Ledger::mark_persisted`]. On any failure it truncates the medium back
-///   to the last good length, leaves the ledger's persisted position unchanged and reports the
-///   error (SAVE-04).
-/// - [`TestStore::open`] reads the header and complete lines; a torn trailing line is ignored
-///   (FILE-03) and the log is replayed (FILE-02).
-/// - The checkpoint is an optional in-memory cache: [`TestStore::open_with_checkpoint`] must give
-///   the same state as [`TestStore::open`] (FILE-04).
+/// - The store tracks what **it** holds: the offset after its last complete record and the
+///   transactions in it. [`TestStore::save`] appends exactly the ledger's transactions this medium
+///   does not yet hold, so saving to a new, empty medium (Save As) writes the whole history. It
+///   refuses a ledger whose history does not continue the stored one (another project).
+/// - Before appending, any torn bytes after the last complete record are cut off, including bytes
+///   left by a process that died mid-write before this store was opened.
+/// - Only after the flush succeeds is [`Ledger::mark_persisted`] called. On failure the medium is
+///   cut back, the ledger stays unsaved and the error is reported (SAVE-04).
+/// - [`TestStore::open`] replays the complete records (FILE-02); the checkpoint is an optional
+///   in-memory cache that must give the same state (FILE-04).
 #[derive(Debug, Default)]
 pub struct TestStore<M: Medium> {
     pub medium: M,
     good_len: u64,
+    /// Number of transactions durably stored, and the last one's ID.
+    stored: usize,
+    last_stored: Option<ecad_model::TxId>,
+    /// Why the medium cannot be appended to, if it is unreadable.
+    unreadable: Option<String>,
     checkpoint: Option<(u64, String)>,
 }
 
 impl<M: Medium> TestStore<M> {
     pub fn new(medium: M) -> Self {
-        let good_len = medium.len();
-        Self { medium, good_len, checkpoint: None }
+        let scanned = medium.read_all().map_err(StoreError::Io).and_then(|b| scan(&b));
+        let (good_len, stored, last_stored, unreadable) = match scanned {
+            Ok(sc) => (sc.good_len, sc.log.len(), sc.log.last().map(|t| t.id), None),
+            Err(e) => (0, 0, None, Some(e.to_string())),
+        };
+        Self { medium, good_len, stored, last_stored, unreadable, checkpoint: None }
     }
 
-    /// Append unsaved transactions and mark them persisted.
+    /// Append the transactions this medium does not hold yet and mark them persisted.
     ///
     /// # Errors
-    /// [`StoreError::Io`] when appending or flushing fails; the ledger stays unsaved.
+    /// [`StoreError::Io`] when appending or flushing fails (the ledger stays unsaved);
+    /// [`StoreError::Format`] when the medium is unreadable or holds another project's history.
     pub fn save(&mut self, ledger: &mut Ledger) -> Result<u64> {
+        if let Some(why) = &self.unreadable {
+            return Err(StoreError::Format(format!("the store cannot be appended to: {why}")));
+        }
+        let continues = self.stored <= ledger.log().len()
+            && (self.stored == 0 || ledger.log().get(self.stored - 1).map(|t| t.id) == self.last_stored);
+        if !continues {
+            return Err(StoreError::Format("the store holds a different project's history".into()));
+        }
         let mut out = Vec::new();
         if self.good_len == 0 {
             let header = Header { test_store_format: TEST_STORE_FORMAT, schema_version: ecad_model::SCHEMA_VERSION };
             out.extend(serde_json::to_vec(&header).map_err(|e| StoreError::Format(e.to_string()))?);
             out.push(b'\n');
         }
-        let from = ledger.persisted() as usize;
-        for tx in ledger.log().iter().skip(from) {
+        for tx in ledger.log().iter().skip(self.stored) {
             out.extend(serde_json::to_vec(tx).map_err(|e| StoreError::Format(e.to_string()))?);
             out.push(b'\n');
         }
-        // Remove any torn bytes left by an earlier failure before appending.
+        // Cut off torn bytes (an earlier failure, or a crash before this store was opened).
         if self.medium.len() != self.good_len {
             self.medium.truncate(self.good_len)?;
         }
@@ -150,6 +207,8 @@ impl<M: Medium> TestStore<M> {
         match result {
             Ok(()) => {
                 self.good_len = self.medium.len();
+                self.stored = ledger.log().len();
+                self.last_stored = ledger.log().last().map(|t| t.id);
                 ledger.mark_persisted(ledger.head())?;
                 Ok(ledger.head())
             }
@@ -162,26 +221,9 @@ impl<M: Medium> TestStore<M> {
 
     fn read_log(&self) -> Result<Vec<Transaction>> {
         let bytes = self.medium.read_all()?;
-        let mut lines = bytes.split(|b| *b == b'\n');
-        let header: Header = match lines.next() {
-            Some(l) if !l.is_empty() => serde_json::from_slice(l).map_err(|e| StoreError::Format(e.to_string()))?,
-            _ => return Ok(Vec::new()),
-        };
-        if header.test_store_format != TEST_STORE_FORMAT {
-            return Err(StoreError::Format(format!("test store format {} is not supported", header.test_store_format)));
-        }
-        let complete = bytes.ends_with(b"\n");
-        let all: Vec<&[u8]> = lines.filter(|l| !l.is_empty()).collect();
-        let mut log = Vec::new();
-        for (i, l) in all.iter().enumerate() {
-            match serde_json::from_slice::<Transaction>(l) {
-                Ok(tx) => log.push(tx),
-                // A torn trailing line is ignored (FILE-03); anything else is corruption.
-                Err(_) if i + 1 == all.len() && !complete => break,
-                Err(e) => return Err(StoreError::Format(format!("transaction line {}: {e}", i + 1))),
-            }
-        }
-        Ok(log)
+        let sc = scan(&bytes)?;
+        let _ = sc.header;
+        Ok(sc.log)
     }
 
     /// Open by replaying the whole log.
