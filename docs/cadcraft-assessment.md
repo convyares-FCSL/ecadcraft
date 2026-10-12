@@ -26,7 +26,29 @@
 
 ## Build and tests
 
-_Pending: the first full build and test run are in progress._
+Built on Linux x86_64 with Rust 1.97.0 stable (`cargo 1.97.0`); the workspace declares
+`rust-version = "1.90"` and edition 2024. No source changes were needed.
+
+| Gate | Result |
+| --- | --- |
+| `cargo test --workspace` | **1,660 passed, 0 failed, 0 ignored** across 252 test binaries and doc-test runs; 10.5 min on 4 cores from clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| `cargo fmt --all --check` | clean |
+| `cargo xtask layers` | 16 crates, no layering violations |
+| `cargo xtask assets` | all 28 asset files attributed |
+| `cargo xtask wasm` | builds for `wasm32-unknown-unknown` (target needs `rustup target add`) |
+
+Build problems found:
+
+- **Disk.** A default debug build of all targets with debug info and incremental caches
+  reached 27 GB and ran out of space. With `CARGO_PROFILE_DEV_DEBUG=0`,
+  `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0` the whole build plus tests is 5.8 GB.
+  CI uses these settings; developers with less disk should too.
+- **Network at build time.** `craft-ui` is a git dependency on `storytold/craft-libs` (pinned
+  revision), so a first build needs access to GitHub as well as crates.io.
+- **No CI for tests upstream.** The inherited workflows only lint packaging and build releases
+  through ArtCraft's shared actions; `.github/workflows/ci.yml` now runs fmt, clippy and tests on
+  `dev`.
 
 ## Crate map
 

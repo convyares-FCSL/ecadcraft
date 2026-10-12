@@ -97,7 +97,7 @@ The full concept spec lives in [`docs/concept-spec.md`](docs/concept-spec.md). D
 
 ## Building
 
-Requires a recent stable Rust toolchain (the workspace declares Rust 1.90 as its minimum; it is built and tested with 1.97).
+Requires a recent stable Rust toolchain (the workspace declares Rust 1.90 as its minimum; it is built and tested with 1.97). A full debug build with debug info needs over 25 GB of disk; set `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0` to keep it near 6 GB.
 
 ```sh
 git clone https://github.com/convyares-FCSL/ecadcraft.git
