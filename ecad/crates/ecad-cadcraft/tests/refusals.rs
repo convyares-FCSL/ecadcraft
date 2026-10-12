@@ -271,3 +271,36 @@ fn session_seeds_differ_between_calls() {
     let seeds: std::collections::BTreeSet<u64> = (0..1000).map(|_| ecad_cadcraft::session_seed()).collect();
     assert_eq!(seeds.len(), 1000, "a seed repeated within one millisecond");
 }
+
+/// Malformed parameters are refused before anything is recorded; nothing is silently dropped,
+/// truncated or read as "not given".
+#[test]
+fn malformed_parameters_are_refused_not_coerced() {
+    let (mut h, c1, _c2, w) = fixture();
+    let (c1, w) = (c1.hex(), w.hex());
+    let many: Vec<Value> = (0..10_001).map(|i| json!([i, 0])).collect();
+    let cases: Vec<(&str, &str, Value)> = vec![
+        ("wire", "a malformed point", json!({"points": [[0, 0], "x", [10, 0]]})),
+        ("wire", "a point with a text coordinate", json!({"points": [[0, 0], [10, "y"]]})),
+        ("wire", "too many points", json!({"points": many})),
+        ("setprop", "a missing value", json!({"component": c1, "key": "tag"})),
+        ("setprop", "a numeric value", json!({"component": c1, "key": "tag", "value": 5})),
+        ("setprop", "a malformed id", json!({"component": "zz", "key": "tag", "value": "-K1"})),
+        ("cableadd", "a malformed member", json!({"conductors": [w, "nope"]})),
+        ("cableadd", "a non-string member", json!({"conductors": [w, 7]})),
+        ("cableadd", "a malformed cable", json!({"conductors": [w], "cable": "nope"})),
+        ("cableadd", "a non-string tag", json!({"conductors": [w], "tag": 3})),
+        ("place", "a malformed definition", json!({"at": [0, 50], "definition": "nope"})),
+        ("place", "a text rotation", json!({"at": [0, 50], "rotation": "ninety"})),
+        ("place", "a numeric mirror", json!({"at": [0, 50], "mirror": 1})),
+    ];
+    for (cmd, what, params) in cases {
+        let b = before(&mut h);
+        let r = h.run(cmd, params);
+        assert!(r.is_err(), "{cmd} with {what} must be refused");
+        unchanged(&mut h, &b, &format!("{cmd} with {what}"));
+    }
+    // `null` still clears a property on purpose.
+    h.run("setprop", json!({"component": c1, "key": "tag", "value": "-K1"})).unwrap();
+    assert_eq!(h.run("setprop", json!({"component": c1, "key": "tag", "value": null})).unwrap()["changed"], true);
+}
