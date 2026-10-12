@@ -243,3 +243,31 @@ fn oversized_inputs_are_refused_before_collecting() {
     assert!(h.run("cableadd", json!({"conductors": many})).unwrap_err().contains("at most"));
     unchanged(&mut h, &b, "oversized cableadd");
 }
+
+#[test]
+fn convert_refuses_malformed_or_oversized_handle_lists() {
+    let mut h = H::new(91);
+    h.cmdline("line 0,0 40,0 40,20 0,20 c");
+    let first = h.first_page();
+    let lines: Vec<String> = h.lines_on(first).iter().map(|x| x.hex()).collect();
+    let head = h.head();
+    let mut typo = lines.clone();
+    typo[1] = "not-a-handle".into();
+    for (what, params) in [
+        ("typo", json!({"handles": typo})),
+        ("not a string", json!({"handles": [lines[0], 7]})),
+        ("not an array", json!({"handles": lines[0]})),
+        ("too many", json!({"handles": vec!["1"; 100_001]})),
+    ] {
+        let e = h.run("convertcomponent", params).unwrap_err();
+        assert!(e.contains("handle"), "{what}: {e}");
+    }
+    assert_eq!(h.head(), head, "nothing was converted");
+    assert!(h.run("convertcomponent", json!({"handles": lines})).is_ok());
+}
+
+#[test]
+fn session_seeds_differ_between_calls() {
+    let seeds: std::collections::BTreeSet<u64> = (0..1000).map(|_| ecad_cadcraft::session_seed()).collect();
+    assert_eq!(seeds.len(), 1000, "a seed repeated within one millisecond");
+}

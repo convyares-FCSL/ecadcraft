@@ -115,11 +115,20 @@ fn end_param(p: &Value) -> Result<End, String> {
     }
 }
 
-fn handles(s: &Session, p: &Value) -> Vec<Handle> {
-    match p.get("handles").and_then(Value::as_array) {
-        Some(a) => a.iter().filter_map(Value::as_str).filter_map(Handle::parse_hex).take(100_000).collect(),
-        None => s.selection(),
+/// Most handles one call may name.
+const MAX_HANDLES: usize = 100_000;
+
+/// The `handles` parameter, or the selection when it is absent. Every entry must be a valid hex
+/// handle: a typo is an error, never a silently smaller set.
+fn handles(s: &Session, p: &Value) -> Result<Vec<Handle>, String> {
+    let Some(v) = p.get("handles") else { return Ok(s.selection()) };
+    let a = v.as_array().ok_or("`handles` must be an array of hex handles")?;
+    if a.len() > MAX_HANDLES {
+        return Err(format!("at most {MAX_HANDLES} handles per call"));
     }
+    a.iter()
+        .map(|h| h.as_str().and_then(Handle::parse_hex).ok_or_else(|| format!("`{h}` is not a valid handle")))
+        .collect()
 }
 
 fn plain_style(p: &Project) -> Style {
@@ -127,7 +136,7 @@ fn plain_style(p: &Project) -> Style {
 }
 
 fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let hs = handles(s, params);
+    let hs = handles(s, params).map_err(err)?;
     with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let mut items = Vec::new();
