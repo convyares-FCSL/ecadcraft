@@ -1,883 +1,950 @@
 # ECAD document architecture and integration proposal
 
-> **Status:** proposal for review, nothing implemented. **Written:** 2026-10-12 against `dev` at
-> `baee1b8` (CADCraft 0.6.2). **Reads with:** [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md)
-> (12 October 2026, takes precedence), [`concept-spec.md`](concept-spec.md) and
-> [`cadcraft-assessment.md`](cadcraft-assessment.md).
+> **Status:** revision 2, for review; nothing implemented. **Written:** 2026-10-12 against `dev`
+> at `baee1b8` (CADCraft 0.6.2). **Reads with:**
+> [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
+> [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
 
 ## Summary
 
-- **One source of truth.** Every accepted change, whether ordinary geometry or electrical meaning,
-  is a transaction in the ECAD log. Applying the log produces the ECAD document. CADCraft's
-  `Drawing` becomes a *projection* of that document that CADCraft also uses as its editing
-  surface. It is never saved as the project and never owns history.
-- **CADCraft edits are proposals.** When a CADCraft command commits (LINE, MOVE, grip edits), an
-  ECAD "document owner" compares the drawing with the last projection and turns the difference
-  into a transaction. It then accepts that transaction, or rejects it and restores the drawing.
-  ECAD commands (WIRE, CONNECT, CONVERTTOCOMPONENT, GROUPCABLE) build transactions directly.
-- **Undo appends.** On ECAD pages, CADCraft's snapshot undo is switched off, and Undo/Redo are
-  handed to the ledger, which appends inverse transactions. Plain CADCraft drawings in the same
-  app behave exactly as today.
-- **Separate folder, separate workspace.** All ECAD code goes in `ecad/`, a Cargo workspace of its
-  own that depends on CADCraft's crates by path. A probe showed this builds and runs a CADCraft
-  command with **no upstream file changes**.
-- **Seams, revised.** Phase 0 proposed three engine seams. Reading further shows two are needed
-  now: *extension commands* and a per-document *owner* (commit gate, undo, save/close). They touch
-  three engine files. UI seams (dock panels, canvas overlays, a top-level menu) are deferred until
-  a feature needs them.
-- **Ambiguities are refused, not guessed.** For COPY, EXPLODE, BREAK and JOIN on geometry that
-  depicts a component or conductor, this proposal makes CADCraft refuse the edit on ECAD pages
-  until you decide what copying and splitting mean. Edits to plain geometry are unaffected.
-- **Decisions for you** are collected in [§14](#14-decisions-requiring-approval). Questions that
-  are deliberately left open are in [§15](#15-deliberately-unresolved).
+The document has four parts so that settled direction is not confused with things still to
+prove:
+
+- **Part A, document principles.** The ECAD document is authoritative. Identity is stable and
+  independent of names. Edits are project-wide transactions, and undo appends to history rather
+  than rewriting it. Meaning is separate from drawing. History is never destroyed while
+  compaction is undecided. The review supported these; they are written as principles.
+- **Part B, provisional integration design.** How CADCraft is attached: a separate `ecad/`
+  workspace, a projection of the document into CADCraft drawings, and translation of CADCraft's
+  committed drawing changes into transactions. The translation is a **hypothesis** that still
+  needs proof, together with the movement, copy and deletion policies built on it.
+- **Part C, integration experiment.** The smallest experiment that would prove or disprove
+  Part B. It is specified here but not run.
+- **Part D, decisions,** split into four groups: direction already supported, revised
+  recommendations needing approval, temporary limits that apply to the experiment only, and
+  product behaviour deferred.
+
+Changes from revision 1 (details in [Revision 2 changes](#revision-2-changes)):
+
+- Removing a representation is now distinct from deleting its subject.
+- Moving connected equipment carries attached wire ends along.
+- Moving a wire end is a deliberate reconnection.
+- A plain copy of a whole component becomes an independent copy, and is part of the experiment.
+- "Unsaved" is measured against the project's saved transaction position.
+- Library symbols and drawn components are two explicit representation forms with their own
+  placement data.
+- Destructive compaction is deferred.
+- The engine boundary is now a broader *generic extension interface* across about ten
+  upstream files.
 
 ## Contents
 
-1. [Scope](#1-scope)
-2. [Evidence markers](#2-evidence-markers)
-3. [Architecture in one picture](#3-architecture-in-one-picture)
-4. [Repository layout and ownership](#4-repository-layout-and-ownership)
-5. [Document model](#5-document-model)
-6. [`.ecad` and `.ecadlib` contracts](#6-ecad-and-ecadlib-contracts)
-7. [The transaction path](#7-the-transaction-path)
-8. [Worked example](#8-worked-example)
-9. [ECAD ⇄ CADCraft ID mapping lifecycle](#9-ecad--cadcraft-id-mapping-lifecycle)
-10. [Integration seams and patch inventory](#10-integration-seams-and-patch-inventory)
-11. [Incorporating upstream updates](#11-incorporating-upstream-updates)
-12. [Optional DWG boundary](#12-optional-dwg-boundary)
-13. [Room for later features](#13-room-for-later-features)
-14. [Decisions requiring approval](#14-decisions-requiring-approval)
-15. [Deliberately unresolved](#15-deliberately-unresolved)
-16. [Proposed next steps](#16-proposed-next-steps)
+1. [Scope and evidence markers](#1-scope-and-evidence-markers)
 
-## 1. Scope
+**Part A: document principles**
 
-**This proposal covers:** the minimal document objects and relationships; which state is stored,
-which is derived and which is temporary; the `.ecad` and `.ecadlib` contracts (not their
-encoding); how edits reach the log; how undo works alongside CADCraft; how ECAD IDs relate to
-CADCraft handles; the repository layout; and how upstream updates are taken in.
+2. [Principles](#2-principles)
+3. [Document model](#3-document-model)
+4. [Representations and symbols](#4-representations-and-symbols)
+5. [`.ecad` and `.ecadlib` contracts](#5-ecad-and-ecadlib-contracts)
+6. [Transactions, history and unsaved state](#6-transactions-history-and-unsaved-state)
+7. [Worked example](#7-worked-example)
 
-**It does not cover:** the cable demonstration, numbering schemes, the completeness heat map, the
-MCP server or library replacement UI. It also leaves out file encoding (CBOR or MessagePack),
-framing, checkpoint format, product naming, default drawing standards and DWG licence acceptance.
-Section 13 shows where each of these will fit.
+**Part B: provisional integration design**
 
-No engine code was changed and the repository was not reorganised. The one experiment (§4.3) ran
-in a temporary folder that was deleted afterwards.
+8. [Repository layout](#8-repository-layout)
+9. [How edits reach the document](#9-how-edits-reach-the-document)
+10. [Movement and connectivity](#10-movement-and-connectivity)
+11. [Copy, paste and placement](#11-copy-paste-and-placement)
+12. [Removing representations and deleting objects](#12-removing-representations-and-deleting-objects)
+13. [ID mapping lifecycle](#13-id-mapping-lifecycle)
+14. [Generic extension interface](#14-generic-extension-interface)
+15. [Incorporating upstream updates](#15-incorporating-upstream-updates)
+16. [Optional DWG boundary](#16-optional-dwg-boundary)
 
-## 2. Evidence markers
+**Part C: integration experiment**
 
-Integration claims carry one of three markers, in the spirit of `UNVALIDATED` in
-`ros2-semantic-contracts`:
+17. [Bounded integration experiment](#17-bounded-integration-experiment)
+
+**Part D: decisions**
+
+18. [Decision table](#18-decision-table)
+19. [Room for later features](#19-room-for-later-features)
+
+## 1. Scope and evidence markers
+
+**Covered:**
+
+- the document principles and objects, and what is stored versus derived;
+- the representation of drawn components and library symbols;
+- the file contracts and unsaved state;
+- the transaction path, together with the movement, copy and deletion policies;
+- how ECAD IDs relate to CADCraft handles;
+- the engine extension interface and the upstream merge process;
+- an integration experiment for later approval.
+
+**Not covered:**
+
+- the cable demonstration, numbering schemes, the completeness heat map, MCP and library
+  replacement UI;
+- file encoding, product naming and default drawing standards;
+- DWG licence acceptance.
+
+No code was changed for this revision.
+
+Integration claims carry a marker:
 
 | Marker | Meaning |
 | --- | --- |
 | **[Shown]** | Demonstrated by building or running code in this session |
 | **[Read]** | Read from the source at `baee1b8`, with file and line; not yet exercised |
-| **[Assumed]** | Expected but not verified; each one appears in the verification list (§10.3) |
+| **[Assumed]** | Expected but unverified; the experiment (§17) or a listed test must prove it |
 
-## 3. Architecture in one picture
+---
 
-```
-                    ECAD application shell (ecad/apps/ecad)
-                    owns the Project and a cadcraft_engine::Session
-                                     │
-        ┌────────────────────────────┼─────────────────────────────┐
-        ▼                            ▼                             ▼
-  ECAD commands              CADCraft commands             Undo / Redo / Save
-  (WIRE, CONNECT, …)         (LINE, MOVE, grips, …)        (u, undo, redo, qsave)
-        │                            │ edit the projection         │
-        │                            ▼ as a scratch surface        │
-        │                  CADCraft commit point                   │
-        │                  (Session::execute / finish)             │
-        │                            │ seam: owner.commit()        │ seam: owner.undo() …
-        │                            ▼                             │
-        │                  Adapter: diff → classify →              │
-        │                  proposed Transaction                    │
-        │                            │                             │
-        └──────────────► Ledger.commit(Transaction) ◄──────────────┘
-                         validate → append → apply
-                                     │
-                     ┌───────────────┴────────────────┐
-                     ▼                                ▼
-            ECAD Document                     Derived results
-            (stored intent + drawing          (nets, completeness,
-             content, materialised)            diagnostics, reports)
-                     │
-                     ▼
-            Projector → CADCraft Drawing (per page) + handle map
-                     │
-                     ▼
-            CADCraft canvas, snaps, grips, plotting, DXF/DWG export
-```
+# Part A: document principles
 
-The design keeps a pure core apart from an adapter: domain rules live in crates that know nothing
-about CADCraft, much as `rosrustext_core` knows nothing about transports. The adapter is the only
-code that touches both models.
+## 2. Principles
 
-## 4. Repository layout and ownership
+These are the architectural direction the review supports. Part B may change; these should not
+change without a new review.
 
-### 4.1 Proposed tree
+| # | Principle |
+| --- | --- |
+| **P1** | **The ECAD document is authoritative.** The project's state comes from applying its transaction history. CADCraft's drawing is a view of that state used for display and interaction; it is never saved as the project and never holds history. |
+| **P2** | **Identity is stable and independent of names.** Every object has a typed internal ID, which is never reused. References use IDs, never tags, labels or layer names, so renaming breaks nothing. |
+| **P3** | **Edits are project-wide transactions.** A transaction is atomic, records resolved intent (outcomes, not gestures), names its author and carries enough to be inverted. One transaction may touch several pages and objects. |
+| **P4** | **Undo and redo append.** They add transactions; history is never rewritten. |
+| **P5** | **Stored, derived and temporary state are separate.** Only stored intent and drawing content are recorded. Derived results (nets, completeness, reports) are recomputed, never read back as fact. UI state is not stored. |
+| **P6** | **Meaning and drawing are separate.** A component, conductor or cable may have zero or more representations. Removing a representation never implies deleting its subject; deleting a subject is an explicit edit, which may be bundled with removing representations in one transaction. |
+| **P7** | **Incomplete designs are valid.** Every property may be unset, and "unset" is distinguishable from any confirmed value and can be queried. Geometry may exist without meaning. |
+| **P8** | **The project is self-contained.** It never needs a library, network or other file to open. Library changes reach a project only by an explicit edit. |
+| **P9** | **History is preserved.** Until a preservation contract is approved, no transaction needed to rebuild the current state or any named version may be discarded. Checkpoints are disposable caches. |
+| **P10** | **ECAD code is separate.** The document, history and library code have no dependency on CADCraft; only the adapter touches both. |
 
-```
-ecadcraft/                          fork of storytold/cadcraft
-├── crates/                         UPSTREAM  CADCraft library crates; only marked seams change
-├── apps/                           UPSTREAM  cadcraft, cadcraft-cli, cadcraft-web (kept building)
-├── xtask/                          UPSTREAM  layering, assets, wasm and parity gates
-├── assets/ packaging/ examples/    UPSTREAM
-├── docs/                           UPSTREAM  CADCraft docs (ECAD docs move out, see §4.4)
-├── Cargo.toml  Cargo.lock          UPSTREAM  root workspace, untouched
-├── README.md                       OURS      repository front page (already rewritten)
-├── CLAUDE.md  AGENTS.md            UPSTREAM today; rewrite pending your decision (§14 D11)
-├── .github/workflows/ci.yml        OURS      new file; extended to build ecad/
-└── ecad/                           OURS      everything ECAD, one Cargo workspace
-    ├── Cargo.toml                  [workspace]; path deps on ../crates/*
-    ├── Cargo.lock
-    ├── rustfmt.toml  clippy.toml   our style (independent of upstream's)
-    ├── CLAUDE.md                   ECAD agent instructions
-    ├── UPSTREAM-PATCHES.md         every upstream file we change, and why
-    ├── docs/                       concept spec, foundations, decisions, contracts, this proposal
-    ├── crates/
-    │   ├── ecad-model/             objects, typed IDs, ops, transactions, apply/invert, validation
-    │   ├── ecad-store/             .ecad/.ecadlib container: framing, recovery, checkpoints, versions
-    │   ├── ecad-library/           definitions, embedding, origin, "update available"
-    │   ├── ecad-derive/            connectivity, nets, open ends, completeness, diagnostics
-    │   ├── ecad-cadcraft/          THE ADAPTER: projector, handle map, commit gate, ECAD commands
-    │   ├── ecad-ui/                egui panels and overlays for the ECAD shell
-    │   └── ecad-testkit/           (dev only) document builders, golden logs, scenario runner
-    ├── apps/
-    │   ├── ecad/                   desktop shell wrapping cadcraft_ui_egui::CadApp
-    │   └── ecad-cli/               headless replay, verify and export (later: MCP)
-    └── xtask/                      ECAD gates: layering of ecad-* crates, upstream patch guard
-```
+## 3. Document model
 
-Crate names follow responsibilities; the concept spec's `ecad-ledger`, `ecad-topology` and
-`ecad-infer` correspond to `ecad-model`/`ecad-store` and `ecad-derive`. Splitting or merging
-crates later is cheap; the boundaries below are what matter.
-
-### 4.2 Where each part belongs
-
-| Part | Location | Depends on | Must not depend on |
-| --- | --- | --- | --- |
-| Upstream CADCraft code | `crates/`, `apps/`, `xtask/` | upstream only | anything in `ecad/` |
-| Application shell and UI extensions | `ecad/apps/ecad`, `ecad/crates/ecad-ui` | adapter, `cadcraft-ui-egui` | — |
-| Document, ledger and library | `ecad-model`, `ecad-store`, `ecad-library`, `ecad-derive` | each other, small external crates | **any `cadcraft-*` crate** |
-| Adapter between ECAD and CADCraft | `ecad/crates/ecad-cadcraft` | model crates, `cadcraft-engine`, `-doc`, `-geom` | egui and other UI crates |
-| Tests | unit tests in each crate; contract tests in `ecad/crates/*/tests/*_contracts.rs`; Session-driven integration tests in `ecad-cadcraft/tests` | `ecad-testkit` (dev only) | — |
-| Documentation | `ecad/docs/` (contracts, decisions, proposals); root `README.md` | — | — |
-
-The model crates keep **no** CADCraft dependency, not even `cadcraft-geom`. They use their own
-small value types (points, polyline vertices), and the adapter converts. An upstream merge then
-cannot break the document model, the file format or replay; only `ecad-cadcraft` and `ecad-ui`
-can be affected. ECAD layering is checked by `ecad/xtask`, because upstream's
-`cargo xtask layers` rejects crates missing from its table (`xtask/src/layers.rs:36`, violation
-`Unregistered` at line 150) **[Read]**.
-
-### 4.3 Why a separate workspace
-
-Two options:
-
-| | A. Separate workspace in `ecad/` (recommended) | B. Add `ecad/*` to the root workspace |
-| --- | --- | --- |
-| Upstream files changed | none | root `Cargo.toml` `members`, `xtask/src/layers.rs` table |
-| Style | own `rustfmt.toml` (yours uses `max_width = 120`; upstream 150) | upstream's formatter settings apply |
-| Lock file | `ecad/Cargo.lock`; may resolve newer patch versions than upstream's | one lock |
-| Gates | ECAD runs its own fmt/clippy/test/layer checks; upstream's `cargo xtask ci` still covers `crates/` | one `cargo xtask ci`, after patching it |
-| Build output | second `target/` unless `CARGO_TARGET_DIR` is shared | one `target/` |
-
-**Probe [Shown]:** a temporary nested workspace `ecad-probe/` with one crate depending on
-`cadcraft-engine = { path = "../../../crates/engine" }` built on Rust 1.97, and its test ran
-`Session::execute("line", …)` and found the line in model space (1 passed). Upstream crates'
-`workspace = true` dependencies resolved against the root workspace. Afterwards
-`cargo metadata` at the root still listed the same 16 packages without error. The probe was then
-deleted.
-
-Option A leaves the root workspace byte-for-byte upstream, which is the point of this layout. Its
-costs are a second lock file and a CI job, both small. CI should share one `CARGO_TARGET_DIR` so
-the upstream crates are compiled once (Phase 0 found a full debug build near 6 GB without debug
-info).
-
-### 4.4 What is not moved
-
-- Upstream's tree stays where it is. Moving `crates/` under an `upstream/` folder would make
-  every merge a rename conflict.
-- Upstream apps keep building and their tests keep running. They are not our product, but a
-  broken upstream app is an early warning that a merge disturbed something.
-- ECAD documents now in `docs/` (`concept-spec.md`, `decisions.md`, `cadcraft-assessment.md`, this
-  proposal) move to `ecad/docs/` when the layout is approved. Added files do not conflict with
-  upstream, but keeping them in `ecad/` makes ownership obvious.
-- The root `README.md` is ours and will conflict whenever upstream edits theirs; we resolve those
-  conflicts by keeping ours.
-
-### 4.5 Code and documentation conventions in `ecad/`
-
-These are taken from your repositories (`rosrustext`, `ros2-semantic-contracts`,
-`ros2-systems-operability`), plus CADCraft's never-crash rules, which still apply:
-
-- `rustfmt.toml` with `max_width = 120` and `use_small_heuristics = "Max"`, as in `rosrustext`.
-- A crate-level `//!` comment says what the crate is for and what it **intentionally does not
-  contain**, as `ros2_semantics_core` does ("no ROS graph, middleware …").
-- Public items have doc comments with `# Semantics`, `# Errors` (or `# Threading`), `# Example`
-  and `# See also` sections, as in `rosrustext_core::parameters::ParameterStore`.
-- A structured error type per crate (kind and domain, built with `thiserror`), as `CoreError`
-  is, with no panics in non-test code (`unwrap`, `expect` and `panic!` denied; `unsafe`
-  forbidden).
-- Contracts in `ecad/docs/` use numbered, testable statements, as `SPEC_PC01` does, with
-  unverified claims marked. This proposal's DOC-, FILE-, TX-, LIB-, UNDO- and PROJ- numbers are a
-  first draft of those.
-- Table-driven contract tests in `tests/<area>_contracts.rs`, one per contract area, as in
-  `rosrustext_core/tests/lifecycle_contracts.rs`.
-
-## 5. Document model
-
-### 5.1 Four kinds of state
+### 3.1 Four kinds of state
 
 | Kind | What it is | Examples | Stored? |
 | --- | --- | --- | --- |
-| **Stored intent** | Electrical meaning and the user's explicit decisions | components, terminals, conductors and their end attachments, cables and membership, property values, embedded library definitions, "not connected" decisions | yes, as ops in the log |
-| **Drawing content** | What is drawn and where, with or without meaning | lines, polylines, arcs, text, connection points, layers, representation links, deliberate annotation placement, pages | yes, as ops in the log |
-| **Derived results** | Recomputable from the two above; never authoritative | nets, open ends, near misses, completeness, diagnostics, duplicate-tag warnings, BOM, wire list, the CADCraft `Drawing` projection and its handle map, spatial index | no; may be cached in checkpoints |
-| **Temporary UI state** | This session's view of the work | selection, hover, zoom and pan, active page, running command and previews, panel layout, cable view toggle (concept spec: a view setting, not an op) | no |
+| **Stored intent** | Electrical meaning and the user's explicit decisions | components, terminals, conductors and their end attachments, cables and membership, property values, embedded definitions | yes, as transactions |
+| **Drawing content** | What is drawn and where, with or without meaning | primitives, symbol instances and their placement, connection points, layers, representation links, deliberate annotation placement, pages | yes, as transactions |
+| **Derived results** | Recomputable from the two above | nets, open ends, completeness, diagnostics, duplicate-tag warnings, terminal positions of symbol instances, BOM, wire list, the CADCraft projection and handle map | no; may be cached |
+| **Temporary UI state** | This session's view of the work | selection, hover, zoom and pan, active page, running command, previews, panel layout, cable view toggle | no |
 
-Rules:
-
-- **DOC-01** Only stored intent and drawing content enter the log. Nothing derived is ever read
-  back as fact.
-- **DOC-02** Derived results are recomputed from the document; a checkpoint may cache them, but
-  deleting the cache must not change them.
-- **DOC-03** Geometry may exist without meaning. A drawn line is drawing content and nothing else
-  until an explicit command links it to a domain object.
-
-### 5.2 Minimal objects
-
-Every object has a typed, stable ID (§5.4). Every property is either unset or set (§5.5).
+### 3.2 Objects
 
 | Object | Kind | Holds | Relationships (by ID) |
 | --- | --- | --- | --- |
-| `Project` | intent | project settings (units), page order | owns pages |
-| `Page` | content | title, sheet settings | items, representations and connection points placed on it |
-| `Item` | content | one drawn primitive: kind (line, polyline, arc, circle, text, point), geometry, style (layer, colour, linetype, lineweight) | page; at most one representation (DOC-07) |
-| `Layer` | content | name, colour, linetype, visibility, plot flag | items refer to it by ID |
+| `Project` | intent | settings (units), page order | pages |
+| `Page` | content | title, sheet settings | items, representations |
+| `Item` | content | one drawn primitive (line, polyline, arc, circle, text, point) **or** a symbol instance (§4); style (layer, colour, linetype, lineweight) | page; at most one representation |
+| `Layer` | content | name, colour, linetype, visibility, plot flag | — |
 | `Component` | intent | properties (tag, description, manufacturer, part number, …), all optional | terminals; zero or more representations; optional embedded definition |
-| `Terminal` | intent | optional label; optional key into the component's definition | belongs to one component |
-| `Representation` | content | role (for example main symbol, or another depiction such as a contact) | subject (component, conductor or cable); page; a set of items |
-| `ConnectionPoint` | content | position on the page | one terminal; one component representation |
-| `Conductor` | intent | properties (size, colour, type, identifiers), all optional | two ends, each with an optional attachment; zero or more route representations |
-| `ConductorEnd` | intent | end A (first route vertex) or end B (last) | optional attachment: a terminal (junctions and bridges later, §15) |
-| `Cable` | intent | properties (type, designation, …), all optional | ordered memberships |
-| `CableMembership` | intent | position; optional core designation | one conductor |
-| `EmbeddedDefinition` | intent | a project-local copy of a library definition (§6.3) | origin (library ID, definition ID, version, content hash) |
+| `Terminal` | intent | optional label; optional key into the component's definition | one component |
+| `Representation` | content | form (**drawn** or **symbol**, §4), role | subject (component, conductor or cable); page; items; connection points (drawn form) |
+| `ConnectionPoint` | content | page position (drawn form only) | one terminal; one representation |
+| `Conductor` | intent | properties (size, colour, type, identifiers), all optional | ends A and B, each with an optional attachment; zero or more route representations |
+| `Cable` | intent | properties, all optional | ordered memberships (conductor, optional core designation) |
+| `EmbeddedDefinition` | intent | a project-local copy of a library definition (§4.2) | origin (library, definition, version, content hash) |
 
-A cable has no "core" object that duplicates a conductor. "Core" is the conductor's role through
-its membership, and a core designation lives on that membership. Nets are not stored objects:
-they are derived from conductor attachments and (later) junctions and bridges.
+Nets are derived from attachments (and, later, junctions and bridges); they are not stored
+objects. A cable has no "core" object duplicating a conductor; "core" is a conductor's role
+through its membership.
 
-### 5.3 Relationships
+### 3.3 Rules
 
-```
- Project ─┬─ Page ─┬─ Item ◄──────────────┐
-          │        ├─ ConnectionPoint ─┐  │ items (each in at most one representation)
-          │        └─ Representation ──┼──┘
-          │              │ subject     │
-          ├─ Component ◄─┤             │
-          │    └─ Terminal ◄───────────┘
-          │          ▲
-          │          │ attachment (optional, per end)
-          ├─ Conductor ─ ConductorEnd A/B
-          │    ▲
-          │    │ member (ordered, optional core designation)
-          ├─ Cable ─ CableMembership
-          │
-          └─ EmbeddedDefinition ──origin──► (library ID, definition ID, version, hash)
+- **DOC-01** Only stored intent and drawing content are recorded (P5).
+- **DOC-02** References are by ID (P2).
+- **DOC-03** Connectivity is stored intent: a conductor end is attached to a terminal by
+  reference. Coincident geometry is not a connection; derived checks report when geometry and
+  attachment disagree.
+- **DOC-04** Grouping conductors into a cable adds memberships and changes nothing about the
+  conductors.
+- **DOC-05** (proposed) An item belongs to at most one representation.
+- **DOC-06** A subject with no representation is valid ("not shown") and is reported, not
+  deleted (P6).
+- **DOC-07** An object can only be deleted when nothing references it. The deleting transaction
+  removes the references explicitly (detach ends, remove memberships, unlink representations).
 
- Derived, never stored:  Net = connected set of terminals and conductor ends
-```
+### 3.4 Identity and values
 
-- **DOC-04** References use IDs, never names, tags or labels. Renaming a component, terminal or
-  layer cannot break a reference.
-- **DOC-05** Connectivity is stored intent: a conductor end is attached to a terminal by
-  reference. Geometry being in the same place is not a connection; derived checks report when
-  geometry and attachment disagree.
-- **DOC-06** Grouping conductors into a cable adds memberships. It never changes conductor IDs,
-  attachments or routes.
-- **DOC-07** (proposed) An item belongs to at most one representation, so each drawn primitive
-  has an unambiguous meaning.
+- One typed ID per object kind, so the compiler prevents mixing them.
+- Proposed encoding: 128-bit random, allocated **when the edit is made** and recorded in the op.
+  Replay never allocates. Users see tags and labels; diagnostics show a short form. A copy
+  allocates new IDs for everything it creates (§11).
+- Properties are `Unset` or `Set(value)`. Inferred values are derived and shown beside the
+  stored value; accepting one records an explicit `SetProperty`.
 
-Rust traits are used where behaviour is shared, such as "has properties", "has representations"
-or "can be validated". Representation links, cable membership and attachments are relationship
-records, not inheritance. Concrete types come from this model, not the other way round.
+## 4. Representations and symbols
 
-### 5.4 Identity
+Revision 1 contradicted itself here: it described library symbols as block inserts, left inserts
+out of the drawing schema, and projected all components as groups of primitives. The resolution
+is **two explicit representation forms**, each with its own stored data, both in the
+ECAD-owned schema.
 
-- One typed ID per object kind: `ComponentId`, `TerminalId`, `ConductorId`, `CableId`, `ItemId`,
-  `RepresentationId`, `PageId`, `LayerId`, `DefinitionId`. The compiler keeps them from mixing.
-- **Proposed encoding:** 128-bit random, allocated **when the edit is made** and written into the
-  op. Replay never allocates IDs. Random IDs let content pasted from another project keep
-  distinct IDs without renumbering. Users never see them; they see tags and labels, and
-  diagnostics show a short form. A per-project counter is the alternative, but it needs
-  remapping on every cross-project paste. Decision D5.
-- **DOC-08** An ID is never reused, even after its object is deleted. Redo recreates an object
-  with the same ID, because the redo op records it.
-- CADCraft handles are not IDs. They are allocated by the projection and kept in a per-session
-  map (§9).
+### 4.1 The two forms
 
-### 5.5 Missing versus confirmed values
+| | **Drawn representation** | **Symbol representation** |
+| --- | --- | --- |
+| Comes from | Convert to component (raw geometry gains meaning) | placing an embedded definition (library, panel, paste) |
+| Stored drawing content | the page items themselves, in page coordinates; one `ConnectionPoint` per terminal, in page coordinates | one `SymbolInstance` item: definition ID + placement |
+| Placement | implicit in the items' coordinates | explicit: origin (x, y), rotation (degrees), mirror (yes/no), uniform scale (> 0) |
+| Terminal page position | stored (`ConnectionPoint`) | derived: placement applied to the definition's local terminal position |
+| Projected into CADCraft as | the primitives, an unnamed selectable group around them, and a point marker per connection point | one block per embedded definition (graphics + terminal point markers) and one `Insert` per instance |
+| Moving it in CADCraft | the group is picked whole; items and markers move; the diff shows new coordinates | the `Insert` changes position, rotation or scale; the diff gives the new placement |
 
-- Each property is `Unset` or `Set(value)`. "Not yet known" is `Unset`, never an empty string or
-  zero. A query such as "conductors without a size" is a plain filter.
-- Inferred values are derived results shown beside the stored value, never stored in it. A user
-  who accepts an inferred value records it as an explicit `SetProperty`.
-- A later "accepted as unresolved" marker (the concept spec's release step) is stored intent and
-  fits this model without changing it.
-- Completeness criteria, colours and heat-map UI are deferred. Completeness is only computed from
-  explicit criteria over `Unset`/`Set`, and it is not a claim of electrical correctness.
+The forms are not alternatives to choose between. A drawn representation lets raw geometry
+become a component without being redrawn, as the foundations require. A symbol representation
+lets many instances share one definition and lets an explicit library update or replacement
+find every instance. **Promoting** a drawn representation to a symbol (making a definition from
+it) is a later explicit transaction that keeps component and terminal IDs. It is not designed
+here.
 
-## 6. `.ecad` and `.ecadlib` contracts
+Projection details, all **[Read]** and unverified in use:
 
-These contracts state what each file owns and promises. Encoding (CBOR or MessagePack), framing,
-checksums and checkpoint layout come later and must satisfy them.
+- Whole-group picking relies on `PICKSTYLE` bit 1, which is on by default
+  (`engine/src/lib.rs:361-418`).
+- Snapping already walks into block contents (`block_leaves`, `engine/src/snap.rs:635`).
+- Terminal markers can sit on a non-plotting layer, as CADCraft's `Defpoints` layer does.
 
-### 6.1 `.ecad` project file
-
-**Owns:** the project's whole history as transactions (all stored intent and drawing content),
-every embedded library definition the project uses, named versions as bookmarks, and optional
-checkpoints as a cache.
-
-**Promises:**
-
-- **FILE-01 Self-contained.** Opening a project never reads a library, the network or any other
-  file. Every definition it uses is embedded.
-- **FILE-02 Deterministic.** Replaying the same log with the same software gives the same stored
-  state. Replay applies recorded values and IDs; it never snaps, searches, infers attachments or
-  allocates IDs.
-- **FILE-03 Append-only saving.** Saving appends; a torn trailing write is ignored on open
-  (concept spec).
-- **FILE-04 Cache is optional.** Opening without checkpoints gives the same state, only more
-  slowly. (After compaction this needs a decision; see §15.)
-- **FILE-05 Versioned ops.** Every op type carries a version and old versions are upcast on
-  replay.
-- **FILE-06 Authorship.** Every transaction records its author (the user or a named agent) and a
-  wall-clock time. The time is informational and never affects replay.
-
-**Does not contain:** derived results as fact, temporary UI state, CADCraft handles, or a DXF/DWG
-copy of the drawing.
-
-### 6.2 `.ecadlib` library file
-
-**Owns:** reusable definitions (symbol graphics, terminal definitions, default properties; later
-perhaps parts), the library's own history and named versions, and its identity (a library ID
-that survives renaming the file).
-
-**Promises:** the same container rules as `.ecad` (FILE-02, -03, -05, -06). A definition has a
-stable `DefinitionId` and each published change gives it a new version. Whether parts share this
-container stays open (concept spec).
-
-### 6.3 From library definition to project instance
+### 4.2 Embedded definition content
 
 ```
- .ecadlib                          .ecad
- Definition D (v3) ──embed──► EmbeddedDefinition E   origin = (lib L, def D, v3, hash)
-   terminal keys                   │  shared by every instance of D v3 in the project
-   "A1","A2","13","14"             ▼
-                              Component C (definition = E)
-                                Terminal T1 (key "A1")   own IDs, own optional labels
-                                Terminal T2 (key "A2")
-                              Representation R (Insert of E's symbol, projected as a block)
-```
-
-- **LIB-01 Embed on first use.** Placing a definition embeds a copy in the same transaction
-  (`EmbedDefinition` + `CreateComponent` + `AddTerminal` per terminal key + `LinkRepresentation`).
-  Later instances reuse that copy.
-- **LIB-02 Instances own their IDs.** Each instance terminal gets its own `TerminalId` and
-  records the definition key it came from. Connections reference the instance terminal, never the
-  definition.
-- **LIB-03 No silent updates.** A library change makes an "update available" derived result. It
-  never changes the project. Updating is an explicit transaction and is reviewable and undoable.
-- **LIB-04 Local edits fork.** Editing an embedded definition inside the project makes a new
-  local definition whose origin says "modified from (L, D, v3)". Other instances keep the
-  original.
-- **LIB-05 Same name, different content.** Two definitions with the same name and different
-  origin or hash are both kept and never merged.
-- **LIB-06 Harvest.** Turning project content into a library definition appends to the library's
-  log; the project records nothing beyond, optionally, the new origin on its embedded copy.
-- **Components need no definition.** Raw geometry converted to a component (§8 step 2) has no
-  definition. A definition can be attached or harvested later.
-
-**Open for later** (no behaviour chosen): terminal mapping when a definition is *replaced*,
-including connected terminals that have no counterpart; whether replacement keeps the old
-representation's placement; parts versus symbols in one container.
-
-### 6.4 How projects stay self-contained across copy and paste
-
-Paste between projects carries the embedded definitions the copied objects use, deduplicated by
-origin and hash. Pasted objects always get new IDs. What a pasted component *means* (an
-independent new component, or another depiction of an existing one) is the open copy question
-(§15).
-
-## 7. The transaction path
-
-### 7.1 Transactions and ops
-
-```
-Transaction {
-    id, author, time, label,
-    kind: Edit | Undo { of: TransactionId } | Redo { of: TransactionId },
-    ops: [Op],            // applied in order, all or nothing
+EmbeddedDefinition {
+    id, origin: Option<(library, definition, version, content hash)>,
+    graphics:  [Primitive]                 // in the symbol's local frame, base point (0, 0);
+                                           // nested symbols deferred
+    terminals: [TerminalDef { key, default label, local position }],
+    text slots: [ … ]                      // tag/label placement; deferred with annotation work
 }
 ```
 
-Representative ops (enough for §8; final names come with the code):
+**Placement transform (normative):** `page = origin + R(rotation) · M(mirror) · scale · local`,
+where `M` negates x when mirrored. These are our own stored values. They map onto CADCraft's
+`Insert { insert, scale, rotation }` (`doc/src/entity.rs:382-399`) **[Read]** with
+`scale = (±s, s, 1)`. Non-uniform scale, MINSERT rows/columns and oblique placement are outside
+the schema; CADCraft edits that would produce them are refused (§18.3, L6).
 
-| Area | Ops |
+### 4.3 Reproducing placement without CADCraft
+
+The saved document holds primitives, placements and definitions in **our** schema. Opening a
+project rebuilds CADCraft blocks and inserts from them, so nothing depends on CADCraft's
+internal `Entity` serialisation. Terminal positions of symbol instances are recomputed from the
+placement. Floating-point results may differ in the last digit across platforms, so position
+comparisons (is this end on its terminal?) use the snap tolerance. Connectivity itself is by ID
+and never depends on those comparisons (DOC-03).
+
+The projector's round trip (document → CADCraft → diff → document) must be lossless for every
+supported kind. That is hypothesis H2 (§9.4), proved by the experiment.
+
+## 5. `.ecad` and `.ecadlib` contracts
+
+These contracts state what each file owns and promises; the encoding comes later and must meet
+them.
+
+### 5.1 `.ecad` project file
+
+**Owns:** the project's transaction history, every embedded definition it uses, named versions
+as bookmarks, and optional checkpoints as a cache.
+
+- **FILE-01 Self-contained** (P8).
+- **FILE-02 Deterministic replay.** Replay applies recorded values and IDs; it never snaps,
+  searches, infers attachments or allocates IDs.
+- **FILE-03 Durable append.** Saving appends whole transactions and then flushes them to disk
+  (`fsync`). A torn trailing write is ignored on open.
+- **FILE-04 Checkpoints are caches.** Deleting every checkpoint changes nothing but opening
+  speed. This holds **unconditionally** in the initial implementation (P9).
+- **FILE-05 No destructive compaction.** Nothing rewrites the file in a way that drops
+  transactions needed for the current state or any named version until a preservation contract
+  is approved. Save As writes the full history.
+- **FILE-06 Versioned ops.** Every op type has a version and old versions are upcast on replay.
+- **FILE-07 Authorship.** Every transaction records its author and a wall-clock time; time
+  never affects replay.
+
+**Does not contain:** derived results as fact, UI state, CADCraft handles, or a DXF/DWG copy.
+
+### 5.2 `.ecadlib` library file
+
+**Owns:** reusable definitions (graphics, terminal definitions, default properties), the
+library's history and named versions, and a library ID that survives renaming the file. It
+follows FILE-02, -03, -05, -06 and -07. Whether parts share this container stays open.
+
+### 5.3 From definition to instance
+
+- **LIB-01** Placing a definition embeds a copy in the same transaction if the project lacks it
+  (`EmbedDefinition` + `CreateComponent` + `AddTerminal` per key + `LinkRepresentation` with a
+  `SymbolInstance`). Later instances reuse that copy.
+- **LIB-02** Instance terminals have their own IDs and record their definition key; connections
+  reference instance terminals.
+- **LIB-03** A library change only produces an "update available" result; updating is an
+  explicit, undoable transaction.
+- **LIB-04** Editing an embedded definition in the project creates a new local definition
+  ("modified from …"); other instances keep the original.
+- **LIB-05** Definitions with the same name but different origin or content are both kept.
+- Components need no definition (drawn form).
+
+Open: terminal mapping when a definition is replaced (including connected terminals without a
+counterpart), placement on replacement, and parts versus symbols in one container.
+
+## 6. Transactions, history and unsaved state
+
+### 6.1 Transactions
+
+```
+Transaction { id, seq, author, time, label,
+              kind: Edit | Undo { of } | Redo { of },
+              ops: [Op] }            // applied in order, all or nothing
+```
+
+| Area | Representative ops |
 | --- | --- |
 | Drawing content | `AddItem`, `ModifyItem { before, after }`, `RemoveItem { before }`, `AddLayer`, `ModifyLayer` |
-| Representation | `LinkRepresentation`, `UnlinkRepresentation`, `SetConnectionPoint { before, after }` |
+| Representation | `LinkRepresentation`, `UnlinkRepresentation { before }`, `AddConnectionPoint`, `MoveConnectionPoint { before, after }`, `RemoveConnectionPoint { before }` |
 | Components | `CreateComponent`, `DeleteComponent { before }`, `AddTerminal`, `RemoveTerminal { before }` |
 | Conductors | `CreateConductor`, `DeleteConductor { before }`, `AttachEnd { conductor, end, before, after }` |
 | Cables | `CreateCable`, `DeleteCable { before }`, `AddCableMember`, `RemoveCableMember { before }` |
 | Any object | `SetProperty { object, key, before, after }` |
 | Library | `EmbedDefinition`, `UpdateDefinition { before, after }` |
-| History | `NameVersion` (bookmark, not an edit) |
+| History | `NameVersion` (bookmark) |
 
-- **TX-01 Resolved intent.** Ops record outcomes (this terminal ID, these coordinates), not
-  gestures ("clicked near (40, 15)"). A newer snapping algorithm cannot change an old project.
-- **TX-02 Self-inverting.** Every op carries the values it replaces, so its inverse can be built
-  without consulting later state.
-- **TX-03 Atomic.** A transaction is checked against the document's invariants (references
-  exist, DOC-07, no dangling attachments) and applied in full or not at all. The document uses
-  copy-on-write, as CADCraft's `Drawing` does, so a failed apply leaves nothing half-updated.
-- **TX-04 Replay checks preconditions.** If an op's `before` does not match during replay, the
-  log is corrupt. The project opens read-only with a report; nothing is silently repaired.
+- **TX-01 Resolved intent.** Ops record outcomes (terminal `t2`, coordinates), not gestures.
+- **TX-02 Self-inverting.** Each op carries the values it replaces.
+- **TX-03 Atomic and validated.** Invariants (references exist, DOC-05, DOC-07) are checked;
+  apply is all or nothing on a copy-on-write document.
+- **TX-04 Replay checks preconditions.** A `before` that does not match means a corrupt log;
+  the project opens read-only with a report.
 
-### 7.2 Path A: ECAD commands
+### 6.2 Undo and redo
 
-ECAD commands are CADCraft `CommandSpec`s registered through the extension seam (§10), so they
-reach the command line, menus, scripts, the control channel and MCP like any other command
-(every consumer reads `command_specs()`: `ui-egui/src/menus.rs:434`, `cmdline.rs:134`,
-`control.rs:189`, `mcp/src/backend.rs:203`) **[Read]**. Interactive ones implement the public
-`Interactive` trait (`engine/src/prompt.rs:173`, re-exported at `lib.rs:42`) **[Read]**, so they
-get CADCraft prompts, snaps and rubber-band previews.
+- **UNDO-01** Undo appends `Undo { of }` holding the concrete inverse ops; redo appends
+  `Redo { of }`.
+- **UNDO-02** The undo/redo position is derived from the log. Undo is linear: a new edit after
+  undo makes the undone edits no longer redoable, though they remain in the log.
+- **UNDO-03** Undo is project-wide, so it may change pages that are not on screen.
 
-When an ECAD command finishes, it builds a transaction from resolved inputs and commits it to the
-ledger. The projector then updates the page's `Drawing` and the owner records that drawing as the
-new projection. The commit gate (Path B) therefore sees no unexplained difference.
+### 6.3 Unsaved state
 
-### 7.3 Path B: CADCraft commands on an ECAD page
+Revision 1 proposed reusing CADCraft's dirty check, which compares the drawing pointer with the
+saved one (`engine/src/lib.rs:162-164`) **[Read]**. That is wrong for a project. A property
+edit, a cable membership change or an edit on another page can leave the active drawing
+untouched.
 
-CADCraft commits in exactly two places: `Session::execute` (`engine/src/lib.rs:752-789`) and the
-end of an interactive command (`finish`, `lib.rs:1092-1128`). Both run the post-command passes
-(groups, constraints, associativity, `lib.rs:773-775` and `1111-1113`) and then push a
-whole-drawing undo snapshot **[Read]**. The owner seam sits after those passes and before the
-push:
+- **SAVE-01** The project has a **head** (sequence number of the last applied transaction) and
+  a **persisted position** (the last transaction known to be durably in the file). The project
+  is **unsaved if and only if head ≠ persisted position**.
+- **SAVE-02** Every transaction moves the head: geometry, properties, membership, other pages,
+  undo and redo. Undoing back to the saved content still leaves the project unsaved, because
+  the log has grown. That is correct for an append-only file.
+- **SAVE-03** Temporary UI state (zoom, selection, panels, current layer if classed
+  session-only) never moves the head.
+- **SAVE-04 Save failure.** The persisted position advances only after the appended bytes are
+  flushed. If writing or flushing fails, the position stays where it was, the project stays
+  unsaved, the error is reported, and nothing in memory is lost. Before the next save, any torn
+  trailing bytes are truncated back to the last good offset. A save to a new path (Save As,
+  first save) writes a temporary file, flushes it and renames it into place, so a failure never
+  damages an existing file.
+- **SAVE-05 Pages versus project.** A page tab is a view of the project. Closing a page tab
+  never prompts and never discards changes, because the project and its unsaved transactions
+  remain open. Closing the **project** (Close Project, quitting the app, or closing its last
+  page if the product chooses that, §18.4) prompts Save / Discard / Cancel when it is unsaved. If
+  Save fails, the project stays open.
+- **SAVE-06** Each page tab of an unsaved project shows the unsaved marker, so a non-graphical
+  edit is visible wherever the project is shown.
 
-1. **Diff** the drawing against the *last projection* the owner recorded, not against the
-   command's own `before`. Changes made outside commit points are then caught too (§7.6). Entity
-   stores hold `Arc<Entity>` in chunks (`doc/src/store.rs`), so unchanged entities compare by
-   pointer **[Read]**; the cost is assumed small **[Assumed]**.
-2. **Classify** each difference with the handle map and the rules in §9: new item, modified item,
-   removed item, a change that is session-only (for example the current layer), or refused.
-3. **Build** a transaction labelled with the command's name and authored by whoever ran it.
-4. **Commit** it to the ledger, which validates it (TX-03).
-5. **Accepted:** record the drawing as the new projection and push no CADCraft undo snapshot.
-   **Refused:** restore the last projection and echo the reason on the command line. This reuses
-   the engine's existing restore pattern for non-finite geometry (`engine/src/finite.rs:29`)
-   **[Read]**.
+Crash recovery between saves (a journal file next to the project) is deferred product behaviour.
+CADCraft's drawing autosave is not used for ECAD pages (§14).
 
-Transparent commands (`'ZOOM` inside LINE) add their changes to the outer command's step
-(`lib.rs:1114-1121`) **[Read]**, so the gate runs once, when the outer command commits.
+## 7. Worked example
 
-**Projection fidelity (PROJ-01):** after an accepted CADCraft edit, projecting the new document
-must reproduce the engine's drawing for every touched item. If it does not, the drawing content
-schema lost information. The projection then wins, the item is redrawn from the document, and
-tests fail. This invariant is the main integration test **[Assumed]**.
+Short IDs (`i1`, `c1`, `T1`) stand for 128-bit IDs. Coordinates are millimetres on page `p1`;
+handles are illustrative. Steps 1-5 use the drawn form.
 
-### 7.4 What the projector writes
+**1. Draw raw geometry.** LINE draws a 40 × 20 rectangle.
+```
+T1 Edit "Line"   AddItem i1 (0,0)-(40,0)   AddItem i2 (40,0)-(40,20)
+                 AddItem i3 (40,20)-(0,20) AddItem i4 (0,20)-(0,0)
+```
 
-- One CADCraft document (`DocState`) per ECAD page for Phase 1 (pages-as-layouts stays open, as
-  recorded in `decisions.md`).
-- Items become entities of matching kinds. Layers become layer-table entries.
-- Each component representation also becomes an unnamed CADCraft group, so picking one primitive
-  selects the whole symbol. `PICKSTYLE` bit 1 is on by default (`engine/src/lib.rs:361-418`)
-  **[Read]**. The group is projection only: it is not logged, and group edits on ECAD pages are
-  refused.
-- Connection points become markers that object snaps can find. The candidate is a POINT entity on
-  a non-plotting layer (CADCraft's `Defpoints` layer is created with `plot: false`,
-  `doc/src/lib.rs` `bare()`) **[Read]**. An overlay with a custom snap is the alternative
-  **[Assumed]**; decided in the first adapter spike.
-- Derived markers (open ends, mismatched attachments) are **not** drawn as entities. They need
-  the canvas overlay seam when that feature arrives (§10.2).
+**2. Convert it to a component and add terminals.**
+```
+T2 Edit "Convert to component"   CreateComponent c1 (all Unset)
+                                 LinkRepresentation r1 form=drawn subject=c1 items=[i1..i4]
+T3 Edit "Add terminals"          AddTerminal t1 c1   AddConnectionPoint t1 r1 (40,15)
+                                 AddTerminal t2 c1   AddConnectionPoint t2 r1 (40,10)
+                                 AddTerminal t3 c1   AddConnectionPoint t3 r1 (40,5)
+```
 
-### 7.5 Undo and redo: one history
+**3. Draw a loose conductor, then connect it.**
+```
+T4 Edit "Wire"      CreateConductor w1   AddItem i5 [(90,15),(55,15)]
+                    LinkRepresentation r2 form=drawn subject=w1 role=route items=[i5]
+T5 Edit "Connect"   ModifyItem i5 [(90,15),(55,15)] → [(90,15),(40,15)]
+                    AttachEnd w1.B none → t1
+T6/T7 Edit "Wire"   w2 to t2 and w3 to t3, each created already attached
+                    (WIRE resolved the snap to the connection point when it was drawn)
+```
 
-- **UNDO-01** On an ECAD page, CADCraft's snapshot stack stays empty. The owner tells the engine
-  to skip `push_undo`.
-- **UNDO-02** `u`, `undo`, `redo` and `mredo` all reach `Session::undo`/`redo`
-  (`engine/src/cmd/edit.rs:15-23`, calls at `141`, `215`, `383`) **[Read]**. For an owned page
-  these hand over to the owner, which appends `Undo { of }` or `Redo { of }` transactions holding
-  the concrete inverse ops (TX-02). The projector updates the drawing.
-- **UNDO-03** The undo/redo position is derived from the log, never stored. The rules are linear:
-  undo targets the latest effective edit; a new edit after undo makes the undone edits no longer
-  redoable, though they remain in the log.
-- **UNDO-04** Undo covers the whole project, not one page, because one transaction can touch
-  several pages (for example a cable shown on two sheets).
-- In-command undo still works (LINE's "Undo" option, TRIM's undo, `modify.rs:2150`, `trimextend.rs:501`),
-  because it rewinds uncommitted scratch state inside one command **[Read]**.
-- UNDO's Mark, Back, BEgin/End and Control options report "not available on ECAD pages" until
-  they are designed against the log.
+**4. Group the conductors into a cable without changing their identities.**
+```
+T8 Edit "Group as cable"   CreateCable k1
+                           AddCableMember k1 w1 0   AddCableMember k1 w2 1   AddCableMember k1 w3 2
+```
 
-Why not keep CADCraft's stack in step with the log? Its snapshots include `Drawing::handseed`
-(`doc/src/lib.rs:94`, `new_handle` at `154-158`), so snapshot undo reissues handles that the map
-may still hold **[Read]**. It would also let UNDO Back rewind past ledger transactions. Two
-histories means two truths, so one of them has to go.
+**5. Reroute a wire without changing connectivity.** A grip adds a vertex to `i6` at (65,25);
+both ends stay put.
+```
+T9 Edit "Grip edit"   ModifyItem i6 [(90,10),(40,10)] → [(90,10),(65,25),(40,10)]
+```
 
-### 7.6 Changes outside commit points
+**6. Move the connected component.** MOVE picks the component's group (items and connection
+point markers) and moves it by (0,−5). The attached wire ends follow in the **same**
+transaction (§10, rule M2):
+```
+T10 Edit "Move"   ModifyItem i1..i4 (each by (0,-5))
+                  MoveConnectionPoint t1 (40,15)→(40,10)  t2 (40,10)→(40,5)  t3 (40,5)→(40,0)
+                  ModifyItem i5 end B (40,15)→(40,10)   ModifyItem i6 end B (40,10)→(40,5)
+                  ModifyItem i7 end B (40,5)→(40,0)
+```
+Attachments are unchanged, and drawing and intent still agree.
+
+**7. Undo and redo.**
+```
+T11 Undo of T10   inverse of every T10 op (component and wire ends back)
+T12 Undo of T9    ModifyItem i6 back to [(90,10),(40,10)]
+T13 Undo of T8    RemoveCableMember ×3, DeleteCable k1
+T14 Redo of T13   CreateCable k1 (same ID), AddCableMember ×3
+```
+
+**Replay.** Opening the file applies T1-T14 to an empty document, applying each op as recorded.
+The result equals the live state. A checkpoint after T14 must give the same state, and deleting
+it changes nothing (FILE-04). Saved after T14, the project is clean. A later `SetProperty c1 tag
+"-K1"` changes no drawing but makes it unsaved (SAVE-01).
+
+---
+
+# Part B: provisional integration design
+
+Everything in Part B is a proposal to be proved by the experiment (§17). The repository layout
+is supported in direction; the rest are hypotheses.
+
+## 8. Repository layout
+
+```
+ecadcraft/                          fork of storytold/cadcraft
+├── crates/ apps/ xtask/            UPSTREAM  unchanged except the extension interface (§14)
+├── assets/ packaging/ examples/    UPSTREAM
+├── docs/                           UPSTREAM  (ECAD docs move to ecad/docs on approval)
+├── Cargo.toml  Cargo.lock          UPSTREAM  root workspace, untouched
+├── README.md                       OURS      repository front page
+├── CLAUDE.md  AGENTS.md            UPSTREAM today; ECAD rewrite pending (§18.2)
+├── .github/workflows/ci.yml        OURS      builds both workspaces
+└── ecad/                           OURS      separate Cargo workspace
+    ├── Cargo.toml  Cargo.lock      [workspace]; path deps on ../crates/*
+    ├── rustfmt.toml  clippy.toml   our style
+    ├── CLAUDE.md                   ECAD agent instructions
+    ├── UPSTREAM-PATCHES.md         every upstream file we change, why, and its test
+    ├── docs/                       contracts, decisions, proposals
+    ├── crates/
+    │   ├── ecad-model/             objects, IDs, ops, transactions, apply/invert, validation, history
+    │   ├── ecad-store/             .ecad/.ecadlib container: framing, durability, recovery, checkpoints
+    │   ├── ecad-library/           definitions, embedding, origin, "update available"
+    │   ├── ecad-derive/            connectivity, nets, open ends, completeness, diagnostics
+    │   ├── ecad-cadcraft/          adapter: projector, handle map, commit translation, owner, commands
+    │   ├── ecad-ui/                panels and overlays
+    │   └── ecad-testkit/           (dev only) builders, golden logs, scenario runner
+    ├── apps/ecad, apps/ecad-cli    desktop shell around CadApp; headless replay/verify/export
+    └── xtask/                      ECAD layering, upstream patch guard, wasm check
+```
+
+| Part | Location | Depends on | Must not depend on |
+| --- | --- | --- | --- |
+| Upstream CADCraft | `crates/`, `apps/`, `xtask/` | upstream | `ecad/` |
+| Shell and UI extensions | `ecad/apps/ecad`, `ecad-ui` | adapter, `cadcraft-ui-egui` | — |
+| Document, history, library | `ecad-model`, `ecad-store`, `ecad-library`, `ecad-derive` | each other, small external crates | **any `cadcraft-*` crate** (P10) |
+| Adapter | `ecad-cadcraft` | model crates, `cadcraft-engine`, `-doc`, `-geom` | UI crates |
+| Tests | unit tests per crate; `tests/<area>_contracts.rs`; Session-driven tests in `ecad-cadcraft/tests` | `ecad-testkit` | — |
+| Documentation | `ecad/docs/`, root `README.md` | — | — |
+
+**Separate workspace [Shown]:** a temporary nested workspace depending on
+`cadcraft-engine` by path built on Rust 1.97 and ran `Session::execute("line", …)`; upstream
+`workspace = true` dependencies resolved against the root, and the root workspace was unaffected.
+It was deleted afterwards. Adding ECAD crates to the root workspace instead would need patches
+to the root `Cargo.toml` and `xtask/src/layers.rs`, whose table rejects unregistered crates
+(`Unregistered`, line 150) **[Read]**.
+
+Conventions in `ecad/` follow your repositories:
+
+- `rustfmt` at `max_width = 120` with `use_small_heuristics = "Max"`;
+- a crate-level `//!` stating what the crate deliberately excludes;
+- doc comments with `# Semantics`, `# Errors`, `# Example` and `# See also`;
+- one structured error type per crate;
+- numbered contract statements, with unverified claims marked;
+- table-driven `tests/<area>_contracts.rs`.
+
+CADCraft's never-crash rules also apply. Upstream's tree is not moved, because moving it would
+turn every merge into rename conflicts.
+
+## 9. How edits reach the document
+
+### 9.1 Two paths, one ledger
+
+```
+ ECAD command (WIRE, CONNECT, PLACE, …) ───────────────► Ledger.commit(tx)
+                                                              ▲   │ apply
+ CADCraft command (LINE, MOVE, grips, COPY, PASTECLIP)        │   ▼
+   edits the projected drawing                                │  ECAD document
+   │                                                          │   │
+   ▼ commit point (Session::execute / finish)                 │   ▼ projector
+ owner.commit(diff vs last projection, provenance) ──tx──────┘  CADCraft drawing(s)
+   verdict: accept │ accept with amendments │ refuse
+```
+
+**Path A, ECAD commands** **[Read]**:
+
+- ECAD commands are `CommandSpec`s added through the extension interface, so they reach the
+  command line, menus, scripts, the control channel and MCP. All of these read
+  `command_specs()`: `ui-egui/src/menus.rs:434`, `cmdline.rs:134`, `control.rs:189`,
+  `mcp/src/backend.rs:203`.
+- Interactive ones implement the public `Interactive` trait (`engine/src/prompt.rs:173`), so
+  they get prompts, snaps and previews.
+- Each builds a transaction from resolved inputs and commits it; the projector updates the
+  affected drawings.
+
+**Path B, CADCraft commands on ECAD pages:**
+
+- CADCraft commits in two places: `Session::execute` (`engine/src/lib.rs:752-789`) and the end of
+  an interactive command (`finish`, `1092-1128`). Both run the post-command passes first (groups,
+  constraints, associativity) **[Read]**.
+- At each commit point, the page's owner receives the command ID, the drawing and the
+  provenance the engine recorded (§11). It compares the drawing with the **last projection** it
+  wrote and classifies every difference.
+- It then returns one of three verdicts:
+  - **accept**: the drawing is the new projection;
+  - **accept with amendments**: for example, attached wire ends follow moved equipment. The
+    owner writes the amended projection;
+  - **refuse**: the engine restores the last projection and echoes the reason.
+- No CADCraft undo snapshot is pushed for owned pages.
+
+### 9.2 Cancelled, refused and failed commands
+
+| Case | What happens | Evidence |
+| --- | --- | --- |
+| Esc during a command | CADCraft's `finish(cancelled)` keeps what the command already made (LINE segments drawn before Esc), as AutoCAD does; the owner translates exactly that. A cancelled MOVE has changed nothing, so the diff is empty and no transaction is appended | `lib.rs:1092-1128` **[Read]** |
+| Owner refuses (unsupported kind, refused operation, failed validation) | drawing reset to the last projection, selection cleared, ledger and map unchanged, reason echoed | restore pattern as in `engine/src/finite.rs:29` **[Read]** |
+| Panic inside a CADCraft command | the engine restores `before` and returns an error **before** the commit point, so the owner is never asked and nothing is appended | `lib.rs:757-771`, interactive `1074-1081` **[Read]** |
+| ECAD command fails validation | no transaction, no drawing change | ledger rule TX-03 |
+| Ledger apply fails after a CADCraft commit | treated as a refusal | — |
+
+**TX-05 (proposed rule):** an ECAD transaction that changes a page's drawing is not applied
+while a CADCraft command is in progress on that page, because the command holds its own copy of
+the drawing state (`Running.before`, `lib.rs:436-441`). The user is asked to finish or cancel
+first.
+
+### 9.3 Changes outside commit points
 
 | Source | Evidence | Treatment |
 | --- | --- | --- |
-| Pan/zoom inside a paper-space viewport edits the `Viewport` entity via `Arc::make_mut` | `engine/src/lib.rs:225-247` **[Read]** | Viewport view centre and height are UI state; the diff ignores them |
-| `hidden_objects` (ISOLATEOBJECTS) | "Never written to a file", `doc/src/lib.rs` **[Read]** | UI state; ignored |
-| Header variables and table edits made by commands (current layer, styles) | committed through the normal points **[Read]** | classified as logged, session-only or refused, from a census of all commands (V4) |
-| AUDIT/RECOVER replacing the drawing | `cmd/audit.rs:85`, `115` **[Read]** | refused on ECAD pages in Phase 1 |
-| Opening a DXF/DWG | creates a new `DocState` without an owner | stays a plain CADCraft drawing; adopting into a project is Phase 4 |
+| Pan/zoom inside a paper-space viewport edits the `Viewport` entity | `lib.rs:225-247` **[Read]** | UI state; ignored by the diff |
+| `hidden_objects` (ISOLATEOBJECTS) | "never written to a file", `doc/src/lib.rs` **[Read]** | UI state; ignored |
+| Header and table edits (current layer, styles) | committed normally **[Read]** | classified as recorded, session-only or refused, from a census of all commands |
+| AUDIT/RECOVER replacing the drawing | `cmd/audit.rs:85`, `115` **[Read]** | refused on ECAD pages |
 
-**DOC-09** An unclassified difference is refused, never silently dropped. If the census finds a
-common command refused for no good reason, its class is added explicitly.
+**DOC-08 (adapter rule):** a difference the owner cannot classify is refused, never silently
+dropped.
 
-## 8. Worked example
+### 9.4 Hypotheses the experiment must test
 
-Short IDs (`i1`, `c1`, `T1`) stand in for 128-bit IDs. Coordinates are millimetres on page `p1`.
-Handles are illustrative.
-
-**Step 1: draw raw geometry.** LINE draws a 40 × 20 rectangle. At LINE's `finish` the owner finds
-four new Line entities (handles `2A`–`2D`).
-
-```
-T1  Edit "Line"  author=user
-    AddItem i1 line (0,0)-(40,0)     AddItem i2 line (40,0)-(40,20)
-    AddItem i3 line (40,20)-(0,20)   AddItem i4 line (0,20)-(0,0)
-map: i1↔2A  i2↔2B  i3↔2C  i4↔2D
-```
-
-The items are plain drawing content (DOC-03).
-
-**Step 2: convert to a component.** Select the four lines, run CONVERTTOCOMPONENT.
-
-```
-T2  Edit "Convert to component"
-    CreateComponent c1                       all properties Unset
-    LinkRepresentation r1 subject=c1 role=main items=[i1,i2,i3,i4]
-```
-
-Appearance and position are unchanged; the item IDs are unchanged. The projector adds an unnamed
-group over `2A`–`2D`. Then ADDTERMINAL picks three points on the right-hand edge:
-
-```
-T3  Edit "Add terminals"
-    AddTerminal t1 component=c1 label=Unset   SetConnectionPoint t1 rep=r1 at (40,15)
-    AddTerminal t2 component=c1 label=Unset   SetConnectionPoint t2 rep=r1 at (40,10)
-    AddTerminal t3 component=c1 label=Unset   SetConnectionPoint t3 rep=r1 at (40,5)
-```
-
-**Step 3: draw a loose conductor.** WIRE from (90,15) to (55,15), both ends in free space.
-
-```
-T4  Edit "Wire"
-    CreateConductor w1                       ends A and B unattached, properties Unset
-    AddItem i5 polyline [(90,15),(55,15)]
-    LinkRepresentation r2 subject=w1 role=route items=[i5]
-map: i5↔2E
-```
-
-A loose end is valid; derived results report it as an open end.
-
-**Step 4: connect it.** CONNECT, pick end B of `w1`, pick terminal `t1`.
-
-```
-T5  Edit "Connect"
-    ModifyItem i5 before=[(90,15),(55,15)] after=[(90,15),(40,15)]
-    AttachEnd w1.B before=none after=t1
-```
-
-The terminal **ID** is recorded (TX-01). Replay applies `AttachEnd w1.B → t1` and never searches
-for whatever is near (40,15).
-
-Two more wires are then drawn straight onto `t2` and `t3`. WIRE resolved the snap to each
-connection point when the wire was drawn, so each conductor is created already attached, in one
-atomic transaction:
-
-```
-T6  Edit "Wire"   CreateConductor w2, AddItem i6 [(90,10),(40,10)], LinkRepresentation r3 w2 [i6],
-                  AttachEnd w2.B before=none after=t2
-T7  Edit "Wire"   CreateConductor w3, AddItem i7 [(90,5),(40,5)],   LinkRepresentation r4 w3 [i7],
-                  AttachEnd w3.B before=none after=t3
-map: i6↔2F  i7↔30
-```
-
-**Step 5: group into a cable.** Select the three routes, run GROUPCABLE.
-
-```
-T8  Edit "Group as cable"
-    CreateCable k1                           properties Unset
-    AddCableMember k1 w1 position=0 core=Unset
-    AddCableMember k1 w2 position=1 core=Unset
-    AddCableMember k1 w3 position=2 core=Unset
-```
-
-`w1`–`w3` keep their IDs, attachments and routes (DOC-06). Nothing is drawn yet; the cable's
-representation (slash, bundle, fan) belongs to the cable demonstration.
-
-**Step 6: reroute without changing connectivity.** On `i6`, add a vertex with CADCraft's polyline
-grip and drag it to (65,25). At the grip command's commit the owner sees the same handle with new
-vertices, and both end vertices unchanged:
-
-```
-T9  Edit "Grip edit"
-    ModifyItem i6 before=[(90,10),(40,10)] after=[(90,10),(65,25),(40,10)]
-```
-
-No attachment op is produced. End B still sits on `t2`'s connection point, so no mismatch is
-reported. The derived nets are the same before and after.
-
-**Step 7: undo and redo.** Cmd+Z twice, then Cmd+Shift+Z.
-
-```
-T10 Undo of T9    ModifyItem i6 before=[(90,10),(65,25),(40,10)] after=[(90,10),(40,10)]
-T11 Undo of T8    RemoveCableMember k1 w3 (pos 2)   RemoveCableMember k1 w2 (pos 1)
-                  RemoveCableMember k1 w1 (pos 0)   DeleteCable k1 before={properties}
-T12 Redo of T11   CreateCable k1   AddCableMember k1 w1 0   … w2 1   … w3 2
-```
-
-`T12` recreates the cable as **`k1`**, the same ID (DOC-08). `T9` stays undone; one more redo
-would append `T13 Redo of T10`. Nothing is removed from the log. The projector updated `i6` in
-place (handle `2F` kept), so selection and grips stay valid.
-
-If the user had undone `T4`, item `i5` would have left the drawing. Redo would bring it back
-under a **new** handle (say `35`), with `i5` unchanged and the map updated. Handles may change;
-ECAD IDs never do.
-
-**Replay.** Opening the file applies T1–T12 to an empty document. Each op is applied as recorded:
-no snapping, no attachment inference, no ID allocation. The result equals the live state (FILE-02).
-The undo position is derived again: next undo targets T12, next redo T10. A checkpoint after T12
-plus an empty tail must give the same state; that is the ledger's main property test.
-
-**What this example deliberately does not decide:** what COPY of the component should mean, how
-the wires are numbered, what the cable looks like, and what happens when a connected end is
-dragged off its terminal. These are in §9 and §15.
-
-## 9. ECAD ⇄ CADCraft ID mapping lifecycle
-
-The map `ItemId ⇄ Handle` (plus connection points and projection groups) lives only in the
-running session. It is rebuilt whenever a page is projected and is never saved.
-
-| Event | What CADCraft does to handles | ECAD effect | Status |
-| --- | --- | --- | --- |
-| Open project, project a page | new drawing, fresh handles | map built; IDs unchanged | defined |
-| New geometry (LINE, PLINE, CIRCLE, TEXT) | new handles from `handseed` | `AddItem` with a new ID | defined |
-| MOVE, ROTATE, SCALE (no copy) | same handle, entity changed in place (`modify_entity` in `transform_entities`, `modify.rs:120`) **[Read]** | `ModifyItem`; same ID | defined (end-vertex rule below) |
-| STRETCH, grips, property edits | expected to keep the handle **[Assumed]** | `ModifyItem`; same ID | census V4 |
-| ERASE of an unlinked item | handle removed | `RemoveItem` | defined |
-| ERASE of an item in a representation | handle removed | **open**: see D6 | proposed default needs approval |
-| COPY, MIRROR/ROTATE/SCALE with copy, ARRAY, COPYCLIP + PASTECLIP | new handles (`modify.rs:108`); the commit does not say which new entity came from which original (`run_copy`, `modify.rs:162`; paste's `adopt` replaces the handle, `clipboard.rs:341`) **[Read]** | unlinked items: `AddItem`, plain geometry. Linked items: **refused on ECAD pages** until copy semantics are decided | refusal is a holding position, not an answer |
-| EXPLODE | removes the entity, adds parts with new handles (`modify.rs:1289-1309`) **[Read]** | unlinked: `RemoveItem` + `AddItem`s. Linked: **refused** | open |
-| BREAK, BREAKATPOINT | removes the entity, adds all pieces with new handles (`modify.rs:1319-1407`) **[Read]** | unlinked: remove + add. On a route: **refused** (would it split the conductor?) | open |
-| JOIN | removes sources, keeps or creates one (`modify.rs:1425`) **[Read]** | unlinked: fine. Across two routes: **refused** (would it merge conductors?) | open |
-| TRIM, EXTEND, FILLET, LENGTHEN | per command; not yet traced **[Assumed]** | same handle → `ModifyItem`; replaced handle → as BREAK | census V4 |
-| ECAD undo/redo | removed items get new handles when restored | IDs unchanged; map updated | defined |
-| CADCraft snapshot undo | reverts `handseed`, may reissue handles **[Read]** | disabled on ECAD pages (UNDO-01) | defined |
-| Cross-project paste | new handles in the target drawing | new IDs; definitions travel (§6.4); linked content refused until copy semantics decided | open |
-| GROUP edits on projection groups, BEDIT/REFEDIT, AUDIT/RECOVER | various | refused on ECAD pages in Phase 1 | defined |
-| Save, close, reopen | handles discarded | IDs persisted in the log | defined |
-| DXF/DWG export | export file has its own handles | no ECAD IDs needed in the export | defined |
-
-**Route edits and attachments.** Moving a route vertex that is not an attached end is a reroute
-(T9). Moving an *attached* end with a generic CADCraft edit is ambiguous: the user might mean
-"reroute" or "reconnect". Options: (a) refuse; (b) keep the attachment and report "end not at its
-terminal"; (c) detach; (d) resolve whichever terminal it now touches, once, and record
-`AttachEnd`. Recommendation: (b) for generic edits, with explicit CONNECT/DISCONNECT commands.
-A later wire-end grip can offer (d) as a deliberate gesture. Decision D7.
-
-**Moving a component with wires attached** raises the same question from the other side: should
-attached route ends follow, recorded as explicit `ModifyItem` ops in the same transaction, or stay
-put and be flagged? This is left open for the wire-tool spike (§15).
-
-## 10. Integration seams and patch inventory
-
-### 10.1 Engine seams needed now
-
-| Seam | Upstream file(s) | Shape | Why it cannot be avoided |
-| --- | --- | --- | --- |
-| **E1 Extension commands** | `crates/engine/src/cmd/mod.rs` (`command_specs`, lines 165-202) | the embedder installs a `Vec<CommandSpec>` once, before first use, following the existing `set_io` pattern (`cmd/file.rs:31-38`); appended after built-ins | the registry is a closed `OnceLock` list **[Read]** |
-| **E2 Document owner** | `crates/engine/src/lib.rs` (`DocState` field; `execute`; `finish`; `undo`/`redo`) | `DocState` gets an optional owner trait object. At both commit points the owner returns accept, skip-undo or refuse; `undo`/`redo` hand over when an owner is present | `Run` is a plain `fn` pointer, so ECAD commands need a way to reach the project; commits must be gated; undo must not be the snapshot stack **[Read]** |
-| **E3 Save and close** | `crates/engine/src/cmd/file.rs` (`qsave`/`saveas` at line 146; `close` at 267); autosave in `engine/src/autosave.rs` and `ui-egui/src/autosave.rs` | for owned documents, SAVE goes to the owner (the `.ecad` file), close asks the owner, and drawing autosave is skipped | otherwise Cmd+S on an ECAD page writes a DXF of the projection and looks like a project save **[Read]**; exact call sites **[Assumed]** |
-
-Phase 0's "domain state slot" becomes the owner in E2. Phase 0's "commit observer" becomes a
-gate that can refuse. Undo, save and close are new findings. Dirty tracking needs no seam: it
-compares `doc` with `saved` by pointer (`lib.rs:162-164`) **[Read]**, so the owner sets `saved`
-after writing the project.
-
-Plain CADCraft drawings have no owner, so every seam is a no-op for them. That is also why the
-seams are worth offering upstream as general extension points (needs your approval, D3).
-
-### 10.2 UI seams deferred until a feature needs them
-
-| Seam | Upstream file | Needed for | Interim without a patch |
-| --- | --- | --- | --- |
-| U1 Extra dock panels | `ui-egui/src/docking.rs` (closed `Panel` enum, line 11) | project browser, properties, diagnostics docked like Layers | the shell draws egui side panels around `CadApp::ui` (`ui-egui/src/lib.rs:479`) without docking persistence **[Assumed]** |
-| U2 Canvas overlay painter | `ui-egui/src/canvas.rs` (overlays hard-wired at 1140-1152) | open-end markers, connectivity overlay, heat map | none worth having; patch when the first overlay feature lands |
-| U3 Top-level menu | `ui-egui/src/menus.rs` (`MENUS`, line 9) | an "Electrical" menu | ECAD commands use existing menus (for example Tools ▸ Electrical) |
-
-### 10.3 Verification list
-
-Each item becomes a test in `ecad-cadcraft/tests` before the seam it supports is relied on.
-
-| # | Claim | Evidence now | Proof |
-| --- | --- | --- | --- |
-| V1 | A separate workspace builds against upstream crates | **[Shown]** probe | CI job on `ecad/` |
-| V2 | Extension commands reach command line, menus, control channel and MCP | **[Read]** | drive each surface with an ECAD command |
-| V3 | The gate sees every committed change, after the post-command passes | **[Read]** | instrumented commit count across all commands |
-| V4 | No other path commits drawing content; every command's changes classify | **[Read]**, partial | census: run every `CommandSpec`'s JSON form on a sample ECAD page and record what changes |
-| V5 | Viewport pans and `hidden_objects` are the only out-of-band changes | **[Read]** | census of UI and control methods |
-| V6 | All undo entry points go through `Session::undo`/`redo` | **[Read]** | Cmd+Z, UNDO n, MREDO on an owned page append ledger transactions |
-| V7 | Save, close and autosave can be routed for owned documents | **[Assumed]** | E3 tests, including close with unsaved changes |
-| V8 | Projection fidelity (PROJ-01) | **[Assumed]** | property test: random supported edits round-trip |
-| V9 | ECAD interactive commands get prompts, snaps and previews | **[Read]** (`Interactive` is public) | WIRE spike |
-| V10 | Projected groups give whole-component picking | **[Read]** | pick test |
-| V11 | The diff costs little on large pages | **[Assumed]** | benchmark at 10k items |
-| V12 | ECAD crates build for `wasm32` | **[Assumed]** | `ecad/xtask wasm` |
-| V13 | egui side panels outside `CadApp` lay out acceptably | **[Assumed]** | shell spike screenshot |
-
-### 10.4 Patch inventory (proposed)
-
-| File | Seam | Estimated size |
+| # | Hypothesis | If it fails |
 | --- | --- | --- |
-| `crates/engine/src/cmd/mod.rs` | E1 | ~15 lines |
-| `crates/engine/src/lib.rs` | E2 | ~60 lines (one field, two commit sites, undo/redo) |
-| `crates/engine/src/cmd/file.rs`, autosave call sites | E3 | ~20-30 lines, after V7 |
-| `crates/ui-egui/src/{docking,canvas,menus}.rs` | U1-U3 | later, only when needed |
-| `crates/io` and/or `crates/dwg` | DWG feature gate (§12) | only if you choose that option |
-| `README.md`; `CLAUDE.md`, `AGENTS.md` | not code | ours; agent files pending D11 |
+| **H1** | Ordinary CADCraft commands on ECAD pages can be translated into correct transactions by diffing against the last projection plus engine-reported provenance, without ECAD code per command | add ECAD variants of the failing commands as extension commands, or move translation into the engine per command (a larger patch) |
+| **H2** | The projection round trip is lossless for every supported kind, including symbol placement | narrow the supported kinds, or extend the schema |
+| **H3** | Moving connected equipment feels normal: wire ends follow at commit and the drag preview shows them | ECAD MOVE variant with its own preview |
+| **H4** | A plain COPY or COPYCLIP/PASTECLIP of a whole component maps to an independent copy with preserved internal relationships | ECAD copy commands |
+| **H5** | Owner-delegated undo, save, unsaved state and close keep one history and correct prompts across pages and non-graphical edits | larger UI patch |
+| **H6** | The extension interface survives upstream merges with small, local conflicts | measured over successive merges, not by the experiment |
 
-Each patch is marked in the code with `// ECAD-SEAM(<name>):` and listed in
-`ecad/UPSTREAM-PATCHES.md` with its reason and test. ECAD-specific semantics stay out of upstream
-crates: the seams carry only generic notions (commands, owner, accept/refuse, undo, save) and say
-nothing about components or wires.
+## 10. Movement and connectivity
 
-## 11. Incorporating upstream updates
+Revision 1 kept a connection while leaving a visibly detached wire end. That is no longer the
+normal outcome. The initial policy separates three intents:
 
-1. Add `upstream` = `https://github.com/storytold/cadcraft` as a fetch-only remote.
-2. On demand, or about fortnightly, cut `upstream-sync/<date>` from `dev` and **merge**
-   `upstream/main`. Never rebase: merges keep history readable and conflicts confined.
-3. Conflicts are expected only in the patch inventory files and `README.md`. Resolve them keeping
-   the `ECAD-SEAM` blocks.
-4. Run upstream's gates on the root workspace, then the ECAD workspace: fmt, clippy, tests, the
-   V-tests above and ECAD layering.
-5. Run the **patch guard**: `git diff --name-only upstream/main...HEAD` limited to upstream
-   paths must equal the inventory. Any other changed upstream file fails CI.
-6. Open a PR into `dev` summarising upstream changes that touch the seams. It merges only after
-   your approval; green CI is not approval.
-7. Optionally offer E1-E3 upstream as general hooks. If accepted, our patch set shrinks to zero.
-   This is outward-facing, so it needs your go-ahead (D3).
+| Rule | Intent | Recognised when | Result, in one transaction |
+| --- | --- | --- | --- |
+| **M1** | **Reroute** | a route changes but both end vertices stay where they were | `ModifyItem` on the route; attachments unchanged |
+| **M2** | **Move connected equipment** | a component's terminal positions move (drawn form: its connection points move with its group; symbol form: its placement changes) | the item and connection-point (or placement) ops, **plus** `ModifyItem` moving each attached route end to its terminal's new position; attachments unchanged |
+| **M3** | **Deliberate reconnection** | a route end moves while its terminal does **not** (end grip; STRETCH over the end only; moving a wire without its equipment) | resolved **once**, at commit: on a connection point → attach there (`AttachEnd old → new`; nothing if it is the same terminal); in free space → detach (`AttachEnd old → none`); the end then shows as open |
 
-Upstream changes most likely to hurt are in `Session::execute`/`finish`, `DocState`, the command
-registry, the entity kinds, and DXF writing. The V-tests guard each of those.
+Details:
 
-## 12. Optional DWG boundary
+- **M2 takes precedence** when a terminal moves: an end attached to a moved terminal follows it,
+  even if the same command also moved the end some other way. If the wire was moved along with
+  its equipment by the same transform (moving a whole circuit), the end is already in place and
+  no amendment is needed.
+- **Initial follow geometry:** only the end vertex moves; neighbouring vertices stay. Keeping
+  orthogonal routes orthogonal (inserting or sliding a dogleg) is deferred product behaviour.
+- **Preview:** during a MOVE drag, attached ends should rubber-band with the equipment. CADCraft
+  already draws extra preview geometry returned by `Session::drag` (`Drag.extra`,
+  `engine/src/prompt.rs:195-203`; drawn by `ui-egui/src/canvas.rs:1192`) **[Read]**. The
+  extension interface lets the owner add the moved route ends there **[Assumed]** (H3).
+- **Explicit commands:** CONNECT, DISCONNECT and RECONNECT produce the same ops for keyboard,
+  scripts and agents.
+- **Mismatch state** (attached, but the end not at the terminal) is reachable only through
+  explicit ops kept for incomplete work, such as adopted DWG data or a future deliberate "keep
+  connection" option. It is reported as a diagnostic. Normal movement never produces it, and
+  the experiment checks that.
+- An end landing on another conductor's route is a free end with a "possible junction" hint;
+  junction rules are deferred.
 
-- ECAD exports build a plain CADCraft `Drawing` per page (or a multi-layout drawing) from the
-  projection, then write DXF through `cadcraft-io`. DXF is always available.
-- DWG export and adopt sit behind an ECAD cargo feature `dwg` in `ecad-cadcraft` and the apps, so
-  a build without it is a configuration choice.
-- **Current constraint [Read]:** `cadcraft-io` depends on `cadcraft-dwg` unconditionally
-  (`crates/io/Cargo.toml:16`), and `cadcraft-engine` depends on `cadcraft-io`
-  (`crates/engine/Cargo.toml:28`). Every native build therefore links `acadrust` (MPL-2.0)
-  whatever ECAD's feature says. WASM builds already exclude it (`crates/dwg/Cargo.toml`
-  target-specific dependency).
-- So a truly DWG-free native build needs one of: (a) accept `acadrust` as an unmodified library
-  and keep the feature for UI only; (b) a small upstream patch making `acadrust` optional in
-  `cadcraft-dwg`/`cadcraft-io` (a reasonable upstream contribution); (c) substitute `cadcraft-dwg`
-  at build time with a stub that reports "DWG not available" **[Assumed]**, untested whether Cargo
-  allows this for a path dependency. Licence acceptance stays open, as you asked.
+## 11. Copy, paste and placement
 
-## 13. Room for later features
+Copy/paste and dragging from a panel are central workflows. The experiment must include copying
+of electrical objects; the integration is not proved without it.
 
-| Feature | Where it fits | What this proposal already provides |
+### 11.1 Proposed initial meaning
+
+| Selection copied | Result |
+| --- | --- |
+| Plain items | plain items with new IDs |
+| A **whole** component representation (drawn: all its items and connection points; symbol: its instance) | an **independent copy**: new component, terminal, representation, item and connection-point IDs; internal relationships preserved (each copied terminal belongs to the new component; each new connection point maps to the new terminal; properties copied) |
+| Conductor routes copied with the equipment at both ends | new conductors, attached to the **copied** terminals |
+| Conductor route copied without the equipment at an end | new conductor; that end resolved by M3 at its new position (normally free) |
+| A conductor that is a cable member | copied without membership; cables are not copied implicitly |
+| Part of a representation (some lines of a symbol) | plain items (an experiment limit, §18.3) |
+
+Copying is never the place where a tag becomes an identity: a copied component keeps the same
+tag text, and the duplicate is reported. Tag behaviour on copy is deferred product behaviour.
+
+**Explicitly unresolved, not provided by plain copy:** "another contact of the same component"
+(an additional terminal set or representation belonging to the existing component) and
+"another depiction of the same contact" (an additional representation of existing terminals).
+Each will be a distinct, named command once its semantics are decided.
+
+### 11.2 How the adapter knows what was copied
+
+The commit gives new handles but does not say which original each came from:
+
+- COPY and the copy variants of MIRROR, ROTATE and SCALE create entities in
+  `transform_entities` (`modify.rs:101-124`, new handle at 108);
+- PASTECLIP gives each clipboard entity a new handle in `adopt` (`clipboard.rs:341`);
+- the clipboard keeps copies of the entities, a source document ID and a serial number
+  (`clipboard.rs:40-52`).
+
+All of this is **[Read]**. The extension interface therefore adds **provenance** (§14, X6):
+
+- copy-like operations record `new handle ← source handle` for the commit;
+- COPYCLIP and CUTCLIP let the owner capture the copied objects' ECAD meaning, keyed by the
+  clipboard serial, so a paste still works after the original is edited or deleted, and later
+  into another page or project.
+
+New entities that copy linked items but have no provenance are refused (DOC-08), never guessed.
+Pairing by matching geometry is a fallback only if upstream rejects the provenance hook.
+
+### 11.3 Placement from a panel
+
+Dragging a symbol from a panel, or placing a library definition, is an ECAD command (Path A):
+LIB-01 with a placement. Drag-and-drop from a panel onto the canvas needs a UI hook, deferred
+with the panels (§14.2). Until then the experiment places definitions by command.
+
+## 12. Removing representations and deleting objects
+
+| Action | Ops | Subject afterwards |
 | --- | --- | --- |
-| Cable demonstration (slash, traditional ⇄ fan) | ECAD commands + cable representations; view toggle as UI state | cables group conductors by ID (DOC-06); representations allow several depictions of one cable |
-| Numbering schemes, wire identification | `SetProperty` on conductors/ends; identifier records; derived suggestions | IDs independent of names (DOC-04); `Unset` is distinguishable; no single-number assumption |
-| Completeness heat map | `ecad-derive` over `Unset`/`Set`; drawn through U2 | missing values are queryable (§5.5) |
-| MCP | `ecad-mcp` over the same transactions; proposals are transactions held outside the log until accepted; release stays human-only | one transaction path for user, tools and agents; author on every transaction |
-| Library replacement UI | `UpdateDefinition` + terminal remapping transaction | LIB-02/03/04; replacement rules deliberately open |
-| Multi-page, cross-references | pages as projections; cross-refs derived | representations carry a page; undo is project-wide |
-| DWG adopt | an import that emits ordinary transactions plus a review step | everything entering a project is a transaction |
+| Remove a representation (CADCraft ERASE of a whole drawn representation or a symbol instance; erasing a route) | `RemoveItem` for its items, `RemoveConnectionPoint`s, `UnlinkRepresentation` | **unchanged**: same ID, attachments, memberships and properties; reported "not shown" (DOC-06) |
+| Remove part of a representation (one line of a drawn symbol) | `RemoveItem`, representation item list updated | unchanged |
+| Delete a conductor (explicit command) | `AttachEnd … → none` for attached ends, `RemoveCableMember`, then removal of each representation, then `DeleteConductor` | gone |
+| Delete a component (explicit command) | detach every conductor end attached to its terminals, remove representations, `RemoveTerminal`s, `DeleteComponent` | gone; conductors that were attached remain, now with open ends |
 
-## 14. Decisions requiring approval
+A future **Delete** interaction may deliberately perform "remove representation + delete
+subject" as one transaction. What ERASE and the Delete key do by default on electrical objects
+is deferred product behaviour. For the experiment only, ERASE removes representations and a
+DELETE command deletes subjects, so both paths can be tested on their own.
 
-| # | Decision | Recommendation | Alternatives | Blocks |
-| --- | --- | --- | --- | --- |
-| D1 | The log is the only truth; CADCraft's `Drawing` is a projection and editing surface; CADCraft commits are proposals the owner may refuse | approve | Drawing as truth with ECAD data in xdata (rejected in Phase 0) | everything |
-| D2 | Layout: `ecad/` as a **separate Cargo workspace** with path dependencies | approve | add `ecad/*` to the root workspace (patches root `Cargo.toml` and `xtask/src/layers.rs`) | skeleton PR |
-| D3 | Engine seams E1 (extension commands) and E2/E3 (document owner: commit gate, undo, save/close); UI seams only when needed; may we later offer them upstream? | approve E1-E3; offering upstream to wait until they have run here | keep Phase 0's three seams (they miss undo and save) | adapter PR |
-| D4 | Drawing content uses an **ECAD-owned schema** for a listed subset of kinds (line, polyline, arc, circle, text, point); other kinds are refused on ECAD pages for now | approve | store CADCraft `Entity` serde as an opaque payload (complete, but couples our file format to upstream's internal structs) | model PR |
-| D5 | IDs: 128-bit random, allocated at edit time, never reused, shown shortened | approve | per-project counters (remap on cross-project paste) | model PR |
-| D6 | Erasing depicted geometry: a conductor whose last route item is erased is deleted in the same transaction (its attachments and memberships removed explicitly); a component whose last representation is erased **remains**, flagged "not shown" | approve as Phase 1 default | delete both; keep both; refuse | adapter PR |
-| D7 | A generic edit that moves an attached conductor end keeps the attachment and reports "end not at terminal"; reconnection only by explicit command | approve | refuse; detach; resolve the new terminal at commit time | wire spike |
-| D8 | Until copy semantics are decided, COPY/EXPLODE/BREAK/JOIN/paste of **linked** geometry is refused on ECAD pages; unlinked geometry behaves normally | approve as a holding position | pick a copy meaning now (the foundations note asks not to) | adapter PR |
-| D9 | Undo is linear and project-wide, derived from the log; UNDO Mark/Back/BEgin/End unavailable on ECAD pages at first | approve | per-page undo | model PR |
-| D10 | Any drawing change that is not classified is refused (DOC-09); a command census sets each class | approve | accept and silently not persist | adapter PR |
-| D11 | Housekeeping: move ECAD docs to `ecad/docs/`; rewrite root `CLAUDE.md`/`AGENTS.md` for ECAD (keeping upstream's never-crash, clean-room and asset rules) with ECAD detail in `ecad/CLAUDE.md`; disable the inherited release and packaging workflows | approve | leave upstream agent files as they are (they tell agents to push to `main`) | skeleton PR |
-| D12 | Phase 1 maps one ECAD page to one CADCraft document; the pages-as-layouts choice stays open for Phase 2 | approve for Phase 1 only | decide layouts now | adapter PR |
+## 13. ID mapping lifecycle
 
-Not asked now, as you requested: DWG licence acceptance (§12 lists the options), product name,
-default drawing standard.
+The map between ECAD IDs and CADCraft handles (for items, connection-point markers, projection
+groups, blocks and inserts) lives only in the session. It is rebuilt whenever a page is projected
+and never saved.
 
-## 15. Deliberately unresolved
+| Event | CADCraft handles | ECAD effect | Status |
+| --- | --- | --- | --- |
+| Open project, project a page | fresh | map built; IDs unchanged | defined |
+| New geometry (LINE, PLINE, TEXT, …) | new | `AddItem`, new ID | defined |
+| MOVE, ROTATE, SCALE, MIRROR (no copy) | same handle, changed in place (`modify_entity`, `modify.rs:120`) **[Read]** | `ModifyItem` / placement change; M1-M3 | defined |
+| STRETCH, grips, property edits | expected to keep the handle **[Assumed]** | as above | census |
+| COPY family, COPYCLIP + PASTECLIP | new handles; provenance via X6 | §11.1 | experiment |
+| ERASE | handle removed | §12 | experiment uses "remove representation" |
+| EXPLODE, BREAK, JOIN on linked items | remove and re-create handles (`modify.rs:1289`, `1319`, `1425`) **[Read]** | **refused for now** | experiment limit |
+| TRIM, EXTEND, FILLET on routes | per command **[Assumed]** | same handle → M1/M3; replaced → refused for now | census |
+| ECAD undo/redo | restored items may get new handles | IDs unchanged; map updated | defined |
+| CADCraft snapshot undo | would restore `handseed` and reissue handles (`doc/src/lib.rs:94`, `154-158`) **[Read]** | not used on ECAD pages | defined |
+| GROUP edits on projection groups, BEDIT/REFEDIT of ECAD blocks, AUDIT | various | refused | experiment limit |
+| Save, close, reopen; DXF/DWG export | handles discarded or independent | IDs persisted only in the log | defined |
 
-Each item states the constraint this proposal preserves; none is decided by the example.
+## 14. Generic extension interface
 
-| Subject | Constraint preserved | Next step |
+### 14.1 Review against the requirements
+
+Revision 1 aimed for three engine files. The review's requirements are:
+
+- normal copying and connected movement;
+- correct unsaved state across pages and non-graphical edits;
+- page-versus-project closing;
+- safe restore on refusal.
+
+These need more. The proposal is one **generic** interface. It says nothing about components or
+wires: a CADCraft document can have an *owner*, and the engine reports to that owner at a few
+well-defined moments. Plain drawings have no owner and behave exactly as today.
+
+| # | Capability | Upstream files (expected) | Needed for |
+| --- | --- | --- | --- |
+| X1 | **Extension commands** installed once by the embedder (like `set_io`, `cmd/file.rs:31-38`) | `engine/src/cmd/mod.rs` | ECAD commands everywhere commands are listed |
+| X2 | **Owners**: a session-level registry, and a binding from document to owner | `engine/src/lib.rs` | reaching the project from `fn` commands; owners with no open page |
+| X3 | **Commit verdict** at both commit points: accept, accept with amendments, refuse; skip the undo snapshot | `engine/src/lib.rs` | §9, M2 |
+| X4 | **History delegation**: `undo`/`redo` hand over to the owner, which may update several documents | `engine/src/lib.rs` (`1347-1368`); UNDO options in `cmd/edit.rs` report "not available" | P4, UNDO-03 |
+| X5 | **Persistence delegation**: save/save-as to the owner; `is_dirty` answered by the owner; closing a document asks the owner whether it needs a prompt; quit asks every owner; drawing autosave skips owned documents | `engine/src/lib.rs` (`is_dirty`), `cmd/file.rs` (`qsave`, `saveas`, `close`), `engine/src/autosave.rs` (`184-189`), `ui-egui/src/closing.rs` (`71`, `177`) | SAVE-01..06 |
+| X6 | **Provenance**: copy-like operations record `new ← source`; clipboard copy notifies the owner with the clipboard serial | `cmd/modify.rs` (`transform_entities`), `cmd/clipboard.rs` (`copy`, `adopt`), array and grip copy sites after census | §11 |
+| X7 | **Drag preview contribution**: the owner adds rubber-band geometry to `Session::drag` | `engine/src/lib.rs` (`1195-1201`) | M2 preview |
+
+**About ten upstream files.** The patch is larger than revision 1's estimate but has one shape,
+one marker (`// ECAD-SEAM(owner):`) and one test suite. Each capability is generic enough to
+offer upstream (for example, provenance also helps associativity). Closing and quitting
+currently ask each document's `is_dirty` directly (`ui-egui/src/closing.rs:71`, `115`, `177`)
+**[Read]**, so X5 must touch the UI crate. That is the only UI change the experiment needs.
+
+ECAD semantics stay out of upstream crates: the interface passes drawings, handles, command IDs
+and provenance; classification, policy and validation live in `ecad-cadcraft`.
+
+### 14.2 Deferred UI hooks
+
+| Hook | Upstream file | Needed for |
 | --- | --- | --- |
-| Copy and duplicate | an independent copy needs new component IDs; another depiction of the same contact is a new representation of the existing component; neither is hard-coded (D8 refuses until decided) | explicit ECAD copy commands for each meaning, once chosen |
-| Tag scope and "same tag means same component" | tags are properties (DOC-04); duplicates are reported, never merged | decide scope (page, project, IEC 81346 aspects) before tag identity |
-| Wire identification | identifiers are a property list, possibly per end, possibly hidden or repeated; manual or derived | design with numbering schemes |
-| Net identity, junctions, terminal bridges | nets are derived; only attachments are stored | design before numbering by net |
-| Inference versioning | stored intent never changes with rules; derived results can | candidates: record the rule version at each named version; upgrading rules is an explicit transaction showing differences |
-| Checkpoint authority after compaction | today checkpoints are cache (FILE-04) | after compaction a checkpoint becomes the base of truth for the dropped prefix; decide what proves it correct |
-| Named-revision preservation | named versions are bookmarks | decide whether compaction keeps their ops, a frozen state, or released outputs |
-| Transaction recovery and op evolution | FILE-03, FILE-05 | settle with the encoding |
-| Library replacement and terminal mapping | LIB-02/03/04 | design with the replacement UI |
-| Parts container | concept spec open question | decide with library work |
-| A conductor in more than one cable; an item in more than one representation | DOC-07 proposes "at most one representation per item"; cable membership not yet limited | confirm with the cable demonstration |
-| Component moved with attached wires | either explicit route edits in the same transaction, or displaced ends flagged | wire-tool spike |
-| Cable view toggle persistence | concept spec: a view setting, not an op | decide whether the choice is remembered per page outside the log |
+| Extra dock panels | `ui-egui/src/docking.rs` (closed `Panel` enum, line 11) | project browser, properties, diagnostics |
+| Canvas overlays | `ui-egui/src/canvas.rs` (hard-wired at 1140-1152) | open-end markers, heat map |
+| Drop onto canvas | `ui-egui/src/canvas.rs` | drag from panel |
+| Top-level menu | `ui-egui/src/menus.rs` (`MENUS`, line 9) | an "Electrical" menu |
 
-## 16. Proposed next steps
+### 14.3 Verification
 
-After approval, each step arrives as a separate PR into `dev` and merges only with your approval:
+| # | Claim | Now | Proof |
+| --- | --- | --- | --- |
+| V1 | Separate workspace builds against upstream | **[Shown]** | CI |
+| V2 | Extension commands reach every command surface | **[Read]** | drive each surface |
+| V3 | Commit points see every committed change after post-command passes | **[Read]** | instrumented count across all commands |
+| V4 | Every command's changes on an ECAD page classify (census) | partial | run every `CommandSpec`'s JSON form on a sample page |
+| V5 | All undo entry points reach `Session::undo`/`redo` (`cmd/edit.rs:15-23`) | **[Read]** | Cmd+Z, UNDO n, MREDO append ledger transactions |
+| V6 | Provenance is complete for copy-like commands | **[Assumed]** | census of entity-creating commands that start from existing entities |
+| V7 | Projection round trip (H2) | **[Assumed]** | property test |
+| V8 | Diff cost on large pages (pointer comparison of `Arc<Entity>` chunks, `doc/src/store.rs`) | **[Assumed]** | benchmark at 10k items |
+| V9 | ECAD crates build for `wasm32` | **[Assumed]** | `ecad/xtask wasm` |
 
-1. **Skeleton and housekeeping** (D2, D11): create `ecad/` with its workspace, `ecad/xtask`
-   (layering and patch guard), CI job, `UPSTREAM-PATCHES.md`; move ECAD docs. No behaviour.
-2. **Model in memory** (D4, D5, D9): `ecad-model` objects, ops, transactions, apply/invert,
-   validation and history. §8 becomes an executable scenario test: replay equals live state, and
-   undo/redo IDs are preserved. No CADCraft dependency.
-3. **Seams and adapter** (D3, D6, D7, D8, D10, D12): E1-E3 patches with their V-tests, projector,
-   handle map, commit gate and command census; CONVERTTOCOMPONENT, ADDTERMINAL, WIRE, CONNECT and
-   GROUPCABLE as minimal commands.
-4. **Container** (`ecad-store`): encoding and framing chosen against §6, with recovery and
-   checkpoint property tests.
+## 15. Incorporating upstream updates
 
-The cable demonstration, numbering, heat map, MCP and library replacement follow only after these
-foundations are approved.
+1. `upstream` = `https://github.com/storytold/cadcraft`, fetch only.
+2. Cut `upstream-sync/<date>` from `dev` and **merge** `upstream/main` (never rebase).
+3. Resolve conflicts in inventory files, keeping `ECAD-SEAM` blocks; keep our `README.md`.
+4. Run upstream's gates on the root workspace, then the ECAD workspace, including V2-V8 and the
+   experiment's scenario tests.
+5. **Patch guard:** upstream paths changed relative to `upstream/main` must equal
+   `ecad/UPSTREAM-PATCHES.md`.
+6. PR into `dev`; merge only after your approval.
+7. Offering the interface upstream is outward-facing and needs your go-ahead.
 
-## Corrections to the Phase 0 assessment
+## 16. Optional DWG boundary
 
-- Engine seams: E1-E3 (§10.1) replace the three proposed in Phase 0, which missed undo
-  delegation and save/close routing.
-- `EntityKind` has 30 variants (29 kinds plus `Unknown`, `doc/src/entity.rs:876`), not 25.
-- A DWG cargo feature at the ECAD level does not keep `acadrust` out of native builds, because
-  `cadcraft-io` depends on `cadcraft-dwg` unconditionally (§12).
+- ECAD exports build plain CADCraft drawings from the projection and write DXF through
+  `cadcraft-io`. DWG export and adopt sit behind an ECAD `dwg` feature.
+- **Constraint [Read]:**
+  - `cadcraft-io` depends on `cadcraft-dwg` unconditionally (`crates/io/Cargo.toml:16`);
+  - `cadcraft-engine` depends on `cadcraft-io` (`crates/engine/Cargo.toml:28`);
+  - so every native build links `acadrust` (MPL-2.0). WASM excludes it already (`crates/dwg/Cargo.toml`).
+- A DWG-free native build needs one of: (a) accept `acadrust` unmodified; (b) an upstream patch
+  making it optional; (c) a build-time stub for `cadcraft-dwg` **[Assumed]**, untested.
+  Licence acceptance stays open.
+
+---
+
+# Part C: integration experiment
+
+## 17. Bounded integration experiment
+
+Specified for approval; **not implemented or run**. Its purpose is to prove or disprove H1-H5
+with the smallest code that exercises real CADCraft commands.
+
+### 17.1 Scope
+
+- `ecad/` skeleton.
+- `ecad-model` in memory.
+- A test-only store with an injectable write failure. This is not the `.ecad` encoding.
+- The X1-X7 patches.
+- `ecad-cadcraft`: projector, handle map, owner and commit translation.
+- Minimal commands: CONVERTTOCOMPONENT, ADDTERMINAL, WIRE, CONNECT, DISCONNECT, DELETE, SETPROP,
+  CABLEADD and PLACE (by command, from one embedded definition).
+- One page, driven headlessly through `Session` exactly as the UI and control channel drive it.
+  Plus one manual desktop run, with screenshots, for the preview and closing prompts.
+
+### 17.2 Scenario
+
+| Step | Action (real CADCraft command where possible) | Expected |
+| --- | --- | --- |
+| S1 | LINE rectangle, TEXT label | `AddItem`s; plain geometry |
+| S2 | CONVERTTOCOMPONENT, ADDTERMINAL ×2 | drawn representation; connection points |
+| S3 | PLACE a symbol, rotated 90° | `EmbedDefinition`, instance, terminals from definition keys; terminal positions match placement |
+| S4 | WIRE `w1` from the drawn component to the symbol; WIRE `w2` with one free end | `w1` attached at both ends; `w2` one end open |
+| S5 | Grip a middle vertex of `w1` | M1: route only |
+| S6 | MOVE the drawn component; ROTATE the symbol | M2: ends follow in the same transaction; no mismatch; preview shows following ends |
+| S7 | Grip `w2`'s attached end onto the symbol's other terminal, then into free space | M3: reconnect, then detach; drawing and intent agree |
+| S8 | COPY the drawn component together with `w2`; then COPYCLIP/PASTECLIP the symbol instance | independent copies: all new IDs, internal relationships preserved, `w2`'s copy attached to the copied terminal; originals unchanged |
+| S9 | ERASE `w1`'s route; then DELETE conductor `w2` | `w1` remains, "not shown", still attached; `w2` gone with its representation and attachments |
+| S10 | SETPROP tag on the copy (no drawing change); CABLEADD | unsaved marker on; head ≠ persisted |
+| S11 | Save; then a save with injected failure; then save again | clean; failure → still unsaved, error reported, file intact; then clean |
+| S12 | Undo everything back to empty, then redo everything | each step's state restored; IDs identical; same transaction count either way |
+| S13 | Reopen from the store, with and without checkpoints | equals live state |
+
+### 17.3 Refused and cancelled cases
+
+| Case | Expected |
+| --- | --- |
+| Esc during MOVE of the component | no transaction; drawing and map unchanged |
+| Esc during LINE after two segments | the two segments recorded, as CADCraft keeps them |
+| EXPLODE the symbol; BREAK a route; HATCH on the page | refused with a message; drawing restored to the last projection; ledger, map and unsaved state unchanged |
+| CONNECT to a terminal deleted earlier in the same session | validation error; nothing appended |
+| Injected panic in an ECAD command and in an owner callback | engine guard restores; nothing appended; next command works |
+| A SETPROP while a CADCraft MOVE is running | refused per TX-05 |
+| Closing the page tab with unsaved changes; then closing the project | tab closes without prompting; project close prompts; Save failure keeps it open |
+
+### 17.4 Checked after every step
+
+1. Projecting the document equals the engine drawing (H2).
+2. Replaying the log equals the document.
+3. The map is one-to-one and every mapped handle exists.
+4. The CADCraft undo stack of the owned page is empty.
+5. Unsaved state equals (head ≠ persisted position).
+6. Derived connectivity equals stored attachments; no mismatch state unless deliberately created.
+
+### 17.5 Exit criteria and report
+
+The experiment passes when S1-S13 and §17.3 pass, with checks 1-6 after every step, on Linux,
+and the ECAD crates build for `wasm32`. The report records:
+
+- which hypotheses held;
+- the final list of upstream files and lines changed (an outcome, not a target);
+- every command the census refused, and why;
+- the fallbacks needed for any hypothesis that failed.
+
+---
+
+# Part D: decisions
+
+## 18. Decision table
+
+### 18.1 Architectural direction supported by this review
+
+Recorded as direction; no further approval needed.
+
+| # | Direction |
+| --- | --- |
+| A1 | Separate `ecad/` folder and Cargo workspace, path dependencies on upstream crates |
+| A2 | ECAD-owned authoritative document and history (P1, P4); CADCraft drawings are projections |
+| A3 | Stable typed identity independent of names (P2) |
+| A4 | Project-wide atomic transactions with resolved intent (P3) |
+| A5 | An adapter around CADCraft; document, history and library crates free of CADCraft (P10) |
+| A6 | Meaning separate from representation (P6); incomplete designs valid (P7) |
+| A7 | History preserved; no destructive compaction; checkpoints disposable (P9, FILE-04, FILE-05) |
+
+### 18.2 Revised recommendations requiring approval
+
+| # | Recommendation | Replaces |
+| --- | --- | --- |
+| R1 | Generic extension interface X1-X7 (§14), about ten upstream files, one marker, offered upstream later with your go-ahead | revision 1's "three seams" (D3) |
+| R2 | Commit translation by diff against the last projection, plus provenance, as the **hypothesis to test** (H1), not a settled design | D1's second half |
+| R3 | Two representation forms, drawn and symbol, in an ECAD-owned schema with explicit placement; projected as groups and as blocks with inserts (§4) | D4 |
+| R4 | Removing a representation never deletes its subject; deletion is explicit and may be bundled (§12) | D6 |
+| R5 | Movement policy M1 reroute / M2 connected equipment / M3 deliberate reconnection (§10) | D7 |
+| R6 | A plain copy of a whole component is an independent copy with new IDs and preserved internal relationships (§11.1) | D8 |
+| R7 | Unsaved = head ≠ persisted position; page tabs are views; the project closes and prompts; save failure keeps state (§6.3) | the pointer-based dirty check |
+| R8 | IDs: 128-bit random, allocated at edit time, never reused | D5 (unchanged) |
+| R9 | Linear, project-wide undo derived from the log | D9 (unchanged) |
+| R10 | Unclassifiable differences are refused (DOC-08) | D10 (unchanged) |
+| R11 | Housekeeping: ECAD docs to `ecad/docs/`; ECAD rewrite of root `CLAUDE.md`/`AGENTS.md`; disable inherited release and packaging workflows | D11 (unchanged) |
+| R12 | One ECAD page = one CADCraft document for Phase 1 | D12 (unchanged) |
+| R13 | Approve the experiment in §17 as the next implementation step (as PRs into `dev`) | new |
+
+### 18.3 Temporary experiment limitations
+
+These apply to the experiment only. Each is to be lifted or turned into a product decision
+afterwards.
+
+| # | Limitation |
+| --- | --- |
+| L1 | EXPLODE, BREAK, JOIN (and TRIM/EXTEND/FILLET that replace handles) are refused on linked items |
+| L2 | Copying part of a representation produces plain items |
+| L3 | Cables are not copied; copied members lose membership |
+| L4 | Copy and paste within one page and project only; cross-project paste later |
+| L5 | ERASE removes representations only; a separate DELETE command deletes subjects |
+| L6 | Kinds outside the schema (hatch, dimensions, tables, arbitrary block inserts, MINSERT, non-uniform scale) are refused on ECAD pages |
+| L7 | One page; no autosave or crash journal; UNDO Mark/Back/BEgin/End unavailable |
+| L8 | Placement by command; no drag-and-drop from panels |
+| L9 | A test-only store, not the `.ecad` encoding |
+| L10 | ECAD edits refused while a CADCraft command is running on the page (TX-05) |
+
+### 18.4 Deferred product behaviour
+
+Each item names the constraint to preserve. None is decided by this proposal.
+
+| Subject | Constraint preserved |
+| --- | --- |
+| Another contact of the same component | a distinct command; never what plain copy does |
+| Another depiction of the same contact | a distinct command; adds a representation of existing terminals |
+| What ERASE and Delete do by default on electrical objects | representation removal and subject deletion stay distinct in the model |
+| Tag on copy; tag scope; "same tag means same component" | tags are properties; duplicates reported, never merged |
+| Wire identification and numbering | identifiers are properties, possibly per end, repeated or hidden |
+| Net identity, junctions, terminal bridges | nets derived; only attachments stored |
+| Orthogonal tidy-up when ends follow equipment | M2 records the resulting geometry explicitly |
+| Whether closing the last page closes the project | SAVE-05 holds either way |
+| Crash recovery journal | FILE-03 durability unaffected |
+| Compaction, checkpoint authority, named-revision preservation | P9 until a preservation contract is approved |
+| Inference versioning | stored intent never changes with rules |
+| Library replacement and terminal mapping; parts container | LIB-02 to LIB-04 |
+| Promoting a drawn representation to a symbol | component and terminal IDs kept |
+| Cable view persistence; a conductor in several cables | cable membership changes no conductor |
+| DWG licence; product name; default drawing standards | §16 lists the DWG options |
+
+## 19. Room for later features
+
+| Feature | Where it fits |
+| --- | --- |
+| Cable demonstration | cable representations (a slash or bundle is a representation of a cable); the view toggle is UI state |
+| Numbering | `SetProperty` on conductors and ends, plus derived suggestions |
+| Completeness heat map | `ecad-derive` over `Unset`/`Set`, drawn through the overlay hook |
+| MCP | the same transactions with an agent as author; proposals are transactions held outside the log until accepted; release is human-only |
+| Library replacement | `UpdateDefinition` + terminal remapping transaction |
+| DWG adopt | an import that emits ordinary transactions, then a review |
+
+## Revision 2 changes
+
+| Review point | Change |
+| --- | --- |
+| 1. Principles versus integration choices | Parts A-D; principles P1-P10; hypotheses H1-H6 |
+| 2. Representation versus subject | P6, DOC-06, DOC-07, §12; revision 1's D6 withdrawn |
+| 3. Movement and connectivity | §10 rules M1-M3; mismatch only by explicit op; revision 1's D7 withdrawn |
+| 4. Copy restrictions | §11 independent copy and provenance; remaining limits are L1-L4; two copy meanings left unresolved |
+| 5. Dirty tracking | §6.3 SAVE-01 to SAVE-06; X5 |
+| 6. Symbol representation | §4 drawn and symbol forms, placement, terminal positions, reproduction |
+| 7. Compaction | P9, FILE-04, FILE-05 |
+| 8. Experiment | §17 |
+| Engine changes | §14 generic interface X1-X7 replaces three seams |
+
+Corrections carried from revision 1:
+
+- `EntityKind` has 30 variants (29 kinds plus `Unknown`, `doc/src/entity.rs:876`), not 25 as
+  the Phase 0 assessment said;
+- an ECAD-level DWG feature cannot keep `acadrust` out of native builds (§16).
 
 ## Revision history
 
 | Date | Change |
 | --- | --- |
-| 2026-10-12 | First proposal, following the Phase 0 assessment and the architecture foundations note |
+| 2026-10-12 | Revision 1: first proposal |
+| 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
