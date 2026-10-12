@@ -270,9 +270,9 @@ fn run_close(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("close", "no such drawing"));
     }
     s.cancel();
-    // ECAD-SEAM(owner): tell the owner its document goes away.
+    // ECAD-SEAM(owner): tell the owner its document goes away; if it fails, the document stays.
     if let Some(uid) = s.docs.get(i).map(|d| d.uid) {
-        crate::ext::closing(s, uid);
+        crate::ext::closing(s, uid)?;
     }
     s.docs.remove(i);
     if i < s.active {
@@ -287,9 +287,14 @@ fn run_close(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn run_closeall(s: &mut Session, _p: &Value) -> Result<Value> {
     s.cancel();
-    // ECAD-SEAM(owner): tell owners their documents go away.
+    // ECAD-SEAM(owner): tell owners their documents go away, one document at a time; a failure
+    // stops the close and leaves the remaining documents open.
     for uid in s.docs.iter().map(|d| d.uid).collect::<Vec<_>>() {
-        crate::ext::closing(s, uid);
+        if let Err(e) = crate::ext::closing(s, uid) {
+            s.active = s.active.min(s.docs.len().saturating_sub(1));
+            return Err(e);
+        }
+        s.docs.retain(|d| d.uid != uid);
     }
     s.docs.clear();
     s.active = 0;

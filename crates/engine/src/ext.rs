@@ -81,9 +81,22 @@ pub enum Verdict {
 /// # Semantics
 /// Callbacks run on the engine's thread with the session borrowed mutably, so the owner may read
 /// and replace the drawings it owns. A callback that panics is caught; the engine then calls
-/// [`DocumentOwner::recover`] and reports an error. Callbacks must not re-enter the engine
-/// (`execute`, `undo`, `redo`) for documents of the same owner: the owner is locked while its
-/// callback runs, and a re-entrant call is refused rather than deadlocking.
+/// [`DocumentOwner::recover`] and reports an error.
+///
+/// # Ownership and re-entry
+/// The engine holds the owner's lock (`try_lock`, never a blocking lock) for the length of each
+/// callback. A callback that calls back into the engine for the same owner is therefore refused,
+/// never deadlocked, and the engine keeps the drawing consistent:
+/// - a command (`execute`, `cmdline`) is refused with "busy (re-entrant call)" and the engine
+///   restores the drawing it started from, because the busy owner cannot;
+/// - `undo`, `redo`, save and close are refused with the same error; a refused close keeps the
+///   document open and bound;
+/// - state queries (`doc_unsaved`, `close_needs_prompt`, `has_unsaved_work`) answer
+///   conservatively ("unsaved", "ask first").
+///
+/// The embedder's own lock is its business: an embedder that holds its owner's lock while it calls
+/// the engine gets the same refusals, so embedders should expose an API that releases the lock
+/// before calling the engine (ECAD's adapter does).
 pub trait DocumentOwner: Send {
     /// A command committed on owned document `c.uid`.
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict;
@@ -214,8 +227,8 @@ pub(crate) enum Gate {
     Refused(String),
 }
 
-/// Ask the owner of document `uid` to accept what `command` did.
-pub(crate) fn gate(s: &mut Session, uid: u64, command: &str) -> Gate {
+/// Ask the owner of document `uid` to accept what `command` did (`before` is the drawing it started from).
+pub(crate) fn gate(s: &mut Session, uid: u64, command: &str, before: &Arc<cadcraft_doc::Drawing>) -> Gate {
     let Some(owner) = s.ext.owner_of(uid) else {
         s.ext.begin_command();
         return Gate::NotOwned;
@@ -226,7 +239,13 @@ pub(crate) fn gate(s: &mut Session, uid: u64, command: &str) -> Gate {
     match catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|mut o| o.commit(s, &c)))) {
         Ok(Some(Verdict::Accept)) => Gate::Accepted,
         Ok(Some(Verdict::Refuse(m))) => Gate::Refused(m),
-        Ok(None) => Gate::Refused(REENTRANT.into()),
+        Ok(None) => {
+            // The owner is busy and cannot restore its drawing, so the engine undoes the change.
+            if let Some(st) = s.docs.iter_mut().find(|d| d.uid == uid) {
+                st.doc = before.clone();
+            }
+            Gate::Refused(REENTRANT.into())
+        }
         Err(_) => {
             recover(s, &owner);
             Gate::Refused(format!("internal error while recording `{command}`; the drawing was rebuilt from the document"))
@@ -238,15 +257,27 @@ pub(crate) fn gate(s: &mut Session, uid: u64, command: &str) -> Gate {
 pub(crate) fn history(s: &mut Session, undo: bool) -> Option<Result<Option<String>>> {
     let uid = s.state().ok()?.uid;
     let owner = s.ext.owner_of(uid)?;
+    // The owner may replace several drawings; every changed one gets a new revision so caches
+    // keyed by (uid, revision) refresh, as they do after the engine's own undo.
+    let before: Vec<(u64, Arc<cadcraft_doc::Drawing>, u64)> = s.docs.iter().map(|d| (d.uid, d.doc.clone(), d.revision)).collect();
     let r = catch_unwind(AssertUnwindSafe(|| match lock(&owner) {
         Some(mut o) if undo => o.undo(s, uid),
         Some(mut o) => o.redo(s, uid),
         None => Err(EngineError::Other(REENTRANT.into())),
     }));
-    Some(r.unwrap_or_else(|_| {
+    let r = r.unwrap_or_else(|_| {
         recover(s, &owner);
         Err(EngineError::Internal(if undo { "undo" } else { "redo" }.into(), "the document owner failed".into()))
-    }))
+    });
+    for d in &mut s.docs {
+        if let Some((_, doc, rev)) = before.iter().find(|(u, _, _)| *u == d.uid)
+            && !Arc::ptr_eq(doc, &d.doc)
+            && d.revision == *rev
+        {
+            d.revision += 1;
+        }
+    }
+    Some(r)
 }
 
 /// QSAVE or SAVEAS on the active document, when it has an owner.
@@ -263,14 +294,23 @@ pub(crate) fn save(s: &mut Session, path: Option<&str>, save_as: bool) -> Option
     }))
 }
 
-/// Document `uid` is about to be closed.
-pub(crate) fn closing(s: &mut Session, uid: u64) {
-    let Some(owner) = s.ext.owner_of(uid) else { return };
-    let done = catch_unwind(AssertUnwindSafe(|| lock(&owner).is_some_and(|mut o| o.closed(s, uid)))).unwrap_or(false);
+/// Document `uid` is about to be closed. On failure (the owner is busy or its callback panics)
+/// the close must not proceed: the owner is asked to recover and the document stays open and bound.
+pub(crate) fn closing(s: &mut Session, uid: u64) -> Result<()> {
+    let Some(owner) = s.ext.owner_of(uid) else { return Ok(()) };
+    let done = match catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|mut o| o.closed(s, uid)))) {
+        Ok(Some(done)) => done,
+        Ok(None) => return Err(EngineError::Other(REENTRANT.into())),
+        Err(_) => {
+            recover(s, &owner);
+            return Err(EngineError::Internal("close".into(), "the document owner failed; the document stays open".into()));
+        }
+    };
     s.ext.bound.remove(&uid);
     if done {
         s.ext.remove(&owner);
     }
+    Ok(())
 }
 
 /// Extra drag preview geometry from the owner of the active document.
