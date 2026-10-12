@@ -1,0 +1,34 @@
+# The ECAD workspace. It is separate from CADCraft's root workspace on purpose: upstream files stay
+# untouched, and CADCraft crates are used by path. See docs/document-architecture-proposal.md §8.
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.90"
+repository = "https://github.com/convyares-FCSL/ecadcraft"
+
+[workspace.dependencies]
+ecad-model = { path = "crates/ecad-model" }
+ecad-store = { path = "crates/ecad-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1

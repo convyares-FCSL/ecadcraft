@@ -1,0 +1,17 @@
+[package]
+name = "ecad-model"
+description = "ECAD document model: objects, typed IDs, ops, transactions and history (no CADCraft dependency)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
