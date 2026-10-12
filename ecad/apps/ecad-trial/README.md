@@ -42,7 +42,7 @@ unsaved changes.
 
    Clone inside the Linux file system (for example `~/ecadcraft`), not under `/mnt/c`, so the
    build runs at normal speed.
-3. Build and start (the first build takes several minutes and about 6 GB):
+3. Build and start (the first build takes several minutes and 6-10 GB of disk):
 
    ```sh
    cd ecad

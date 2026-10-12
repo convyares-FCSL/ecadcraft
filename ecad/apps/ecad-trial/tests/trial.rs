@@ -276,3 +276,18 @@ fn the_manual_trial_script_runs_headless() {
     t.answer(Answer::Discard);
     assert!(!t.project_open());
 }
+
+/// Spaces in the command field are inputs, as in a script line: a trailing space ends a command,
+/// and an empty line is an Enter while one runs.
+#[test]
+fn the_command_field_keeps_trailing_enters() {
+    let mut t = trial(None);
+    assert!(t.submit_command("line 0,0 10,0 ").is_none());
+    assert!(t.cad.session.running.is_none(), "the trailing space ended LINE");
+    assert!(t.submit_command("line 0,5 10,5").is_none());
+    assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
+    assert!(t.submit_command("").is_none());
+    assert!(t.cad.session.running.is_none(), "an empty line is Enter");
+    assert_eq!(t.cad.session.doc().unwrap().model.len(), 2);
+    assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
+}

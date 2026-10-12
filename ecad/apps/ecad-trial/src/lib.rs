@@ -229,9 +229,14 @@ impl Trial {
     /// Run one whole command line, as typed in the banner's field: `name {json}` runs an ECAD or
     /// CADCraft command with parameters; anything else is read like a script line (spaces separate
     /// inputs). Returns the error, which is also echoed at the command line.
+    ///
+    /// Spaces are inputs: a trailing space is an Enter (`line 0,0 10,0 ` ends LINE), and while a
+    /// command is running an empty line is an Enter too. Only leading spaces before a new command
+    /// are dropped.
     pub fn submit_command(&mut self, text: &str) -> Option<String> {
-        let text = text.trim();
-        if text.is_empty() {
+        let running = self.cad.session.running.is_some();
+        let text = if running { text } else { text.trim_start() };
+        if text.is_empty() && !running {
             return None;
         }
         self.cad.session.echo(format!("Command: {text}"));
@@ -316,7 +321,8 @@ impl Trial {
                         .desired_width(ui.available_width() - 60.0),
                 );
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (ui.button("Run").clicked() || enter) && !self.command.trim().is_empty() {
+                let running = self.cad.session.running.is_some();
+                if (ui.button("Run").clicked() || enter) && (running || !self.command.trim().is_empty()) {
                     submit = Some(std::mem::take(&mut self.command));
                     field.request_focus();
                 }
