@@ -280,13 +280,19 @@ pub(crate) fn drag_extra(s: &Session, drag: &Drag) -> Vec<EntityKind> {
     catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|o| o.drag_extra(s, uid, drag)).unwrap_or_default())).unwrap_or_default()
 }
 
+/// Ask an owner a yes/no question about its state. A busy owner (asked from inside one of its
+/// callbacks) or one whose answer panics gives `true`: "unsaved" and "ask first" are the safe
+/// answers, so no work is lost by a faulty owner.
+fn ask(owner: &OwnerRef, q: impl FnOnce(&dyn DocumentOwner) -> bool) -> bool {
+    catch_unwind(AssertUnwindSafe(|| lock(owner).is_none_or(|o| q(&*o)))).unwrap_or(true)
+}
+
 impl Session {
     /// Whether document `i` has unsaved work: for an owned document, its owner's answer.
     pub fn doc_unsaved(&self, i: usize) -> bool {
         let Some(d) = self.docs.get(i) else { return false };
         match self.ext.owner_of(d.uid) {
-            // Busy (asked from inside a callback): assume unsaved, the safe answer.
-            Some(o) => lock(&o).is_none_or(|o| o.is_unsaved()),
+            Some(o) => ask(&o, |o| o.is_unsaved()),
             None => d.is_dirty(),
         }
     }
@@ -295,14 +301,13 @@ impl Session {
     pub fn close_needs_prompt(&self, i: usize) -> bool {
         let Some(d) = self.docs.get(i) else { return false };
         match self.ext.owner_of(d.uid) {
-            Some(o) => lock(&o).is_none_or(|o| o.close_needs_prompt(d.uid)),
+            Some(o) => ask(&o, |o| o.close_needs_prompt(d.uid)),
             None => d.is_dirty(),
         }
     }
 
     /// Whether any open document or owner holds unsaved work (quit asks first).
     pub fn has_unsaved_work(&self) -> bool {
-        self.docs.iter().any(|d| self.ext.owner_of(d.uid).is_none() && d.is_dirty())
-            || self.ext.owners.iter().any(|o| lock(o).is_none_or(|o| o.is_unsaved()))
+        self.docs.iter().any(|d| self.ext.owner_of(d.uid).is_none() && d.is_dirty()) || self.ext.owners.iter().any(|o| ask(o, |o| o.is_unsaved()))
     }
 }

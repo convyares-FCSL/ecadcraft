@@ -30,12 +30,13 @@ struct TestOwner {
     last: Option<Arc<Drawing>>,
     refuse_next: bool,
     panic_next: bool,
+    panic_in_query: bool,
     unsaved: bool,
 }
 
 impl TestOwner {
     fn new(log: Arc<Mutex<Log>>) -> Self {
-        Self { log, history: Vec::new(), redo: Vec::new(), last: None, refuse_next: false, panic_next: false, unsaved: false }
+        Self { log, history: Vec::new(), redo: Vec::new(), last: None, refuse_next: false, panic_next: false, panic_in_query: false, unsaved: false }
     }
     fn swap_to(&mut self, s: &mut Session, uid: u64, d: Arc<Drawing>) {
         if let Some(st) = s.docs.iter_mut().find(|d| d.uid == uid) {
@@ -94,9 +95,11 @@ impl DocumentOwner for TestOwner {
         Ok(json!({"saved": true}))
     }
     fn is_unsaved(&self) -> bool {
+        assert!(!self.panic_in_query, "injected query failure");
         self.unsaved
     }
     fn close_needs_prompt(&self, _uid: u64) -> bool {
+        assert!(!self.panic_in_query, "injected query failure");
         false
     }
     fn closed(&mut self, _s: &mut Session, uid: u64) -> bool {
@@ -277,4 +280,13 @@ fn the_owner_adds_drag_preview_geometry() {
     let (_, extra) = s.drag(cadcraft_engine::geom::Vec2::new(5.0, 5.0)).expect("MOVE drags");
     assert!(extra.iter().any(|e| matches!(e.kind, EntityKind::Point(_))));
     s.cancel();
+}
+
+#[test]
+fn a_panicking_state_query_answers_safely() {
+    let (s, owner, _, _) = owned_session();
+    owner.lock().unwrap().panic_in_query = true;
+    assert!(s.doc_unsaved(0), "a failing owner reads as unsaved");
+    assert!(s.close_needs_prompt(0), "and closing asks first");
+    assert!(s.has_unsaved_work());
 }
