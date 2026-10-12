@@ -1,0 +1,23 @@
+[package]
+name = "ecad-trial"
+description = "ECAD desktop trial harness (experiment only; no project persistence)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-inspect = { workspace = true }
+cadcraft-engine = { path = "../../../crates/engine" }
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# The same eframe build as CADCraft's desktop app (without its persistence of window state).
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+ecad-model = { workspace = true }

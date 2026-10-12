@@ -9,15 +9,17 @@
 
 ## What exists and what does not
 
-> - **There is no ECAD desktop application yet.** Everything here runs as Rust tests and one
->   headless example. The CADCraft desktop app (`cadcraft`) does not load the ECAD commands or
->   create ECAD projects. A proposal for the smallest runnable harness is under review; it has
->   not been built.
+> - **There is no ECAD desktop application.** Everything here runs as Rust tests and one
+>   headless example. A minimal desktop **trial harness** (`ecad/apps/ecad-trial`, added after
+>   this report's review) wraps CADCraft's window with the ECAD commands for a manual trial. It
+>   is tested headless only; its on-screen behaviour has not been observed yet. CADCraft's own
+>   desktop app does not load ECAD commands.
 > - **The inspector is a static page that loads exported JSON snapshots.** It has no live
 >   connection to a running session and no server, and it does not update by itself.
-> - **Persistence is test-only.** Projects are stored as JSON lines in an in-memory test medium.
->   Save and Save As record a path but **write no file to disk**. A project cannot be reopened
->   after the process ends. There is no `.ecad` format yet.
+> - **Persistence is test-only.** In automated tests, projects are stored as JSON lines in an
+>   in-memory test medium. Save and Save As record a path but **write no file to disk**. In the
+>   trial harness, Save and Save As report that persistence is unavailable and change nothing. A
+>   project cannot be reopened after the process ends. There is no `.ecad` format yet.
 
 ## Summary
 

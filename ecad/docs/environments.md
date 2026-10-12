@@ -5,9 +5,10 @@
 > what the build needs, and how to run the experiment and the inspector. Report the check output
 > back so the notes can be corrected.
 >
-> **There is no ECAD desktop application yet.** On any environment the experiment runs as tests
-> and a headless example. The inspector is a static page that loads exported snapshots, with no
-> live connection. Persistence is test-only: nothing is written to disk.
+> **There is no ECAD desktop application.** The experiment runs as tests, a headless example and
+> a desktop **trial harness** (`ecad/apps/ecad-trial`, not yet seen on a display). The harness
+> has no project persistence: Save and Save As report that saving is unavailable. The inspector
+> is a static page that loads exported snapshots, with no live connection.
 
 ## Where it has run so far
 
@@ -90,9 +91,11 @@ Share one target directory between the two workspaces to save disk and time:
    `explorer.exe "$(wslpath -w ecad/tools/inspector)"` opens the folder. Load the files from
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
-5. GUI (optional): **upstream CADCraft only**. Its desktop app does not load ECAD commands or
-   projects, so this checks only that the display stack works under WSL. Needs WSLg, which
-   Windows 11 provides: the section 1 check shows `WAYLAND_DISPLAY` and `/mnt/wslg`.
+5. GUI: the **ECAD trial harness**. Follow [`../apps/ecad-trial/README.md`](../apps/ecad-trial/README.md)
+   for the build, the run command and the manual trial. Upstream CADCraft's own desktop app
+   (below) does not load ECAD commands or projects. It is still useful to check the display stack.
+   Both need WSLg, which Windows 11 provides: the section 1 check shows `WAYLAND_DISPLAY` and
+   `/mnt/wslg`.
 
    ```sh
    cargo run --release -p cadcraft -- --sample   # from the repository root

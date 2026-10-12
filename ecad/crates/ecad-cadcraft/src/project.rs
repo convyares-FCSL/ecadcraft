@@ -103,6 +103,21 @@ pub struct Faults {
     pub panic_in_command: bool,
 }
 
+/// Whether a project can be saved, and how.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Persistence {
+    /// Automated tests only: saving appends to the in-memory test store and marks the project
+    /// clean. No file is written.
+    TestStore,
+    /// No persistence (the desktop trial): Save and Save As report that saving is unavailable,
+    /// change nothing and never mark the project clean.
+    Unavailable,
+}
+
+/// What Save and Save As report when the project has no persistence.
+pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD trial: project persistence is not implemented. \
+Nothing was written and the project is still unsaved. Closing it discards the design.";
+
 /// A copy of the project's meaning taken when objects were put on the clipboard.
 #[derive(Debug, Clone)]
 pub struct ClipSnapshot {
@@ -124,6 +139,11 @@ pub struct Project {
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
     pub faults: Faults,
+    /// How Save behaves; see [`Persistence`].
+    pub persistence: Persistence,
+    /// The head right after the project was created or opened: with no persistence, the project
+    /// has unsaved design exactly when the head has moved from here.
+    baseline: u64,
     /// Distance within which a point lands on a terminal.
     pub tolerance: f64,
     /// Layer used for new ECAD-drawn geometry.
@@ -295,6 +315,19 @@ impl Project {
     /// # Errors
     /// Projection failure (not expected for an empty project).
     pub fn create(s: &mut Session, name: &str, seed: u64) -> Result<ProjectHandle, String> {
+        Self::create_with(s, name, seed, Persistence::TestStore)
+    }
+
+    /// [`Project::create`] with a chosen [`Persistence`].
+    ///
+    /// # Errors
+    /// Projection failure (not expected for an empty project).
+    pub fn create_with(
+        s: &mut Session,
+        name: &str,
+        seed: u64,
+        persistence: Persistence,
+    ) -> Result<ProjectHandle, String> {
         let mut ids = IdAllocator::seeded(seed);
         let mut ledger = Ledger::new(seed.rotate_left(32));
         let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
@@ -309,6 +342,7 @@ impl Project {
                 now_ms(),
             )
             .map_err(|e| e.to_string())?;
+        let baseline = ledger.head();
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -319,6 +353,8 @@ impl Project {
             events: EventLog::default(),
             clips: BTreeMap::new(),
             faults: Faults::default(),
+            persistence,
+            baseline,
             tolerance: 1e-6,
             default_layer: layer,
             me: Weak::new(),
@@ -351,6 +387,7 @@ impl Project {
         // A fresh ID stream even when the caller reuses the creation seed.
         let ids =
             IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
+        let baseline = ledger.head();
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -361,6 +398,8 @@ impl Project {
             events: EventLog::default(),
             clips: BTreeMap::new(),
             faults: Faults::default(),
+            persistence: Persistence::TestStore,
+            baseline,
             tolerance: 1e-6,
             default_layer,
             me: Weak::new(),
@@ -379,6 +418,24 @@ impl Project {
         let strong = self.me.upgrade()?;
         let r: OwnerRef = strong;
         Some(r)
+    }
+
+    /// Whether the project holds design work that is not saved: head versus persisted position
+    /// (SAVE-01), or, with no persistence, head versus the position it was created at.
+    pub fn unsaved(&self) -> bool {
+        match self.persistence {
+            Persistence::TestStore => self.ledger.is_unsaved(),
+            Persistence::Unavailable => self.ledger.head() != self.baseline,
+        }
+    }
+
+    /// How many transactions the unsaved state covers (0 when nothing is unsaved).
+    pub fn unsaved_transactions(&self) -> u64 {
+        let from = match self.persistence {
+            Persistence::TestStore => self.ledger.persisted(),
+            Persistence::Unavailable => self.baseline,
+        };
+        self.ledger.head().saturating_sub(from)
     }
 
     /// The page shown by engine document `uid`.
@@ -424,7 +481,7 @@ impl Project {
     /// Keep each open page's `saved` pointer in step with the project's unsaved state, so the
     /// engine's own pointer comparison agrees with SAVE-01.
     pub(crate) fn sync_saved(&self, pg: &mut Pages<'_>) {
-        let unsaved = self.ledger.is_unsaved();
+        let unsaved = self.unsaved();
         for v in self.pages.values() {
             if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
                 st.saved = if unsaved { self.unsaved_marker.clone() } else { st.doc.clone() };
@@ -792,10 +849,17 @@ impl DocumentOwner for Project {
         s: &mut Session,
         _uid: u64,
         path: Option<&str>,
-        _save_as: bool,
+        save_as: bool,
     ) -> cadcraft_engine::Result<Value> {
         let pg = &mut Pages(s);
         let head = self.ledger.head();
+        if self.persistence == Persistence::Unavailable {
+            // Nothing is recorded as saved: no path, no store, no clean state.
+            let what = if save_as { "saveas" } else { "qsave" };
+            self.events.record(EventKind::SaveUnavailable, Some(what), head, None, SAVE_UNAVAILABLE);
+            self.sync_saved(pg);
+            return Err(EngineError::Other(SAVE_UNAVAILABLE.into()));
+        }
         // The experiment's store is in memory; the path is only recorded (no file is written).
         if let Some(p) = path {
             self.path = Some(p.to_string());
@@ -820,13 +884,13 @@ impl DocumentOwner for Project {
     }
 
     fn is_unsaved(&self) -> bool {
-        self.ledger.is_unsaved()
+        self.unsaved()
     }
 
     fn close_needs_prompt(&self, _uid: u64) -> bool {
         // Closing a page tab never prompts; closing the last open page closes the project
         // (experiment choice, proposal §18.4), which prompts when unsaved.
-        self.ledger.is_unsaved() && self.open_pages() <= 1
+        self.unsaved() && self.open_pages() <= 1
     }
 
     fn closed(&mut self, _s: &mut Session, uid: u64) -> bool {

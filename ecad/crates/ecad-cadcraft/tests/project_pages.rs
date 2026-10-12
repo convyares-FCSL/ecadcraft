@@ -4,6 +4,7 @@
 mod common;
 
 use common::small_project;
+use ecad_inspect::EventKind;
 use ecad_store::Medium;
 use serde_json::{Value, json};
 
@@ -87,4 +88,34 @@ fn a_project_handle_only_works_with_its_own_session() {
     assert_eq!(h.project.read(&mut other, |_, _| ()).err().as_deref(), Some(ecad_cadcraft::NOT_ATTACHED));
     assert_eq!(h.project.snapshot(&mut other, None).err().as_deref(), Some(ecad_cadcraft::NOT_ATTACHED));
     assert!(h.project.read(&mut h.s, |p, _| p.ledger.head()).is_ok());
+}
+
+#[test]
+fn without_persistence_save_reports_unavailable_and_changes_nothing() {
+    ecad_cadcraft::install();
+    let mut s = cadcraft_engine::Session::empty();
+    let project =
+        ecad_cadcraft::Project::create_with(&mut s, "Trial", 9, ecad_cadcraft::Persistence::Unavailable).unwrap();
+    // A new, untouched project has nothing to lose.
+    assert!(!s.doc_unsaved(0) && !s.close_needs_prompt(0));
+    s.execute("wire", &json!({"points": [[0, 0], [30, 0]]})).unwrap();
+    assert!(s.doc_unsaved(0) && s.close_needs_prompt(0), "an edit is unsaved design");
+    let dir = std::env::temp_dir().join(format!("ecad-trial-save-{}", std::process::id()));
+    let target = dir.join("never.ecad");
+    for (cmd, params) in [("qsave", Value::Null), ("saveas", json!({"path": target.to_string_lossy()}))] {
+        let e = s.execute(cmd, &params).unwrap_err().to_string();
+        assert!(e.contains(ecad_cadcraft::SAVE_UNAVAILABLE), "{cmd}: {e}");
+        assert!(s.doc_unsaved(0), "{cmd}: still unsaved");
+        assert_eq!(s.docs[0].path, None, "{cmd}: no path recorded");
+    }
+    assert!(!target.exists() && !dir.exists(), "no file or folder was written");
+    let (persisted, stored, events) = project
+        .read(&mut s, |p, _| {
+            (p.ledger.persisted(), p.store.medium.read_all().unwrap().len(), p.events.count(EventKind::SaveUnavailable))
+        })
+        .unwrap();
+    assert_eq!((persisted, stored, events), (0, 0, 2), "not persisted, nothing stored, both reported");
+    // Undo back to the start still counts as changed: the history moved.
+    s.execute("u", &Value::Null).unwrap();
+    assert!(s.doc_unsaved(0));
 }
