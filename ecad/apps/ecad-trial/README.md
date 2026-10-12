@@ -7,11 +7,12 @@
 >   **Cancel** or **Discard**.
 > - **Inspector snapshots (`--snapshots`) are diagnostic files, not saved projects.** They
 >   cannot be reopened.
-> - **Not yet verified on a real display.** The automated tests run headless. One smoke run used
->   a virtual X display (Xvfb with software Vulkan) and simulated input. It showed the window,
->   the banner, typed commands, the save notice, the Cancel/Discard dialog and discard, with a
->   snapshot written. Mouse interaction, dragging and the connected-wire preview have not been
->   observed on any display. Nobody has run it on WSL yet; that is what this trial is for.
+> - **Verified on a display only as far as the first manual trial went.** The owner ran it on
+>   WSL (Ubuntu 26.04, WSLg) on 2026-10-12. The observed results, and the list of what that
+>   trial did not cover, are in [`../../docs/experiment-report.md`](../../docs/experiment-report.md)
+>   ("Manual desktop trial on WSL"). Uncovered items include rotated-symbol movement, reopening a
+>   closed page, Discard and most preview details. The automated tests run headless, plus one
+>   smoke run on a virtual X display.
 
 It is CADCraft's own window with the ECAD commands installed and one ECAD project ("Trial")
 open. A banner across the top names the experiment and shows the number of open pages and

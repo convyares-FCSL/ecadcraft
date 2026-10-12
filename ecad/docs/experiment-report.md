@@ -1,19 +1,21 @@
 # Bounded integration experiment: report
 
-> **Written:** 2026-10-12; **revised** after the focused implementation review (same day).
+> **Written:** 2026-10-12; **revised** after the focused implementation review, and again after
+> the owner's manual WSL trial of the desktop harness (same day; see
+> [Manual desktop trial](#manual-desktop-trial-on-wsl-user-observed)).
 > **Proposal:** `docs/document-architecture-proposal.md` revision 3.1 (§17).
 > **Incorporated CADCraft:** `00c7613` (0.6.2). **Product:** `0.1.0-dev`.
 > **PRs:** #2 (model, ledger, store), #3 (engine extension interface), #4 (adapter, experiment,
-> inspector). The integration choices remain provisional; this report is for review before
+> inspector), #6 (desktop trial harness). The integration choices remain provisional; this report is for review before
 > anything expands.
 
 ## What exists and what does not
 
-> - **There is no ECAD desktop application.** Everything here runs as Rust tests and one
->   headless example. A minimal desktop **trial harness** (`ecad/apps/ecad-trial`, added after
->   this report's review) wraps CADCraft's window with the ECAD commands for a manual trial. It
->   is tested headless only; its on-screen behaviour has not been observed yet. CADCraft's own
->   desktop app does not load ECAD commands.
+> - **There is no ECAD desktop application.** Everything here runs as Rust tests, one headless
+>   example and a minimal desktop **trial harness** (`ecad/apps/ecad-trial`, PR #6). The harness
+>   wraps CADCraft's window with the ECAD commands. The owner ran one manual trial of it on WSL.
+>   Only the observations listed in [Manual desktop trial](#manual-desktop-trial-on-wsl-user-observed)
+>   are verified on a display. CADCraft's own desktop app does not load ECAD commands.
 > - **The inspector is a static page that loads exported JSON snapshots.** It has no live
 >   connection to a running session and no server, and it does not update by itself.
 > - **Persistence is test-only.** In automated tests, projects are stored as JSON lines in an
@@ -70,13 +72,61 @@ Checks after every step (§17.4):
    pointer-based `is_dirty`.
 6. No attached conductor end is off its terminal.
 
+## Manual desktop trial on WSL (user-observed)
+
+**Who and when.** The repository owner ran `ecad-trial` (PR #6 at `239d07f`) on 2026-10-12
+and reported the results below. They are recorded as the owner observed them. Nothing here was
+re-checked by an agent on a display.
+
+**Environment.** Windows laptop, WSL with Ubuntu 26.04, x86_64, WSLg, Rust 1.99.0. The release
+build completed. The window opened despite EGL/Zink warnings in the terminal, which were not
+investigated further.
+
+| # | Observed by the owner |
+| --- | --- |
+| 1 | Mouse drawing worked, and so did the banner's Command field. |
+| 2 | Undo and redo restored the geometry, while extending the transaction history (as designed). |
+| 3 | Snapshot export worked. The inspected snapshot reported valid invariants, replay equality and a matching projection. |
+| 4 | Converting the four-line rectangle created a component, and the existing geometry kept its IDs. |
+| 5 | Adding a terminal displayed a marker. |
+| 6 | PLACE created the trial's rectangular symbol representation. |
+| 7 | WIRE created the expected dogleg route. |
+| 8 | Moving the component moved its attached wire end. |
+| 9 | One undo restored both the component and the wire end together. |
+| 10 | A second page opened and kept its own separate drawing content. |
+| 11 | Closing page 2's tab showed no discard prompt. |
+| 12 | Save reported that persistence was unavailable. |
+| 13 | Closing the last page warned that the design would be lost, and Cancel kept it. |
+
+**Not covered by this trial.** These remain unverified on a display, whatever the headless tests
+show:
+- moving or rotating a placed (rotated) symbol with wires attached;
+- reopening a closed page (`openpage`);
+- the drag preview, beyond the result after the move: the wire end following during the drag, and
+  every other preview detail;
+- **Discard**, quitting with an edited project, Close All, and the snapshot written on discard or
+  at exit;
+- Save As through the menu;
+- every other command not listed above, including COPY, COPYCLIP/PASTECLIP, ERASE, CONNECT,
+  DISCONNECT, ECADDELETE, SETPROP, CABLEADD and the refused commands;
+- recovery paths (rebuild, placeholder page), which only fault injection in tests reaches.
+
+**What it supports.** For the operations observed, the trial agrees with the headless results on
+several points:
+- connected movement with H3 at commit;
+- one undoable transaction per command, with the ECAD ledger owning history (H5);
+- the save and close behaviour required of the harness;
+- the inspector reading a real session's snapshot.
+
+It adds no evidence for H1 beyond the commands listed, and none for H4 (copies).
+
 ## Results by hypothesis
 
 | # | Hypothesis | Result | Evidence |
 | --- | --- | --- | --- |
 | H1 | CADCraft commits translate into correct transactions by diffing against the last projection plus provenance | **Held for the tested commands** | LINE (interactive and JSON), TEXT, MOVE (JSON and interactive group pick), ROTATE, GRIP.STRETCH, COPY, COPYCLIP/PASTECLIP, CUTCLIP, ERASE, REVERSE. Refused cleanly: EXPLODE, BREAK, JOIN, ARRAY, ARRAYRECT, GROUP, LAYCUR, LAYISO/LAYFRZ/LAYOFF/LAYLCK, LAYER.NEW, LAYOUT.NEW, CHSPACE, AUTOCONSTRAIN, HATCH (census + refusals) |
 | H2 | The projection round trip is lossless for supported kinds, including symbol placement | **Held** | normal path: zero `FidelityMismatch` events across the scenario (asserted) and check 1 after every step. Recovery path: every rebuilt page passes `verify_page`, the content check that does not use handle numbers (finding 10). A placed symbol rotated 90° and then 180° reproduces its terminal positions |
-| H3 | Moving connected equipment feels normal: ends follow at commit, the preview shows them | **Held at commit; preview shown only by test** | S6 (MOVE of a drawn component, ROTATE of a symbol) and the interactive group-pick test; `drag_preview_shows_following_wire_ends` checks `Session::drag` returns the following route. Not seen on screen |
+| H3 | Moving connected equipment feels normal: ends follow at commit, the preview shows them | **Held at commit (also seen by the owner on WSL for a drawn component); preview shown only by test** | S6 (MOVE of a drawn component, ROTATE of a symbol) and the interactive group-pick test; `drag_preview_shows_following_wire_ends` checks `Session::drag` returns the following route. Not seen on screen |
 | H4 | A plain copy of a whole component is an independent copy with preserved internal relationships | **Held within one page** | S8: COPY of a component with an attached wire gives a new component, 3 new terminals, a new wire attached to the copied terminal, and unchanged originals; COPYCLIP/PASTECLIP of a symbol gives a new component with terminals A1/A2 on the same embedded definition |
 | H5 | Owner-delegated undo, save, unsaved state and close keep one history and correct prompts | **Held after one adapter correction** | S10-S14; `closing_flow_prompts_for_the_project_not_for_page_tabs` through the real `CadApp`: a page tab closes without a prompt, closing the project prompts, and a failed save keeps it open |
 | H6 | The interface survives upstream merges | **Not measurable yet** | needs successive upstream syncs |

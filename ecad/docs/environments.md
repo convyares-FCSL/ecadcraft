@@ -15,7 +15,7 @@
 | Environment | Checked | Result |
 | --- | --- | --- |
 | Claude Code cloud container | `uname -m` → `x86_64`; Ubuntu 24.04.5 LTS; 4 cores; 15 GiB RAM; `cc` 13.3; Rust 1.97.0 | CADCraft workspace and ECAD workspace build and test headless. No display; no GUI was run. |
-| Windows laptop with WSL | not yet | first local trial route |
+| Windows laptop with WSL | reported by the owner, 2026-10-12: Ubuntu 26.04, x86_64, WSLg, Rust 1.99.0 | Release build of `ecad-trial` completed and the window opened (EGL/Zink warnings printed). Manual trial results in the experiment report. |
 | NVIDIA Thor (JetPack) | not yet | later ARM64 target |
 
 Notes from the container:
