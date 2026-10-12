@@ -93,7 +93,7 @@ function render() {
   const idx = labelIndex(s);
   const name = (hex) => {
     const x = idx.get(hex);
-    const text = x ? `${x.label} <span class="mono">(${esc(x.short)})</span>` : `<span class="mono">${esc(short(hex))}</span>`;
+    const text = x ? `${esc(x.label)} <span class="mono">(${esc(x.short)})</span>` : `<span class="mono">${esc(short(hex))}</span>`;
     return q && ((x && x.label.toLowerCase().includes(q)) || hex.includes(q) || (x && x.short.includes(q))) ? `<mark>${text}</mark>` : text;
   };
   const d = s.document;
@@ -103,19 +103,19 @@ function render() {
     <h2>Project</h2><table>
     <tr><th>Project</th><td>${esc(s.project)}</td></tr>
     <tr><th>Snapshot</th><td>${esc(s.label)} (${esc(s.kind)})</td></tr>
-    <tr><th>Sequence shown</th><td>${s.seq}</td></tr>
-    <tr><th>Head / persisted</th><td>${s.head} / ${s.persisted} ${s.unsaved ? '<span class="warn">unsaved</span>' : '<span class="ok">saved</span>'}</td></tr>
+    <tr><th>Sequence shown</th><td>${esc(s.seq)}</td></tr>
+    <tr><th>Head / persisted</th><td>${esc(s.head)} / ${esc(s.persisted)} ${s.unsaved ? '<span class="warn">unsaved</span>' : '<span class="ok">saved</span>'}</td></tr>
     <tr><th>Versions</th><td>product ${esc(s.product_version)}, schema ${esc(s.schema_version)}</td></tr>
     <tr><th>CADCraft commit</th><td class="mono">${esc(short(s.upstream || ""))}</td></tr>
     </table></div><div>
     <h2>Checks</h2><table>
     <tr><th>Replay equals live</th><td>${ok(checks.replay_equals_live)}</td></tr>
     <tr><th>Invariants hold</th><td>${ok(checks.invariants_hold)}</td></tr>
-    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${checks.mismatches.length}</span>` : '<span class="ok">0</span>'}</td></tr>
-    <tr><th>Nets (derived)</th><td>${checks.nets.length}</td></tr>
+    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
+    <tr><th>Nets (derived)</th><td>${esc(checks.nets.length)}</td></tr>
     </table></div></div>
     <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
-    ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${p.mapped_handles ?? ""}</td></tr>`).join("")}</table></div>`;
+    ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${esc(p.mapped_handles ?? "")}</td></tr>`).join("")}</table></div>`;
 
   const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
@@ -140,19 +140,19 @@ function render() {
     if (!match([k, ...c.members.map((m) => m.conductor)])) continue;
     h += `<tr><td>${name(k)}</td><td>${c.members.map((m) => name(m.conductor) + (m.core ? ` core ${esc(m.core)}` : "")).join("<br>")}</td></tr>`;
   }
-  h += `</table></div><h2>Transactions (1-${s.seq})</h2>`;
+  h += `</table></div><h2>Transactions (1-${esc(s.seq)})</h2>`;
   for (const t of [...s.transactions].reverse()) {
     const kind = typeof t.kind === "string" ? t.kind : Object.keys(t.kind)[0] + " of " + short(Object.values(t.kind)[0].of);
     const txt = JSON.stringify(t.ops);
     if (q && !txt.toLowerCase().includes(q) && !t.label.toLowerCase().includes(q)) continue;
-    h += `<details><summary><b>${t.seq}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${t.ops.length} ops</summary>
+    h += `<details><summary><b>${esc(t.seq)}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${esc(t.ops.length)} ops</summary>
       ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
   }
   h += `<h2>Runtime events (diagnostics, not design history)</h2><div class="wrap"><table><tr><th>#</th><th>Kind</th><th>Command</th><th>Seq</th><th>Page</th><th>Message</th></tr>`;
   const failing = new Set(["Refused", "SaveFailed", "ProjectionFailed", "PageUnavailable", "FidelityMismatch", "Recovered"]);
   for (const e of [...s.events].reverse()) {
     if (q && !JSON.stringify(e).toLowerCase().includes(q)) continue;
-    h += `<tr><td>${e.n}</td><td class="${failing.has(e.kind) ? "bad" : ""}">${esc(e.kind)}</td><td class="mono">${esc(e.command)}</td><td>${e.seq}</td><td>${e.page ? name(e.page) : ""}</td><td>${esc(e.message)}</td></tr>`;
+    h += `<tr><td>${esc(e.n)}</td><td class="${failing.has(e.kind) ? "bad" : ""}">${esc(e.kind)}</td><td class="mono">${esc(e.command)}</td><td>${esc(e.seq)}</td><td>${e.page ? name(e.page) : ""}</td><td>${esc(e.message)}</td></tr>`;
   }
   h += `</table></div>`;
   if (checks.mismatches.length) h += `<h2>Mismatches</h2><pre>${esc(JSON.stringify(checks.mismatches, null, 1))}</pre>`;

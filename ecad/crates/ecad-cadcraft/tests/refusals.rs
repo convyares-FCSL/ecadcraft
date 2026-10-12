@@ -111,6 +111,7 @@ fn connecting_to_a_deleted_terminal_fails_cleanly() {
     assert_eq!(h.doc().conductors[&w].ends[0], None, "deleting the component detached the wire explicitly");
 }
 
+#[cfg(feature = "fault-injection")]
 #[test]
 fn injected_panics_are_contained() {
     let (mut h, c1, ..) = fixture();
@@ -211,4 +212,30 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     assert!(app.session.docs.is_empty(), "saved, then closed");
     assert!(!h.p().ledger.is_unsaved());
     assert!(app.session.ext.owners().is_empty());
+}
+
+#[test]
+fn reopening_with_the_creation_seed_never_reissues_ids() {
+    let mut h = H::new(4242);
+    h.run("newpage", json!({"title": "2"})).unwrap();
+    h.run("qsave", Value::Null).unwrap();
+    let medium = h.p().store.medium.clone();
+    let mut s = cadcraft_engine::Session::empty();
+    let reopened =
+        ecad_cadcraft::Project::open_from(&mut s, "Demo", ecad_store::TestStore::new(medium), 4242, false).unwrap();
+    let before = reopened.lock().unwrap().ledger.document().clone();
+    s.execute("newpage", &json!({"title": "3"})).unwrap();
+    s.execute("wire", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    let after = reopened.lock().unwrap().ledger.document().clone();
+    assert_eq!(after.pages.len(), before.pages.len() + 1, "a new page, not a duplicate of an existing ID");
+    assert!(before.pages.keys().all(|p| after.pages.contains_key(p)));
+}
+
+#[test]
+fn oversized_inputs_are_refused_before_collecting() {
+    let (mut h, ..) = fixture();
+    let many: Vec<String> = (0..10_001).map(|i| format!("{i:032x}")).collect();
+    let b = before(&h);
+    assert!(h.run("cableadd", json!({"conductors": many})).unwrap_err().contains("at most"));
+    unchanged(&h, &b, "oversized cableadd");
 }

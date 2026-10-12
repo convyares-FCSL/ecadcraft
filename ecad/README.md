@@ -16,7 +16,7 @@ CADCraft crates are used by path; upstream files change only through the patches
 cd ecad
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
 cargo xtask ci                                         # all gates
-cargo test -p ecad-cadcraft                            # the integration experiment
+cargo test -p ecad-cadcraft --all-features                            # the integration experiment
 cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
 # then open tools/inspector/index.html and load the snapshots
 ```

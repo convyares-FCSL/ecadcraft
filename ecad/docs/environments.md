@@ -78,7 +78,7 @@ Share one target directory between the two workspaces to save disk and time:
    ```sh
    cd ecad
    export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
-   cargo test -p ecad-cadcraft             # scenario S1-S16, refusal cases, census
+   cargo test -p ecad-cadcraft --all-features             # scenario S1-S16, refusal cases, census
    cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
    ```
 
@@ -107,7 +107,7 @@ Share one target directory between the two workspaces to save disk and time:
   x86-64 laptop or in WSL will not run there.
 - Cross-compiling from x86-64 (`--target aarch64-unknown-linux-gnu` with an aarch64 linker and
   sysroot) is possible later. It is not set up, and it is not needed for the experiment.
-- The headless experiment (`cargo test -p ecad-cadcraft`) needs no display or GPU.
+- The headless experiment (`cargo test -p ecad-cadcraft --all-features`) needs no display or GPU.
 - Viewing the inspector: copy the snapshot files to the laptop, or serve the viewer folder on the
   Thor's loopback address and forward the port over SSH, for example
   `ssh -L 8000:127.0.0.1:8000 thor`. Bind any server to `127.0.0.1` only.

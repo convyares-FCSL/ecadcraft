@@ -117,6 +117,13 @@ impl IdAllocator {
         Self { seed, counter: 0 }
     }
 
+    /// A generator for continuing a project whose history ends with `last` (for example the last
+    /// transaction ID). Reopening a project with the same session seed would otherwise restart a
+    /// stream whose IDs are already in the document; mixing in `last` gives a fresh stream.
+    pub fn seeded_after(seed: u64, last: u128) -> Self {
+        Self::seeded(seed ^ mix((last as u64) ^ mix((last >> 64) as u64)))
+    }
+
     /// The next ID, of any typed-ID kind.
     pub fn fresh<T: From<u128>>(&mut self) -> T {
         self.counter = self.counter.wrapping_add(1);

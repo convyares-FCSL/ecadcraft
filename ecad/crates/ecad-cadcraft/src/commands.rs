@@ -360,7 +360,13 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     })
 }
 
+/// Most conductors one CABLEADD accepts (input-derived sizes are capped, never trusted).
+const MAX_CABLE_MEMBERS: usize = 10_000;
+
 fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("conductors").and_then(Value::as_array).is_some_and(|a| a.len() > MAX_CABLE_MEMBERS) {
+        return Err(err(format!("at most {MAX_CABLE_MEMBERS} conductors per call")));
+    }
     let conductors: Vec<ConductorId> = params
         .get("conductors")
         .and_then(Value::as_array)

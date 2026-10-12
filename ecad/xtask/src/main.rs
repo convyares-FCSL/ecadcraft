@@ -159,9 +159,11 @@ fn ci() -> Result<(), String> {
     let cargo = env!("CARGO");
     run(Command::new(cargo).args(["fmt", "--all", "--check"]).current_dir(&root))?;
     run(Command::new(cargo)
-        .args(["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
+        .args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"])
         .current_dir(&root))?;
-    run(Command::new(cargo).args(["test", "--workspace"]).current_dir(&root))?;
+    // All features: the fault-injection containment tests run in CI, never in normal builds.
+    run(Command::new(cargo).args(["test", "--workspace", "--all-features"]).current_dir(&root))?;
+    run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
     patches()?;
     wasm()

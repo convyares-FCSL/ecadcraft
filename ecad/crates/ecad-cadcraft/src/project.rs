@@ -90,9 +90,11 @@ pub struct PageView {
 pub struct Faults {
     /// The next `n` projection attempts fail.
     pub fail_projections: u32,
-    /// The next commit callback panics.
+    /// The next commit callback panics (`fault-injection` feature only).
+    #[cfg(feature = "fault-injection")]
     pub panic_in_commit: bool,
-    /// The next ECAD command panics before committing.
+    /// The next ECAD command panics before committing (`fault-injection` feature only).
+    #[cfg(feature = "fault-injection")]
     pub panic_in_command: bool,
 }
 
@@ -310,11 +312,14 @@ impl Project {
         let default_layer =
             ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
+        // A fresh ID stream even when the caller reuses the creation seed.
+        let ids =
+            IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
             ledger,
-            ids: IdAllocator::seeded(seed),
+            ids,
             store,
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
@@ -519,6 +524,7 @@ impl Project {
         if s.running.is_some() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
+        #[cfg(feature = "fault-injection")]
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
@@ -624,6 +630,7 @@ fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTree
 
 impl DocumentOwner for Project {
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
+        #[cfg(feature = "fault-injection")]
         if std::mem::take(&mut self.faults.panic_in_commit) {
             crate::fault_panic();
         }

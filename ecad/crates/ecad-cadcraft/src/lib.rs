@@ -39,7 +39,9 @@ pub fn install() -> bool {
 }
 
 /// Fault injection for the experiment (`Faults::panic_in_commit`): a deliberate panic inside an
-/// owner callback, to prove the engine's guard and the owner's recovery.
+/// owner callback, to prove the engine's guard and the owner's recovery. Compiled only with the
+/// `fault-injection` feature, so normal builds contain no panic path.
+#[cfg(feature = "fault-injection")]
 #[allow(clippy::panic)]
 pub(crate) fn fault_panic() -> ! {
     panic!("injected owner failure (experiment fault injection)")
