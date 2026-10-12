@@ -21,6 +21,7 @@ struct Log {
     saves: Vec<(Option<String>, bool)>,
     closed: Vec<u64>,
     recovered: usize,
+    reentry: Vec<String>,
 }
 
 struct TestOwner {
@@ -31,12 +32,25 @@ struct TestOwner {
     refuse_next: bool,
     panic_next: bool,
     panic_in_query: bool,
+    panic_in_close: bool,
+    reenter: bool,
     unsaved: bool,
 }
 
 impl TestOwner {
     fn new(log: Arc<Mutex<Log>>) -> Self {
-        Self { log, history: Vec::new(), redo: Vec::new(), last: None, refuse_next: false, panic_next: false, panic_in_query: false, unsaved: false }
+        Self {
+            log,
+            history: Vec::new(),
+            redo: Vec::new(),
+            last: None,
+            refuse_next: false,
+            panic_next: false,
+            panic_in_query: false,
+            panic_in_close: false,
+            reenter: false,
+            unsaved: false,
+        }
     }
     fn swap_to(&mut self, s: &mut Session, uid: u64, d: Arc<Drawing>) {
         if let Some(st) = s.docs.iter_mut().find(|d| d.uid == uid) {
@@ -50,6 +64,15 @@ impl DocumentOwner for TestOwner {
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
         if std::mem::take(&mut self.panic_next) {
             panic!("injected owner failure");
+        }
+        if std::mem::take(&mut self.reenter) {
+            // Calls back into the session from inside a callback, while the engine holds this owner.
+            let inner = s.execute("line", &json!({"points": [[0, 9], [1, 9]]}));
+            let undo = s.execute("u", &Value::Null);
+            let mut l = self.log.lock().unwrap();
+            l.reentry.push(format!("execute: {:?}", inner.err().map(|e| e.to_string())));
+            l.reentry.push(format!("undo: {:?}", undo.err().map(|e| e.to_string())));
+            l.reentry.push(format!("unsaved: {}", s.doc_unsaved(0)));
         }
         self.log.lock().unwrap().commits.push((c.command.to_string(), c.provenance.len(), c.clipboard.map_or(0, |x| x.handles.len())));
         if let Some(cb) = c.clipboard {
@@ -103,6 +126,7 @@ impl DocumentOwner for TestOwner {
         false
     }
     fn closed(&mut self, _s: &mut Session, uid: u64) -> bool {
+        assert!(!std::mem::take(&mut self.panic_in_close), "injected close failure");
         self.log.lock().unwrap().closed.push(uid);
         true
     }
@@ -289,4 +313,86 @@ fn a_panicking_state_query_answers_safely() {
     assert!(s.doc_unsaved(0), "a failing owner reads as unsaved");
     assert!(s.close_needs_prompt(0), "and closing asks first");
     assert!(s.has_unsaved_work());
+}
+
+#[test]
+fn unsupported_undo_options_are_reported_on_owned_documents() {
+    let (mut s, _owner, log, _) = owned_session();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    for mode in ["mark", "back", "begin", "end", "auto", "control"] {
+        let r = s.execute("undo", &json!({"mode": mode, "on": true, "control": "all"}));
+        let e = r.expect_err(mode).to_string();
+        assert!(e.contains("not supported for this document"), "{mode}: {e}");
+    }
+    assert_eq!(lines(&s).len(), 1, "nothing was undone");
+    for kw in ["mark", "back", "begin", "end", "auto", "control"] {
+        let before = s.log.len();
+        s.cmdline(&format!("undo {kw} ")).unwrap();
+        assert!(s.running.is_none(), "{kw}: the prompt ends at once");
+        assert!(s.log[before..].iter().any(|l| l.contains("not supported for this document")), "{kw}: {:?}", &s.log[before..]);
+    }
+    assert_eq!(lines(&s).len(), 1);
+    // A count still goes to the owner.
+    s.execute("undo", &json!({"count": 1})).unwrap();
+    assert!(lines(&s).is_empty());
+    assert_eq!(log.lock().unwrap().undos, 1);
+    // A plain drawing keeps every option.
+    s.new_drawing(true);
+    s.execute("undo", &json!({"mode": "mark"})).unwrap();
+}
+
+#[test]
+fn a_failing_close_keeps_the_document_open() {
+    let (mut s, owner, log, uid) = owned_session();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    owner.lock().unwrap_or_else(std::sync::PoisonError::into_inner).panic_in_close = true;
+    assert!(s.execute("close", &json!({"index": 0})).is_err());
+    assert_eq!(s.docs.len(), 1, "the document stays open");
+    assert_eq!(s.ext.owner_of(uid).map(|_| ()), Some(()), "and stays bound to its owner");
+    assert_eq!(log.lock().unwrap().recovered, 1);
+    owner.lock().unwrap_or_else(std::sync::PoisonError::into_inner).panic_in_close = true;
+    assert!(s.execute("closeall", &Value::Null).is_err());
+    assert_eq!(s.docs.len(), 1);
+    assert!(s.ext.owner_of(uid).is_some());
+    // A busy owner (its lock held) also stops the close.
+    {
+        let _held = owner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(s.execute("close", &json!({"index": 0})).is_err());
+    }
+    assert_eq!(s.docs.len(), 1);
+    s.execute("close", &json!({"index": 0})).unwrap();
+    assert!(s.docs.is_empty() && s.ext.owners().is_empty());
+}
+
+#[test]
+fn delegated_undo_bumps_the_revision() {
+    let (mut s, _owner, _, _) = owned_session();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    let rev = s.state().unwrap().revision;
+    s.execute("u", &Value::Null).unwrap();
+    let after_undo = s.state().unwrap().revision;
+    assert!(after_undo > rev, "undo changed the drawing: {rev} -> {after_undo}");
+    s.execute("redo", &Value::Null).unwrap();
+    assert!(s.state().unwrap().revision > after_undo);
+    // Nothing to undo: no change, no new revision.
+    s.execute("u", &Value::Null).unwrap();
+    s.execute("u", &Value::Null).ok();
+    let r = s.state().unwrap().revision;
+    s.execute("u", &Value::Null).ok();
+    assert_eq!(s.state().unwrap().revision, r);
+}
+
+#[test]
+fn a_reentrant_owner_call_is_refused_not_deadlocked() {
+    let (mut s, owner, log, _) = owned_session();
+    owner.lock().unwrap().reenter = true;
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    let r = log.lock().unwrap().reentry.clone();
+    assert_eq!(r.len(), 3, "{r:?}");
+    assert!(r[0].contains("busy (re-entrant call)"), "the inner command is refused: {r:?}");
+    assert!(r[1].contains("busy (re-entrant call)"), "the inner undo is refused: {r:?}");
+    assert_eq!(r[2], "unsaved: true", "a state query from inside answers conservatively");
+    assert_eq!(lines(&s).len(), 1, "only the outer command's line is kept");
+    s.execute("line", &json!({"points": [[0, 5], [10, 5]]})).unwrap();
+    assert_eq!(lines(&s).len(), 2, "the owner is usable afterwards");
 }

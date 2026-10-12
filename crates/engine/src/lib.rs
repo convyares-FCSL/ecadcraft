@@ -791,7 +791,7 @@ impl Session {
         // ECAD-SEAM(owner): an owned document's owner accepts or refuses the result and keeps the
         // history; the engine pushes no undo step for it.
         let gate = match &before {
-            Some((_, _, uid)) if top_level => ext::gate(self, *uid, spec.id),
+            Some((doc, _, uid)) if top_level => ext::gate(self, *uid, spec.id, doc),
             Some((_, _, uid)) if self.ext.owner_of(*uid).is_some() => ext::Gate::Accepted,
             _ => ext::Gate::NotOwned,
         };
@@ -1157,7 +1157,7 @@ impl Session {
         // ECAD-SEAM(owner): an owned document's owner accepts or refuses the result and keeps the
         // history; the engine pushes no undo step for it.
         if let Some(uid) = self.state().ok().map(|st| st.uid) {
-            match ext::gate(self, uid, &run.id) {
+            match ext::gate(self, uid, &run.id, &run.before) {
                 ext::Gate::NotOwned => {}
                 gate => {
                     if let ext::Gate::Refused(m) = gate {

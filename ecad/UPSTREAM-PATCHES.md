@@ -29,7 +29,8 @@ without an owner behave exactly as before.
 | `crates/engine/src/ext.rs` | X2-X7 | **new file**: `DocumentOwner` trait, `Extensions` registry, commit gate, history/save/close/drag hand-over, provenance records, owner-aware `Session::doc_unsaved`, `close_needs_prompt`, `has_unsaved_work` |
 | `crates/engine/src/lib.rs` | X2-X4, X7 | `pub mod ext`; `Session::ext` field; gate at both commit points (`execute`, `finish`) with no engine undo step for owned documents; `undo`/`redo` hand-over; drag preview contribution |
 | `crates/engine/src/cmd/mod.rs` | X1 | `set_extension_commands`: embedder commands appended to the registry |
-| `crates/engine/src/cmd/file.rs` | X5 | QSAVE/SAVEAS hand-over; CLOSE/CLOSEALL tell the owner |
+| `crates/engine/src/cmd/file.rs` | X5 | QSAVE/SAVEAS hand-over; CLOSE/CLOSEALL tell the owner, and stop with the document still open when the owner fails |
+| `crates/engine/src/cmd/edit.rs` | X4 | UNDO options other than a count (Mark, Back, BEgin, End, Auto, Control) are reported as unsupported on owned documents |
 | `crates/engine/src/autosave.rs` | X5 | owned documents are not autosaved as drawings |
 | `crates/engine/src/cmd/modify.rs` | X6 | provenance for COPY and the copy forms of MOVE-family transforms (`transform_entities`) |
 | `crates/engine/src/cmd/clipboard.rs` | X6 | COPYCLIP reported with its serial; PASTECLIP provenance |
