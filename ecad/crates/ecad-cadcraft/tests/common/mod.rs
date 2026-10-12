@@ -3,18 +3,17 @@
 
 #![allow(dead_code)]
 
-use std::sync::{Arc, Mutex, MutexGuard};
-
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
-use ecad_cadcraft::{Mapped, Project, project_page};
+use ecad_cadcraft::{Mapped, PagesRef, Project, ProjectHandle, project_page};
 use ecad_model::derive::mismatches;
 use ecad_model::{ComponentId, ConductorId, Document, ItemKind, PageId, Pt, TerminalId};
 use serde_json::{Value, json};
 
 pub struct H {
     pub s: Session,
-    pub project: Arc<Mutex<Project>>,
+    /// The project, reachable only through the handle's lock boundary.
+    pub project: ProjectHandle,
     /// The document after each effective edit, for undo/redo comparisons (S14).
     pub trail: Vec<Document>,
 }
@@ -33,22 +32,33 @@ impl H {
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", seed).unwrap();
         let mut h = H { s, project, trail: Vec::new() };
-        let d = h.p().ledger.document().clone();
+        let d = h.doc();
         h.trail.push(d);
         h.check();
         h
     }
 
-    pub fn p(&self) -> MutexGuard<'_, Project> {
-        self.project.lock().unwrap_or_else(|e| e.into_inner())
+    /// Read the project. The session is borrowed for the call, so `f` cannot call it.
+    pub fn p<R>(&mut self, f: impl FnOnce(&Project) -> R) -> R {
+        self.project.read(&mut self.s, |p, _| f(p)).expect("project not busy")
     }
 
-    pub fn head(&self) -> u64 {
-        self.p().ledger.head()
+    /// Read the project together with its page drawings.
+    pub fn pv<R>(&mut self, f: impl FnOnce(&Project, &PagesRef<'_>) -> R) -> R {
+        self.project.read(&mut self.s, f).expect("project not busy")
     }
 
-    pub fn doc(&self) -> Document {
-        self.p().ledger.document().clone()
+    /// Set up faults or the test medium.
+    pub fn cfg<R>(&mut self, f: impl FnOnce(&mut Project) -> R) -> R {
+        self.project.configure(&mut self.s, f).expect("project not busy")
+    }
+
+    pub fn head(&mut self) -> u64 {
+        self.p(|p| p.ledger.head())
+    }
+
+    pub fn doc(&mut self) -> Document {
+        self.p(|p| p.ledger.document().clone())
     }
 
     /// Run a command's JSON form; record the trail when it appended an edit.
@@ -75,7 +85,7 @@ impl H {
         }
         if head > before {
             let d = self.doc();
-            let last_kind = self.p().ledger.log().last().map(|t| t.kind);
+            let last_kind = self.p(|p| p.ledger.log().last().map(|t| t.kind));
             match last_kind {
                 Some(ecad_model::TxKind::Undo { .. }) => {
                     self.trail.pop();
@@ -86,9 +96,8 @@ impl H {
         self.check();
     }
 
-    pub fn page_index(&self, page: PageId) -> Option<usize> {
-        let uid = self.p().pages.get(&page)?.uid?;
-        self.s.docs.iter().position(|d| d.uid == uid)
+    pub fn page_index(&mut self, page: PageId) -> Option<usize> {
+        self.pv(|p, pg| pg.index_of(p.pages.get(&page)?.uid?))
     }
 
     pub fn activate(&mut self, page: PageId) {
@@ -96,20 +105,20 @@ impl H {
         self.s.active = i;
     }
 
-    pub fn first_page(&self) -> PageId {
+    pub fn first_page(&mut self) -> PageId {
         self.doc().page_order[0]
     }
 
     /// Handle of an item on `page`.
-    pub fn handle_of(&self, page: PageId, item: ecad_model::ItemId) -> Handle {
-        self.p().pages[&page].map.item(item).expect("item mapped")
+    pub fn handle_of(&mut self, page: PageId, item: ecad_model::ItemId) -> Handle {
+        self.p(|p| p.pages[&page].map.item(item)).expect("item mapped")
     }
 
     /// Every handle (items and markers) of a drawn representation.
-    pub fn rep_handles(&self, page: PageId, component: ComponentId) -> Vec<String> {
+    pub fn rep_handles(&mut self, page: PageId, component: ComponentId) -> Vec<String> {
         let doc = self.doc();
-        let p = self.p();
-        let map = &p.pages[&page].map;
+        let map = self.p(|p| p.pages[&page].map.clone());
+        let map = &map;
         let mut out = Vec::new();
         for (rid, r) in
             doc.representations_of(ecad_model::Subject::Component(component)).filter(|(_, r)| r.page == page)
@@ -120,19 +129,19 @@ impl H {
         out
     }
 
-    pub fn route_handle(&self, page: PageId, c: ConductorId) -> Handle {
+    pub fn route_handle(&mut self, page: PageId, c: ConductorId) -> Handle {
         let doc = self.doc();
         let (item, _) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
         self.handle_of(page, item)
     }
 
-    pub fn route_ends(&self, page: PageId, c: ConductorId) -> (Pt, Pt) {
+    pub fn route_ends(&mut self, page: PageId, c: ConductorId) -> (Pt, Pt) {
         let doc = self.doc();
         let (_, prim) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
         prim.path_ends().unwrap()
     }
 
-    pub fn terminal_pos(&self, page: PageId, t: TerminalId) -> Pt {
+    pub fn terminal_pos(&mut self, page: PageId, t: TerminalId) -> Pt {
         ecad_model::derive::terminal_positions(&self.doc(), page)
             .into_iter()
             .find(|(x, _, _)| *x == t)
@@ -140,9 +149,8 @@ impl H {
             .expect("terminal shown")
     }
 
-    pub fn lines_on(&self, page: PageId) -> Vec<Handle> {
-        self.p()
-            .entities_of(&self.s, page)
+    pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
+        self.pv(|p, pg| pg.entities_of(p, page))
             .iter()
             .filter(|e| matches!(e.kind, EntityKind::Line(_) | EntityKind::LwPolyline(_)))
             .map(|e| e.handle)
@@ -150,21 +158,39 @@ impl H {
     }
 
     /// Proposal §17.4, checks 1-6 (6 with `allow_mismatch` false).
-    pub fn check(&self) {
+    pub fn check(&mut self) {
         self.check_with(false);
     }
 
-    pub fn check_with(&self, allow_mismatch: bool) {
-        // Unsaved state as the engine reports it, asked while the project is not locked here.
+    pub fn check_with(&mut self, allow_mismatch: bool) {
+        // Unsaved state as the engine reports it; the project is not locked here (and cannot be:
+        // `pv` holds the session).
         let unsaved_per_doc: Vec<(u64, bool)> =
             self.s.docs.iter().enumerate().map(|(i, d)| (d.uid, self.s.doc_unsaved(i))).collect();
-        let p = self.p();
+        self.pv(|p, pg| check_project(p, pg, &unsaved_per_doc, allow_mismatch));
+    }
+
+    pub fn mapped(&mut self, page: PageId, h: Handle) -> Option<Mapped> {
+        self.p(|p| p.pages[&page].map.get(h))
+    }
+
+    pub fn symbol_item(&mut self, c: ComponentId) -> ecad_model::ItemId {
+        let doc = self.doc();
+        let (_, r) = doc.representations_of(ecad_model::Subject::Component(c)).next().unwrap();
+        let item = r.items[0];
+        assert!(matches!(doc.items[&item].kind, ItemKind::Symbol(_)));
+        item
+    }
+}
+
+fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)], allow_mismatch: bool) {
+    {
         let doc = p.ledger.document();
         // 2. replay equals the document.
         assert!(p.ledger.replay_matches().unwrap(), "replay differs from the live document");
         for (page, view) in &p.pages {
             let Some(uid) = view.uid else { continue };
-            let Some(st) = self.s.docs.iter().find(|d| d.uid == uid) else { panic!("open page without a document") };
+            let Some(st) = pg.doc(uid) else { panic!("open page without a document") };
             if view.unavailable {
                 continue;
             }
@@ -192,20 +218,31 @@ impl H {
         }
         assert!(doc.check().is_ok());
     }
-
-    pub fn mapped(&self, page: PageId, h: Handle) -> Option<Mapped> {
-        self.p().pages[&page].map.get(h)
-    }
-
-    pub fn symbol_item(&self, c: ComponentId) -> ecad_model::ItemId {
-        let doc = self.doc();
-        let (_, r) = doc.representations_of(ecad_model::Subject::Component(c)).next().unwrap();
-        let item = r.items[0];
-        assert!(matches!(doc.items[&item].kind, ItemKind::Symbol(_)));
-        item
-    }
 }
 
 pub fn pts(v: &[(f64, f64)]) -> Value {
     json!(v.iter().map(|(x, y)| json!([x, y])).collect::<Vec<_>>())
+}
+
+/// A small project: a drawn component with a terminal, a placed symbol, a wire between them.
+pub fn small_project(seed: u64) -> (H, ComponentId, ComponentId, ConductorId) {
+    let mut h = H::new(seed);
+    h.cmdline("line 0,0 40,0 40,20 0,20 c");
+    let first = h.first_page();
+    let lines = h.lines_on(first);
+    let c1: ComponentId = id(
+        &h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(),
+        "component",
+    );
+    h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
+    let c2: ComponentId = id(&h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap(), "component");
+    // Wire to the rotated symbol's first terminal, wherever the placement puts it.
+    let doc = h.doc();
+    let (rid, _) = doc.representations_of(ecad_model::Subject::Component(c2)).next().unwrap();
+    let to = ecad_model::derive::terminal_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
+    let w: ConductorId =
+        id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
+    assert!(doc.conductors.is_empty());
+    assert!(h.doc().conductors[&w].ends.iter().all(Option::is_some), "both ends attached");
+    (h, c1, c2, w)
 }

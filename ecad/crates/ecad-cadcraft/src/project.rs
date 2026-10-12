@@ -8,9 +8,13 @@ use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
 
-use cadcraft_engine::doc::{Block, Drawing, Entity, EntityStore, Group, Handle, Layer as CLayer, Space};
+use cadcraft_engine::doc::{
+    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Text,
+};
 use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Verdict};
 use cadcraft_engine::{EngineError, Session};
+
+use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
     Author, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, Op, Page, PageId, Pt, RepresentationId,
@@ -21,6 +25,7 @@ use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
 use crate::translate;
+use crate::verify::verify_page;
 
 /// What a projected handle stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,6 +161,37 @@ fn base_drawing() -> Drawing {
     d
 }
 
+/// The label an unavailable page shows instead of its drawing.
+pub const PLACEHOLDER_TEXT: &str = "PAGE UNAVAILABLE: its drawing could not be rebuilt. The project is intact and can be saved. Close this page and reopen it.";
+/// Appended to an unavailable page's title.
+pub const UNAVAILABLE_SUFFIX: &str = " [unavailable]";
+
+/// The drawing an unavailable page shows: one label, not editable (every change is refused).
+fn placeholder_drawing() -> Drawing {
+    let mut d = base_drawing();
+    let handle = d.new_handle();
+    let text = Text {
+        insert: cadcraft_engine::geom::Vec3::new(0.0, 0.0, 0.0),
+        align_pt: None,
+        height: 5.0,
+        value: PLACEHOLDER_TEXT.into(),
+        rotation: 0.0,
+        width_factor: 1.0,
+        oblique: 0.0,
+        style: "Standard".into(),
+        halign: Default::default(),
+        valign: Default::default(),
+    };
+    let mut store = EntityStore::new();
+    store.push(Entity {
+        handle,
+        common: Common { layer: "0".into(), ..Common::default() },
+        kind: EntityKind::Text(text),
+    });
+    d.model = store;
+    d
+}
+
 /// Project one page of `doc` onto `base` (a drawing whose tables and header are kept), reusing
 /// handles from `prev` for objects that are still there.
 ///
@@ -258,7 +294,7 @@ impl Project {
     ///
     /// # Errors
     /// Projection failure (not expected for an empty project).
-    pub fn create(s: &mut Session, name: &str, seed: u64) -> Result<Arc<Mutex<Project>>, String> {
+    pub fn create(s: &mut Session, name: &str, seed: u64) -> Result<ProjectHandle, String> {
         let mut ids = IdAllocator::seeded(seed);
         let mut ledger = Ledger::new(seed.rotate_left(32));
         let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
@@ -288,25 +324,25 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
         }));
-        let mut p = project.lock().map_err(|_| "project lock poisoned".to_string())?;
+        let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
         p.pages.insert(page, PageView::default());
-        p.open_page(s, page)?;
+        p.open_page(&mut Pages(s), page)?;
         drop(p);
-        Ok(project)
+        Ok(ProjectHandle::new(project))
     }
 
     /// Reopen a project from its store (the log is replayed; FILE-02).
     ///
     /// # Errors
     /// Store or replay failure.
-    pub fn open_from(
+    pub(crate) fn open_from(
         s: &mut Session,
         name: &str,
         store: TestStore<MemoryMedium>,
         seed: u64,
         use_checkpoint: bool,
-    ) -> Result<Arc<Mutex<Project>>, String> {
+    ) -> Result<ProjectHandle, String> {
         let ledger = if use_checkpoint { store.open_with_checkpoint(seed) } else { store.open(seed) }
             .map_err(|e| e.to_string())?;
         let default_layer =
@@ -330,13 +366,13 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
         }));
-        let mut p = project.lock().map_err(|_| "project lock poisoned".to_string())?;
+        let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
         if let Some(first) = pages.first() {
-            p.open_page(s, *first)?;
+            p.open_page(&mut Pages(s), *first)?;
         }
         drop(p);
-        Ok(project)
+        Ok(ProjectHandle::new(project))
     }
 
     fn owner_ref(&self) -> Option<OwnerRef> {
@@ -364,36 +400,33 @@ impl Project {
     ///
     /// # Errors
     /// Unknown page or projection failure.
-    pub fn open_page(&mut self, s: &mut Session, page: PageId) -> Result<u64, String> {
+    pub(crate) fn open_page(&mut self, pg: &mut Pages<'_>, page: PageId) -> Result<u64, String> {
         if !self.ledger.document().pages.contains_key(&page) {
             return Err(format!("page {page} does not exist"));
         }
         if let Some(uid) = self.pages.get(&page).and_then(|v| v.uid)
-            && let Some(i) = s.docs.iter().position(|d| d.uid == uid)
+            && pg.activate(uid)
         {
-            s.active = i;
             return Ok(uid);
         }
         let (d, map) = project_page(self.ledger.document(), page, &base_drawing(), &HandleMap::default())?;
         let title = self.page_title(page);
-        let i = s.open_drawing(d, &title, self.path.clone());
-        let uid = s.docs.get(i).map(|st| st.uid).ok_or("no document")?;
-        let last = s.docs.get(i).map(|st| st.doc.clone());
         let owner = self.owner_ref().ok_or("project is not shared")?;
-        s.ext.bind(uid, owner);
+        let uid = pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?;
+        let last = pg.doc(uid).map(|st| st.doc.clone());
         let view = self.pages.entry(page).or_default();
         *view = PageView { uid: Some(uid), map, last, unavailable: false };
         self.events.record(EventKind::PageOpened, None, self.ledger.head(), Some(page), title);
-        self.sync_saved(s);
+        self.sync_saved(pg);
         Ok(uid)
     }
 
     /// Keep each open page's `saved` pointer in step with the project's unsaved state, so the
     /// engine's own pointer comparison agrees with SAVE-01.
-    pub(crate) fn sync_saved(&self, s: &mut Session) {
+    pub(crate) fn sync_saved(&self, pg: &mut Pages<'_>) {
         let unsaved = self.ledger.is_unsaved();
         for v in self.pages.values() {
-            if let Some(st) = v.uid.and_then(|u| s.docs.iter_mut().find(|d| d.uid == u)) {
+            if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
                 st.saved = if unsaved { self.unsaved_marker.clone() } else { st.doc.clone() };
             }
         }
@@ -411,27 +444,32 @@ impl Project {
     /// Bring every open page's drawing and map in line with the document (handles kept where
     /// objects remain). Pages that fail are rebuilt from scratch; if that fails too, the page view
     /// becomes unavailable (PROJ-02).
-    pub(crate) fn refresh_pages(&mut self, s: &mut Session, command: Option<&str>) {
-        let pages: Vec<PageId> = self.pages.iter().filter(|(_, v)| v.uid.is_some()).map(|(p, _)| *p).collect();
+    pub(crate) fn refresh_pages(&mut self, pg: &mut Pages<'_>, command: Option<&str>) {
+        // An unavailable page stays a placeholder until it is closed and reopened.
+        let pages: Vec<PageId> =
+            self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
         for page in pages {
-            self.refresh_page(s, page, command, None);
+            self.refresh_page(pg, page, command, None, false);
         }
-        self.sync_saved(s);
+        self.sync_saved(pg);
     }
 
     /// Project one page; `committed` is the engine's drawing (with its new handles already in the
-    /// map) after a CADCraft commit, used as the base and for the fidelity check.
+    /// map) after a CADCraft commit, used as the base and for the normal-path fidelity check.
+    /// `recovery` marks a reprojection with fresh handles (owner recovery); it and any rebuild are
+    /// checked by [`verify_page`] instead, which does not rely on handle numbers.
     pub(crate) fn refresh_page(
         &mut self,
-        s: &mut Session,
+        pg: &mut Pages<'_>,
         page: PageId,
         command: Option<&str>,
         committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>,
+        recovery: bool,
     ) {
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
-        let Some(i) = s.docs.iter().position(|d| d.uid == uid) else { return };
-        let current = s.docs.get(i).map(|st| st.doc.clone());
+        let Some(current) = pg.doc(uid).map(|st| st.doc.clone()) else { return };
+        let current = Some(current);
         let base = committed.map(|(d, _)| d.clone()).or(current).unwrap_or_else(|| Arc::new(base_drawing()));
         let prev = view.map.clone();
         let head = self.ledger.head();
@@ -465,7 +503,29 @@ impl Project {
                 rebuilt
             }
         };
-        let Some(st) = s.docs.get_mut(i) else { return };
+        // Recovery path: fresh handles, so the check is by content against the document.
+        let result = match result {
+            Ok((d, map)) if recovery || !normal => {
+                let v = verify_page(self.ledger.document(), page, &d, &map);
+                if v.ok() {
+                    self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
+                    Ok((d, map))
+                } else {
+                    self.events.record(EventKind::RecoveryVerificationFailed, command, head, Some(page), v.summary());
+                    self.events.record(
+                        EventKind::PageUnavailable,
+                        command,
+                        head,
+                        Some(page),
+                        "rebuilt page did not verify",
+                    );
+                    Err(v.summary())
+                }
+            }
+            r => r,
+        };
+        let title = self.page_title(page);
+        let Some(st) = pg.doc_mut(uid) else { return };
         match result {
             Ok((d, map)) => {
                 if let Some((committed, amended)) = committed.filter(|_| normal) {
@@ -490,6 +550,7 @@ impl Project {
                     st.doc = Arc::new(d);
                     st.revision += 1;
                 }
+                st.title = title;
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = map;
                     v.last = Some(st.doc.clone());
@@ -497,7 +558,8 @@ impl Project {
                 }
             }
             Err(_) => {
-                st.doc = Arc::new(base_drawing());
+                st.doc = Arc::new(placeholder_drawing());
+                st.title = format!("{title}{UNAVAILABLE_SUFFIX}");
                 st.selection.clear();
                 st.revision += 1;
                 if let Some(v) = self.pages.get_mut(&page) {
@@ -505,7 +567,7 @@ impl Project {
                     v.last = Some(st.doc.clone());
                     v.unavailable = true;
                 }
-                s.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
+                pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
             }
         }
     }
@@ -514,14 +576,14 @@ impl Project {
     ///
     /// # Errors
     /// Validation failure; nothing changes.
-    pub fn apply_edit(
+    pub(crate) fn apply_edit(
         &mut self,
-        s: &mut Session,
+        pg: &mut Pages<'_>,
         command: &str,
         label: &str,
         ops: Vec<Op>,
     ) -> Result<ecad_model::TxId, String> {
-        if s.running.is_some() {
+        if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
         #[cfg(feature = "fault-injection")]
@@ -533,15 +595,13 @@ impl Project {
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
-        self.refresh_pages(s, Some(command));
+        self.refresh_pages(pg, Some(command));
         Ok(tx)
     }
 
     /// Restore the last projection of `page` after a refusal.
-    fn restore(&self, s: &mut Session, uid: u64, page: PageId) {
-        if let (Some(st), Some(last)) =
-            (s.docs.iter_mut().find(|d| d.uid == uid), self.pages.get(&page).and_then(|v| v.last.clone()))
-        {
+    fn restore(&self, pg: &mut Pages<'_>, uid: u64, page: PageId) {
+        if let (Some(st), Some(last)) = (pg.doc_mut(uid), self.pages.get(&page).and_then(|v| v.last.clone())) {
             st.doc = last;
             st.selection.clear();
             st.revision += 1;
@@ -550,14 +610,14 @@ impl Project {
 
     /// Facts for an inspection snapshot: per open page, whether the drawing equals a fresh
     /// projection with the same handles.
-    pub fn live_facts(&self, s: &Session) -> LiveFacts {
+    pub fn live_facts(&self, pg: &PagesRef<'_>) -> LiveFacts {
         let doc = self.ledger.document();
         let pages = doc
             .page_order
             .iter()
             .map(|p| {
                 let view = self.pages.get(p);
-                let st = view.and_then(|v| v.uid).and_then(|u| s.docs.iter().find(|d| d.uid == u));
+                let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
                         project_page(doc, *p, &st.doc, &v.map)
@@ -582,8 +642,8 @@ impl Project {
     ///
     /// # Errors
     /// See [`ecad_inspect::snapshot`].
-    pub fn snapshot(&self, s: &Session, at: Option<u64>) -> Result<Value, String> {
-        let facts = self.live_facts(s);
+    pub fn snapshot(&self, pg: &PagesRef<'_>, at: Option<u64>) -> Result<Value, String> {
+        let facts = self.live_facts(pg);
         ecad_inspect::snapshot(&self.name, &self.ledger, at, &self.events, at.is_none().then_some(&facts))
             .map_err(|e| e.to_string())
     }
@@ -630,6 +690,7 @@ fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTree
 
 impl DocumentOwner for Project {
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
+        let pg = &mut Pages(s);
         #[cfg(feature = "fault-injection")]
         if std::mem::take(&mut self.faults.panic_in_commit) {
             crate::fault_panic();
@@ -658,7 +719,7 @@ impl DocumentOwner for Project {
                 format!("{} objects", clip.handles.len()),
             );
         }
-        let Some(st) = s.docs.iter().find(|d| d.uid == c.uid) else { return Verdict::Accept };
+        let Some(st) = pg.doc(c.uid) else { return Verdict::Accept };
         let now = st.doc.clone();
         let Some(view) = self.pages.get(&page) else { return Verdict::Accept };
         let Some(last) = view.last.clone() else { return Verdict::Accept };
@@ -666,8 +727,8 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         if view.unavailable {
-            self.restore(s, c.uid, page);
-            return Verdict::Refuse("this page is unavailable; close and reopen it".into());
+            self.restore(pg, c.uid, page);
+            return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
         let t = translate::translate(&mut translate::Ctx {
             doc: self.ledger.document(),
@@ -683,7 +744,7 @@ impl DocumentOwner for Project {
         let t = match t {
             Ok(t) => t,
             Err(m) => {
-                self.restore(s, c.uid, page);
+                self.restore(pg, c.uid, page);
                 self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
                 return Verdict::Refuse(m);
             }
@@ -698,7 +759,7 @@ impl DocumentOwner for Project {
         }
         let label = c.command.to_ascii_uppercase();
         if let Err(e) = self.ledger.commit_at(Author::User, &label, t.ops, now_ms()) {
-            self.restore(s, c.uid, page);
+            self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
@@ -713,17 +774,17 @@ impl DocumentOwner for Project {
                 v.map.insert_marker(*r, *term, *h);
             }
         }
-        self.refresh_page(s, page, Some(c.command), Some((&now, &t.amended)));
-        self.sync_saved(s);
+        self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
+        self.sync_saved(pg);
         Verdict::Accept
     }
 
     fn undo(&mut self, s: &mut Session, _uid: u64) -> cadcraft_engine::Result<Option<String>> {
-        self.history(s, true)
+        self.history(&mut Pages(s), true)
     }
 
     fn redo(&mut self, s: &mut Session, _uid: u64) -> cadcraft_engine::Result<Option<String>> {
-        self.history(s, false)
+        self.history(&mut Pages(s), false)
     }
 
     fn save(
@@ -733,12 +794,13 @@ impl DocumentOwner for Project {
         path: Option<&str>,
         _save_as: bool,
     ) -> cadcraft_engine::Result<Value> {
+        let pg = &mut Pages(s);
         let head = self.ledger.head();
         // The experiment's store is in memory; the path is only recorded (no file is written).
         if let Some(p) = path {
             self.path = Some(p.to_string());
             for v in self.pages.values() {
-                if let Some(st) = v.uid.and_then(|u| s.docs.iter_mut().find(|d| d.uid == u)) {
+                if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
                     st.path = self.path.clone();
                 }
             }
@@ -746,12 +808,12 @@ impl DocumentOwner for Project {
         match self.store.save(&mut self.ledger) {
             Ok(n) => {
                 self.events.record(EventKind::Saved, Some("qsave"), head, None, format!("persisted through seq {n}"));
-                self.sync_saved(s);
+                self.sync_saved(pg);
                 Ok(json!({"saved": true, "persisted": n}))
             }
             Err(e) => {
                 self.events.record(EventKind::SaveFailed, Some("qsave"), head, None, e.to_string());
-                self.sync_saved(s);
+                self.sync_saved(pg);
                 Err(EngineError::Other(format!("{} was not saved: {e}", self.name)))
             }
         }
@@ -810,6 +872,7 @@ impl DocumentOwner for Project {
     }
 
     fn recover(&mut self, s: &mut Session) {
+        let pg = &mut Pages(s);
         // Rebuild every open page from the authoritative document with fresh maps.
         for v in self.pages.values_mut() {
             v.map = HandleMap::default();
@@ -818,13 +881,13 @@ impl DocumentOwner for Project {
         let pages: Vec<PageId> = self.pages.iter().filter(|(_, v)| v.uid.is_some()).map(|(p, _)| *p).collect();
         for page in pages {
             if let Some(uid) = self.pages.get(&page).and_then(|v| v.uid)
-                && let Some(st) = s.docs.iter_mut().find(|d| d.uid == uid)
+                && let Some(st) = pg.doc_mut(uid)
             {
                 st.doc = Arc::new(base_drawing());
             }
-            self.refresh_page(s, page, None, None);
+            self.refresh_page(pg, page, None, None, true);
         }
-        self.sync_saved(s);
+        self.sync_saved(pg);
         self.events.record(
             EventKind::Recovered,
             None,
@@ -844,7 +907,7 @@ impl DocumentOwner for Project {
 }
 
 impl Project {
-    fn history(&mut self, s: &mut Session, undo: bool) -> cadcraft_engine::Result<Option<String>> {
+    fn history(&mut self, pg: &mut Pages<'_>, undo: bool) -> cadcraft_engine::Result<Option<String>> {
         let command = if undo { "undo" } else { "redo" };
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
@@ -859,24 +922,11 @@ impl Project {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
-                self.refresh_pages(s, Some(command));
+                self.refresh_pages(pg, Some(command));
                 Ok(Some(label))
             }
             Err(ecad_model::ModelError::NothingTo(_)) => Ok(None),
             Err(e) => Err(EngineError::Other(e.to_string())),
         }
-    }
-
-    /// The model space of the engine document showing `page`, for tests and tools.
-    pub fn drawing_of(&self, s: &Session, page: PageId) -> Option<Arc<Drawing>> {
-        let uid = self.pages.get(&page)?.uid?;
-        s.docs.iter().find(|d| d.uid == uid).map(|d| d.doc.clone())
-    }
-
-    /// Model-space entities of `page`'s drawing.
-    pub fn entities_of(&self, s: &Session, page: PageId) -> Vec<Arc<Entity>> {
-        self.drawing_of(s, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().cloned().collect()))
-            .unwrap_or_default()
     }
 }

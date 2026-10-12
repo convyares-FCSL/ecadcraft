@@ -13,7 +13,8 @@ use serde_json::{Value, json};
 fn fixture() -> (H, ComponentId, ComponentId, ConductorId) {
     let mut h = H::new(77);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    let lines = h.lines_on(h.first_page());
+    let first = h.first_page();
+    let lines = h.lines_on(first);
     let c1: ComponentId = id(
         &h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(),
         "component",
@@ -33,37 +34,37 @@ struct Before {
     model: cadcraft_engine::doc::EntityStore,
 }
 
-fn before(h: &H) -> Before {
+fn before(h: &mut H) -> Before {
     let page = h.first_page();
-    let p = h.p();
-    Before {
+    h.pv(|p, pg| Before {
         head: p.ledger.head(),
         doc: p.ledger.document().clone(),
         map: p.pages[&page].map.clone(),
         unsaved: p.ledger.is_unsaved(),
-        model: p.drawing_of(&h.s, page).unwrap().space(&Space::Model).unwrap().clone(),
-    }
+        model: pg.drawing_of(p, page).unwrap().space(&Space::Model).unwrap().clone(),
+    })
 }
 
-fn unchanged(h: &H, b: &Before, what: &str) {
+fn unchanged(h: &mut H, b: &Before, what: &str) {
     let page = h.first_page();
-    let p = h.p();
-    assert_eq!(p.ledger.head(), b.head, "{what}: nothing appended");
-    assert_eq!(p.ledger.document(), &b.doc, "{what}: document unchanged");
-    assert_eq!(p.pages[&page].map, b.map, "{what}: map unchanged");
-    assert_eq!(p.ledger.is_unsaved(), b.unsaved, "{what}: unsaved state unchanged");
-    assert!(p.drawing_of(&h.s, page).unwrap().space(&Space::Model).unwrap() == &b.model, "{what}: drawing restored");
+    h.pv(|p, pg| {
+        assert_eq!(p.ledger.head(), b.head, "{what}: nothing appended");
+        assert_eq!(p.ledger.document(), &b.doc, "{what}: document unchanged");
+        assert_eq!(p.pages[&page].map, b.map, "{what}: map unchanged");
+        assert_eq!(p.ledger.is_unsaved(), b.unsaved, "{what}: unsaved state unchanged");
+        assert!(pg.drawing_of(p, page).unwrap().space(&Space::Model).unwrap() == &b.model, "{what}: drawing restored");
+    });
 }
 
 #[test]
 fn escape_during_move_records_nothing() {
     let (mut h, ..) = fixture();
-    let b = before(&h);
+    let b = before(&mut h);
     h.cmdline("move all  0,0");
     assert!(h.s.running.is_some());
     h.s.cancel();
     h.check();
-    unchanged(&h, &b, "Esc during MOVE");
+    unchanged(&mut h, &b, "Esc during MOVE");
 }
 
 #[test]
@@ -75,7 +76,7 @@ fn escape_during_line_keeps_the_segments_drawn() {
     h.s.cancel();
     h.check();
     assert_eq!(h.head(), head + 1, "one transaction for the segments CADCraft kept");
-    let tx = h.p().ledger.log().last().cloned().unwrap();
+    let tx = h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert_eq!(tx.ops.iter().filter(|o| o.name() == "AddItem").count(), 2);
 }
 
@@ -83,20 +84,22 @@ fn escape_during_line_keeps_the_segments_drawn() {
 fn replacing_or_unsupported_edits_are_refused() {
     let (mut h, _c1, c2, w) = fixture();
     let page = h.first_page();
+    let sym_item = h.symbol_item(c2);
+    let sym_handle = h.handle_of(page, sym_item);
     let cases: Vec<(&str, Value)> = vec![
-        ("explode", json!({"handles": [h.handle_of(page, h.symbol_item(c2)).hex()]})),
+        ("explode", json!({"handles": [sym_handle.hex()]})),
         ("break", json!({"handle": h.route_handle(page, w).hex(), "p1": [60, 10], "p2": [70, 10]})),
         ("hatch", json!({"points": [[0, 40], [10, 40], [10, 50]]})),
         ("layer.new", json!({"name": "NEW"})),
     ];
     for (cmd, params) in cases {
-        let b = before(&h);
+        let b = before(&mut h);
         let r = h.run(cmd, params);
         h.check();
-        unchanged(&h, &b, cmd);
+        unchanged(&mut h, &b, cmd);
         assert!(r.is_err(), "{cmd} must report the refusal");
     }
-    assert!(h.p().events.count(EventKind::Refused) >= 3);
+    assert!(h.p(|p| p.events.count(EventKind::Refused)) >= 3);
 }
 
 #[test]
@@ -104,10 +107,10 @@ fn connecting_to_a_deleted_terminal_fails_cleanly() {
     let (mut h, c1, _c2, w) = fixture();
     let t = h.doc().terminals_of(c1).next().map(|(t, _)| t).unwrap();
     h.run("ecaddelete", json!({"component": c1.hex()})).unwrap();
-    let b = before(&h);
+    let b = before(&mut h);
     let r = h.run("connect", json!({"conductor": w.hex(), "end": "A", "terminal": t.hex()}));
     assert!(r.is_err());
-    unchanged(&h, &b, "connect to a deleted terminal");
+    unchanged(&mut h, &b, "connect to a deleted terminal");
     assert_eq!(h.doc().conductors[&w].ends[0], None, "deleting the component detached the wire explicitly");
 }
 
@@ -116,21 +119,21 @@ fn connecting_to_a_deleted_terminal_fails_cleanly() {
 fn injected_panics_are_contained() {
     let (mut h, c1, ..) = fixture();
     // In an ECAD command, before it commits.
-    let b = before(&h);
-    h.p().faults.panic_in_command = true;
+    let b = before(&mut h);
+    h.cfg(|p| p.faults.panic_in_command = true);
     assert!(h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).is_err());
-    unchanged(&h, &b, "panic in an ECAD command");
+    unchanged(&mut h, &b, "panic in an ECAD command");
     h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).unwrap();
     // In the owner's commit callback.
-    let b = before(&h);
-    h.p().faults.panic_in_commit = true;
+    let b = before(&mut h);
+    h.cfg(|p| p.faults.panic_in_commit = true);
     assert!(h.run("line", json!({"points": [[0, 80], [10, 80]]})).is_err());
     h.check();
     // Recovery rebuilds every page from the document with fresh handles (PROJ-02), so the map
     // changes; the document, history and unsaved state do not.
     assert_eq!(h.head(), b.head, "panic in the commit callback: nothing appended");
     assert_eq!(h.doc(), b.doc, "panic in the commit callback: document unchanged");
-    assert_eq!(h.p().events.count(EventKind::Recovered), 1);
+    assert_eq!(h.p(|p| p.events.count(EventKind::Recovered)), 1);
     h.run("line", json!({"points": [[0, 80], [10, 80]]})).unwrap();
 }
 
@@ -138,11 +141,11 @@ fn injected_panics_are_contained() {
 fn ecad_edits_wait_for_a_running_command() {
     let (mut h, c1, ..) = fixture();
     h.cmdline("move all  0,0");
-    let b = before(&h);
+    let b = before(&mut h);
     let r = h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"}));
     assert!(r.unwrap_err().contains("TX-05"));
     h.s.cancel();
-    unchanged(&h, &b, "SETPROP during MOVE");
+    unchanged(&mut h, &b, "SETPROP during MOVE");
 }
 
 #[test]
@@ -203,14 +206,14 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     // Closing the last page closes the project: prompt; a failed save keeps it open.
     app.request_close(Some(0));
     assert!(app.close_prompt().is_some(), "closing the project prompts");
-    h.p().store.medium.fail_next_append = true;
+    h.project.configure(&mut app.session, |p| p.store.medium.fail_next_append = true).unwrap();
     app.answer_close(Choice::Save);
     assert_eq!(app.session.docs.len(), 1, "save failed: the project stays open");
     assert!(app.session.has_unsaved_work());
     app.request_close(Some(0));
     app.answer_close(Choice::Save);
     assert!(app.session.docs.is_empty(), "saved, then closed");
-    assert!(!h.p().ledger.is_unsaved());
+    assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert!(app.session.ext.owners().is_empty());
 }
 
@@ -219,14 +222,15 @@ fn reopening_with_the_creation_seed_never_reissues_ids() {
     let mut h = H::new(4242);
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p().store.medium.clone();
+    let medium = h.p(|p| p.store.medium.clone());
     let mut s = cadcraft_engine::Session::empty();
     let reopened =
-        ecad_cadcraft::Project::open_from(&mut s, "Demo", ecad_store::TestStore::new(medium), 4242, false).unwrap();
-    let before = reopened.lock().unwrap().ledger.document().clone();
+        ecad_cadcraft::ProjectHandle::open_from(&mut s, "Demo", ecad_store::TestStore::new(medium), 4242, false)
+            .unwrap();
+    let before = reopened.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
     s.execute("newpage", &json!({"title": "3"})).unwrap();
     s.execute("wire", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
-    let after = reopened.lock().unwrap().ledger.document().clone();
+    let after = reopened.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
     assert_eq!(after.pages.len(), before.pages.len() + 1, "a new page, not a duplicate of an existing ID");
     assert!(before.pages.keys().all(|p| after.pages.contains_key(p)));
 }
@@ -235,7 +239,7 @@ fn reopening_with_the_creation_seed_never_reissues_ids() {
 fn oversized_inputs_are_refused_before_collecting() {
     let (mut h, ..) = fixture();
     let many: Vec<String> = (0..10_001).map(|i| format!("{i:032x}")).collect();
-    let b = before(&h);
+    let b = before(&mut h);
     assert!(h.run("cableadd", json!({"conductors": many})).unwrap_err().contains("at most"));
-    unchanged(&h, &b, "oversized cableadd");
+    unchanged(&mut h, &b, "oversized cableadd");
 }

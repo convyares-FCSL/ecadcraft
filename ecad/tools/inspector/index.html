@@ -2,8 +2,10 @@
 <!--
   ECAD inspector: a read-only developer viewer for ecad-inspect snapshots (format "ecad-inspect/1").
   Load one or more JSON snapshot files; nothing is sent anywhere and nothing can be changed.
-  Snapshots come from the `ecadinspect` command (control channel / engine.execute) or from
-  `cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>`.
+  Snapshots are exported files: this page never connects to a running session and does not update
+  by itself. They come from `cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>` or
+  from the `ecadinspect` command run in a session that has the ECAD commands installed (tests and
+  the example; there is no ECAD desktop app yet).
 -->
 <html lang="en">
 <head>
@@ -50,7 +52,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 </head>
 <body>
 <header>
-  <h1>ECAD Inspector <span class="pill">read-only</span></h1>
+  <h1>ECAD Inspector <span class="pill">read-only</span> <span class="pill">exported snapshots, not live</span></h1>
   <label>Open snapshots… <input id="files" type="file" accept=".json,application/json" multiple></label>
   <label>Snapshot <select id="pick"></select></label>
   <label>Search IDs and labels <input id="q" type="search" placeholder="id, short id or label"></label>
@@ -149,7 +151,7 @@ function render() {
       ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
   }
   h += `<h2>Runtime events (diagnostics, not design history)</h2><div class="wrap"><table><tr><th>#</th><th>Kind</th><th>Command</th><th>Seq</th><th>Page</th><th>Message</th></tr>`;
-  const failing = new Set(["Refused", "SaveFailed", "ProjectionFailed", "PageUnavailable", "FidelityMismatch", "Recovered"]);
+  const failing = new Set(["Refused", "SaveFailed", "ProjectionFailed", "PageUnavailable", "FidelityMismatch", "RecoveryVerificationFailed", "Recovered"]);
   for (const e of [...s.events].reverse()) {
     if (q && !JSON.stringify(e).toLowerCase().includes(q)) continue;
     h += `<tr><td>${esc(e.n)}</td><td class="${failing.has(e.kind) ? "bad" : ""}">${esc(e.kind)}</td><td class="mono">${esc(e.command)}</td><td>${esc(e.seq)}</td><td>${e.page ? name(e.page) : ""}</td><td>${esc(e.message)}</td></tr>`;

@@ -9,6 +9,9 @@
 //!   page into an engine drawing, keeps the session-only handle map, translates CADCraft commits
 //!   into transactions ([`translate`]), owns undo/redo/save, and restores consistency by
 //!   reprojecting after a failure (PROJ-02).
+//! - [`ProjectHandle`] is the only way to reach a project from outside the crate. It enforces the
+//!   lock and re-entry contract (see the `access` module): nothing can call the session while it
+//!   holds the project.
 //! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry.
 //!
 //! This crate intentionally contains **no** UI, no file encoding (the store is test-only) and
@@ -22,11 +25,14 @@
     clippy::unreachable
 )]
 
+mod access;
 pub mod commands;
 pub mod convert;
 pub mod project;
 mod translate;
+pub mod verify;
 
+pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use project::{Faults, HandleMap, Mapped, PageView, Project, project_page, session_seed};
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

@@ -52,8 +52,14 @@ pub enum EventKind {
     ProjectionRebuilt,
     /// Rebuilding failed too: the page view is unavailable until reopened.
     PageUnavailable,
-    /// The projected drawing differed from what the engine committed (H2).
+    /// Normal path: the projected drawing differed from what the engine committed (H2). Compares
+    /// entities by handle, which is valid only while the engine's handles are kept.
     FidelityMismatch,
+    /// Recovery path: a rebuilt page was checked against the document without relying on handle
+    /// numbers (geometry, styles, symbol placement, terminal positions, relationships) and agrees.
+    RecoveryVerified,
+    /// Recovery path: the rebuilt page disagrees with the document; it is shown as unavailable.
+    RecoveryVerificationFailed,
     /// A document-owner callback panicked and the owner recovered.
     Recovered,
     PageOpened,

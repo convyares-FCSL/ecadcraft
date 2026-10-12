@@ -18,7 +18,8 @@ const SKIP: &[&str] =
 fn fixture() -> H {
     let mut h = H::new(5);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    let lines = h.lines_on(h.first_page());
+    let first = h.first_page();
+    let lines = h.lines_on(first);
     h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     h.run("place", json!({"at": [100, 0]})).unwrap();
@@ -26,7 +27,7 @@ fn fixture() -> H {
     h.cmdline("line 0,40 10,40 ");
     // Select everything so commands that act on the selection have something to act on.
     let page = h.first_page();
-    let all: Vec<_> = h.p().entities_of(&h.s, page).iter().map(|e| e.handle).collect();
+    let all: Vec<_> = h.pv(|p, pg| pg.entities_of(p, page)).iter().map(|e| e.handle).collect();
     h.s.set_selection(all);
     h
 }
@@ -41,9 +42,9 @@ fn every_command_leaves_the_project_consistent() {
     for id in ids.iter().copied().filter(|id| !SKIP.contains(id) && !ours.contains(id)) {
         let mut h = fixture();
         let head = h.head();
-        let refused_before = h.p().events.count(ecad_inspect::EventKind::Refused);
+        let refused_before = h.p(|p| p.events.count(ecad_inspect::EventKind::Refused));
         let r = h.s.execute(id, &Value::Null);
-        let refused = h.p().events.count(ecad_inspect::EventKind::Refused) > refused_before;
+        let refused = h.p(|p| p.events.count(ecad_inspect::EventKind::Refused)) > refused_before;
         let class = match (&r, h.head() > head, refused) {
             (_, true, _) => "recorded",
             (_, _, true) => "refused by the owner",

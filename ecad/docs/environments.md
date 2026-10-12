@@ -4,6 +4,10 @@
 > this file has been run on WSL or on the NVIDIA Thor yet. It lists what to check before building,
 > what the build needs, and how to run the experiment and the inspector. Report the check output
 > back so the notes can be corrected.
+>
+> **There is no ECAD desktop application yet.** On any environment the experiment runs as tests
+> and a headless example. The inspector is a static page that loads exported snapshots, with no
+> live connection. Persistence is test-only: nothing is written to disk.
 
 ## Where it has run so far
 
@@ -86,7 +90,8 @@ Share one target directory between the two workspaces to save disk and time:
    `explorer.exe "$(wslpath -w ecad/tools/inspector)"` opens the folder. Load the files from
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
-5. GUI (optional, upstream CADCraft only; there is no ECAD shell app yet). Needs WSLg, which
+5. GUI (optional): **upstream CADCraft only**. Its desktop app does not load ECAD commands or
+   projects, so this checks only that the display stack works under WSL. Needs WSLg, which
    Windows 11 provides: the section 1 check shows `WAYLAND_DISPLAY` and `/mnt/wslg`.
 
    ```sh
@@ -117,4 +122,5 @@ Share one target directory between the two workspaces to save disk and time:
 ## 5. What the experiment does not need
 
 - No GPU, display, or network at run time (only for the first build).
-- No AutoCAD, DWG files or ECAD production file format. The store is test-only.
+- No AutoCAD, DWG files or ECAD production file format. The store is test-only and in memory:
+  Save records a path but writes no file.

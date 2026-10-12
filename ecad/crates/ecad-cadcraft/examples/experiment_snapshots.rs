@@ -10,7 +10,6 @@
 use std::path::PathBuf;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::commands::with_project;
 use ecad_cadcraft::{Project, session_seed};
 use serde_json::{Value, json};
 
@@ -40,8 +39,9 @@ fn main() -> Result<(), String> {
     let w1 = run(&mut s, "wire", json!({"points": [[40, 15], [65, 15], [65, 10], [90, 10]]}));
     let w2 = run(&mut s, "wire", json!({"points": [[40, 5], [60, -10]]}));
     run(&mut s, "cableadd", json!({"conductors": [w1["conductor"], w2["conductor"]], "tag": "-W1"}));
-    let handles = with_project(&mut s, |p, s, page| {
+    let handles = project.read(&mut s, |p, _| -> Result<Vec<String>, String> {
         let doc = p.ledger.document();
+        let page = *doc.page_order.first().ok_or("page")?;
         let map = &p.pages.get(&page).ok_or("page")?.map;
         let comp = ecad_model::ComponentId::parse(c["component"].as_str().unwrap_or_default()).ok_or("id")?;
         let mut out = Vec::new();
@@ -49,24 +49,19 @@ fn main() -> Result<(), String> {
             out.extend(r.items.iter().filter_map(|i| map.item(*i)).map(|h| h.hex()));
             out.extend(r.connection_points.keys().filter_map(|t| map.marker(rid, *t)).map(|h| h.hex()));
         }
-        let _ = s;
         Ok(out)
-    })
-    .map_err(|e| e.to_string())?;
+    })??;
     run(&mut s, "move", json!({"handles": handles, "delta": [0, -5]}));
     run(&mut s, "layer.new", json!({"name": "NEW"})); // refused by the owner: layer edits are not recorded yet
     let _ = t1;
     s.execute("qsave", &Value::Null).map_err(|e| e.to_string())?;
     run(&mut s, "setprop", json!({"component": c["component"], "key": "description", "value": "Contactor"}));
-    if let Ok(mut p) = project.lock() {
-        p.store.medium.fail_next_flush = true;
-    }
+    project.configure(&mut s, |p| p.store.medium.fail_next_flush = true)?;
     run(&mut s, "qsave", Value::Null); // fails: injected
-    let p = project.lock().map_err(|_| "lock")?;
-    let head = p.ledger.head();
+    let head = project.read(&mut s, |p, _| p.ledger.head())?;
     let mut written = Vec::new();
     for at in [None, Some(3), Some(head / 2), Some(head.saturating_sub(1))] {
-        let snap = p.snapshot(&s, at)?;
+        let snap = project.snapshot(&mut s, at)?;
         let name = match at {
             None => format!("live-seq{head:03}.json"),
             Some(n) => format!("history-seq{n:03}.json"),

@@ -5,7 +5,6 @@
 //! extension command registry. Interactive prompting versions are not part of the experiment.
 
 use std::collections::BTreeMap;
-use std::sync::PoisonError;
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
@@ -16,6 +15,7 @@ use ecad_model::{
 };
 use serde_json::{Value, json};
 
+use crate::access::{Pages, owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 
@@ -59,22 +59,39 @@ fn err(m: impl Into<String>) -> EngineError {
     EngineError::Other(m.into())
 }
 
-/// Run `f` with the project owning the active document.
-pub fn with_project<R>(
+/// Run `f` with the project owning the active document. The closure gets [`Pages`], not the
+/// session, so it cannot call an owner-aware session method while the project is locked; the lock
+/// is taken with `try_lock`, so a re-entrant command is refused instead of deadlocking.
+pub(crate) fn with_project<R>(
     s: &mut Session,
-    f: impl FnOnce(&mut Project, &mut Session, PageId) -> Result<R, String>,
+    f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, String>,
 ) -> cadcraft_engine::Result<R> {
+    let owner = owner_of_active(s).map_err(err)?;
     let uid = s.state()?.uid;
-    let owner = s.ext.owner_of(uid).ok_or_else(|| err("this is not an ECAD page"))?;
-    let mut guard = owner.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut guard = try_lock(&owner).map_err(err)?;
     let p =
         guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
     let page = p.page_of(uid).ok_or_else(|| err("page view not found"))?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
-        return Err(err("this page is unavailable; close and reopen it"));
+        return Err(err(UNAVAILABLE));
     }
-    f(p, s, page).map_err(EngineError::Other)
+    f(p, &mut Pages(s), page).map_err(EngineError::Other)
 }
+
+/// Like [`with_project`] for commands that also work on an unavailable page (open, inspect).
+fn with_any_page<R>(
+    s: &mut Session,
+    f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, String>,
+) -> cadcraft_engine::Result<R> {
+    let owner = owner_of_active(s).map_err(err)?;
+    let mut guard = try_lock(&owner).map_err(err)?;
+    let p =
+        guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
+    f(p, &mut Pages(s)).map_err(EngineError::Other)
+}
+
+/// Refusal for edits on a page whose drawing could not be rebuilt (PROJ-02).
+pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";
 
 fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
     p.get(key)
@@ -111,7 +128,7 @@ fn plain_style(p: &Project) -> Style {
 
 fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let hs = handles(s, params);
-    with_project(s, |p, s, page| {
+    with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let mut items = Vec::new();
         for h in hs {
@@ -143,7 +160,7 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                 },
             },
         ];
-        p.apply_edit(s, "convertcomponent", "Convert to component", ops)?;
+        p.apply_edit(pg, "convertcomponent", "Convert to component", ops)?;
         Ok(json!({"component": c.hex(), "representation": r.hex()}))
     })
 }
@@ -156,7 +173,7 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
         .ok_or_else(|| err("`handle` is required"))?;
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     let label = params.get("label").and_then(Value::as_str).map(str::to_string);
-    with_project(s, |p, s, page| {
+    with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let Some(Mapped::Item(item)) = map.get(h) else { return Err("pick an item of a component".into()) };
         let doc = p.ledger.document();
@@ -172,7 +189,7 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
             Op::AddTerminal { id: t, terminal: Terminal { component: c, label, key: None } },
             Op::ModifyRepresentation { id: rid, before: r.clone(), after },
         ];
-        p.apply_edit(s, "addterminal", "Add terminal", ops)?;
+        p.apply_edit(pg, "addterminal", "Add terminal", ops)?;
         Ok(json!({"terminal": t.hex()}))
     })
 }
@@ -186,7 +203,7 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     if pts.len() < 2 {
         return Err(err("`points` needs at least two [x,y] points"));
     }
-    with_project(s, |p, s, page| {
+    with_project(s, |p, pg, page| {
         let (w, i, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
         let item = Item {
             page,
@@ -217,7 +234,7 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
                 attached.push(json!({"end": format!("{end:?}"), "terminal": t.hex()}));
             }
         }
-        p.apply_edit(s, "wire", "Wire", ops)?;
+        p.apply_edit(pg, "wire", "Wire", ops)?;
         Ok(json!({"conductor": w.hex(), "item": i.hex(), "attached": attached}))
     })
 }
@@ -235,7 +252,7 @@ fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     let c: ConductorId = id(params, "conductor").map_err(err)?;
     let t: TerminalId = id(params, "terminal").map_err(err)?;
     let end = end_param(params).map_err(err)?;
-    with_project(s, |p, s, page| {
+    with_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let conductor = doc.conductors.get(&c).ok_or("no such conductor")?;
         if !doc.terminals.contains_key(&t) {
@@ -258,7 +275,7 @@ fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             });
         }
         ops.push(Op::AttachEnd { conductor: c, end, before: conductor.end(end), after: Some(t) });
-        p.apply_edit(s, "connect", "Connect", ops)?;
+        p.apply_edit(pg, "connect", "Connect", ops)?;
         Ok(json!({"connected": true}))
     })
 }
@@ -266,12 +283,12 @@ fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 fn run_disconnect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let c: ConductorId = id(params, "conductor").map_err(err)?;
     let end = end_param(params).map_err(err)?;
-    with_project(s, |p, s, _page| {
+    with_project(s, |p, pg, _page| {
         let before = p.ledger.document().conductors.get(&c).ok_or("no such conductor")?.end(end);
         if before.is_none() {
             return Err("that end is not connected".into());
         }
-        p.apply_edit(s, "disconnect", "Disconnect", vec![Op::AttachEnd { conductor: c, end, before, after: None }])?;
+        p.apply_edit(pg, "disconnect", "Disconnect", vec![Op::AttachEnd { conductor: c, end, before, after: None }])?;
         Ok(json!({"disconnected": true}))
     })
 }
@@ -291,7 +308,7 @@ fn remove_representations(doc: &ecad_model::Document, subject: Subject) -> Vec<O
 }
 
 fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, s, _page| {
+    with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
         if let Ok(c) = id::<ConductorId>(params, "conductor") {
@@ -326,7 +343,7 @@ fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
         } else {
             return Err("`conductor` or `component` (hex id) is required".into());
         }
-        p.apply_edit(s, "ecaddelete", "Delete", ops)?;
+        p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
         Ok(json!({"deleted": true}))
     })
 }
@@ -343,7 +360,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     } else {
         return Err(err("`component`, `conductor` or `cable` (hex id) is required"));
     };
-    with_project(s, |p, s, _page| {
+    with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let props = match object {
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
@@ -355,7 +372,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if before == value {
             return Ok(json!({"changed": false}));
         }
-        p.apply_edit(s, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
+        p.apply_edit(pg, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
         Ok(json!({"changed": true}))
     })
 }
@@ -383,7 +400,7 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
     }
     let existing: Option<CableId> = id(params, "cable").ok();
     let tag = params.get("tag").and_then(Value::as_str).map(str::to_string);
-    with_project(s, |p, s, _page| {
+    with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
         let (cable, mut index) = match existing {
@@ -402,7 +419,7 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
             ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: w, core: None } });
             index += 1;
         }
-        p.apply_edit(s, "cableadd", "Add to cable", ops)?;
+        p.apply_edit(pg, "cableadd", "Add to cable", ops)?;
         Ok(json!({"cable": cable.hex()}))
     })
 }
@@ -430,7 +447,7 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
     let degrees = params.get("rotation").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
     let mirror = params.get("mirror").and_then(Value::as_bool).unwrap_or(false);
     let wanted: Option<DefinitionId> = id(params, "definition").ok();
-    with_project(s, |p, s, page| {
+    with_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
         let (def_id, def) = match wanted {
@@ -478,17 +495,17 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
                 connection_points: BTreeMap::new(),
             },
         });
-        p.apply_edit(s, "place", "Place symbol", ops)?;
+        p.apply_edit(pg, "place", "Place symbol", ops)?;
         Ok(json!({"component": c.hex(), "item": item.hex(), "definition": def_id.hex(), "terminals": terminals}))
     })
 }
 
 fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let title = params.get("title").and_then(Value::as_str).unwrap_or("new").to_string();
-    let page = with_project(s, |p, s, _| {
+    let page = with_project(s, |p, pg, _| {
         let id: PageId = p.ids.fresh();
         let index = p.ledger.document().page_order.len();
-        p.apply_edit(s, "newpage", "New page", vec![Op::AddPage { id, page: Page { title }, index }])?;
+        p.apply_edit(pg, "newpage", "New page", vec![Op::AddPage { id, page: Page { title }, index }])?;
         p.pages.entry(id).or_default();
         Ok(id)
     })?;
@@ -496,11 +513,7 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 }
 
 fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
-    let uid = s.state()?.uid;
-    let owner = s.ext.owner_of(uid).ok_or_else(|| err("this is not an ECAD page"))?;
-    let mut guard = owner.lock().unwrap_or_else(PoisonError::into_inner);
-    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("not an ECAD project"))?;
-    let uid = p.open_page(s, page).map_err(err)?;
+    let uid = with_any_page(s, |p, pg| p.open_page(pg, page))?;
     Ok(json!({"page": page.hex(), "document": uid}))
 }
 
@@ -511,9 +524,5 @@ fn run_openpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
 
 fn run_inspect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("seq").and_then(Value::as_u64);
-    let uid = s.state()?.uid;
-    let owner = s.ext.owner_of(uid).ok_or_else(|| err("this is not an ECAD page"))?;
-    let mut guard = owner.lock().unwrap_or_else(PoisonError::into_inner);
-    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("not an ECAD project"))?;
-    p.snapshot(s, at).map_err(err)
+    with_any_page(s, |p, pg| p.snapshot(&pg.as_ref(), at))
 }

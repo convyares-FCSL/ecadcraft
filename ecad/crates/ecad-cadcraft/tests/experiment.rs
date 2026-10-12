@@ -5,7 +5,7 @@
 mod common;
 
 use common::{H, hex, id, pts};
-use ecad_cadcraft::Project;
+use ecad_cadcraft::ProjectHandle;
 use ecad_inspect::EventKind;
 use ecad_model::derive::nets;
 use ecad_model::{ComponentId, ConductorId, Document, End, PageId, Pt, Subject, TerminalId};
@@ -64,9 +64,10 @@ fn scenario_s1_to_s16() {
     // S5: reroute w1 by a vertex grip (M1).
     let nets_before = nets(&h.doc());
     let head = h.head();
-    h.run("grip.stretch", json!({"handle": h.route_handle(p1, w1).hex(), "index": 2, "to": [70, 18]})).unwrap();
+    let route = h.route_handle(p1, w1);
+    h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [70, 18]})).unwrap();
     assert_eq!(h.head(), head + 1);
-    let tx = h.p().ledger.log().last().cloned().unwrap();
+    let tx = h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert!(
         tx.ops.iter().all(|o| o.name() == "ModifyItem"),
         "a reroute records geometry only: {:?}",
@@ -82,7 +83,8 @@ fn scenario_s1_to_s16() {
     assert!(h.route_ends(p1, w1).0.near(Pt::new(40.0, 10.0), 1e-9), "w1 end A followed t1");
     assert!(h.route_ends(p1, w2).0.near(Pt::new(40.0, 5.0), 1e-9), "w2 end A followed t2");
     assert!(h.route_ends(p1, w2).1.near(Pt::new(55.0, -10.0), 1e-9), "w2's free end stayed");
-    let sym = h.handle_of(p1, h.symbol_item(c2));
+    let sym_item = h.symbol_item(c2);
+    let sym = h.handle_of(p1, sym_item);
     h.run("rotate", json!({"handles": [sym.hex()], "base": [100, 10], "angle": 180})).unwrap();
     assert!(h.terminal_pos(p1, s1).near(Pt::new(110.0, 10.0), 1e-6));
     assert!(h.route_ends(p1, w1).1.near(h.terminal_pos(p1, s1), 1e-9), "w1 end B followed s1");
@@ -90,10 +92,11 @@ fn scenario_s1_to_s16() {
 
     // S7: deliberate reconnection of w3's free end: onto s2, then into free space (M3).
     let s2_at = h.terminal_pos(p1, s2);
-    h.run("grip.stretch", json!({"handle": h.route_handle(p1, w3).hex(), "index": 2, "to": [s2_at.x, s2_at.y]}))
-        .unwrap();
+    let route = h.route_handle(p1, w3);
+    h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
     assert_eq!(h.doc().conductors[&w3].ends, [Some(t3), Some(s2)], "landing on s2 attached it");
-    h.run("grip.stretch", json!({"handle": h.route_handle(p1, w3).hex(), "index": 2, "to": [80, -20]})).unwrap();
+    let route = h.route_handle(p1, w3);
+    h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [80, -20]})).unwrap();
     assert_eq!(h.doc().conductors[&w3].ends, [Some(t3), None], "dragging into free space detached it");
     assert_eq!(h.doc().conductors[&w2].ends, [Some(t2), None], "w2 untouched");
 
@@ -118,7 +121,8 @@ fn scenario_s1_to_s16() {
     }
     assert_eq!(before.conductors[&w2], after.conductors[&w2]);
     // COPYCLIP / PASTECLIP the symbol.
-    let sym = h.handle_of(p1, h.symbol_item(c2));
+    let sym_item = h.symbol_item(c2);
+    let sym = h.handle_of(p1, sym_item);
     h.run("copyclip", json!({"handles": [sym.hex()]})).unwrap();
     let base = h.s.clipboard_base;
     let before = h.doc();
@@ -153,7 +157,7 @@ fn scenario_s1_to_s16() {
     h.run("setprop", json!({"component": c1b.hex(), "key": "tag", "value": "-K2"})).unwrap();
     let (i1, i2) = (h.page_index(p1).unwrap(), h.page_index(p2).unwrap());
     assert!(h.s.doc_unsaved(i1) && h.s.doc_unsaved(i2), "both page tabs show unsaved");
-    assert!(h.p().ledger.is_unsaved(), "head differs from the persisted position");
+    assert!(h.p(|p| p.ledger.is_unsaved()), "head differs from the persisted position");
 
     // S11: project-wide undo from page 1 changes page 2.
     h.activate(p1);
@@ -166,7 +170,7 @@ fn scenario_s1_to_s16() {
     assert!(doc.cables.is_empty(), "cable undone");
     assert!(!doc.conductors.contains_key(&w4), "WIRE on page 2 undone");
     assert!(
-        h.p().entities_of(&h.s, p2).iter().all(|e| e.handle != w4_route),
+        h.pv(|p, pg| pg.entities_of(p, p2)).iter().all(|e| e.handle != w4_route),
         "page 2's drawing was updated while page 1 was active"
     );
     for _ in 0..3 {
@@ -183,30 +187,31 @@ fn scenario_s1_to_s16() {
     let i2 = h.page_index(p2).unwrap();
     assert!(!h.s.close_needs_prompt(i2), "closing a page tab never prompts");
     h.run("close", json!({"index": i2})).unwrap();
-    assert!(h.p().ledger.is_unsaved(), "the project and its unsaved work stay open");
+    assert!(h.p(|p| p.ledger.is_unsaved()), "the project and its unsaved work stay open");
     assert_eq!(h.s.ext.owners().len(), 1);
     h.activate(p1);
     h.run("openpage", json!({"page": p2.hex()})).unwrap();
     assert!(h.page_index(p2).is_some());
-    assert!(h.p().entities_of(&h.s, p2).len() >= 2, "page 2 reprojected with its line and wire");
+    assert!(h.pv(|p, pg| pg.entities_of(p, p2)).len() >= 2, "page 2 reprojected with its line and wire");
 
     // S13: save; a new edit; a failed save; save again.
     h.activate(p1);
     h.run("qsave", Value::Null).unwrap();
-    assert!(!h.p().ledger.is_unsaved());
-    let saved_bytes = h.p().store.medium.read_all().unwrap();
+    assert!(!h.p(|p| p.ledger.is_unsaved()));
+    let saved_bytes = h.p(|p| p.store.medium.read_all().unwrap());
     let saved_head = h.head();
     h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).unwrap();
-    assert!(h.s.doc_unsaved(h.page_index(p1).unwrap()));
-    h.p().store.medium.fail_next_append = true;
+    let i1 = h.page_index(p1).unwrap();
+    assert!(h.s.doc_unsaved(i1));
+    h.cfg(|p| p.store.medium.fail_next_append = true);
     let e = h.run("qsave", Value::Null).unwrap_err();
     assert!(e.contains("not saved"), "{e}");
-    assert!(h.p().ledger.is_unsaved(), "still unsaved after the failure");
-    assert_eq!(h.p().ledger.persisted(), saved_head);
-    assert_eq!(h.p().store.medium.read_all().unwrap(), saved_bytes, "the file still holds exactly the first save");
+    assert!(h.p(|p| p.ledger.is_unsaved()), "still unsaved after the failure");
+    assert_eq!(h.p(|p| p.ledger.persisted()), saved_head);
+    assert_eq!(h.p(|p| p.store.medium.read_all().unwrap()), saved_bytes, "the file still holds exactly the first save");
     h.run("qsave", Value::Null).unwrap();
-    assert!(!h.p().ledger.is_unsaved());
-    assert_eq!(h.p().events.count(EventKind::SaveFailed), 1);
+    assert!(!h.p(|p| p.ledger.is_unsaved()));
+    assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
 
     // S14: undo everything, then redo everything: state and IDs restored at every point.
     let trail: Vec<Document> = h.trail.clone();
@@ -228,45 +233,47 @@ fn scenario_s1_to_s16() {
 
     // S15: reopen from the store, with and without a checkpoint.
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p().store.medium.clone();
+    let medium = h.p(|p| p.store.medium.clone());
     let live = h.doc();
     let mut s2 = cadcraft_engine::Session::empty();
-    let reopened = Project::open_from(&mut s2, "Demo", ecad_store::TestStore::new(medium.clone()), 1, false).unwrap();
-    assert_eq!(reopened.lock().unwrap().ledger.document(), &live);
+    let reopened =
+        ProjectHandle::open_from(&mut s2, "Demo", ecad_store::TestStore::new(medium.clone()), 1, false).unwrap();
+    assert_eq!(reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap(), live);
     let mut store = ecad_store::TestStore::new(medium);
-    store.write_checkpoint(&h.p().ledger).unwrap();
+    h.p(|p| store.write_checkpoint(&p.ledger)).unwrap();
     let mut s3 = cadcraft_engine::Session::empty();
-    let with_cp = Project::open_from(&mut s3, "Demo", store, 1, true).unwrap();
-    assert_eq!(with_cp.lock().unwrap().ledger.document(), &live);
+    let with_cp = ProjectHandle::open_from(&mut s3, "Demo", store, 1, true).unwrap();
+    assert_eq!(with_cp.read(&mut s3, |p, _| p.ledger.document().clone()).unwrap(), live);
 
     // S16: failure after acceptance, before projection completes (PROJ-02).
     h.activate(p1);
     let handles = h.rep_handles(p1, c1);
     let head = h.head();
-    h.p().faults.fail_projections = 1;
+    h.cfg(|p| p.faults.fail_projections = 1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert_eq!(h.head(), head + 1, "the accepted transaction stays");
     assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 15.0), 1e-9), "the document holds the move");
-    assert_eq!(h.p().events.count(EventKind::ProjectionFailed), 1);
-    assert_eq!(h.p().events.count(EventKind::ProjectionRebuilt), 1);
+    assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionFailed)), 1);
+    assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), 1);
     h.check(); // drawing and map rebuilt and consistent
     let handles = h.rep_handles(p1, c1);
-    h.p().faults.fail_projections = 2;
+    h.cfg(|p| p.faults.fail_projections = 2);
     h.run("move", json!({"handles": handles, "delta": [0, -5]})).unwrap();
-    assert_eq!(h.p().events.count(EventKind::PageUnavailable), 1);
-    assert!(h.p().pages[&p1].unavailable);
-    assert!(h.p().ledger.is_unsaved());
+    assert_eq!(h.p(|p| p.events.count(EventKind::PageUnavailable)), 1);
+    assert!(h.p(|p| p.pages[&p1].unavailable));
+    assert!(h.p(|p| p.ledger.is_unsaved()));
     let i1 = h.page_index(p1).unwrap();
     h.s.active = i1;
     h.run("qsave", Value::Null).unwrap();
-    assert!(!h.p().ledger.is_unsaved(), "the project is still saveable");
+    assert!(!h.p(|p| p.ledger.is_unsaved()), "the project is still saveable");
     h.run("close", json!({"index": i1})).unwrap();
     h.activate(p2);
     h.run("openpage", json!({"page": p1.hex()})).unwrap();
     assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
     h.check();
     // H2: no committed drawing ever differed from its projection.
-    let mismatched: Vec<_> = h.p().events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect();
+    let mismatched: Vec<_> =
+        h.p(|p| p.events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect());
     assert!(mismatched.is_empty(), "{mismatched:?}");
 }
 

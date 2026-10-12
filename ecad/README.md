@@ -1,6 +1,13 @@
 # ECAD workspace
 
 All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the parent directory).
+
+> **Status: bounded integration experiment, not an application.**
+> - **There is no ECAD desktop shell yet.** Everything runs as tests and a headless example.
+> - **The inspector loads exported JSON snapshots.** It has no live updates.
+> - **Persistence is test-only.** The store is in memory, Save writes no file, and there is no
+>   `.ecad` format yet.
+
 CADCraft crates are used by path; upstream files change only through the patches listed in
 [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
 
