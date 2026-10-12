@@ -263,3 +263,61 @@ fn ids_from_one_allocator_never_repeat() {
         assert!(seen.insert(id));
     }
 }
+
+#[test]
+fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
+    let mut f = fixture();
+    let def = |at: Pt, key2: &str| ecad_model::Definition {
+        name: "d".into(),
+        origin: None,
+        graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
+        terminals: vec![
+            ecad_model::TerminalDef { key: "A1".into(), label: None, at },
+            ecad_model::TerminalDef { key: key2.into(), label: None, at: Pt::new(0.0, 1.0) },
+        ],
+    };
+    for (name, d) in [
+        ("nan", def(Pt::new(f64::NAN, 0.0), "A2")),
+        ("inf", def(Pt::new(f64::INFINITY, 0.0), "A2")),
+        ("dup", def(Pt::new(1.0, 0.0), "A1")),
+    ] {
+        let id = f.ids.fresh();
+        assert!(
+            matches!(
+                f.ledger.commit(Author::User, name, vec![Op::EmbedDefinition { id, definition: d }]),
+                Err(ModelError::Invariant(_))
+            ),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_symbol_must_show_its_components_own_definition() {
+    let mut f = fixture();
+    let good = ecad_model::Definition { name: "d".into(), origin: None, graphics: vec![], terminals: vec![] };
+    let (d1, d2, c, i, r) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    let item = Item {
+        page: f.page,
+        style: line(&f, (0.0, 0.0), (1.0, 0.0)).style,
+        kind: ItemKind::Symbol(ecad_model::SymbolInstance { definition: d2, placement: Default::default() }),
+    };
+    let ops = vec![
+        Op::EmbedDefinition { id: d1, definition: good.clone() },
+        Op::EmbedDefinition { id: d2, definition: good },
+        Op::CreateComponent { id: c, component: Component { definition: Some(d1), ..Default::default() } },
+        Op::AddItem { id: i, item },
+        Op::LinkRepresentation {
+            id: r,
+            rep: Representation {
+                subject: Subject::Component(c),
+                page: f.page,
+                form: ecad_model::Form::Symbol,
+                role: "main".into(),
+                items: vec![i],
+                connection_points: Default::default(),
+            },
+        },
+    ];
+    assert!(matches!(f.ledger.commit(Author::User, "mismatch", ops), Err(ModelError::Invariant(_))));
+}

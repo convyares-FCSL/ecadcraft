@@ -173,8 +173,11 @@ through its membership.
 
 - One typed ID per object kind, so the compiler prevents mixing them.
 - Proposed encoding: 128-bit random, allocated **when the edit is made** and recorded in the op.
-  Replay never allocates. Users see tags and labels; diagnostics show a short form. A copy
-  allocates new IDs for everything it creates (§11).
+  Replay never allocates. Users see tags and labels; diagnostics show a short form.
+- **One copy policy:** every copy or paste, within a project or between projects, allocates new
+  IDs for everything it creates (§11). No object keeps its ID across a copy. The benefit of
+  random IDs is that IDs from independent sessions do not collide, not that pasted content keeps
+  its IDs.
 - Properties are `Unset` or `Set(value)`. Inferred values are derived and shown beside the
   stored value; accepting one records an explicit `SetProperty`.
 
@@ -191,7 +194,7 @@ ECAD-owned schema.
 | --- | --- | --- |
 | Comes from | Convert to component (raw geometry gains meaning) | placing an embedded definition (library, panel, paste) |
 | Stored drawing content | the page items themselves, in page coordinates; one `ConnectionPoint` per terminal, in page coordinates | one `SymbolInstance` item: definition ID + placement |
-| Placement | implicit in the items' coordinates | explicit: origin (x, y), rotation (degrees), mirror (yes/no), uniform scale (> 0) |
+| Placement | implicit in the items' coordinates | explicit: origin (x, y), rotation (radians, stored), mirror (yes/no), uniform scale (> 0) |
 | Terminal page position | stored (`ConnectionPoint`) | derived: placement applied to the definition's local terminal position |
 | Projected into CADCraft as | the primitives, an unnamed selectable group around them, and a point marker per connection point | one block per embedded definition (graphics + terminal point markers) and one `Insert` per instance |
 | Moving it in CADCraft | the group is picked whole; items and markers move; the diff shows new coordinates | the `Insert` changes position, rotation or scale; the diff gives the new placement |
@@ -223,7 +226,18 @@ EmbeddedDefinition {
 ```
 
 **Placement transform (normative):** `page = origin + R(rotation) · M(mirror) · scale · local`,
-where `M` negates x when mirrored. These are our own stored values. They map onto CADCraft's
+where `M` negates x when mirrored, and `rotation` is in **radians**, counter-clockwise. These are
+our own stored values.
+
+**Units at the boundaries.** The document stores radians: the same unit as CADCraft's insert
+rotation, so the round trip is exact (§4.3; the experiment showed that converting through degrees
+would not be). People think in degrees, so the conversion happens only at the edges:
+
+- commands that take an angle from people or scripts (PLACE `rotation`, and later rotate dialogs
+  and property panels) accept **degrees** and convert once, when the edit is made;
+- the converted value is what the op records, so replay never converts again (TX-01);
+- displays and reports show degrees, derived from the stored radians;
+- the stored value is never rounded to a "nice" number of degrees. They map onto CADCraft's
 `Insert { insert, scale, rotation }` (`doc/src/entity.rs:382-399`) **[Read]** with
 `scale = (±s, s, 1)`. Non-uniform scale, MINSERT rows/columns and oblique placement are outside
 the schema; CADCraft edits that would produce them are refused (§18.3, L6).
@@ -971,3 +985,4 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 1: first proposal |
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
+| 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
