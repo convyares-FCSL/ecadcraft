@@ -1,6 +1,7 @@
 # ECAD document architecture and integration proposal
 
-> **Status:** revision 2, for review; nothing implemented. **Written:** 2026-10-12 against `dev`
+> **Status:** revision 3. Revision 2 was approved as the basis for the bounded integration
+> experiment (§17); the integration choices in Part B stay provisional until demonstrated. **Written:** 2026-10-12 against `dev`
 > at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
@@ -486,6 +487,15 @@ Conventions in `ecad/` follow your repositories:
 CADCraft's never-crash rules also apply. Upstream's tree is not moved, because moving it would
 turn every merge into rename conflicts.
 
+### 8.1 Versioning (agreed)
+
+| What | Version scheme | Where it is recorded |
+| --- | --- | --- |
+| ECAD product (the `ecad/` workspace) | `0.1.0-dev` during development | `ecad/Cargo.toml` `[workspace.package] version` |
+| ECAD releases | tags `ecad-v<version>` (for example `ecad-v0.1.0`); upstream's `v…` tags are left alone | git tags |
+| Incorporated CADCraft | tracked separately as the upstream commit merged in (today `00c7613`, CADCraft 0.6.2); updated by each upstream sync PR | `ecad/UPSTREAM.md` |
+| Document formats (`.ecad`, `.ecadlib`, op schemas) | their own integer versions, independent of product versions; a product release never changes a format version unless the format changes | constants in `ecad-model` and `ecad-store` |
+
 ## 9. How edits reach the document
 
 ### 9.1 Two paths, one ledger
@@ -536,6 +546,10 @@ turn every merge into rename conflicts.
 | Panic inside a CADCraft command | the engine restores `before` and returns an error **before** the commit point, so the owner is never asked and nothing is appended | `lib.rs:757-771`, interactive `1074-1081` **[Read]** |
 | ECAD command fails validation | no transaction, no drawing change | ledger rule TX-03 |
 | Ledger apply fails after a CADCraft commit | treated as a refusal | — |
+| Failure **after** the ledger accepted a transaction but before projection completes (projector error or panic) | **roll forward**, never back. The accepted transaction stands and the document is authoritative. The engine's drawing and the handle map for every affected page are discarded and rebuilt from the document by a full projection. If that rebuild also fails, the page view is closed with an error; the project stays open, unsaved and saveable, and the page can be reopened. Restoring the previous drawing alone would leave the drawing behind the document | rule PROJ-02 |
+
+**PROJ-02:** once a transaction is accepted, consistency is restored by projecting the document,
+never by restoring an older drawing.
 
 **TX-05 (proposed rule):** an ECAD transaction that changes a page's drawing is not applied
 while a CADCraft command is in progress on that page, because the command holds its own copy of
@@ -781,26 +795,32 @@ with the smallest code that exercises real CADCraft commands.
 - `ecad-cadcraft`: projector, handle map, owner and commit translation.
 - Minimal commands: CONVERTTOCOMPONENT, ADDTERMINAL, WIRE, CONNECT, DISCONNECT, DELETE, SETPROP,
   CABLEADD and PLACE (by command, from one embedded definition).
-- One page, driven headlessly through `Session` exactly as the UI and control channel drive it.
+- Two pages in one project, driven headlessly through `Session` exactly as the UI and control channel drive it.
   Plus one manual desktop run, with screenshots, for the preview and closing prompts.
 
 ### 17.2 Scenario
 
+One project with two pages, `p1` and `p2`. The drawn component `c1` has terminals `t1`-`t3`. The
+symbol instance `c2` has terminals `s1` and `s2`.
+
 | Step | Action (real CADCraft command where possible) | Expected |
 | --- | --- | --- |
-| S1 | LINE rectangle, TEXT label | `AddItem`s; plain geometry |
-| S2 | CONVERTTOCOMPONENT, ADDTERMINAL ×2 | drawn representation; connection points |
-| S3 | PLACE a symbol, rotated 90° | `EmbedDefinition`, instance, terminals from definition keys; terminal positions match placement |
-| S4 | WIRE `w1` from the drawn component to the symbol; WIRE `w2` with one free end | `w1` attached at both ends; `w2` one end open |
+| S1 | On `p1`: LINE rectangle, TEXT label | `AddItem`s; plain geometry |
+| S2 | CONVERTTOCOMPONENT, ADDTERMINAL ×3 | drawn representation of `c1`; connection points `t1`-`t3` |
+| S3 | PLACE a symbol, rotated 90° | `EmbedDefinition`, instance `c2`, terminals `s1`/`s2` from definition keys; terminal positions match placement |
+| S4 | WIRE `w1` from `t1` to `s1`; WIRE `w2` from `t2` to a free point; WIRE `w3` from `t3` to a free point | `w1` attached at both ends; `w2` and `w3` each with one open end |
 | S5 | Grip a middle vertex of `w1` | M1: route only |
-| S6 | MOVE the drawn component; ROTATE the symbol | M2: ends follow in the same transaction; no mismatch; preview shows following ends |
-| S7 | Grip `w2`'s attached end onto the symbol's other terminal, then into free space | M3: reconnect, then detach; drawing and intent agree |
-| S8 | COPY the drawn component together with `w2`; then COPYCLIP/PASTECLIP the symbol instance | independent copies: all new IDs, internal relationships preserved, `w2`'s copy attached to the copied terminal; originals unchanged |
+| S6 | MOVE `c1`; ROTATE `c2` | M2: attached ends follow in the same transaction; no mismatch; preview shows following ends |
+| S7 | Grip `w3`'s free end onto `s2`; then grip it from `s2` into free space | M3: attach, then detach; drawing and intent agree. `w2` is not touched and stays attached to `t2` |
+| S8 | COPY `c1` together with `w2`; then COPYCLIP/PASTECLIP `c2` | independent copies: all new IDs, internal relationships preserved, `w2`'s copy attached to `t2`'s copy; originals unchanged |
 | S9 | ERASE `w1`'s route; then DELETE conductor `w2` | `w1` remains, "not shown", still attached; `w2` gone with its representation and attachments |
-| S10 | SETPROP tag on the copy (no drawing change); CABLEADD | unsaved marker on; head ≠ persisted |
-| S11 | Save; then a save with injected failure; then save again | clean; failure → still unsaved, error reported, file intact; then clean |
-| S12 | Undo everything back to empty, then redo everything | each step's state restored; IDs identical; same transaction count either way |
-| S13 | Reopen from the store, with and without checkpoints | equals live state |
+| S10 | NEWPAGE `p2`; on `p2` draw a LINE and a WIRE `w4`; CABLEADD `w3` and `w4` (members on two pages); SETPROP tag on `c1`'s copy (no drawing change) | `p2` projected as a second CADCraft document; the unsaved marker shows on **both** page tabs; head ≠ persisted |
+| S11 | With `p1` active, UNDO twice | the SETPROP and the cable, which concern `p2` objects, are undone (project-wide history); `p2`'s drawing is updated though it is not active |
+| S12 | Close the `p2` page tab; reopen it | no prompt; project still unsaved; reopened page equals the projection |
+| S13 | Save; make a **new** unsaved edit (SETPROP); save with an injected write failure; save again | clean after the first save; unsaved after the edit; still unsaved after the failed save, with the error reported and the file still holding exactly the first save's transactions; clean after the third save |
+| S14 | Undo everything back to an empty project, then redo everything | after each undo and redo, the **document state equals the state recorded for that point**, object IDs are identical and every page's drawing equals its projection. The log **grows** by one transaction per undo or redo; no transaction is removed |
+| S15 | Reopen from the store, with and without checkpoints | equals the live state |
+| S16 | Inject a projector failure into the next accepted transaction (a MOVE of `c1`); then inject failures into both the projection and the rebuild | first case: the transaction stays in the ledger, the document holds the move, and drawing and map are rebuilt from the document and consistent. Second case: the page view closes with an error; the project stays open, unsaved and saveable, and reopening the page shows the move |
 
 ### 17.3 Refused and cancelled cases
 
@@ -810,9 +830,9 @@ with the smallest code that exercises real CADCraft commands.
 | Esc during LINE after two segments | the two segments recorded, as CADCraft keeps them |
 | EXPLODE the symbol; BREAK a route; HATCH on the page | refused with a message; drawing restored to the last projection; ledger, map and unsaved state unchanged |
 | CONNECT to a terminal deleted earlier in the same session | validation error; nothing appended |
-| Injected panic in an ECAD command and in an owner callback | engine guard restores; nothing appended; next command works |
+| Injected panic in an ECAD command and in an owner callback | engine guard restores; nothing appended (or, after acceptance, PROJ-02 applies); next command works |
 | A SETPROP while a CADCraft MOVE is running | refused per TX-05 |
-| Closing the page tab with unsaved changes; then closing the project | tab closes without prompting; project close prompts; Save failure keeps it open |
+| Closing a page tab with unsaved changes; then closing the project | tab closes without prompting; project close prompts; Save failure keeps it open |
 
 ### 17.4 Checked after every step
 
@@ -825,7 +845,7 @@ with the smallest code that exercises real CADCraft commands.
 
 ### 17.5 Exit criteria and report
 
-The experiment passes when S1-S13 and §17.3 pass, with checks 1-6 after every step, on Linux,
+The experiment passes when S1-S16 and §17.3 pass, with checks 1-6 after every step, on Linux,
 and the ECAD crates build for `wasm32`. The report records:
 
 - which hypotheses held;
@@ -852,6 +872,8 @@ Recorded as direction; no further approval needed.
 | A5 | An adapter around CADCraft; document, history and library crates free of CADCraft (P10) |
 | A6 | Meaning separate from representation (P6); incomplete designs valid (P7) |
 | A7 | History preserved; no destructive compaction; checkpoints disposable (P9, FILE-04, FILE-05) |
+| A8 | Versioning as in §8.1: `0.1.0-dev`, `ecad-v…` release tags, CADCraft commit tracked separately, format versions independent |
+| A9 | Revision 2 approved as the basis for the bounded experiment; Part B stays provisional until demonstrated |
 
 ### 18.2 Revised recommendations requiring approval
 
@@ -884,7 +906,7 @@ afterwards.
 | L4 | Copy and paste within one page and project only; cross-project paste later |
 | L5 | ERASE removes representations only; a separate DELETE command deletes subjects |
 | L6 | Kinds outside the schema (hatch, dimensions, tables, arbitrary block inserts, MINSERT, non-uniform scale) are refused on ECAD pages |
-| L7 | One page; no autosave or crash journal; UNDO Mark/Back/BEgin/End unavailable |
+| L7 | Two pages at most in the scenario; no autosave or crash journal; UNDO Mark/Back/BEgin/End unavailable |
 | L8 | Placement by command; no drag-and-drop from panels |
 | L9 | A test-only store, not the `.ecad` encoding |
 | L10 | ECAD edits refused while a CADCraft command is running on the page (TX-05) |
@@ -948,3 +970,4 @@ Corrections carried from revision 1:
 | --- | --- |
 | 2026-10-12 | Revision 1: first proposal |
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
+| 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
