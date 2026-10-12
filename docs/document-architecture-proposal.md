@@ -1,9 +1,9 @@
 # ECAD document architecture and integration proposal
 
-> **Status:** revision 4 draft. Revision 2 was approved as the basis for the bounded integration
+> **Status:** revision 4.1. Revision 2 was approved as the basis for the bounded integration
 > experiment (§17); the integration choices in Part B stay provisional until demonstrated.
-> Revision 4 adds **Part E** (persistence and the live debugger) **for review; nothing in it is
-> implemented**. **Written:** 2026-10-12 against `dev`
+> Revision 4 added **Part E** (persistence and the live debugger). Revision 4.1 revises its
+> contracts after review; **only stage 1 (§22) is approved for implementation**. **Written:** 2026-10-12 against `dev`
 > at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
@@ -23,7 +23,7 @@ prove:
   needs proof, together with the movement, copy and deletion policies built on it.
 - **Part C, integration experiment.** The smallest experiment that would prove or disprove
   Part B. It is specified here but not run.
-- **Part E, persistence and live inspection** (revision 4 draft, for review). It sets out the
+- **Part E, persistence and live inspection** (revision 4.1; stage 1 approved). It sets out the
   `.ecad`/`.ecadlib` container, how embedded definitions are stored, durability, recovery,
   versioning and checkpoints, and a read-only live debugger panel, with acceptance criteria.
 - **Part D, decisions,** split into four groups: direction already supported, revised
@@ -77,7 +77,7 @@ Changes from revision 1 (details in [Revision 2 changes](#revision-2-changes)):
 18. [Decision table](#18-decision-table)
 19. [Room for later features](#19-room-for-later-features)
 
-**Part E: persistence and live inspection (revision 4 draft, for review)**
+**Part E: persistence and live inspection (revision 4.1; stage 1 approved)**
 
 20. [Persistence design](#20-persistence-design)
 21. [Live debugger (developer panel)](#21-live-debugger-developer-panel)
@@ -280,11 +280,11 @@ as bookmarks, and optional checkpoints as a cache.
 - **FILE-02 Deterministic replay.** Replay applies recorded values and IDs; it never snaps,
   searches, infers attachments or allocates IDs.
 - **FILE-03 Durable append.** Saving appends whole transactions and then flushes them to disk
-  (`fsync`). A torn trailing write is ignored on open.
+  (`fsync`). An unterminated trailing write is ignored on open; a complete corrupt record is
+  not (§20.6).
 - **FILE-04 Checkpoints are caches.** Deleting every checkpoint changes nothing but opening
-  speed. This holds **unconditionally** in the initial implementation (P9). Part E proposes
-  optional checkpoint records inside the file, validated before use and never authoritative
-  (§20.8).
+  speed. This holds **unconditionally** in the initial implementation (P9). Part E keeps
+  checkpoints disabled until their trust contract is decided (§20.8).
 - **FILE-05 No destructive compaction.** Nothing rewrites the file in a way that drops
   transactions needed for the current state or any named version until a preservation contract
   is approved. Save As writes the full history.
@@ -370,10 +370,12 @@ untouched.
   session-only) never moves the head.
 - **SAVE-04 Save failure.** The persisted position advances only after the appended bytes are
   flushed. If writing or flushing fails, the position stays where it was, the project stays
-  unsaved, the error is reported, and nothing in memory is lost. Before the next save, any torn
-  trailing bytes are truncated back to the last good offset. A save to a new path (Save As,
-  first save) writes a temporary file, flushes it and renames it into place, so a failure never
-  damages an existing file.
+  unsaved, the error is reported, and nothing in memory is lost. Before the next save, bytes
+  left by our own failed save are truncated back to the verified prefix; any other change to the
+  file refuses the save (§20.5). A save to a new path (Save As, first save) writes a temporary
+  file, flushes it and renames it into place. A failure before replacement leaves an existing
+  file unchanged; a failure to confirm durability after replacement is reported as uncertain
+  (§20.5).
 - **SAVE-05 Pages versus project.** A page tab is a view of the project. Closing a page tab
   never prompts and never discards changes, because the project and its unsaved transactions
   remain open. Closing the **project** (Close Project, quitting the app, or closing its last
@@ -974,8 +976,12 @@ Each item names the constraint to preserve. None is decided by this proposal.
 
 # Part E: persistence and live inspection (proposal for review)
 
-> **Status: revision 4 draft, for review. Nothing in Part E is implemented**, and no persistence
-> or debugger code is written until the owner approves it (§23). Part E says how to meet the
+> **Status: revision 4.1.** The owner reviewed revision 4 at `b0444b9`. The direction is
+> supported: JSON Lines for development, inline embedded definitions, separate versioned file
+> records, and the Rust debugger. The recovery, save-retry, Save As, checkpoint,
+> command-boundary and integrity contracts are revised here (§20.4-§20.11).
+> **Approval covers stage 1 only** (§22): records and JSON in memory. Disk persistence, the
+> debugger, library UI and checkpoints stay designed and unimplemented. Part E says how to meet the
 > contracts of §5 and §6; it does not change them, except where §5 now points here.
 > **Owner's direction (2026-10-12):**
 > - Use JSON for the initial development implementation, because it is directly readable.
@@ -1023,7 +1029,7 @@ A single file is required (FILE-01, P8) and must hold three distinguishable kind
 
 | | **A. Typed record stream** (recommended) | B. ZIP-style package | C. Main file plus sidecar files |
 | --- | --- | --- | --- |
-| Shape | one file: a header record, then records each tagged `"type"`: `tx`, `checkpoint` (and `def` if separate definition records are chosen) | archive with members (`history.jsonl`, `checkpoints/…`, `defs/…`) | `.ecad` holds the history; checkpoints in `name.ecad-cache` |
+| Shape | one file: a header record, then records each tagged `"type"`: `tx` (later `checkpoint`, and `def` if separate definition records were ever chosen) | archive with members (`history.jsonl`, `checkpoints/…`, `defs/…`) | `.ecad` holds the history; checkpoints in `name.ecad-cache` |
 | Append-only save (FILE-03) | natural: append records, flush | poor: the central directory must be rewritten or re-appended on every save; a torn write leaves an unreadable archive | natural for the main file |
 | Torn-write recovery | the longest valid prefix of records | depends on archive tooling | main file as A; the cache is simply discarded |
 | Readable with a text editor | yes, line by line | needs unzipping | yes |
@@ -1034,8 +1040,8 @@ A single file is required (FILE-01, P8) and must hold three distinguishable kind
 - **What it is:** a JSON Lines file of typed records.
 - **Why not B:** ZIP solves random access and compression, which are not problems yet. It
   makes durable append and torn-write recovery harder, which are problems now.
-- **C is rejected for now:** A can hold checkpoints as ignorable records (§20.8), so a second
-  file is not needed.
+- **C is rejected for now:** if checkpoints are added later (§20.8), A can hold them as records
+  of their own, so a second file is not needed.
 
 The record framing (§20.11) leaves room to move to a binary framing later without changing the
 records.
@@ -1046,10 +1052,10 @@ Records in container version 1:
 | --- | --- | --- |
 | `header` | first, exactly once | `container` (`"ecad-project"` / `"ecad-library"`), `container_version`, `schema_version`, `codec` (`"jsonl/1"`), `project_id` / `library_id`, `created_ms`, `writer` (product and CADCraft commit) |
 | `tx` | one per transaction, in order | `seq`, `id`, `kind` (`"edit"`, `{"undo": id}`, `{"redo": id}`), `author`, `time_ms?`, `label`, `ops: [{"op": name, "v": n, …}]`, `prev` (history hash, §20.10) |
-| `checkpoint` | zero or more, never authoritative | `at_seq`, `history_hash` at that seq, `state_hash`, `document` (§20.8) |
+| `checkpoint` | **reserved; not in container version 1** | checkpoints are disabled until their trust contract is decided (§20.8) |
 
 A reader ignores nothing silently: any other `type` is refused unless a later container version
-marks it as ignorable (§20.7).
+defines it (§20.7). Each record is framed with a CRC over its exact payload bytes (§20.11).
 
 ### 20.3 Embedded library definitions
 
@@ -1102,65 +1108,128 @@ Further rules for embedded definitions:
 
 ### 20.4 Transaction boundaries
 
-- **One transaction per accepted command.** Every accepted command, ECAD command, undo or redo
-  is exactly one `tx` record (§9.1, UNDO-01). A refused or cancelled command writes nothing
-  (§9.2).
+- **One transaction per commit with accepted changes.** Each commit point that leaves accepted
+  changes becomes exactly one `tx` record (§9.1, UNDO-01). A commit point is the end of a
+  CADCraft command, an ECAD command, an undo or a redo.
+- **Cancelling keeps what CADCraft kept.** A cancelled command is recorded if CADCraft keeps part
+  of its result. LINE is the example: segments completed before Esc stay in the drawing. They
+  are recorded as one transaction at that commit point, as the experiment already does
+  (`escape_during_line_records_the_segments_kept`). A command that leaves no accepted change,
+  refused or cancelled with nothing kept, produces no transaction (§9.2).
 - **Atomic and validated before it exists.** A transaction is applied to a copy and checked
-  (TX-03). Only then is it appended to the in-memory log and given its `seq`. Its record is
-  written at the next save.
-- **Pending versus durable.** The in-memory log is ahead of the file between saves. A
-  transaction is **durable** only when its complete record is in the file and the file has
-  been flushed. `persisted` is the highest durable `seq`.
-- **A save is a batch.** Saving appends records `persisted+1 … head`, then flushes once. Each
-  record stands alone and chains to the previous one, so any prefix of a batch is a valid
-  history.
+  (TX-03). Only then is it appended to the in-memory log and given its `seq`.
+- **Pending versus durable.** The in-memory log runs ahead of the file between saves. A
+  transaction is **durable** only when its complete record is in the file and acknowledged
+  durable (§20.5). The last acknowledged position is `persisted`.
+- **A save writes a batch.** It writes records `persisted+1 … head`. Every record stands alone
+  and chains to the previous one, so a prefix of a batch that reaches the file is a valid
+  history. Whether it is *acknowledged* is a separate question (§20.5).
 
-### 20.5 Durable saving
+### 20.5 Durable saving and retry
 
-- **Save** (file already holds this project up to `persisted`):
-  1. Check the file is unchanged since the last durable write: same length, same modification
-     time.
-  2. Truncate to the last durable length (removing any earlier torn tail).
-  3. Append the pending records.
-  4. Flush (`sync_data`).
-  5. Then advance `persisted` (SAVE-04).
+**Writer state.** The writer keeps this state for the file it owns:
 
-  If any step fails, `persisted` and the in-memory log are untouched, the error names the
-  file and the step, and the project stays unsaved.
-- **Save As, or first save:**
-  1. Write the header and every transaction (FILE-05; checkpoints optional) to a temporary file
-     in the target folder.
-  2. Flush it and rename it over the target.
-  3. Flush the folder where the platform allows.
-
-  A failure never damages the existing target. `project_id` is kept: Save As is a new location,
-  not a new project.
-- **Writer lock.** Opening a project for writing takes an OS file lock, released when the
-  process ends. A second opener gets the project **read-only** and is told why.
-- **File changed externally** (length or modification time differs from the last durable
-  write): Save refuses and offers Save As. Nothing is overwritten blindly.
-
-### 20.6 Recovery from interrupted writes
-
-On opening:
-1. Check the header: container, versions, codec.
-2. Read records in order, checking for each:
-   - the frame checksum;
-   - that `seq` is consecutive;
-   - that `prev` links to the previous record (§20.10);
-   - that every op decodes, upcasting old versions.
-3. Replay through the ledger, which checks preconditions and invariants after every
-   transaction (TX-03, TX-04).
-
-| Finding | Result |
+| Field | Meaning |
 | --- | --- |
-| Everything valid | opens writable; `persisted = head` |
-| Last record incomplete, unterminated or failing its checksum (an interrupted save) | that record is ignored (FILE-03) and reported; opens writable at the valid prefix; the tail is truncated at the next save |
-| A bad record, broken chain, failed precondition or failed invariant **before** the last record | opens **read-only** at the last good transaction, with a report naming the first bad `seq`; Save As can write the good history to a new file; nothing is written to the damaged file |
-| Unknown or newer `container_version`, `schema_version`, `codec`, record type, op or op version | refuses to open, naming what this build supports (§20.7) |
+| `verified_len` | byte length of the **verified prefix**: complete records read and checked on open, or written by this writer and acknowledged durable |
+| `persisted` | `seq` of the last transaction in the verified prefix, i.e. the **last acknowledged durable position** |
+| `chain_head` | history hash of transaction `persisted` (§20.10) |
+| `tail_check` | the bytes (or CRC and length) of the last record in the verified prefix, used to confirm the prefix is still ours |
+| `attempt` | `None`, or the failed save in progress: its start offset (= `verified_len`), its exact bytes and the `seq` range they encode, and how far it got: append failed, or appended but the flush failed |
 
-A crash between saves loses the pending transactions. That is the reason for the "unsaved"
-marker. The crash journal stays deferred (§18.4); it would be a separate design.
+**Save** (the file already holds this project up to `persisted`):
+
+1. **Confirm the file is still ours.** Its length must be ≥ `verified_len`, and the last record
+   of the verified prefix must equal `tail_check`. On disk (stage 2) its identity (device and
+   inode, or file index) must also be unchanged.
+2. **Classify any bytes beyond `verified_len`:**
+   - **none:** nothing to undo;
+   - **a prefix of `attempt`'s bytes:** our own failed save left them. They are truncated back to
+     `verified_len`;
+   - **anything else:** an **external change**. Save refuses, says so, and offers Save As. The
+     file is not truncated or overwritten.
+3. **Write the batch.** Encode records `persisted+1 … head` afresh, including any transactions
+   made since the failed attempt. Record them as the new `attempt` and append them.
+4. **Flush.** A flush that reports failure is never retried on the same bytes. After a failed
+   `fsync` the operating system may have dropped the written data while reporting the next
+   flush as successful. The next retry truncates and rewrites the batch instead.
+5. **Acknowledge.** Only after the flush succeeds: `verified_len` += the batch length,
+   `persisted = head`, `chain_head` and `tail_check` move, and `attempt = None` (SAVE-04).
+
+Each failure point leaves the same guarantees:
+
+| Failure | File | In memory |
+| --- | --- | --- |
+| step 1 or 2 finds an external change | untouched | unchanged; still unsaved; the error names the change |
+| truncation of our own bytes fails | may still hold them; `attempt` keeps them identifiable | unchanged; the next Save retries from step 1 |
+| append fails after writing part of the batch | a prefix of our bytes after `verified_len` | unchanged; `attempt` records them |
+| flush fails | the batch may or may not be durable | unchanged; `persisted` not advanced; the next Save truncates and rewrites |
+
+A transaction is therefore never duplicated: retries always restart at `verified_len`. It is
+never lost: the in-memory log is the source of every batch.
+
+**Save As, or first save.** It runs in two phases, whose outcomes differ:
+
+| Phase | Steps | Outcome if it fails |
+| --- | --- | --- |
+| **Before replacement** | (a) take the target's writer lock (below); refuse if another writer holds it; (b) create a uniquely named temporary file in the target folder; (c) write the header and every transaction (FILE-05); (d) flush it | The target was never touched: an existing target is exactly as it was. The temporary file is removed (best effort, reported if that fails). The project stays bound to its previous path, with `persisted` unchanged. The error names the step. |
+| **Replacement** | (e) rename the temporary file over the target (atomic on one file system; on Windows `MoveFileEx` with replace-existing and write-through) | A failed rename leaves the target as it was, and is handled as above. |
+| **After replacement** | (f) flush the containing folder (Unix) | The new file is at the target path, but **durability of the replacement is uncertain**: after a crash the folder could show either the old or the new file. The writer does **not** say the old target is untouched or that the save is durable. The project is bound to the new path, because that file is ours. `persisted` is **not** advanced. The state is "replaced; durability unconfirmed", so the next Save retries the folder flush (and the file flush) before acknowledging. In-memory work is unaffected. |
+
+The error text says which phase failed: "not saved, the existing file is unchanged" versus
+"written, but the system could not confirm the change is durable; save again". The user is
+never told more than the writer knows.
+
+**Writer lock across replacement.**
+- **A lock file, not the project file.** The lock is an OS lock (`flock` / `LockFileEx`) on a
+  sibling lock file (`name.ecad.lock`). It is not taken on the project file itself, because a
+  lock on the old file would not cover the file that replaces it.
+- **Save As to another path:**
+  1. Acquire the target's lock before step (b), and keep the current path's lock meanwhile.
+  2. After a successful replacement, release the old path's lock.
+  3. If the target's lock is held by another writer, refuse before writing anything.
+- **Lifetime:** the OS releases the lock when a process ends, so no lock outlives its process.
+- **Leftover files:** a leftover lock file without a holder is harmless.
+- **A second opener** of a locked project gets it read-only.
+
+**In stage 1** there is no disk. The writer, its state and the Save retry rules are implemented
+over the in-memory medium, with fault injection for partial append, failed flush, failed
+truncate and external change. Save As phases and locking are specified here and implemented in
+stage 2.
+
+### 20.6 Recovery on open
+
+The reader reads the bytes and splits them into **complete records** (ending in `\n`) and, at
+most, one **unterminated trailing fragment** after the last `\n`. For each complete record, in
+order, it checks:
+
+1. the frame (§20.11) and its CRC;
+2. that the payload parses;
+3. the record type and that `seq` is consecutive;
+4. the hash chain (`prev`);
+5. that every op is known (in its stored version);
+6. the upcast to the current version;
+7. replay preconditions (TX-04);
+8. the document invariants (TX-03).
+
+The checks run in that order, so **integrity is verified on the stored form before any
+upcast**. The verified prefix ends at the last record that passes all eight. The outcome
+depends only on *what* follows that prefix, not on *where* it is:
+
+| What follows the verified prefix | Classification | Result |
+| --- | --- | --- |
+| nothing | clean | opens **writable**; `persisted = head` |
+| only an **unterminated trailing fragment** (no final `\n`; possibly empty, partial or garbage bytes such as zeros) | **incomplete trailing write**: the only shape an interrupted append can leave, because the terminator is written last | opens **writable** at the verified prefix. The report names the fragment's offset and length and shows a capped preview. Before the first save truncates it, the fragment is preserved beside the file (stage 2: `name.ecad.tail-<offset>`), so even an unexpected fragment is never destroyed silently. |
+| a **complete** record that fails any check 1-8, **including when it is the final record** (CRC mismatch, unparsable, wrong `seq`, broken chain, unknown op, precondition or invariant failure) | **corrupt record**: a complete record is never treated as interrupted output | opens **read-only** at the verified prefix. **The source is preserved:** nothing is truncated or written. The report names the record's offset, its `seq` if readable, the failed check, and how many complete records and bytes follow (the omitted tail). Save As can write the verified history to a new file. |
+| unknown or newer container, codec or schema version in the header | unsupported | refuses to open, naming what this build supports |
+
+**The report is part of the open result**, not a log line. It always states:
+- the verified `seq` and byte length;
+- the classification;
+- for anything omitted: offset, length, record count and reason.
+
+The trial and, later, the debugger show it. A crash between saves loses only pending
+transactions, which the unsaved marker warns about. The crash journal stays deferred (§18.4).
 
 ### 20.7 Format versioning
 
@@ -1171,39 +1240,41 @@ The four version axes are independent of each other and of the product version (
 | `container_version` | record types, framing, header fields | a reader refuses newer values |
 | `codec` | how records become bytes (`jsonl/1`) | a reader refuses codecs it lacks |
 | `schema_version` | the meaning of record contents | a reader upcasts older versions and refuses newer ones |
-| op `v` | one op's fields | a reader upcasts each older op version on read (FILE-06) |
+| op `v` | one op's fields | a reader upcasts each older op version (FILE-06) |
 
-- **Writing a different version:** the writer always writes the current versions. A file in an
-  older schema version opens with its records upcast in memory. Appending records of a
-  different version to it would mix versions in one file, so its **first save rewrites the
-  whole file** in the current version. This uses the Save As procedure, keeps a copy of the
-  original (`name.ecad.v1.bak`) and asks first. Every transaction is preserved, so this is a
-  conversion, not compaction (E4).
-- **Strict reading:** unknown fields, records, ops and op versions are refused, not ignored, so
-  an older build never drops data silently (E5). Revisit before the first release that must
-  read files from newer builds.
+- **Order of checks:** integrity (CRC and hash chain) is checked on the **stored** bytes and
+  stored form, *then* records are upcast (§20.6). An upcast can therefore never mask damage.
+- **Writing:** the writer always writes the current versions.
+- **Older-schema files:** they open with their records upcast in memory. Their first save
+  rewrites the file in the current version, using the Save As procedure. It keeps a backup of
+  the original and asks first (E4). This is a conversion, not compaction: every transaction is
+  kept.
+  - The new file has a new hash chain over the new records.
+  - The conversion report records the old file's final chain hash, so the link between the two
+    files stays traceable.
+- **Strict reading:** unknown record types, fields, ops and op versions are refused, never
+  ignored (E5).
 
-### 20.8 Checkpoints
+### 20.8 Checkpoints (later stage; disabled until then)
 
-- **What they are for:** disposable caches that only make opening faster (FILE-04, P9). They
-  are **never written automatically in stages 1-3**. Replay is fast at development sizes, and
-  that avoids premature optimisation.
-- **Format:** a `checkpoint` record holds:
-  - `at_seq`;
-  - the history hash at that seq;
-  - a state hash of the canonical document;
-  - the document (all stored state, including embedded definitions).
+- **Disabled in the initial implementation.** Checkpoint writing and loading are both off.
+  Container version 1 has no checkpoint record. A `checkpoint` record type is reserved, and a
+  version 1 reader refuses it like any unknown type. Replay is fast at development sizes.
+- **Purpose when added:** a disposable cache that only makes opening faster (FILE-04, P9).
+  Removing all checkpoints changes only opening speed, and history is never dropped (A7,
+  FILE-05).
+- **Trust and validation contract: unresolved.** A history hash at `seq` *n*, plus a checksum
+  of the checkpoint's own contents, proves only two things: the checkpoint belongs to this
+  history, and it is intact. It does **not** prove that its document equals what replaying
+  transactions 1…*n* would produce. A buggy or older writer could have computed it wrongly.
 
-  It always follows the `tx` record it covers.
-- **Using one:**
-  1. A reader may load the newest checkpoint whose `history_hash` matches the verified chain.
-  2. Its `state_hash` must match its document.
-  3. Only transactions after it are replayed.
-  4. A checkpoint failing either check is **ignored**, with a diagnostic. It never blocks
-     opening and never replaces history.
-  5. The full-replay check stays available as an explicit "verify" action (§21).
-- **Removing them:** Save As without checkpoints writes the same history with no checkpoints.
-  Removing them changes only opening speed. History is never dropped (A7, FILE-05).
+  Options to decide in the checkpoint stage:
+  - a state hash recorded *inside* the history (an op written by the transaction path);
+  - background verification by full replay before a checkpoint is trusted;
+  - accepting checkpoints only from the same build;
+  - treating them strictly as hints, always re-verified.
+
+  Until that contract is approved, checkpoints are not implemented.
 
 ### 20.9 Library files (`.ecadlib`)
 
@@ -1228,42 +1299,100 @@ The four version axes are independent of each other and of the product version (
 
 ### 20.10 Integrity
 
-- **Frame checksum.** Encoding level: CRC-32C of a record's bytes. It catches torn and damaged
-  records.
-- **History hash chain.** Semantic level:
-  - each `tx.prev` is the SHA-256 of the canonical form of the previous transaction;
-  - transaction 1 chains to the header's `project_id`.
+**Frame checksum (encoding level).** Each record is framed (§20.11) so the CRC covers an exact,
+contiguous byte range: the **payload bytes**, which are the record's JSON object exactly as
+written between the frame prefix and the frame's closing `}`. No field is removed or re-encoded
+to check it. The algorithm is CRC-32C (Castagnoli), written as 8 lowercase hex digits. It
+detects accidental damage to a record.
 
-  It catches missing, reordered or substituted transactions, and diverging copies. It
-  identifies named versions and checkpoints, and survives a later change of codec.
-- **Canonical form.** A record's semantic content serialised by the JSON Canonicalization
-  Scheme (RFC 8785), excluding the frame checksum. It is used only for hashing. Content hashes
-  of definitions use the same form.
-- **Dependencies:** both algorithms have small, permissively licensed Rust implementations, to
-  be recorded in the ECAD dependency notes.
+**History hash chain (semantic level).**
+- **Domain-separated seeds:**
+  - project: `seed = SHA-256("ecad-chain/1\0project\0" ‖ project_id as 16 big-endian bytes)`;
+  - library: `seed = SHA-256("ecad-chain/1\0library\0" ‖ library_id as 16 big-endian bytes)`.
+
+  Neither seed depends on the codec, the writer or the time, so the chain survives a later codec
+  conversion.
+- **Links:**
+  - transaction 1 has `prev = seed`;
+  - each later transaction has `prev = H(previous transaction)`, where
+    `H(tx) = SHA-256("ecad-tx/1\0" ‖ canonical(tx))`;
+  - `canonical(tx)` covers the whole stored transaction record, including its own `prev`, in its
+    **stored** schema version, before any upcast.
+- **What it detects:**
+  - a changed, missing, duplicated or reordered transaction *within* the verified history;
+  - a record from another project or library (wrong seed);
+  - two copies whose histories diverge after a shared prefix.
+- **What it does not do:**
+  - It is **unkeyed**, so anyone can recompute it. It does **not** protect against deliberate
+    rewriting.
+  - It **cannot detect truncation at a record boundary.** A valid prefix of a history is itself
+    a valid history. Detecting that would need the head hash recorded somewhere else, such as a
+    named version, a signature or an external manifest. That is outside stage 1.
+
+**Canonical form.** A record's canonical form is the RFC 8785 JSON Canonicalization Scheme
+applied to its parsed payload:
+- **Key order:** object keys sorted by UTF-16 code units. This matters for user property keys
+  outside ASCII.
+- **Strings:** escaped minimally (`"`, `\`, and control characters as `\b \f \n \r \t` or
+  `\u00xx` lowercase); everything else as literal UTF-8.
+- **Numbers:** every number is an IEEE 754 double, serialised as ECMAScript
+  `Number.prototype.toString`:
+  - the shortest round-trip digits;
+  - plain notation from 1e-6 up to (but not including) 1e21, exponent notation outside it
+    (`1e-7`, `1e+21`);
+  - `-0` written as `0`.
+- **Number limits, checked when records are encoded and decoded:**
+  - NaN and ±∞ are refused;
+  - every integer field (`seq`, `time_ms`, indexes, `v`, counts) must be ≤ 2^53 − 1, so it is
+    exact as a double;
+  - 128-bit IDs and hashes are hex strings, never numbers.
+
+The canonical form is used only for hashing. Definition content hashes (§20.9) use the same
+canonical form of the definition record.
+
+**Dependencies:** SHA-256 from the `sha2` crate (RustCrypto, MIT or Apache-2.0). CRC-32C and
+the canonical writer are small enough to write and test in `ecad-file`.
 
 ### 20.11 JSON Lines (`jsonl/1`)
 
-- **Encoding:** UTF-8, one record per line, `\n` terminated, no byte-order mark.
-- **Deterministic:** fixed key order, and floats in shortest round-trip form.
-- **Frame checksum:** a trailing `"crc"` member, computed over the line without it.
-- **Content rules:**
-  - IDs are 32 hex digits;
-  - angles are in radians;
-  - lengths are in the project unit (§20.13);
-  - only finite numbers are allowed;
-  - an absent property means unset (P7).
-- **Readable:** each line is readable as it stands. `ecad-cli dump` pretty-prints a file and
-  `ecad-cli check` verifies it.
-- **Hostile input:** reading treats the file as hostile, with caps applied **before**
-  allocation on:
-  - line length (initially 64 MiB);
-  - transactions per file;
-  - ops per transaction;
-  - vertices per polyline;
-  - string length.
+**Framing.** One record per line, each line exactly:
 
-  Tests include a fuzz target and golden files for every released schema version.
+```
+{"crc":"<8 lowercase hex digits>","rec":<payload>}\n
+```
+
+- **Fixed prefix:** the prefix up to and including `"rec":` is 24 bytes, always the same shape.
+- **Payload:** the record's JSON object.
+- **Suffix:** `}\n`.
+- **CRC coverage:** the CRC covers exactly the payload bytes.
+- **Reading:**
+  1. check the fixed prefix;
+  2. take the payload as the bytes between the prefix and the final `}` before `\n`;
+  3. verify the CRC;
+  4. only then parse the payload.
+- **The whole line is still valid JSON,** readable by `jq`.
+
+**Payload rules:**
+- UTF-8, no byte-order mark, no raw newline (JSON escapes it).
+- Written deterministically: fixed field order, maps sorted by key, floats in shortest
+  round-trip form. Identical records always give identical bytes.
+- IDs are 32 hex digits, angles are in radians, lengths are in the project unit, only finite
+  numbers are allowed, and an absent property means unset (P7).
+
+**Tooling:** `ecad-cli dump` pretty-prints a file and `ecad-cli check` verifies it. Both come in
+stage 2, with files.
+
+**Hostile input.** Reading treats the bytes as hostile. Caps apply before allocation:
+- line length (64 MiB);
+- records per file;
+- ops per transaction;
+- vertices per polyline;
+- string length;
+- properties per object.
+
+JSON nesting stays shallow, and the parser's recursion limit stays on. Tests include
+golden-file and mutation tests (bit flips, truncations, insertions) that must never panic and
+must classify every result as in §20.6.
 
 ### 20.12 Code structure
 
@@ -1355,23 +1484,58 @@ The debugger is read-only and live. The static HTML inspector remains for export
 Each stage is one PR into `dev` and starts only after approval. Nothing in a later stage is
 built early.
 
-**Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13)
+**Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13). **Approved.**
+
+*Records:*
+- Separate version-1 record types.
 - The round trip model → records → bytes → records → model reproduces the identical document,
-  log, IDs and head, for golden projects and generated ones.
-- The writer gives byte-identical output for identical records (determinism).
-- The hash chain is verified on read. A tampered, reordered or missing transaction is reported
-  with its seq.
-- A torn last record opens writable at the valid prefix. Damage earlier opens read-only at the
-  last good seq.
-- Unknown or newer versions are refused with a clear message, and old op versions upcast (one
-  synthetic v0 → v1 test).
-- Embedded definitions:
-  - two instances share one definition and their terminals have distinct IDs;
-  - two versions of one definition coexist;
-  - `state_at` before a version change still holds the original content;
-  - removing a referenced definition is refused.
-- Hostile-input caps and the fuzz target run in CI, and `cargo xtask ci` is green, including
-  wasm for `ecad-file`.
+  log, IDs and head, for a golden project and generated ones.
+- The writer gives byte-identical output for identical records.
+
+*Framing and integrity:*
+- The CRC covers exactly the payload bytes.
+- The hash chain is seeded per project and per library (domain-separated) and verified on the
+  stored form before upcasting.
+- Canonical numbers are tested at the boundaries: `-0`, 1e-6, 1e-7, 1e21, 1e+21, 2^53 − 1,
+  2^53, 5e-324, the largest double, shortest round-trip digits, and the RFC 8785 examples.
+- Integers above 2^53 − 1 and non-finite numbers are refused.
+
+*Recovery (§20.6):*
+- An unterminated tail opens writable, with the fragment reported.
+- A complete corrupt record opens read-only with the source unchanged, at every position
+  including the last. This covers a CRC mismatch, an unparsable payload, a wrong `seq`, a broken
+  chain, an unknown op, a precondition failure and an invariant failure.
+- The report names the offset, the `seq`, the reason and the omitted tail.
+
+*Save and retry (§20.5, in memory):*
+- Partial append, then retry.
+- Failed flush, then retry: truncate and rewrite, never re-flush the same bytes.
+- Failed truncate, then retry.
+- New edits between the failure and the retry.
+- External append, and external modification of the verified prefix: both refused, with the
+  file untouched.
+- In every case no transaction is duplicated or lost, and `persisted` advances only after a
+  successful flush.
+
+*Versions:* unknown or newer versions are refused. Old op versions upcast after the integrity
+check, shown by one test-only v0 → v1 upcast. A `checkpoint` record is refused.
+
+*Embedded definitions:*
+- Two instances share one definition, and their terminals have distinct IDs.
+- Two versions coexist.
+- `state_at` before a version change still holds the original content.
+- Removing a referenced definition is refused.
+- The project needs no library.
+
+*Hostile input:* caps and a mutation test (bit flips, truncation, insertion over the golden file)
+never panic and always classify the result.
+
+*Adapter:*
+- The in-memory test store is replaced by `ecad-file` over the in-memory medium, so the
+  experiment's save and reopen tests exercise the real format.
+- Checkpoint use in the test store is removed.
+
+*CI:* `cargo xtask ci` is green, including wasm for `ecad-file`.
 
 **Stage 2: files, harness persistence, debugger panel**
 - Save, quit, reopen: the same document, IDs, log and head, with persisted = head. The
@@ -1403,7 +1567,8 @@ built early.
   project.
 - Renaming the library file keeps its identity, and two versions coexist in one project.
 
-**Stage 4: checkpoints** (only if opening becomes slow in practice)
+**Stage 4: checkpoints** (only if opening becomes slow in practice, and only after the trust
+contract of §20.8 is decided)
 - Opening with and without checkpoints gives identical state.
 - A corrupted or mismatched checkpoint is ignored, with a diagnostic.
 - Save As without checkpoints keeps the full history.
@@ -1417,20 +1582,28 @@ built early.
 
 ## 23. Part E decisions for the owner
 
-| # | Decision | Recommendation |
+**Settled by the review of revision 4 (2026-10-12):**
+- JSON Lines for development (E1).
+- Inline embedded definitions (E2).
+- Separate versioned file records (E3).
+- The Rust debugger as designed (E10), kept for stage 2.
+- Stage 1 approved.
+
+| # | Decision | Status |
 | --- | --- | --- |
-| E1 | Container A: one JSON Lines file of typed records (header, tx, checkpoint) | **Yes**. ZIP and sidecar files rejected for now (§20.2). |
-| E2 | Embedded definitions inline in the introducing transaction (I) rather than separate immutable records (II) | **I**. Revisit only if repetition proves to matter (§20.3). |
-| E3 | Separate versioned record types in `ecad-file`, not direct serialisation of `ecad-model` | **Yes** |
-| E4 | An older-schema file is rewritten in the current version on first save, with a confirmation and a backup copy | **Yes** |
-| E5 | Strict reading: unknown fields, records and versions are refused | **Yes** for development |
-| E6 | Frame CRC-32C plus a SHA-256 history chain over the RFC 8785 canonical form | **Yes** |
-| E7 | Checkpoints: in-file, optional, validated, never written automatically in stages 1-3 | **Yes** |
-| E8 | Save refuses when the file changed externally; a second opener is read-only | **Yes** |
-| E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | **Keep the ID** |
-| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays for exports; snapshot format bump to `ecad-inspect/2` | **Yes** |
-| E11 | Length unit in project settings, mm by default, fixed at creation for now | **Yes** |
-| E12 | Stages and acceptance criteria as in §22 | Approve, or reorder |
+| E1 | Container A: one JSON Lines file of typed records | **settled**; version 1 has `header` and `tx` only |
+| E2 | Embedded definitions inline in the introducing transaction | **settled** |
+| E3 | Separate versioned record types in `ecad-file` | **settled** |
+| E4 | An older-schema file is rewritten in the current version on first save, with a confirmation and a backup copy | proposed (applies once a schema version 2 exists) |
+| E5 | Strict reading: unknown fields, records and versions are refused | proposed (implemented in stage 1) |
+| E6 | Frame CRC-32C over exact payload bytes; an unkeyed SHA-256 chain with domain-separated seeds over the RFC 8785 canonical form | proposed (implemented in stage 1); stated limits in §20.10 |
+| E7 | Checkpoints disabled; trust contract unresolved | **settled** as disabled; the contract is open for stage 4 |
+| E8 | Save refuses on an external change; a lock file guards writers; a second opener is read-only | proposed for stage 2 |
+| E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | proposed for stage 2 |
+| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled** direction; built in stage 2 |
+| E11 | Length unit in project settings, mm by default, fixed at creation for now | proposed (implemented in stage 1) |
+| E12 | Stages as in §22 | stage 1 approved; later stages need approval each |
+| E13 | An unterminated trailing fragment is preserved beside the file before the first save truncates it | proposed for stage 2 (stage 1 reports it) |
 
 ## Revision 2 changes
 
@@ -1460,4 +1633,5 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
 | 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
+| 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |
