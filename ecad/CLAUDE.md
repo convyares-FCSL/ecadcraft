@@ -4,7 +4,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
 `crates/`, `apps/`, `xtask/`) is the upstream drawing platform and is used by path dependency.
 
 - Read `../docs/document-architecture-proposal.md` (principles in Part A are fixed; Part B is
-  provisional) and `../docs/decisions.md` first.
+  provisional; Part E, persistence and the live debugger, is a draft awaiting approval and must
+  not be implemented before it) and `../docs/decisions.md` first.
 - Branch from `dev`; every change arrives as a PR into `dev`. Never merge your own PR: green CI is
   not approval.
 - Before every commit run `cargo xtask ci` from `ecad/` (fmt, clippy `-D warnings`, tests, layers,

@@ -272,6 +272,9 @@ unresolved test in finding 9. Clippy, fmt, layering and wasm were clean.
 
 ## Developer inspector
 
+> The static inspector stays for exported diagnostics. A live, read-only debugger panel in the
+> trial application is proposed (not built) in architecture proposal Part E, §21.
+
 - **JSON interface:** `ecad-inspect` builds snapshots from the model's own serialisation
   (`Document`, `Transaction`), plus a label index and check results. Each snapshot is labelled
   with its transaction sequence. A historical snapshot reconstructs that state with

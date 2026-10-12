@@ -1,7 +1,9 @@
 # ECAD document architecture and integration proposal
 
-> **Status:** revision 3. Revision 2 was approved as the basis for the bounded integration
-> experiment (§17); the integration choices in Part B stay provisional until demonstrated. **Written:** 2026-10-12 against `dev`
+> **Status:** revision 4 draft. Revision 2 was approved as the basis for the bounded integration
+> experiment (§17); the integration choices in Part B stay provisional until demonstrated.
+> Revision 4 adds **Part E** (persistence and the live debugger) **for review; nothing in it is
+> implemented**. **Written:** 2026-10-12 against `dev`
 > at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
@@ -21,6 +23,9 @@ prove:
   needs proof, together with the movement, copy and deletion policies built on it.
 - **Part C, integration experiment.** The smallest experiment that would prove or disprove
   Part B. It is specified here but not run.
+- **Part E, persistence and live inspection** (revision 4 draft, for review). It sets out the
+  `.ecad`/`.ecadlib` container, how embedded definitions are stored, durability, recovery,
+  versioning and checkpoints, and a read-only live debugger panel, with acceptance criteria.
 - **Part D, decisions,** split into four groups: direction already supported, revised
   recommendations needing approval, temporary limits that apply to the experiment only, and
   product behaviour deferred.
@@ -71,6 +76,13 @@ Changes from revision 1 (details in [Revision 2 changes](#revision-2-changes)):
 
 18. [Decision table](#18-decision-table)
 19. [Room for later features](#19-room-for-later-features)
+
+**Part E: persistence and live inspection (revision 4 draft, for review)**
+
+20. [Persistence design](#20-persistence-design)
+21. [Live debugger (developer panel)](#21-live-debugger-developer-panel)
+22. [Plan and acceptance criteria](#22-plan-and-acceptance-criteria)
+23. [Part E decisions for the owner](#23-part-e-decisions-for-the-owner)
 
 ## 1. Scope and evidence markers
 
@@ -256,8 +268,8 @@ supported kind. That is hypothesis H2 (§9.4), proved by the experiment.
 
 ## 5. `.ecad` and `.ecadlib` contracts
 
-These contracts state what each file owns and promises; the encoding comes later and must meet
-them.
+These contracts state what each file owns and promises. The encoding must meet them; Part E
+(§20) proposes how.
 
 ### 5.1 `.ecad` project file
 
@@ -270,7 +282,9 @@ as bookmarks, and optional checkpoints as a cache.
 - **FILE-03 Durable append.** Saving appends whole transactions and then flushes them to disk
   (`fsync`). A torn trailing write is ignored on open.
 - **FILE-04 Checkpoints are caches.** Deleting every checkpoint changes nothing but opening
-  speed. This holds **unconditionally** in the initial implementation (P9).
+  speed. This holds **unconditionally** in the initial implementation (P9). Part E proposes
+  optional checkpoint records inside the file, validated before use and never authoritative
+  (§20.8).
 - **FILE-05 No destructive compaction.** Nothing rewrites the file in a way that drops
   transactions needed for the current state or any named version until a preservation contract
   is approved. Save As writes the full history.
@@ -922,7 +936,7 @@ afterwards.
 | L6 | Kinds outside the schema (hatch, dimensions, tables, arbitrary block inserts, MINSERT, non-uniform scale) are refused on ECAD pages |
 | L7 | Two pages at most in the scenario; no autosave or crash journal; UNDO Mark/Back/BEgin/End unavailable |
 | L8 | Placement by command; no drag-and-drop from panels |
-| L9 | A test-only store, not the `.ecad` encoding |
+| L9 | A test-only store, not the `.ecad` encoding (Part E proposes the real one) |
 | L10 | ECAD edits refused while a CADCraft command is running on the page (TX-05) |
 
 ### 18.4 Deferred product behaviour
@@ -958,6 +972,466 @@ Each item names the constraint to preserve. None is decided by this proposal.
 | Library replacement | `UpdateDefinition` + terminal remapping transaction |
 | DWG adopt | an import that emits ordinary transactions, then a review |
 
+# Part E: persistence and live inspection (proposal for review)
+
+> **Status: revision 4 draft, for review. Nothing in Part E is implemented**, and no persistence
+> or debugger code is written until the owner approves it (§23). Part E says how to meet the
+> contracts of §5 and §6; it does not change them, except where §5 now points here.
+> **Owner's direction (2026-10-12):**
+> - Use JSON for the initial development implementation, because it is directly readable.
+> - Keep encoding separate from document semantics so other formats can be evaluated later. Do
+>   not benchmark alternatives or optimise storage at this stage.
+> - "One file" does not mean one JSON object; JSON records do not imply ZIP.
+> - Add a minimal live, read-only Rust debugger alongside persistence.
+
+## 20. Persistence design
+
+### 20.1 Three layers
+
+```
+ecad-model (memory)     Document, Ledger, Transaction, Op                         changes freely
+     │ explicit conversion to and from versioned records (+ upcasts of old versions)
+     ▼
+1. semantic records     header, tx (with ops), checkpoint — schema version 1
+     │ codec: record ⇄ bytes, and framing        JSON Lines now; another codec later
+     ▼
+2. encoded container    one frame per record, each with a frame checksum
+     │ medium: append, flush, truncate, atomic replace, lock
+     ▼
+3. storage              file on disk; in-memory medium with fault injection for tests
+```
+
+- **The semantic records are the format.** They are separate, versioned types (in a new
+  `ecad-file` crate) with explicit conversions from `ecad-model`. Today's test store serialises
+  `ecad_model::Transaction` directly. That would let a model refactor silently change the file
+  format. Explicit records make every format change a decision with a version number. Inspector
+  snapshots keep using the model's own serialisation, because they are diagnostics, not
+  projects.
+- **The codec is replaceable.** It is a trait: encode a record, decode a record, frame it.
+  JSON Lines is the only codec now. A conformance suite (golden files decode to identical
+  records and identical history hashes) is the gate for any later codec. No benchmarking is
+  planned in this stage.
+- **The medium holds the durability rules,** in one place. The in-memory medium exists so every
+  failure point can be injected in tests (as in today's test store).
+
+### 20.2 Container layout: options
+
+A single file is required (FILE-01, P8) and must hold three distinguishable kinds of record:
+- transactions;
+- embedded definitions, as content inside transactions or as records of their own (§20.3);
+- disposable checkpoints.
+
+| | **A. Typed record stream** (recommended) | B. ZIP-style package | C. Main file plus sidecar files |
+| --- | --- | --- | --- |
+| Shape | one file: a header record, then records each tagged `"type"`: `tx`, `checkpoint` (and `def` if separate definition records are chosen) | archive with members (`history.jsonl`, `checkpoints/…`, `defs/…`) | `.ecad` holds the history; checkpoints in `name.ecad-cache` |
+| Append-only save (FILE-03) | natural: append records, flush | poor: the central directory must be rewritten or re-appended on every save; a torn write leaves an unreadable archive | natural for the main file |
+| Torn-write recovery | the longest valid prefix of records | depends on archive tooling | main file as A; the cache is simply discarded |
+| Readable with a text editor | yes, line by line | needs unzipping | yes |
+| Self-contained | yes | yes | the history yes; checkpoints separate, which is acceptable for a cache but means two files to copy for full speed |
+| Random access, compression | needs an offset index (built on open) | built in | as A |
+
+**Recommendation: A.**
+- **What it is:** a JSON Lines file of typed records.
+- **Why not B:** ZIP solves random access and compression, which are not problems yet. It
+  makes durable append and torn-write recovery harder, which are problems now.
+- **C is rejected for now:** A can hold checkpoints as ignorable records (§20.8), so a second
+  file is not needed.
+
+The record framing (§20.11) leaves room to move to a binary framing later without changing the
+records.
+
+Records in container version 1:
+
+| Type | Count | Purpose |
+| --- | --- | --- |
+| `header` | first, exactly once | `container` (`"ecad-project"` / `"ecad-library"`), `container_version`, `schema_version`, `codec` (`"jsonl/1"`), `project_id` / `library_id`, `created_ms`, `writer` (product and CADCraft commit) |
+| `tx` | one per transaction, in order | `seq`, `id`, `kind` (`"edit"`, `{"undo": id}`, `{"redo": id}`), `author`, `time_ms?`, `label`, `ops: [{"op": name, "v": n, …}]`, `prev` (history hash, §20.10) |
+| `checkpoint` | zero or more, never authoritative | `at_seq`, `history_hash` at that seq, `state_hash`, `document` (§20.8) |
+
+A reader ignores nothing silently: any other `type` is refused unless a later container version
+marks it as ignorable (§20.7).
+
+### 20.3 Embedded library definitions
+
+Requirements, all from the owner and LIB-01 to LIB-05:
+
+1. **Embed once.** A definition is embedded once, and many component instances reference it.
+2. **Independent identities.** Each instance (component and representation) and each of its
+   terminals has its own ID.
+3. **Versions coexist.** Different versions of a definition can coexist in one project.
+4. **Introduced by history.** Introducing embedded content is recorded in the authoritative
+   history.
+5. **Old revisions keep their definitions.** The original definitions needed by historical
+   revisions are preserved.
+6. **No library needed.** The project opens without access to the external library.
+7. **Nothing mutable outside history.** No symbol data can be changed except through history.
+
+Two ways to store the content:
+
+| | **I. Inline in the introducing transaction** (recommended) | II. Separate immutable definition records |
+| --- | --- | --- |
+| How | `EmbedDefinition { id, definition }` carries the full content inside the `tx` that introduces it (as the model does today) | a `def` record (content plus content hash) is written before the first `tx` that uses it; `EmbedDefinition { id, content_hash }` references it |
+| 1. Embed once | yes: one `DefinitionId`, referenced by every `SymbolInstance` | yes |
+| 2. Independent identities | yes: instances and terminals get their own IDs in the placing transaction (LIB-02) | same |
+| 3. Versions coexist | yes: each embedded version is its own `DefinitionId` with its own `origin`; instances point to the one they were placed from | yes, plus identical content is shared automatically |
+| 4. Introduced by history | yes: the `tx` *is* the introduction | the `tx` is the introduction; the `def` record is its payload |
+| 5. Historical revisions | yes: no history is ever dropped (P9), so `state_at(n)` replays the content | yes, as long as `def` records are never dropped |
+| 6. No library needed | yes | yes |
+| 7. Nothing mutable outside history | yes: content exists only inside ops | yes, but only if `def` records are immutable and garbage is never collected; that adds a rule to enforce |
+| Reader complexity | one record type | ordering rule (definition before use), presence check per reference, orphaned `def` records after a torn save |
+| Size | content repeats when the embedding is undone and redone (inverse ops carry the full value) and in checkpoints | content stored once per file |
+
+**Recommendation: I.** Separation's only concrete gain is size under undo/redo of an embedding
+and in checkpoints. That is a storage optimisation the owner has asked us not to make yet, and
+it costs a second record type with its own integrity rules. Revisit only if real projects show
+the repetition matters. Moving to II later is a container version change, with conversion on
+Save As.
+
+Further rules for embedded definitions:
+- **Identity of content.** A definition's identity is its `DefinitionId`. Its content hash
+  (SHA-256 over the canonical form, §20.10) is computed, never trusted from the file. It is
+  recorded in `origin` for libraries (§20.9).
+- **No duplicate content.** Placing a definition whose origin and content hash are already
+  embedded reuses that `DefinitionId` (LIB-01). New content, such as a newer library version,
+  becomes a new `DefinitionId`.
+- **Updating instances.** Moving instances to another version is an explicit, undoable
+  transaction (LIB-03). It is a later design; the format needs nothing new for it.
+- **Removing definitions.** `RemoveDefinition` is only valid while no item or component
+  references the definition. The model's invariant check already enforces this. Removal is
+  history like everything else, so earlier revisions still contain the content.
+
+### 20.4 Transaction boundaries
+
+- **One transaction per accepted command.** Every accepted command, ECAD command, undo or redo
+  is exactly one `tx` record (§9.1, UNDO-01). A refused or cancelled command writes nothing
+  (§9.2).
+- **Atomic and validated before it exists.** A transaction is applied to a copy and checked
+  (TX-03). Only then is it appended to the in-memory log and given its `seq`. Its record is
+  written at the next save.
+- **Pending versus durable.** The in-memory log is ahead of the file between saves. A
+  transaction is **durable** only when its complete record is in the file and the file has
+  been flushed. `persisted` is the highest durable `seq`.
+- **A save is a batch.** Saving appends records `persisted+1 … head`, then flushes once. Each
+  record stands alone and chains to the previous one, so any prefix of a batch is a valid
+  history.
+
+### 20.5 Durable saving
+
+- **Save** (file already holds this project up to `persisted`):
+  1. Check the file is unchanged since the last durable write: same length, same modification
+     time.
+  2. Truncate to the last durable length (removing any earlier torn tail).
+  3. Append the pending records.
+  4. Flush (`sync_data`).
+  5. Then advance `persisted` (SAVE-04).
+
+  If any step fails, `persisted` and the in-memory log are untouched, the error names the
+  file and the step, and the project stays unsaved.
+- **Save As, or first save:**
+  1. Write the header and every transaction (FILE-05; checkpoints optional) to a temporary file
+     in the target folder.
+  2. Flush it and rename it over the target.
+  3. Flush the folder where the platform allows.
+
+  A failure never damages the existing target. `project_id` is kept: Save As is a new location,
+  not a new project.
+- **Writer lock.** Opening a project for writing takes an OS file lock, released when the
+  process ends. A second opener gets the project **read-only** and is told why.
+- **File changed externally** (length or modification time differs from the last durable
+  write): Save refuses and offers Save As. Nothing is overwritten blindly.
+
+### 20.6 Recovery from interrupted writes
+
+On opening:
+1. Check the header: container, versions, codec.
+2. Read records in order, checking for each:
+   - the frame checksum;
+   - that `seq` is consecutive;
+   - that `prev` links to the previous record (§20.10);
+   - that every op decodes, upcasting old versions.
+3. Replay through the ledger, which checks preconditions and invariants after every
+   transaction (TX-03, TX-04).
+
+| Finding | Result |
+| --- | --- |
+| Everything valid | opens writable; `persisted = head` |
+| Last record incomplete, unterminated or failing its checksum (an interrupted save) | that record is ignored (FILE-03) and reported; opens writable at the valid prefix; the tail is truncated at the next save |
+| A bad record, broken chain, failed precondition or failed invariant **before** the last record | opens **read-only** at the last good transaction, with a report naming the first bad `seq`; Save As can write the good history to a new file; nothing is written to the damaged file |
+| Unknown or newer `container_version`, `schema_version`, `codec`, record type, op or op version | refuses to open, naming what this build supports (§20.7) |
+
+A crash between saves loses the pending transactions. That is the reason for the "unsaved"
+marker. The crash journal stays deferred (§18.4); it would be a separate design.
+
+### 20.7 Format versioning
+
+The four version axes are independent of each other and of the product version (A8):
+
+| Axis | Covers | Rule |
+| --- | --- | --- |
+| `container_version` | record types, framing, header fields | a reader refuses newer values |
+| `codec` | how records become bytes (`jsonl/1`) | a reader refuses codecs it lacks |
+| `schema_version` | the meaning of record contents | a reader upcasts older versions and refuses newer ones |
+| op `v` | one op's fields | a reader upcasts each older op version on read (FILE-06) |
+
+- **Writing a different version:** the writer always writes the current versions. A file in an
+  older schema version opens with its records upcast in memory. Appending records of a
+  different version to it would mix versions in one file, so its **first save rewrites the
+  whole file** in the current version. This uses the Save As procedure, keeps a copy of the
+  original (`name.ecad.v1.bak`) and asks first. Every transaction is preserved, so this is a
+  conversion, not compaction (E4).
+- **Strict reading:** unknown fields, records, ops and op versions are refused, not ignored, so
+  an older build never drops data silently (E5). Revisit before the first release that must
+  read files from newer builds.
+
+### 20.8 Checkpoints
+
+- **What they are for:** disposable caches that only make opening faster (FILE-04, P9). They
+  are **never written automatically in stages 1-3**. Replay is fast at development sizes, and
+  that avoids premature optimisation.
+- **Format:** a `checkpoint` record holds:
+  - `at_seq`;
+  - the history hash at that seq;
+  - a state hash of the canonical document;
+  - the document (all stored state, including embedded definitions).
+
+  It always follows the `tx` record it covers.
+- **Using one:**
+  1. A reader may load the newest checkpoint whose `history_hash` matches the verified chain.
+  2. Its `state_hash` must match its document.
+  3. Only transactions after it are replayed.
+  4. A checkpoint failing either check is **ignored**, with a diagnostic. It never blocks
+     opening and never replaces history.
+  5. The full-replay check stays available as an explicit "verify" action (§21).
+- **Removing them:** Save As without checkpoints writes the same history with no checkpoints.
+  Removing them changes only opening speed. History is never dropped (A7, FILE-05).
+
+### 20.9 Library files (`.ecadlib`)
+
+- **Container:** the same container and rules as projects, with `container: "ecad-library"`,
+  a stable `library_id` that survives renaming the file, and library ops:
+  - `AddDefinition`;
+  - `ModifyDefinition { before, after }`;
+  - `RemoveDefinition`;
+  - `SetLibraryProperty`;
+  - `NameVersion`.
+- **Versions:** a definition's version is the `seq` of the library transaction that last
+  changed it. Its content hash is computed from its content.
+- **Placing into a project:**
+  1. The project's `EmbedDefinition` records `origin { library_id, definition_id, library_seq,
+     content_hash }` and the full content (§20.3).
+  2. The project never refers to the library file again (P8).
+  3. "Update available" is a derived comparison of hashes (P5).
+- **Diverged copies:** two library files with the same `library_id` but diverging histories are
+  told apart by their hash chains.
+- **Still open from §5.3:** parts versus symbols, terminal mapping on replacement, library
+  editing UI. None of these blocks the container.
+
+### 20.10 Integrity
+
+- **Frame checksum.** Encoding level: CRC-32C of a record's bytes. It catches torn and damaged
+  records.
+- **History hash chain.** Semantic level:
+  - each `tx.prev` is the SHA-256 of the canonical form of the previous transaction;
+  - transaction 1 chains to the header's `project_id`.
+
+  It catches missing, reordered or substituted transactions, and diverging copies. It
+  identifies named versions and checkpoints, and survives a later change of codec.
+- **Canonical form.** A record's semantic content serialised by the JSON Canonicalization
+  Scheme (RFC 8785), excluding the frame checksum. It is used only for hashing. Content hashes
+  of definitions use the same form.
+- **Dependencies:** both algorithms have small, permissively licensed Rust implementations, to
+  be recorded in the ECAD dependency notes.
+
+### 20.11 JSON Lines (`jsonl/1`)
+
+- **Encoding:** UTF-8, one record per line, `\n` terminated, no byte-order mark.
+- **Deterministic:** fixed key order, and floats in shortest round-trip form.
+- **Frame checksum:** a trailing `"crc"` member, computed over the line without it.
+- **Content rules:**
+  - IDs are 32 hex digits;
+  - angles are in radians;
+  - lengths are in the project unit (§20.13);
+  - only finite numbers are allowed;
+  - an absent property means unset (P7).
+- **Readable:** each line is readable as it stands. `ecad-cli dump` pretty-prints a file and
+  `ecad-cli check` verifies it.
+- **Hostile input:** reading treats the file as hostile, with caps applied **before**
+  allocation on:
+  - line length (initially 64 MiB);
+  - transactions per file;
+  - ops per transaction;
+  - vertices per polyline;
+  - string length.
+
+  Tests include a fuzz target and golden files for every released schema version.
+
+### 20.12 Code structure
+
+| Crate | Layer | Role |
+| --- | --- | --- |
+| `ecad-file` (new) | Core | records, conversions and upcasts, canonical form and hashes, the codec trait and `jsonl/1`, reader and writer over a medium, caps; no I/O of its own; builds for wasm |
+| `ecad-store` | Core | the `Medium` trait, the in-memory medium with fault injection, the file medium (native only; append, `sync_data`, atomic replace, lock); the current test store retires once `ecad-file` replaces it |
+| `ecad-cadcraft` | Adapter | `Persistence::File` beside `TestStore` (tests) and `Unavailable` (the current trial); open, save, save as; read-only projects |
+| `ecad-cli` (new, small) | UI | `dump`, `check` |
+| `ecad-trial` | UI | Open, Save and Save As, the debugger panel (§21); its "no persistence" label changes only when stage 2 lands |
+
+### 20.13 Model additions this needs
+
+- `ProjectSettings { length_unit }`, recorded at creation by `SetProjectSetting` (architecture
+  §3.2 lists units; the model lacks them).
+- `NameVersion` (§6.1 lists it; the model lacks it).
+- A typed definition `origin { library_id, definition_id, library_seq, content_hash }`, which
+  replaces today's free-text `library`, `definition` and `version`.
+
+## 21. Live debugger (developer panel)
+
+**Purpose.** A developer can follow one action through four stages:
+1. a drawing interaction (selected entities, CADCraft handles);
+2. its electrical meaning (mapped ECAD IDs and relationships);
+3. the transaction that accepted it (ops, before and after);
+4. the bytes on disk (record offset, size, durable or pending).
+
+The debugger is read-only and live. The static HTML inspector remains for exported diagnostics.
+
+### 21.1 Where and how
+
+- **Where:** a dockable developer panel in `ecad-trial`, written in Rust with egui, opened from
+  the banner. It is not a product UI and is never shown by default.
+- **Data sources** (all existing interfaces; no new model access paths):
+
+  | Source | Provides |
+  | --- | --- |
+  | `ProjectHandle::read` | the project, briefly locked |
+  | `ecad_inspect::snapshot` | objects, relationships, labels, history, checks |
+  | `EventLog` | runtime diagnostics |
+  | `HandleMap` | handle ⇄ ID |
+  | `verify_page` | recovery-style check |
+  | `ecad-file` writer status (new) | path, versions, sizes, record index, last write and flush results |
+
+- **Coherent snapshots:**
+  - The panel keeps one `DebugSnapshot` labelled with `seq`, built by copying what it shows
+    under a short `try_lock`.
+  - It is rebuilt only when `head`, `persisted`, the event count or the selection changes, or
+    on Refresh. It is **never** rebuilt every frame.
+  - Rendering reads only the snapshot and never holds the project lock.
+  - If the project is busy, the previous snapshot stays on screen, marked "stale".
+- **Expensive work is explicit.** Full replay (`replay_matches`), projection verification,
+  re-reading the file and checking the hash chain run only from **Verify** buttons, and show
+  their result with the `seq` and time they ran at.
+- **History without side effects.** Choosing an earlier `seq` reconstructs that state with
+  `Ledger::state_at` into a separate value, computed on request. The live document, head and
+  pages are untouched. Historical views are labelled "history at seq n".
+
+### 21.2 Views
+
+| View | Shows |
+| --- | --- |
+| **Selection** | selected entities: CADCraft handle, entity kind and geometry summary; mapped ECAD ID (item or terminal marker); its representation, subject, terminals; readable JSON of the ECAD item |
+| **Model** | components, terminals, conductors (ends and attachments), cables (members), representations (form, page, items, connection points); every ID links to its relations; search by ID, short ID or label |
+| **Definitions** | embedded definitions with origin, version, content hash, and the instances (components, symbol items, pages) that reference each |
+| **History** | transactions (seq, kind, author, label, time), each op with readable before and after JSON; **pending** (seq > persisted) and **durable** (seq ≤ persisted) shown distinctly |
+| **Persistence** | file path, container, schema and codec versions, size on disk, last durable length, head versus persisted, pending count; per transaction: record offset and length once durable, and the record as stored (read from the file on request, pretty-printed); last write, flush, rename and lock results, including failures |
+| **Diagnostics** | the runtime event log (accepted, refused, saved, save failed, recovery, …), kept visibly separate from design history, each correlated to command and seq |
+| **Checks** | the Verify buttons and their results |
+
+**The trail.** Selecting a transaction shows:
+- the command and event that produced it;
+- the ops and their before and after values;
+- the objects touched (linked to Model and Selection);
+- its record, with "pending (in memory only)" until a save makes it durable, and then the file
+  offset and bytes.
+
+### 21.3 Boundaries
+
+- **Read-only.** The panel calls no command and no session method that edits. It gets no
+  `&mut Project`; it uses `ProjectHandle::read` only.
+- **No server and no network.** The live view is in-process. Exporting a snapshot for the HTML
+  inspector stays as it is. The snapshot format gains persistence facts (a format bump to
+  `ecad-inspect/2`) so exported files show durable versus pending too.
+- **Bounded.** Large lists are paged, and record bytes are read on request with a size cap.
+
+## 22. Plan and acceptance criteria
+
+Each stage is one PR into `dev` and starts only after approval. Nothing in a later stage is
+built early.
+
+**Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13)
+- The round trip model → records → bytes → records → model reproduces the identical document,
+  log, IDs and head, for golden projects and generated ones.
+- The writer gives byte-identical output for identical records (determinism).
+- The hash chain is verified on read. A tampered, reordered or missing transaction is reported
+  with its seq.
+- A torn last record opens writable at the valid prefix. Damage earlier opens read-only at the
+  last good seq.
+- Unknown or newer versions are refused with a clear message, and old op versions upcast (one
+  synthetic v0 → v1 test).
+- Embedded definitions:
+  - two instances share one definition and their terminals have distinct IDs;
+  - two versions of one definition coexist;
+  - `state_at` before a version change still holds the original content;
+  - removing a referenced definition is refused.
+- Hostile-input caps and the fuzz target run in CI, and `cargo xtask ci` is green, including
+  wasm for `ecad-file`.
+
+**Stage 2: files, harness persistence, debugger panel**
+- Save, quit, reopen: the same document, IDs, log and head, with persisted = head. The
+  debugger shows no pending transactions.
+- Fault injection at every step of Save and Save As (append, flush, rename, folder flush)
+  leaves:
+  - the existing file openable;
+  - the in-memory project unsaved and intact;
+  - the error reported.
+- A crash simulated mid-batch leaves a file that opens at a valid prefix.
+- A second instance opening the same file gets it read-only. A file changed externally makes
+  Save refuse and offer Save As.
+- Debugger:
+  - selection → IDs → transaction → record offset matches the bytes in the file;
+  - a new edit shows as pending until saved, then as durable with its offset;
+  - historical views leave the live head unchanged;
+  - rendering holds no project lock (tested by holding the lock during a frame: the panel
+    shows its stale snapshot);
+  - Verify is the only path to full replay.
+- The trial's "no persistence" labelling is replaced by the real behaviour, and the harness
+  README and manual trial are updated.
+- Owner's WSL trial: create, save, close, reopen, edit, save, inspect with the debugger.
+
+**Stage 3: libraries**
+- A `.ecadlib` with two definitions is created by tests or a small CLI.
+- Placing from it embeds once, and a second placement reuses the definition.
+- The project opens and replays with the library file deleted.
+- A library change makes "update available" appear, derived, with nothing changing in the
+  project.
+- Renaming the library file keeps its identity, and two versions coexist in one project.
+
+**Stage 4: checkpoints** (only if opening becomes slow in practice)
+- Opening with and without checkpoints gives identical state.
+- A corrupted or mismatched checkpoint is ignored, with a diagnostic.
+- Save As without checkpoints keeps the full history.
+
+**Out of scope for all stages:**
+- drafting features, numbering, MCP and a polished product UI;
+- compaction;
+- the crash journal;
+- codec evaluation and benchmarks;
+- DWG/DXF.
+
+## 23. Part E decisions for the owner
+
+| # | Decision | Recommendation |
+| --- | --- | --- |
+| E1 | Container A: one JSON Lines file of typed records (header, tx, checkpoint) | **Yes**. ZIP and sidecar files rejected for now (§20.2). |
+| E2 | Embedded definitions inline in the introducing transaction (I) rather than separate immutable records (II) | **I**. Revisit only if repetition proves to matter (§20.3). |
+| E3 | Separate versioned record types in `ecad-file`, not direct serialisation of `ecad-model` | **Yes** |
+| E4 | An older-schema file is rewritten in the current version on first save, with a confirmation and a backup copy | **Yes** |
+| E5 | Strict reading: unknown fields, records and versions are refused | **Yes** for development |
+| E6 | Frame CRC-32C plus a SHA-256 history chain over the RFC 8785 canonical form | **Yes** |
+| E7 | Checkpoints: in-file, optional, validated, never written automatically in stages 1-3 | **Yes** |
+| E8 | Save refuses when the file changed externally; a second opener is read-only | **Yes** |
+| E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | **Keep the ID** |
+| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays for exports; snapshot format bump to `ecad-inspect/2` | **Yes** |
+| E11 | Length unit in project settings, mm by default, fixed at creation for now | **Yes** |
+| E12 | Stages and acceptance criteria as in §22 | Approve, or reorder |
+
 ## Revision 2 changes
 
 | Review point | Change |
@@ -986,3 +1460,4 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
 | 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
+| 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |
