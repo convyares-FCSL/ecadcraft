@@ -48,6 +48,9 @@ pub struct Opened {
 pub struct Binding {
     #[cfg(not(target_arch = "wasm32"))]
     disk: Option<Box<ecad_file::DiskProject>>,
+    /// Faults for the next first save (tests).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub faults: ecad_file::StepFaults,
 }
 
 /// A `.ecad` path from what the user typed: surrounding spaces trimmed, a leading `~/` expanded
@@ -82,12 +85,17 @@ impl Binding {
         let o = ecad_file::DiskProject::open(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
         let project = o.project.project_id().ok_or("the file has no project ID")?;
         Ok(Opened {
-            binding: Binding { disk: Some(Box::new(o.project)) },
+            binding: Binding { disk: Some(Box::new(o.project)), faults: ecad_file::StepFaults::default() },
             ledger: o.ledger,
             report: o.report,
             project,
             reclaimed_lock: o.reclaimed_lock,
         })
+    }
+
+    /// Whether the project has been written to (or opened from) a file.
+    pub fn bound(&self) -> bool {
+        self.disk.is_some()
     }
 
     /// Where the file stands.
@@ -126,9 +134,9 @@ impl Binding {
         let durability = match &mut self.disk {
             Some(d) => d.save_as(p, ledger, created_ms, writer).map_err(|e| e.to_string())?,
             None => {
-                let (d, durability) =
-                    ecad_file::DiskProject::create(p, project, ledger, created_ms, writer, Default::default())
-                        .map_err(|e| e.to_string())?;
+                let faults = std::mem::take(&mut self.faults);
+                let (d, durability) = ecad_file::DiskProject::create(p, project, ledger, created_ms, writer, faults)
+                    .map_err(|e| e.to_string())?;
                 self.disk = Some(Box::new(d));
                 durability
             }
@@ -168,6 +176,11 @@ impl Binding {
     /// No file.
     pub fn status(&self) -> FileStatus {
         FileStatus::default()
+    }
+
+    /// Never bound in a browser build.
+    pub fn bound(&self) -> bool {
+        false
     }
 
     pub(crate) fn save(&mut self, _ledger: &mut Ledger) -> Result<(), String> {

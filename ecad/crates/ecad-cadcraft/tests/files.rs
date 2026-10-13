@@ -170,3 +170,22 @@ fn opening_a_file_that_is_not_a_project_reports_why() {
     assert!(s.docs.is_empty());
     assert!(ProjectHandle::open_file(&mut s, &d.path("missing"), 1).is_err());
 }
+
+#[test]
+fn an_unconfirmed_first_save_still_counts_as_unsaved() {
+    let d = TempDir::new("unconfirmed");
+    let mut h = H::new(34);
+    h.cfg(|p| p.persistence = Persistence::File);
+    assert!(!h.p(|p| p.unsaved()), "an untouched new project has nothing to lose");
+    // The first Save As replaces its target, but the folder flush fails.
+    h.cfg(|p| p.file.faults.fail_dir_sync = true);
+    let e = h.run("saveas", json!({"path": d.path("p")})).unwrap_err();
+    assert!(e.contains("could not confirm the change is durable"), "{e}");
+    assert!(h.p(|p| p.unsaved()), "nothing is acknowledged, even the creation transaction");
+    assert!(h.p(|p| p.file_status().unconfirmed));
+    assert!(h.s.close_needs_prompt(0), "closing the last page asks Save/Discard/Cancel");
+    // The next Save confirms it.
+    h.run("qsave", Value::Null).unwrap();
+    assert!(!h.p(|p| p.unsaved()));
+    assert!(!h.p(|p| p.file_status().unconfirmed));
+}

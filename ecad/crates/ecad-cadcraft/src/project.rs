@@ -658,8 +658,9 @@ impl Project {
     }
 
     /// Whether the project holds design work that is not saved: head versus persisted position
-    /// (SAVE-01), or, with no persistence, head versus the position it was created at. A new
-    /// project file that was never edited (only its creation transaction) has nothing to lose.
+    /// (SAVE-01), or, with no persistence, head versus the position it was created at. A new file
+    /// project that was never edited (only its creation transaction) and never written has
+    /// nothing to lose; once a file exists, head versus persisted applies strictly.
     pub fn unsaved(&self) -> bool {
         self.unsaved_transactions() > 0
     }
@@ -668,6 +669,7 @@ impl Project {
     pub fn unsaved_transactions(&self) -> u64 {
         let from = match self.persistence {
             Persistence::TestStore => self.ledger.persisted(),
+            Persistence::File if self.file.bound() => self.ledger.persisted(),
             Persistence::File => self.ledger.persisted().max(self.baseline),
             Persistence::Unavailable => self.baseline,
         };
