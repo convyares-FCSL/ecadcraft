@@ -12,3 +12,5 @@ One line per decision, newest last: date, decision, reason. Fixed decisions from
 | 2026-10-12 | `ecad-ledger`, `ecad-topology` and `ecad-infer` do not depend on `cadcraft-engine` | Domain rules stay testable without a `Session` and independent of UI and engine churn |
 | 2026-10-12 | Open: pages as one projected `Drawing` each, or one paper-space layout each | Phase 1 needs one page; decide in Phase 2 with the multi-page work |
 | 2026-10-12 | CI (`.github/workflows/ci.yml`) runs fmt, clippy `-D warnings` and the workspace tests on pushes and pull requests to `dev` | Feature branches merge back only when green |
+| 2026-10-12 | Document architecture proposal revision 2 approved as the basis for the bounded integration experiment; Part B integration choices stay provisional until demonstrated | Owner review of PR #1 |
+| 2026-10-12 | Versioning: ECAD development version `0.1.0-dev`; release tags `ecad-v…`; the incorporated CADCraft commit is tracked separately (`ecad/UPSTREAM.md`); document format versions are independent of product versions | Owner decision; keeps product, upstream and file-format changes separately visible |
