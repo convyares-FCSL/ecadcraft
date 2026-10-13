@@ -1,6 +1,6 @@
-# Continuous integration for the ECAD workspace: formatting, lints and the full test suite on
-# every push to dev and every pull request into dev. A feature branch is merged back into dev
-# only when this workflow is green.
+# Continuous integration on every push to dev and every pull request into dev: the CADCraft
+# workspace (formatting, lints, tests) and the ECAD workspace in ecad/ (`cargo xtask ci`).
+# Green CI is required before review; it is not approval to merge.
 name: CI
 
 on:
@@ -54,3 +54,22 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
         run: cargo test --workspace
+
+  ecad:
+    name: ECAD workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The upstream patch guard diffs against the incorporated CADCraft commit.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ecad
+      - name: fmt, clippy, tests, layers, patch guard, wasm
+        working-directory: ecad
+        run: cargo xtask ci
