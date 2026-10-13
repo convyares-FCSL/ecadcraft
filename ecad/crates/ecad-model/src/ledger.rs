@@ -126,12 +126,12 @@ fn apply_all(doc: &Document, ops: &[Op]) -> Result<Document> {
 /// [`Ledger::state_at`] can always resolve it.
 fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
     for op in ops {
-        if let Op::NameVersion { name, at } = op {
-            if *at >= seq {
-                return Err(ModelError::Invariant(format!(
-                    "version {name:?} names transaction {at}, which does not precede transaction {seq}"
-                )));
-            }
+        if let Op::NameVersion { name, at } = op
+            && *at >= seq
+        {
+            return Err(ModelError::Invariant(format!(
+                "version {name:?} names transaction {at}, which does not precede transaction {seq}"
+            )));
         }
     }
     Ok(())
