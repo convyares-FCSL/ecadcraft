@@ -8,7 +8,9 @@ All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the par
 >   ECAD project. It is not an application, and its on-screen behaviour has not been verified yet.
 > - **The inspector loads exported JSON snapshots.** It has no live updates.
 > - **There is no project persistence.** In the trial, Save and Save As report that saving is
->   unavailable. Automated tests use an in-memory test store. There is no `.ecad` format.
+>   unavailable. The `.ecad` format exists in memory only (`ecad-file`, persistence stage 1):
+>   automated tests save and reopen through it over an in-memory medium. Nothing is written to
+>   disk.
 
 CADCraft crates are used by path; upstream files change only through the patches listed in
 [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
@@ -16,7 +18,8 @@ CADCraft crates are used by path; upstream files change only through the patches
 | Crate | Role | Depends on CADCraft |
 | --- | --- | --- |
 | `ecad-model` | authoritative document, typed IDs, ops, transactions, history | no |
-| `ecad-store` | provisional **test-only** store (not the `.ecad` format) | no |
+| `ecad-store` | storage media: the `Medium` trait and an in-memory medium with fault injection | no |
+| `ecad-file` | the `.ecad` format, version 1: records, canonical JSON, CRC and hash chain, JSON Lines, open with recovery, save with retry (no disk I/O) | no |
 | `ecad-inspect` | read-only snapshots and the runtime event log for developers | no |
 | `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands (provisional) | yes |
 | `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, no persistence | yes (UI) |

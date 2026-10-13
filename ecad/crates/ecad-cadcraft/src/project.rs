@@ -15,12 +15,13 @@ use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
+use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, Op, Page, PageId, Pt, RepresentationId,
-    Subject, TerminalId,
+    Author, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
+    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
-use ecad_store::{MemoryMedium, TestStore};
+use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
@@ -106,12 +107,70 @@ pub struct Faults {
 /// Whether a project can be saved, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Persistence {
-    /// Automated tests only: saving appends to the in-memory test store and marks the project
-    /// clean. No file is written.
+    /// Automated tests only: saving writes the real `.ecad` format (`ecad-file`) to an
+    /// in-memory medium and marks the project clean. No file is written to disk.
     TestStore,
     /// No persistence (the desktop trial): Save and Save As report that saving is unavailable,
     /// change nothing and never mark the project clean.
     Unavailable,
+}
+
+/// The test-only project file: the real `.ecad` format (`ecad-file`) over an in-memory medium
+/// (persistence stage 1). It is written on the first save; until then it is an empty medium.
+#[derive(Debug)]
+pub enum MemoryStore {
+    /// Not saved yet: an empty medium (tests may set its fault flags before the first save).
+    Unwritten(MemoryMedium),
+    /// Written: the file and its writer state.
+    Written(Box<ProjectFile<MemoryMedium>>),
+}
+
+impl Default for MemoryStore {
+    fn default() -> Self {
+        MemoryStore::Unwritten(MemoryMedium::default())
+    }
+}
+
+impl MemoryStore {
+    /// The medium holding the file's bytes.
+    pub fn medium(&self) -> &MemoryMedium {
+        match self {
+            MemoryStore::Unwritten(m) => m,
+            MemoryStore::Written(f) => f.medium(),
+        }
+    }
+
+    /// The medium, to inject faults in tests.
+    pub fn medium_mut(&mut self) -> &mut MemoryMedium {
+        match self {
+            MemoryStore::Unwritten(m) => m,
+            MemoryStore::Written(f) => f.medium_mut(),
+        }
+    }
+
+    /// The writer, once the file exists.
+    pub fn file(&self) -> Option<&ProjectFile<MemoryMedium>> {
+        match self {
+            MemoryStore::Unwritten(_) => None,
+            MemoryStore::Written(f) => Some(&**f),
+        }
+    }
+
+    /// Save: the first save writes the whole history (Save As semantics: a failure leaves no
+    /// file); later saves append with retry (§20.5). Returns the persisted `seq`.
+    fn save(&mut self, project: ProjectId, ledger: &mut Ledger, writer: &str) -> Result<u64, String> {
+        match self {
+            MemoryStore::Written(f) => {
+                f.save(ledger).map_err(|e| e.to_string()).map(|_: SaveOutcome| ledger.persisted())
+            }
+            MemoryStore::Unwritten(m) => {
+                let medium = std::mem::take(m);
+                let f = ProjectFile::create(medium, project, ledger, now_ms(), writer).map_err(|e| e.to_string())?;
+                *self = MemoryStore::Written(Box::new(f));
+                Ok(ledger.persisted())
+            }
+        }
+    }
 }
 
 /// What Save and Save As report when the project has no persistence.
@@ -134,7 +193,12 @@ pub struct Project {
     pub path: Option<String>,
     pub ledger: Ledger,
     pub ids: IdAllocator,
-    pub store: TestStore<MemoryMedium>,
+    /// The project's stable identity (the file header records it).
+    pub id: ProjectId,
+    /// The test-only in-memory project file (`Persistence::TestStore`).
+    pub store: MemoryStore,
+    /// What opening reported, when the project was opened from a file.
+    pub open_report: Option<OpenReport>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
@@ -350,17 +414,25 @@ impl Project {
                 vec![
                     Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
                     Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
+                    // The length unit is recorded at creation (proposal §20.13).
+                    Op::SetProjectSettings {
+                        before: ProjectSettings::default(),
+                        after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                    },
                 ],
                 now_ms(),
             )
             .map_err(|e| e.to_string())?;
         let baseline = ledger.head();
+        let id: ProjectId = ids.fresh();
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
             ledger,
             ids,
-            store: TestStore::new(MemoryMedium::default()),
+            id,
+            store: MemoryStore::default(),
+            open_report: None,
             pages: BTreeMap::new(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -380,19 +452,19 @@ impl Project {
         Ok(ProjectHandle::new(project))
     }
 
-    /// Reopen a project from its store (the log is replayed; FILE-02).
+    /// Reopen a project from an in-memory project file (the log is replayed; FILE-02). A damaged
+    /// file opens its verified prefix read-only; the report is kept in [`Project::open_report`].
     ///
     /// # Errors
-    /// Store or replay failure.
+    /// The file has no valid, supported header, or the project cannot be shown.
     pub(crate) fn open_from(
         s: &mut Session,
         name: &str,
-        store: TestStore<MemoryMedium>,
+        medium: MemoryMedium,
         seed: u64,
-        use_checkpoint: bool,
     ) -> Result<ProjectHandle, String> {
-        let ledger = if use_checkpoint { store.open_with_checkpoint(seed) } else { store.open(seed) }
-            .map_err(|e| e.to_string())?;
+        let (file, ledger, report) = ProjectFile::open(medium, seed).map_err(|e| e.to_string())?;
+        let id = file.header().project_id.ok_or("the file has no project ID")?;
         let default_layer =
             ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
@@ -405,7 +477,9 @@ impl Project {
             path: None,
             ledger,
             ids,
-            store,
+            id,
+            store: MemoryStore::Written(Box::new(file)),
+            open_report: Some(report),
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -872,17 +946,19 @@ impl DocumentOwner for Project {
             self.sync_saved(pg);
             return Err(EngineError::Other(SAVE_UNAVAILABLE.into()));
         }
-        // The experiment's store is in memory; the path is only recorded (no file is written).
-        if let Some(p) = path {
-            self.path = Some(p.to_string());
-            for v in self.pages.values() {
-                if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
-                    st.path = self.path.clone();
-                }
-            }
-        }
-        match self.store.save(&mut self.ledger) {
+        // The test store is in memory; the path is only recorded (no file is written), and only
+        // once the save succeeded, so a failed Save As keeps the previous binding (§20.5).
+        let writer = format!("ecad {} (cadcraft {})", env!("CARGO_PKG_VERSION"), &crate::UPSTREAM_COMMIT[..7]);
+        match self.store.save(self.id, &mut self.ledger, &writer) {
             Ok(n) => {
+                if let Some(p) = path {
+                    self.path = Some(p.to_string());
+                    for v in self.pages.values() {
+                        if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
+                            st.path = self.path.clone();
+                        }
+                    }
+                }
                 self.events.record(EventKind::Saved, Some("qsave"), head, None, format!("persisted through seq {n}"));
                 self.sync_saved(pg);
                 Ok(json!({"saved": true, "persisted": n}))

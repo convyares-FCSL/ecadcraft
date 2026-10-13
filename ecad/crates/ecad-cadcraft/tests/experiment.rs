@@ -198,20 +198,29 @@ fn scenario_s1_to_s16() {
     h.activate(p1);
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
-    let saved_bytes = h.p(|p| p.store.medium.read_all().unwrap());
+    let saved_bytes = h.p(|p| p.store.medium().read_all().unwrap());
     let saved_head = h.head();
     h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).unwrap();
     let i1 = h.page_index(p1).unwrap();
     assert!(h.s.doc_unsaved(i1));
-    h.cfg(|p| p.store.medium.fail_next_append = true);
+    h.cfg(|p| p.store.medium_mut().fail_next_append = true);
     let e = h.run("qsave", Value::Null).unwrap_err();
     assert!(e.contains("not saved"), "{e}");
     assert!(h.p(|p| p.ledger.is_unsaved()), "still unsaved after the failure");
     assert_eq!(h.p(|p| p.ledger.persisted()), saved_head);
-    assert_eq!(h.p(|p| p.store.medium.read_all().unwrap()), saved_bytes, "the file still holds exactly the first save");
+    // The failed append left part of the batch after the verified prefix; the writer knows it is
+    // its own (§20.5) and the retry replaces it, so nothing is duplicated or lost.
+    let after_failure = h.p(|p| p.store.medium().read_all().unwrap());
+    assert!(after_failure.starts_with(&saved_bytes), "the first save is untouched");
+    assert!(h.p(|p| p.store.file().and_then(|f| f.state().attempt).is_some()), "the failed attempt is recorded");
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
+    let medium = h.p(|p| p.store.medium().clone());
+    let log = h.p(|p| p.ledger.log().to_vec());
+    let mut s1 = cadcraft_engine::Session::empty();
+    let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
+    assert_eq!(reopened.read(&mut s1, |p, _| p.ledger.log().to_vec()).unwrap(), log, "every transaction exactly once");
 
     // S14: undo everything, then redo everything: state and IDs restored at every point.
     let trail: Vec<Document> = h.trail.clone();
@@ -231,19 +240,17 @@ fn scenario_s1_to_s16() {
     }
     assert_eq!(h.head(), head + 2 * (edits as u64 + 1), "the log grew by one transaction per undo and redo");
 
-    // S15: reopen from the store, with and without a checkpoint.
+    // S15: reopen from the in-memory project file (checkpoints are disabled, §20.8).
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.medium.clone());
+    let medium = h.p(|p| p.store.medium().clone());
     let live = h.doc();
+    let id = h.p(|p| p.id);
     let mut s2 = cadcraft_engine::Session::empty();
-    let reopened =
-        ProjectHandle::open_from(&mut s2, "Demo", ecad_store::TestStore::new(medium.clone()), 1, false).unwrap();
+    let reopened = ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     assert_eq!(reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap(), live);
-    let mut store = ecad_store::TestStore::new(medium);
-    h.p(|p| store.write_checkpoint(&p.ledger)).unwrap();
-    let mut s3 = cadcraft_engine::Session::empty();
-    let with_cp = ProjectHandle::open_from(&mut s3, "Demo", store, 1, true).unwrap();
-    assert_eq!(with_cp.read(&mut s3, |p, _| p.ledger.document().clone()).unwrap(), live);
+    assert_eq!(reopened.read(&mut s2, |p, _| p.id).unwrap(), id, "the project keeps its identity");
+    let report = reopened.read(&mut s2, |p, _| p.open_report.clone()).unwrap();
+    assert!(report.is_some_and(|r| r.outcome == ecad_file::Outcome::Clean));
 
     // S16: failure after acceptance, before projection completes (PROJ-02).
     h.activate(p1);

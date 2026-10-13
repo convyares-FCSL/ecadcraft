@@ -53,13 +53,13 @@ tests for the interface.
 | Test | What it covers |
 | --- | --- |
 | `ecad-cadcraft/tests/experiment.rs` `scenario_s1_to_s16` | S1-S16 in one project with two pages, checks 1-6 after every step |
-| `ecad-cadcraft/tests/refusals.rs` (9 tests) | §17.3: Esc during MOVE and during LINE; EXPLODE, BREAK, HATCH and LAYER.NEW refused; CONNECT to a deleted terminal; injected panics in an ECAD command and in the owner callback; TX-05; interactive group pick; drag preview; closing flow through the real `CadApp` |
+| `ecad-cadcraft/tests/refusals.rs` (15 tests) | §17.3: Esc during MOVE and during LINE; EXPLODE, BREAK, HATCH and LAYER.NEW refused; CONNECT to a deleted terminal; injected panics in an ECAD command and in the owner callback; TX-05; interactive group pick; drag preview; closing flow through the real `CadApp`; reopening never reissues IDs; a damaged project file opens its verified prefix read-only with the source preserved |
 | `ecad-cadcraft/tests/recovery.rs` (4 tests) | recovery path, checked by content rather than handle numbers: a rebuild after acceptance; owner recovery of two open pages; tampering of each kind is detected; the unavailable-page placeholder (labelled, read only, saveable, close and reopen) |
-| `ecad-cadcraft/tests/project_pages.rs` (4 tests) | Save from either page saves the whole project; Save As updates every page's path (including a page opened later); unsupported UNDO options are reported; a `ProjectHandle` refuses a session that is not its own |
+| `ecad-cadcraft/tests/project_pages.rs` (5 tests) | Save from either page saves the whole project; Save As updates every page's path (including a page opened later); unsupported UNDO options are reported; a `ProjectHandle` refuses a session that is not its own |
 | `ecad-cadcraft` `access` unit test and doctests | a held project refuses ECAD commands and handle accessors instead of deadlocking; capturing the session inside `ProjectHandle::read` does not compile |
 | `ecad-cadcraft/tests/census.rs` | every CADCraft command's JSON form with default parameters on an ECAD page; checks must hold after each |
 | `ecad-model/tests/*` | ledger contracts (11), worked example (§7) |
-| `ecad-store/tests/*` | save, torn line, failed save after a new edit, disposable checkpoints |
+| `ecad-file/tests/*` (persistence stage 1, replaces the old `ecad-store` test store) | canonical form and CRC framing, record round trip and golden file, recovery classification, save with retry; checkpoints are disabled |
 | `crates/engine/tests/ext_*.rs` (upstream) | the extension interface itself, with a minimal owner: re-entrant calls, a failing or busy close, revisions after delegated undo, unsupported UNDO options |
 
 Checks after every step (§17.4):

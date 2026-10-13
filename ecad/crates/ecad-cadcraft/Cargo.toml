@@ -17,6 +17,7 @@ fault-injection = []
 [dependencies]
 ecad-model = { workspace = true }
 ecad-store = { workspace = true }
+ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 serde = { workspace = true }

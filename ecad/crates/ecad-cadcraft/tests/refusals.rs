@@ -68,8 +68,16 @@ fn escape_during_move_records_nothing() {
 }
 
 #[test]
-fn escape_during_line_keeps_the_segments_drawn() {
+fn escape_during_line_records_the_segments_kept() {
     let (mut h, ..) = fixture();
+    // Esc before any segment: nothing accepted, no transaction (§20.4).
+    let b = before(&mut h);
+    h.cmdline("line 0,50");
+    assert!(h.s.running.is_some());
+    h.s.cancel();
+    h.check();
+    unchanged(&mut h, &b, "Esc during LINE with no segment");
+    // Esc after two segments: CADCraft keeps them, and they are one transaction.
     let head = h.head();
     h.cmdline("line 0,50 10,50 10,60");
     assert!(h.s.running.is_some());
@@ -78,6 +86,12 @@ fn escape_during_line_keeps_the_segments_drawn() {
     assert_eq!(h.head(), head + 1, "one transaction for the segments CADCraft kept");
     let tx = h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert_eq!(tx.ops.iter().filter(|o| o.name() == "AddItem").count(), 2);
+    // The kept segments are saved and reopened as that transaction.
+    h.run("qsave", Value::Null).unwrap();
+    let medium = h.p(|p| p.store.medium().clone());
+    let mut s = cadcraft_engine::Session::empty();
+    let reopened = ecad_cadcraft::ProjectHandle::open_from(&mut s, "Demo", medium, 77).unwrap();
+    assert_eq!(reopened.read(&mut s, |p, _| p.ledger.log().last().cloned()).unwrap(), Some(tx));
 }
 
 #[test]
@@ -206,7 +220,7 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     // Closing the last page closes the project: prompt; a failed save keeps it open.
     app.request_close(Some(0));
     assert!(app.close_prompt().is_some(), "closing the project prompts");
-    h.project.configure(&mut app.session, |p| p.store.medium.fail_next_append = true).unwrap();
+    h.project.configure(&mut app.session, |p| p.store.medium_mut().fail_next_append = true).unwrap();
     app.answer_close(Choice::Save);
     assert_eq!(app.session.docs.len(), 1, "save failed: the project stays open");
     assert!(app.session.has_unsaved_work());
@@ -222,11 +236,9 @@ fn reopening_with_the_creation_seed_never_reissues_ids() {
     let mut h = H::new(4242);
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.medium.clone());
+    let medium = h.p(|p| p.store.medium().clone());
     let mut s = cadcraft_engine::Session::empty();
-    let reopened =
-        ecad_cadcraft::ProjectHandle::open_from(&mut s, "Demo", ecad_store::TestStore::new(medium), 4242, false)
-            .unwrap();
+    let reopened = ecad_cadcraft::ProjectHandle::open_from(&mut s, "Demo", medium, 4242).unwrap();
     let before = reopened.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
     s.execute("newpage", &json!({"title": "3"})).unwrap();
     s.execute("wire", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
@@ -303,4 +315,29 @@ fn malformed_parameters_are_refused_not_coerced() {
     // `null` still clears a property on purpose.
     h.run("setprop", json!({"component": c1, "key": "tag", "value": "-K1"})).unwrap();
     assert_eq!(h.run("setprop", json!({"component": c1, "key": "tag", "value": null})).unwrap()["changed"], true);
+}
+
+#[test]
+fn a_damaged_file_opens_its_verified_prefix_read_only() {
+    let mut h = H::new(4242);
+    h.run("newpage", json!({"title": "2"})).unwrap();
+    h.run("qsave", Value::Null).unwrap();
+    let saved = h.p(|p| p.ledger.log().to_vec());
+    let mut medium = h.p(|p| p.store.medium().clone());
+    // Damage the last complete record's payload: a complete record failing its checksum.
+    let bytes = medium.external();
+    let end = bytes.len() - 3;
+    bytes[end] ^= 0x01;
+    let original = bytes.clone();
+    let mut s = cadcraft_engine::Session::empty();
+    let reopened = ecad_cadcraft::ProjectHandle::open_from(&mut s, "Demo", medium, 4242).unwrap();
+    let report = reopened.read(&mut s, |p, _| p.open_report.clone()).unwrap().unwrap();
+    assert_eq!(report.access, ecad_file::Access::ReadOnly);
+    assert!(matches!(report.outcome, ecad_file::Outcome::Corrupt(ref c) if c.check == ecad_file::Check::Crc));
+    let log = reopened.read(&mut s, |p, _| p.ledger.log().to_vec()).unwrap();
+    assert_eq!(log, saved[..saved.len() - 1], "the verified prefix, without the damaged record");
+    let e = s.execute("qsave", &Value::Null).unwrap_err().to_string();
+    assert!(e.contains("read-only"), "{e}");
+    let after = reopened.read(&mut s, |p, _| ecad_store::Medium::read_all(p.store.medium()).unwrap()).unwrap();
+    assert_eq!(after, original, "the source is preserved");
 }

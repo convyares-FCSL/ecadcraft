@@ -77,29 +77,38 @@ struct Stacks {
     redo: Vec<usize>,
 }
 
-fn stacks(log: &[Transaction]) -> Result<Stacks> {
-    let mut s = Stacks { undo: Vec::new(), redo: Vec::new() };
-    for (i, tx) in log.iter().enumerate() {
+impl Stacks {
+    /// Account for `log[i]`, which must follow the entries already pushed.
+    fn push(&mut self, log: &[Transaction], i: usize) -> Result<()> {
+        let Some(tx) = log.get(i) else { return Ok(()) };
         match tx.kind {
             TxKind::Edit => {
-                s.undo.push(i);
-                s.redo.clear();
+                self.undo.push(i);
+                self.redo.clear();
             }
             TxKind::Undo { of } => {
-                let top = s.undo.pop().and_then(|j| log.get(j));
+                let top = self.undo.pop().and_then(|j| log.get(j));
                 if top.map(|t| t.id) != Some(of) {
                     return Err(ModelError::CorruptLog(format!("undo {} does not undo the latest step", tx.id)));
                 }
-                s.redo.push(i);
+                self.redo.push(i);
             }
             TxKind::Redo { of } => {
-                let top = s.redo.pop().and_then(|j| log.get(j));
+                let top = self.redo.pop().and_then(|j| log.get(j));
                 if top.map(|t| t.id) != Some(of) {
                     return Err(ModelError::CorruptLog(format!("redo {} does not redo the latest undo", tx.id)));
                 }
-                s.undo.push(i);
+                self.undo.push(i);
             }
         }
+        Ok(())
+    }
+}
+
+fn stacks(log: &[Transaction]) -> Result<Stacks> {
+    let mut s = Stacks { undo: Vec::new(), redo: Vec::new() };
+    for i in 0..log.len() {
+        s.push(log, i)?;
     }
     Ok(s)
 }
@@ -111,6 +120,21 @@ fn apply_all(doc: &Document, ops: &[Op]) -> Result<Document> {
     }
     next.check()?;
     Ok(next)
+}
+
+/// A named version must name a transaction before the one naming it (0 is the empty project), so
+/// [`Ledger::state_at`] can always resolve it.
+fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
+    for op in ops {
+        if let Op::NameVersion { name, at } = op
+            && *at >= seq
+        {
+            return Err(ModelError::Invariant(format!(
+                "version {name:?} names transaction {at}, which does not precede transaction {seq}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn inverse_ops(ops: &[Op]) -> Vec<Op> {
@@ -132,6 +156,45 @@ impl Ledger {
         Self::from_checkpoint(Document::default(), 0, log, seed)
     }
 
+    /// Replay as much of `log` as is valid: the ledger of the longest valid prefix and, when a
+    /// transaction fails, its position in `log` (0-based) and the error. Used by file readers to
+    /// open a damaged history read-only at its last good transaction (proposal §20.6).
+    pub fn replay_prefix(log: Vec<Transaction>, seed: u64) -> (Self, Option<(usize, ModelError)>) {
+        let mut doc = Document::default();
+        let mut stacks = Stacks { undo: Vec::new(), redo: Vec::new() };
+        let mut failure = None;
+        let mut good = 0;
+        for (i, tx) in log.iter().enumerate() {
+            let step = if tx.seq != i as u64 + 1 {
+                Err(ModelError::CorruptLog(format!(
+                    "transaction {} has sequence {} at position {}",
+                    tx.id,
+                    tx.seq,
+                    i + 1
+                )))
+            } else {
+                check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_all(&doc, &tx.ops))
+                    .and_then(|next| stacks.push(&log, i).map(|()| next))
+            };
+            match step {
+                Ok(next) => {
+                    doc = next;
+                    good = i + 1;
+                }
+                Err(e) => {
+                    failure = Some((i, e));
+                    break;
+                }
+            }
+        }
+        let mut log = log;
+        log.truncate(good);
+        let persisted = log.len() as u64;
+        let last = log.last().map_or(0, |t| t.id.0);
+        (Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last) }, failure)
+    }
+
     /// Rebuild from a checkpoint holding the state after the first `at` transactions, applying
     /// the rest of `log`. A checkpoint is only a cache (FILE-04): the full log is still required.
     ///
@@ -149,7 +212,8 @@ impl Ledger {
                 )));
             }
             if tx.seq > at {
-                doc = apply_all(&doc, &tx.ops)
+                doc = check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_all(&doc, &tx.ops))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
             }
         }
@@ -233,6 +297,7 @@ impl Ledger {
         ops: Vec<Op>,
         time_ms: Option<u64>,
     ) -> Result<TxId> {
+        check_bookmarks(&ops, self.head() + 1)?;
         let next = apply_all(&self.doc, &ops)?;
         let id: TxId = self.ids.fresh();
         self.log.push(Transaction { id, seq: self.head() + 1, author, label, kind, time_ms, ops });

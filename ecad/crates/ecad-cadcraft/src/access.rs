@@ -41,7 +41,7 @@ use cadcraft_engine::doc::{Drawing, Entity, Space};
 use cadcraft_engine::ext::OwnerRef;
 use cadcraft_engine::{DocState, Session};
 use ecad_model::PageId;
-use ecad_store::{MemoryMedium, TestStore};
+use ecad_store::MemoryMedium;
 use serde_json::Value;
 
 use crate::project::Project;
@@ -121,18 +121,12 @@ impl ProjectHandle {
         self.lock(s)?.snapshot(&PagesRef(s), at)
     }
 
-    /// Reopen a project from a test store; see [`Project::open_from`].
+    /// Reopen a project from an in-memory project file; see [`Project::open_from`].
     ///
     /// # Errors
     /// Store or replay failure.
-    pub fn open_from(
-        s: &mut Session,
-        name: &str,
-        store: TestStore<MemoryMedium>,
-        seed: u64,
-        use_checkpoint: bool,
-    ) -> Result<Self, String> {
-        Project::open_from(s, name, store, seed, use_checkpoint)
+    pub fn open_from(s: &mut Session, name: &str, medium: MemoryMedium, seed: u64) -> Result<Self, String> {
+        Project::open_from(s, name, medium, seed)
     }
 }
 

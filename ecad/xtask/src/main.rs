@@ -27,6 +27,7 @@ enum Class {
 const TABLE: &[(&str, Class)] = &[
     ("ecad-model", Class::Core),
     ("ecad-store", Class::Core),
+    ("ecad-file", Class::Core),
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
     ("ecad-cli", Class::Ui),
@@ -37,7 +38,7 @@ const TABLE: &[(&str, Class)] = &[
 const UI_CRATES: &[&str] = &["cadcraft-ui-egui", "craft-ui", "egui", "eframe", "egui-wgpu", "wgpu", "winit", "rfd"];
 
 /// Library crates that must build for wasm.
-const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-inspect", "ecad-cadcraft"];
+const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-cadcraft"];
 
 fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))

@@ -22,7 +22,7 @@ fn save_from_either_page_saves_the_whole_project() {
     h.run("qsave", Value::Null).unwrap();
     let (head, persisted, len) = h.p(|p| (p.ledger.head(), p.ledger.persisted(), p.ledger.log().len()));
     assert_eq!(persisted, head);
-    let stored = h.p(|p| p.store.medium.read_all().unwrap());
+    let stored = h.p(|p| p.store.medium().read_all().unwrap());
     let records = stored.iter().filter(|b| **b == b'\n').count();
     assert_eq!(records, len + 1, "header plus every transaction, including page 1's edit");
     let (i1, i2) = (h.page_index(p1).unwrap(), h.page_index(p2).unwrap());
@@ -111,7 +111,11 @@ fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     assert!(!target.exists() && !dir.exists(), "no file or folder was written");
     let (persisted, stored, events) = project
         .read(&mut s, |p, _| {
-            (p.ledger.persisted(), p.store.medium.read_all().unwrap().len(), p.events.count(EventKind::SaveUnavailable))
+            (
+                p.ledger.persisted(),
+                p.store.medium().read_all().unwrap().len(),
+                p.events.count(EventKind::SaveUnavailable),
+            )
         })
         .unwrap();
     assert_eq!((persisted, stored, events), (0, 0, 2), "not persisted, nothing stored, both reported");

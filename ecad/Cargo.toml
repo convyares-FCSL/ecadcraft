@@ -15,6 +15,7 @@ repository = "https://github.com/convyares-FCSL/ecadcraft"
 ecad-model = { path = "crates/ecad-model" }
 ecad-store = { path = "crates/ecad-store" }
 ecad-inspect = { path = "crates/ecad-inspect" }
+ecad-file = { path = "crates/ecad-file" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
