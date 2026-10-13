@@ -413,6 +413,7 @@ fn the_quick_start_trial_runs_headless() {
         .find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Component(_)))
         .unwrap();
     let rid = *rid;
+    let ecad_model::Subject::Component(component) = rep.subject else { panic!("not a component") };
     let mut moved: Vec<String> = Vec::new();
     for i in &rep.items {
         moved.push(p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(*i).unwrap().hex()).unwrap());
@@ -463,6 +464,14 @@ fn the_quick_start_trial_runs_headless() {
     let reopened = t.project().unwrap().clone();
     assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap(), history);
     assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
+    // The component ID noted before saving still names the component.
+    ok(&mut t, &format!("setprop {{\"component\":\"{}\",\"key\":\"tag\",\"value\":\"-K1\"}}", component.hex()));
+    assert!(
+        t.submit_command(r#"setprop {"component":"0123456789abcdef0123456789abcdef","key":"tag","value":"x"}"#)
+            .is_some()
+    );
+    ok(&mut t, "u");
+    assert_eq!(doc(&mut t), saved, "undo of the property change");
     ok(&mut t, "u");
     assert_eq!(doc(&mut t).page_order.len(), 2, "undo reaches back into the saved history");
     ok(&mut t, "redo");

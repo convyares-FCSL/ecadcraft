@@ -18,10 +18,11 @@
 >   are verified on a display. CADCraft's own desktop app does not load ECAD commands.
 > - **The inspector is a static page that loads exported JSON snapshots.** It has no live
 >   connection to a running session and no server, and it does not update by itself.
-> - **Persistence is test-only.** In automated tests, projects are stored as JSON lines in an
->   in-memory test medium. Save and Save As record a path but **write no file to disk**. In the
->   trial harness, Save and Save As report that persistence is unavailable and change nothing. A
->   project cannot be reopened after the process ends. There is no `.ecad` format yet.
+> - **Persistence (updated 2026-10-13).** When this experiment ran, persistence was test-only and
+>   the trial reported that saving was unavailable. The `.ecad` format followed (stage 1, in
+>   memory) and then files on disk with Open, Save and Save As in the trial (stage 2a, for
+>   review). How to try the current app is in [`quick-start.md`](quick-start.md); the trial
+>   below was run before persistence existed.
 
 ## Summary
 
@@ -60,6 +61,9 @@ tests for the interface.
 | `ecad-cadcraft/tests/census.rs` | every CADCraft command's JSON form with default parameters on an ECAD page; checks must hold after each |
 | `ecad-model/tests/*` | ledger contracts (11), worked example (§7) |
 | `ecad-file/tests/*` (persistence stage 1, replaces the old `ecad-store` test store) | canonical form and CRC framing, record round trip and golden file, recovery classification, save with retry; checkpoints are disabled |
+| `ecad-file/tests/disk_contracts.rs`, `ecad-store/tests/disk_contracts.rs` (stage 2a) | files on disk: save, quit and reopen; a failure at every step of Save and Save As; a folder flush left unconfirmed; a crash mid-batch and the tail sidecar; the writer lock, including a killed process; a second opener; external changes; damaged files |
+| `ecad-cadcraft/tests/files.rs` (stage 2a) | through the adapter: Save As, Save, close and reopen keep connectivity, IDs and history; a second session is read-only and can save a copy; file names are checked |
+| `apps/ecad-trial/tests/trial.rs` (15 tests) | the trial's dialogs (Save As, Open, Save/Discard/Cancel, read-only second window), and the quick-start guide's steps headless |
 | `crates/engine/tests/ext_*.rs` (upstream) | the extension interface itself, with a minimal owner: re-entrant calls, a failing or busy close, revisions after delegated undo, unsupported UNDO options |
 
 Checks after every step (§17.4):
