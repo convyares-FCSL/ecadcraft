@@ -180,6 +180,8 @@ pub enum DecodeError {
     Upcast(String),
     /// A size or integer limit.
     Limits(String),
+    /// An embedded definition's recorded content hash does not match its content (§20.3).
+    ContentHash(String),
 }
 
 /// Encode a model op in the flat form.
@@ -290,7 +292,27 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
     tagged.insert(name, Value::Object(obj));
     let rec: v1::Op = serde_json::from_value(Value::Object(tagged)).map_err(|e| DecodeError::Parse(e.to_string()))?;
     check_integers(&rec).map_err(DecodeError::Limits)?;
-    m::Op::try_from(rec).map_err(DecodeError::Parse)
+    let op = m::Op::try_from(rec).map_err(DecodeError::Parse)?;
+    check_content_hash(&op)?;
+    Ok(op)
+}
+
+/// A content hash is computed, never trusted from the file (§20.3): an embedded definition's
+/// recorded `origin.content_hash` must equal the hash of its content.
+fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
+    let (m::Op::EmbedDefinition { id, definition } | m::Op::RemoveDefinition { id, definition }) = op else {
+        return Ok(());
+    };
+    let Some(origin) = &definition.origin else { return Ok(()) };
+    let computed = definition_hash(definition).map_err(DecodeError::Parse)?;
+    if computed != origin.content_hash {
+        return Err(DecodeError::ContentHash(format!(
+            "definition {id}: recorded content hash {} does not match its content ({})",
+            origin.content_hash.hex(),
+            computed.hex()
+        )));
+    }
+    Ok(())
 }
 
 /// Bring an op stored in an older version up to [`v1::OP_VERSION`], on its JSON fields.

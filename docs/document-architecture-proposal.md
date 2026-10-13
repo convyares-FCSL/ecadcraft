@@ -1136,14 +1136,17 @@ Further rules for embedded definitions:
 | `verified_len` | byte length of the **verified prefix**: complete records read and checked on open, or written by this writer and acknowledged durable |
 | `persisted` | `seq` of the last transaction in the verified prefix, i.e. the **last acknowledged durable position** |
 | `chain_head` | history hash of transaction `persisted` (§20.10) |
-| `tail_check` | the bytes (or CRC and length) of the last record in the verified prefix, used to confirm the prefix is still ours |
+| `prefix_digest` | a running SHA-256 of the verified prefix's bytes, used to confirm the whole prefix is still ours |
 | `attempt` | `None`, or the failed save in progress: its start offset (= `verified_len`), its exact bytes and the `seq` range they encode, and how far it got: append failed, or appended but the flush failed |
 
 **Save** (the file already holds this project up to `persisted`):
 
-1. **Confirm the file is still ours.** Its length must be ≥ `verified_len`, and the last record
-   of the verified prefix must equal `tail_check`. On disk (stage 2) its identity (device and
-   inode, or file index) must also be unchanged.
+1. **Confirm the file is still ours.** Its length must be ≥ `verified_len`, and the verified
+   prefix is re-read and its SHA-256 must equal `prefix_digest`. Checking only the last record
+   would miss a same-length change to an earlier record; the next open would then stop there and
+   omit history, including the newly "saved" work. Re-reading costs one sequential read of the
+   file per save. On disk (stage 2) the file's identity (device and inode, or file index) must
+   also be unchanged.
 2. **Classify any bytes beyond `verified_len`:**
    - **none:** nothing to undo;
    - **a prefix of `attempt`'s bytes:** our own failed save left them. They are truncated back to
@@ -1156,7 +1159,8 @@ Further rules for embedded definitions:
    `fsync` the operating system may have dropped the written data while reporting the next
    flush as successful. The next retry truncates and rewrites the batch instead.
 5. **Acknowledge.** Only after the flush succeeds: `verified_len` += the batch length,
-   `persisted = head`, `chain_head` and `tail_check` move, and `attempt = None` (SAVE-04).
+   `persisted = head`, `chain_head` moves, `prefix_digest` takes in the batch, and
+   `attempt = None` (SAVE-04).
 
 Each failure point leaves the same guarantees:
 
@@ -1210,7 +1214,8 @@ order, it checks:
 3. the record type and that `seq` is consecutive;
 4. the hash chain (`prev`);
 5. that every op is known (in its stored version);
-6. the upcast to the current version;
+6. the upcast to the current version, then each embedded definition's recorded content hash
+   against its content (§20.3: computed, never trusted);
 7. replay preconditions (TX-04);
 8. the document invariants (TX-03).
 
@@ -1222,7 +1227,7 @@ depends only on *what* follows that prefix, not on *where* it is:
 | --- | --- | --- |
 | nothing | clean | opens **writable**; `persisted = head` |
 | only an **unterminated trailing fragment** (no final `\n`; possibly empty, partial or garbage bytes such as zeros) | **incomplete trailing write**: the only shape an interrupted append can leave, because the terminator is written last | opens **writable** at the verified prefix. The report names the fragment's offset and length and shows a capped preview. Before the first save truncates it, the fragment is preserved beside the file (stage 2: `name.ecad.tail-<offset>`), so even an unexpected fragment is never destroyed silently. |
-| a **complete** record that fails any check 1-8, **including when it is the final record** (CRC mismatch, unparsable, wrong `seq`, broken chain, unknown op, precondition or invariant failure) | **corrupt record**: a complete record is never treated as interrupted output | opens **read-only** at the verified prefix. **The source is preserved:** nothing is truncated or written. The report names the record's offset, its `seq` if readable, the failed check, and how many complete records and bytes follow (the omitted tail). Save As can write the verified history to a new file. |
+| a **complete** record that fails any check 1-8, **including when it is the final record** (CRC mismatch, unparsable, wrong `seq`, broken chain, unknown op, content hash mismatch, precondition or invariant failure) | **corrupt record**: a complete record is never treated as interrupted output | opens **read-only** at the verified prefix. **The source is preserved:** nothing is truncated or written. The report names the record's offset, its `seq` if readable, the failed check, and how many complete records and bytes follow (the omitted tail). Save As can write the verified history to a new file. |
 | unknown or newer container, codec or schema version in the header | unsupported | refuses to open, naming what this build supports |
 
 **The report is part of the open result**, not a log line. It always states:
@@ -1339,7 +1344,9 @@ applied to its parsed payload:
   `\u00xx` lowercase); everything else as literal UTF-8.
 - **Numbers:** every number is an IEEE 754 double, serialised as ECMAScript
   `Number.prototype.toString`:
-  - the shortest round-trip digits;
+  - the shortest round-trip digits; when two digit strings of that length are equally close,
+    the one with the even last digit (ECMA-262; Rust's `{:e}` rounds such ties up, so the
+    writer settles the last digit by exact comparison);
   - plain notation from 1e-6 up to (but not including) 1e21, exponent notation outside it
     (`1e-7`, `1e+21`);
   - `-0` written as `0`.
@@ -1640,5 +1647,6 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
 | 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
+| 2026-10-13 | Revision 4.1, corrections from the stage 1 code review: Save re-reads the whole verified prefix against a running digest (not only its last record); embedded content hashes are recomputed on open (a mismatch is corruption); canonical numbers break equal-distance ties to the even digit as ECMA-262 does |
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |

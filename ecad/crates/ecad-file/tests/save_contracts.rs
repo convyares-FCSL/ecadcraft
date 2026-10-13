@@ -110,6 +110,10 @@ fn external_changes_are_refused_and_the_file_is_left_alone() {
             b.truncate(n);
         }),
         ("last saved record edited", false, |b, verified| b[verified - 5] ^= 1),
+        // Same length, last line intact: only a check of the whole prefix sees these.
+        ("an earlier record edited", false, |b, verified| b[verified / 2] ^= 1),
+        ("the header edited", false, |b, _| b[30] ^= 1),
+        ("an earlier record edited after a failed save", true, |b, verified| b[verified / 2] ^= 1),
     ];
     for (name, after_failure, change) in changes {
         let (mut file, mut ledger) = half_saved(5);
@@ -164,4 +168,20 @@ fn a_new_file_needs_an_empty_target() {
     ledger.mark_persisted(0).unwrap();
     assert!(matches!(ProjectFile::create(m, PROJECT, &mut ledger, None, WRITER), Err(SaveError::Flush(_))));
     assert!(ledger.is_unsaved());
+}
+
+#[test]
+fn a_reopened_file_checks_its_whole_prefix_too() {
+    let (file, mut ledger) = half_saved(5);
+    let (mut reopened, _, _) = ProjectFile::open(file.into_medium(), SEED).unwrap();
+    let verified = reopened.state().verified_len as usize;
+    reopened.medium_mut().external()[verified / 2] ^= 1;
+    let before = reopened.medium().read_all().unwrap();
+    let r = reopened.save(&mut ledger);
+    assert!(matches!(r, Err(SaveError::ExternalChange(_))), "{r:?}");
+    assert_eq!(reopened.medium().read_all().unwrap(), before, "untouched");
+    // Undo the change: the prefix is ours again and the save goes through.
+    reopened.medium_mut().external()[verified / 2] ^= 1;
+    reopened.save(&mut ledger).unwrap();
+    assert_file_holds(&reopened, &ledger);
 }

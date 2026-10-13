@@ -113,11 +113,14 @@ pub fn es_number(x: f64) -> Result<String, CanonicalError> {
     if x == 0.0 {
         return Ok("0".into());
     }
-    // Rust's `{:e}` gives the shortest digits that round-trip: "d.ddde±x" or "de±x".
+    // Rust's `{:e}` gives the shortest digits that round-trip: "d.ddde±x" or "de±x". When two
+    // such digit strings are equally close, Rust rounds half up but ECMAScript picks the even one,
+    // so the last digit is settled exactly by `closest_digits`.
     let sci = format!("{:e}", x.abs());
     let (mantissa, exp) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
     let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
     let exp: i64 = exp.parse().unwrap_or(0);
+    let digits = closest_digits(x.abs(), &digits, exp);
     let k = digits.len() as i64;
     let n = exp + 1; // value = 0.d1d2…dk × 10^n
     let mut s = String::new();
@@ -148,6 +151,128 @@ pub fn es_number(x: f64) -> Result<String, CanonicalError> {
         s.push_str(&e.abs().to_string());
     }
     Ok(s)
+}
+
+/// ECMAScript's choice among the shortest digit strings (ECMA-262 Number::toString, step 5):
+/// of the `k`-digit values that round-trip to `x`, the one closest to `x`, and the even one if two
+/// are equally close. `digits` is Rust's shortest string for `x` (value `digits × 10^(exp-k+1)`);
+/// the candidates are it and its neighbours in the last digit, compared exactly.
+fn closest_digits(x: f64, digits: &str, exp: i64) -> String {
+    let k = digits.len();
+    let Ok(c) = digits.parse::<u64>() else { return digits.to_string() };
+    if k == 0 || k > 17 {
+        return digits.to_string();
+    }
+    let low = 10u64.pow(k as u32 - 1);
+    let high = low.saturating_mul(10);
+    let e10 = exp - (k as i64 - 1);
+    let round_trips = |v: u64| format!("{v}e{e10}").parse::<f64>().is_ok_and(|y| y == x);
+    let candidates: Vec<u64> = [c.checked_sub(1), Some(c), c.checked_add(1)]
+        .into_iter()
+        .flatten()
+        .filter(|v| (low..high).contains(v))
+        .filter(|v| round_trips(*v))
+        .collect();
+    let Some(mut best) = candidates.first().copied() else { return digits.to_string() };
+    for next in candidates.iter().skip(1).copied() {
+        // Compare 2x with best + next, both scaled by 10^e10: above the midpoint, `next` is closer.
+        match compare_double_with_decimal(x, best + next, e10) {
+            std::cmp::Ordering::Greater => best = next,
+            std::cmp::Ordering::Equal => {
+                if next % 2 == 0 {
+                    best = next;
+                }
+                break;
+            }
+            std::cmp::Ordering::Less => break,
+        }
+    }
+    let s = best.to_string();
+    let trimmed = s.trim_end_matches('0');
+    if trimmed.is_empty() { s } else { trimmed.to_string() }
+}
+
+/// Compare `2x` with `m × 10^e10` exactly (`x` finite and positive).
+fn compare_double_with_decimal(x: f64, m: u64, e10: i64) -> std::cmp::Ordering {
+    let bits = x.to_bits();
+    let frac = bits & ((1u64 << 52) - 1);
+    let biased = ((bits >> 52) & 0x7ff) as i64;
+    let (mant, e2) = if biased == 0 { (frac, -1074) } else { (frac | (1u64 << 52), biased - 1075) };
+    // 2x = mant × 2^(e2 + 1); m × 10^e10 = m × 2^e10 × 5^e10.
+    let mut left = Big::from(mant);
+    let mut right = Big::from(m);
+    let p2 = e2 + 1 - e10;
+    if p2 > 0 {
+        left.mul_pow(2, p2)
+    } else {
+        right.mul_pow(2, -p2)
+    }
+    if e10 < 0 {
+        left.mul_pow(5, -e10)
+    } else {
+        right.mul_pow(5, e10)
+    }
+    left.cmp(&right)
+}
+
+/// A minimal unsigned big integer (little-endian 32-bit limbs) for exact comparisons.
+struct Big(Vec<u32>);
+
+impl PartialEq for Big {
+    fn eq(&self, other: &Self) -> bool {
+        self.significant() == other.significant()
+    }
+}
+
+impl Eq for Big {}
+
+impl Big {
+    fn from(v: u64) -> Self {
+        Big(vec![v as u32, (v >> 32) as u32])
+    }
+
+    fn mul_small(&mut self, m: u32) {
+        let mut carry = 0u64;
+        for limb in &mut self.0 {
+            let p = u64::from(*limb) * u64::from(m) + carry;
+            *limb = p as u32;
+            carry = p >> 32;
+        }
+        if carry > 0 {
+            self.0.push(carry as u32);
+        }
+    }
+
+    /// Multiply by `base^n` (`base` 2 or 5; `n` is bounded by the double range, capped anyway).
+    fn mul_pow(&mut self, base: u32, n: i64) {
+        let (chunk, step) = if base == 2 { (1u32 << 31, 31) } else { (5u32.pow(13), 13) };
+        let mut n = n.clamp(0, 4096);
+        while n >= step {
+            self.mul_small(chunk);
+            n -= step;
+        }
+        for _ in 0..n {
+            self.mul_small(base);
+        }
+    }
+
+    fn significant(&self) -> &[u32] {
+        let len = self.0.iter().rposition(|l| *l != 0).map_or(0, |i| i + 1);
+        self.0.get(..len).unwrap_or_default()
+    }
+}
+
+impl PartialOrd for Big {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Big {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let (a, b) = (self.significant(), other.significant());
+        a.len().cmp(&b.len()).then_with(|| a.iter().rev().cmp(b.iter().rev()))
+    }
 }
 
 fn write_string(s: &str, out: &mut Vec<u8>) {

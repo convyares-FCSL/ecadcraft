@@ -1,9 +1,9 @@
 //! Writing a project file: first write, and Save with retry (proposal §20.5).
 //!
 //! The writer keeps the **verified prefix** (`verified_len`), the **last acknowledged durable
-//! position** (`persisted`), the chain head, the last verified line (`tail_line`, to confirm the
-//! prefix is still ours) and the **attempt** of a failed save. Every save starts by checking the
-//! file is still ours, removing only bytes that our own failed attempt (or the incomplete
+//! position** (`persisted`), the chain head, a running SHA-256 of the verified prefix (to confirm
+//! the whole prefix is still ours) and the **attempt** of a failed save. Every save starts by
+//! re-reading the verified prefix and checking its digest, removing only bytes that our own failed attempt (or the incomplete
 //! trailing write reported at open) left after the verified prefix, and refusing any other
 //! change. A failed flush is never retried on the same bytes: the batch is truncated and
 //! rewritten. `persisted` advances only after a successful flush.
@@ -15,6 +15,7 @@ use std::io;
 
 use ecad_model::{Ledger, ProjectId, TxId};
 use ecad_store::Medium;
+use sha2::{Digest, Sha256};
 
 use crate::chain::{self, Hash};
 use crate::codec::{Codec, JsonLines};
@@ -98,20 +99,20 @@ pub struct ProjectFile<M: Medium> {
     persisted: u64,
     last_tx: Option<TxId>,
     chain_head: Hash,
-    tail_line: Vec<u8>,
+    /// SHA-256 state over the verified prefix's bytes.
+    prefix_digest: Sha256,
     fragment: Option<Vec<u8>>,
     attempt: Option<Attempt>,
     spans: Vec<RecordSpan>,
 }
 
 /// Encode transactions `from..` of `ledger`, chained from `prev`: the bytes, the spans relative
-/// to the batch start, the last line and the last hash.
-fn encode_batch(ledger: &Ledger, from: usize, prev: Hash) -> Result<(Vec<u8>, Vec<RecordSpan>, Vec<u8>, Hash), String> {
+/// to the batch start and the last hash.
+fn encode_batch(ledger: &Ledger, from: usize, prev: Hash) -> Result<(Vec<u8>, Vec<RecordSpan>, Hash), String> {
     let codec = JsonLines;
     let mut bytes = Vec::new();
     let mut spans = Vec::new();
     let mut prev = prev;
-    let mut last = Vec::new();
     for tx in ledger.log().iter().skip(from) {
         let value = record::tx_value(tx, &prev)?;
         let canonical = crate::canonical::canonical(&value).map_err(|e| e.to_string())?;
@@ -119,9 +120,8 @@ fn encode_batch(ledger: &Ledger, from: usize, prev: Hash) -> Result<(Vec<u8>, Ve
         let line = codec.encode(&value).map_err(|e| e.to_string())?;
         spans.push(RecordSpan { seq: tx.seq, offset: bytes.len() as u64, len: line.len() as u64 });
         bytes.extend_from_slice(&line);
-        last = line;
     }
-    Ok((bytes, spans, last, prev))
+    Ok((bytes, spans, prev))
 }
 
 impl<M: Medium> ProjectFile<M> {
@@ -144,7 +144,7 @@ impl<M: Medium> ProjectFile<M> {
         let seed = header.seed().map_err(SaveError::Encode)?;
         let header_value = serde_json::to_value(&header).map_err(|e| SaveError::Encode(e.to_string()))?;
         let header_line = JsonLines.encode(&header_value).map_err(|e| SaveError::Encode(e.to_string()))?;
-        let (batch, spans, last, head_hash) = encode_batch(ledger, 0, seed).map_err(SaveError::Encode)?;
+        let (batch, spans, head_hash) = encode_batch(ledger, 0, seed).map_err(SaveError::Encode)?;
         let mut all = header_line.clone();
         all.extend_from_slice(&batch);
         medium.append(&all).map_err(SaveError::Append)?;
@@ -160,7 +160,7 @@ impl<M: Medium> ProjectFile<M> {
             persisted: head,
             last_tx: ledger.log().last().map(|t| t.id),
             chain_head: head_hash,
-            tail_line: if last.is_empty() { header_line } else { last },
+            prefix_digest: Sha256::new().chain_update(&all),
             fragment: None,
             attempt: None,
             spans: spans.into_iter().map(|s| RecordSpan { offset: s.offset + base, ..s }).collect(),
@@ -175,6 +175,8 @@ impl<M: Medium> ProjectFile<M> {
     pub fn open(medium: M, seed: u64) -> Result<(Self, Ledger, OpenReport), OpenError> {
         let bytes = medium.read_all().map_err(|e| OpenError::Header(format!("could not read: {e}")))?;
         let opened = read::open_project(&bytes, seed)?;
+        let verified =
+            usize::try_from(opened.report.verified_len).ok().and_then(|n| bytes.get(..n)).unwrap_or_default();
         let file = Self {
             medium,
             header: opened.header,
@@ -183,7 +185,7 @@ impl<M: Medium> ProjectFile<M> {
             persisted: opened.report.verified_seq,
             last_tx: opened.last_tx,
             chain_head: opened.chain_head,
-            tail_line: opened.tail_line,
+            prefix_digest: Sha256::new().chain_update(verified),
             fragment: opened.fragment,
             attempt: None,
             spans: opened.spans,
@@ -205,14 +207,13 @@ impl<M: Medium> ProjectFile<M> {
         {
             return Err(SaveError::NotThisHistory("its saved transactions are not this project's".into()));
         }
-        // 1. The verified prefix must still be ours.
+        // 1. The whole verified prefix must still be ours: it is re-read and its digest compared,
+        //    so a change anywhere in it (not only at its end) refuses the save.
         let len = self.medium.len();
         if len < self.verified_len {
             return Err(SaveError::ExternalChange("it is shorter than the saved history".into()));
         }
-        let tail_at = self.verified_len - self.tail_line.len() as u64;
-        let tail = self.medium.read_range(tail_at, self.tail_line.len() as u64).map_err(SaveError::Read)?;
-        if tail != self.tail_line {
+        if self.prefix_hash()? != self.prefix_digest.clone().finalize().as_slice() {
             return Err(SaveError::ExternalChange("the saved history in it has changed".into()));
         }
         // 2. Classify bytes beyond the verified prefix.
@@ -244,7 +245,7 @@ impl<M: Medium> ProjectFile<M> {
             return Ok(SaveOutcome::NothingToSave);
         }
         // 3. Write the batch afresh (it includes edits made since any failed attempt).
-        let (bytes, spans, last, head_hash) =
+        let (bytes, spans, head_hash) =
             encode_batch(ledger, self.persisted as usize, self.chain_head).map_err(SaveError::Encode)?;
         let first_seq = self.persisted + 1;
         if let Err(e) = self.medium.append(&bytes) {
@@ -276,9 +277,26 @@ impl<M: Medium> ProjectFile<M> {
         self.persisted = head;
         self.last_tx = ledger.log().last().map(|t| t.id);
         self.chain_head = head_hash;
-        self.tail_line = last;
+        self.prefix_digest.update(&bytes);
         self.attempt = None;
         Ok(SaveOutcome::Saved { first_seq, last_seq: head, bytes: bytes.len() as u64 })
+    }
+
+    /// SHA-256 of the medium's first `verified_len` bytes, read in chunks.
+    fn prefix_hash(&self) -> Result<Vec<u8>, SaveError> {
+        const CHUNK: u64 = 1 << 20;
+        let mut digest = Sha256::new();
+        let mut at = 0;
+        while at < self.verified_len {
+            let n = CHUNK.min(self.verified_len - at);
+            let part = self.medium.read_range(at, n).map_err(SaveError::Read)?;
+            if part.len() as u64 != n {
+                return Err(SaveError::ExternalChange("it is shorter than the saved history".into()));
+            }
+            digest.update(&part);
+            at += n;
+        }
+        Ok(digest.finalize().to_vec())
     }
 
     /// The writer's state.

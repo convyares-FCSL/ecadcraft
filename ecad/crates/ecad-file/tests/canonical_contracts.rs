@@ -44,6 +44,32 @@ fn numbers_follow_ecmascript_number_to_string() {
     assert_eq!(es_number(f64::INFINITY), Err(CanonicalError::NonFinite));
 }
 
+/// Doubles exactly halfway between two shortest digit strings: ECMAScript picks the even last
+/// digit, where a round-half-up formatter (Rust's `{:e}`) picks the odd one. The expected strings
+/// are Node.js `String(x)`; a local comparison of 260,000 such ties and 600,000 random doubles
+/// against Node.js found no difference.
+#[test]
+fn ties_between_shortest_digits_choose_the_even_digit() {
+    let cases: &[(u64, &str)] = &[
+        (0x42e6_f7d5_21ea_90a4, "202029508023429.12"),
+        (0x4315_ef1f_5e32_4ea9, "1543473128575914.2"),
+        (0x4316_0f8c_28d9_ea81, "1552386035710624.2"),
+        (0x42e3_63c8_0c04_17f4, "170554231365823.62"),
+        (0x427c_9004_85f4_3c80, "1962804797251.7812"),
+        (0x4241_e956_4d75_6200, "153858382570.76562"),
+        (0x41dd_5a41_7d1f_4000, "1969817076.4882812"),
+        (0x4177_1ead_9c54_0000, "24242905.770507812"),
+        (0x4107_7585_2e80_0000, "192176.64770507812"),
+        (0x409f_22c1_1000_0000, "1992.6885375976562"),
+    ];
+    for (bits, want) in cases {
+        let x = f64::from_bits(*bits);
+        assert_eq!(es_number(x).unwrap(), *want, "{bits:016x}");
+        assert_eq!(es_number(-x).unwrap(), format!("-{want}"), "{bits:016x} negated");
+        assert_eq!(want.parse::<f64>().unwrap(), x, "{want} round-trips");
+    }
+}
+
 #[test]
 fn integers_must_be_exact_doubles() {
     let ok = |v: Value| String::from_utf8(canonical(&v).unwrap()).unwrap();

@@ -174,6 +174,13 @@ fn failures(f: &File, n: usize) -> Vec<(&'static str, Check, Vec<u8>)> {
         ..tx
     };
     out.push(("invariant", Check::Invariant, tx_line(f, n, &tx)));
+    // An embedded definition whose recorded content hash is not its content's.
+    let mut definition = f.ledger.document().definitions.values().find(|d| d.origin.is_some()).unwrap().clone();
+    if let Some(origin) = definition.origin.as_mut() {
+        origin.content_hash = ContentHash([9; 32]);
+    }
+    let tx = Transaction { ops: vec![Op::EmbedDefinition { id: DefinitionId(0xd0d0), definition }], ..tx };
+    out.push(("content hash", Check::ContentHash, tx_line(f, n, &tx)));
     out
 }
 

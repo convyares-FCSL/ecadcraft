@@ -2,7 +2,8 @@
 //!
 //! The bytes are split into complete records (ending in `\n`) and at most one unterminated
 //! trailing fragment. Each complete record is checked in order: frame and CRC, parse, limits,
-//! record type, sequence, hash chain (on the stored form), op names and versions, upcast, then
+//! record type, sequence, hash chain (on the stored form), op names and versions, upcast,
+//! embedded content hashes, then
 //! replay preconditions and document invariants. The verified prefix ends at the last record that
 //! passes every check, and what follows it decides the outcome:
 //!
@@ -47,6 +48,8 @@ pub enum Check {
     UnknownOp,
     /// An op version that is newer, or older with no upcast.
     Upcast,
+    /// An embedded definition's recorded content hash does not match its content.
+    ContentHash,
     /// Replay found the document did not hold an op's recorded `before` state.
     Precondition,
     /// Replay would break a document invariant.
@@ -155,8 +158,6 @@ pub struct Opened {
     pub spans: Vec<RecordSpan>,
     /// History hash of the last verified transaction (the seed when there is none).
     pub chain_head: Hash,
-    /// The last verified line (the header line when there are no transactions).
-    pub tail_line: Vec<u8>,
     /// ID of the last verified transaction.
     pub last_tx: Option<TxId>,
     /// The unterminated fragment, when [`Outcome::IncompleteTail`].
@@ -280,6 +281,7 @@ pub fn open_project(bytes: &[u8], seed: u64) -> Result<Opened, OpenError> {
                     DecodeError::UnknownOp(d) => (Check::UnknownOp, d),
                     DecodeError::Upcast(d) => (Check::Upcast, d),
                     DecodeError::Limits(d) => (Check::Limits, d),
+                    DecodeError::ContentHash(d) => (Check::ContentHash, d),
                 };
                 failure = fail(check, detail, seq);
                 break;
@@ -307,7 +309,6 @@ pub fn open_project(bytes: &[u8], seed: u64) -> Result<Opened, OpenError> {
     let good = ledger.log().len();
     let last_line = lines.get(good).map_or(first, |l| l);
     let verified_len = (last_line.end + 1) as u64;
-    let tail_line = bytes.get(last_line.offset..=last_line.end).unwrap_or_default().to_vec();
     let chain_head = if good == 0 { seed_hash } else { hashes.get(good - 1).copied().unwrap_or(seed_hash) };
     let file_len = bytes.len() as u64;
     let (outcome, fragment) = match failure {
@@ -348,7 +349,6 @@ pub fn open_project(bytes: &[u8], seed: u64) -> Result<Opened, OpenError> {
         header,
         spans,
         chain_head,
-        tail_line,
         last_tx,
         fragment,
     })
