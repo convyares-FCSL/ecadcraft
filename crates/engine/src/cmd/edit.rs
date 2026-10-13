@@ -124,6 +124,9 @@ fn run_undo(s: &mut Session, p: &Value) -> Result<Value> {
         None | Some(Value::Null) => UndoMode::Count,
         Some(v) => v.as_str().and_then(undo_mode).ok_or_else(|| bad("undo", "mode: count, mark, back, begin, end, auto or control"))?,
     };
+    if mode != UndoMode::Count {
+        owned_option(s, &format!("{mode:?}"))?;
+    }
     let control = s.state()?.undo_ctl.control;
     if control != Control::All && !matches!(mode, UndoMode::Count | UndoMode::Control | UndoMode::Auto) {
         return Err(EngineError::Other(format!("UNDO {mode:?} needs UNDO Control All.")));
@@ -245,6 +248,17 @@ enum UndoAsk {
     BackAll,
 }
 
+/// ECAD-SEAM(owner): an owned document's history is kept by its owner, which undoes and redoes by
+/// count only; any other UNDO option is reported as unsupported, never silently ignored.
+fn owned_option(s: &Session, option: &str) -> Result<()> {
+    if s.state().is_ok_and(|st| s.ext.owner_of(st.uid).is_some()) {
+        return Err(EngineError::Other(format!(
+            "UNDO {option} is not supported for this document: its history is kept by its owner (undo and redo by count only)."
+        )));
+    }
+    Ok(())
+}
+
 /// UNDO at the command line: a number of operations (default 1) or Auto, Control (All, None, One,
 /// Combine, Layer), BEgin, End, Mark or Back. With Control None only Control is offered, with One
 /// a count or Control.
@@ -312,6 +326,10 @@ impl Interactive for UndoM {
             UndoAsk::Main => {
                 // Enter takes the default count, not a keyword.
                 if let Some(k) = kw.as_deref().filter(|_| !matches!(i, Input::Enter)) {
+                    // ECAD-SEAM(owner): refuse an unsupported option at once, before its sub-prompt.
+                    if let Err(e) = owned_option(s, k) {
+                        return Self::finish(s, Err(e));
+                    }
                     match k {
                         "Auto" => self.ask = UndoAsk::Auto,
                         "Control" => self.ask = UndoAsk::Control,

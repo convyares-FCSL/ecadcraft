@@ -101,6 +101,8 @@ pub fn specs() -> Vec<CommandSpec> {
 pub(crate) fn transform_entities(s: &mut Session, hs: &[Handle], m: &Mat3, copy: bool) -> Result<Vec<Handle>> {
     let d = s.doc_mut()?;
     let mut out = Vec::new();
+    // ECAD-SEAM(owner): which new entity was copied from which source.
+    let mut copied = Vec::new();
     for h in hs {
         let Some(sp) = d.space_of(*h) else { continue };
         if copy {
@@ -111,6 +113,7 @@ pub(crate) fn transform_entities(s: &mut Session, hs: &[Handle], m: &Mat3, copy:
             if let Some(st) = d.space_mut(&sp) {
                 st.push(ne);
                 out.push(nh);
+                copied.push((nh, crate::ext::Source::Entity(*h)));
             }
         } else {
             let locked = d.entity(*h).and_then(|e| d.layer(&e.common.layer)).is_some_and(|l| l.locked);
@@ -120,6 +123,9 @@ pub(crate) fn transform_entities(s: &mut Session, hs: &[Handle], m: &Mat3, copy:
             d.modify_entity(*h, |e| e.kind.transform(m))?;
             out.push(*h);
         }
+    }
+    if copy {
+        s.ext.note_copies(copied);
     }
     Ok(out)
 }

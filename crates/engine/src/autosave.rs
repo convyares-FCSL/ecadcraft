@@ -182,7 +182,8 @@ impl Autosaver {
             false
         });
         for st in &s.docs {
-            if self.busy.contains(&st.uid) {
+            // ECAD-SEAM(owner): an owned document is saved by its owner, not autosaved as a drawing.
+            if self.busy.contains(&st.uid) || s.ext.owner_of(st.uid).is_some() {
                 continue;
             }
             let t = self.docs.entry(st.uid).or_default();

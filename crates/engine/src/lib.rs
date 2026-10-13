@@ -12,6 +12,8 @@ pub mod assoc;
 pub mod audit;
 pub mod autosave;
 pub mod cmd;
+// ECAD-SEAM(owner): documents with an embedder-supplied owner.
+pub mod ext;
 mod finite;
 pub mod grip_dims;
 pub mod grips;
@@ -587,6 +589,8 @@ pub struct Session {
     pub clipboard_source: Option<cmd::clipboard::ClipSource>,
     /// The window last picked with PLOTWINDOW (the Plot dialog's "Window <").
     pub plot_window: Option<cadcraft_geom::Bounds2>,
+    /// ECAD-SEAM(owner): owners of documents and what the current command recorded for them.
+    pub ext: ext::Extensions,
 }
 
 impl Default for Session {
@@ -631,6 +635,7 @@ impl Session {
             last_used: LastUsed::default(),
             clipboard_source: None,
             plot_window: None,
+            ext: ext::Extensions::default(),
         }
     }
     pub fn new_drawing(&mut self, metric: bool) -> usize {
@@ -753,6 +758,12 @@ impl Session {
         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
         (spec.enabled)(self).map_err(|m| EngineError::Disabled(spec.id.into(), m))?;
         let before = self.state().ok().map(|s| (s.doc.clone(), s.selection.clone(), s.uid));
+        // ECAD-SEAM(owner): a top-level command starts with nothing recorded; one run inside an
+        // interactive command (transparent, or JSON while prompting) belongs to that command.
+        let top_level = self.running.is_none();
+        if top_level {
+            self.ext.begin_command();
+        }
         let run = spec.run;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self, params)));
         let result = match result {
@@ -777,6 +788,25 @@ impl Session {
             (Ok(v), Some((doc, sel, uid))) if spec.undoable => self.refuse_non_finite(Some(*uid), doc, sel, spec.id).map(|()| v),
             (r, _) => r,
         };
+        // ECAD-SEAM(owner): an owned document's owner accepts or refuses the result and keeps the
+        // history; the engine pushes no undo step for it.
+        let gate = match &before {
+            Some((doc, _, uid)) if top_level => ext::gate(self, *uid, spec.id, doc),
+            Some((_, _, uid)) if self.ext.owner_of(*uid).is_some() => ext::Gate::Accepted,
+            _ => ext::Gate::NotOwned,
+        };
+        if gate != ext::Gate::NotOwned {
+            if let Some((doc, _, uid)) = &before
+                && let Some(st) = self.docs.iter_mut().find(|d| d.uid == *uid)
+                && !Arc::ptr_eq(doc, &st.doc)
+            {
+                st.revision += 1;
+            }
+            return match (gate, result) {
+                (ext::Gate::Refused(m), Ok(_)) => Err(EngineError::Other(m)),
+                (_, r) => r,
+            };
+        }
         if spec.undoable
             && let Some((doc, sel, uid)) = before
             && let Some(st) = self.docs.iter_mut().find(|d| d.uid == uid)
@@ -835,6 +865,10 @@ impl Session {
         match spec.interactive {
             Some(factory) => {
                 let machine = guard::Guarded::create(spec.id, factory, self)?;
+                // ECAD-SEAM(owner): a new top-level command starts with nothing recorded.
+                if !nested {
+                    self.ext.begin_command();
+                }
                 let st = self.state()?;
                 let before = st.doc.clone();
                 let selection_before = st.selection.clone();
@@ -1120,6 +1154,24 @@ impl Session {
             }
             return;
         }
+        // ECAD-SEAM(owner): an owned document's owner accepts or refuses the result and keeps the
+        // history; the engine pushes no undo step for it.
+        if let Some(uid) = self.state().ok().map(|st| st.uid) {
+            match ext::gate(self, uid, &run.id, &run.before) {
+                ext::Gate::NotOwned => {}
+                gate => {
+                    if let ext::Gate::Refused(m) = gate {
+                        self.echo(m);
+                    }
+                    if let Ok(st) = self.state_mut()
+                        && !Arc::ptr_eq(&run.before, &st.doc)
+                    {
+                        st.revision += 1;
+                    }
+                    return;
+                }
+            }
+        }
         if let Ok(st) = self.state_mut()
             && !Arc::ptr_eq(&run.before, &st.doc)
         {
@@ -1196,7 +1248,9 @@ impl Session {
         let r = self.running.as_ref()?;
         let d = r.machine.drag(self, cursor)?;
         let common = self.current_common();
-        let extra = d.extra.iter().map(|k| Entity { handle: Handle(0), common: common.clone(), kind: k.clone() }).collect();
+        let mut extra: Vec<Entity> = d.extra.iter().map(|k| Entity { handle: Handle(0), common: common.clone(), kind: k.clone() }).collect();
+        // ECAD-SEAM(owner): the owner may add rubber-band geometry (objects that follow the drag).
+        extra.extend(ext::drag_extra(self, &d).into_iter().map(|k| Entity { handle: Handle(0), common: common.clone(), kind: k }));
         Some((d, extra))
     }
 
@@ -1345,6 +1399,10 @@ impl Session {
     // ---------------- undo ----------------
 
     pub fn undo(&mut self) -> Result<Option<String>> {
+        // ECAD-SEAM(owner): an owned document's history belongs to its owner.
+        if let Some(r) = ext::history(self, true) {
+            return r;
+        }
         let st = self.state_mut()?;
         let Some(snap) = st.undo.pop() else { return Ok(None) };
         let cur = Snapshot { label: snap.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() };
@@ -1356,6 +1414,10 @@ impl Session {
         Ok(Some(snap.label))
     }
     pub fn redo(&mut self) -> Result<Option<String>> {
+        // ECAD-SEAM(owner): an owned document's history belongs to its owner.
+        if let Some(r) = ext::history(self, false) {
+            return r;
+        }
         let st = self.state_mut()?;
         let Some(snap) = st.redo.pop() else { return Ok(None) };
         let cur = Snapshot { label: snap.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() };
