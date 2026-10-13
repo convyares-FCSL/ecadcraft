@@ -33,7 +33,9 @@ mod translate;
 pub mod verify;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use project::{Faults, HandleMap, Mapped, PageView, Project, project_page, session_seed};
+pub use project::{
+    Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, project_page, session_seed,
+};
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).
 pub const UPSTREAM_COMMIT: &str = "00c7613f1af3c73f7157fa91d9fe2635c6f23c06";

@@ -30,6 +30,7 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
     ("ecad-cli", Class::Ui),
+    ("ecad-trial", Class::Ui),
     ("ecad-xtask", Class::Exempt),
 ];
 

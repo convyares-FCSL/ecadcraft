@@ -2,7 +2,7 @@
 # untouched, and CADCraft crates are used by path. See docs/document-architecture-proposal.md §8.
 [workspace]
 resolver = "3"
-members = ["crates/*", "xtask"]
+members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0-dev"

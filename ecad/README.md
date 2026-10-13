@@ -3,10 +3,12 @@
 All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the parent directory).
 
 > **Status: bounded integration experiment, not an application.**
-> - **There is no ECAD desktop shell yet.** Everything runs as tests and a headless example.
+> - **The only desktop program is a trial harness** (`apps/ecad-trial`, see its
+>   [README](apps/ecad-trial/README.md)). It is CADCraft's window with the ECAD commands and one
+>   ECAD project. It is not an application, and its on-screen behaviour has not been verified yet.
 > - **The inspector loads exported JSON snapshots.** It has no live updates.
-> - **Persistence is test-only.** The store is in memory, Save writes no file, and there is no
->   `.ecad` format yet.
+> - **There is no project persistence.** In the trial, Save and Save As report that saving is
+>   unavailable. Automated tests use an in-memory test store. There is no `.ecad` format.
 
 CADCraft crates are used by path; upstream files change only through the patches listed in
 [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
@@ -17,6 +19,7 @@ CADCraft crates are used by path; upstream files change only through the patches
 | `ecad-store` | provisional **test-only** store (not the `.ecad` format) | no |
 | `ecad-inspect` | read-only snapshots and the runtime event log for developers | no |
 | `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands (provisional) | yes |
+| `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, no persistence | yes (UI) |
 | `xtask` | `cargo xtask ci`: fmt, clippy, tests, layering, upstream patch guard, wasm | — |
 
 ```sh
