@@ -18,16 +18,20 @@ at a time. It is an experiment for manual trials, not an ECAD application.
 - A Save/Discard/Cancel question when a project with unsaved changes is closed. It replaces
   CADCraft's prompt for ECAD pages, through CADCraft's public close API.
 - Optional diagnostic snapshots (`--snapshots <folder>`). These are not saved projects.
+- A read-only **debugger** panel (stage 2b, `src/debugger.rs`), opened with **Debugger** in the
+  banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
+  transactions with before/after values → saved record offsets and bytes, with pending changes
+  kept apart from saved history, and replay, projection and file checks on request.
 
 **Not included:**
 - native file dialogs;
 - CADCraft file formats (plain drawings cannot be written);
 - autosave and the control channel;
 - saved window or profile settings;
-- the live debugger (stage 2b);
 - ECAD menus and interactive ECAD prompts.
 
 **Usage:** `ecad-trial [--snapshots <folder>] [<project.ecad>]`.
 
-The code is in `src/lib.rs`. The headless tests in `tests/trial.rs` include the quick-start
-guide's steps (`the_quick_start_trial_runs_headless`); keep the two in step.
+The code is in `src/lib.rs` and `src/debugger.rs`. The headless tests include the quick-start
+guide's steps (`tests/trial.rs`, `the_quick_start_trial_runs_headless`, and `tests/debugger.rs`,
+`the_quick_start_debugger_example_runs_headless`); keep them in step.

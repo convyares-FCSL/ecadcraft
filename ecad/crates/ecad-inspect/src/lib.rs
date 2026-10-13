@@ -31,7 +31,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// Format tag of snapshot files. Independent of product and schema versions.
-pub const SNAPSHOT_FORMAT: &str = "ecad-inspect/1";
+///
+/// `ecad-inspect/2` adds `persistence` (live snapshots only, `null` otherwise): where the project's
+/// file stands (path, header, writer state, record offsets, lock, read-only reason). Everything in
+/// `ecad-inspect/1` is unchanged.
+pub const SNAPSHOT_FORMAT: &str = "ecad-inspect/2";
 
 /// What happened at runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +131,18 @@ impl EventLog {
     pub fn events(&self) -> impl Iterator<Item = &Event> {
         self.events.iter()
     }
+    /// The most recent event.
+    pub fn last(&self) -> Option<&Event> {
+        self.events.back()
+    }
+    /// How many events are retained.
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+    /// Whether no event is retained.
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
     /// How many events of `kind` were recorded (retained ones).
     pub fn count(&self, kind: EventKind) -> usize {
         self.events.iter().filter(|e| e.kind == kind).count()
@@ -152,6 +168,9 @@ pub struct LiveFacts {
     pub pages: Vec<PageInfo>,
     /// The incorporated CADCraft commit, for correlation.
     pub upstream: Option<String>,
+    /// Where the project's file stands, as the adapter reports it (`ecad-inspect/2`).
+    #[serde(default)]
+    pub persistence: Option<Value>,
 }
 
 fn label_of(doc: &Document, s: Subject) -> String {
@@ -269,6 +288,7 @@ pub fn snapshot(
         "product_version": env!("CARGO_PKG_VERSION"),
         "schema_version": ecad_model::SCHEMA_VERSION,
         "upstream": live.and_then(|l| l.upstream.clone()),
+        "persistence": live.and_then(|l| l.persistence.clone()),
         "project": name,
         "label": match at { None => format!("live at seq {seq}"), Some(s) => format!("history at seq {s}") },
         "kind": if at.is_none() { "live" } else { "historical" },

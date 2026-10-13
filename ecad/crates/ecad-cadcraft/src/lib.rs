@@ -16,6 +16,8 @@
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
+//! - [`debug`] copies what the developer debugger shows out of a project under one short lock,
+//!   and runs its explicit checks (replay, projection, file) on copies.
 //!
 //! This crate intentionally contains **no** UI, no file encoding of its own (that is `ecad-file`)
 //! and no ECAD semantics inside upstream crates.
@@ -31,6 +33,7 @@
 mod access;
 pub mod commands;
 pub mod convert;
+pub mod debug;
 pub mod file;
 pub mod project;
 mod translate;

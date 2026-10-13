@@ -121,6 +121,38 @@ impl ProjectHandle {
         self.lock(s)?.snapshot(&PagesRef(s), at)
     }
 
+    /// A debugger snapshot, unless `known` is still current (`Ok(None)`): everything the panel
+    /// shows, copied under one short lock; `have` is the end of the caller's copy of the history
+    /// (see [`crate::debug`]).
+    ///
+    /// # Errors
+    /// [`BUSY`] or [`NOT_ATTACHED`], as for [`ProjectHandle::read`]. A busy project is never
+    /// waited for: the caller keeps its previous snapshot.
+    pub fn debug_snapshot(
+        &self,
+        s: &mut Session,
+        known: Option<&crate::debug::SnapshotKey>,
+        have: crate::debug::TxCursor,
+    ) -> Result<Option<crate::debug::DebugSnapshot>, String> {
+        let p = self.lock(s)?;
+        let pg = PagesRef(s);
+        let key = p.debug_key(&pg);
+        if known == Some(&key) {
+            return Ok(None);
+        }
+        Ok(Some(p.debug_snapshot(&pg, key, have)))
+    }
+
+    /// Copies of the document and of every open page's drawing and handle map, for
+    /// [`crate::debug::verify_projection`] (which then runs with the project unlocked).
+    ///
+    /// # Errors
+    /// [`BUSY`] or [`NOT_ATTACHED`].
+    pub fn debug_projection_inputs(&self, s: &mut Session) -> Result<crate::debug::ProjectionInputs, String> {
+        let p = self.lock(s)?;
+        Ok(p.projection_inputs(&PagesRef(s)))
+    }
+
     /// Reopen a project from an in-memory project file; see [`Project::open_from`].
     ///
     /// # Errors
@@ -214,6 +246,11 @@ impl PagesRef<'_> {
         self.drawing_of(p, page)
             .and_then(|d| d.space(&Space::Model).map(|m| m.iter().cloned().collect()))
             .unwrap_or_default()
+    }
+
+    /// The active document's uid and selection.
+    pub(crate) fn active(&self) -> Option<(u64, Vec<cadcraft_engine::doc::Handle>)> {
+        self.0.state().ok().map(|st| (st.uid, st.selection.clone()))
     }
 
     /// Index of document `uid` among the open documents.
