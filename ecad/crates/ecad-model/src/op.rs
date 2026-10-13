@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Item, Layer, Page, Representation, Terminal,
+    Cable, CableMember, Component, Conductor, Definition, Document, End, Item, Layer, Page, ProjectSettings,
+    Representation, Terminal,
 };
 use crate::error::{ModelError, Result};
 use crate::id::{
@@ -26,30 +27,125 @@ pub enum ObjectRef {
 /// One recorded change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Op {
-    AddPage { id: PageId, page: Page, index: usize },
-    RemovePage { id: PageId, page: Page, index: usize },
-    AddLayer { id: LayerId, layer: Layer },
-    RemoveLayer { id: LayerId, layer: Layer },
-    AddItem { id: ItemId, item: Item },
-    ModifyItem { id: ItemId, before: Item, after: Item },
-    RemoveItem { id: ItemId, item: Item },
-    CreateComponent { id: ComponentId, component: Component },
-    DeleteComponent { id: ComponentId, component: Component },
-    AddTerminal { id: TerminalId, terminal: Terminal },
-    RemoveTerminal { id: TerminalId, terminal: Terminal },
-    LinkRepresentation { id: RepresentationId, rep: Representation },
-    ModifyRepresentation { id: RepresentationId, before: Representation, after: Representation },
-    UnlinkRepresentation { id: RepresentationId, rep: Representation },
-    CreateConductor { id: ConductorId, conductor: Conductor },
-    DeleteConductor { id: ConductorId, conductor: Conductor },
-    AttachEnd { conductor: ConductorId, end: End, before: Option<TerminalId>, after: Option<TerminalId> },
-    CreateCable { id: CableId, cable: Cable },
-    DeleteCable { id: CableId, cable: Cable },
-    AddCableMember { cable: CableId, index: usize, member: CableMember },
-    RemoveCableMember { cable: CableId, index: usize, member: CableMember },
-    SetProperty { object: ObjectRef, key: String, before: Option<String>, after: Option<String> },
-    EmbedDefinition { id: DefinitionId, definition: Definition },
-    RemoveDefinition { id: DefinitionId, definition: Definition },
+    AddPage {
+        id: PageId,
+        page: Page,
+        index: usize,
+    },
+    RemovePage {
+        id: PageId,
+        page: Page,
+        index: usize,
+    },
+    AddLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    RemoveLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    AddItem {
+        id: ItemId,
+        item: Item,
+    },
+    ModifyItem {
+        id: ItemId,
+        before: Item,
+        after: Item,
+    },
+    RemoveItem {
+        id: ItemId,
+        item: Item,
+    },
+    CreateComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    DeleteComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    AddTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    RemoveTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    LinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    ModifyRepresentation {
+        id: RepresentationId,
+        before: Representation,
+        after: Representation,
+    },
+    UnlinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    CreateConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    DeleteConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    AttachEnd {
+        conductor: ConductorId,
+        end: End,
+        before: Option<TerminalId>,
+        after: Option<TerminalId>,
+    },
+    CreateCable {
+        id: CableId,
+        cable: Cable,
+    },
+    DeleteCable {
+        id: CableId,
+        cable: Cable,
+    },
+    AddCableMember {
+        cable: CableId,
+        index: usize,
+        member: CableMember,
+    },
+    RemoveCableMember {
+        cable: CableId,
+        index: usize,
+        member: CableMember,
+    },
+    SetProperty {
+        object: ObjectRef,
+        key: String,
+        before: Option<String>,
+        after: Option<String>,
+    },
+    EmbedDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    RemoveDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    SetProjectSettings {
+        before: ProjectSettings,
+        after: ProjectSettings,
+    },
+    /// Bookmark transaction `at` under `name` (§6.1).
+    NameVersion {
+        name: String,
+        at: u64,
+    },
+    UnnameVersion {
+        name: String,
+        at: u64,
+    },
 }
 
 fn pre(msg: String) -> ModelError {
@@ -131,6 +227,9 @@ impl Op {
             }
             Op::EmbedDefinition { id, definition } => Op::RemoveDefinition { id, definition },
             Op::RemoveDefinition { id, definition } => Op::EmbedDefinition { id, definition },
+            Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: after, after: before },
+            Op::NameVersion { name, at } => Op::UnnameVersion { name, at },
+            Op::UnnameVersion { name, at } => Op::NameVersion { name, at },
         }
     }
 
@@ -233,6 +332,27 @@ impl Op {
             Op::RemoveDefinition { id, definition } => {
                 remove_exact(&mut doc.definitions, *id, definition, "definition")
             }
+            Op::SetProjectSettings { before, after } => {
+                if &doc.settings != before {
+                    return Err(pre("project settings differ from the recorded value".into()));
+                }
+                doc.settings = after.clone();
+                Ok(())
+            }
+            Op::NameVersion { name, at } => {
+                if doc.versions.contains_key(name) {
+                    return Err(pre(format!("version name {name:?} is already used")));
+                }
+                doc.versions.insert(name.clone(), *at);
+                Ok(())
+            }
+            Op::UnnameVersion { name, at } => match doc.versions.get(name) {
+                Some(cur) if cur == at => {
+                    doc.versions.remove(name);
+                    Ok(())
+                }
+                _ => Err(pre(format!("version name {name:?} does not name transaction {at}"))),
+            },
         }
     }
 
@@ -263,6 +383,9 @@ impl Op {
             Op::SetProperty { .. } => "SetProperty",
             Op::EmbedDefinition { .. } => "EmbedDefinition",
             Op::RemoveDefinition { .. } => "RemoveDefinition",
+            Op::SetProjectSettings { .. } => "SetProjectSettings",
+            Op::NameVersion { .. } => "NameVersion",
+            Op::UnnameVersion { .. } => "UnnameVersion",
         }
     }
 }

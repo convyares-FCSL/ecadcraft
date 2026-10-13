@@ -1,0 +1,19 @@
+[package]
+name = "ecad-file"
+description = "ECAD project and library files: versioned records, JSON Lines framing, integrity, reading and writing (proposal Part E)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# SHA-256 for the history hash chain and content hashes (RustCrypto, MIT OR Apache-2.0).
+sha2 = { version = "0.10", default-features = false }

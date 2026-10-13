@@ -1,6 +1,6 @@
 [package]
 name = "ecad-store"
-description = "Provisional, test-only project store for the integration experiment (not the .ecad encoding)"
+description = "Storage layer for ECAD files: byte media with injectable failures (no file format)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,3 @@ rust-version.workspace = true
 
 [lints]
 workspace = true
-
-[dependencies]
-ecad-model = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }

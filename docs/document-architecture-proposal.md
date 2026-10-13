@@ -1008,9 +1008,9 @@ ecad-model (memory)     Document, Ledger, Transaction, Op                       
 ```
 
 - **The semantic records are the format.** They are separate, versioned types (in a new
-  `ecad-file` crate) with explicit conversions from `ecad-model`. Today's test store serialises
-  `ecad_model::Transaction` directly. That would let a model refactor silently change the file
-  format. Explicit records make every format change a decision with a version number. Inspector
+  `ecad-file` crate) with explicit conversions from `ecad-model`. The retired test store
+  serialised `ecad_model::Transaction` directly, which would let a model refactor silently
+  change the file format. Explicit records make every format change a decision with a version number. Inspector
   snapshots keep using the model's own serialisation, because they are diagnostics, not
   projects.
 - **The codec is replaceable.** It is a trait: encode a record, decode a record, frame it.
@@ -1018,7 +1018,7 @@ ecad-model (memory)     Document, Ledger, Transaction, Op                       
   records and identical history hashes) is the gate for any later codec. No benchmarking is
   planned in this stage.
 - **The medium holds the durability rules,** in one place. The in-memory medium exists so every
-  failure point can be injected in tests (as in today's test store).
+  failure point can be injected in tests.
 
 ### 20.2 Container layout: options
 
@@ -1094,8 +1094,10 @@ the repetition matters. Moving to II later is a container version change, with c
 Save As.
 
 Further rules for embedded definitions:
-- **Identity of content.** A definition's identity is its `DefinitionId`. Its content hash
-  (SHA-256 over the canonical form, §20.10) is computed, never trusted from the file. It is
+- **Identity of content.** A definition's identity is its `DefinitionId`. Its content hash is
+  `SHA-256("ecad-definition/1\0" ‖ canonical(definition record with origin = null))` (§20.10):
+  the content alone, so the same content from the same library version hashes the same in any
+  project. It is computed, never trusted from the file. It is
   recorded in `origin` for libraries (§20.9).
 - **No duplicate content.** Placing a definition whose origin and content hash are already
   embedded reuses that `DefinitionId` (LIB-01). New content, such as a newer library version,
@@ -1399,14 +1401,14 @@ must classify every result as in §20.6.
 | Crate | Layer | Role |
 | --- | --- | --- |
 | `ecad-file` (new) | Core | records, conversions and upcasts, canonical form and hashes, the codec trait and `jsonl/1`, reader and writer over a medium, caps; no I/O of its own; builds for wasm |
-| `ecad-store` | Core | the `Medium` trait, the in-memory medium with fault injection, the file medium (native only; append, `sync_data`, atomic replace, lock); the current test store retires once `ecad-file` replaces it |
-| `ecad-cadcraft` | Adapter | `Persistence::File` beside `TestStore` (tests) and `Unavailable` (the current trial); open, save, save as; read-only projects |
+| `ecad-store` | Core | the `Medium` trait, the in-memory medium with fault injection (stage 1); the file medium (stage 2, native only; append, `sync_data`, atomic replace, lock). The old test store is retired |
+| `ecad-cadcraft` | Adapter | stage 1: `Persistence::TestStore` writes `ecad-file` to an in-memory medium (tests only) and `Unavailable` stays the trial's mode; stage 2 adds `Persistence::File`: open, save, save as, read-only projects |
 | `ecad-cli` (new, small) | UI | `dump`, `check` |
 | `ecad-trial` | UI | Open, Save and Save As, the debugger panel (§21); its "no persistence" label changes only when stage 2 lands |
 
 ### 20.13 Model additions this needs
 
-- `ProjectSettings { length_unit }`, recorded at creation by `SetProjectSetting` (architecture
+- `ProjectSettings { length_unit }`, recorded at creation by `SetProjectSettings { before, after }` (architecture
   §3.2 lists units; the model lacks them).
 - `NameVersion` (§6.1 lists it; the model lacks it).
 - A typed definition `origin { library_id, definition_id, library_seq, content_hash }`, which
@@ -1485,6 +1487,11 @@ Each stage is one PR into `dev` and starts only after approval. Nothing in a lat
 built early.
 
 **Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13). **Approved.**
+Implemented on branch `ecad/file-stage1` for review. Modules of `ecad-file`: `v1` (records and
+conversions), `record` (header, limits, upcasts, definition hash), `canonical`, `crc`, `chain`,
+`codec` (`jsonl/1`), `read` (open and classify), `write` (create, save with retry). Contract tests:
+`ecad-file/tests/{canonical,records,recovery,save}_contracts.rs` and the golden file
+`ecad-file/tests/golden/project-v1.ecad`.
 
 *Records:*
 - Separate version-1 record types.
