@@ -1,0 +1,26 @@
+[package]
+name = "ecad-cadcraft"
+description = "Adapter between the ECAD document and the CADCraft engine (provisional, proposal Part B)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Deliberate panics inside owner callbacks and ECAD commands, for the experiment's containment
+# tests only. Never enabled in normal builds; `cargo xtask ci` tests with all features.
+fault-injection = []
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-store = { workspace = true }
+ecad-inspect = { workspace = true }
+cadcraft-engine = { path = "../../../crates/engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }

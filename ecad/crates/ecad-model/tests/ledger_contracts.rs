@@ -265,6 +265,18 @@ fn ids_from_one_allocator_never_repeat() {
 }
 
 #[test]
+fn ids_serialise_as_exact_hex_strings() {
+    let id = ecad_model::ComponentId(u128::MAX - 5);
+    let json = serde_json::to_string(&id).unwrap();
+    assert_eq!(json, format!("\"{:032x}\"", u128::MAX - 5));
+    assert_eq!(serde_json::from_str::<ecad_model::ComponentId>(&json).unwrap(), id);
+    let mut doc = Document::default();
+    doc.components.insert(id, Component::default());
+    let back: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(back, doc);
+}
+
+#[test]
 fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
     let mut f = fixture();
     let def = |at: Pt, key2: &str| ecad_model::Definition {

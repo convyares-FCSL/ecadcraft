@@ -155,7 +155,8 @@ impl Ledger {
         }
         stacks(&log)?;
         let persisted = log.len() as u64;
-        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded(seed) })
+        let last = log.last().map_or(0, |t| t.id.0);
+        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last) })
     }
 
     /// The current document.

@@ -14,6 +14,10 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   touches the engine.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
   code with `// ECAD-SEAM(owner):`. Keep ECAD semantics out of upstream crates.
+- Rust only for product code. **Exception (owner decision, 2026-10-12):** developer tools under
+  `ecad/tools/` may be written in HTML, CSS and JavaScript (for example the read-only inspector,
+  `ecad/tools/inspector/index.html`). They ship with no product, run no server by default, never
+  mutate a project, and escape every value they display. Anything an end user runs stays Rust.
 - Never-crash rules apply: no `unwrap`/`expect`/`panic!` in non-test code, no `unsafe`, errors
   through each crate's error type.
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items

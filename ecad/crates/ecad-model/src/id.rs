@@ -5,13 +5,41 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 macro_rules! typed_id {
     ($(#[$doc:meta])* $name:ident, $prefix:literal) => {
         $(#[$doc])*
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        ///
+        /// Serialised as 32 lower-case hex digits, so JSON readers without 128-bit integers
+        /// (browsers) keep it exact.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(pub u128);
+
+        impl Serialize for $name {
+            fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.serialize_str(&format!("{:032x}", self.0))
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                let text = String::deserialize(d)?;
+                u128::from_str_radix(&text, 16).map(Self).map_err(serde::de::Error::custom)
+            }
+        }
+
+        impl $name {
+            /// Parse the 32-hex-digit form.
+            pub fn parse(text: &str) -> Option<Self> {
+                u128::from_str_radix(text.trim(), 16).ok().map(Self)
+            }
+
+            /// The full 32-hex-digit form.
+            pub fn hex(self) -> String {
+                format!("{:032x}", self.0)
+            }
+        }
 
         impl $name {
             /// Short form for messages and diagnostics (prefix and first 8 hex digits).
@@ -87,6 +115,13 @@ impl IdAllocator {
     /// A generator for `seed`.
     pub fn seeded(seed: u64) -> Self {
         Self { seed, counter: 0 }
+    }
+
+    /// A generator for continuing a project whose history ends with `last` (for example the last
+    /// transaction ID). Reopening a project with the same session seed would otherwise restart a
+    /// stream whose IDs are already in the document; mixing in `last` gives a fresh stream.
+    pub fn seeded_after(seed: u64, last: u128) -> Self {
+        Self::seeded(seed ^ mix((last as u64) ^ mix((last >> 64) as u64)))
     }
 
     /// The next ID, of any typed-ID kind.
