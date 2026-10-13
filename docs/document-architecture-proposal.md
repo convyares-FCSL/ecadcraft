@@ -3,7 +3,9 @@
 > **Status:** revision 4.1. Revision 2 was approved as the basis for the bounded integration
 > experiment (§17); the integration choices in Part B stay provisional until demonstrated.
 > Revision 4 added **Part E** (persistence and the live debugger). Revision 4.1 revises its
-> contracts after review; **only stage 1 (§22) is approved for implementation**. **Written:** 2026-10-12 against `dev`
+> contracts after review. **Stage 1 is implemented and merged; stage 2a (files on disk) is
+> implemented for review; stage 2b (the debugger) has an approved scope and waits for the
+> owner's trial of 2a; later stages need approval each (§22).** **Written:** 2026-10-12 against `dev`
 > at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
@@ -1194,14 +1196,28 @@ never told more than the writer knows.
   1. Acquire the target's lock before step (b), and keep the current path's lock meanwhile.
   2. After a successful replacement, release the old path's lock.
   3. If the target's lock is held by another writer, refuse before writing anything.
-- **Lifetime:** the OS releases the lock when a process ends, so no lock outlives its process.
-- **Leftover files:** a leftover lock file without a holder is harmless.
-- **A second opener** of a locked project gets it read-only.
+- **Lifetime:** the OS releases the lock when a process ends, including by a crash, so no lock
+  outlives its process and a crash never locks a project out (E8).
+- **Held versus leftover.** The holder writes a record (program, process, UTC time) into the
+  lock file and clears it on a clean release. An opener that gets the lock while the file still
+  holds a record has found a lock left by a session that ended without releasing it: it reclaims
+  it and reports that record. An opener that cannot get the lock is refused write access and
+  shown the holder's record (where the system allows reading it).
+- **The lock file is never deleted.** Deleting it could let two writers lock two different
+  files; an empty lock file is harmless.
+- **A second opener** of a locked project gets it read-only, and Save As can save a copy.
+- **File identity.** Before appending, Save also checks that the file at the path is still the
+  one opened (device and inode on Unix), so a file replaced or removed behind the writer is
+  refused like any other external change.
 
-**In stage 1** there is no disk. The writer, its state and the Save retry rules are implemented
-over the in-memory medium, with fault injection for partial append, failed flush, failed
-truncate and external change. Save As phases and locking are specified here and implemented in
-stage 2.
+**Implementation.** Stage 1 implemented the writer, its state and the Save retry rules over the
+in-memory medium. Stage 2a implements files on disk: `ecad_store::disk` (the file medium with
+`sync_data` as the flush, the lock through `std::fs::File::try_lock`, the replacement steps) and
+`ecad_file::disk::DiskProject` (the phases above, the lock across replacement, the E13
+sidecar), each with fault injection at every step. They are tested on a Linux file system,
+including the Linux home folder under WSL. Folder flushes and file identity are Unix-only; on
+other systems, and on other file systems such as Windows drives under WSL, these guarantees are
+unverified.
 
 ### 20.6 Recovery on open
 
@@ -1226,7 +1242,7 @@ depends only on *what* follows that prefix, not on *where* it is:
 | What follows the verified prefix | Classification | Result |
 | --- | --- | --- |
 | nothing | clean | opens **writable**; `persisted = head` |
-| only an **unterminated trailing fragment** (no final `\n`; possibly empty, partial or garbage bytes such as zeros) | **incomplete trailing write**: the only shape an interrupted append can leave, because the terminator is written last | opens **writable** at the verified prefix. The report names the fragment's offset and length and shows a capped preview. Before the first save truncates it, the fragment is preserved beside the file (stage 2: `name.ecad.tail-<offset>`), so even an unexpected fragment is never destroyed silently. |
+| only an **unterminated trailing fragment** (no final `\n`; possibly empty, partial or garbage bytes such as zeros) | **incomplete trailing write**: the only shape an interrupted append can leave, because the terminator is written last | opens **writable** at the verified prefix. The report names the fragment's offset and length and shows a capped preview. Before the first save truncates it, the fragment is copied to a new, uniquely named sidecar beside the file (`<file>.tail-<offset>-<unique>`, flushed with its folder), so even an unexpected fragment is never destroyed silently. If the copy fails, the save stops and the project file is left untouched (E13). |
 | a **complete** record that fails any check 1-8, **including when it is the final record** (CRC mismatch, unparsable, wrong `seq`, broken chain, unknown op, content hash mismatch, precondition or invariant failure) | **corrupt record**: a complete record is never treated as interrupted output | opens **read-only** at the verified prefix. **The source is preserved:** nothing is truncated or written. The report names the record's offset, its `seq` if readable, the failed check, and how many complete records and bytes follow (the omitted tail). Save As can write the verified history to a new file. |
 | unknown or newer container, codec or schema version in the header | unsupported | refuses to open, naming what this build supports |
 
@@ -1407,11 +1423,11 @@ must classify every result as in §20.6.
 
 | Crate | Layer | Role |
 | --- | --- | --- |
-| `ecad-file` (new) | Core | records, conversions and upcasts, canonical form and hashes, the codec trait and `jsonl/1`, reader and writer over a medium, caps; no I/O of its own; builds for wasm |
-| `ecad-store` | Core | the `Medium` trait, the in-memory medium with fault injection (stage 1); the file medium (stage 2, native only; append, `sync_data`, atomic replace, lock). The old test store is retired |
-| `ecad-cadcraft` | Adapter | stage 1: `Persistence::TestStore` writes `ecad-file` to an in-memory medium (tests only) and `Unavailable` stays the trial's mode; stage 2 adds `Persistence::File`: open, save, save as, read-only projects |
-| `ecad-cli` (new, small) | UI | `dump`, `check` |
-| `ecad-trial` | UI | Open, Save and Save As, the debugger panel (§21); its "no persistence" label changes only when stage 2 lands |
+| `ecad-file` (new) | Core | records, conversions and upcasts, canonical form and hashes, the codec trait and `jsonl/1`, reader and writer over a medium, caps; builds for wasm. Stage 2a adds `disk` (native only): `DiskProject` orders the disk steps of open, Save and Save As, using `ecad-store` for each step |
+| `ecad-store` | Core | the `Medium` trait, the in-memory medium with fault injection (stage 1); `disk` (stage 2a, native only): the file medium (append, `sync_data`, truncate), the writer lock, temporary file, rename and folder flush, file identity. The old test store is retired |
+| `ecad-cadcraft` | Adapter | `Persistence::TestStore` writes `ecad-file` to an in-memory medium (tests); stage 2a adds `Persistence::File` (`file` module): open, save, save as, read-only projects, the lock released when the project closes. `Unavailable` remains for tests |
+| `ecad-cli` (new, small) | UI | `dump`, `check` (not built yet) |
+| `ecad-trial` | UI | stage 2a: Open, Save and Save As with its own path dialog, Save/Discard/Cancel on close; stage 2b: the debugger panel (§21) |
 
 ### 20.13 Model additions this needs
 
@@ -1551,8 +1567,11 @@ never panic and always classify the result.
 
 *CI:* `cargo xtask ci` is green, including wasm for `ecad-file`.
 
-**Stage 2: files, harness persistence, debugger panel**
-- Save, quit, reopen: the same document, IDs, log and head, with persisted = head. The
+**Stage 2: files, harness persistence, debugger panel.** Split by the owner (2026-10-13) into
+**2a**, files and harness persistence (one PR, implemented for review, then the owner's WSL
+trial), and **2b**, the debugger panel (scope confirmed, built after that trial). The criteria
+below marked *(2b)* belong to 2b.
+- Save, quit, reopen: the same document, IDs, log and head, with persisted = head. *(2b)* The
   debugger shows no pending transactions.
 - Fault injection at every step of Save and Save As (append, flush, rename, folder flush)
   leaves:
@@ -1562,16 +1581,21 @@ never panic and always classify the result.
 - A crash simulated mid-batch leaves a file that opens at a valid prefix.
 - A second instance opening the same file gets it read-only. A file changed externally makes
   Save refuse and offer Save As.
-- Debugger:
+- *(2a, owner decisions)* A crash never locks a project out; a leftover lock is told apart from
+  an active one and reported. Interrupted trailing bytes are kept in a sidecar before removal,
+  and a failed copy leaves the file untouched.
+- *(2b)* Debugger:
   - selection → IDs → transaction → record offset matches the bytes in the file;
   - a new edit shows as pending until saved, then as durable with its offset;
   - historical views leave the live head unchanged;
   - rendering holds no project lock (tested by holding the lock during a frame: the panel
     shows its stale snapshot);
   - Verify is the only path to full replay.
-- The trial's "no persistence" labelling is replaced by the real behaviour, and the harness
-  README and manual trial are updated.
-- Owner's WSL trial: create, save, close, reopen, edit, save, inspect with the debugger.
+- The trial's "no persistence" labelling is replaced by the real behaviour, and the manual
+  trial is updated: in `ecad/docs/quick-start.md`, the single maintained guide.
+- Owner's WSL trial: create, save, close, reopen, edit, save; *(2b)* inspect with the debugger.
+  The 2a part passed on 2026-10-13 (owner-observed; the checks, and what was not tried, are
+  listed in `ecad/docs/quick-start.md`).
 
 **Stage 3: libraries**
 - A `.ecadlib` with two definitions is created by tests or a small CLI.
@@ -1603,21 +1627,27 @@ contract of §20.8 is decided)
 - The Rust debugger as designed (E10), kept for stage 2.
 - Stage 1 approved.
 
+**Settled for stage 2a (2026-10-13):** E5, E6 (with its limits), E8, E9, E11, E13 and E14, as in
+the table; the debugger scope of §21 confirmed, to be built after the owner's trial of 2a.
+**Still open:** E4 (applies once a schema version 2 exists) and the checkpoint trust contract
+(stage 4).
+
 | # | Decision | Status |
 | --- | --- | --- |
 | E1 | Container A: one JSON Lines file of typed records | **settled**; version 1 has `header` and `tx` only |
 | E2 | Embedded definitions inline in the introducing transaction | **settled** |
 | E3 | Separate versioned record types in `ecad-file` | **settled** |
 | E4 | An older-schema file is rewritten in the current version on first save, with a confirmation and a backup copy | proposed (applies once a schema version 2 exists) |
-| E5 | Strict reading: unknown fields, records and versions are refused | proposed (implemented in stage 1) |
-| E6 | Frame CRC-32C over exact payload bytes; an unkeyed SHA-256 chain with domain-separated seeds over the RFC 8785 canonical form | proposed (implemented in stage 1); stated limits in §20.10 |
+| E5 | Strict reading: unknown fields, records and versions are refused | **settled** (2026-10-13; implemented in stage 1) |
+| E6 | Frame CRC-32C over exact payload bytes; an unkeyed SHA-256 chain with domain-separated seeds over the RFC 8785 canonical form | **settled** with its stated limits (§20.10) (2026-10-13; implemented in stage 1) |
 | E7 | Checkpoints disabled; trust contract unresolved | **settled** as disabled; the contract is open for stage 4 |
-| E8 | Save refuses on an external change; a lock file guards writers; a second opener is read-only | proposed for stage 2 |
-| E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | proposed for stage 2 |
-| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled** direction; built in stage 2 |
-| E11 | Length unit in project settings, mm by default, fixed at creation for now | proposed (implemented in stage 1) |
-| E12 | Stages as in §22 | stage 1 approved; later stages need approval each |
-| E13 | An unterminated trailing fragment is preserved beside the file before the first save truncates it | proposed for stage 2 (stage 1 reports it) |
+| E8 | Save refuses on an external change and offers Save As; an OS lock on a lock file guards writers; a second opener is read-only; a crash never locks out, and a leftover lock is told apart from an active one | **settled** (2026-10-13; implemented in stage 2a) |
+| E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | **settled** (2026-10-13; implemented in stage 2a) |
+| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled**; scope of §21 confirmed 2026-10-13; built in stage 2b, after the owner's trial of 2a |
+| E11 | Length unit in project settings, mm by default, fixed at creation for now | **settled** (2026-10-13; implemented in stage 1) |
+| E12 | Stages as in §22 | stage 1 merged; 2a implemented for review; 2b after the 2a trial; later stages need approval each |
+| E13 | An unterminated trailing fragment is copied to a uniquely named sidecar before a save removes it; a failed copy leaves the file untouched and is reported | **settled** (2026-10-13; implemented in stage 2a) |
+| E14 | The supported location for project files under WSL is the Linux home folder; other file systems are unverified unless tested | **settled** (2026-10-13) |
 
 ## Revision 2 changes
 
@@ -1647,6 +1677,7 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
 | 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
+| 2026-10-13 | Stage 2a: E5, E6, E8, E9, E11 and E13 settled, E14 added (WSL location), the debugger scope confirmed; §20.5 records the held-versus-leftover lock, file identity and the 2a implementation; §20.6 the sidecar naming; §20.12 and §22 the 2a/2b split; the manual trial moves to `ecad/docs/quick-start.md` |
 | 2026-10-13 | Revision 4.1, corrections from the stage 1 code review: Save re-reads the whole verified prefix against a running digest (not only its last record); embedded content hashes are recomputed on open (a mismatch is corruption); canonical numbers break equal-distance ties to the even digit as ECMA-262 does; the header gets the same size and integer limits as other records; a named version must name a transaction before the one naming it |
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |

@@ -1,10 +1,11 @@
-//! `ecad-trial`: the ECAD desktop trial harness (experiment; no project persistence).
+//! `ecad-trial`: the ECAD desktop trial harness (experiment).
 //!
-//! Usage: `ecad-trial [--snapshots <dir>]`
+//! Usage: `ecad-trial [--snapshots <dir>] [<project.ecad>]`
 //!
+//! With a project file, the trial opens it; otherwise it starts a new, unsaved project.
 //! `--snapshots <dir>` enables exporting inspector snapshots (a banner button, before a project is
 //! discarded, and at exit). Snapshots are diagnostic files, not saved projects.
-//! See `ecad/apps/ecad-trial/README.md` for the WSL build and the manual trial.
+//! See `ecad/docs/quick-start.md` for building, running and the manual trial.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -40,13 +41,15 @@ impl eframe::App for App {
     }
 }
 
-const USAGE: &str = "usage: ecad-trial [--snapshots <dir>]\n\n\
-ECAD desktop trial harness (experiment). Projects cannot be saved: Save and Save As report that\n\
-persistence is unavailable, and closing an edited project discards its design.\n\
---snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)";
+const USAGE: &str = "usage: ecad-trial [--snapshots <dir>] [<project.ecad>]\n\n\
+ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
+project. Save and Save As write .ecad project files; keep them in your Linux home folder.\n\
+--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
+See ecad/docs/quick-start.md.";
 
 fn main() -> eframe::Result {
     let mut snapshots = None;
+    let mut project: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -65,8 +68,13 @@ fn main() -> eframe::Result {
                 println!("ecad-trial {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
                 return Ok(());
             }
-            other => {
+            other if other.starts_with('-') => {
                 eprintln!("unknown argument {other:?}\n\n{USAGE}");
+                std::process::exit(2);
+            }
+            path if project.is_none() => project = Some(path.to_string()),
+            extra => {
+                eprintln!("only one project file can be opened ({extra:?})\n\n{USAGE}");
                 std::process::exit(2);
             }
         }
@@ -99,7 +107,10 @@ fn main() -> eframe::Result {
         TITLE,
         options,
         Box::new(move |cc| {
-            let mut trial = Trial::new(snapshots)?;
+            let mut trial = match &project {
+                Some(p) => Trial::with_file(snapshots, p)?,
+                None => Trial::new(snapshots)?,
+            };
             if let Some(rs) = &cc.wgpu_render_state {
                 trial.cad.set_wgpu(rs);
             }

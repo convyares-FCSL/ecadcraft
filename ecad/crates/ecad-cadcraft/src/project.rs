@@ -110,9 +110,12 @@ pub enum Persistence {
     /// Automated tests only: saving writes the real `.ecad` format (`ecad-file`) to an
     /// in-memory medium and marks the project clean. No file is written to disk.
     TestStore,
-    /// No persistence (the desktop trial): Save and Save As report that saving is unavailable,
-    /// change nothing and never mark the project clean.
+    /// No persistence: Save and Save As report that saving is unavailable, change nothing and
+    /// never mark the project clean.
     Unavailable,
+    /// Project files on disk (`.ecad`, persistence stage 2a): Save writes to the bound file,
+    /// Save As (and the first save) writes a new one; see [`crate::file`].
+    File,
 }
 
 /// The test-only project file: the real `.ecad` format (`ecad-file`) over an in-memory medium
@@ -197,6 +200,8 @@ pub struct Project {
     pub id: ProjectId,
     /// The test-only in-memory project file (`Persistence::TestStore`).
     pub store: MemoryStore,
+    /// The project's file on disk (`Persistence::File`).
+    pub file: crate::file::Binding,
     /// What opening reported, when the project was opened from a file.
     pub open_report: Option<OpenReport>,
     pub pages: BTreeMap<PageId, PageView>,
@@ -215,6 +220,16 @@ pub struct Project {
     me: Weak<Mutex<Project>>,
     /// Points `DocState::saved` away from the drawing while the project is unsaved.
     unsaved_marker: Arc<Drawing>,
+}
+
+/// What this program records about itself in a file header and a writer lock.
+pub(crate) fn writer() -> String {
+    format!("ecad {} (cadcraft {})", env!("CARGO_PKG_VERSION"), crate::UPSTREAM_COMMIT.get(..7).unwrap_or_default())
+}
+
+/// A project's name from its file path: the file name without `.ecad`.
+fn file_stem(path: &str) -> String {
+    std::path::Path::new(path).file_stem().map_or_else(|| path.to_string(), |s| s.to_string_lossy().into_owned())
 }
 
 /// Milliseconds since the epoch, where a clock exists.
@@ -432,6 +447,7 @@ impl Project {
             ids,
             id,
             store: MemoryStore::default(),
+            file: crate::file::Binding::default(),
             open_report: None,
             pages: BTreeMap::new(),
             events: EventLog::default(),
@@ -479,6 +495,7 @@ impl Project {
             ids,
             id,
             store: MemoryStore::Written(Box::new(file)),
+            file: crate::file::Binding::default(),
             open_report: Some(report),
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
@@ -500,6 +517,140 @@ impl Project {
         Ok(ProjectHandle::new(project))
     }
 
+    /// Open a project file from disk (`Persistence::File`): take its writer lock and replay it
+    /// (FILE-02). A damaged file opens its verified prefix read-only; a file another session is
+    /// editing opens read-only. Either can be saved as another file. Returns the handle and what
+    /// opening found, in words (also recorded as a [`EventKind::ProjectOpened`] event).
+    ///
+    /// # Errors
+    /// The file cannot be read, or is not a project file this build supports.
+    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(ProjectHandle, String), String> {
+        let path = crate::file::normalize(path)?;
+        let o = crate::file::Binding::open(&path, seed, &writer())?;
+        let ledger = o.ledger;
+        let default_layer =
+            ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let pages: Vec<PageId> = ledger.document().page_order.clone();
+        // A fresh ID stream for this session, never reissuing the file's IDs.
+        let ids =
+            IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
+        let baseline = ledger.head();
+        let mut summary = vec![format!("Opened {path} at transaction {}.", ledger.head())];
+        if o.report.outcome != ecad_file::Outcome::Clean {
+            summary.push(o.report.describe());
+        }
+        if let Some(r) = &o.reclaimed_lock {
+            summary.push(format!(
+                "A lock left by a session that ended without closing the project ({r}) was reclaimed; nothing else is editing the file."
+            ));
+        }
+        if let Some(r) = o.binding.status().read_only {
+            summary.push(format!("Opened read-only: {r}. Save As can save a copy."));
+        }
+        let summary = summary.join("\n");
+        let project = Arc::new(Mutex::new(Project {
+            name: file_stem(&path),
+            path: Some(path.clone()),
+            ledger,
+            ids,
+            id: o.project,
+            store: MemoryStore::default(),
+            file: o.binding,
+            open_report: Some(o.report),
+            pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
+            events: EventLog::default(),
+            clips: BTreeMap::new(),
+            faults: Faults::default(),
+            persistence: Persistence::File,
+            baseline,
+            tolerance: 1e-6,
+            default_layer,
+            me: Weak::new(),
+            unsaved_marker: Arc::new(Drawing::new_metric()),
+        }));
+        let mut p = crate::access::try_lock(&project)?;
+        p.me = Arc::downgrade(&project);
+        let head = p.ledger.head();
+        p.events.record(EventKind::ProjectOpened, None, head, None, summary.clone());
+        if let Some(first) = pages.first() {
+            p.open_page(&mut Pages(s), *first)?;
+        }
+        drop(p);
+        Ok((ProjectHandle::new(project), summary))
+    }
+
+    /// Where the project's file stands (`Persistence::File`).
+    pub fn file_status(&self) -> crate::file::FileStatus {
+        self.file.status()
+    }
+
+    /// Bind the project to the file at `path`: its name, and every open page's path and title.
+    fn bind(&mut self, pg: &mut Pages<'_>, path: &str) {
+        self.path = Some(path.to_string());
+        self.name = file_stem(path);
+        let pages: Vec<(PageId, u64)> = self.pages.iter().filter_map(|(p, v)| v.uid.map(|u| (*p, u))).collect();
+        for (page, uid) in pages {
+            let title = self.page_title(page);
+            if let Some(st) = pg.doc_mut(uid) {
+                st.path = self.path.clone();
+                st.title = title;
+            }
+        }
+    }
+
+    /// Save or Save As to disk (`Persistence::File`).
+    fn save_file(&mut self, pg: &mut Pages<'_>, path: Option<&str>, save_as: bool) -> cadcraft_engine::Result<Value> {
+        let head = self.ledger.head();
+        let what = if save_as { "saveas" } else { "qsave" };
+        let target = path.filter(|p| !p.trim().is_empty());
+        let r: Result<(Option<String>, Option<String>), String> = match target {
+            None if save_as => Err(crate::file::SAVE_AS_NEEDS_PATH.into()),
+            None => self.file.save(&mut self.ledger).map(|()| (None, None)),
+            Some(p) => crate::file::normalize(p).and_then(|p| {
+                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms())?;
+                Ok((
+                    Some(p),
+                    match w {
+                        crate::file::Written::Confirmed => None,
+                        crate::file::Written::Unconfirmed(m) => Some(m),
+                    },
+                ))
+            }),
+        };
+        let r = match r {
+            Ok((new_path, unconfirmed)) => {
+                if let Some(p) = &new_path {
+                    self.bind(pg, p);
+                }
+                match unconfirmed {
+                    None => Ok(()),
+                    Some(m) => Err(m),
+                }
+            }
+            Err(e) => Err(e),
+        };
+        let shown = self.path.clone().unwrap_or_default();
+        let result = match r {
+            Ok(()) => {
+                let n = self.ledger.persisted();
+                self.events.record(
+                    EventKind::Saved,
+                    Some(what),
+                    head,
+                    None,
+                    format!("{shown} through transaction {n}"),
+                );
+                Ok(json!({"saved": true, "persisted": n, "path": shown}))
+            }
+            Err(e) => {
+                self.events.record(EventKind::SaveFailed, Some(what), head, None, e.clone());
+                Err(EngineError::Other(format!("{} was not saved: {e}", self.name)))
+            }
+        };
+        self.sync_saved(pg);
+        result
+    }
+
     fn owner_ref(&self) -> Option<OwnerRef> {
         let strong = self.me.upgrade()?;
         let r: OwnerRef = strong;
@@ -507,18 +658,19 @@ impl Project {
     }
 
     /// Whether the project holds design work that is not saved: head versus persisted position
-    /// (SAVE-01), or, with no persistence, head versus the position it was created at.
+    /// (SAVE-01), or, with no persistence, head versus the position it was created at. A new file
+    /// project that was never edited (only its creation transaction) and never written has
+    /// nothing to lose; once a file exists, head versus persisted applies strictly.
     pub fn unsaved(&self) -> bool {
-        match self.persistence {
-            Persistence::TestStore => self.ledger.is_unsaved(),
-            Persistence::Unavailable => self.ledger.head() != self.baseline,
-        }
+        self.unsaved_transactions() > 0
     }
 
     /// How many transactions the unsaved state covers (0 when nothing is unsaved).
     pub fn unsaved_transactions(&self) -> u64 {
         let from = match self.persistence {
             Persistence::TestStore => self.ledger.persisted(),
+            Persistence::File if self.file.bound() => self.ledger.persisted(),
+            Persistence::File => self.ledger.persisted().max(self.baseline),
             Persistence::Unavailable => self.baseline,
         };
         self.ledger.head().saturating_sub(from)
@@ -939,6 +1091,9 @@ impl DocumentOwner for Project {
     ) -> cadcraft_engine::Result<Value> {
         let pg = &mut Pages(s);
         let head = self.ledger.head();
+        if self.persistence == Persistence::File {
+            return self.save_file(pg, path, save_as);
+        }
         if self.persistence == Persistence::Unavailable {
             // Nothing is recorded as saved: no path, no store, no clean state.
             let what = if save_as { "saveas" } else { "qsave" };
@@ -948,8 +1103,7 @@ impl DocumentOwner for Project {
         }
         // The test store is in memory; the path is only recorded (no file is written), and only
         // once the save succeeded, so a failed Save As keeps the previous binding (§20.5).
-        let writer = format!("ecad {} (cadcraft {})", env!("CARGO_PKG_VERSION"), &crate::UPSTREAM_COMMIT[..7]);
-        match self.store.save(self.id, &mut self.ledger, &writer) {
+        match self.store.save(self.id, &mut self.ledger, &writer()) {
             Ok(n) => {
                 if let Some(p) = path {
                     self.path = Some(p.to_string());
@@ -988,7 +1142,12 @@ impl DocumentOwner for Project {
             }
             self.events.record(EventKind::PageClosed, Some("close"), self.ledger.head(), Some(page), "");
         }
-        self.open_pages() == 0
+        let done = self.open_pages() == 0;
+        if done {
+            // The project is closed: let go of its file and writer lock.
+            self.file.release();
+        }
+        done
     }
 
     fn drag_extra(&self, s: &Session, uid: u64, drag: &cadcraft_engine::Drag) -> Vec<cadcraft_engine::doc::EntityKind> {

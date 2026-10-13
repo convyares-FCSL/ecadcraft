@@ -16,9 +16,10 @@
 //!   (read-only, source untouched).
 //! - **Writing** ([`write`]): first write and Save with retry over an `ecad_store::Medium`,
 //!   distinguishing our own failed bytes from external changes.
+//! - **Files on disk** ([`disk`], native only): open with the writer lock, Save, and Save As by
+//!   temporary file, rename and folder flush; interrupted trailing bytes preserved in a sidecar.
 //!
-//! Excluded until later stages: files on disk, Save As replacement and locking (stage 2),
-//! library files beyond their header and chain seed (stage 3), checkpoints (disabled; their
+//! Excluded until later stages: library files beyond their header and chain seed (stage 3), checkpoints (disabled; their
 //! trust contract is unresolved), and other codecs.
 #![deny(
     clippy::unwrap_used,
@@ -33,12 +34,16 @@ pub mod canonical;
 pub mod chain;
 pub mod codec;
 mod crc;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod disk;
 pub mod read;
 pub mod record;
 pub mod v1;
 pub mod write;
 
 pub use crc::crc32c;
+#[cfg(not(target_arch = "wasm32"))]
+pub use disk::{DiskError, DiskProject, Durability, OpenedDisk, ReadOnly, StepFaults};
 pub use read::{Access, Check, Corruption, OpenError, OpenReport, Opened, Outcome, RecordSpan, open_project};
 pub use record::{CODEC, CONTAINER_VERSION, Header, SCHEMA_VERSION, definition_hash};
 pub use write::{Attempt, AttemptStage, ProjectFile, SaveError, SaveOutcome, WriterState};

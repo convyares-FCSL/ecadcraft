@@ -95,6 +95,10 @@ Both views come from the same data, so switching is instant and nothing is redra
 
 The full concept spec lives in [`docs/concept-spec.md`](docs/concept-spec.md). Design decisions are logged one per line in [`docs/decisions.md`](docs/decisions.md).
 
+## Try the ECAD trial
+
+The current ECAD work runs in a desktop trial app (an experiment): CADCraft's window with the ECAD commands, one project, and `.ecad` project files. **How to build, run and try it, and what has been tried so far:** [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md), the single maintained guide.
+
 ## Building
 
 Requires a recent stable Rust toolchain (the workspace declares Rust 1.90 as its minimum; it is built and tested with 1.97). A full debug build with debug info needs over 25 GB of disk; set `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0` to keep it near 6 GB.

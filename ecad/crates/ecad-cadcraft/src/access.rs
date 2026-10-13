@@ -128,6 +128,15 @@ impl ProjectHandle {
     pub fn open_from(s: &mut Session, name: &str, medium: MemoryMedium, seed: u64) -> Result<Self, String> {
         Project::open_from(s, name, medium, seed)
     }
+
+    /// Open a project file from disk; see [`Project::open_file`]. Returns the handle and what
+    /// opening found, in words.
+    ///
+    /// # Errors
+    /// The file cannot be read or is not a supported project file.
+    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
+        Project::open_file(s, path, seed)
+    }
 }
 
 /// The project that owns the active document, for ECAD commands.

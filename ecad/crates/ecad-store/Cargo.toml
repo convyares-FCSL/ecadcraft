@@ -1,6 +1,6 @@
 [package]
 name = "ecad-store"
-description = "Storage layer for ECAD files: byte media with injectable failures (no file format)"
+description = "Storage layer for ECAD files: byte media with injectable failures, files on disk, writer locks (no file format)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

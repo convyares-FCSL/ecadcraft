@@ -980,6 +980,7 @@ dependencies = [
  "ecad-cadcraft",
  "ecad-inspect",
  "ecad-model",
+ "ecad-store",
  "eframe",
  "serde_json",
 ]
