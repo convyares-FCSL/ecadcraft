@@ -122,6 +122,21 @@ fn apply_all(doc: &Document, ops: &[Op]) -> Result<Document> {
     Ok(next)
 }
 
+/// A named version must name a transaction before the one naming it (0 is the empty project), so
+/// [`Ledger::state_at`] can always resolve it.
+fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
+    for op in ops {
+        if let Op::NameVersion { name, at } = op {
+            if *at >= seq {
+                return Err(ModelError::Invariant(format!(
+                    "version {name:?} names transaction {at}, which does not precede transaction {seq}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn inverse_ops(ops: &[Op]) -> Vec<Op> {
     ops.iter().rev().map(Op::inverse).collect()
 }
@@ -158,7 +173,9 @@ impl Ledger {
                     i + 1
                 )))
             } else {
-                apply_all(&doc, &tx.ops).and_then(|next| stacks.push(&log, i).map(|()| next))
+                check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_all(&doc, &tx.ops))
+                    .and_then(|next| stacks.push(&log, i).map(|()| next))
             };
             match step {
                 Ok(next) => {
@@ -195,7 +212,8 @@ impl Ledger {
                 )));
             }
             if tx.seq > at {
-                doc = apply_all(&doc, &tx.ops)
+                doc = check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_all(&doc, &tx.ops))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
             }
         }
@@ -279,6 +297,7 @@ impl Ledger {
         ops: Vec<Op>,
         time_ms: Option<u64>,
     ) -> Result<TxId> {
+        check_bookmarks(&ops, self.head() + 1)?;
         let next = apply_all(&self.doc, &ops)?;
         let id: TxId = self.ids.fresh();
         self.log.push(Transaction { id, seq: self.head() + 1, author, label, kind, time_ms, ops });

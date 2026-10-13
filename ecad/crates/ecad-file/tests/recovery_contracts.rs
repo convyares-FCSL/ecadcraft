@@ -181,6 +181,9 @@ fn failures(f: &File, n: usize) -> Vec<(&'static str, Check, Vec<u8>)> {
     }
     let tx = Transaction { ops: vec![Op::EmbedDefinition { id: DefinitionId(0xd0d0), definition }], ..tx };
     out.push(("content hash", Check::ContentHash, tx_line(f, n, &tx)));
+    // A named version that points past the history.
+    let tx = Transaction { ops: vec![Op::NameVersion { name: "future".into(), at: seq }], ..tx };
+    out.push(("future bookmark", Check::Invariant, tx_line(f, n, &tx)));
     out
 }
 
@@ -277,4 +280,27 @@ fn headers_that_cannot_be_trusted_refuse_to_open() {
     let mut b = f.bytes.clone();
     b[10] ^= 1;
     assert!(matches!(open_project(&b, SEED), Err(OpenError::Header(_))), "header CRC");
+    // The header gets the same hostile-input limits as transaction records.
+    let limits: Vec<(&str, Value)> = vec![
+        ("oversized writer", {
+            let mut h = header.clone();
+            h["writer"] = "w".repeat(ecad_file::record::MAX_STRING + 1).into();
+            h
+        }),
+        ("created_ms beyond 2^53 - 1", {
+            let mut h = header.clone();
+            h["created_ms"] = Value::from(9_007_199_254_740_992u64);
+            h
+        }),
+    ];
+    for (name, h) in limits {
+        // Framed by hand: the writer's canonical form refuses the oversized integer itself.
+        let payload = serde_json::to_vec(&h).unwrap();
+        let mut b = format!("{{\"crc\":\"{:08x}\",\"rec\":", ecad_file::crc32c(&payload)).into_bytes();
+        b.extend_from_slice(&payload);
+        b.extend_from_slice(b"}\n");
+        b.extend_from_slice(&f.bytes[o + l..]);
+        let r = open_project(&b, SEED);
+        assert!(matches!(r, Err(OpenError::Header(_))), "{name}: {:?}", r.err());
+    }
 }

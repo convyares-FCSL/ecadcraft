@@ -333,3 +333,40 @@ fn a_symbol_must_show_its_components_own_definition() {
     ];
     assert!(matches!(f.ledger.commit(Author::User, "mismatch", ops), Err(ModelError::Invariant(_))));
 }
+
+#[test]
+fn a_named_version_must_name_existing_history() {
+    let mut f = fixture();
+    let head = f.ledger.head();
+    let name = |at| vec![Op::NameVersion { name: format!("v{at}"), at }];
+    // The future, or the naming transaction itself, is refused and nothing is appended.
+    for at in [head + 1, head + 5] {
+        let r = f.ledger.commit(Author::User, "name", name(at));
+        assert!(matches!(r, Err(ModelError::Invariant(_))), "at {at}: {r:?}");
+        assert_eq!(f.ledger.head(), head);
+    }
+    // Existing history, including the empty project, is accepted and resolvable.
+    for at in [0, head] {
+        f.ledger.commit(Author::User, "name", name(at)).unwrap();
+        assert!(f.ledger.state_at(at).is_ok());
+    }
+    // Undo and redo of a valid bookmark stay valid.
+    f.ledger.undo(Author::User).unwrap();
+    f.ledger.redo(Author::User).unwrap();
+    // A log holding a bookmark to the future does not replay.
+    let mut log = f.ledger.log().to_vec();
+    let bad_seq = log.len() as u64 + 1;
+    log.push(ecad_model::Transaction {
+        id: f.ids.fresh(),
+        seq: bad_seq,
+        author: Author::User,
+        label: "bad".into(),
+        kind: TxKind::Edit,
+        time_ms: None,
+        ops: name(bad_seq),
+    });
+    assert!(matches!(Ledger::replay(log.clone(), 1), Err(ModelError::CorruptLog(_))));
+    let (prefix, failure) = Ledger::replay_prefix(log, 1);
+    assert_eq!(prefix.head(), bad_seq - 1);
+    assert!(matches!(failure, Some((_, ModelError::Invariant(_)))), "{failure:?}");
+}

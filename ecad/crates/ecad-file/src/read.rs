@@ -15,6 +15,7 @@
 use ecad_model::{Ledger, ModelError, TxId};
 use serde_json::Value;
 
+use crate::canonical::MAX_SAFE_INTEGER;
 use crate::chain::{self, Hash};
 use crate::codec::{Codec, FrameError, JsonLines};
 use crate::record::{self, DecodeError, Header, MAX_RECORDS};
@@ -208,7 +209,12 @@ pub fn open_project(bytes: &[u8], seed: u64) -> Result<Opened, OpenError> {
     if record::record_type(&value) != Some("header") {
         return Err(OpenError::Header("the first record is not a header".into()));
     }
+    // The header gets the same hostile-input limits as every other record.
+    record::check_limits(&value).map_err(|e| OpenError::Header(format!("header: {e}")))?;
     let header: Header = serde_json::from_value(value).map_err(|e| OpenError::Header(e.to_string()))?;
+    if header.created_ms.is_some_and(|t| t > MAX_SAFE_INTEGER) {
+        return Err(OpenError::Header("header: created_ms exceeds 2^53 - 1".into()));
+    }
     let (kind, _) = header.validate().map_err(OpenError::Unsupported)?;
     if kind != chain::ChainKind::Project {
         return Err(OpenError::Unsupported("this is a library file; libraries are opened in stage 3".into()));
