@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId,
 };
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
@@ -245,12 +245,69 @@ pub struct Cable {
     pub members: Vec<CableMember>,
 }
 
-/// Where an embedded definition came from (LIB-01).
+/// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ContentHash(pub [u8; 32]);
+
+impl ContentHash {
+    /// The 64-hex-digit form.
+    pub fn hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// Parse the 64-hex-digit form.
+    pub fn parse(text: &str) -> Option<Self> {
+        let t = text.as_bytes();
+        if t.len() != 64 {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for (i, slot) in out.iter_mut().enumerate() {
+            let pair = std::str::from_utf8(t.get(2 * i..2 * i + 2)?).ok()?;
+            *slot = u8::from_str_radix(pair, 16).ok()?;
+        }
+        Some(Self(out))
+    }
+}
+
+impl Serialize for ContentHash {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.serialize_str(&self.hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentHash {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        Self::parse(&text).ok_or_else(|| serde::de::Error::custom("content hash must be 64 hex digits"))
+    }
+}
+
+/// Where an embedded definition came from (LIB-01, proposal §20.9).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Origin {
-    pub library: String,
-    pub definition: String,
-    pub version: u32,
+    /// The library's stable identity.
+    pub library: LibraryId,
+    /// The definition's ID inside that library.
+    pub definition: DefinitionId,
+    /// The library transaction that last changed the definition (its version).
+    pub library_seq: u64,
+    /// Hash of the definition content as embedded.
+    pub content_hash: ContentHash,
+}
+
+/// Units of lengths and coordinates in the project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum LengthUnit {
+    #[default]
+    Millimetre,
+    Inch,
+}
+
+/// Project-wide settings (proposal §3.2, §20.13). Set at creation; changed only by a recorded op.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProjectSettings {
+    pub length_unit: LengthUnit,
 }
 
 /// A terminal of a definition, in the symbol's local frame.
@@ -288,6 +345,9 @@ pub struct Document {
     pub conductors: BTreeMap<ConductorId, Conductor>,
     pub cables: BTreeMap<CableId, Cable>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
+    pub settings: ProjectSettings,
+    /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
+    pub versions: BTreeMap<String, u64>,
 }
 
 impl Document {

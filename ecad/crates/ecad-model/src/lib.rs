@@ -30,14 +30,15 @@ pub mod ledger;
 pub mod op;
 
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, Definition, Document, End, Form, Item, ItemKind, Layer, Origin,
-    Page, Primitive, Properties, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef,
+    Cable, CableMember, Color, Component, Conductor, ContentHash, Definition, Document, End, Form, Item, ItemKind,
+    Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, Representation, Style, Subject,
+    SymbolInstance, Terminal, TerminalDef,
 };
 pub use error::{ModelError, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ComponentId, ConductorId, DefinitionId, IdAllocator, ItemId, LayerId, PageId, RepresentationId,
-    TerminalId, TxId,
+    CableId, ComponentId, ConductorId, DefinitionId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId,
+    RepresentationId, TerminalId, TxId,
 };
 pub use ledger::{Author, Ledger, Transaction, TxKind};
 pub use op::{ObjectRef, Op};

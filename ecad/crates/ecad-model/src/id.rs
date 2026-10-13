@@ -88,6 +88,10 @@ typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.
     TxId, "tx");
+typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
+    LibraryId, "lib");
+typed_id!(/// A project, stable across renaming or moving its file (the file header records it).
+    ProjectId, "prj");
 
 /// Allocates fresh IDs.
 ///
