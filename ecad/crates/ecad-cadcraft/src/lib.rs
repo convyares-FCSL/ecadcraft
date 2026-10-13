@@ -14,8 +14,11 @@
 //!   holds the project.
 //! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry.
 //!
-//! This crate intentionally contains **no** UI, no file encoding (the store is test-only) and
-//! no ECAD semantics inside upstream crates.
+//! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
+//!   writer lock while it is open.
+//!
+//! This crate intentionally contains **no** UI, no file encoding of its own (that is `ecad-file`)
+//! and no ECAD semantics inside upstream crates.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -28,11 +31,13 @@
 mod access;
 pub mod commands;
 pub mod convert;
+pub mod file;
 pub mod project;
 mod translate;
 pub mod verify;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
+pub use file::{FileStatus, NO_FILE_YET, SAVE_AS_NEEDS_PATH, normalize};
 pub use project::{
     Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, project_page, session_seed,
 };

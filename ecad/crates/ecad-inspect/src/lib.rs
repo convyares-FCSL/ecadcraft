@@ -67,6 +67,8 @@ pub enum EventKind {
     PageOpened,
     PageClosed,
     ClipboardCaptured,
+    /// The project was opened from a file; the message is what opening found.
+    ProjectOpened,
 }
 
 /// One runtime event.

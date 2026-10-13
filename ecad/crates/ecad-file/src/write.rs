@@ -125,15 +125,34 @@ fn encode_batch(ledger: &Ledger, from: usize, prev: Hash) -> Result<(Vec<u8>, Ve
 }
 
 impl<M: Medium> ProjectFile<M> {
-    /// Write a new file holding the whole history (first save, or the write phase of Save As).
-    /// The medium must be empty. On success every transaction is acknowledged durable.
+    /// Write a new file holding the whole history and flush it, then acknowledge every
+    /// transaction as durable. The medium must be empty.
     ///
     /// # Errors
     /// [`SaveError`]; the medium is then discarded by the caller (it is the temporary target).
     pub fn create(
-        mut medium: M,
+        medium: M,
         project: ProjectId,
         ledger: &mut Ledger,
+        created_ms: Option<u64>,
+        writer: &str,
+    ) -> Result<Self, SaveError> {
+        let file = Self::write_new(medium, project, ledger, created_ms, writer)?;
+        file.acknowledge(ledger)?;
+        Ok(file)
+    }
+
+    /// Write a new file holding the whole history and flush it, **without** acknowledging it in
+    /// the ledger: the write phase of Save As (§20.5), whose durability is only known after the
+    /// file has replaced its target and the folder has been flushed. Call
+    /// [`ProjectFile::acknowledge`] once it is.
+    ///
+    /// # Errors
+    /// [`SaveError`]; the medium is then discarded by the caller (it is the temporary target).
+    pub fn write_new(
+        mut medium: M,
+        project: ProjectId,
+        ledger: &Ledger,
         created_ms: Option<u64>,
         writer: &str,
     ) -> Result<Self, SaveError> {
@@ -150,7 +169,6 @@ impl<M: Medium> ProjectFile<M> {
         medium.append(&all).map_err(SaveError::Append)?;
         medium.flush().map_err(SaveError::Flush)?;
         let head = ledger.head();
-        ledger.mark_persisted(head).map_err(|e| SaveError::Encode(e.to_string()))?;
         let base = header_line.len() as u64;
         Ok(Self {
             medium,
@@ -165,6 +183,24 @@ impl<M: Medium> ProjectFile<M> {
             attempt: None,
             spans: spans.into_iter().map(|s| RecordSpan { offset: s.offset + base, ..s }).collect(),
         })
+    }
+
+    /// Record in `ledger` that everything this file holds is durable (it is the same history).
+    ///
+    /// # Errors
+    /// [`SaveError::NotThisHistory`] when `ledger` does not hold this file's transactions.
+    pub fn acknowledge(&self, ledger: &mut Ledger) -> Result<(), SaveError> {
+        let n = usize::try_from(self.persisted).map_err(|e| SaveError::Encode(e.to_string()))?;
+        if n > 0 && ledger.log().get(n - 1).map(|t| t.id) != self.last_tx {
+            return Err(SaveError::NotThisHistory("its saved transactions are not this project's".into()));
+        }
+        ledger.mark_persisted(self.persisted).map_err(|e| SaveError::NotThisHistory(e.to_string()))
+    }
+
+    /// The unterminated trailing bytes found at open (offset and bytes), until a save removes
+    /// them (§20.6, E13).
+    pub fn fragment(&self) -> Option<(u64, &[u8])> {
+        self.fragment.as_deref().map(|f| (self.verified_len, f))
     }
 
     /// Open the file in `medium`: the ledger of its verified prefix and the report (§20.6).

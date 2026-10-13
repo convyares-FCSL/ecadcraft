@@ -10,8 +10,11 @@
 //!   flush, failed truncate) and direct access for simulating external changes, so every
 //!   failure point can be tested without a disk.
 //!
-//! Excluded until stage 2 of the persistence plan: files on disk, atomic replacement, folder
-//! flushes and writer locks.
+//! - [`disk`] (native only): [`FileMedium`], a file on disk as a medium; [`WriterLock`], the
+//!   operating-system lock that makes one session the writer; and the steps of an atomic
+//!   replacement (temporary file, rename, folder flush).
+//!
+//! Excluded: the order of those steps and what is written (`ecad-file`), and any file format.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -22,6 +25,11 @@
 )]
 
 use std::io;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod disk;
+#[cfg(not(target_arch = "wasm32"))]
+pub use disk::{FileIdentity, FileMedium, LockAttempt, MediumFaults, WriterLock};
 
 /// Byte storage a file writer appends to.
 ///
