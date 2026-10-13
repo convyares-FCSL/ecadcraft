@@ -483,3 +483,38 @@ fn the_command_field_keeps_trailing_enters() {
     assert_eq!(t.cad.session.doc().unwrap().model.len(), 2);
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
+
+fn frame_with(t: &mut Trial, ctx: &eframe::egui::Context, events: Vec<eframe::egui::Event>) {
+    let raw = eframe::egui::RawInput { events, ..Default::default() };
+    let mut out = ctx.run_ui(raw, |ui| {
+        t.logic(ui.ctx());
+        t.ui(ui);
+    });
+    out.textures_delta.clear();
+}
+
+#[test]
+fn the_file_dialog_takes_typed_text_and_enter() {
+    use eframe::egui::{Event, Key, Modifiers};
+    let d = TempDir::new("keys");
+    let ctx = eframe::egui::Context::default();
+    let mut t = trial(None);
+    edit(&mut t);
+    t.request_save_as();
+    frame_with(&mut t, &ctx, vec![]);
+    frame_with(&mut t, &ctx, vec![]);
+    t.set_dialog_path("");
+    frame_with(&mut t, &ctx, vec![Event::Text(d.path("typed"))]);
+    assert_eq!(t.dialog().map(|x| x.1.to_string()), Some(d.path("typed")), "typing reaches the field");
+    let enter = |pressed| Event::Key {
+        key: Key::Enter,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    };
+    frame_with(&mut t, &ctx, vec![enter(true), enter(false)]);
+    frame_with(&mut t, &ctx, vec![]);
+    assert!(t.dialog().is_none(), "Enter saves: {:?}", t.dialog());
+    assert_eq!(t.status().unwrap().file.path, Some(d.path("typed.ecad")));
+}

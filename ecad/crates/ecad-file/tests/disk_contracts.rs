@@ -351,3 +351,13 @@ fn opening_something_that_is_not_a_project_file_is_refused() {
     let e = DiskProject::open(&p, SEED, WRITER).unwrap_err();
     assert!(matches!(e, DiskError::Open { .. }), "{e}");
 }
+
+#[test]
+fn lock_records_carry_a_readable_utc_time() {
+    use ecad_file::disk::utc;
+    assert_eq!(utc(0), "1970-01-01 00:00:00 UTC");
+    assert_eq!(utc(951_782_400), "2000-02-29 00:00:00 UTC");
+    assert_eq!(utc(1_791_897_066), "2026-10-13 13:11:06 UTC");
+    let r = ecad_file::disk::holder_record("ecad test");
+    assert!(r.starts_with("ecad test, process ") && r.ends_with(" UTC"), "{r}");
+}

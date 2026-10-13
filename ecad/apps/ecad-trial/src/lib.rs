@@ -90,6 +90,8 @@ struct FileDialog {
     then_close: Option<Closing>,
     /// The existing file the user was warned about; saving again replaces it.
     confirmed_replace: Option<String>,
+    /// The path field has been given keyboard focus (once, when the dialog opens or fails).
+    focused: bool,
 }
 
 /// A close of a project with unsaved changes, held until the user answers.
@@ -323,7 +325,14 @@ impl Trial {
             }
             _ => format!("{DEFAULT_FOLDER}/"),
         };
-        self.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None });
+        self.dialog = Some(FileDialog {
+            kind,
+            path: suggested,
+            error: None,
+            then_close,
+            confirmed_replace: None,
+            focused: false,
+        });
     }
 
     /// Type a path into the open file dialog.
@@ -375,6 +384,7 @@ impl Trial {
                 // A failed save is shown in the dialog itself, not twice.
                 self.notice = None;
                 d.error = Some(e);
+                d.focused = false;
                 self.dialog = Some(d);
             }
         }
@@ -740,11 +750,13 @@ impl Trial {
 for example {DEFAULT_FOLDER}/demo.ecad; other locations are unverified."
             ));
             let field = ui.add(egui::TextEdit::singleline(&mut d.path).desired_width(f32::INFINITY));
-            if !field.has_focus() && d.error.is_none() {
-                field.request_focus();
-            }
+            // Enter ends the text field's input (it gives up focus): checked before focus is
+            // requested, which would otherwise cancel that.
             if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 confirm = true;
+            } else if !d.focused {
+                field.request_focus();
+                d.focused = true;
             }
             if let Some(e) = &d.error {
                 ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
