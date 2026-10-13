@@ -173,9 +173,15 @@ you want to check later.
      survived.
    - **History:** type `u` repeatedly. Expected: it steps back through edits made before the
      save; `redo` brings them back. Each undo and redo is a new change to save.
-6. **Optional: a second window.** While the project is open, start a second copy with the same
-   file. Expected: it opens read-only and says that another session is editing it. Save is
-   refused there; Save As can save a copy under another name.
+6. **Optional: a second window.** While the project is open, start a second copy from another
+   terminal, using the binary the first run built:
+
+   ```sh
+   ~/ecadcraft/ecad/target/release/ecad-trial ~/ecad-projects/demo.ecad
+   ```
+
+   Expected: it opens read-only and says that another session is editing it. Save is refused
+   there; Save As can save a copy under another name.
 7. **Files beside the project.**
    - `demo.ecad.lock` is normal. It marks which session may write the file, and it is empty when
      nothing holds it. If the app is killed or crashes, the next open reports and reclaims the
