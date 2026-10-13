@@ -18,7 +18,32 @@ last changed in commit `0e6dfe6`. Three kinds of evidence exist, and they are ke
 | --- | --- | --- |
 | **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 6 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files |
 | **Agent smoke run on a virtual display** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
-| **Tried by you (the owner)** | you, on WSL (Ubuntu 26.04, WSLg, Rust 1.99), 2026-10-12, on the earlier trial at `239d07f` | Drawing, conversion to a component, a terminal, PLACE, WIRE, connected movement, undo/redo, a second page and its tab close, snapshot export, and the old "persistence unavailable" behaviour. Details: [`experiment-report.md`](experiment-report.md) ("Manual desktop trial on WSL"). **Nothing in section 7 (Save, close, reopen) has been tried by you yet.** |
+| **Tried by you (the owner), stage 2a** | you, on WSL, 2026-10-13, branch `ecad/disk-persistence` (exact commit and environment not restated; the branch head was `fec06f7`, app code `0e6dfe6`) | The core of section 7: Save, close and reopen; connected movement after reopening; undo and redo across the save; writer locking; Save As; Cancel and Save on close. The exact checks are listed below |
+| **Tried by you (the owner), earlier** | you, on WSL (Ubuntu 26.04, WSLg, Rust 1.99), 2026-10-12, on the earlier trial at `239d07f` | Drawing, conversion to a component, a terminal, PLACE, WIRE, connected movement, undo/redo, a second page and its tab close, snapshot export, and the old "persistence unavailable" behaviour. Details: [`experiment-report.md`](experiment-report.md) ("Manual desktop trial on WSL") |
+
+### Your stage 2a trial (2026-10-13): what you observed
+
+Recorded as you reported them:
+
+1. Saved `untitled.ecad`; the banner showed no unsaved changes.
+2. Closed and reopened; both components and the wire came back.
+3. Moving a component after reopening kept the wire attached.
+4. Undo restored the move, then removed the wire created before saving and closing. Redo
+   restored both.
+5. `u` and `redo` work in the top Command field; Ctrl+Z also works.
+6. Saving again after undo and redo succeeded.
+7. A second window opened the same file read-only, with a writer-lock warning.
+8. Save As to `copy-test.ecad` cleared read-only and allowed editing.
+9. Closing after an edit offered Save, Discard and Cancel. Cancel kept the work open; a later
+   close with Save saved and closed.
+
+**Not manually verified** (covered by automated tests only, or not at all):
+- crash recovery, including reclaiming a lock left by a crashed session;
+- interrupted saves and the `.tail-…` sidecar;
+- **Discard** on close;
+- stable-ID inspection (the `setprop` check in section 7, step 5);
+- saving and reopening a project with more than one page;
+- what failed saves look like (for example a folder that does not exist).
 
 ## 1. First-time setup (WSL on Windows)
 

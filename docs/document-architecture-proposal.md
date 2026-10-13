@@ -1594,6 +1594,8 @@ below marked *(2b)* belong to 2b.
 - The trial's "no persistence" labelling is replaced by the real behaviour, and the manual
   trial is updated: in `ecad/docs/quick-start.md`, the single maintained guide.
 - Owner's WSL trial: create, save, close, reopen, edit, save; *(2b)* inspect with the debugger.
+  The 2a part passed on 2026-10-13 (owner-observed; the checks, and what was not tried, are
+  listed in `ecad/docs/quick-start.md`).
 
 **Stage 3: libraries**
 - A `.ecadlib` with two definitions is created by tests or a small CLI.
