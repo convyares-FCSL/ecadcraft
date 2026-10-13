@@ -11,8 +11,8 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
-This guide describes branch `ecad/disk-persistence` (stage 2a, a pull request into `dev`), code
-commit `62da5ac`. Three kinds of evidence exist, and they are kept apart:
+This guide describes branch `ecad/disk-persistence` (stage 2a, PR #10 into `dev`); the app code
+last changed in commit `0e6dfe6`. Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
