@@ -7,7 +7,8 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > **What you are running.** `ecad-trial` is an experiment, not an ECAD application. It is
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
 > are saved as `.ecad` files (persistence stage 2a). A read-only debugger panel (stage 2b)
-> opens from the banner; it is never shown unless you open it.
+> opens from the banner; it is never shown unless you open it. An **ECAD** tab in Tool Sets has
+> buttons for the ECAD commands.
 
 ## Which revision this describes, and what has been tried
 
