@@ -373,16 +373,7 @@ impl Debugger {
             return action;
         };
         ui.label(format!("Snapshot: {} of \"{}\", taken {} (#{}).", snap.label(), snap.name, self.taken, self.builds));
-        let pending = snap.head.saturating_sub(snap.persisted);
-        ui.label(if pending == snap.unsaved {
-            format!("Saved through transaction {}; {pending} pending (in memory only).", snap.persisted)
-        } else {
-            format!(
-                "Saved through transaction {}; {pending} pending (in memory only). The banner counts {}: a new \
-project's own setup is not counted as a change until the project has a file.",
-                snap.persisted, snap.unsaved
-            )
-        });
+        ui.label(saved_summary(snap));
         if let Some(e) = &self.stale {
             ui.label(RichText::new(format!("Stale: {e}. Showing the snapshot above.")).color(warn));
         }
@@ -499,11 +490,22 @@ project's own setup is not counted as a change until the project has a file.",
         ui.label(
             RichText::new(format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted)).color(ok_color()),
         );
-        if head > snap.persisted {
+        let c = snap.state_counts();
+        if c.unconfirmed > 0 {
+            ui.label(
+                RichText::new(format!(
+                    "Written but not confirmed durable (Save confirms them): transactions {}–{}.",
+                    c.saved + 1,
+                    c.saved + c.unconfirmed
+                ))
+                .color(warn),
+            );
+        }
+        if c.pending > 0 {
             ui.label(
                 RichText::new(format!(
                     "Pending (in memory only; lost unless saved): transactions {}–{head}.",
-                    snap.persisted + 1
+                    head - c.pending + 1
                 ))
                 .color(warn),
             );
@@ -866,6 +868,24 @@ project's own setup is not counted as a change until the project has a file.",
             self.read_record();
         }
     }
+}
+
+/// The heading's line on saved, unconfirmed and pending transactions.
+pub fn saved_summary(snap: &DebugSnapshot) -> String {
+    let c = snap.state_counts();
+    let mut s = format!("Saved through transaction {}", c.saved);
+    if c.unconfirmed > 0 {
+        s.push_str(&format!("; {} written but not confirmed durable (Save confirms them)", c.unconfirmed));
+    }
+    s.push_str(&format!("; {} pending (in memory only).", c.pending));
+    let pending = c.unconfirmed + c.pending;
+    if pending != snap.unsaved {
+        s.push_str(&format!(
+            " The banner counts {}: a new project's own setup is not counted as a change until the project has a file.",
+            snap.unsaved
+        ));
+    }
+    s
 }
 
 fn ok_color() -> Color32 {

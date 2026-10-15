@@ -159,10 +159,11 @@ impl Binding {
         self.disk.as_ref().and_then(|d| d.lock_file()).map(|p| p.display().to_string())
     }
 
-    /// The file's header, writer state and record spans (copies, for the debugger).
-    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterState, Vec<ecad_file::RecordSpan>)> {
+    /// The file's header, writer summary and record spans (copies, for the debugger; a failed
+    /// save's bytes are not copied).
+    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
         let f = self.disk.as_ref()?.file();
-        Some((f.header().clone(), f.state(), f.spans().to_vec()))
+        Some((f.header().clone(), f.summary(), f.spans().to_vec()))
     }
 
     /// The disk project, to inject faults in tests.
@@ -200,7 +201,7 @@ impl Binding {
     }
 
     /// No file.
-    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterState, Vec<ecad_file::RecordSpan>)> {
+    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
         None
     }
 

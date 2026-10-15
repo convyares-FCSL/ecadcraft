@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_file::codec::{Codec, JsonLines};
-use ecad_file::{AttemptStage, Header, RecordSpan};
+use ecad_file::{AttemptStage, AttemptSummary, Header, RecordSpan};
 use ecad_inspect::Event;
 use ecad_model::{
     CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId,
@@ -182,16 +182,6 @@ pub struct PageRow {
     pub unavailable: bool,
 }
 
-/// A failed save attempt still remembered by the writer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AttemptFacts {
-    pub offset: u64,
-    pub len: u64,
-    pub first_seq: u64,
-    pub last_seq: u64,
-    pub stage: AttemptStage,
-}
-
 /// Where the project's file stands.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FileFacts {
@@ -208,7 +198,7 @@ pub struct FileFacts {
     pub verified_len: Option<u64>,
     /// The writer's acknowledged durable position (equals the ledger's when acknowledged).
     pub writer_persisted: Option<u64>,
-    pub attempt: Option<AttemptFacts>,
+    pub attempt: Option<AttemptSummary>,
     /// An incomplete trailing write reported at open, still in the file.
     pub pending_fragment: Option<u64>,
     /// Where each written transaction's record sits.
@@ -244,6 +234,14 @@ impl FileFacts {
             "open_report": self.open_report,
         })
     }
+}
+
+/// Transactions per state; see [`DebugSnapshot::state_counts`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StateCounts {
+    pub saved: u64,
+    pub unconfirmed: u64,
+    pub pending: u64,
 }
 
 /// Where one transaction stands with respect to the file.
@@ -316,6 +314,19 @@ impl DebugSnapshot {
         record_state(&self.file, self.persisted, seq)
     }
 
+    /// How many transactions are saved durably, written but not confirmed durable, and only in
+    /// memory (in that order: they are consecutive ranges of the history).
+    pub fn state_counts(&self) -> StateCounts {
+        if self.file.persistence == Some(Persistence::Unavailable) {
+            return StateCounts { saved: 0, unconfirmed: 0, pending: self.head };
+        }
+        let saved = self.persisted.min(self.head);
+        let spans = &self.file.spans;
+        let written_after = spans.len().saturating_sub(spans.partition_point(|s| s.seq <= saved)) as u64;
+        let unconfirmed = written_after.min(self.head - saved);
+        StateCounts { saved, unconfirmed, pending: self.head - saved - unconfirmed }
+    }
+
     /// The record span of transaction `seq`, when it has been written.
     pub fn span(&self, seq: u64) -> Option<RecordSpan> {
         span_of(&self.file.spans, seq)
@@ -379,7 +390,7 @@ impl Project {
         let writer = match self.persistence {
             Persistence::TestStore => {
                 f.in_memory = true;
-                self.store.file().map(|w| (w.header().clone(), w.state(), w.spans().to_vec()))
+                self.store.file().map(|w| (w.header().clone(), w.summary(), w.spans().to_vec()))
             }
             Persistence::File => {
                 let st = self.file.status();
@@ -396,13 +407,7 @@ impl Project {
             f.header = Some(header);
             f.verified_len = Some(state.verified_len);
             f.writer_persisted = Some(state.persisted);
-            f.attempt = state.attempt.map(|a| AttemptFacts {
-                offset: a.offset,
-                len: a.bytes.len() as u64,
-                first_seq: a.first_seq,
-                last_seq: a.last_seq,
-                stage: a.stage,
-            });
+            f.attempt = state.attempt;
             f.pending_fragment = state.pending_fragment;
             f.spans = spans;
         }

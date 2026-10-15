@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use cadcraft_engine::Session;
 use common::{H, small_project};
 use ecad_cadcraft::debug::{
-    self, DebugSnapshot, ObjectId, RecordState, TxCursor, op_view, read_record, resolve, state_at, touches,
-    verify_file, verify_projection, verify_replay,
+    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_record, resolve, state_at,
+    touches, verify_file, verify_projection, verify_replay,
 };
 use ecad_cadcraft::{BUSY, Mapped, Persistence};
 use ecad_file::AttemptStage;
@@ -286,6 +286,8 @@ fn failed_and_unconfirmed_saves_are_not_shown_as_saved() {
         panic!("unconfirmed: {:?}", panel.snap().record_state(1))
     };
     assert!(panel.snap().file.unconfirmed);
+    // Written but unconfirmed is counted apart from both saved and memory-only transactions.
+    assert_eq!(panel.snap().state_counts(), StateCounts { saved: 0, unconfirmed: 1, pending: 0 });
     assert_eq!(read_record(Path::new(&path), span, Some(panel.tx(1))).unwrap().check, Ok(()));
     h.run("qsave", Value::Null).unwrap();
     panel.refresh(&mut h).unwrap();
@@ -298,7 +300,9 @@ fn failed_and_unconfirmed_saves_are_not_shown_as_saved() {
     panel.refresh(&mut h).unwrap();
     let seq = panel.snap().head;
     assert_eq!(panel.snap().record_state(seq), RecordState::Pending { attempt: Some(AttemptStage::FlushFailed) });
-    assert!(panel.snap().file.attempt.is_some());
+    let attempt = panel.snap().file.attempt.unwrap();
+    assert!(attempt.len > 0 && attempt.first_seq == seq, "{attempt:?}");
+    assert_eq!(panel.snap().state_counts(), StateCounts { saved: seq - 1, unconfirmed: 0, pending: 1 });
     h.run("qsave", Value::Null).unwrap();
     panel.refresh(&mut h).unwrap();
     assert!(panel.snap().record_state(seq).durable());

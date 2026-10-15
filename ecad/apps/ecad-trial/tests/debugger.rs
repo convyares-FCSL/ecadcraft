@@ -8,7 +8,7 @@ use cadcraft_engine::Session;
 use ecad_cadcraft::BUSY;
 use ecad_cadcraft::debug::{ObjectId, RecordState};
 use ecad_trial::Trial;
-use ecad_trial::debugger::{Action, CheckKind, View};
+use ecad_trial::debugger::{Action, CheckKind, View, saved_summary};
 use serde_json::Value;
 
 struct TempDir(PathBuf);
@@ -122,6 +122,11 @@ fn the_quick_start_debugger_example_runs_headless() {
     t.toggle_debugger();
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!(snap.label(), "live at seq 1");
+    assert_eq!(
+        saved_summary(snap),
+        "Saved through transaction 0; 1 pending (in memory only). The banner counts 0: a new project's own setup \
+is not counted as a change until the project has a file."
+    );
     assert_eq!(snap.record_state(1), RecordState::Pending { attempt: None }, "a new project is in memory only");
 
     // 1. Place a coil, select it: Selection → item → representation → component; one pending
@@ -182,6 +187,7 @@ fn the_quick_start_debugger_example_runs_headless() {
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!((snap.head, snap.persisted), (3, 3));
+    assert_eq!(saved_summary(snap), "Saved through transaction 3; 0 pending (in memory only).");
     let RecordState::Saved(Some(span)) = snap.record_state(3) else { panic!("saved: {:?}", snap.record_state(3)) };
     assert_eq!(snap.file.path.as_deref(), Some(path.as_str()));
     t.debugger.select_tx(Some(3));
@@ -239,4 +245,33 @@ fn the_quick_start_debugger_example_runs_headless() {
     t.debugger.view = View::Checks;
     frame(&mut t, &ctx);
     let _ = t.cad.run("qsave", Value::Null);
+}
+
+/// A Save As that wrote the file but could not confirm durability: the heading counts those
+/// transactions as written and unconfirmed, not as pending in memory, and not as saved.
+#[test]
+fn an_unconfirmed_save_as_is_neither_saved_nor_memory_only() {
+    let d = TempDir::new("unconfirmed");
+    let mut t = trial();
+    ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
+    let p = t.project().unwrap().clone();
+    p.configure(&mut t.cad.session, |p| p.file.faults.fail_dir_sync = true).unwrap();
+    assert!(t.save_as(&d.path("unconfirmed.ecad")).is_err());
+    t.toggle_debugger();
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!(snap.record_state(2), RecordState::Unconfirmed(snap.span(2).unwrap()));
+    assert_eq!(
+        saved_summary(snap),
+        "Saved through transaction 0; 2 written but not confirmed durable (Save confirms them); 0 pending (in \
+memory only)."
+    );
+    let ctx = eframe::egui::Context::default();
+    t.debugger.view = View::History;
+    frame(&mut t, &ctx);
+    t.save().unwrap();
+    frame(&mut t, &ctx);
+    assert_eq!(
+        saved_summary(t.debugger.snapshot().unwrap()),
+        "Saved through transaction 2; 0 pending (in memory only)."
+    );
 }
