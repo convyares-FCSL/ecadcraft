@@ -46,4 +46,6 @@ pub use crc::crc32c;
 pub use disk::{DiskError, DiskProject, Durability, OpenedDisk, ReadOnly, StepFaults};
 pub use read::{Access, Check, Corruption, OpenError, OpenReport, Opened, Outcome, RecordSpan, open_project};
 pub use record::{CODEC, CONTAINER_VERSION, Header, SCHEMA_VERSION, definition_hash};
-pub use write::{Attempt, AttemptStage, ProjectFile, SaveError, SaveOutcome, WriterState};
+pub use write::{
+    Attempt, AttemptStage, AttemptSummary, ProjectFile, SaveError, SaveOutcome, WriterState, WriterSummary,
+};

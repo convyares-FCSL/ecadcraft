@@ -10,8 +10,10 @@ All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the par
 > - **Projects are saved as `.ecad` files** (persistence stage 2a): Open, Save and Save As, a
 >   writer lock, and recovery from interrupted or damaged files. The supported place for project
 >   files under WSL is the Linux home folder; other file systems are unverified.
-> - **The inspector loads exported JSON snapshots.** It has no live updates; the live debugger
->   (stage 2b) is not built yet.
+> - **A read-only debugger panel** (stage 2b) in the trial follows a selected object to its
+>   ECAD IDs, model objects, transactions (with before/after values) and saved record bytes,
+>   and keeps pending changes apart from saved history. The static inspector still loads
+>   exported JSON snapshots (`ecad-inspect/2`).
 
 CADCraft crates are used by path; upstream files change only through the patches listed in
 [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
@@ -22,8 +24,8 @@ CADCraft crates are used by path; upstream files change only through the patches
 | `ecad-store` | storage media: the `Medium` trait, an in-memory medium with fault injection, and (native only) files on disk, the writer lock and the steps of an atomic replacement | no |
 | `ecad-file` | the `.ecad` format, version 1: records, canonical JSON, CRC and hash chain, JSON Lines, open with recovery, save with retry; on disk (native only): open with the writer lock, Save, Save As by temporary file and rename | no |
 | `ecad-inspect` | read-only snapshots and the runtime event log for developers | no |
-| `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands (provisional) | yes |
-| `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, with Open, Save and Save As | yes (UI) |
+| `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands, debugger snapshots and checks (provisional) | yes |
+| `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, with Open, Save and Save As, and the debugger panel | yes (UI) |
 | `xtask` | `cargo xtask ci`: fmt, clippy, tests, layering, upstream patch guard, wasm | — |
 
 ```sh

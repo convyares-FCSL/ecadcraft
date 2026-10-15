@@ -154,6 +154,18 @@ impl Binding {
         self.disk = None;
     }
 
+    /// The writer lock file, while the project holds it.
+    pub fn lock_file(&self) -> Option<String> {
+        self.disk.as_ref().and_then(|d| d.lock_file()).map(|p| p.display().to_string())
+    }
+
+    /// The file's header, writer summary and record spans (copies, for the debugger; a failed
+    /// save's bytes are not copied).
+    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
+        let f = self.disk.as_ref()?.file();
+        Some((f.header().clone(), f.summary(), f.spans().to_vec()))
+    }
+
     /// The disk project, to inject faults in tests.
     pub fn disk_mut(&mut self) -> Option<&mut ecad_file::DiskProject> {
         self.disk.as_deref_mut()
@@ -181,6 +193,16 @@ impl Binding {
     /// Never bound in a browser build.
     pub fn bound(&self) -> bool {
         false
+    }
+
+    /// No lock file.
+    pub fn lock_file(&self) -> Option<String> {
+        None
+    }
+
+    /// No file.
+    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
+        None
     }
 
     pub(crate) fn save(&mut self, _ledger: &mut Ledger) -> Result<(), String> {

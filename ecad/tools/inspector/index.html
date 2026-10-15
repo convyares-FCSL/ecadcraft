@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
-  ECAD inspector: a read-only developer viewer for ecad-inspect snapshots (format "ecad-inspect/1").
+  ECAD inspector: a read-only developer viewer for ecad-inspect snapshots (formats "ecad-inspect/1" and
+  "ecad-inspect/2"; /2 adds the project file's persistence facts).
   Load one or more JSON snapshot files; nothing is sent anywhere and nothing can be changed.
   Snapshots are exported files: this page never connects to a running session and does not update
   by itself. They come from `cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>` or
@@ -69,7 +70,7 @@ async function load(files) {
   for (const f of files) {
     try {
       const s = JSON.parse(await f.text());
-      if (s.format !== "ecad-inspect/1") throw new Error("not an ecad-inspect/1 snapshot");
+      if (s.format !== "ecad-inspect/1" && s.format !== "ecad-inspect/2") throw new Error("not an ecad-inspect/1 or /2 snapshot");
       s._file = f.name;
       snaps.push(s);
     } catch (e) {
@@ -118,6 +119,24 @@ function render() {
     </table></div></div>
     <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
     ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${esc(p.mapped_handles ?? "")}</td></tr>`).join("")}</table></div>`;
+  const f = s.persistence;
+  const records = new Map(((f && f.records) || []).map((r) => [r.seq, r]));
+  if (f) {
+    const hd = f.header;
+    h += `<h2>Persistence (when the snapshot was taken)</h2><div class="wrap"><table>
+    <tr><th>Persistence</th><td>${esc(f.persistence)}${f.in_memory ? " (test store, in memory)" : ""}</td></tr>
+    <tr><th>File</th><td class="mono">${esc(f.path ?? "none yet")}</td></tr>
+    <tr><th>Writer lock</th><td class="mono">${esc(f.lock_file ?? "not held")}</td></tr>
+    <tr><th>Header</th><td>${hd ? `container ${esc(hd.container)} v${esc(hd.container_version)}, schema ${esc(hd.schema_version)}, codec ${esc(hd.codec)}, writer ${esc(hd.writer)}` : "none"}</td></tr>
+    <tr><th>Verified bytes / writer persisted</th><td>${esc(f.verified_len ?? "")} / ${esc(f.writer_persisted ?? "")}</td></tr>
+    <tr><th>Read-only</th><td>${f.read_only ? `<span class="warn">${esc(f.read_only)}</span>` : "no"}</td></tr>
+    <tr><th>Unconfirmed Save As</th><td>${f.unconfirmed ? '<span class="warn">yes</span>' : "no"}</td></tr>
+    <tr><th>Failed save attempt</th><td>${f.attempt ? `<span class="warn">${esc(JSON.stringify(f.attempt))}</span>` : "none"}</td></tr>
+    <tr><th>Preserved tail</th><td class="mono">${esc(f.preserved_tail ?? "none")}</td></tr>
+    <tr><th>Opening found</th><td>${esc(f.open_report ?? "")}</td></tr>
+    <tr><th>Records in the file</th><td>${esc(records.size)}</td></tr>
+    </table></div>`;
+  }
 
   const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
@@ -147,7 +166,9 @@ function render() {
     const kind = typeof t.kind === "string" ? t.kind : Object.keys(t.kind)[0] + " of " + short(Object.values(t.kind)[0].of);
     const txt = JSON.stringify(t.ops);
     if (q && !txt.toLowerCase().includes(q) && !t.label.toLowerCase().includes(q)) continue;
-    h += `<details><summary><b>${esc(t.seq)}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${esc(t.ops.length)} ops</summary>
+    const rec = records.get(t.seq);
+    const where = t.seq <= s.persisted ? `<span class="ok">saved</span>${rec ? ` at offset ${esc(rec.offset)} (${esc(rec.len)} bytes)` : ""}` : rec ? `<span class="warn">written, unconfirmed</span> at offset ${esc(rec.offset)}` : '<span class="warn">pending</span>';
+    h += `<details><summary><b>${esc(t.seq)}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${esc(t.ops.length)} ops · ${where}</summary>
       ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
   }
   h += `<h2>Runtime events (diagnostics, not design history)</h2><div class="wrap"><table><tr><th>#</th><th>Kind</th><th>Command</th><th>Seq</th><th>Page</th><th>Message</th></tr>`;

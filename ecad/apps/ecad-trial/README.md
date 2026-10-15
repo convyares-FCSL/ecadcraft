@@ -18,21 +18,25 @@ at a time. It is an experiment for manual trials, not an ECAD application.
 - A Save/Discard/Cancel question when a project with unsaved changes is closed. It replaces
   CADCraft's prompt for ECAD pages, through CADCraft's public close API.
 - Optional diagnostic snapshots (`--snapshots <folder>`). These are not saved projects.
-- An **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling (`src/tools.rs`), for
-  testing: one button per
-  implemented ECAD command. It runs Convert to Component (on the selection) and Inspect Project
-  directly, and fills the Command field with an editable template for the others. It goes
-  through the ordinary command path and never runs a placeholder.
+- A read-only **debugger** panel (stage 2b, `src/debugger.rs`), opened with **Debugger** in the
+  banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
+  transactions with before/after values → saved record offsets and bytes, with pending changes
+  kept apart from saved history, and replay, projection and file checks on request.
+- An **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling (`src/tools.rs`),
+  for testing: one button per implemented ECAD command. It runs Convert to Component (on the
+  selection) and Inspect Project directly, and fills the Command field with an editable template
+  for the others. It goes through the ordinary command path and never runs a placeholder.
 
 **Not included:**
 - native file dialogs;
 - CADCraft file formats (plain drawings cannot be written);
 - autosave and the control channel;
 - saved window or profile settings;
-- the live debugger (stage 2b);
 - ECAD menus and interactive ECAD prompts.
 
 **Usage:** `ecad-trial [--snapshots <folder>] [<project.ecad>]`.
 
-The code is in `src/lib.rs`. The headless tests in `tests/trial.rs` include the quick-start
-guide's steps (`the_quick_start_trial_runs_headless`); keep the two in step.
+The code is in `src/lib.rs`, `src/debugger.rs` and `src/tools.rs`. The headless tests include the
+quick-start guide's steps (`tests/trial.rs`, `the_quick_start_trial_runs_headless`, and
+`tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); keep them in step.
+`tests/tools.rs` covers the ECAD Tool Sets tab.

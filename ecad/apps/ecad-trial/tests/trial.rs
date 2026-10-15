@@ -322,7 +322,7 @@ fn snapshots_are_exported_as_diagnostics_only() {
     edit(&mut t);
     let p = t.export_snapshot("manual").unwrap();
     let snap: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert_eq!(snap["format"], "ecad-inspect/1");
+    assert_eq!(snap["format"], "ecad-inspect/2");
     assert_eq!(snap["seq"], snap["head"]);
     assert!(t.cad.session.log.iter().any(|l| l.contains(SNAPSHOT_NOTE)));
     // Discarding exports one more first.

@@ -17,10 +17,14 @@
 //!   saved projects;
 //! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]) for testing the implemented ECAD
 //!   commands: buttons run them through the command line or prefill the command field.
+//! - the read-only **debugger** panel (persistence stage 2b, [`debugger`]), opened from the
+//!   banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
+//!   transactions with before/after values → saved record offsets and bytes, with pending
+//!   changes kept apart from durably saved history.
 //!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
-//! written), autosave, the control channel, saved window or profile state, the live debugger
-//! (stage 2b), ECAD menus and interactive ECAD prompts. ECAD commands are typed in their JSON form
+//! written), autosave, the control channel, saved window or profile state, ECAD menus and
+//! interactive ECAD prompts. ECAD commands are typed in their JSON form
 //! in the banner's command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's own
 //! command line takes a space as Enter, so it cannot take a JSON argument).
 //!
@@ -35,6 +39,7 @@
     clippy::unreachable
 )]
 
+pub mod debugger;
 pub mod tools;
 
 use std::path::{Path, PathBuf};
@@ -44,6 +49,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use cadcraft_engine::Session;
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
+use debugger::Debugger;
 use ecad_cadcraft::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
 use ecad_inspect::EventKind;
 use eframe::egui::{self, RichText};
@@ -136,6 +142,8 @@ pub struct Trial {
     command_hint: Option<&'static str>,
     /// Give the command field keyboard focus on the next frame.
     focus_command: bool,
+    /// The read-only debugger panel (closed until opened from the banner).
+    pub debugger: Debugger,
 }
 
 /// The trial has no native file dialogs. When CADCraft asks for a file name to save a drawing,
@@ -205,6 +213,7 @@ impl Trial {
             command: String::new(),
             command_hint: None,
             focus_command: false,
+            debugger: Debugger::default(),
         }
     }
 
@@ -246,6 +255,7 @@ impl Trial {
 
     fn attach(&mut self, p: ProjectHandle) {
         self.project = Some(p);
+        self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
     }
@@ -455,7 +465,7 @@ impl Trial {
 
     fn event_count(&mut self) -> u64 {
         let Some(p) = self.project.as_ref() else { return 0 };
-        p.read(&mut self.cad.session, |p, _| p.events.events().last().map_or(0, |e| e.n + 1)).unwrap_or(0)
+        p.read(&mut self.cad.session, |p, _| p.events.last().map_or(0, |e| e.n + 1)).unwrap_or(0)
     }
 
     /// Show a failed save in a dialog and a successful one at the command line.
@@ -642,10 +652,48 @@ impl Trial {
         }
     }
 
-    /// Lay out the banner, the harness dialogs and CADCraft's window contents.
+    /// Open or close the debugger panel.
+    pub fn toggle_debugger(&mut self) {
+        self.debugger.open = !self.debugger.open;
+        if self.debugger.open {
+            self.refresh_debugger(false);
+        }
+    }
+
+    /// Bring the debugger's snapshot up to date (a new one only when something changed, or
+    /// always with `force`). The project is locked only while it is copied.
+    pub fn refresh_debugger(&mut self, force: bool) {
+        if let Some(p) = &self.project {
+            self.debugger.refresh(p, &mut self.cad.session, force);
+        }
+    }
+
+    /// Apply a debugger action that needs the project (Refresh, a check).
+    pub fn debugger_action(&mut self, a: debugger::Action) {
+        if let Some(p) = &self.project {
+            self.debugger.apply(a, p, &mut self.cad.session);
+        }
+    }
+
+    /// Lay out the banner, the harness dialogs, the debugger (when open) and CADCraft's window
+    /// contents.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         self.banner(ui);
         self.dialogs(ui.ctx());
+        if self.debugger.open {
+            // The snapshot is taken (and the project released) before anything is drawn.
+            self.refresh_debugger(false);
+            let action = egui::Panel::right("ecad_debugger")
+                .resizable(true)
+                .default_size(460.0)
+                .min_size(280.0)
+                .max_size(620.0)
+                .show(ui, |ui| self.debugger.show(ui))
+                .inner;
+            if let Some(a) = action {
+                self.debugger_action(a);
+            }
+        }
         self.cad.ui(ui);
         self.handle_tools();
     }
@@ -667,6 +715,7 @@ impl Trial {
             Save,
             SaveAs,
             Export,
+            Debugger,
         }
         let mut click = None;
         let mut submit: Option<String> = None;
@@ -703,6 +752,10 @@ impl Trial {
                         && ui.button("Export inspector snapshot").on_hover_text(SNAPSHOT_NOTE).clicked()
                     {
                         click = Some(Click::Export);
+                    }
+                    let label = if self.debugger.open { "Hide debugger" } else { "Debugger" };
+                    if ui.button(label).on_hover_text(debugger::HOVER).clicked() {
+                        click = Some(Click::Debugger);
                     }
                 }
                 None => {
@@ -755,6 +808,7 @@ impl Trial {
                 let _ = self.save();
             }
             Some(Click::SaveAs) => self.request_save_as(),
+            Some(Click::Debugger) => self.toggle_debugger(),
             Some(Click::Export) => {
                 self.notice = Some(match self.export_snapshot("manual") {
                     Ok(p) => format!("Snapshot written to {}.\n\n{SNAPSHOT_NOTE}", p.display()),

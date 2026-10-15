@@ -1,6 +1,6 @@
 [package]
 name = "ecad-trial"
-description = "ECAD desktop trial harness (experiment only; no project persistence)"
+description = "ECAD desktop trial harness (experiment only)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ workspace = true
 ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
 ecad-inspect = { workspace = true }
 ecad-model = { workspace = true }
+ecad-file = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (without its persistence of window state).

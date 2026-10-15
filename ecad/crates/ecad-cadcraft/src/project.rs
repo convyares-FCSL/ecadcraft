@@ -930,7 +930,11 @@ impl Project {
                 }
             })
             .collect();
-        LiveFacts { pages, upstream: Some(crate::UPSTREAM_COMMIT.into()) }
+        LiveFacts {
+            pages,
+            upstream: Some(crate::UPSTREAM_COMMIT.into()),
+            persistence: Some(self.file_facts().to_json()),
+        }
     }
 
     /// A JSON snapshot (live when `at` is `None`).

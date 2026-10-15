@@ -3,9 +3,9 @@
 > **Status:** revision 4.1. Revision 2 was approved as the basis for the bounded integration
 > experiment (§17); the integration choices in Part B stay provisional until demonstrated.
 > Revision 4 added **Part E** (persistence and the live debugger). Revision 4.1 revises its
-> contracts after review. **Stage 1 is implemented and merged; stage 2a (files on disk) is
-> implemented for review; stage 2b (the debugger) has an approved scope and waits for the
-> owner's trial of 2a; later stages need approval each (§22).** **Written:** 2026-10-12 against `dev`
+> contracts after review. **Stage 1 and stage 2a (files on disk) are implemented and merged;
+> stage 2b (the debugger panel) is implemented for review; later stages need approval each
+> (§22).** **Written:** 2026-10-12 against `dev`
 > at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
@@ -1477,6 +1477,19 @@ The debugger is read-only and live. The static HTML inspector remains for export
   `Ledger::state_at` into a separate value, computed on request. The live document, head and
   pages are untouched. Historical views are labelled "history at seq n".
 
+**As built (stage 2b).** The snapshot is `ecad_cadcraft::debug::DebugSnapshot`, built by
+`ProjectHandle::debug_snapshot` under one `try_lock`. It does **not** use `ecad_inspect::snapshot`,
+because that replays the whole log for a live snapshot; replay belongs to Verify. What it copies:
+the document, the active page's selection mapped through the `HandleMap`, page facts, the most
+recent 500 events, the file facts (path, lock file, header, writer state, record spans, read-only
+reason, unconfirmed Save As, failed attempt) and only the transactions after the panel's own copy
+of the log (transactions never change once recorded; a copy that does not end in this project's
+history is replaced). The snapshot's key is head, persisted, the last event number, the active
+page and the selection. Record bytes are read from the file outside the lock and checked to decode
+to exactly the transaction in memory. Projection verification copies the open pages' drawings and
+handle maps under the lock and compares outside it. History at seq n is replayed from the panel's
+copy of the log.
+
 ### 21.2 Views
 
 | View | Shows |
@@ -1569,9 +1582,10 @@ never panic and always classify the result.
 *CI:* `cargo xtask ci` is green, including wasm for `ecad-file`.
 
 **Stage 2: files, harness persistence, debugger panel.** Split by the owner (2026-10-13) into
-**2a**, files and harness persistence (one PR, implemented for review, then the owner's WSL
-trial), and **2b**, the debugger panel (scope confirmed, built after that trial). The criteria
-below marked *(2b)* belong to 2b.
+**2a**, files and harness persistence (merged as PR #10 after the owner's WSL trial), and **2b**,
+the debugger panel (implemented on branch `ecad/debugger` for review; tests in
+`ecad-cadcraft/tests/debugger.rs` and `ecad-trial/tests/debugger.rs`). The criteria below marked
+*(2b)* belong to 2b.
 - Save, quit, reopen: the same document, IDs, log and head, with persisted = head. *(2b)* The
   debugger shows no pending transactions.
 - Fault injection at every step of Save and Save As (append, flush, rename, folder flush)
@@ -1589,9 +1603,11 @@ below marked *(2b)* belong to 2b.
   - selection → IDs → transaction → record offset matches the bytes in the file;
   - a new edit shows as pending until saved, then as durable with its offset;
   - historical views leave the live head unchanged;
-  - rendering holds no project lock (tested by holding the lock during a frame: the panel
-    shows its stale snapshot);
-  - Verify is the only path to full replay.
+  - rendering holds no project lock (tested by holding the lock while the panel refreshes: it
+    keeps its previous snapshot, marked stale, and the next frame recovers);
+  - Verify is the only path to full replay (by construction: the snapshot builder copies and
+    never replays; replay, projection and file checks are separate functions the panel calls
+    only from its Checks buttons).
 - The trial's "no persistence" labelling is replaced by the real behaviour, and the manual
   trial is updated: in `ecad/docs/quick-start.md`, the single maintained guide.
 - Owner's WSL trial: create, save, close, reopen, edit, save; *(2b)* inspect with the debugger.
@@ -1644,9 +1660,9 @@ the table; the debugger scope of §21 confirmed, to be built after the owner's t
 | E7 | Checkpoints disabled; trust contract unresolved | **settled** as disabled; the contract is open for stage 4 |
 | E8 | Save refuses on an external change and offers Save As; an OS lock on a lock file guards writers; a second opener is read-only; a crash never locks out, and a leftover lock is told apart from an active one | **settled** (2026-10-13; implemented in stage 2a) |
 | E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | **settled** (2026-10-13; implemented in stage 2a) |
-| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled**; scope of §21 confirmed 2026-10-13; built in stage 2b, after the owner's trial of 2a |
+| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled**; scope of §21 confirmed 2026-10-13; implemented in stage 2b (for review) |
 | E11 | Length unit in project settings, mm by default, fixed at creation for now | **settled** (2026-10-13; implemented in stage 1) |
-| E12 | Stages as in §22 | stage 1 merged; 2a implemented for review; 2b after the 2a trial; later stages need approval each |
+| E12 | Stages as in §22 | stages 1 and 2a merged; 2b implemented for review; later stages need approval each |
 | E13 | An unterminated trailing fragment is copied to a uniquely named sidecar before a save removes it; a failed copy leaves the file untouched and is reported | **settled** (2026-10-13; implemented in stage 2a) |
 | E14 | The supported location for project files under WSL is the Linux home folder; other file systems are unverified unless tested | **settled** (2026-10-13) |
 
@@ -1678,6 +1694,7 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 2: review of PR #1; principles separated from hypotheses; representation/subject, movement, copy, unsaved state, symbols, compaction and experiment revised |
 | 2026-10-12 | Revision 3: experiment corrections (S7/S8 conductors, two pages, undo/redo verifies state and IDs as the log grows, failure after acceptance PROJ-02, failed save after a new edit); versioning recorded (§8.1) |
 | 2026-10-12 | Revision 3.1: placement rotation stored in radians, with degree conversion at command and UI boundaries (§4.2); a single copy-ID policy stated (§3.4) |
+| 2026-10-13 | Stage 2b implemented for review: §21 records the snapshot as built (a dedicated copy rather than `ecad_inspect::snapshot`, which replays; incremental copy of the log; the snapshot key); §22 the 2b tests; E10 and E12 status; exported snapshots move to `ecad-inspect/2` |
 | 2026-10-13 | Stage 2a: E5, E6, E8, E9, E11 and E13 settled, E14 added (WSL location), the debugger scope confirmed; §20.5 records the held-versus-leftover lock, file identity and the 2a implementation; §20.6 the sidecar naming; §20.12 and §22 the 2a/2b split; the manual trial moves to `ecad/docs/quick-start.md` |
 | 2026-10-13 | Revision 4.1, corrections from the stage 1 code review: Save re-reads the whole verified prefix against a running digest (not only its last record); embedded content hashes are recomputed on open (a mismatch is corruption); canonical numbers break equal-distance ties to the even digit as ECMA-262 does; the header gets the same size and integer limits as other records; a named version must name a transaction before the one naming it |
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
