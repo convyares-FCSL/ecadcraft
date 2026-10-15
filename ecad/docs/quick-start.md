@@ -11,16 +11,16 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
-This guide describes branch `ecad/toolsets` (the ECAD group in Tool Sets, a PR into `dev`), built
+This guide describes branch `ecad/toolsets` (the ECAD tab in Tool Sets, PR #12 into `dev`), built
 on stage 2a as merged into `dev` (`4a5a826`). Three kinds of evidence exist, and they are kept
 apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 6 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **ECAD Tool Sets group:** every button names an existing command; clicking Convert to Component in the panel converts the selection once, and `u` undoes it; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). CADCraft without extra groups is unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
+| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 6 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Agent smoke run on a virtual display** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
-| **Agent smoke run on a virtual display, ECAD Tool Sets group** | the development agent, as above, 2026-10-15 | The ECAD group appears in Tool Sets after Parametric (other groups collapsed to reach it); clicking the four lines of a rectangle and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected); **Wire** filled the Command field with its template and the note under it; Enter on the unedited template was refused with "Replace the placeholders first". Not looked at: a real WSLg display, scrolling the panel with a mouse wheel |
-| **Tried by you (the owner), ECAD Tool Sets group** | not yet | Nothing yet: try section 4's "ECAD group in Tool Sets" and section 5 with its buttons |
+| **Agent smoke run on a virtual display, ECAD Tool Sets tab** | the development agent, as above, 2026-10-15 | Tool Sets shows **Drafting**, **Modeling** and **ECAD** tabs; the ECAD tab shows Components, Wiring, Edit, Pages and Inspect; clicking a rectangle's four lines and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected). The first version (a group at the bottom of Drafting) was also run: **Wire** filled the Command field with its template and note, and Enter on it unedited was refused. Not looked at: a real WSLg display |
+| **Tried by you (the owner), ECAD Tool Sets** | you, on WSL, 2026-10-15, the first version of PR #12 (a group at the bottom of Drafting) | The ECAD group appeared; you asked for it as a tab of its own beside Drafting and Modeling, which this revision does. The revised tab is not tried yet: see section 4's "ECAD tab in Tool Sets" and section 5 |
 | **Tried by you (the owner), stage 2a** | you, on WSL, 2026-10-13, branch `ecad/disk-persistence` (exact commit and environment not restated; the branch head was `fec06f7`, app code `0e6dfe6`) | The core of section 7: Save, close and reopen; connected movement after reopening; undo and redo across the save; writer locking; Save As; Cancel and Save on close. The exact checks are listed below |
 | **Tried by you (the owner), earlier** | you, on WSL (Ubuntu 26.04, WSLg, Rust 1.99), 2026-10-12, on the earlier trial at `239d07f` | Drawing, conversion to a component, a terminal, PLACE, WIRE, connected movement, undo/redo, a second page and its tab close, snapshot export, and the old "persistence unavailable" behaviour. Details: [`experiment-report.md`](experiment-report.md) ("Manual desktop trial on WSL") |
 
@@ -136,9 +136,9 @@ cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allo
   cannot take JSON. Use it for plain CADCraft commands and for the prompts of mouse-driven
   commands such as `move`.
 - **The mouse** works as in CADCraft: drawing, selecting and dragging.
-- **The ECAD group in Tool Sets** (the left panel, Drafting tab, at the bottom: scroll down or
-  collapse other groups). A convenience for testing, with one button per implemented ECAD
-  command. Buttons never start anything of their own: they go through the same command path as
+- **The ECAD tab in Tool Sets** (the left panel: click **ECAD** beside Drafting and Modeling).
+  A convenience for testing, with one button per implemented ECAD command, in groups
+  (Components, Wiring, Edit, Pages, Inspect). Buttons never start anything of their own: they go through the same command path as
   the Command field, so validation, undo and saving work exactly as when you type.
   - **Convert to Component** runs at once on the current selection (select the objects first).
   - **Inspect Project** runs at once and shows the project's IDs at the command line.
@@ -149,7 +149,8 @@ cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allo
     refused, never run.
   - IDs and handles come from the current selection where it names them: select a wire before
     **Set Property** or **Delete Electrical Object**, and its ID is filled in. The selection is
-    left as it is.
+    left as it is. If a CADCraft command is waiting at a prompt, a button cancels it first, as
+    CADCraft's own Tool Sets buttons do.
 
 Each ECAD command answers at the command line, for example with the IDs it created. Note IDs
 you want to check later.
@@ -160,13 +161,13 @@ you want to check later.
    Expected: four lines; the banner shows 1 change not saved.
 2. **Make it a component.** Select the four lines with a window selection (drag from the top
    left to the bottom right), then type `convertcomponent`, or click **Convert to Component** in
-   the ECAD group in Tool Sets.
+   the ECAD tab of Tool Sets.
    Expected: the reply shows `"component":"<id>"`. **Note this component ID.** The rectangle now
    selects as one group.
 3. **Give it a terminal.** Click the rectangle's right-hand edge and type `list` at the command
    line to see its handle, then type `addterminal {"handle":"<that handle>","at":[40,10]}`.
    Expected: a terminal marker at 40,10.
-4. **Place a second component.** `place {"at":[100,0],"rotation":90}`. (With the ECAD group:
+4. **Place a second component.** `place {"at":[100,0],"rotation":90}`. (With the ECAD tab:
    click **Place Symbol**, replace `<x>` and `<y>` with `100` and `0`, set `"rotation":90`, and
    press Enter.)
    Expected: a coil symbol, rotated, with its terminals at 90,0 and 110,0.
@@ -248,7 +249,7 @@ you want to check later.
 
 - It is an experiment. No native file dialogs (the trial has its own path dialog), no ECAD
   menus, no interactive ECAD prompts: ECAD commands are typed with JSON parameters. The ECAD
-  group in Tool Sets runs or prefills those same commands; it has no picking or prompting of its
+  tab in Tool Sets runs or prefills those same commands; it has no picking or prompting of its
   own, and its buttons are text, not icons.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.

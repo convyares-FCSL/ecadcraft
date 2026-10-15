@@ -15,7 +15,7 @@
 //!   CADCraft's prompt for ECAD pages, through `CadApp`'s public close API; no upstream change);
 //! - optional export of inspector snapshots (`--snapshots <dir>`), which are diagnostic files, not
 //!   saved projects;
-//! - an **ECAD** group in CADCraft's Tool Sets panel ([`tools`]) for testing the implemented ECAD
+//! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]) for testing the implemented ECAD
 //!   commands: buttons run them through the command line or prefill the command field.
 //!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
@@ -191,7 +191,7 @@ impl Trial {
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
-        cad.extra_tool_groups = vec![tools::group()];
+        cad.extra_tool_tabs = vec![tools::tab()];
         Trial {
             cad,
             project: None,
@@ -566,7 +566,8 @@ impl Trial {
 
     /// Act on a click of an ECAD Tool Sets button (see [`tools`]): run its command through the
     /// command line (the same path as typing it), or put its template in the command field. The
-    /// selection is left as it is.
+    /// selection is left as it is. A CADCraft command waiting at a prompt is cancelled first, as
+    /// CADCraft's own Tool Sets buttons do, so the button's line is never taken as prompt input.
     ///
     /// # Errors
     /// An unknown tool, or the command's own refusal (also echoed at the command line).
@@ -576,6 +577,9 @@ impl Trial {
             self.cad.session.echo(e.clone());
             return Err(e);
         };
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
         match tool.kind {
             // A template waiting in the command field keeps its note and its placeholder check.
             tools::Kind::Run(line) => match self.run_line(line) {

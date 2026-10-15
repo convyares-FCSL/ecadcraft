@@ -752,7 +752,7 @@ well-defined moments. Plain drawings have no owner and behave exactly as today.
 | X5 | **Persistence delegation**: save/save-as to the owner; `is_dirty` answered by the owner; closing a document asks the owner whether it needs a prompt; quit asks every owner; drawing autosave skips owned documents | `engine/src/lib.rs` (`is_dirty`), `cmd/file.rs` (`qsave`, `saveas`, `close`), `engine/src/autosave.rs` (`184-189`), `ui-egui/src/closing.rs` (`71`, `177`) | SAVE-01..06 |
 | X6 | **Provenance**: copy-like operations record `new ← source`; clipboard copy notifies the owner with the clipboard serial | `cmd/modify.rs` (`transform_entities`), `cmd/clipboard.rs` (`copy`, `adopt`), array and grip copy sites after census | §11 |
 | X7 | **Drag preview contribution**: the owner adds rubber-band geometry to `Session::drag` | `engine/src/lib.rs` (`1195-1201`) | M2 preview |
-| X8 | **Tool Sets groups from the embedder** (added 2026-10-15, owner-approved): text-button groups shown after the built-in Drafting groups; a click is queued for the embedder (`CadApp::take_tool_requests`), never started by CADCraft | `ui-egui/src/palettes.rs`, `ui-egui/src/lib.rs` | the trial's ECAD tool group |
+| X8 | **Tool Sets tabs from the embedder** (added 2026-10-15, owner-approved; revised the same day from a group in Drafting to a tab of its own): tabs of text-button groups shown after Drafting and Modeling; a click is queued for the embedder (`CadApp::take_tool_requests`), never started by CADCraft | `ui-egui/src/palettes.rs`, `ui-egui/src/lib.rs` | the trial's ECAD tool group |
 
 **About ten upstream files.** The patch is larger than revision 1's estimate but has one shape,
 one marker (`// ECAD-SEAM(owner):`) and one test suite. Each capability is generic enough to

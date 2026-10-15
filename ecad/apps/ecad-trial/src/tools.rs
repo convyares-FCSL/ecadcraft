@@ -1,8 +1,8 @@
-//! The **ECAD** group in CADCraft's Tool Sets panel: buttons for the ECAD commands implemented
-//! so far, as a convenience for manual testing. It is not a new command system and has no
-//! interactive tools of its own.
+//! The **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling: buttons for the
+//! ECAD commands implemented so far, as a convenience for manual testing. It is not a new command
+//! system and has no interactive tools of its own.
 //!
-//! CADCraft shows the group and queues clicks (`CadApp::extra_tool_groups`,
+//! CADCraft shows the tab and queues clicks (`CadApp::extra_tool_tabs`,
 //! `CadApp::take_tool_requests`); everything ECAD about it is here:
 //! - **Run** buttons type the command into the same path as the banner's Command field, so the
 //!   command's own validation, transaction and undo apply. Convert to Component uses the current
@@ -12,15 +12,18 @@
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use cadcraft_engine::doc::Handle;
-use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup};
+use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_cadcraft::{Mapped, Project};
-use ecad_model::{ComponentId, ConductorId, Subject, TerminalId};
+use ecad_model::{ComponentId, ConductorId, ItemId, Subject, TerminalId};
 
-/// The group's name in the Tool Sets panel.
-pub const GROUP: &str = "ECAD";
+/// The tab's name in the Tool Sets panel.
+pub const TAB: &str = "ECAD";
+
+/// The tab's groups, in order.
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit", "Pages", "Inspect"];
 
 /// What a button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,10 +34,12 @@ pub enum Kind {
     Template,
 }
 
-/// One button: a stable, namespaced id, its label and tooltip.
+/// One button: a stable, namespaced id, its group, label and tooltip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tool {
     pub id: &'static str,
+    /// One of [`GROUPS`].
+    pub group: &'static str,
     pub label: &'static str,
     pub tooltip: &'static str,
     pub kind: Kind,
@@ -44,85 +49,104 @@ pub struct Tool {
 pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.convertcomponent",
+        group: "Components",
         label: "Convert to Component",
         tooltip: "Make the selected drawing objects one component (runs now)",
         kind: Kind::Run("convertcomponent"),
     },
     Tool {
         id: "ecad.addterminal",
+        group: "Components",
         label: "Add Terminal",
         tooltip: "Add a terminal to a component at a point (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.place",
+        group: "Components",
         label: "Place Symbol",
         tooltip: "Place a coil symbol component (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.wire",
+        group: "Wiring",
         label: "Wire",
         tooltip: "Draw a wire; ends on terminals attach (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.connect",
+        group: "Wiring",
         label: "Connect",
         tooltip: "Attach a wire end to a terminal (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.disconnect",
+        group: "Wiring",
         label: "Disconnect",
         tooltip: "Detach a wire end (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.setprop",
+        group: "Edit",
         label: "Set Property",
         tooltip: "Set a property such as the tag (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.cableadd",
+        group: "Wiring",
         label: "Add to Cable",
         tooltip: "Group wires into a cable (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.delete",
+        group: "Edit",
         label: "Delete Electrical Object",
         tooltip: "Delete a component or wire with its connections (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.newpage",
+        group: "Pages",
         label: "New Page",
         tooltip: "Add a page to the project (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.openpage",
+        group: "Pages",
         label: "Open Page",
         tooltip: "Open a closed page again (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.inspect",
+        group: "Inspect",
         label: "Inspect Project",
         tooltip: "Show the project's IDs and history at the command line (read-only; runs now)",
         kind: Kind::Run("ecadinspect"),
     },
 ];
 
-/// The group as CADCraft's Tool Sets panel shows it.
-pub fn group() -> ExtraToolGroup {
-    ExtraToolGroup {
-        name: GROUP.into(),
-        tools: TOOLS
+/// The tab as CADCraft's Tool Sets panel shows it.
+pub fn tab() -> ExtraToolTab {
+    ExtraToolTab {
+        name: TAB.into(),
+        groups: GROUPS
             .iter()
-            .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
+            .map(|g| ExtraToolGroup {
+                name: (*g).into(),
+                tools: TOOLS
+                    .iter()
+                    .filter(|t| t.group == *g)
+                    .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
+                    .collect(),
+            })
             .collect(),
     }
 }
@@ -132,6 +156,10 @@ pub fn find(id: &str) -> Option<&'static Tool> {
     TOOLS.iter().find(|t| t.id == id)
 }
 
+/// Most selected handles followed into the model for one template; a larger selection fills in
+/// only what these name (templates take at most a handful of IDs).
+pub const MAX_PICKED: usize = 1_000;
+
 /// What the current selection names: its handles, and the ECAD objects they map to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Picked {
@@ -140,20 +168,29 @@ pub struct Picked {
     pub conductors: Vec<ConductorId>,
     /// Terminals whose markers are selected.
     pub terminals: Vec<TerminalId>,
+    /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
+    pub truncated: bool,
 }
 
 impl Picked {
     /// Follow the active page's selected handles through its handle map (read only).
+    ///
+    /// At most [`MAX_PICKED`] handles are followed, through one item-to-subject index built when
+    /// the first item is met, so the cost is bounded by the project, not by the selection.
     pub fn from_selection(p: &Project, uid: u64, handles: Vec<Handle>) -> Self {
         let mut subjects = BTreeSet::new();
         let mut terminals = BTreeSet::new();
         let doc = p.ledger.document();
         let map = p.page_of(uid).and_then(|page| p.pages.get(&page)).map(|v| &v.map);
-        for h in &handles {
+        let mut index: Option<HashMap<ItemId, Subject>> = None;
+        for h in handles.iter().take(MAX_PICKED) {
             match map.and_then(|m| m.get(*h)) {
                 Some(Mapped::Item(i)) => {
-                    if let Some(r) = doc.representations.values().find(|r| r.items.contains(&i)) {
-                        subjects.insert(r.subject);
+                    let index = index.get_or_insert_with(|| {
+                        doc.representations.values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect()
+                    });
+                    if let Some(s) = index.get(&i) {
+                        subjects.insert(*s);
                     }
                 }
                 Some(Mapped::Marker(rep, t)) => {
@@ -166,6 +203,7 @@ impl Picked {
             }
         }
         Picked {
+            truncated: handles.len() > MAX_PICKED,
             handles,
             components: subjects
                 .iter()

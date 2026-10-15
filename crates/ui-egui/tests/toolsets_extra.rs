@@ -1,21 +1,24 @@
-//! ECAD-SEAM(owner): Tool Sets groups supplied by an embedding application. Without any, the
-//! panel is unchanged; with one, its buttons appear after the built-in groups of the Drafting tab,
-//! and a click is queued for the embedder exactly once instead of being started.
+//! ECAD-SEAM(owner): Tool Sets tabs supplied by an embedding application. Without any, Drafting
+//! and Modeling are unchanged; with one, it appears beside them, shows its own groups, and a click
+//! on one of its tools is queued for the embedder exactly once instead of being started.
 
 use cadcraft_engine::Session;
-use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup};
+use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use cadcraft_ui_egui::{CadApp, Services};
 use egui::vec2;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-fn harness(groups: Vec<ExtraToolGroup>) -> Harness<'static, CadApp> {
+/// A Drafting tool shown once in the palette (not also on a toolbar).
+const DRAFTING_TOOL: &str = "Revision Cloud";
+
+fn harness(tabs: Vec<ExtraToolTab>) -> Harness<'static, CadApp> {
     let mut app = CadApp::new(Session::default(), Services::default());
     app.run("ui.sample", serde_json::json!({})).unwrap();
     app.ui.in_window_menu = false;
     app.integrated_titlebar = true;
-    app.extra_tool_groups = groups;
-    let mut h = Harness::builder().with_size(vec2(1600.0, 2600.0)).build_ui_state(
+    app.extra_tool_tabs = tabs;
+    let mut h = Harness::builder().with_size(vec2(1600.0, 1000.0)).build_ui_state(
         |ui, app: &mut CadApp| {
             app.logic(&ui.ctx().clone());
             app.ui(ui);
@@ -26,19 +29,28 @@ fn harness(groups: Vec<ExtraToolGroup>) -> Harness<'static, CadApp> {
     h
 }
 
-fn group() -> ExtraToolGroup {
-    ExtraToolGroup {
-        name: "Embedder".into(),
-        tools: vec![
-            ExtraTool { id: "test.first".into(), label: "First Tool".into(), tooltip: "Does the first thing".into() },
-            ExtraTool { id: "test.second".into(), label: "Second Tool".into(), tooltip: "Does the second".into() },
+fn tab(name: &str) -> ExtraToolTab {
+    ExtraToolTab {
+        name: name.into(),
+        groups: vec![
+            ExtraToolGroup {
+                name: "First Group".into(),
+                tools: vec![ExtraTool { id: "test.first".into(), label: "First Tool".into(), tooltip: "Does the first thing".into() }],
+            },
+            ExtraToolGroup {
+                name: "Second Group".into(),
+                tools: vec![ExtraTool { id: "test.second".into(), label: "Second Tool".into(), tooltip: "Does the second".into() }],
+            },
         ],
     }
 }
 
 #[test]
-fn without_extra_groups_the_palette_is_unchanged() {
+fn without_extra_tabs_drafting_and_modeling_are_unchanged() {
     let mut h = harness(Vec::new());
+    let drafting = h.get_by_label("Drafting").rect();
+    let modeling = h.get_by_label("Modeling").rect();
+    assert!((drafting.width() - 92.0).abs() < 0.5 && (modeling.width() - 92.0).abs() < 0.5, "tab widths as before");
     assert!(h.query_by_label("Embedder").is_none());
     h.get_by_label("Line").click();
     h.run_steps(3);
@@ -47,9 +59,17 @@ fn without_extra_groups_the_palette_is_unchanged() {
 }
 
 #[test]
-fn an_extra_tool_click_is_queued_once_and_not_started() {
-    let mut h = harness(vec![group()]);
-    assert!(h.query_by_label("Embedder").is_some(), "the group header is shown");
+fn an_extra_tab_shows_its_groups_and_queues_clicks_once() {
+    let mut h = harness(vec![tab("Embedder")]);
+    assert!(h.query_by_label(DRAFTING_TOOL).is_some(), "Drafting is still the tab shown first");
+    assert!(h.query_by_label("First Tool").is_none(), "the extra tab's tools are not in Drafting");
+
+    h.get_by_label("Embedder").click();
+    h.run_steps(3);
+    assert_eq!(h.state().ui.toolset_tab, "Embedder");
+    assert!(h.query_by_label(DRAFTING_TOOL).is_none(), "the tab replaces the built-in groups");
+    assert!(h.query_by_label("First Group").is_some() && h.query_by_label("Second Group").is_some());
+
     let selection = h.state().session.selection();
     h.get_by_label("Second Tool").click();
     h.run_steps(3);
@@ -59,17 +79,22 @@ fn an_extra_tool_click_is_queued_once_and_not_started() {
     h.run_steps(3);
     assert!(h.state_mut().take_tool_requests().is_empty(), "each click is reported exactly once");
 
-    // The header collapses the group like a built-in one.
-    h.get_by_label("Embedder").click();
+    // A group header collapses its group like a built-in one.
+    h.get_by_label("First Group").click();
     h.run_steps(3);
     assert!(h.query_by_label("First Tool").is_none());
-    assert!(h.state().ui.collapsed_groups.iter().any(|g| g == "Embedder"));
+    assert!(h.query_by_label("Second Tool").is_some());
+
+    // Back to Drafting: the built-in palette returns.
+    h.get_by_label("Drafting").click();
+    h.run_steps(3);
+    assert!(h.query_by_label(DRAFTING_TOOL).is_some());
+    assert!(h.query_by_label("Second Tool").is_none());
 }
 
 #[test]
-fn extra_groups_belong_to_the_drafting_tab() {
-    let mut h = harness(vec![group()]);
-    h.state_mut().ui.toolset_tab = "Modeling".into();
-    h.run_steps(3);
+fn an_extra_tab_named_like_a_built_in_one_is_ignored() {
+    let h = harness(vec![tab("Drafting")]);
     assert!(h.query_by_label("First Tool").is_none());
+    assert!(h.query_by_label(DRAFTING_TOOL).is_some());
 }

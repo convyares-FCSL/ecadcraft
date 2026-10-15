@@ -15,7 +15,7 @@ fn trial() -> Trial {
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 2600.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 1000.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
@@ -66,7 +66,10 @@ fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
         let command = line.split_whitespace().next().unwrap();
         assert!(ids.contains(&command), "{} runs the existing command {command}", t.id);
     }
-    assert_eq!(tools::group().tools.len(), TOOLS.len());
+    let tab = tools::tab();
+    assert_eq!(tab.name, "ECAD");
+    assert_eq!(tab.groups.iter().map(|g| g.tools.len()).sum::<usize>(), TOOLS.len(), "every tool is in a group");
+    assert!(tab.groups.iter().all(|g| !g.tools.is_empty()));
 }
 
 #[test]
@@ -77,7 +80,10 @@ fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
     t.cad.session.set_selection(lines.clone());
     let before = head(&mut t);
     let mut h = harness(t);
-    assert!(h.query_by_label(tools::GROUP).is_some(), "the ECAD group is in the Tool Sets panel");
+    assert!(h.query_by_label("Convert to Component").is_none(), "Drafting is shown first, unchanged");
+    h.get_by_label(tools::TAB).click();
+    h.run_steps(3);
+    assert_eq!(h.state().cad.ui.toolset_tab, "ECAD", "ECAD is a Tool Sets tab beside Drafting and Modeling");
     h.get_by_label("Convert to Component").click();
     h.run_steps(4);
     let t = h.state_mut();
@@ -103,6 +109,8 @@ fn convert_with_nothing_selected_is_refused_by_the_command_itself() {
 #[test]
 fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
     let mut h = harness(trial());
+    h.get_by_label(tools::TAB).click();
+    h.run_steps(3);
     let before = head(h.state_mut());
     let selection = vec![Handle(0x7777)];
     h.state_mut().cad.session.set_selection(selection.clone());
@@ -188,4 +196,38 @@ fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
     let e = t.submit_command(&template).unwrap();
     assert!(e.contains("<title>"), "{e}");
     assert_eq!(head(&mut t), before, "the quoted placeholder was not run as a page title");
+}
+
+#[test]
+fn a_command_waiting_at_a_prompt_is_cancelled_first() {
+    let mut t = trial();
+    let lines = rectangle(&mut t);
+    t.cad.session.set_selection(lines);
+    // LINE waits for its first point; the button's line must not become that point.
+    assert!(t.submit_command("line").is_none());
+    assert!(t.cad.session.running.is_some());
+    let before = head(&mut t);
+    t.tool("ecad.convertcomponent").unwrap();
+    assert!(t.cad.session.running.is_none(), "LINE was cancelled");
+    assert_eq!(head(&mut t), before + 1, "and the component was made");
+    assert_eq!(doc(&mut t).components.len(), 1);
+    // A template is not handed to a running command either.
+    assert!(t.submit_command("line").is_none());
+    t.tool("ecad.wire").unwrap();
+    assert!(t.cad.session.running.is_none());
+    assert!(t.command.starts_with("wire "));
+}
+
+#[test]
+fn a_huge_selection_is_followed_only_so_far() {
+    let mut t = trial();
+    let handles: Vec<Handle> = (1..=(tools::MAX_PICKED as u64 + 50)).map(Handle).collect();
+    t.cad.session.set_selection(handles);
+    t.tool("ecad.setprop").unwrap();
+    assert!(t.command.contains("<component id>"), "nothing it names is ECAD: placeholders stay");
+    let p = t.project().unwrap().clone();
+    let uid = t.cad.session.state().unwrap().uid;
+    let many: Vec<Handle> = (1..=(tools::MAX_PICKED as u64 + 50)).map(Handle).collect();
+    let picked = p.read(&mut t.cad.session, |p, _| tools::Picked::from_selection(p, uid, many)).unwrap();
+    assert!(picked.truncated);
 }
