@@ -1,0 +1,191 @@
+//! The ECAD group in CADCraft's Tool Sets panel: it lists only implemented commands, a click is
+//! handled once through the ordinary command path (validation, transaction, undo), Convert uses
+//! the selection, and templates fill the Command field without running their placeholders.
+
+use cadcraft_engine::doc::{EntityKind, Handle};
+use ecad_trial::Trial;
+use ecad_trial::tools::{self, Kind, TOOLS};
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use serde_json::json;
+
+fn trial() -> Trial {
+    ecad_cadcraft::install();
+    Trial::new(None).unwrap()
+}
+
+fn harness(t: Trial) -> Harness<'static, Trial> {
+    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 2600.0)).build_ui_state(
+        |ui, t: &mut Trial| {
+            t.logic(&ui.ctx().clone());
+            t.ui(ui);
+        },
+        t,
+    );
+    h.run_steps(5);
+    h
+}
+
+fn doc(t: &mut Trial) -> ecad_model::Document {
+    let p = t.project().unwrap().clone();
+    p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
+}
+
+fn head(t: &mut Trial) -> u64 {
+    let p = t.project().unwrap().clone();
+    p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
+}
+
+/// A rectangle of four lines on the page; returns their handles.
+fn rectangle(t: &mut Trial) -> Vec<Handle> {
+    assert!(t.submit_command("line 0,0 40,0 40,20 0,20 c").is_none());
+    t.cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| matches!(e.kind, EntityKind::Line(_)))
+        .map(|e| e.handle)
+        .collect()
+}
+
+#[test]
+fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
+    let specs = ecad_cadcraft::commands::specs();
+    let ids: Vec<&str> = specs.iter().map(|s| s.id).collect();
+    let mut seen = std::collections::BTreeSet::new();
+    for t in TOOLS {
+        assert!(t.id.starts_with("ecad."), "{} is namespaced", t.id);
+        assert!(seen.insert(t.id), "{} is unique", t.id);
+        assert!(!t.label.is_empty() && !t.tooltip.is_empty());
+        let line = match t.kind {
+            Kind::Run(line) => line.to_string(),
+            Kind::Template => tools::template(t.id, &tools::Picked::default()).unwrap().0,
+        };
+        let command = line.split_whitespace().next().unwrap();
+        assert!(ids.contains(&command), "{} runs the existing command {command}", t.id);
+    }
+    assert_eq!(tools::group().tools.len(), TOOLS.len());
+}
+
+#[test]
+fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
+    let mut t = trial();
+    let lines = rectangle(&mut t);
+    assert_eq!(lines.len(), 4);
+    t.cad.session.set_selection(lines.clone());
+    let before = head(&mut t);
+    let mut h = harness(t);
+    assert!(h.query_by_label(tools::GROUP).is_some(), "the ECAD group is in the Tool Sets panel");
+    h.get_by_label("Convert to Component").click();
+    h.run_steps(4);
+    let t = h.state_mut();
+    assert!(t.cad.take_tool_requests().is_empty(), "the click was consumed");
+    assert_eq!(head(t), before + 1, "one transaction, recorded once");
+    let d = doc(t);
+    assert_eq!(d.components.len(), 1);
+    let rep = d.representations.values().next().unwrap();
+    assert_eq!(rep.items.len(), 4, "made from the four selected lines");
+    // Undo is the project's own: the component goes away.
+    assert!(t.submit_command("u").is_none());
+    assert!(doc(t).components.is_empty());
+}
+
+#[test]
+fn convert_with_nothing_selected_is_refused_by_the_command_itself() {
+    let mut t = trial();
+    let before = head(&mut t);
+    assert!(t.tool("ecad.convertcomponent").is_err());
+    assert_eq!(head(&mut t), before, "nothing recorded");
+}
+
+#[test]
+fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
+    let mut h = harness(trial());
+    let before = head(h.state_mut());
+    let selection = vec![Handle(0x7777)];
+    h.state_mut().cad.session.set_selection(selection.clone());
+    h.get_by_label("Wire").click();
+    h.run_steps(4);
+    let t = h.state_mut();
+    assert_eq!(t.command, r#"wire {"points":[[<x1>,<y1>],[<x2>,<y2>]]}"#);
+    assert!(t.command_hint().unwrap().starts_with("Wire:"));
+    assert_eq!(head(t), before, "nothing ran");
+    assert_eq!(t.cad.session.selection(), selection, "the selection is left as it was");
+    // Pressing Enter on the unedited template is refused.
+    let line = t.command.clone();
+    let e = t.submit_command(&line).unwrap();
+    assert!(e.contains("Replace the placeholders first") && e.contains("<x1>"), "{e}");
+    assert_eq!(head(t), before);
+    // Edited, it runs through the ordinary path and the note goes away.
+    assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
+    assert_eq!(head(t), before + 1);
+    assert!(t.command_hint().is_none());
+}
+
+#[test]
+fn templates_take_ids_from_the_selection() {
+    let mut t = trial();
+    assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
+    let d = doc(&mut t);
+    let (cid, _) = d.conductors.iter().next().unwrap();
+    let page = d.page_order[0];
+    let (item, _) = ecad_model::derive::route_on_page(&d, *cid, page).unwrap();
+    let p = t.project().unwrap().clone();
+    let h = p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(item).unwrap()).unwrap();
+    t.cad.session.set_selection(vec![h]);
+    t.tool("ecad.setprop").unwrap();
+    assert_eq!(t.command, format!(r#"setprop {{"conductor":"{}","key":"tag","value":"<value>"}}"#, cid.hex()));
+    t.tool("ecad.delete").unwrap();
+    assert_eq!(t.command, format!(r#"ecaddelete {{"conductor":"{}"}}"#, cid.hex()));
+    t.tool("ecad.cableadd").unwrap();
+    assert!(t.command.contains(&cid.hex()));
+    // With the value filled in, the template runs as the typed command would.
+    let line = t.command.replace("<cable tag>", "-W1");
+    assert!(t.submit_command(&line).is_none(), "{line}");
+    assert_eq!(doc(&mut t).cables.len(), 1);
+}
+
+#[test]
+fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
+    let dir = std::env::temp_dir().join(format!("ecad-trial-tools-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("shared.ecad").display().to_string();
+    let mut first = trial();
+    first.save_as(&path).unwrap();
+    // A second window: the same file opens read-only.
+    let mut second = Trial::with_file(None, &path).unwrap();
+    assert!(second.status().unwrap().file.read_only.is_some());
+    second.tool("ecad.inspect").unwrap();
+    let lines = rectangle(&mut second);
+    second.cad.session.set_selection(lines);
+    second.tool("ecad.convertcomponent").unwrap();
+    assert_eq!(doc(&mut second).components.len(), 1, "edits stay in memory, as for typed commands");
+    assert!(second.cad.run("qsave", json!(null)).is_err(), "and still cannot be saved over the other session's file");
+    drop(second);
+    drop(first);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn placeholders_are_found_and_ordinary_text_is_not() {
+    assert_eq!(tools::placeholders(r#"place {"at":[<x>,<y>]}"#), vec!["<x>", "<y>"]);
+    assert_eq!(tools::placeholders(r#"setprop {"value":"<cable tag>"}"#), vec!["<cable tag>"]);
+    assert!(tools::placeholders(r#"setprop {"value":"a < b > c"}"#).is_empty());
+    assert!(tools::placeholders("wire {\"points\":[[0,0],[1,1]]}").is_empty());
+}
+
+#[test]
+fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
+    let mut t = trial();
+    t.tool("ecad.newpage").unwrap();
+    let template = t.command.clone();
+    let before = head(&mut t);
+    t.tool("ecad.inspect").unwrap();
+    assert_eq!(t.command, template);
+    assert!(t.command_hint().is_some());
+    let e = t.submit_command(&template).unwrap();
+    assert!(e.contains("<title>"), "{e}");
+    assert_eq!(head(&mut t), before, "the quoted placeholder was not run as a page title");
+}

@@ -18,6 +18,10 @@ at a time. It is an experiment for manual trials, not an ECAD application.
 - A Save/Discard/Cancel question when a project with unsaved changes is closed. It replaces
   CADCraft's prompt for ECAD pages, through CADCraft's public close API.
 - Optional diagnostic snapshots (`--snapshots <folder>`). These are not saved projects.
+- An **ECAD** group in CADCraft's Tool Sets panel (`src/tools.rs`), for testing: one button per
+  implemented ECAD command. It runs Convert to Component (on the selection) and Inspect Project
+  directly, and fills the Command field with an editable template for the others. It goes
+  through the ordinary command path and never runs a placeholder.
 
 **Not included:**
 - native file dialogs;

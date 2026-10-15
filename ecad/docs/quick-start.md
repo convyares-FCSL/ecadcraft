@@ -11,13 +11,16 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
-This guide describes branch `ecad/disk-persistence` (stage 2a, PR #10 into `dev`); the app code
-last changed in commit `0e6dfe6`. Three kinds of evidence exist, and they are kept apart:
+This guide describes branch `ecad/toolsets` (the ECAD group in Tool Sets, a PR into `dev`), built
+on stage 2a as merged into `dev` (`4a5a826`). Three kinds of evidence exist, and they are kept
+apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 6 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files |
+| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 6 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **ECAD Tool Sets group:** every button names an existing command; clicking Convert to Component in the panel converts the selection once, and `u` undoes it; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). CADCraft without extra groups is unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Agent smoke run on a virtual display** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
+| **Agent smoke run on a virtual display, ECAD Tool Sets group** | the development agent, as above, 2026-10-15 | The ECAD group appears in Tool Sets after Parametric (other groups collapsed to reach it); clicking the four lines of a rectangle and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected); **Wire** filled the Command field with its template and the note under it; Enter on the unedited template was refused with "Replace the placeholders first". Not looked at: a real WSLg display, scrolling the panel with a mouse wheel |
+| **Tried by you (the owner), ECAD Tool Sets group** | not yet | Nothing yet: try section 4's "ECAD group in Tool Sets" and section 5 with its buttons |
 | **Tried by you (the owner), stage 2a** | you, on WSL, 2026-10-13, branch `ecad/disk-persistence` (exact commit and environment not restated; the branch head was `fec06f7`, app code `0e6dfe6`) | The core of section 7: Save, close and reopen; connected movement after reopening; undo and redo across the save; writer locking; Save As; Cancel and Save on close. The exact checks are listed below |
 | **Tried by you (the owner), earlier** | you, on WSL (Ubuntu 26.04, WSLg, Rust 1.99), 2026-10-12, on the earlier trial at `239d07f` | Drawing, conversion to a component, a terminal, PLACE, WIRE, connected movement, undo/redo, a second page and its tab close, snapshot export, and the old "persistence unavailable" behaviour. Details: [`experiment-report.md`](experiment-report.md) ("Manual desktop trial on WSL") |
 
@@ -74,7 +77,7 @@ Recorded as you reported them:
    ```
 
    To try a branch before it is merged, switch to it instead, for example
-   `git switch ecad/disk-persistence`.
+   `git switch ecad/toolsets`.
 
 4. Make a folder for projects. The Linux home folder is the supported place for `.ecad` files
    under WSL.
@@ -108,7 +111,7 @@ git log --oneline -1           # compare with the commit you were told to test
 ```
 
 For a branch under review, use its name instead of `dev` in the last three commands (for example
-`git switch ecad/disk-persistence` and `git merge --ff-only origin/ecad/disk-persistence`). Then
+`git switch ecad/toolsets` and `git merge --ff-only origin/ecad/toolsets`). Then
 rebuild by running it (section 3); Cargo rebuilds what changed.
 
 ## 3. Running again
@@ -133,6 +136,20 @@ cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allo
   cannot take JSON. Use it for plain CADCraft commands and for the prompts of mouse-driven
   commands such as `move`.
 - **The mouse** works as in CADCraft: drawing, selecting and dragging.
+- **The ECAD group in Tool Sets** (the left panel, Drafting tab, at the bottom: scroll down or
+  collapse other groups). A convenience for testing, with one button per implemented ECAD
+  command. Buttons never start anything of their own: they go through the same command path as
+  the Command field, so validation, undo and saving work exactly as when you type.
+  - **Convert to Component** runs at once on the current selection (select the objects first).
+  - **Inspect Project** runs at once and shows the project's IDs at the command line.
+  - **Every other button** (Add Terminal, Place Symbol, Wire, Connect, Disconnect, Set Property,
+    Add to Cable, Delete Electrical Object, New Page, Open Page) only fills in the Command field
+    with an editable line, and a note under the field says what to fill in. Replace each
+    `<placeholder>`, then press Enter or **Run**. A line that still holds a placeholder is
+    refused, never run.
+  - IDs and handles come from the current selection where it names them: select a wire before
+    **Set Property** or **Delete Electrical Object**, and its ID is filled in. The selection is
+    left as it is.
 
 Each ECAD command answers at the command line, for example with the IDs it created. Note IDs
 you want to check later.
@@ -142,13 +159,16 @@ you want to check later.
 1. **Draw a rectangle.** In the Command field: `line 0,0 40,0 40,20 0,20 c`.
    Expected: four lines; the banner shows 1 change not saved.
 2. **Make it a component.** Select the four lines with a window selection (drag from the top
-   left to the bottom right), then type `convertcomponent`.
+   left to the bottom right), then type `convertcomponent`, or click **Convert to Component** in
+   the ECAD group in Tool Sets.
    Expected: the reply shows `"component":"<id>"`. **Note this component ID.** The rectangle now
    selects as one group.
 3. **Give it a terminal.** Click the rectangle's right-hand edge and type `list` at the command
    line to see its handle, then type `addterminal {"handle":"<that handle>","at":[40,10]}`.
    Expected: a terminal marker at 40,10.
-4. **Place a second component.** `place {"at":[100,0],"rotation":90}`.
+4. **Place a second component.** `place {"at":[100,0],"rotation":90}`. (With the ECAD group:
+   click **Place Symbol**, replace `<x>` and `<y>` with `100` and `0`, set `"rotation":90`, and
+   press Enter.)
    Expected: a coil symbol, rotated, with its terminals at 90,0 and 110,0.
 5. **Connect the terminals.** `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`.
    Expected: a wire from the rectangle's terminal to the coil, and a reply listing two attached
@@ -227,7 +247,9 @@ you want to check later.
 ## 9. Current limitations
 
 - It is an experiment. No native file dialogs (the trial has its own path dialog), no ECAD
-  menus, no interactive ECAD prompts: ECAD commands are typed with JSON parameters.
+  menus, no interactive ECAD prompts: ECAD commands are typed with JSON parameters. The ECAD
+  group in Tool Sets runs or prefills those same commands; it has no picking or prompting of its
+  own, and its buttons are text, not icons.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** The Linux home folder under WSL (for example `~/ecad-projects`) is
