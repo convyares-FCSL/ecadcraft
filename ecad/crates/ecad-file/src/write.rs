@@ -53,6 +53,29 @@ pub struct WriterState {
     pub pending_fragment: Option<u64>,
 }
 
+/// A failed save attempt without its bytes, for status displays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttemptSummary {
+    /// Where the batch starts.
+    pub offset: u64,
+    /// The batch's length in bytes.
+    pub len: u64,
+    pub first_seq: u64,
+    pub last_seq: u64,
+    pub stage: AttemptStage,
+}
+
+/// The writer's state without the failed attempt's bytes: cheap to copy, for status displays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WriterSummary {
+    pub access: Access,
+    pub verified_len: u64,
+    pub persisted: u64,
+    pub attempt: Option<AttemptSummary>,
+    /// An incomplete trailing write reported at open, still in the medium.
+    pub pending_fragment: Option<u64>,
+}
+
 /// What a successful save did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SaveOutcome {
@@ -342,6 +365,23 @@ impl<M: Medium> ProjectFile<M> {
             verified_len: self.verified_len,
             persisted: self.persisted,
             attempt: self.attempt.clone(),
+            pending_fragment: self.fragment.as_ref().map(|f| f.len() as u64),
+        }
+    }
+
+    /// The writer's state without copying a failed attempt's bytes.
+    pub fn summary(&self) -> WriterSummary {
+        WriterSummary {
+            access: self.access,
+            verified_len: self.verified_len,
+            persisted: self.persisted,
+            attempt: self.attempt.as_ref().map(|a| AttemptSummary {
+                offset: a.offset,
+                len: a.bytes.len() as u64,
+                first_seq: a.first_seq,
+                last_seq: a.last_seq,
+                stage: a.stage,
+            }),
             pending_fragment: self.fragment.as_ref().map(|f| f.len() as u64),
         }
     }
