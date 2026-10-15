@@ -15,6 +15,9 @@ All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the par
 >   and keeps pending changes apart from saved history. The static inspector still loads
 >   exported JSON snapshots (`ecad-inspect/2`).
 
+Postponed work (the upstream sync policy of PR #5, libraries, checkpoints) is listed in
+[`docs/deferred-work.md`](docs/deferred-work.md).
+
 CADCraft crates are used by path; upstream files change only through the patches listed in
 [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
 

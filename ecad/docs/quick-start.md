@@ -7,20 +7,23 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > **What you are running.** `ecad-trial` is an experiment, not an ECAD application. It is
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
 > are saved as `.ecad` files (persistence stage 2a). A read-only debugger panel (stage 2b)
-> opens from the banner; it is never shown unless you open it.
+> opens from the banner; it is never shown unless you open it. An **ECAD** tab in Tool Sets has
+> buttons for the ECAD commands.
 
 ## Which revision this describes, and what has been tried
 
-This guide describes branch `ecad/debugger` (stage 2b, the debugger panel, a PR into `dev`),
-which builds on stage 2a as merged into `dev` (`4a5a826`). Three kinds of evidence exist, and they
+This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
+Sets (PR #12) merged on 2026-10-15, on top of stage 2a. Three kinds of evidence exist, and they
 are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) |
+| **Automated checks** | `cargo xtask ci` and GitHub CI (Linux, Rust 1.97 and 1.99) | Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
-| **Tried by you (the owner), stage 2b** | not yet | Nothing yet. What to try is listed under "Your stage 2b trial" below |
+| **Agent smoke run on a virtual display, ECAD Tool Sets tab** | the development agent, as above, 2026-10-15 | Tool Sets shows **Drafting**, **Modeling** and **ECAD** tabs; the ECAD tab shows Components, Wiring, Edit, Pages and Inspect; clicking a rectangle's four lines and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected). The first version (a group at the bottom of Drafting) was also run: **Wire** filled the Command field with its template and note, and Enter on it unedited was refused. Not looked at: a real WSLg display |
+| **Tried by you (the owner), stage 2b and the ECAD Tool Sets tab** | you, on WSL, 2026-10-15; you accepted both for merging (PRs #11 and #12) | You observed the debugger panel's appearance, the revised **ECAD** tab with its five groups (Components, Wiring, Edit, Pages, Inspect), and a successful **Convert to Component** from that tab. Nothing else was reported as tried: see "Not yet tried by you" below |
+| **Tried by you (the owner), first ECAD Tool Sets version** | you, on WSL, 2026-10-15, the first version of PR #12 (a group at the bottom of Drafting) | The ECAD group appeared; you asked for it as a tab of its own beside Drafting and Modeling, which the merged version does |
 | **Tried by you (the owner), stage 2a** | you, on WSL, 2026-10-13, branch `ecad/disk-persistence` (exact commit and environment not restated; the branch head was `fec06f7`, app code `0e6dfe6`) | The core of section 7: Save, close and reopen; connected movement after reopening; undo and redo across the save; writer locking; Save As; Cancel and Save on close. The exact checks are listed below |
 | **Tried by you (the owner), earlier** | you, on WSL (Ubuntu 26.04, WSLg, Rust 1.99), 2026-10-12, on the earlier trial at `239d07f` | Drawing, conversion to a component, a terminal, PLACE, WIRE, connected movement, undo/redo, a second page and its tab close, snapshot export, and the old "persistence unavailable" behaviour. Details: [`experiment-report.md`](experiment-report.md) ("Manual desktop trial on WSL") |
 
@@ -48,18 +51,24 @@ Recorded as you reported them:
 - saving and reopening a project with more than one page;
 - what failed saves look like (for example a folder that does not exist).
 
-### Your stage 2b trial: what to try and report
+### Your acceptance of stage 2b and the ECAD tab (2026-10-15): what you observed
 
-1. Update your checkout to the branch `ecad/debugger` (section 2), then run section 8's worked
-   example from a new project.
-2. At each step, check the "Expected" lines and report anything different, with a screenshot of
-   the panel.
-3. Also try, if you have time:
-   - the debugger on a project you saved in stage 2a, reopened (section 7): its whole history
-     should show `[saved]`, and **Persistence** should say what opening found;
-   - a second window on the same file (section 7, step 6): **Persistence** shows the read-only
-     reason, and the History still separates saved from pending.
-4. Tell us whether the panel stays responsive while you draw with it open.
+Recorded as you reported them:
+
+1. The debugger panel's appearance.
+2. The revised **ECAD** tab in Tool Sets, beside Drafting and Modeling, with its five groups:
+   Components, Wiring, Edit, Pages and Inspect.
+3. A successful **Convert to Component** from the ECAD tab.
+
+**Not yet tried by you** (covered by automated tests or the agent's virtual-display runs only):
+- section 8's worked example beyond the panel's appearance: following a selection into the trail,
+  pending versus saved transactions, **Read bytes**, history at an earlier transaction, and the
+  three checks;
+- the debugger on a reopened project or a second, read-only window;
+- whether the panel stays responsive while you draw;
+- the ECAD tab's template buttons (for example **Place Symbol**, **Wire**, **Set Property**),
+  refusal of an unedited template, and IDs filled in from the selection;
+- that Drafting and Modeling look as before with the ECAD tab present.
 
 ## 1. First-time setup (WSL on Windows)
 
@@ -90,7 +99,7 @@ Recorded as you reported them:
    ```
 
    To try a branch before it is merged, switch to it instead, for example
-   `git switch ecad/debugger`.
+   `git switch <branch-name>`.
 
 4. Make a folder for projects. The Linux home folder is the supported place for `.ecad` files
    under WSL.
@@ -124,7 +133,7 @@ git log --oneline -1           # compare with the commit you were told to test
 ```
 
 For a branch under review, use its name instead of `dev` in the last three commands (for example
-`git switch ecad/debugger` and `git merge --ff-only origin/ecad/debugger`). Then
+`git switch <branch-name>` and `git merge --ff-only origin/<branch-name>`). Then
 rebuild by running it (section 3); Cargo rebuilds what changed.
 
 ## 3. Running again
@@ -149,6 +158,21 @@ cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allo
   cannot take JSON. Use it for plain CADCraft commands and for the prompts of mouse-driven
   commands such as `move`.
 - **The mouse** works as in CADCraft: drawing, selecting and dragging.
+- **The ECAD tab in Tool Sets** (the left panel: click **ECAD** beside Drafting and Modeling).
+  A convenience for testing, with one button per implemented ECAD command, in groups
+  (Components, Wiring, Edit, Pages, Inspect). Buttons never start anything of their own: they go through the same command path as
+  the Command field, so validation, undo and saving work exactly as when you type.
+  - **Convert to Component** runs at once on the current selection (select the objects first).
+  - **Inspect Project** runs at once and shows the project's IDs at the command line.
+  - **Every other button** (Add Terminal, Place Symbol, Wire, Connect, Disconnect, Set Property,
+    Add to Cable, Delete Electrical Object, New Page, Open Page) only fills in the Command field
+    with an editable line, and a note under the field says what to fill in. Replace each
+    `<placeholder>`, then press Enter or **Run**. A line that still holds a placeholder is
+    refused, never run.
+  - IDs and handles come from the current selection where it names them: select a wire before
+    **Set Property** or **Delete Electrical Object**, and its ID is filled in. The selection is
+    left as it is. If a CADCraft command is waiting at a prompt, a button cancels it first, as
+    CADCraft's own Tool Sets buttons do.
 
 Each ECAD command answers at the command line, for example with the IDs it created. Note IDs
 you want to check later.
@@ -158,13 +182,16 @@ you want to check later.
 1. **Draw a rectangle.** In the Command field: `line 0,0 40,0 40,20 0,20 c`.
    Expected: four lines; the banner shows 1 change not saved.
 2. **Make it a component.** Select the four lines with a window selection (drag from the top
-   left to the bottom right), then type `convertcomponent`.
+   left to the bottom right), then type `convertcomponent`, or click **Convert to Component** in
+   the ECAD tab of Tool Sets.
    Expected: the reply shows `"component":"<id>"`. **Note this component ID.** The rectangle now
    selects as one group.
 3. **Give it a terminal.** Click the rectangle's right-hand edge and type `list` at the command
    line to see its handle, then type `addterminal {"handle":"<that handle>","at":[40,10]}`.
    Expected: a terminal marker at 40,10.
-4. **Place a second component.** `place {"at":[100,0],"rotation":90}`.
+4. **Place a second component.** `place {"at":[100,0],"rotation":90}`. (With the ECAD tab:
+   click **Place Symbol**, replace `<x>` and `<y>` with `100` and `0`, set `"rotation":90`, and
+   press Enter.)
    Expected: a coil symbol, rotated, with its terminals at 90,0 and 110,0.
 5. **Connect the terminals.** `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`.
    Expected: a wire from the rectangle's terminal to the coil, and a reply listing two attached
@@ -321,7 +348,9 @@ the banner's Command field. IDs and offsets will differ from any shown here.
 ## 9. Current limitations
 
 - It is an experiment. No native file dialogs (the trial has its own path dialog), no ECAD
-  menus, no interactive ECAD prompts: ECAD commands are typed with JSON parameters.
+  menus, no interactive ECAD prompts: ECAD commands are typed with JSON parameters. The ECAD
+  tab in Tool Sets runs or prefills those same commands; it has no picking or prompting of its
+  own, and its buttons are text, not icons.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** The Linux home folder under WSL (for example `~/ecad-projects`) is

@@ -216,6 +216,13 @@ pub struct CadApp {
     pub gpu_faults: std::sync::Arc<gpu::GpuFaults>,
     /// The notice shown after one (see [`autosave::gpu_notice`]).
     pub gpu_notice: Option<autosave::GpuNotice>,
+    // ECAD-SEAM(owner): Tool Sets tabs supplied by an embedding application.
+    /// Tool Sets tabs supplied by the embedding application, shown after Drafting and Modeling
+    /// ([`palettes::ExtraToolTab`]). Empty by default: nothing changes.
+    pub extra_tool_tabs: Vec<palettes::ExtraToolTab>,
+    /// Clicks on [`Self::extra_tool_tabs`] tools, oldest first, waiting for the embedder
+    /// ([`Self::take_tool_requests`]). CADCraft never starts them itself.
+    tool_requests: Vec<String>,
 }
 
 impl CadApp {
@@ -249,7 +256,21 @@ impl CadApp {
             recovery: autosave::Recovery::default(),
             gpu_faults: std::sync::Arc::default(),
             gpu_notice: None,
+            extra_tool_tabs: Vec::new(),
+            tool_requests: Vec::new(),
         }
+    }
+
+    // ECAD-SEAM(owner): Tool Sets tabs supplied by an embedding application.
+    /// The ids of [`Self::extra_tool_tabs`] tools clicked since the last call, oldest first.
+    /// Each click is returned exactly once.
+    pub fn take_tool_requests(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.tool_requests)
+    }
+
+    /// Queue a click on an embedder tool (the Tool Sets panel calls this).
+    pub(crate) fn request_tool(&mut self, id: &str) {
+        self.tool_requests.push(id.to_string());
     }
 
     /// The interface language shown: the chosen one, or English when this computer has no font

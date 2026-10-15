@@ -15,6 +15,8 @@
 //!   CADCraft's prompt for ECAD pages, through `CadApp`'s public close API; no upstream change);
 //! - optional export of inspector snapshots (`--snapshots <dir>`), which are diagnostic files, not
 //!   saved projects;
+//! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]) for testing the implemented ECAD
+//!   commands: buttons run them through the command line or prefill the command field.
 //! - the read-only **debugger** panel (persistence stage 2b, [`debugger`]), opened from the
 //!   banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
 //!   transactions with before/after values → saved record offsets and bytes, with pending
@@ -38,6 +40,7 @@
 )]
 
 pub mod debugger;
+pub mod tools;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -135,6 +138,10 @@ pub struct Trial {
     snapshot_count: u32,
     /// The banner's command field (whole lines, spaces included).
     pub command: String,
+    /// What to fill in, after an ECAD Tool Sets button put a template in the command field.
+    command_hint: Option<&'static str>,
+    /// Give the command field keyboard focus on the next frame.
+    focus_command: bool,
     /// The read-only debugger panel (closed until opened from the banner).
     pub debugger: Debugger,
 }
@@ -191,8 +198,10 @@ impl Trial {
 
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
+        let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
+        cad.extra_tool_tabs = vec![tools::tab()];
         Trial {
-            cad: CadApp::new(Session::empty(), services(Arc::clone(&requested))),
+            cad,
             project: None,
             snapshots,
             held: None,
@@ -202,6 +211,8 @@ impl Trial {
             notice: None,
             snapshot_count: 0,
             command: String::new(),
+            command_hint: None,
+            focus_command: false,
             debugger: Debugger::default(),
         }
     }
@@ -420,6 +431,7 @@ impl Trial {
     /// trial's dialog, open the Save As dialog when CADCraft asked for a file name, and report
     /// saves.
     pub fn after_logic(&mut self) {
+        self.handle_tools();
         self.hold_close();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {
             let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
@@ -525,16 +537,91 @@ impl Trial {
     /// Spaces are inputs: a trailing space is an Enter (`line 0,0 10,0 ` ends LINE), and while a
     /// command is running an empty line is an Enter too. Only leading spaces before a new command
     /// are dropped.
+    ///
+    /// A line still holding a `<placeholder>` of a template put there by an ECAD Tool Sets button
+    /// is refused, so a template is never run with its placeholders.
     pub fn submit_command(&mut self, text: &str) -> Option<String> {
         let running = self.cad.session.running.is_some();
         let text = if running { text } else { text.trim_start() };
         if text.is_empty() && !running {
             return None;
         }
+        if self.command_hint.is_some() {
+            let left = tools::placeholders(text);
+            if !left.is_empty() {
+                let e = format!("Replace the placeholders first: {}", left.join(", "));
+                self.cad.session.echo(e.clone());
+                return Some(e);
+            }
+        }
+        let r = self.run_line(text);
+        if r.is_none() {
+            self.command_hint = None;
+        }
+        r
+    }
+
+    /// Run one command line through the command path, as the command field does.
+    fn run_line(&mut self, text: &str) -> Option<String> {
         self.cad.session.echo(format!("Command: {text}"));
         let r = self.cad.cmdline(text);
         self.after_logic();
         r
+    }
+
+    /// What to fill in for the template in the command field, if one was put there.
+    pub fn command_hint(&self) -> Option<&str> {
+        self.command_hint
+    }
+
+    /// Act on a click of an ECAD Tool Sets button (see [`tools`]): run its command through the
+    /// command line (the same path as typing it), or put its template in the command field. The
+    /// selection is left as it is. A CADCraft command waiting at a prompt is cancelled first, as
+    /// CADCraft's own Tool Sets buttons do, so the button's line is never taken as prompt input.
+    ///
+    /// # Errors
+    /// An unknown tool, or the command's own refusal (also echoed at the command line).
+    pub fn tool(&mut self, id: &str) -> Result<(), String> {
+        let Some(tool) = tools::find(id) else {
+            let e = format!("unknown ECAD tool {id}");
+            self.cad.session.echo(e.clone());
+            return Err(e);
+        };
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        match tool.kind {
+            // A template waiting in the command field keeps its note and its placeholder check.
+            tools::Kind::Run(line) => match self.run_line(line) {
+                None => Ok(()),
+                Some(e) => Err(e),
+            },
+            tools::Kind::Template => {
+                let picked = self.picked();
+                let (line, hint) = tools::template(id, &picked).ok_or_else(|| format!("no template for {id}"))?;
+                self.command = line;
+                self.command_hint = Some(hint);
+                self.focus_command = true;
+                Ok(())
+            }
+        }
+    }
+
+    /// The current selection and the ECAD objects it names (empty off an ECAD page).
+    fn picked(&mut self) -> tools::Picked {
+        let Ok(st) = self.cad.session.state() else { return tools::Picked::default() };
+        let (uid, handles) = (st.uid, st.selection.clone());
+        let Some(p) = self.project.as_ref() else { return tools::Picked { handles, ..Default::default() } };
+        let fallback = tools::Picked { handles: handles.clone(), ..Default::default() };
+        p.read(&mut self.cad.session, |p, _| tools::Picked::from_selection(p, uid, handles)).unwrap_or(fallback)
+    }
+
+    /// Act on every ECAD Tool Sets click waiting since the last frame, each once.
+    fn handle_tools(&mut self) {
+        for id in self.cad.take_tool_requests() {
+            // Refusals are echoed at the command line by the command path itself.
+            let _ = self.tool(&id);
+        }
     }
 
     /// Write a live inspector snapshot to the snapshot folder. Returns the file written.
@@ -608,6 +695,7 @@ impl Trial {
             }
         }
         self.cad.ui(ui);
+        self.handle_tools();
     }
 
     /// The app is exiting normally: export a final snapshot if enabled and a project is open.
@@ -692,8 +780,17 @@ impl Trial {
                 if (ui.button("Run").clicked() || enter) && (running || !self.command.trim().is_empty()) {
                     submit = Some(std::mem::take(&mut self.command));
                     field.request_focus();
+                } else if std::mem::take(&mut self.focus_command) {
+                    // An ECAD Tool Sets button put a template here: edit it next.
+                    field.request_focus();
                 }
             });
+            if self.command.trim().is_empty() && submit.is_none() {
+                self.command_hint = None;
+            }
+            if let Some(hint) = self.command_hint {
+                ui.label(RichText::new(hint).small());
+            }
         });
         if let Some(text) = submit
             && self.submit_command(&text).is_some()

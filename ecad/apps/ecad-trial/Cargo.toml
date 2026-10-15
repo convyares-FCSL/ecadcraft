@@ -23,3 +23,5 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 ecad-store = { workspace = true }
+# The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
+egui_kittest = "=0.36.2"

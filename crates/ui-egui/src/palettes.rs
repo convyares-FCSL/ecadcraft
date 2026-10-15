@@ -16,6 +16,36 @@ pub mod quickcalc;
 
 type Tool = (Icon, &'static str, &'static str);
 
+// ECAD-SEAM(owner): Tool Sets tabs supplied by an embedding application.
+/// A tool of an [`ExtraToolGroup`]: a text button.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraTool {
+    /// What a click reports ([`CadApp::take_tool_requests`]); namespaced by the embedder.
+    pub id: String,
+    pub label: String,
+    pub tooltip: String,
+}
+
+/// A group of an [`ExtraToolTab`]: a collapsible header over text buttons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraToolGroup {
+    pub name: String,
+    pub tools: Vec<ExtraTool>,
+}
+
+/// A Tool Sets tab supplied by the embedding application ([`CadApp::extra_tool_tabs`]), shown
+/// after Drafting and Modeling. A click on one of its tools is queued for the embedder
+/// ([`CadApp::take_tool_requests`]), not started as a command. A tab named like a built-in one is
+/// ignored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraToolTab {
+    pub name: String,
+    pub groups: Vec<ExtraToolGroup>,
+}
+
+/// The built-in Tool Sets tabs.
+const BUILT_IN_TABS: [&str; 2] = ["Drafting", "Modeling"];
+
 /// Tool Sets groups: (name, large tools, small tools).
 pub const DRAFTING: &[(&str, &[Tool], &[Tool])] = &[
     (
@@ -132,8 +162,12 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
         // Tabs.
         let tab_h = 28.0;
         let mut x = r.left();
-        for name in ["Drafting", "Modeling"] {
-            let w = 92.0;
+        // ECAD-SEAM(owner): Tool Sets tabs supplied by an embedding application.
+        let extra: Vec<String> = app.extra_tool_tabs.iter().map(|t| t.name.clone()).filter(|n| !BUILT_IN_TABS.contains(&n.as_str())).collect();
+        let names: Vec<&str> = BUILT_IN_TABS.iter().copied().chain(extra.iter().map(String::as_str)).collect();
+        // Without extra tabs the strip is exactly as before; with them, the tabs share the width.
+        let w = if extra.is_empty() { 92.0 } else { ((r.width() - 28.0) / names.len() as f32).clamp(56.0, 92.0) };
+        for name in names {
             let tr = Rect::from_min_size(pos2(x, r.top()), vec2(w, tab_h));
             let active = app.ui.toolset_tab == name;
             let resp = ui.interact(tr, ui.id().with(("ts", name)), Sense::click());
@@ -142,7 +176,7 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
                 tr.center(),
                 egui::Align2::CENTER_CENTER,
                 crate::i18n::t(name),
-                egui::FontId::proportional(13.5),
+                egui::FontId::proportional(if extra.is_empty() { 13.5 } else { 12.5 }),
                 if active { t.text } else { t.text_dim },
             );
             icons::describe_control(ui, &resp, crate::i18n::t(name), Some(active), true);
@@ -164,10 +198,19 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
         let mut toggle_group = None;
         let mut tool_visible: Option<(String, bool)> = None;
         let mut restore: Vec<String> = Vec::new();
+        let mut extra_clicked: Option<String> = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-                let groups: &[(&str, &[Tool], &[Tool])] = if app.ui.toolset_tab == "Drafting" { DRAFTING } else { MODELING };
+                // ECAD-SEAM(owner): an embedder tab shows its own groups instead of the built-in ones.
+                let extra_tab = app.extra_tool_tabs.iter().find(|t| t.name == app.ui.toolset_tab && !BUILT_IN_TABS.contains(&t.name.as_str()));
+                let groups: &[(&str, &[Tool], &[Tool])] = if extra_tab.is_some() {
+                    &[]
+                } else if app.ui.toolset_tab == "Drafting" {
+                    DRAFTING
+                } else {
+                    MODELING
+                };
                 for (name, large, small) in groups {
                     let collapsed = app.ui.collapsed_groups.iter().any(|g| g == name);
                     // Header.
@@ -248,8 +291,48 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
                     let (sr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
                     ui.painter().hline(sr.x_range().shrink(6.0), sr.center().y, Stroke::new(1.0, t.border));
                 }
+                // ECAD-SEAM(owner): the groups of a Tool Sets tab supplied by an embedding application.
+                if let Some(tab) = extra_tab {
+                    for g in &tab.groups {
+                        let collapsed = app.ui.collapsed_groups.contains(&g.name);
+                        let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+                        let pp = ui.painter();
+                        icons::paint(
+                            pp,
+                            Rect::from_center_size(pos2(hr.left() + 11.0, hr.center().y), vec2(11.0, 11.0)),
+                            if collapsed { Icon::ChevronRight } else { Icon::ChevronDown },
+                            false,
+                        );
+                        pp.text(pos2(hr.left() + 22.0, hr.center().y), egui::Align2::LEFT_CENTER, &g.name, egui::FontId::proportional(12.5), t.text);
+                        icons::describe_control(ui, &hresp, &g.name, Some(!collapsed), false);
+                        if hresp.clicked() {
+                            toggle_group = Some(g.name.clone());
+                        }
+                        if !collapsed {
+                            ui.add_space(4.0);
+                            egui::Frame::NONE.inner_margin(egui::Margin { left: 8, right: 6, top: 0, bottom: 0 }).show(ui, |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                                    for tool in &g.tools {
+                                        let resp = ui.button(&tool.label);
+                                        crate::control::record_widget(ui, &resp, &tool.label, "button", None);
+                                        if resp.on_hover_text(&tool.tooltip).clicked() {
+                                            extra_clicked = Some(tool.id.clone());
+                                        }
+                                    }
+                                });
+                            });
+                            ui.add_space(6.0);
+                        }
+                        let (sr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+                        ui.painter().hline(sr.x_range().shrink(6.0), sr.center().y, Stroke::new(1.0, t.border));
+                    }
+                }
             });
         });
+        if let Some(id) = extra_clicked {
+            app.request_tool(&id);
+        }
         if let Some((cmd, shown)) = tool_visible {
             if shown {
                 app.ui.hidden_tools.retain(|h| h != &cmd);

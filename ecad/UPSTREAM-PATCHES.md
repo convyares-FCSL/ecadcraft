@@ -20,7 +20,8 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 
 ## Code patches to upstream crates: the generic extension interface
 
-Proposal §14, capabilities X1-X7. One shape, one marker (`ECAD-SEAM(owner)`), nothing
+Proposal §14, capabilities X1-X7, and X8 (Tool Sets tabs supplied by the embedder, approved
+2026-10-15). One shape, one marker (`ECAD-SEAM(owner)`), nothing
 ECAD-specific: the interface passes drawings, handles, command ids and provenance. Documents
 without an owner behave exactly as before.
 
@@ -38,6 +39,9 @@ without an owner behave exactly as before.
 | `crates/ui-egui/src/chrome.rs` | X5 | file tab unsaved marker asks the session (owner-aware) |
 | `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests |
 | `crates/engine/tests/ext_commands.rs` | tests | **new file**: extension command registration test |
+| `crates/ui-egui/src/palettes.rs` | X8 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged |
+| `crates/ui-egui/src/lib.rs` | X8 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once) |
+| `crates/ui-egui/tests/toolsets_extra.rs` | tests | **new file**: without extra tabs Drafting and Modeling are unchanged; an extra tab shows its groups, queues a click once without starting it, and keeps the selection; a tab named like a built-in one is ignored |
 
 Not yet covered by provenance (copies through them are refused by the adapter until added):
 ARRAY, grip copy (`gripcmds.rs`), MIRROR/ROTATE/SCALE through other code paths, PASTEBLOCK,

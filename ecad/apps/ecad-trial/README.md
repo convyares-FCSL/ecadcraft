@@ -22,6 +22,10 @@ at a time. It is an experiment for manual trials, not an ECAD application.
   banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
   transactions with before/after values → saved record offsets and bytes, with pending changes
   kept apart from saved history, and replay, projection and file checks on request.
+- An **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling (`src/tools.rs`),
+  for testing: one button per implemented ECAD command. It runs Convert to Component (on the
+  selection) and Inspect Project directly, and fills the Command field with an editable template
+  for the others. It goes through the ordinary command path and never runs a placeholder.
 
 **Not included:**
 - native file dialogs;
@@ -32,6 +36,7 @@ at a time. It is an experiment for manual trials, not an ECAD application.
 
 **Usage:** `ecad-trial [--snapshots <folder>] [<project.ecad>]`.
 
-The code is in `src/lib.rs` and `src/debugger.rs`. The headless tests include the quick-start
-guide's steps (`tests/trial.rs`, `the_quick_start_trial_runs_headless`, and `tests/debugger.rs`,
-`the_quick_start_debugger_example_runs_headless`); keep them in step.
+The code is in `src/lib.rs`, `src/debugger.rs` and `src/tools.rs`. The headless tests include the
+quick-start guide's steps (`tests/trial.rs`, `the_quick_start_trial_runs_headless`, and
+`tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); keep them in step.
+`tests/tools.rs` covers the ECAD Tool Sets tab.
