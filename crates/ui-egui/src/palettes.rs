@@ -16,6 +16,25 @@ pub mod quickcalc;
 
 type Tool = (Icon, &'static str, &'static str);
 
+// ECAD-SEAM(owner): Tool Sets groups supplied by an embedding application.
+/// A tool of an [`ExtraToolGroup`]: a text button.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraTool {
+    /// What a click reports ([`CadApp::take_tool_requests`]); namespaced by the embedder.
+    pub id: String,
+    pub label: String,
+    pub tooltip: String,
+}
+
+/// A Tool Sets group supplied by the embedding application ([`CadApp::extra_tool_groups`]). It is
+/// shown in the Drafting tab after the built-in groups and collapses like them. A click is queued
+/// for the embedder, not started as a command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraToolGroup {
+    pub name: String,
+    pub tools: Vec<ExtraTool>,
+}
+
 /// Tool Sets groups: (name, large tools, small tools).
 pub const DRAFTING: &[(&str, &[Tool], &[Tool])] = &[
     (
@@ -164,6 +183,7 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
         let mut toggle_group = None;
         let mut tool_visible: Option<(String, bool)> = None;
         let mut restore: Vec<String> = Vec::new();
+        let mut extra_clicked: Option<String> = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
@@ -248,8 +268,48 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
                     let (sr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
                     ui.painter().hline(sr.x_range().shrink(6.0), sr.center().y, Stroke::new(1.0, t.border));
                 }
+                // ECAD-SEAM(owner): Tool Sets groups supplied by an embedding application.
+                if app.ui.toolset_tab == "Drafting" {
+                    for g in &app.extra_tool_groups {
+                        let collapsed = app.ui.collapsed_groups.contains(&g.name);
+                        let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+                        let pp = ui.painter();
+                        icons::paint(
+                            pp,
+                            Rect::from_center_size(pos2(hr.left() + 11.0, hr.center().y), vec2(11.0, 11.0)),
+                            if collapsed { Icon::ChevronRight } else { Icon::ChevronDown },
+                            false,
+                        );
+                        pp.text(pos2(hr.left() + 22.0, hr.center().y), egui::Align2::LEFT_CENTER, &g.name, egui::FontId::proportional(12.5), t.text);
+                        icons::describe_control(ui, &hresp, &g.name, Some(!collapsed), false);
+                        if hresp.clicked() {
+                            toggle_group = Some(g.name.clone());
+                        }
+                        if !collapsed {
+                            ui.add_space(4.0);
+                            egui::Frame::NONE.inner_margin(egui::Margin { left: 8, right: 6, top: 0, bottom: 0 }).show(ui, |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                                    for tool in &g.tools {
+                                        let resp = ui.button(&tool.label);
+                                        crate::control::record_widget(ui, &resp, &tool.label, "button", None);
+                                        if resp.on_hover_text(&tool.tooltip).clicked() {
+                                            extra_clicked = Some(tool.id.clone());
+                                        }
+                                    }
+                                });
+                            });
+                            ui.add_space(6.0);
+                        }
+                        let (sr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+                        ui.painter().hline(sr.x_range().shrink(6.0), sr.center().y, Stroke::new(1.0, t.border));
+                    }
+                }
             });
         });
+        if let Some(id) = extra_clicked {
+            app.request_tool(&id);
+        }
         if let Some((cmd, shown)) = tool_visible {
             if shown {
                 app.ui.hidden_tools.retain(|h| h != &cmd);
