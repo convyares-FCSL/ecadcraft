@@ -7,7 +7,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   provisional; Part E is persistence and the live debugger: stage 1, records in memory,
   stage 2a, project files on disk, and stage 2b, the read-only debugger panel, are approved;
   libraries (stage 3), checkpoints and migration rewriting must not be implemented before their
-  stage is approved) and `../docs/decisions.md` first.
+  stage is approved) and `../docs/decisions.md` first. Postponed work is listed in
+  `docs/deferred-work.md`; do not start it without the owner's approval.
 - **`docs/quick-start.md` is the single maintained guide** for running and manually testing the
   app. Update it in the same PR as any change that affects its instructions, examples, expected
   results, limitations or the revision and environment it records. Keep automated checks,
