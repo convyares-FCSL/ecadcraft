@@ -39,3 +39,54 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   `tests/<area>_contracts.rs`.
 - Versions: product `0.1.0-dev`, release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format
   versions independent of the product version.
+
+## Working home and platforms (owner decision, 2026-10-31)
+
+- Claude Code runs from `ecad/` in the Windows clone `C:\dev\ecadcraft`, branch `dev`. The parent
+  CADCraft folder is readable through `.claude/settings.json`. The root `CLAUDE.md` and `AGENTS.md`
+  are upstream CADCraft's: where they conflict with this file (for example "push to `main`"), this
+  file wins for all ECAD work.
+- ECAD must build, test and run natively on **Windows and Linux**. Linux is checked by CI and by a
+  pull-only WSL clone; never edit in two clones. `core.autocrlf` is `false`; files are LF.
+- `private/` holds the owner's local chat history and handover notes. It is git-ignored. Read it for
+  context; never copy its contents into committed files, and never commit anything from it.
+
+## Operating model: overseer and sub-agents
+
+The main Claude Code session is the **overseer**. It plans and coordinates; it does not write
+production code itself. Sub-agents are defined in `.claude/agents/`:
+
+| Agent | Does | Never |
+| --- | --- | --- |
+| `designer` | UI and interaction spec for briefs with a user-facing part, in `docs/design/` | Write Rust |
+| `worker` | Implements one brief on its own branch | Merge, push to `dev`/`main`, judge its own work done |
+| `tester` | Tests the branch against the brief in its own worktree; headless UI tests and screenshots | Change production code |
+| `reviewer` | Read-only review of the diff | Edit anything |
+
+Loop for each brief in `docs/briefs/`:
+1. If the brief has UI, run `designer` first.
+2. Run `worker` with the brief (and design spec).
+3. Run `tester` with only the brief, the design spec and the branch name, in a separate worktree;
+   never pass it the worker's report.
+4. On FAIL, send the tester's findings back to `worker`; repeat. After three failed rounds, stop and
+   report to the owner.
+5. On PASS, run `reviewer`. Serious findings go back to `worker`.
+6. Ask the owner before pushing; open the PR into `dev` with the brief, the test report and the
+   review summary. **Never merge.** The owner merges.
+
+Gates where the overseer stops and asks the owner: starting any brief not marked `Approved`; any
+change outside `ecad/`; any change to a fixed principle (proposal Part A) or a recorded decision;
+pushing a branch; anything the tester lists as "needs owner check" on native Windows.
+
+The architect (Carl, with Claude chat in the ECAD Project) writes and approves briefs. The overseer
+may draft briefs, marked `Status: Draft`, but does not start them.
+
+## Priority order (owner decision, 2026-10-31)
+
+1. Baseline review and plan (this session's first job; see `docs/briefs/000-baseline-review.md`).
+2. Windows-native readiness: Windows CI job, `ecad-store` Windows equivalents, and verified save and
+   locking on Windows.
+3. **Wires to cable** as the first visible test of the model: slash gesture creating a cable from
+   existing conductors, and a traditional / fan view switch that is presentation only.
+4. Stage 3: libraries (`.ecadlib`).
+5. Everything else, in an order the owner approves.
