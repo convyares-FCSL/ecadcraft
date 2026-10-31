@@ -25,6 +25,10 @@ impl TempDir {
     fn path(&self, name: &str) -> String {
         self.0.join(name).display().to_string()
     }
+    /// `name` inside a folder that does not exist.
+    fn missing_folder(&self, name: &str) -> String {
+        self.0.join("missing-folder").join(name).display().to_string()
+    }
 }
 
 impl Drop for TempDir {
@@ -135,10 +139,11 @@ fn save_as_over_an_existing_file_asks_once_more() {
 
 #[test]
 fn a_failed_save_keeps_the_dialog_open_with_the_reason() {
+    let d = TempDir::new("missing");
     let mut t = trial(None);
     edit(&mut t);
     t.request_save_as();
-    t.set_dialog_path("/nonexistent-folder-for-ecad-tests/p.ecad");
+    t.set_dialog_path(&d.missing_folder("p.ecad"));
     t.confirm_dialog();
     let (_, _, error) = t.dialog().unwrap();
     let error = error.unwrap_or_default().to_string();
@@ -348,7 +353,7 @@ fn frames_lay_out_headless_with_every_dialog() {
     let _ = t.cad.run("qsave", Value::Null);
     one_frame(&mut t, &ctx);
     assert!(t.dialog().is_some(), "the Save As dialog is up");
-    t.set_dialog_path("/nonexistent-folder-for-ecad-tests/p");
+    t.set_dialog_path(&d.missing_folder("p"));
     t.confirm_dialog();
     one_frame(&mut t, &ctx);
     t.cancel_dialog();

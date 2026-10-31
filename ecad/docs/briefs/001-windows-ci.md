@@ -1,6 +1,6 @@
 # Brief 001: Windows CI job
 
-Status: Draft (overseer, 2026-10-31)
+Status: Approved (owner, 2026-10-31)
 Branch: `ecad/windows-ci`
 Designer: no · Size: S
 

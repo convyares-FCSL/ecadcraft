@@ -1,5 +1,6 @@
 # Continuous integration on every push to dev and every pull request into dev: the CADCraft
-# workspace (formatting, lints, tests) and the ECAD workspace in ecad/ (`cargo xtask ci`).
+# workspace (formatting, lints, tests) and the ECAD workspace in ecad/ (`cargo xtask ci` and plain
+# `cargo test --workspace`) on Linux and natively on Windows.
 # Green CI is required before review; it is not approval to merge.
 name: CI
 
@@ -73,3 +74,31 @@ jobs:
       - name: fmt, clippy, tests, layers, patch guard, wasm
         working-directory: ecad
         run: cargo xtask ci
+      - name: Tests without extra features
+        working-directory: ecad
+        run: cargo test --workspace
+
+  ecad-windows:
+    name: ECAD workspace (Windows)
+    runs-on: windows-latest
+    steps:
+      # ECAD files are LF (ecad/CLAUDE.md); the runner's Git would otherwise check out CRLF.
+      - name: Check out with LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          # The upstream patch guard diffs against the incorporated CADCraft commit.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ecad
+      - name: fmt, clippy, tests, layers, patch guard, wasm
+        working-directory: ecad
+        run: cargo xtask ci
+      - name: Tests without extra features
+        working-directory: ecad
+        run: cargo test --workspace
