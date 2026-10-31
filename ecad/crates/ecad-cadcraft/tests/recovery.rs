@@ -69,6 +69,7 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     h.check();
 }
 
+#[cfg(feature = "fault-injection")]
 #[test]
 fn owner_recovery_rebuilds_every_open_page_and_keeps_the_document() {
     let (mut h, ..) = small_project(32);

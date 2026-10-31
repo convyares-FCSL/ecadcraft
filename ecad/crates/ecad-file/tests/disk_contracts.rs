@@ -212,10 +212,8 @@ fn a_second_opener_is_read_only_and_can_save_a_copy() {
     let mut ledger = fixture().ledger;
     let (first, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
     let o = DiskProject::open(&p, SEED, "second session").unwrap();
-    let Some(ReadOnly::Locked { holder }) = o.project.read_only().cloned() else { panic!("not read-only") };
-    #[cfg(unix)]
-    assert!(holder.as_deref().is_some_and(|h| h.contains(WRITER)), "{holder:?}");
-    let _ = holder;
+    // Who holds it: see `a_second_opener_is_told_who_is_editing`.
+    assert!(matches!(o.project.read_only(), Some(ReadOnly::Locked { .. })), "not read-only");
     let (mut second, mut copy) = (o.project, o.ledger);
     edit(&mut copy, "2");
     let before = std::fs::read(&p).unwrap();
@@ -233,6 +231,18 @@ fn a_second_opener_is_read_only_and_can_save_a_copy() {
     let o = DiskProject::open(&p, SEED, "third").unwrap();
     assert!(o.project.read_only().is_none());
     assert_eq!(o.reclaimed_lock, None);
+}
+
+#[test]
+#[cfg_attr(windows, ignore = "R-M4: the lock is mandatory on Windows, so the holder record cannot be read")]
+fn a_second_opener_is_told_who_is_editing() {
+    let d = TempDir::new("holder");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (_first, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
+    let o = DiskProject::open(&p, SEED, "second session").unwrap();
+    let Some(ReadOnly::Locked { holder }) = o.project.read_only().cloned() else { panic!("not read-only") };
+    assert!(holder.as_deref().is_some_and(|h| h.contains(WRITER)), "{holder:?}");
 }
 
 #[test]
@@ -305,16 +315,23 @@ fn external_changes_are_refused_and_the_file_left_alone() {
     let e = project.save(&mut ledger).unwrap_err();
     assert!(e.to_string().contains("changed by something else"), "{e}");
     assert_eq!(std::fs::read(&p).unwrap(), bytes);
-    // Replaced by another file (a rename over it).
-    #[cfg(unix)]
-    {
-        let other = d.path("other");
-        std::fs::write(&other, b"replacement").unwrap();
-        std::fs::rename(&other, &p).unwrap();
-        let e = project.save(&mut ledger).unwrap_err();
-        assert!(matches!(e, DiskError::Replaced(_)), "{e}");
-        assert_eq!(std::fs::read(&p).unwrap(), b"replacement");
-    }
+    assert!(ledger.is_unsaved());
+}
+
+#[test]
+#[cfg_attr(windows, ignore = "R-S1: no file identity on Windows, so a file renamed over the project is not detected")]
+fn a_file_renamed_over_the_project_is_refused_and_left_alone() {
+    let d = TempDir::new("replaced");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (mut project, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
+    edit(&mut ledger, "2");
+    let other = d.path("other");
+    std::fs::write(&other, b"replacement").unwrap();
+    std::fs::rename(&other, &p).unwrap();
+    let e = project.save(&mut ledger).unwrap_err();
+    assert!(matches!(e, DiskError::Replaced(_)), "{e}");
+    assert_eq!(std::fs::read(&p).unwrap(), b"replacement");
     assert!(ledger.is_unsaved());
 }
 

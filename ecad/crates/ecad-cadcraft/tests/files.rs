@@ -154,7 +154,9 @@ fn file_names_are_checked_and_completed() {
     h.cfg(|p| p.persistence = Persistence::File);
     assert!(h.run("saveas", json!({"path": ""})).unwrap_err().contains("needs a file name"));
     assert!(h.run("saveas", json!({"path": "x.dwg"})).unwrap_err().contains(".ecad"));
-    let e = h.run("saveas", json!({"path": "/nonexistent-folder-for-ecad-tests/p.ecad"})).unwrap_err();
+    let d = TempDir::new("missing");
+    let missing = d.0.join("missing-folder").join("p.ecad").display().to_string();
+    let e = h.run("saveas", json!({"path": missing})).unwrap_err();
     assert!(e.contains("not saved") && e.contains("unchanged"), "{e}");
     assert!(h.p(|p| p.unsaved() && p.path.is_none()));
 }
