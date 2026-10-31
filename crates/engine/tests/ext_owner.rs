@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, EntityKind, Handle, Space};
-use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Source, Verdict};
+use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Source, Start, Verdict};
 use serde_json::{Value, json};
 
 #[derive(Default)]
@@ -35,6 +35,9 @@ struct TestOwner {
     panic_in_close: bool,
     reenter: bool,
     unsaved: bool,
+    /// Refuse CIRCLE and LISP before they start; panic when asked (`panic_in_start`).
+    refuse_starts: bool,
+    panic_in_start: bool,
 }
 
 impl TestOwner {
@@ -50,6 +53,8 @@ impl TestOwner {
             panic_in_close: false,
             reenter: false,
             unsaved: false,
+            refuse_starts: false,
+            panic_in_start: false,
         }
     }
     fn swap_to(&mut self, s: &mut Session, uid: u64, d: Arc<Drawing>) {
@@ -61,6 +66,11 @@ impl TestOwner {
 }
 
 impl DocumentOwner for TestOwner {
+    fn refuse_start(&self, _s: &Session, _uid: u64, start: Start<'_>) -> Option<String> {
+        assert!(!self.panic_in_start, "injected start failure");
+        let refused = matches!(start, Start::Command("circle") | Start::Lisp);
+        (self.refuse_starts && refused).then(|| "not started by the test owner".into())
+    }
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
         if std::mem::take(&mut self.panic_next) {
             panic!("injected owner failure");
@@ -395,4 +405,42 @@ fn a_reentrant_owner_call_is_refused_not_deadlocked() {
     assert_eq!(lines(&s).len(), 1, "only the outer command's line is kept");
     s.execute("line", &json!({"points": [[0, 5], [10, 5]]})).unwrap();
     assert_eq!(lines(&s).len(), 2, "the owner is usable afterwards");
+}
+
+#[test]
+fn the_owner_refuses_commands_and_lisp_before_they_start() {
+    let (mut s, owner, log, uid) = owned_session();
+    owner.lock().unwrap().refuse_starts = true;
+    let before = s.state().unwrap().doc.clone();
+    // JSON form, typed at the command line, and LISP: refused with the owner's message, nothing changed.
+    let r = s.execute("circle", &json!({"center": [0, 0], "radius": 5}));
+    assert!(r.unwrap_err().to_string().contains("not started by the test owner"));
+    assert!(s.cmdline("circle 0,0 5").unwrap_err().to_string().contains("not started by the test owner"));
+    assert!(s.running.is_none());
+    let r = s.lisp_eval("(command \"line\" \"0,0\" \"10,0\" \"\")", false, true, Vec::new());
+    assert!(r.unwrap_err().to_string().contains("not started by the test owner"));
+    assert!(!s.lisp_running());
+    let st = s.state().unwrap();
+    assert!(Arc::ptr_eq(&before, &st.doc), "the drawing is untouched");
+    assert!(st.undo.is_empty() && st.redo.is_empty(), "no engine undo step");
+    assert!(log.lock().unwrap().commits.is_empty(), "nothing reached the commit gate");
+    // A command the owner allows still runs.
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    assert_eq!(lines(&s).len(), 1);
+    // A plain drawing in the same session is not asked: LISP runs there as upstream.
+    s.execute("new", &json!({})).unwrap();
+    assert_ne!(s.state().unwrap().uid, uid);
+    s.lisp_eval("(command \"circle\" \"0,0\" \"5\")", false, true, Vec::new()).unwrap();
+    assert_eq!(s.doc().unwrap().space(&Space::Model).unwrap().iter().count(), 1);
+    assert_eq!(s.state().unwrap().undo.len(), 1);
+}
+
+#[test]
+fn a_panicking_start_check_refuses_and_recovers() {
+    let (mut s, owner, log, _) = owned_session();
+    owner.lock().unwrap().panic_in_start = true;
+    let r = s.execute("line", &json!({"points": [[0, 0], [10, 0]]}));
+    assert!(r.is_err());
+    assert!(lines(&s).is_empty());
+    assert_eq!(log.lock().unwrap().recovered, 1);
 }

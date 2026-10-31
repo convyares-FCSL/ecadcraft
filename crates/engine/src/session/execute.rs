@@ -32,6 +32,10 @@ impl Session {
         if let Some(why) = cmd::blocks::bedit::refused_in_editor(self, spec.id) {
             return Err(EngineError::Disabled(spec.id.into(), why));
         }
+        // ECAD-SEAM(owner): an owned document's owner may refuse the command before it starts.
+        if let Some(why) = ext::refused(self, ext::Start::Command(spec.id)) {
+            return Err(EngineError::Disabled(spec.id.into(), why));
+        }
         let before = self.state().ok().map(|s| (s.doc.clone(), s.selection.clone(), s.uid));
         let editing = self.state().is_ok_and(|s| s.block_edit.is_some());
         // ECAD-SEAM(owner): a top-level command starts with nothing recorded; one run inside an

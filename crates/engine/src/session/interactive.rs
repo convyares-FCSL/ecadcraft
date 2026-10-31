@@ -64,6 +64,10 @@ impl Session {
         if let Some(why) = cmd::blocks::bedit::refused_in_editor(self, spec.id) {
             return Err(EngineError::Disabled(spec.id.into(), why));
         }
+        // ECAD-SEAM(owner): an owned document's owner may refuse the command before it starts.
+        if let Some(why) = ext::refused(self, ext::Start::Command(spec.id)) {
+            return Err(EngineError::Disabled(spec.id.into(), why));
+        }
         if nested {
             // The outer command stays the one Enter repeats.
             self.echo(format!(">>{}", spec.id.to_ascii_uppercase()));

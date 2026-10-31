@@ -15,7 +15,7 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
 Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.15.1**
 (upstream tag `v0.15.1`, commit `660e15c`, brief 007, 2026-10-31; egui 0.37, Rust 1.95 or later).
-The steps below did not change with that sync. Every trial recorded below as yours was on the
+The steps below did not change with that sync; the Block Editor, REFEDIT and LISP are refused on ECAD pages (section 9). Every trial recorded below as yours was on the
 earlier CADCraft 0.6.2 base; nothing has been tried by you on 0.15.1 yet. Three kinds of evidence
 exist, and they are kept apart:
 
@@ -363,6 +363,12 @@ the banner's Command field. IDs and offsets will differ from any shown here.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
 - No library files (`.ecadlib`) and no checkpoints.
+- **Refused on ECAD pages** (CADCraft 0.15.1 features that change a page outside the commands
+  ECAD records): the Block Editor (BEDIT, BSAVE, BSAVEAS, BCLOSE, also from Tools, the context
+  menu and Tool Sets), in-place reference editing (REFEDIT, REFSET, REFCLOSE), and LISP:
+  expressions typed at the command line such as `(command "line" …)`, APPLOAD, the LISP command
+  and commands defined in LISP. Each is refused with a message before anything changes; the page,
+  its history and the project stay as they were.
 - **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The trial never
   checks at start. CADCraft's **Help > Check for Updates…** item is still in the menu: choosing
   it asks GitHub (`api.github.com`) for CADCraft's releases and may offer a newer CADCraft
