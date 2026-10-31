@@ -16,7 +16,7 @@ Crates `ecad-store` and `ecad-file` only. Finding ids refer to `ecad/docs/review
 
 1. **R-S1 File identity on Windows.**
    - `FileIdentity` becomes the volume serial number plus the file index, through a safe crate
-     (proposed: `same-file`; owner question 3), since `unsafe` is forbidden.
+     (`same-file`, approved by the owner on 2026-10-31), since `unsafe` is forbidden.
    - Rename-over and delete-and-recreate behind an open writer give `DiskError::Replaced`.
 2. **R-S2 Durable replace.**
    - Flush the folder on Windows (open it with backup semantics, then `sync_all`), or use a
@@ -28,7 +28,8 @@ Crates `ecad-store` and `ecad-file` only. Finding ids refer to `ecad/docs/review
    read-only with a new reason, for example `ReadOnly::NotWritable`.
 4. **R-M4 Lock reporting.**
    - Separate "no lock could be taken" (`ReadOnly::NoLock`) from "another session holds it".
-   - The holder on Windows follows owner question 4: an unlocked sidecar record, or a tested `None`.
+   - On Windows the holder is not shown (`None`, tested), and the message says so. There is no
+     sidecar file. The owner left this to the overseer on 2026-10-31.
 5. **R-M2 Sharing violations:** a bounded retry for `replace` and `remove_file` on Windows only.
    Document FAT, exFAT and network shares as unverified.
 6. **R-M3** The `HeldByOther` text mentions that a session that has just ended may take a moment to

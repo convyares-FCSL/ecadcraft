@@ -3,8 +3,9 @@
 Status: Draft (overseer, 2026-10-31)
 Branch: `ecad/windows-trial`
 Designer: no · Size: M
-Gate: part B changes files outside `ecad/` and recorded decisions, so it needs explicit owner
-approval of each correction.
+Gate: part B changes files outside `ecad/` and recorded decisions. The owner approved the
+corrections D1-D14 and the native-Windows decision row on 2026-10-31. Each change is still listed in
+the PR for review.
 
 ## Goal
 
@@ -19,7 +20,8 @@ Finding ids refer to `ecad/docs/review-2026-10-31.md`.
    - Resolve `~` with `std::env::home_dir()`, accept both `~/` and `~\`, and build every path with
      `Path::join`, in `apps/ecad-trial/src/lib.rs` and `crates/ecad-cadcraft/src/file.rs`.
    - Never create a folder literally named `~`.
-   - The default folder follows owner question 2.
+   - The default folder on Windows is `C:\dev\ecad-projects` (owner, 2026-10-31). It is never the
+     OneDrive-redirected Documents folder. On Linux it stays `~/ecad-projects`.
 2. **Arguments:** `main.rs` uses `args_os()` (minor 1). Move argument parsing into the library so it
    can be tested.
 3. **Own file:** compare canonical paths, not text (minor 3).

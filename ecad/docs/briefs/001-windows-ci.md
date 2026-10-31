@@ -27,7 +27,10 @@ hidden.
   - review minor 6: release the leaked lock handle before the temp folder is dropped;
   - the missing-folder fixture `/nonexistent-folder-for-ecad-tests/...` becomes a missing folder
     inside the test's temp dir.
-- If `cargo xtask ci` itself fails on Windows (shell assumptions, path separators, the patch guard's
+- Make plain `cargo test --workspace` compile. `crates/ecad-cadcraft/tests/recovery.rs:82` uses
+  `faults.panic_in_commit`, which only exists with `fault-injection`. Gate that test target with
+  `required-features` or `#![cfg(feature = "fault-injection")]` (test-side only).
+- `cargo xtask ci` already passes locally on Windows (review §1). If it fails on the runner (shell assumptions, path separators, the patch guard's
   `git` call), fix `ecad/xtask`.
 
 **Out of scope:** fixing the persistence gaps themselves (brief 002), path handling in the trial

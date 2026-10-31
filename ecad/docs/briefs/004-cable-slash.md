@@ -41,8 +41,8 @@ under E5 and E4.
    - touching only at an end or a vertex: the designer proposes, the owner decides.
 3. Refusals:
    - fewer than one conductor crossed;
-   - a crossed conductor already in a cable: refuse or allow, per owner question 6 of the review and
-     §18.4 ("a conductor in several cables" is deferred);
+   - a crossed conductor already in a cable is **refused**. "A conductor in several cables" stays
+     deferred (§18.4);
    - a read-only project.
 4. The slash is a representation of the cable:
    - erasing it removes the representation only (L5 and P6);
@@ -52,8 +52,8 @@ under E5 and E4.
 6. Update the quick-start guide with a worked example.
 
 **Out of scope:**
-- core numbering or designation schemes (foundations: deferred). `core` stays `None` unless the owner
-  decides otherwise (review question 6);
+- core numbering or designation schemes (foundations: deferred). `core` stays `None`; members are
+  ordered by crossing order only. This is the overseer's call, delegated by the owner on 2026-10-31;
 - spares;
 - inferring a cable by tag across pages;
 - the cable schedule;

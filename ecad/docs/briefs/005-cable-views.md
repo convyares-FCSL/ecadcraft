@@ -25,9 +25,14 @@ membership or connections, and is instant.
    - **default:** the fan drawing is read-only, and a pick or edit there is refused with "switch to
      traditional view to edit";
    - anything more needs the owner's decision.
-4. Scope of the switch (per cable, per page, or global) and whether it is remembered between sessions
-   follow review question 7. If remembered, it is stored outside the `.ecad` history (P5), for
-   example in a per-user settings file, never as a transaction.
+4. The switch is **per cable** and **remembered between sessions** (owner, 2026-10-31). It is never a
+   transaction and never moves the head (P5, SAVE-03).
+   - **Open before approval:** where it is remembered.
+     - (a) A per-user settings file keyed by project ID and cable ID. This needs no format change, but
+       the view does not travel with an emailed file.
+     - (b) A non-history record in the `.ecad`. The view travels with the file, but this is a
+       container change (E5 strict reading; a new container version) and amends §18.4.
+   - The overseer recommends (a) for now.
 5. Update the quick-start guide.
 
 **Out of scope:**
@@ -41,7 +46,8 @@ membership or connections, and is instant.
 1. Switching both ways leaves the ledger head, the log, every ID and `derive::nets` unchanged. A
    contract test compares document and log before and after 10 switches.
 2. The project does not become unsaved by switching. Save, reopen, and the conductors and cable are
-   unchanged.
+   unchanged, and each cable reopens in the view it was left in. Two cables in different views keep
+   their own views.
 3. A cable of 1, 2 and 20 conductors, with conductors on different routes, draws in fan view without
    panic. A conductor with a loose end draws sensibly per the spec.
 4. Undo and redo after a switch act on the last real edit, never on the switch.
