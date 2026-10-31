@@ -112,7 +112,10 @@ impl CadApp {
                 if self.session.active != i {
                     let _ = self.run("document.switch", json!({ "index": i }));
                 }
-                let r = self.run("qsave", Value::Null);
+                // The Block Editor's unsaved changes go into the block first (BSAVE), then the
+                // drawing is saved with them.
+                let r = if self.session.state().is_ok_and(|st| st.block_unsaved()) { self.run("bsave", json!({})) } else { Ok(Value::Null) };
+                let r = r.and_then(|_| self.run("qsave", Value::Null));
                 // ECAD-SEAM(owner): owned documents answer through their owner.
                 let saved = r.is_ok() && self.doc_index(uid).is_some_and(|i| !self.session.doc_unsaved(i));
                 match (saved, self.doc_index(uid)) {
@@ -204,23 +207,23 @@ pub fn prompt(app: &mut CadApp, ctx: &egui::Context) {
     };
     let t = Tokens::get();
     let mut choice = None;
-    egui::Modal::new(egui::Id::new("cc_close_prompt")).show(ctx, |ui| {
+    crate::modal::instant(ctx, egui::Id::unique("cc_close_prompt")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.label(RichText::new("CADCraft").strong());
+        ui.label(RichText::new(crate::tl!("CADCraft")).strong());
         ui.add_space(4.0);
-        ui.label(format!("Save changes to {title}?"));
-        ui.label(RichText::new("Your changes will be lost if you don't save them.").color(t.text_dim));
+        ui.label(crate::tf!("Save changes to {name}?", name = title));
+        ui.label(RichText::new(crate::tl!("Your changes will be lost if you don't save them.")).color(t.text_dim));
         ui.add_space(10.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let size = vec2(84.0, 22.0);
-            let save = ui.add(egui::Button::new(RichText::new("Save").color(t.text)).fill(t.accent).min_size(size));
+            let save = ui.add(egui::Button::new(RichText::new(crate::tl!("Save")).color(t.text)).fill(t.accent).min_size(size));
             if save.clicked() {
                 choice = Some(Choice::Save);
             }
-            if ui.add(egui::Button::new("Cancel").min_size(size)).clicked() {
+            if ui.add(egui::Button::new(crate::tl!("Cancel")).min_size(size)).clicked() {
                 choice = Some(Choice::Cancel);
             }
-            if ui.add(egui::Button::new("Don't Save").min_size(size)).clicked() {
+            if ui.add(egui::Button::new(crate::tl!("Don't Save")).min_size(size)).clicked() {
                 choice = Some(Choice::Discard);
             }
         });
@@ -306,6 +309,23 @@ mod tests {
         assert!(app.closing.is_none());
         assert_eq!(titles(&app), ["A"]);
         assert!(app.session.docs[0].is_dirty());
+    }
+
+    #[test]
+    fn save_on_close_puts_the_block_editor_changes_into_the_block_first() {
+        let mut app = app_with(&["A"]);
+        let l = app.session.execute("line", &json!({ "points": [[0, 0], [1, 0]] })).unwrap()["handles"][0].clone();
+        app.session.execute("block", &json!({ "name": "B", "base": [0, 0], "handles": [l] })).unwrap();
+        app.session.execute("bedit", &json!({ "name": "B" })).unwrap();
+        app.session.execute("line", &json!({ "points": [[0, 0], [0, 1]] })).unwrap();
+        assert!(app.session.docs[0].block_unsaved());
+        app.request_close(None);
+        assert_eq!(app.close_prompt(), Some("A"));
+        app.answer_close(Choice::Save);
+        // The untitled drawing can't be saved here, so it stays open, but the block has the change.
+        let st = &app.session.docs[0];
+        assert!(!st.block_unsaved());
+        assert_eq!(st.drawing().block("B").unwrap().entities.len(), 2);
     }
 
     #[test]

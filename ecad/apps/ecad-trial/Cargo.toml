@@ -18,10 +18,10 @@ ecad-file = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (without its persistence of window state).
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 ecad-store = { workspace = true }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
-egui_kittest = "=0.36.2"
+egui_kittest = "=0.37.0"

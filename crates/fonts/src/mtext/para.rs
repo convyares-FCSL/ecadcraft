@@ -56,8 +56,9 @@ pub enum ParaAlign {
     Distributed,
 }
 
-/// Paragraph properties set by `\p…;`, in multiples of the MTEXT's text height. They stay in
-/// effect for the following paragraphs until another `\p` changes them.
+/// Paragraph properties set by `\p…;`. Indents and tab stops are in drawing units (as in
+/// AutoCAD files: `\pi4.86;` indents the first line by 4.86 units), space before and after in
+/// text heights. They stay in effect for the following paragraphs until another `\p` changes them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ParaProps {
     /// `i`: first-line indent, relative to the left indent (negative: a hanging indent).
@@ -84,7 +85,7 @@ const MAX_STATES: usize = 10_000;
 const MAX_COLUMNS: usize = 1_000;
 /// Default tab interval, in text heights, past the last tab stop.
 pub const DEFAULT_TAB: f64 = 4.0;
-/// Largest indent, tab position or spacing accepted, in text heights.
+/// Largest indent, tab position or spacing accepted.
 const MAX_UNITS: f64 = 10_000.0;
 
 fn units(s: &str) -> Option<f64> {
@@ -240,7 +241,7 @@ impl ListStyle {
     }
 }
 
-/// Paragraphs as a list: a hanging indent of `indent` text heights with a tab stop there, and
+/// Paragraphs as a list: a hanging indent of `indent` drawing units with a tab stop there, and
 /// each paragraph its label and a tab (`\pxi-3,l3,t3;1.<tab>First\P2.<tab>Second`).
 pub fn list_contents(paragraphs: &[&str], style: ListStyle, indent: f64) -> String {
     let indent = if indent.is_finite() && indent > 0.0 { indent.min(MAX_UNITS) } else { 3.0 };
@@ -401,12 +402,160 @@ fn split_tabs(segs: &[(Seg, usize)]) -> Vec<Part> {
     out
 }
 
+struct LineBuilder<'a> {
+    paragraphs: &'a Paragraphs,
+    formats: &'a [Fmt],
+    base: &'a Fmt,
+    width: f64,
+    height: f64,
+    lines: Vec<PLine>,
+    line: PLine,
+    paragraph: usize,
+    pending_space: Option<usize>,
+    last_format: usize,
+}
+
+impl<'a> LineBuilder<'a> {
+    fn new(paragraphs: &'a Paragraphs, formats: &'a [Fmt], base: &'a Fmt, width: f64, height: f64) -> Self {
+        let first = paragraphs.props(0);
+        Self {
+            paragraphs,
+            formats,
+            base,
+            width,
+            height,
+            lines: Vec::new(),
+            line: PLine { width: (first.left + first.first).max(0.0), ..Default::default() },
+            paragraph: 0,
+            pending_space: None,
+            last_format: 0,
+        }
+    }
+
+    fn format(&self, index: usize) -> &Fmt {
+        self.formats.get(index).unwrap_or(self.base)
+    }
+
+    fn build(mut self, atoms: &[Atom]) -> Vec<PLine> {
+        for atom in atoms {
+            self.push_atom(atom);
+        }
+        self.finish(true, 0.0);
+        self.lines
+    }
+
+    fn push_atom(&mut self, atom: &Atom) {
+        match atom {
+            Atom::Space(format) => {
+                if !self.line.items.is_empty() || self.pending_space.is_some() {
+                    self.pending_space = Some(*format);
+                }
+                self.last_format = *format;
+            }
+            Atom::Para(format) => {
+                self.pending_space = None;
+                let next_start = self.first_start(self.paragraph + 1);
+                self.last_format = *format;
+                self.finish(true, next_start);
+                self.paragraph += 1;
+            }
+            Atom::Word(segments) => self.push_word(segments),
+        }
+    }
+
+    fn first_start(&self, paragraph: usize) -> f64 {
+        let props = self.paragraphs.props(paragraph);
+        (props.left + props.first).max(0.0)
+    }
+
+    fn finish(&mut self, paragraph_end: bool, next_start: f64) {
+        if self.line.items.is_empty() {
+            self.line.max_h = self.format(self.last_format).height;
+        }
+        self.line.para = self.paragraph;
+        self.line.para_end = paragraph_end;
+        let next = PLine { width: next_start, ..Default::default() };
+        self.lines.push(std::mem::replace(&mut self.line, next));
+    }
+
+    fn push_word(&mut self, segments: &[(Seg, usize)]) {
+        let parts = split_tabs(segments);
+        for (index, part) in parts.iter().enumerate() {
+            match part {
+                Part::Tab => self.push_tab(&parts, index),
+                Part::Text(text) => self.push_text(index, text),
+            }
+        }
+    }
+
+    fn push_tab(&mut self, parts: &[Part], index: usize) {
+        self.pending_space = None;
+        let (available, left) = {
+            let props = self.paragraphs.props(self.paragraph);
+            (self.available_width(props), props.left.max(0.0))
+        };
+        let (stop, kind) = next_tab(self.line.width, self.paragraphs.props(self.paragraph), self.height);
+        let next_width: f64 = match parts.get(index + 1) {
+            Some(Part::Text(segments)) => segments.iter().map(|(segment, format)| seg_width(segment, self.format(*format))).sum(),
+            _ => 0.0,
+        };
+        let x = match kind {
+            TabKind::Left => stop,
+            TabKind::Center => (stop - next_width / 2.0).max(self.line.width),
+            TabKind::Right | TabKind::Decimal => (stop - next_width).max(self.line.width),
+        };
+        if x > available + 1e-9 && !self.line.items.is_empty() {
+            self.finish(false, left);
+        } else {
+            self.line.width = x;
+            self.line.text.push(' ');
+        }
+    }
+
+    fn push_text(&mut self, index: usize, segments: &[(Seg, usize)]) {
+        let word_width: f64 = segments.iter().map(|(segment, format)| seg_width(segment, self.format(*format))).sum();
+        let space_width = if index == 0 {
+            self.pending_space
+                .map(|format| crate::space_width(&self.format(format).font, self.format(format).height, self.format(format).wf))
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let (available, left) = {
+            let props = self.paragraphs.props(self.paragraph);
+            (self.available_width(props), props.left.max(0.0))
+        };
+        if self.width > 0.0 && !self.line.items.is_empty() && self.line.width + space_width + word_width > available + 1e-9 {
+            self.finish(false, left);
+        } else if index == 0 && (!self.line.items.is_empty() || self.pending_space.is_some()) {
+            self.line.width += space_width;
+            if self.pending_space.is_some() {
+                self.line.text.push(' ');
+                self.line.gaps += 1;
+            }
+        }
+        self.pending_space = None;
+        for (segment, format) in segments {
+            let segment_width = seg_width(segment, self.format(*format));
+            self.line.max_h = self.line.max_h.max(self.format(*format).height);
+            self.line.text.push_str(&seg_plain(segment));
+            self.line.items.push(Item { seg: segment.clone(), fmt: *format, x: self.line.width, gap: self.line.gaps });
+            self.line.width += segment_width;
+            self.last_format = *format;
+        }
+    }
+
+    fn available_width(&self, props: &ParaProps) -> f64 {
+        if self.width > 0.0 { (self.width - props.right).max(0.0) } else { f64::INFINITY }
+    }
+}
+
 /// The next tab stop right of `x`: the paragraph's stops, the left indent of a hanging indent,
 /// then every [`DEFAULT_TAB`] text heights.
 fn next_tab(x: f64, pp: &ParaProps, h: f64) -> (f64, TabKind) {
     let eps = 1e-9;
-    let mut best: Option<(f64, TabKind)> = pp.tabs.iter().map(|(p, k)| (p * h, *k)).find(|(p, _)| *p > x + eps);
-    let hang = pp.left * h;
+    let mut best: Option<(f64, TabKind)> = pp.tabs.iter().map(|(p, k)| (*p, *k)).find(|(p, _)| *p > x + eps);
+    let hang = pp.left;
     if hang > x + eps && best.is_none_or(|(p, _)| hang < p) {
         best = Some((hang, TabKind::Left));
     }
@@ -426,94 +575,7 @@ pub(super) fn layout(contents: &str, p: &MTextParams, base: &Fmt) -> MTextLayout
     let paras = Paragraphs::scan(contents);
     let (atoms, fmts) = parse(contents, base.clone());
     let fmt = |i: usize| fmts.get(i).unwrap_or(base);
-    let space_w = |f: usize| crate::space_width(&fmt(f).font, fmt(f).height, fmt(f).wf);
-
-    let mut lines: Vec<PLine> = Vec::new();
-    let mut k = 0usize;
-    let first_start = |k: usize| {
-        let pp = paras.props(k);
-        ((pp.left + pp.first) * h).max(0.0)
-    };
-    let mut line = PLine { width: first_start(0), ..Default::default() };
-    let mut pending_space: Option<usize> = None;
-    let mut last_fmt = 0usize;
-    let finish = |lines: &mut Vec<PLine>, line: &mut PLine, f: &Fmt, k: usize, para_end: bool, next_start: f64| {
-        if line.items.is_empty() {
-            line.max_h = f.height;
-        }
-        line.para = k;
-        line.para_end = para_end;
-        let next = PLine { width: next_start, ..Default::default() };
-        lines.push(std::mem::replace(line, next));
-    };
-    for a in &atoms {
-        let pp = paras.props(k);
-        let avail = if width > 0.0 { (width - pp.right * h).max(0.0) } else { f64::INFINITY };
-        let left = (pp.left * h).max(0.0);
-        match a {
-            Atom::Space(f) => {
-                if !line.items.is_empty() || pending_space.is_some() {
-                    pending_space = Some(*f);
-                }
-                last_fmt = *f;
-            }
-            Atom::Para(f) => {
-                pending_space = None;
-                finish(&mut lines, &mut line, fmt(*f), k, true, first_start(k + 1));
-                k += 1;
-                last_fmt = *f;
-            }
-            Atom::Word(segs) => {
-                let parts = split_tabs(segs);
-                for (pi, part) in parts.iter().enumerate() {
-                    match part {
-                        Part::Tab => {
-                            pending_space = None;
-                            let (stop, kind) = next_tab(line.width, pp, h);
-                            let next_w: f64 = match parts.get(pi + 1) {
-                                Some(Part::Text(s)) => s.iter().map(|(sg, f)| seg_width(sg, fmt(*f))).sum(),
-                                _ => 0.0,
-                            };
-                            let x = match kind {
-                                TabKind::Left => stop,
-                                TabKind::Center => (stop - next_w / 2.0).max(line.width),
-                                TabKind::Right | TabKind::Decimal => (stop - next_w).max(line.width),
-                            };
-                            if x > avail + 1e-9 && !line.items.is_empty() {
-                                finish(&mut lines, &mut line, fmt(last_fmt), k, false, left);
-                            } else {
-                                line.width = x;
-                                line.text.push(' ');
-                            }
-                        }
-                        Part::Text(segs) => {
-                            let ww: f64 = segs.iter().map(|(sg, f)| seg_width(sg, fmt(*f))).sum();
-                            let sw = if pi == 0 { pending_space.map(space_w).unwrap_or(0.0) } else { 0.0 };
-                            if width > 0.0 && !line.items.is_empty() && line.width + sw + ww > avail + 1e-9 {
-                                finish(&mut lines, &mut line, fmt(last_fmt), k, false, left);
-                            } else if pi == 0 && (!line.items.is_empty() || pending_space.is_some()) {
-                                line.width += sw;
-                                if pending_space.is_some() {
-                                    line.text.push(' ');
-                                    line.gaps += 1;
-                                }
-                            }
-                            pending_space = None;
-                            for (sg, f) in segs {
-                                let fw = seg_width(sg, fmt(*f));
-                                line.max_h = line.max_h.max(fmt(*f).height);
-                                line.text.push_str(&seg_plain(sg));
-                                line.items.push(Item { seg: sg.clone(), fmt: *f, x: line.width, gap: line.gaps });
-                                line.width += fw;
-                                last_fmt = *f;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    finish(&mut lines, &mut line, fmt(last_fmt), k, true, 0.0);
+    let lines = LineBuilder::new(&paras, &fmts, base, width, h).build(&atoms);
 
     // Vertical placement: baselines below the top of each line's column.
     let ls = if p.line_spacing > 0.0 && p.line_spacing.is_finite() { p.line_spacing } else { 1.0 };
@@ -536,7 +598,8 @@ pub(super) fn layout(contents: &str, p: &MTextParams, base: &Fmt) -> MTextLayout
         let lh = if l.max_h > 0.0 { l.max_h } else { h };
         let new_para = prev_para != Some(l.para);
         let before = if new_para && prev_para.is_some() { paras.props(l.para).before * h } else { 0.0 };
-        let pitch = |first: bool| if first { lh } else { lh * 5.0 / 3.0 * ls + before };
+        let step_h = if p.line_spacing_exact { h } else { lh };
+        let pitch = |first: bool| if first { lh } else { step_h * 5.0 / 3.0 * ls + before };
         let hc = col_height(c);
         if !first_in_col && c + 1 < max_cols && (force || (hc > 0.0 && y + pitch(false) > hc + 1e-9)) {
             c += 1;
@@ -566,7 +629,7 @@ pub(super) fn layout(contents: &str, p: &MTextParams, base: &Fmt) -> MTextLayout
         Some(_) => (0..n_cols).map(col_height).fold(content_h, f64::max),
         None => content_h,
     };
-    let col_w = if width > 0.0 { width } else { lines.iter().map(|l| l.width + paras.props(l.para).right * h).fold(0.0, f64::max) };
+    let col_w = if width > 0.0 { width } else { lines.iter().map(|l| l.width + paras.props(l.para).right).fold(0.0, f64::max) };
     let gutter = cols.map(|s| s.gutter).filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0);
     let total_w = col_w * n_cols as f64 + gutter * n_cols.saturating_sub(1) as f64;
     let attach = p.attach.clamp(1, 9) - 1;
@@ -589,7 +652,7 @@ pub(super) fn layout(contents: &str, p: &MTextParams, base: &Fmt) -> MTextLayout
         let pp = paras.props(l.para);
         let slot = if reversed { n_cols.saturating_sub(1).saturating_sub(c) } else { c };
         let col_x = box_x0 + slot as f64 * (col_w + gutter);
-        let right_edge = col_w - pp.right * h;
+        let right_edge = col_w - pp.right;
         let free = right_edge - l.width;
         let align = match pp.align {
             ParaAlign::Default => [ParaAlign::Left, ParaAlign::Center, ParaAlign::Right].get(usize::from(acol)).copied().unwrap_or_default(),
@@ -632,6 +695,7 @@ mod tests {
         for (s, w, a) in [
             ("the quick brown fox jumps over the lazy dog", 8.0, 1u8),
             ("one\\Ptwo\\P\\Pfour", 0.0, 5),
+            ("\\H3x;\\Psmall", 0.0, 1),
             ("alpha {\\H2x;beta} gamma delta", 6.0, 9),
             ("A{\\C1;B}C \\S1/2; x", 0.0, 2),
             ("  lead  spaces  and\\P  more", 5.0, 3),

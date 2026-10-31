@@ -159,6 +159,9 @@ pub fn services(requested: Arc<AtomicBool>) -> Services {
             }
             None
         })),
+        // No APPLOAD file dialog either: CADCraft asks for the file name at its command line.
+        pick_lisp: None,
+        no_file_system: false,
     }
 }
 
@@ -826,7 +829,7 @@ impl Trial {
             self.file_dialog(ctx);
         } else if let Some(msg) = self.notice.clone() {
             let mut ok = false;
-            egui::Modal::new(egui::Id::new("ecad_trial_notice")).show(ctx, |ui| {
+            egui::Modal::new(egui::Id::unique("ecad_trial_notice")).show(ctx, |ui| {
                 ui.set_width(460.0);
                 ui.label(RichText::new("ECAD trial").strong());
                 ui.add_space(4.0);
@@ -844,7 +847,7 @@ impl Trial {
         let file = self.status().map(|s| s.file).unwrap_or_default();
         let name = self.status().map_or_else(|| PROJECT_NAME.to_string(), |s| s.name);
         let mut answer = None;
-        egui::Modal::new(egui::Id::new("ecad_trial_close")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("ecad_trial_close")).show(ctx, |ui| {
             ui.set_width(460.0);
             ui.label(RichText::new(format!("Save changes to project \"{name}\"?")).strong());
             ui.add_space(4.0);
@@ -893,7 +896,7 @@ impl Trial {
         };
         let mut confirm = false;
         let mut cancel = false;
-        egui::Modal::new(egui::Id::new("ecad_trial_file")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("ecad_trial_file")).show(ctx, |ui| {
             ui.set_width(520.0);
             ui.label(RichText::new(heading).strong());
             ui.add_space(4.0);

@@ -34,6 +34,18 @@ pub const STALE_LOCK_SECS: u64 = 5 * 60;
 const HEARTBEAT_SECS: f64 = 60.0;
 
 static SAVETIME: AtomicU32 = AtomicU32::new(DEFAULT_SAVETIME);
+static ISAVEBAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// ISAVEBAK: whether saving over a drawing keeps the previous file as `<name>.bak` (on by
+/// default, as in AutoCAD). A profile setting like SAVETIME.
+pub fn isavebak() -> bool {
+    ISAVEBAK.load(Ordering::Relaxed)
+}
+
+/// Turn ISAVEBAK on or off.
+pub fn set_isavebak(on: bool) {
+    ISAVEBAK.store(on, Ordering::Relaxed);
+}
 static SAVEFILEPATH: Mutex<String> = Mutex::new(String::new());
 
 /// SAVETIME: minutes between autosaves; 0 turns autosave off.
@@ -59,10 +71,22 @@ pub fn set_savefilepath(path: &str) {
 
 /// The autosave file name for drawing `uid` titled `title`, written by app instance `instance`.
 pub fn file_name(title: &str, instance: &str, uid: u64) -> String {
-    let stem: String = title.chars().map(|c| if c.is_alphanumeric() || " .-_()".contains(c) { c } else { '-' }).take(80).collect();
+    // File systems limit a name to 255 bytes, so the stem gets what the suffix leaves, cut at a character boundary.
+    let suffix = format!("_{instance}_{uid}.{EXT}");
+    let budget = 255usize.saturating_sub(suffix.len());
+    let mut used = 0;
+    let stem: String = title
+        .chars()
+        .map(|c| if c.is_alphanumeric() || " .-_()".contains(c) { c } else { '-' })
+        .take(80)
+        .take_while(|c| {
+            used += c.len_utf8();
+            used <= budget
+        })
+        .collect();
     let stem = stem.trim().trim_matches('.');
     let stem = if stem.is_empty() { "Drawing" } else { stem };
-    format!("{stem}_{instance}_{uid}.{EXT}")
+    format!("{stem}{suffix}")
 }
 
 /// Whether `s` has the form of an app instance id (`<process id>-<start time in hex>`, see
@@ -109,6 +133,9 @@ pub enum Job {
 struct Tracked {
     /// The drawing as last autosaved (a weak pointer: compared, never kept alive).
     written: Option<Weak<Drawing>>,
+    /// The drawing outside the Block Editor as last autosaved (the same as `written` when the
+    /// editor is closed): saving the editor's changes into the block changes only this.
+    host: Option<Weak<Drawing>>,
     /// Its autosave file, once written (or adopted).
     file: Option<String>,
     /// When a change not yet autosaved was first seen (seconds).
@@ -122,8 +149,9 @@ pub struct Autosaver {
     docs: HashMap<u64, Tracked>,
     /// Drawings whose autosave is being written right now.
     busy: HashSet<u64>,
+    /// Writes in progress; each tells whether its file was written.
     #[cfg(not(target_arch = "wasm32"))]
-    running: Vec<(u64, std::thread::JoinHandle<()>)>,
+    running: Vec<(u64, std::thread::JoinHandle<bool>)>,
     #[cfg(not(target_arch = "wasm32"))]
     start: std::time::Instant,
     #[cfg(not(target_arch = "wasm32"))]
@@ -149,8 +177,9 @@ impl Autosaver {
     /// Recovery, whose current state it holds): later autosaves overwrite it, and it is deleted
     /// once the drawing is saved or closed.
     pub fn adopt(&mut self, s: &Session, uid: u64, path: &str) {
-        let written = s.docs.iter().find(|d| d.uid == uid).map(|d| Arc::downgrade(&d.doc));
-        self.docs.insert(uid, Tracked { written, file: Some(path.to_string()), since: None });
+        let st = s.docs.iter().find(|d| d.uid == uid);
+        let (written, host) = (st.map(|d| Arc::downgrade(&d.doc)), st.map(|d| Arc::downgrade(d.drawing())));
+        self.docs.insert(uid, Tracked { written, host, file: Some(path.to_string()), since: None });
     }
 
     /// The autosave files this app has written or adopted.
@@ -194,7 +223,8 @@ impl Autosaver {
                 *t = Tracked::default();
                 continue;
             }
-            let changed = t.written.as_ref().is_none_or(|w| !std::ptr::eq(w.as_ptr(), Arc::as_ptr(&st.doc)));
+            let same = |w: &Option<Weak<Drawing>>, d: &Arc<Drawing>| w.as_ref().is_some_and(|w| std::ptr::eq(w.as_ptr(), Arc::as_ptr(d)));
+            let changed = !same(&t.written, &st.doc) || !same(&t.host, st.drawing());
             if !changed {
                 t.since = None;
                 continue;
@@ -203,14 +233,21 @@ impl Autosaver {
             if minutes == 0 || dir.trim().is_empty() || (!urgent && now - since < f64::from(minutes) * 60.0) {
                 continue;
             }
+            // In the Block Editor: the drawing with the editor's unsaved changes in the block. When
+            // they can't be put there, nothing is written and nothing is marked as covered, so the
+            // next pass tries again instead of keeping the host without them.
+            let Ok(doc) = st.recovery_drawing() else {
+                continue;
+            };
             let path = t
                 .file
                 .clone()
                 .unwrap_or_else(|| std::path::Path::new(dir).join(file_name(&st.title, &self.instance, st.uid)).to_string_lossy().to_string());
             t.file = Some(path.clone());
             t.written = Some(Arc::downgrade(&st.doc));
+            t.host = Some(Arc::downgrade(st.drawing()));
             t.since = None;
-            jobs.push(Job::Write { uid: st.uid, path, doc: st.doc.clone() });
+            jobs.push(Job::Write { uid: st.uid, path, doc });
         }
         jobs
     }
@@ -244,7 +281,10 @@ mod native {
     use std::path::Path;
     use std::time::{Duration, SystemTime};
 
-    use super::*;
+    use super::{
+        Autosaver, Drawing, HEARTBEAT_SECS, HashMap, Job, Recoverable, STALE_LOCK_SECS, Session, is_instance_id, parse_file_name, parse_lock_name,
+        savefilepath, savetime,
+    };
 
     /// A new instance id: the process id and the start time.
     pub fn instance_id() -> String {
@@ -295,7 +335,7 @@ mod native {
     /// files of stopped apps that have no files left. Only an autosave file is deleted: a path
     /// whose name doesn't parse as one ([`parse_file_name`]) is left alone.
     pub fn discard(path: &str) {
-        let ours = Path::new(path).file_name().and_then(|n| n.to_str()).is_some_and(|n| parse_file_name(n).is_some());
+        let ours = Path::new(path).file_name().and_then(std::ffi::OsStr::to_str).is_some_and(|n| parse_file_name(n).is_some());
         if !ours {
             log::warn!("autosave: not deleting {path}: not an autosave file");
             return;
@@ -327,14 +367,26 @@ mod native {
 
     type WriteHook = fn(&Drawing, &str) -> std::result::Result<Vec<u8>, String>;
 
+    /// Create the autosave folder `dir` and any missing parents. On Unix the folders made here are
+    /// owner-only (`0o700`): autosave files are unsaved drawings, and with the default mode other
+    /// accounts on the machine could read them. A folder that already exists keeps its mode, since
+    /// SAVEFILEPATH can be any folder the user picked.
+    fn create_folder(dir: &Path) -> std::io::Result<()> {
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.create(dir)
+    }
+
     fn write_file(write: WriteHook, doc: &Drawing, path: &str) -> std::result::Result<(), String> {
         let bytes = write(doc, "autosave.dxf")?;
         if let Some(dir) = Path::new(path).parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            create_folder(dir).map_err(|e| e.to_string())?;
         }
-        let tmp = format!("{path}.tmp");
-        std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+        // Create a fresh temporary file exclusively and rename it into place, so a planted
+        // `<path>.tmp` symlink in a shared autosave directory cannot redirect the write (CWE-59).
+        crate::atomic_write::write_atomic(Path::new(path), &bytes).map_err(|e| e.to_string())
     }
 
     impl Autosaver {
@@ -342,14 +394,7 @@ mod native {
         /// Returns how long until the next autosave is due, so the host can wake up for it.
         pub fn tick(&mut self, s: &Session) -> Option<Duration> {
             let now = self.start.elapsed().as_secs_f64();
-            let busy = &mut self.busy;
-            self.running.retain(|(uid, h)| {
-                let running = !h.is_finished();
-                if !running {
-                    busy.remove(uid);
-                }
-                running
-            });
+            self.reap();
             let dir = savefilepath();
             let minutes = savetime();
             let jobs = self.plan(s, now, minutes, &dir);
@@ -372,6 +417,26 @@ mod native {
             writes
         }
 
+        /// Take in the writes that have finished ([`Autosaver::tick`] does this first). A drawing
+        /// whose write failed is no longer counted as autosaved: the next plan restarts its clock,
+        /// so it is tried again SAVETIME later even if it doesn't change.
+        pub fn reap(&mut self) {
+            let (done, running) = std::mem::take(&mut self.running).into_iter().partition::<Vec<_>, _>(|(_, h)| h.is_finished());
+            self.running = running;
+            for (uid, h) in done {
+                self.busy.remove(&uid);
+                if !h.join().unwrap_or(false) {
+                    self.unwritten(uid);
+                }
+            }
+        }
+
+        fn unwritten(&mut self, uid: u64) {
+            if let Some(t) = self.docs.get_mut(&uid) {
+                t.written = None;
+            }
+        }
+
         /// Carry out jobs from [`Autosaver::plan`]: writes on a background thread, deletes now.
         pub fn perform(&mut self, jobs: Vec<Job>) {
             for job in jobs {
@@ -383,15 +448,24 @@ mod native {
                             continue;
                         };
                         let spawned = std::thread::Builder::new().name("autosave".into()).spawn(move || match write_file(write, &doc, &path) {
-                            Ok(()) => log::info!("autosaved {path}"),
-                            Err(e) => log::warn!("autosave {path}: {e}"),
+                            Ok(()) => {
+                                log::info!("autosaved {path}");
+                                true
+                            }
+                            Err(e) => {
+                                log::warn!("autosave {path}: {e}");
+                                false
+                            }
                         });
                         match spawned {
                             Ok(h) => {
                                 self.busy.insert(uid);
                                 self.running.push((uid, h));
                             }
-                            Err(e) => log::warn!("autosave: {e}"),
+                            Err(e) => {
+                                log::warn!("autosave: {e}");
+                                self.unwritten(uid);
+                            }
                         }
                     }
                 }
@@ -405,7 +479,7 @@ mod native {
             }
             self.last_beat = Some(now);
             let dir = Path::new(dir);
-            let r = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(lock_path(dir, &self.instance), std::process::id().to_string()));
+            let r = create_folder(dir).and_then(|()| std::fs::write(lock_path(dir, &self.instance), std::process::id().to_string()));
             if let Err(e) = r {
                 log::warn!("autosave: lock file in {}: {e}", dir.display());
             }
@@ -426,6 +500,23 @@ mod native {
             if !dir.is_empty() && is_instance_id(&self.instance) {
                 let _ = std::fs::remove_file(lock_path(Path::new(&dir), &self.instance));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_name_fits_255_bytes_for_multibyte_titles() {
+        let instance = "12345-abcdef0123456789";
+        for title in ["图".repeat(100), "😀".repeat(100), "aé图😀".repeat(40), "a".repeat(300)] {
+            let name = file_name(&title, instance, u64::MAX);
+            assert!(name.len() <= 255, "{} bytes", name.len());
+            let (t, i, u) = parse_file_name(&name).expect("round trips");
+            assert_eq!((i, u), (instance, u64::MAX));
+            assert!(!t.is_empty());
         }
     }
 }

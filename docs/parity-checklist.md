@@ -1,23 +1,23 @@
 # Parity checklist
 
-> **Generated:** 2026-10-10 by `cargo xtask parity`. Do not edit by hand.
+> **Generated:** 2026-10-30 by `cargo xtask parity`. Do not edit by hand.
 
 Menu-breadth parity: a reference menu item counts as covered when a CADCraft command is registered under the same menu label. It measures breadth, not depth; see [target-app-parity.md](target-app-parity.md) for the weighted assessment.
 
-**Menu breadth: 236 / 491 items (48%)** · 302 registered commands.
+**Menu breadth: 298 / 491 items (61%)** · 444 registered commands.
 
 | Menu | Items | Covered | % |
 |---|---|---|---|
-| File | 22 | 12 | 55% |
-| Edit | 13 | 10 | 77% |
-| View | 75 | 27 | 36% |
-| Insert | 11 | 2 | 18% |
-| Format | 27 | 23 | 85% |
-| Tools | 85 | 46 | 54% |
+| File | 22 | 13 | 59% |
+| Edit | 13 | 12 | 92% |
+| View | 75 | 37 | 49% |
+| Insert | 11 | 5 | 45% |
+| Format | 27 | 26 | 96% |
+| Tools | 85 | 66 | 78% |
 | Draw | 87 | 55 | 63% |
-| Dimension | 28 | 22 | 79% |
-| Modify | 113 | 37 | 33% |
-| Window | 22 | 2 | 9% |
+| Dimension | 28 | 28 | 100% |
+| Modify | 113 | 53 | 47% |
+| Window | 22 | 3 | 14% |
 | Help | 8 | 0 | 0% |
 
 ## Not yet covered
@@ -30,19 +30,13 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - File > Package Drawing...
 - File > DWG Compare...
 - File > Markup Import...
-- File > Plot Styles...
 - File > Share...
 - Edit > Undo Group of commands
-- Edit > Cut with Base Point
-- Edit > Paste as Block
-- View > Zoom > Dynamic
 - View > Pan > Point
 - View > Orbit > Constrained Orbit
 - View > Orbit > Free Orbit
 - View > Camera > Adjust Distance
 - View > Camera > Swivel
-- View > Viewports > Named Viewports...
-- View > Viewports > Polygonal Viewport
 - View > 3D Views > Viewpoint
 - View > 3D Views > Plan View > Current UCS
 - View > 3D Views > Plan View > World UCS
@@ -55,8 +49,6 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - View > 3D Views > SE Isometric
 - View > 3D Views > NE Isometric
 - View > 3D Views > NW Isometric
-- View > Show Annotative Objects > Current Scale Only
-- View > Show Annotative Objects > All Scales
 - View > Hide
 - View > Visual Styles > 2D Wireframe
 - View > Visual Styles > Wireframe
@@ -73,46 +65,21 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - View > Render > Light > New Distant Light
 - View > Render > Light > Light Glyphs
 - View > Render > Materials Browser
-- View > UCS Icon > On
 - View > UCS Icon > Origin
 - View > UCS Icon > Properties...
-- View > ViewCube > On
 - View > ViewCube > Settings
-- View > Attribute Display > Normal
-- View > Attribute Display > On
-- View > Attribute Display > Off
 - View > Lights
 - View > Enter Full Screen
-- Insert > DWG Reference...
 - Insert > PDF Underlay...
 - Insert > Raster Image Reference...
 - Insert > Field...
-- Insert > Data Link...
 - Insert > Layout > Layout from Template...
 - Insert > ACIS File...
 - Insert > Drawing Exchange Binary...
-- Insert > Reference Manager
 - Format > Transparency
-- Format > Scale List...
-- Format > Plot Style...
-- Format > Thickness
 - Tools > Spelling
-- Tools > Draw Order > Bring Above Objects
-- Tools > Draw Order > Send Under Objects
-- Tools > Draw Order > Bring Annotations to Front > Text Objects Only
-- Tools > Draw Order > Bring Annotations to Front > Dimension Objects Only
-- Tools > Draw Order > Bring Annotations to Front > Leaders Only
-- Tools > Draw Order > Bring Annotations to Front > All Annotation Objects
-- Tools > Draw Order > Send Hatches to Back
-- Tools > Isolate > Isolate Objects
-- Tools > Isolate > Hide Objects
-- Tools > Isolate > End Object Isolation
-- Tools > Inquiry > Volume
 - Tools > Update Fields
-- Tools > Block Editor
 - Tools > Edit Xref in Place
-- Tools > Open Xref
-- Tools > Load Application...
 - Tools > New UCS > World
 - Tools > New UCS > Face
 - Tools > New UCS > View
@@ -124,14 +91,8 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Tools > New UCS > Z
 - Tools > Named UCS...
 - Tools > Customize > Interface (CUI)...
-- Tools > Customize > Edit Command Aliases (PGP)...
 - Tools > Import Settings
 - Tools > Export Settings
-- Tools > Express Tools > Convert Text to Mtext
-- Tools > Express Tools > Break-line Symbol
-- Tools > Express Tools > Explode Attributes to Text
-- Tools > Express Tools > Move/Copy/Rotate
-- Tools > Express Tools > Replace Block...
 - Tools > Express Tools > Super Hatch > Image...
 - Tools > Express Tools > Super Hatch > Xref...
 - Tools > Express Tools > Super Hatch > Select Existing Object
@@ -167,32 +128,13 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Draw > 3D Modeling > Setup > Drawing
 - Draw > 3D Modeling > Setup > View
 - Draw > 3D Modeling > Setup > Profile
-- Dimension > Jogged
-- Dimension > Dimension Break
-- Dimension > Tolerance...
-- Dimension > Inspection
-- Dimension > Jogged Linear
-- Dimension > Oblique
-- Modify > Object > External Reference > Bind...
 - Modify > Object > External Reference > Frame
 - Modify > Object > Image > Adjust...
 - Modify > Object > Image > Quality
 - Modify > Object > Image > Transparency
 - Modify > Object > Image > Frame
-- Modify > Object > Array
-- Modify > Object > Multileader > Add Leader
-- Modify > Object > Multileader > Remove Leader
-- Modify > Object > Multileader > Collect
-- Modify > Object > Multiline...
-- Modify > Object > Attribute > Global
-- Modify > Object > Block Description...
 - Modify > Clip > Image
 - Modify > Clip > Xref
-- Modify > Clip > Viewport
-- Modify > Annotative Object Scale > Add Current Scale
-- Modify > Annotative Object Scale > Delete Current Scale
-- Modify > Annotative Object Scale > Add/Delete Scales...
-- Modify > Annotative Object Scale > Synchronize Multiple-scale Positions
 - Modify > 3D Operations > 3D Move
 - Modify > 3D Operations > 3D Rotate
 - Modify > 3D Operations > 3D Align
@@ -205,9 +147,6 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Modify > 3D Operations > Convert to Surface
 - Modify > 3D Operations > Extract Edges
 - Modify > 3D Operations > Extract Isolines
-- Modify > Solid Editing > Union
-- Modify > Solid Editing > Subtract
-- Modify > Solid Editing > Intersect
 - Modify > Solid Editing > Imprint Edges
 - Modify > Solid Editing > Fillet edges
 - Modify > Solid Editing > Chamfer edges
@@ -259,7 +198,6 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - Window > Command Line
 - Window > Blocks
 - Window > Properties Inspector
-- Window > Reference Manager
 - Window > Traces
 - Window > Sheet Set Manager
 - Window > Materials Browser
