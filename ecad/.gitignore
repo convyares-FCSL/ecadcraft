@@ -1,1 +1,4 @@
 /target
+
+# Local AI chat history, handovers and agent-local settings: never pushed
+/private/
