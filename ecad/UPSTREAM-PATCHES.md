@@ -31,7 +31,7 @@ without an owner behave exactly as before.
 | `crates/engine/src/lib.rs` | X2-X4 | `pub mod ext`; `Session::ext` field |
 | `crates/engine/src/session/execute.rs` | X2-X4 | start check before the command runs; gate at the `execute` commit point, before LISP undo grouping, with no engine undo step for owned documents; `undo`/`redo` hand-over |
 | `crates/engine/src/session/interactive.rs` | X2, X3, X7 | start check before an interactive command begins; gate at the `finish` commit point (after the transparent-command return, before LISP undo grouping); a new top-level interactive command starts with nothing recorded; drag preview contribution |
-| `crates/engine/src/lisp.rs` | X2 | start check in `lisp_start`, the one entry of every LISP evaluation (command-line expressions, loaded files, `c:` commands), before anything runs |
+| `crates/engine/src/lisp.rs` | X2 | start check in `lisp_start`, the one entry of every LISP evaluation (command-line expressions, loaded files, `c:` commands), before the drawing changes |
 | `crates/engine/src/cmd.rs` | X1 | `set_extension_commands`: embedder commands appended to the registry |
 | `crates/engine/src/cmd/file.rs` | X5 | QSAVE/SAVEAS hand-over; CLOSE/CLOSEALL tell the owner, and stop with the document still open when the owner fails |
 | `crates/engine/src/cmd/edit.rs` | X4 | UNDO options other than a count (Mark, Back, BEgin, End, Auto, Control) are reported as unsupported on owned documents |
@@ -40,7 +40,7 @@ without an owner behave exactly as before.
 | `crates/engine/src/cmd/clipboard.rs` | X6 | COPYCLIP reported with its serial; PASTECLIP provenance |
 | `crates/ui-egui/src/closing.rs` | X5 | close and quit prompts ask the session (owner-aware) |
 | `crates/ui-egui/src/chrome.rs` | X5 | file tab unsaved marker asks the session (owner-aware) |
-| `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before anything changes; plain drawings unaffected; a panicking check refuses and recovers) |
+| `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before the drawing changes; plain drawings unaffected; a panicking check refuses and recovers) |
 | `crates/engine/tests/ext_commands.rs` | tests | **new file**: extension command registration test |
 | `crates/ui-egui/src/palettes.rs` | X8 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged |
 | `crates/ui-egui/src/lib.rs` | X8 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once) |

@@ -412,7 +412,7 @@ fn the_owner_refuses_commands_and_lisp_before_they_start() {
     let (mut s, owner, log, uid) = owned_session();
     owner.lock().unwrap().refuse_starts = true;
     let before = s.state().unwrap().doc.clone();
-    // JSON form, typed at the command line, and LISP: refused with the owner's message, nothing changed.
+    // JSON form, typed at the command line, and LISP: refused with the owner's message, the drawing unchanged.
     let r = s.execute("circle", &json!({"center": [0, 0], "radius": 5}));
     assert!(r.unwrap_err().to_string().contains("not started by the test owner"));
     assert!(s.cmdline("circle 0,0 5").unwrap_err().to_string().contains("not started by the test owner"));

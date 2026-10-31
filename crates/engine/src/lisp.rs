@@ -243,7 +243,7 @@ impl Session {
         if self.lisp.active {
             return Err(crate::EngineError::Other("a LISP routine is already running".into()));
         }
-        // ECAD-SEAM(owner): an owned document's owner may refuse LISP before anything runs.
+        // ECAD-SEAM(owner): an owned document's owner may refuse LISP before the drawing changes.
         if let Some(why) = crate::ext::refused(self, crate::ext::Start::Lisp) {
             return Err(crate::EngineError::Other(why));
         }

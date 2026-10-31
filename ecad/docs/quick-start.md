@@ -367,8 +367,9 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   ECAD records): the Block Editor (BEDIT, BSAVE, BSAVEAS, BCLOSE, also from Tools, the context
   menu and Tool Sets), in-place reference editing (REFEDIT, REFSET, REFCLOSE), and LISP:
   expressions typed at the command line such as `(command "line" …)`, APPLOAD, the LISP command
-  and commands defined in LISP. Each is refused with a message before anything changes; the page,
-  its history and the project stay as they were.
+  and commands defined in LISP. Each is refused with a message before the drawing changes (a
+  command still running is cancelled first, as for any new command); the page, its history and
+  the project stay as they were.
 - **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The trial never
   checks at start. CADCraft's **Help > Check for Updates…** item is still in the menu: choosing
   it asks GitHub (`api.github.com`) for CADCraft's releases and may offer a newer CADCraft
