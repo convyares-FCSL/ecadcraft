@@ -43,6 +43,13 @@ pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
 pub const MAX_COORD: f64 = 1e12;
 /// Refusal of a point that is not finite or out of range.
 pub const OUT_OF_RANGE: &str = "Point out of range.";
+/// Refusal while a paper-space layout is shown: ECAD objects live in the page's model space.
+pub const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
+
+/// Whether the page's model space is shown (not a paper-space layout).
+pub(crate) fn model_space(s: &Session) -> bool {
+    s.space() == cadcraft_engine::doc::Space::Model
+}
 
 /// Canvas colours (design tokens, ACI on the dark canvas).
 pub(crate) const TERMINAL_ACI: u8 = 4;
@@ -77,6 +84,9 @@ pub(crate) fn in_range(p: Vec2) -> bool {
 /// design's wording) off an ECAD page, on an unavailable page and when the project is busy.
 pub(crate) fn read<R>(s: &Session, f: impl FnOnce(&Project, PageId) -> Result<R, String>) -> Result<R, String> {
     let owner = owner_of_active(s).map_err(|_| NOT_OWNED.to_string())?;
+    if !model_space(s) {
+        return Err(PAPER_SPACE.into());
+    }
     let uid = s.state().map_err(|e| e.to_string())?.uid;
     let mut guard = try_lock(&owner)?;
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or(NOT_OWNED)?;

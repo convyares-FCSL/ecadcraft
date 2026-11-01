@@ -267,7 +267,8 @@ fn every_tool_names_its_first_prompt_and_refuses_off_an_ecad_page() {
     let mut h = new_h();
     let firsts = [
         ("convertcomponent", "Select objects to convert to a component:"),
-        ("addterminal", "Specify point for terminal 1 on a component or [Name]:"),
+        // No component on the page yet: the prompt promises no number (fix round 2, N3).
+        ("addterminal", "Specify point for a terminal on a component or [Name]:"),
         ("place", "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:"),
         ("wire", "Specify first point of wire:"),
         ("connect", "Select wire near the end to connect:"),

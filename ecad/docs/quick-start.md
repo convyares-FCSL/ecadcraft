@@ -460,6 +460,14 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     rotate). Only steps of 90° by mouse; other angles through the JSON form.
   - Add Terminal shows no pick box (so that object snaps work at its prompt); the cyan ring shows
     where a click would put the terminal.
+  - Add Terminal's prompt names the number the next terminal gets for the component under the
+    cursor. With the cursor off every component it names a number only when all components on
+    the page would get the same one; otherwise it says `Specify point for a terminal on a
+    component`, and a typed point gets the smallest unused number of the component it lands on.
+  - ECAD objects are drawn in the Model tab only. In a paper-space layout (Layout1 …) the six
+    tools refuse to start (`Switch to the Model tab to draw ECAD objects.`), a tool already
+    running refuses points and picks there, and no terminal marks or terminal tooltips are
+    shown.
   - The preview name reads `-> A1` (the drafting font has no arrow character).
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.

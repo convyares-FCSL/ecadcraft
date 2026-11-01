@@ -125,7 +125,8 @@ fn the_interactive_buttons_start_their_prompts() {
     h.run_steps(3);
     let firsts = [
         ("Convert to Component", "convertcomponent", "Select objects to convert to a component:"),
-        ("Add Terminal", "addterminal", "Specify point for terminal 1 on a component or [Name]:"),
+        // No component on the page: no number is promised (fix round 2, N3).
+        ("Add Terminal", "addterminal", "Specify point for a terminal on a component or [Name]:"),
         ("Place Symbol", "place", "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:"),
         ("Wire", "wire", "Specify first point of wire:"),
         ("Connect", "connect", "Select wire near the end to connect:"),

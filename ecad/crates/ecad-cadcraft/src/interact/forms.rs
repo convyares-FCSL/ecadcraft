@@ -52,6 +52,15 @@ fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
     s.execute(id, params).map_err(|e| other(e.to_string()))
 }
 
+/// Points and picks are refused while a paper-space layout is shown (the user switched layouts
+/// while the form ran): ECAD objects are drawn in the page's model space only.
+fn paper_guard(s: &Session, i: &Input) -> R<()> {
+    if matches!(i, Input::Point(_) | Input::Pick(_)) && !super::model_space(s) {
+        return Err(other(super::PAPER_SPACE));
+    }
+    Ok(())
+}
+
 /// Text typed at a point prompt that is not a point or keyword.
 fn not_a_point(t: &str) -> EngineError {
     if t.contains(',') || t.contains('<') { other(OUT_OF_RANGE) } else { other("Point or option keyword required.") }
@@ -82,23 +91,38 @@ struct AddTerminal {
     name: Option<String>,
     /// At the "Enter terminal name" prompt.
     naming: bool,
-    /// The component the last terminal of this run went to (the prompt shows its next name).
-    last: Option<ComponentId>,
 }
 
 impl AddTerminal {
-    /// The name the next terminal gets: a typed one, else the default of the component under the
-    /// cursor (the one a click there adds to, so the prompt and the commit agree), else of the
-    /// component the last terminal went to, else 1.
-    fn shown_name(&self, s: &Session) -> String {
+    /// The name the next terminal gets, when it is known: a typed one, else the default of the
+    /// component under the cursor (the one a click there adds to, so the prompt and the commit
+    /// agree). With the cursor off any component a typed point gets the default of the component
+    /// it lands on: the name is known only when every drawn component on the page has the same
+    /// default; otherwise `None` and the prompt promises no number.
+    fn shown_name(&self, s: &Session) -> Option<String> {
         if let Some(n) = &self.name {
-            return n.clone();
+            return Some(n.clone());
         }
-        let under = Self::resolve(s, s.cursor, true).ok().map(|(_, c, _)| c);
-        under
-            .or(self.last)
-            .and_then(|c| read(s, |p, _| Ok(next_terminal_name(p.ledger.document(), c))).ok())
-            .unwrap_or_else(|| "1".into())
+        if let Ok((_, c, _)) = Self::resolve(s, s.cursor, true) {
+            return read(s, |p, _| Ok(next_terminal_name(p.ledger.document(), c))).ok();
+        }
+        // Off any component: a number only when every drawn component on the page would get the
+        // same one, so whichever a typed point lands on gets what the prompt says.
+        read(s, |p, page| {
+            let doc = p.ledger.document();
+            let names: BTreeSet<String> = doc
+                .representations
+                .values()
+                .filter(|r| r.page == page && r.form == ecad_model::Form::Drawn)
+                .filter_map(|r| match r.subject {
+                    Subject::Component(c) => Some(next_terminal_name(doc, c)),
+                    _ => None,
+                })
+                .collect();
+            Ok(if names.len() == 1 { names.into_iter().next() } else { None })
+        })
+        .ok()
+        .flatten()
     }
 
     /// Where a point puts a terminal: the picked outline object, its component and the point. A
@@ -152,7 +176,6 @@ impl AddTerminal {
                 };
                 commit(s, "addterminal", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;
-                self.last = Some(c);
                 s.echo(format!("Terminal {label} added to component {}.", c.hex()));
                 Ok(Step::Continue)
             }
@@ -168,13 +191,24 @@ impl Interactive for AddTerminal {
         "ADDTERMINAL"
     }
     fn prompt(&self, s: &Session) -> Prompt {
+        let shown = self.shown_name(s);
         if self.naming {
-            return Prompt::new("Enter terminal name", Accept::TEXT).default(self.shown_name(s));
+            let p = Prompt::new("Enter terminal name", Accept::TEXT);
+            return match shown {
+                Some(n) => p.default(n),
+                None => p,
+            };
         }
-        Prompt::new(format!("Specify point for terminal {} on a component", self.shown_name(s)), Accept::POINT)
-            .kw(&["Name"])
+        let message = match shown {
+            Some(n) => format!("Specify point for terminal {n} on a component"),
+            // Off any component the number is not known yet: it is the smallest unused one of the
+            // component the point lands on.
+            None => "Specify point for a terminal on a component".to_string(),
+        };
+        Prompt::new(message, Accept::POINT).kw(&["Name"])
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
         safely(s, "addterminal", |s| self.step(s, i))
     }
     /// The terminal ring where a click would put the terminal.
@@ -277,10 +311,14 @@ impl Interactive for Place {
             .kw(&["Rotate", "Mirror"])
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
         safely(s, "place", |s| self.step(s, i))
     }
     /// The coil at the cursor, as it would be placed.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
+        if !super::model_space(s) {
+            return Vec::new();
+        }
         if !in_range(cursor) {
             return Vec::new();
         }
@@ -410,10 +448,14 @@ impl Interactive for Wire {
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
         safely(s, "wire", |s| self.step(s, i))
     }
     /// The wire so far, and the rubber band to the cursor (or to the terminal it captures).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
+        if !super::model_space(s) {
+            return Vec::new();
+        }
         let mut out: Vec<EntityKind> =
             self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
         if let Some(last) = self.points.last()
@@ -522,11 +564,15 @@ impl Interactive for Link {
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
         let name = if self.connect { "connect" } else { "disconnect" };
         safely(s, name, |s| self.step(s, i))
     }
     /// Connect: the rubber band from the chosen end to the cursor or the captured terminal.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
+        if !super::model_space(s) {
+            return Vec::new();
+        }
         match self.end {
             Some((_, _, at)) if in_range(cursor) => {
                 vec![line_kind(at, capture_at(s, cursor).map_or(pt(cursor), |c| c.at))]
@@ -677,6 +723,7 @@ impl Interactive for Convert {
         )
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
         safely(s, "convertcomponent", |s| self.step(s, i))
     }
     /// The objects picked so far, highlighted (the selection itself is left alone, so Esc

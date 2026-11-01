@@ -757,8 +757,14 @@ impl Trial {
     }
 
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the
-    /// drawing area, with its hover description. Only reads.
+    /// drawing area, with its hover description; none while a paper-space layout is shown. Only
+    /// reads.
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
+        // Terminals are at model positions: in a paper-space layout the canvas transform is the
+        // sheet's, and nothing on it is a terminal.
+        if self.cad.session.space() != cadcraft_engine::doc::Space::Model {
+            return None;
+        }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
         if !rect.contains(at) {
             return None;
