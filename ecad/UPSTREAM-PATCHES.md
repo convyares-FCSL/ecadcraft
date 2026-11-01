@@ -20,14 +20,15 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 
 ## Code patches to upstream crates: the generic extension interface
 
-Proposal §14, capabilities X1-X7, and X8 (Tool Sets tabs supplied by the embedder, approved
-2026-10-15). One shape, one marker (`ECAD-SEAM(owner)`), nothing
+Proposal §14, capabilities X1-X7, X8 (Tool Sets tabs supplied by the embedder, approved
+2026-10-15) and X9 (overlay marks drawn by a document's owner, approved 2026-11-01 for brief 008,
+owner answer O2). One shape, one marker (`ECAD-SEAM(owner)`), nothing
 ECAD-specific: the interface passes drawings, handles, command ids and provenance. Documents
 without an owner behave exactly as before.
 
 | File | Capability | What changes |
 | --- | --- | --- |
-| `crates/engine/src/ext.rs` | X2-X7 | **new file**: `DocumentOwner` trait, `Extensions` registry, start check (`refuse_start`, `Start`: the owner may refuse a command or a LISP evaluation before it starts, added with the 0.15.1 sync), commit gate, history/save/close/drag hand-over, provenance records, owner-aware `Session::doc_unsaved`, `close_needs_prompt`, `has_unsaved_work` |
+| `crates/engine/src/ext.rs` | X2-X7, X9 | **new file**: `DocumentOwner` trait, `Extensions` registry, start check (`refuse_start`, `Start`: the owner may refuse a command or a LISP evaluation before it starts, added with the 0.15.1 sync), commit gate, history/save/close/drag hand-over, provenance records, owner-aware `Session::doc_unsaved`, `close_needs_prompt`, `has_unsaved_work`; X9: `Mark`, `MarkShape`, `DocumentOwner::overlay` (default none) and `Session::owner_overlay` (drawable marks only, at most `MAX_MARKS`; a busy or panicking owner draws none) |
 | `crates/engine/src/lib.rs` | X2-X4 | `pub mod ext`; `Session::ext` field |
 | `crates/engine/src/session/execute.rs` | X2-X4 | start check before the command runs; gate at the `execute` commit point, before LISP undo grouping, with no engine undo step for owned documents; `undo`/`redo` hand-over |
 | `crates/engine/src/session/interactive.rs` | X2, X3, X7 | start check before an interactive command begins; gate at the `finish` commit point (after the transparent-command return, before LISP undo grouping); a new top-level interactive command starts with nothing recorded; drag preview contribution |
@@ -40,10 +41,12 @@ without an owner behave exactly as before.
 | `crates/engine/src/cmd/clipboard.rs` | X6 | COPYCLIP reported with its serial; PASTECLIP provenance |
 | `crates/ui-egui/src/closing.rs` | X5 | close and quit prompts ask the session (owner-aware) |
 | `crates/ui-egui/src/chrome.rs` | X5 | file tab unsaved marker asks the session (owner-aware) |
-| `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before the drawing changes; plain drawings unaffected; a panicking check refuses and recovers) |
+| `crates/ui-egui/src/canvas.rs` | X9 | the drawing area paints the active document's overlay marks (`owner_mark_shapes`: a ring, dot or square centred on a drawing position, at a constant size on screen, after the drawing and before grips and previews); a plain drawing has none, so it is drawn as before |
+| `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before the drawing changes; plain drawings unaffected; a panicking check refuses and recovers) and overlay marks (`the_owner_draws_overlay_marks`: plain drawings have none; undrawable marks dropped; capped; busy or panicking owner draws none; asking changes nothing) |
 | `crates/engine/tests/ext_commands.rs` | tests | **new file**: extension command registration test |
 | `crates/ui-egui/src/palettes.rs` | X8 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged |
 | `crates/ui-egui/src/lib.rs` | X8 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once) |
+| `crates/ui-egui/tests/owner_overlay.rs` | tests | **new file** (X9): marks keep their screen size at every zoom and sit on their drawing position; marks off the drawing area or off any screen are left out; an owned drawing asks its owner every frame and drawing the marks changes nothing |
 | `crates/ui-egui/tests/toolsets_extra.rs` | tests | **new file**: without extra tabs Drafting and Modeling are unchanged; an extra tab shows its groups, queues a click once without starting it, and keeps the selection; a tab named like a built-in one is ignored |
 
 Not yet covered by provenance (copies through them are refused by the adapter until added):
