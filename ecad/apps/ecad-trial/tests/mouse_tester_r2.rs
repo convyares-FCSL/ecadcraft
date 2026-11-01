@@ -180,6 +180,18 @@ fn in_model(h: &Harness<'static, Trial>) -> bool {
 fn paper_space_shows_no_marks_and_no_terminal_tooltip() {
     let mut h = harness();
     let terms = scene(&mut h);
+    // Round 3: the overseer says the default view leaves the terminals off screen (and the overlay
+    // leaves off-screen marks out by design). Record that, then zoom to the scene before both the
+    // "before" and the "after" ring checks.
+    let rect = h.state().cad.canvas.rect.unwrap();
+    let on_screen = terms.iter().filter(|(_, x, y)| rect.contains(screen(&h, *x, *y))).count();
+    eprintln!(
+        "default view: {on_screen} of {} terminals on screen, {} rings painted",
+        terms.len(),
+        cyan_rings(&h).len()
+    );
+    zoom_window(&mut h, [-10.0, -20.0], [130.0, 80.0]);
+    assert_eq!(cyan_rings(&h).len(), 6, "the six rings in model space before switching");
     to_layout(&mut h, "Layout1");
     assert!(!in_model(&h), "switched to paper space");
     assert!(cyan_rings(&h).is_empty(), "rings painted in paper space");
@@ -203,6 +215,8 @@ fn paper_space_shows_no_marks_and_no_terminal_tooltip() {
     assert!(stray.is_empty(), "tooltips in paper space where nothing ECAD is drawn:\n{}", stray.join("\n"));
     to_layout(&mut h, "Model");
     assert!(in_model(&h));
+    eprintln!("back in Model without re-zooming: {} rings", cyan_rings(&h).len());
+    zoom_window(&mut h, [-10.0, -20.0], [130.0, 80.0]);
     assert_eq!(cyan_rings(&h).len(), 6, "the six rings are back in model space");
 }
 

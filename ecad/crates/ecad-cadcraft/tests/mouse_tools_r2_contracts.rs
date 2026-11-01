@@ -22,6 +22,9 @@ fn prompt(h: &H) -> String {
     h.s.current_prompt().map(|p| p.display()).unwrap_or_default()
 }
 
+/// The Add Terminal prompt that promises no number.
+const NUMBER_FREE: &str = "Specify point for a terminal on a component or [Name]:";
+
 fn shown(h: &mut H, cursor: Vec2) -> String {
     h.s.cursor = cursor;
     let p = prompt(h);
@@ -92,8 +95,10 @@ fn clicked_names_match_the_prompt_across_components_in_one_run() {
     assert_eq!(labels(&mut h, b), ["1", "2"]);
 }
 
-/// Typed points (the quick start's way): with the cursor resting in empty space, the prompt names
-/// the default the typed point then gets.
+/// Typed points (the quick start's way): with the cursor resting in empty space, whenever the
+/// prompt names a number it is the label the typed point then gets. A prompt with no number
+/// ("Specify point for a terminal …") is accepted when the default cannot be known (overseer
+/// decision, round 3).
 #[test]
 fn typed_names_match_the_prompt_with_the_cursor_in_empty_space() {
     let mut h = new_h();
@@ -108,7 +113,9 @@ fn typed_names_match_the_prompt_with_the_cursor_in_empty_space() {
         let before = labels(&mut h, c);
         h.s.cmdline(typed).unwrap();
         let added: Vec<String> = labels(&mut h, c).into_iter().filter(|x| !before.contains(x)).collect();
-        if added != [promised.clone()] {
+        assert_eq!(added.len(), 1, "{who} typed {typed}: one terminal added");
+        let number_free = promised == NUMBER_FREE;
+        if !number_free && added != [promised.clone()] {
             mismatches.push(format!("{who} typed {typed}: prompt said {promised:?}, added {added:?}"));
         }
     }
@@ -165,4 +172,56 @@ fn the_prompt_survives_hostile_cursors() {
         assert_eq!(shown(&mut h, c), "1");
     }
     h.s.cancel();
+}
+
+/// Round 3 (fix N3): the prompt names a number only when it is known. With the cursor over a
+/// component it names that component's default; in empty space it names one only when every
+/// drawn component would get the same; a typed Name is always shown.
+#[test]
+fn numbered_and_number_free_prompts_follow_the_cursor() {
+    let mut h = new_h();
+    rect(&mut h, 0.0);
+    h.s.start("addterminal").unwrap();
+    let px = h.s.pixel_size();
+    let empty = Vec2::new(500.0, 500.0);
+    let over_a = Vec2::new(20.0, -px);
+    assert_eq!(shown(&mut h, empty), "1", "one component, no terminals: 1 is known");
+    assert_eq!(shown(&mut h, over_a), "1");
+    h.s.cancel();
+    rect(&mut h, 100.0);
+    h.run("addterminal", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.s.start("addterminal").unwrap();
+    let over_b = Vec2::new(120.0, -px);
+    let cases = [
+        ("empty", empty, NUMBER_FREE),
+        ("over A", over_a, "2"),
+        ("over B", over_b, "1"),
+        ("empty again", empty, NUMBER_FREE),
+    ];
+    for (who, at, want) in cases {
+        assert_eq!(shown(&mut h, at), want, "{who}");
+    }
+    // The Name prompt's default follows the same rule.
+    h.s.cursor = empty;
+    h.s.cmdline("N").unwrap();
+    assert_eq!(prompt(&h), "Enter terminal name:", "no default promised in empty space");
+    h.s.input(Input::Enter).unwrap();
+    h.s.cursor = over_a;
+    h.s.cmdline("N").unwrap();
+    assert_eq!(prompt(&h), "Enter terminal name <2>:");
+    h.s.cmdline("K7").unwrap();
+    assert_eq!(shown(&mut h, empty), "K7", "a typed name is shown anywhere");
+    assert_eq!(shown(&mut h, over_b), "K7");
+    // Enter at a number-free Name prompt, then a typed point: the default of the component hit.
+    h.s.cancel();
+    h.s.start("addterminal").unwrap();
+    h.s.cursor = empty;
+    h.s.cmdline("N").unwrap();
+    h.s.input(Input::Enter).unwrap();
+    let d = h.doc();
+    let b = d.components.keys().copied().find(|c| d.terminals_of(*c).count() == 0).unwrap();
+    h.s.cmdline("100,10").unwrap();
+    assert_eq!(labels(&mut h, b), ["1"]);
+    h.s.cancel();
+    h.check();
 }
