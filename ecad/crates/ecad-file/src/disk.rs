@@ -3,8 +3,11 @@
 //! [`DiskProject`] binds a project to a `.ecad` file and holds its writer lock:
 //!
 //! - **Open** takes the writer lock; if another session holds it, the project opens read-only
-//!   and says who holds it. A lock file left by a session that crashed is reclaimed and reported:
-//!   the operating system releases a dead process's lock, so a crash never locks a project out.
+//!   and says who holds it (where the system can show it: not on Windows). If no lock can be
+//!   taken at all (a folder that cannot be written), or the file itself cannot be opened for
+//!   writing (a read-only file), it opens read-only and says why. A lock file left by a session
+//!   that crashed is reclaimed and reported: the operating system releases a dead process's lock,
+//!   so a crash never locks a project out.
 //! - **Save** appends with the retry rules of [`ProjectFile::save`], after checking that the file
 //!   at the path is still the one opened. Interrupted trailing bytes found at open are first
 //!   copied to a uniquely named sidecar (`<name>.tail-<offset>-<unique>`); if that copy fails,
@@ -17,8 +20,9 @@
 //!   released only after a successful replacement. The project keeps its ID (E9).
 //!
 //! Guarantees are those of the file system: relied on, and tested, on a Linux file system
-//! (including the Linux home directory under WSL). Others, including Windows drives under WSL,
-//! are unverified.
+//! (including the Linux home directory under WSL) and on NTFS under native Windows. Others are
+//! unverified: FAT and exFAT drives, network shares, and Windows drives under WSL. How Windows
+//! differs is listed in [`ecad_store::disk`].
 
 use std::path::{Path, PathBuf};
 
@@ -42,6 +46,9 @@ pub struct StepFaults {
     pub fail_rename: bool,
     /// Flushing the folder after the rename (or when confirming a pending one) fails.
     pub fail_dir_sync: bool,
+    /// Flushing the folder after the rename is not available, as on a system without a way to
+    /// flush a folder ([`disk::folder_flush_unavailable`]).
+    pub dir_sync_unavailable: bool,
     /// Writing the sidecar that preserves interrupted trailing bytes fails.
     pub fail_sidecar: bool,
 }
@@ -53,17 +60,32 @@ pub enum ReadOnly {
     Damaged,
     /// Another session is editing the file (it holds the writer lock).
     Locked {
-        /// What that session recorded about itself.
+        /// What that session recorded about itself; always `None` where the system cannot show
+        /// it ([`ecad_store::disk::HOLDER_SHOWN`]: not on Windows).
         holder: Option<String>,
     },
+    /// No writer lock could be taken (for example the folder cannot be written), so nothing is
+    /// known about other sessions; this is not another session editing.
+    NoLock(String),
+    /// The file itself cannot be opened for writing (a read-only file, or one this user may not
+    /// change).
+    NotWritable(String),
 }
+
+/// Added wherever another session is said to be editing a file: the lock of a session that has
+/// just ended (or was killed) can take a moment to be released, notably on Windows.
+pub const JUST_ENDED: &str =
+    "if that session has just ended, it may take a moment to release the file; try again shortly";
 
 impl std::fmt::Display for ReadOnly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ReadOnly::Damaged => f.write_str("the file is damaged and is kept exactly as it is"),
-            ReadOnly::Locked { holder: Some(h) } => write!(f, "another session is editing it ({h})"),
-            ReadOnly::Locked { holder: None } => f.write_str("another session is editing it"),
+            ReadOnly::Locked { holder } => {
+                write!(f, "another session is editing it{}; {JUST_ENDED}", holder_text(holder.as_deref()))
+            }
+            ReadOnly::NoLock(e) => write!(f, "no writer lock could be taken ({e}), so it cannot be saved safely"),
+            ReadOnly::NotWritable(e) => write!(f, "the file cannot be written ({e})"),
         }
     }
 }
@@ -73,8 +95,9 @@ impl std::fmt::Display for ReadOnly {
 pub enum Durability {
     /// Flushed and its folder entry flushed: acknowledged.
     Confirmed,
-    /// It replaced its target, but the folder flush failed: after a crash the folder could show
-    /// the old or the new file. Nothing is acknowledged; the next Save confirms it first.
+    /// It replaced its target, but the folder flush failed or is not available: after a crash the
+    /// folder could show the old or the new file. Nothing is acknowledged; the next Save confirms
+    /// it first. Never `Confirmed` without a flush that ran and succeeded.
     Unconfirmed(String),
 }
 
@@ -82,7 +105,7 @@ pub enum Durability {
 /// unchanged and nothing more is acknowledged than before.
 #[derive(Debug, thiserror::Error)]
 pub enum DiskError {
-    #[error("not saved: {path} is being edited in another session{holder}; nothing was written")]
+    #[error("not saved: {path} is being edited in another session{holder}; nothing was written ({JUST_ENDED})")]
     TargetLocked { path: String, holder: String },
     #[error("not saved: {step} failed ({error}); the existing file is unchanged{cleanup}")]
     BeforeReplacement { step: &'static str, error: String, cleanup: String },
@@ -123,6 +146,8 @@ pub struct DiskProject {
     file: ProjectFile<FileMedium>,
     lock: Option<WriterLock>,
     read_only: Option<ReadOnly>,
+    /// The identity of the file opened or written; `None` if it could not be read, which makes
+    /// the project read-only ([`ReadOnly::NotWritable`]).
     identity: Option<FileIdentity>,
     /// Written and renamed into place, but the folder flush has not been confirmed.
     unconfirmed: bool,
@@ -154,8 +179,18 @@ pub fn utc(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02} UTC", rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
+/// ` (holder)`, or where the holder cannot be shown at all, a note saying so.
 fn holder_text(holder: Option<&str>) -> String {
-    holder.map(|h| format!(" ({h})")).unwrap_or_default()
+    match holder {
+        Some(h) => format!(" ({h})"),
+        None if !ecad_store::disk::HOLDER_SHOWN => " (Windows does not say which session)".into(),
+        None => String::new(),
+    }
+}
+
+/// Why a file without a readable identity is not written: a replacement could not be noticed.
+fn no_identity(e: &std::io::Error) -> ReadOnly {
+    ReadOnly::NotWritable(format!("its identity could not be read ({e}), so a replacement could not be noticed"))
 }
 
 fn show(p: &Path) -> String {
@@ -164,7 +199,7 @@ fn show(p: &Path) -> String {
 
 /// Remove a temporary file after a failed Save As; the text of a failure to do so.
 fn clean_up(temp: &Path) -> String {
-    match std::fs::remove_file(temp) {
+    match disk::remove_file(temp) {
         Ok(()) => String::new(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => format!("; the temporary file {} could not be removed ({e})", show(temp)),
@@ -173,6 +208,12 @@ fn clean_up(temp: &Path) -> String {
 
 fn injected(what: &str) -> std::io::Error {
     std::io::Error::other(format!("injected {what} failure"))
+}
+
+/// Whether opening a file for writing failed because it may not be written (rather than, say,
+/// because it is missing).
+fn not_writable(e: &std::io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem)
 }
 
 /// Whether `a` and `b` name the same existing file.
@@ -233,13 +274,16 @@ impl DiskProject {
         if durability == Durability::Confirmed {
             file.acknowledge(ledger)?;
         }
-        let identity = file.medium().identity().ok().flatten();
+        let (identity, read_only) = match file.medium().identity() {
+            Ok(id) => (Some(id), None),
+            Err(e) => (None, Some(no_identity(&e))),
+        };
         let unconfirmed = durability != Durability::Confirmed;
         let me = Self {
             path: path.to_path_buf(),
             file,
             lock: Some(lock),
-            read_only: None,
+            read_only,
             identity,
             unconfirmed,
             preserved: None,
@@ -249,7 +293,8 @@ impl DiskProject {
     }
 
     /// Open the project file at `path`: take its writer lock (read-only if another session holds
-    /// it) and read it (read-only if damaged, §20.6). `seed` seeds transaction IDs.
+    /// it, or if no lock can be taken), open it for writing (read-only if it cannot be written)
+    /// and read it (read-only if damaged, §20.6). `seed` seeds transaction IDs.
     ///
     /// # Errors
     /// [`DiskError::Open`]: the file cannot be read, or has no valid, supported header.
@@ -258,14 +303,31 @@ impl DiskProject {
         if !path.is_file() {
             return Err(open_err("there is no file there".into()));
         }
-        let (lock, read_only, reclaimed_lock) = match WriterLock::try_acquire(path, &holder_record(writer)) {
+        let (mut lock, mut read_only, reclaimed_lock) = match WriterLock::try_acquire(path, &holder_record(writer)) {
             Ok(LockAttempt::Acquired { lock, leftover }) => (Some(lock), None, leftover),
             Ok(LockAttempt::HeldByOther { holder }) => (None, Some(ReadOnly::Locked { holder }), None),
             // A folder we cannot create a lock file in: the file can still be read, not written.
-            Err(e) => (None, Some(ReadOnly::Locked { holder: Some(format!("no lock could be taken: {e}")) }), None),
+            Err(e) => (None, Some(ReadOnly::NoLock(e.to_string())), None),
         };
-        let medium = FileMedium::open(path, lock.is_some()).map_err(|e| open_err(e.to_string()))?;
-        let identity = medium.identity().ok().flatten();
+        let medium = match FileMedium::open(path, lock.is_some()) {
+            Ok(m) => m,
+            // A read-only file (or one this user may not change): read it, and leave the lock to
+            // a session that can write.
+            Err(e) if lock.is_some() && not_writable(&e) => {
+                lock = None;
+                read_only = Some(ReadOnly::NotWritable(e.to_string()));
+                FileMedium::open(path, false).map_err(|e| open_err(e.to_string()))?
+            }
+            Err(e) => return Err(open_err(e.to_string())),
+        };
+        let identity = match medium.identity() {
+            Ok(id) => Some(id),
+            Err(e) => {
+                lock = None;
+                read_only = read_only.or(Some(no_identity(&e)));
+                None
+            }
+        };
         let (file, ledger, report) = ProjectFile::open(medium, seed).map_err(|e: OpenError| open_err(e.to_string()))?;
         let read_only = read_only.or((report.access == Access::ReadOnly).then_some(ReadOnly::Damaged));
         let project = Self {
@@ -290,8 +352,8 @@ impl DiskProject {
             return Err(DiskError::ReadOnly(r.clone()));
         }
         // The file at the path must still be the one this project wrote or opened.
-        match FileIdentity::at(&self.path) {
-            Ok(id) if id == self.identity => {}
+        match (&self.identity, FileIdentity::at(&self.path)) {
+            (Some(ours), Ok(now)) if *ours == now => {}
             _ => return Err(DiskError::Replaced(show(&self.path))),
         }
         if self.unconfirmed {
@@ -449,6 +511,8 @@ fn write_and_replace(
     file.medium_mut().renamed_to(path);
     let synced = if std::mem::take(&mut faults.fail_dir_sync) {
         Err(injected("folder flush"))
+    } else if std::mem::take(&mut faults.dir_sync_unavailable) {
+        Err(disk::folder_flush_unavailable())
     } else {
         disk::sync_dir(&disk::parent_dir(path))
     };
