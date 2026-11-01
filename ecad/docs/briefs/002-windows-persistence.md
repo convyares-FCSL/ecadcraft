@@ -1,6 +1,6 @@
 # Brief 002: Windows persistence equivalents
 
-Status: Draft (overseer, 2026-10-31)
+Status: Approved (owner, 2026-11-01)
 Branch: `ecad/windows-persistence`
 Designer: no · Size: M
 Depends on: 001 (to prove it on a Windows runner)
