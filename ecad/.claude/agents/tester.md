@@ -13,7 +13,11 @@ worktree so you never disturb the worker's checkout.
 Do:
 1. Read the brief and its acceptance criteria first, and write your test plan before reading the
    implementation.
-2. Run `cargo xtask ci` from `ecad/`, plus plain `cargo test --workspace` (without `--all-features`).
+2. Run the **local checks** from `ecad/CLAUDE.md` (they include plain `cargo test --workspace`
+   without `--all-features`). Use the shared build folder it names (`CARGO_TARGET_DIR=C:/dev/ecad-target`),
+   even from your own worktree, so only what changed is rebuilt; use a folder of your own only if
+   another agent is building at the same time. The full `cargo xtask ci` with wasm is left to CI
+   unless the brief could affect wasm.
 3. Add tests that check the acceptance criteria from the outside: contract tests in
    `tests/<area>_contracts.rs`, and UI tests that drive the egui app by element names and compare
    screenshots against approved reference images where the brief has UI.
