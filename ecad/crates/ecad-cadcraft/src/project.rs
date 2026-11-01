@@ -1210,6 +1210,11 @@ impl DocumentOwner for Project {
         self.following_routes(page, &|t| moved.get(&t).copied())
     }
 
+    /// Terminal rings and wire-end marks over an open page (brief 008, design §4.1).
+    fn overlay(&self, _s: &Session, uid: u64) -> Vec<cadcraft_engine::ext::Mark> {
+        crate::interact::overlay_marks(self, uid)
+    }
+
     fn recover(&mut self, s: &mut Session) {
         let pg = &mut Pages(s);
         // Rebuild every open page from the authoritative document with fresh maps.

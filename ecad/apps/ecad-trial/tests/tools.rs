@@ -1,6 +1,7 @@
 //! The ECAD group in CADCraft's Tool Sets panel: it lists only implemented commands, a click is
-//! handled once through the ordinary command path (validation, transaction, undo), Convert uses
-//! the selection, and templates fill the Command field without running their placeholders.
+//! handled once through the ordinary command path (validation, transaction, undo), the six
+//! interactive tools start their prompts (brief 008), Convert uses the selection or asks for one,
+//! and templates fill the Command field without running their placeholders.
 
 use cadcraft_engine::doc::{EntityKind, Handle};
 use ecad_trial::Trial;
@@ -60,6 +61,11 @@ fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
         assert!(seen.insert(t.id), "{} is unique", t.id);
         assert!(!t.label.is_empty() && !t.tooltip.is_empty());
         let line = match t.kind {
+            Kind::Start(command) => {
+                let spec = cadcraft_engine::find_command(command).unwrap();
+                assert!(spec.interactive.is_some(), "{} starts an interactive form", t.id);
+                command.to_string()
+            }
             Kind::Run(line) => line.to_string(),
             Kind::Template => tools::template(t.id, &tools::Picked::default()).unwrap().0,
         };
@@ -99,11 +105,47 @@ fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
 }
 
 #[test]
-fn convert_with_nothing_selected_is_refused_by_the_command_itself() {
+fn convert_with_nothing_selected_asks_to_select_objects() {
     let mut t = trial();
     let before = head(&mut t);
-    assert!(t.tool("ecad.convertcomponent").is_err());
-    assert_eq!(head(&mut t), before, "nothing recorded");
+    t.tool("ecad.convertcomponent").unwrap();
+    assert_eq!(t.cad.session.current_prompt().unwrap().display(), "Select objects to convert to a component:");
+    assert_eq!(head(&mut t), before, "nothing recorded yet");
+    t.cad.session.cancel();
+    assert!(t.cad.session.running.is_none());
+    assert_eq!(head(&mut t), before, "Esc records nothing");
+}
+
+/// Design 008 check A: each interactive button starts its form at its first prompt, with nothing
+/// left in the Command field and no template note, even when a template was waiting there.
+#[test]
+fn the_interactive_buttons_start_their_prompts() {
+    let mut h = harness(trial());
+    h.get_by_label(tools::TAB).click();
+    h.run_steps(3);
+    let firsts = [
+        ("Convert to Component", "convertcomponent", "Select objects to convert to a component:"),
+        ("Add Terminal", "addterminal", "Specify point for terminal 1 on a component or [Name]:"),
+        ("Place Symbol", "place", "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:"),
+        ("Wire", "wire", "Specify first point of wire:"),
+        ("Connect", "connect", "Select wire near the end to connect:"),
+        ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
+    ];
+    for (label, id, first) in firsts {
+        h.state_mut().tool("ecad.newpage").unwrap();
+        assert!(h.state().command_hint().is_some(), "a template waits in the field");
+        // Its note moves the panel below it: lay out once before clicking by position.
+        h.run_steps(2);
+        let before = head(h.state_mut());
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        let t = h.state_mut();
+        assert_eq!(t.cad.session.running.as_ref().map(|r| r.id.as_str()), Some(id), "{label}");
+        assert_eq!(t.cad.session.current_prompt().unwrap().display(), first, "{label}");
+        assert!(t.command.is_empty() && t.command_hint().is_none(), "{label}: the field is cleared");
+        assert_eq!(head(t), before, "{label}: starting records nothing");
+        t.cad.session.cancel();
+    }
 }
 
 #[test]
@@ -114,20 +156,20 @@ fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
     let before = head(h.state_mut());
     let selection = vec![Handle(0x7777)];
     h.state_mut().cad.session.set_selection(selection.clone());
-    h.get_by_label("Wire").click();
+    h.get_by_label("New Page").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.command, r#"wire {"points":[[<x1>,<y1>],[<x2>,<y2>]]}"#);
-    assert!(t.command_hint().unwrap().starts_with("Wire:"));
+    assert_eq!(t.command, r#"newpage {"title":"<title>"}"#);
+    assert!(t.command_hint().unwrap().starts_with("New Page:"));
     assert_eq!(head(t), before, "nothing ran");
     assert_eq!(t.cad.session.selection(), selection, "the selection is left as it was");
     // Pressing Enter on the unedited template is refused.
     let line = t.command.clone();
     let e = t.submit_command(&line).unwrap();
-    assert!(e.contains("Replace the placeholders first") && e.contains("<x1>"), "{e}");
+    assert!(e.contains("Replace the placeholders first") && e.contains("<title>"), "{e}");
     assert_eq!(head(t), before);
     // Edited, it runs through the ordinary path and the note goes away.
-    assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
+    assert!(t.submit_command(r#"newpage {"title":"2"}"#).is_none());
     assert_eq!(head(t), before + 1);
     assert!(t.command_hint().is_none());
 }
@@ -213,9 +255,13 @@ fn a_command_waiting_at_a_prompt_is_cancelled_first() {
     assert_eq!(doc(&mut t).components.len(), 1);
     // A template is not handed to a running command either.
     assert!(t.submit_command("line").is_none());
-    t.tool("ecad.wire").unwrap();
+    t.tool("ecad.setprop").unwrap();
     assert!(t.cad.session.running.is_none());
-    assert!(t.command.starts_with("wire "));
+    assert!(t.command.starts_with("setprop "));
+    // And an interactive tool replaces the waiting command.
+    assert!(t.submit_command("line").is_none());
+    t.tool("ecad.wire").unwrap();
+    assert_eq!(t.cad.session.running.as_ref().unwrap().id, "wire");
 }
 
 #[test]

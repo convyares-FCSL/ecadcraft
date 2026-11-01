@@ -1,12 +1,14 @@
 //! The **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling: buttons for the
-//! ECAD commands implemented so far, as a convenience for manual testing. It is not a new command
-//! system and has no interactive tools of its own.
+//! ECAD commands implemented so far. It is not a new command system: every button reaches the
+//! command itself.
 //!
 //! CADCraft shows the tab and queues clicks (`CadApp::extra_tool_tabs`,
 //! `CadApp::take_tool_requests`); everything ECAD about it is here:
+//! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
+//!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
+//!   Component converts the current selection at once, or asks to select objects.
 //! - **Run** buttons type the command into the same path as the banner's Command field, so the
-//!   command's own validation, transaction and undo apply. Convert to Component uses the current
-//!   selection.
+//!   command's own validation, transaction and undo apply.
 //! - **Template** buttons put an editable command line in the Command field, with a short note
 //!   on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
@@ -28,6 +30,8 @@ pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit", "Pages", "Inspect"
 /// What a button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
+    /// Start this command's interactive form (its prompts appear at the command line).
+    Start(&'static str),
     /// Run this command line now (it needs no values beyond the selection).
     Run(&'static str),
     /// Prefill the Command field with a template.
@@ -51,43 +55,43 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.convertcomponent",
         group: "Components",
         label: "Convert to Component",
-        tooltip: "Make the selected drawing objects one component (runs now)",
-        kind: Kind::Run("convertcomponent"),
+        tooltip: "Make drawing objects one component (uses the selection, or asks you to select)",
+        kind: Kind::Start("convertcomponent"),
     },
     Tool {
         id: "ecad.addterminal",
         group: "Components",
         label: "Add Terminal",
-        tooltip: "Add a terminal to a component at a point (fills in the Command field)",
-        kind: Kind::Template,
+        tooltip: "Click on a component's outline to add terminals; Enter to finish",
+        kind: Kind::Start("addterminal"),
     },
     Tool {
         id: "ecad.place",
         group: "Components",
         label: "Place Symbol",
-        tooltip: "Place a coil symbol component (fills in the Command field)",
-        kind: Kind::Template,
+        tooltip: "Place coil symbols by clicking; R rotates, M mirrors; Enter to finish",
+        kind: Kind::Start("place"),
     },
     Tool {
         id: "ecad.wire",
         group: "Wiring",
         label: "Wire",
-        tooltip: "Draw a wire; ends on terminals attach (fills in the Command field)",
-        kind: Kind::Template,
+        tooltip: "Click points to draw a wire; ends on terminals attach; Enter to finish",
+        kind: Kind::Start("wire"),
     },
     Tool {
         id: "ecad.connect",
         group: "Wiring",
         label: "Connect",
-        tooltip: "Attach a wire end to a terminal (fills in the Command field)",
-        kind: Kind::Template,
+        tooltip: "Click a wire near its end, then a terminal",
+        kind: Kind::Start("connect"),
     },
     Tool {
         id: "ecad.disconnect",
         group: "Wiring",
         label: "Disconnect",
-        tooltip: "Detach a wire end (fills in the Command field)",
-        kind: Kind::Template,
+        tooltip: "Click a wire near an attached end to detach it",
+        kind: Kind::Start("disconnect"),
     },
     Tool {
         id: "ecad.setprop",
@@ -225,45 +229,12 @@ fn one<T: Copy>(v: &[T]) -> Option<T> {
     }
 }
 
-/// The template line and its note for a template tool (`None` for a run tool or an unknown id).
+/// The template line and its note for a template tool (`None` for a start or run tool, or an unknown
+/// id).
 pub fn template(id: &str, picked: &Picked) -> Option<(String, &'static str)> {
-    let hex_or = |v: Option<String>, placeholder: &str| v.unwrap_or_else(|| placeholder.to_string());
     let component = one(&picked.components).map(ComponentId::hex);
     let conductor = one(&picked.conductors).map(ConductorId::hex);
-    let terminal = one(&picked.terminals).map(TerminalId::hex);
     Some(match id {
-        "ecad.addterminal" => (
-            format!(
-                r#"addterminal {{"handle":"{}","at":[<x>,<y>]}}"#,
-                hex_or(one(&picked.handles).map(|h| h.hex()), "<handle>")
-            ),
-            "Add Terminal: handle = one object of the component (select it first to fill it in); at = where the \
-terminal goes. Replace the <placeholders>, then press Enter.",
-        ),
-        "ecad.place" => (
-            r#"place {"at":[<x>,<y>],"rotation":0}"#.to_string(),
-            "Place Symbol: at = insertion point; rotation in degrees (optional). Replace the <placeholders>, then \
-press Enter.",
-        ),
-        "ecad.wire" => (
-            r#"wire {"points":[[<x1>,<y1>],[<x2>,<y2>]]}"#.to_string(),
-            "Wire: two or more points; an end placed on a terminal attaches to it. Replace the <placeholders> (add \
-points as needed), then press Enter.",
-        ),
-        "ecad.connect" => (
-            format!(
-                r#"connect {{"conductor":"{}","end":"<A or B>","terminal":"{}"}}"#,
-                hex_or(conductor, "<conductor id>"),
-                hex_or(terminal, "<terminal id>")
-            ),
-            "Connect: which wire end (A = first point, B = last) goes to which terminal. Select the wire and a \
-terminal marker to fill in their IDs, or find them with Inspect Project. Then press Enter.",
-        ),
-        "ecad.disconnect" => (
-            format!(r#"disconnect {{"conductor":"{}","end":"<A or B>"}}"#, hex_or(conductor, "<conductor id>")),
-            "Disconnect: which wire end to detach (A = first point, B = last). Select the wire to fill in its ID. \
-Then press Enter.",
-        ),
         "ecad.setprop" => {
             let target = match (component, conductor) {
                 (Some(c), None) => format!(r#""component":"{c}""#),
