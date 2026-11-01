@@ -348,6 +348,12 @@ edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
    ~/ecadcraft/ecad/target/release/ecad-trial ~/ecad-projects/demo.ecad
    ```
 
+   On native Windows (PowerShell):
+
+   ```powershell
+   C:\dev\ecadcraft\ecad\target\release\ecad-trial.exe C:\dev\ecad-projects\demo.ecad
+   ```
+
    Expected: it opens read-only and says that another session is editing it. Save is refused
    there; Save As can save a copy under another name.
 7. **Files beside the project.**
@@ -464,11 +470,14 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     cursor. With the cursor off every component it names a number only when all components on
     the page would get the same one; otherwise it says `Specify point for a terminal on a
     component`, and a typed point gets the smallest unused number of the component it lands on.
-  - ECAD objects are drawn in the Model tab only. In a paper-space layout (Layout1 …) the six
+  - ECAD objects are drawn in the Model tab only. In a paper-space layout (Layout1 …), also while
+    working inside one of its viewports, the six
     tools refuse to start (`Switch to the Model tab to draw ECAD objects.`), a tool already
     running refuses points and picks there, and no terminal marks or terminal tooltips are
     shown.
   - The preview name reads `-> A1` (the drafting font has no arrow character).
+  - Terminal and wire-end marks are drawn only in the main drawing area, not in the other tiled
+    model-space views (VPORTS), and only on the Model tab.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
   - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page and Open
@@ -480,7 +489,7 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   `C:\dev\ecad-projects` and type the full path in Save As; two known gaps are open there (the
   holder of a lock cannot be named, R-M4; a file replaced behind an open project is not detected,
   R-S1). Other file systems, including Windows drives under `/mnt`,
-  network drives and native Windows or macOS builds, are **unverified**: file locking and the
+  network drives and macOS builds, are **unverified**: file locking and the
   durability guarantees are not known to hold there.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.

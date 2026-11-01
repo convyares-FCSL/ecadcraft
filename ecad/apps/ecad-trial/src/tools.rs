@@ -69,7 +69,7 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.place",
         group: "Components",
         label: "Place Symbol",
-        tooltip: "Place coil symbols by clicking; R rotates, M mirrors; Enter to finish",
+        tooltip: "Place coil symbols by clicking; R then Enter rotates, M then Enter mirrors; Enter to finish",
         kind: Kind::Start("place"),
     },
     Tool {

@@ -102,6 +102,10 @@ pub struct Faults {
     /// The next ECAD command panics before committing (`fault-injection` feature only).
     #[cfg(feature = "fault-injection")]
     pub panic_in_command: bool,
+    /// While set, the prompts and previews of the interactive forms panic (`fault-injection`
+    /// feature only).
+    #[cfg(feature = "fault-injection")]
+    pub panic_in_form_preview: bool,
 }
 
 /// Whether a project can be saved, and how.
@@ -1211,10 +1215,11 @@ impl DocumentOwner for Project {
     }
 
     /// Terminal rings and wire-end marks over an open page (brief 008, design §4.1).
-    /// Only while model space is shown: the marks are at model positions, and a paper-space layout
-    /// shows the page at another place and scale (or not at all).
+    /// Only while the Model tab is shown: the marks are at model positions, and a paper-space
+    /// layout (also while working in one of its viewports) shows the page at another place and
+    /// scale, or not at all.
     fn overlay(&self, s: &Session, uid: u64) -> Vec<cadcraft_engine::ext::Mark> {
-        if s.space() != cadcraft_engine::doc::Space::Model {
+        if s.layout_space() != cadcraft_engine::doc::Space::Model {
             return Vec::new();
         }
         crate::interact::overlay_marks(self, uid)

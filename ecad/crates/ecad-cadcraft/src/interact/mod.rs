@@ -46,9 +46,10 @@ pub const OUT_OF_RANGE: &str = "Point out of range.";
 /// Refusal while a paper-space layout is shown: ECAD objects live in the page's model space.
 pub const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
 
-/// Whether the page's model space is shown (not a paper-space layout).
+/// Whether the Model tab is shown: not a paper-space layout, nor a viewport of one (where
+/// `Session::space` reports model space but the canvas shows the sheet).
 pub(crate) fn model_space(s: &Session) -> bool {
-    s.space() == cadcraft_engine::doc::Space::Model
+    s.layout_space() == cadcraft_engine::doc::Space::Model
 }
 
 /// Canvas colours (design tokens, ACI on the dark canvas).

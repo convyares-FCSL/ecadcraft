@@ -46,6 +46,62 @@ fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -> R<Step>) 
     }
 }
 
+/// A form whose prompt and previews are guarded too. The engine's own guard would mark a form
+/// whose `prompt` or `preview` panicked as broken and end it at the next input by putting back
+/// the drawing from before the command, behind objects this run already committed. Here such a
+/// panic gives a plain prompt or no preview instead; `input` and `begin` are guarded by
+/// [`safely`].
+struct Safe<M>(M);
+
+/// The prompt shown when a form's own prompt failed.
+fn fallback_prompt() -> Prompt {
+    Prompt::new("Internal error in this prompt; press Enter or Esc to end the command", Accept::POINT)
+}
+
+/// Fault injection (`fault-injection` feature): while set, prompts and previews of the forms panic.
+#[cfg(feature = "fault-injection")]
+fn injected_fault(s: &Session) {
+    if read(s, |p, _| Ok(p.faults.panic_in_form_preview)).unwrap_or(false) {
+        crate::fault_panic();
+    }
+}
+
+#[cfg(not(feature = "fault-injection"))]
+fn injected_fault(_s: &Session) {}
+
+impl<M: Interactive> Interactive for Safe<M> {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+    fn prompt(&self, s: &Session) -> Prompt {
+        catch_unwind(AssertUnwindSafe(|| {
+            injected_fault(s);
+            self.0.prompt(s)
+        }))
+        .unwrap_or_else(|_| fallback_prompt())
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        self.0.input(s, i)
+    }
+    fn begin(&mut self, s: &mut Session) -> R<Step> {
+        self.0.begin(s)
+    }
+    fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
+        catch_unwind(AssertUnwindSafe(|| {
+            injected_fault(s);
+            self.0.preview(s, cursor)
+        }))
+        .unwrap_or_default()
+    }
+    fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
+        catch_unwind(AssertUnwindSafe(|| {
+            injected_fault(s);
+            self.0.preview_objects(s, cursor)
+        }))
+        .unwrap_or_default()
+    }
+}
+
 /// Commit the command's JSON form with resolved values: the same path as `name {json}` typed at
 /// `Command:` (start check, transaction, refresh, commit gate).
 fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
@@ -82,7 +138,7 @@ fn end_name(e: End) -> &'static str {
 /// `addterminal`: click on a component's outline to add a terminal there; repeat until Enter.
 pub(crate) fn addterminal(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(AddTerminal::default()))
+    Ok(Box::new(Safe(AddTerminal::default())))
 }
 
 #[derive(Default)]
@@ -227,7 +283,7 @@ impl Interactive for AddTerminal {
 /// until Enter.
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Place::default()))
+    Ok(Box::new(Safe(Place::default())))
 }
 
 #[derive(Default)]
@@ -348,7 +404,7 @@ impl Interactive for Place {
 /// point (or Enter) commits the wire.
 pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Wire::default()))
+    Ok(Box::new(Safe(Wire::default())))
 }
 
 #[derive(Default)]
@@ -481,13 +537,13 @@ impl Interactive for Wire {
 /// `connect`: pick a wire near the end, then a terminal; repeat until Enter.
 pub(crate) fn connect(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Link { connect: true, end: None }))
+    Ok(Box::new(Safe(Link { connect: true, end: None })))
 }
 
 /// `disconnect`: pick a wire near an attached end; repeat until Enter.
 pub(crate) fn disconnect(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Link { connect: false, end: None }))
+    Ok(Box::new(Safe(Link { connect: false, end: None })))
 }
 
 const NOT_WIRE: &str = "That is not a wire.";
@@ -604,7 +660,7 @@ impl Interactive for Link {
 /// conversion of what was selected.
 pub(crate) fn convert(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Convert::default()))
+    Ok(Box::new(Safe(Convert::default())))
 }
 
 #[derive(Default)]

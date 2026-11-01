@@ -629,3 +629,30 @@ fn a_click_lands_on_the_outline_nearest_the_cursor() {
     assert_eq!(interact::valid_name(""), None);
     assert_eq!(interact::valid_name(&"x".repeat(65)), None);
 }
+
+/// Review fix 2: a panic in a form's prompt or preview (injected) gives a plain prompt and no
+/// preview; the run goes on, and nothing it committed vanishes from the page (the engine's guard
+/// would otherwise end the form at the next input by putting back the drawing from before it).
+#[cfg(feature = "fault-injection")]
+#[test]
+fn a_panic_in_a_prompt_or_preview_keeps_what_the_run_committed() {
+    let mut h = new_h();
+    quick(&mut h);
+    start(&mut h, "addterminal");
+    typed(&mut h, "0,10");
+    let one = h.head();
+    h.cfg(|p| p.faults.panic_in_form_preview = true);
+    let shown = prompt(&h);
+    assert!(shown.starts_with("Internal error in this prompt"), "{shown}");
+    assert!(h.s.preview(Vec2::new(0.0, 5.0)).is_empty(), "no preview, no panic");
+    // The next input still works and adds to the run; the earlier terminal stays.
+    typed(&mut h, "0,5");
+    assert!(h.s.running.is_some(), "the form was not ended as broken");
+    assert_eq!(h.head(), one + 1);
+    h.cfg(|p| p.faults.panic_in_form_preview = false);
+    typed(&mut h, "");
+    assert!(h.s.running.is_none());
+    let c = only_component_drawn(&h.doc());
+    assert_eq!(h.doc().terminals_of(c).count(), 3, "40,10 from the scene, then 0,10 and 0,5");
+    h.check();
+}

@@ -760,9 +760,9 @@ impl Trial {
     /// drawing area, with its hover description; none while a paper-space layout is shown. Only
     /// reads.
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
-        // Terminals are at model positions: in a paper-space layout the canvas transform is the
-        // sheet's, and nothing on it is a terminal.
-        if self.cad.session.space() != cadcraft_engine::doc::Space::Model {
+        // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
+        // canvas shows the sheet, and nothing on it is a terminal.
+        if self.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
             return None;
         }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
@@ -812,8 +812,10 @@ impl Trial {
         };
         self.hovered = Some((h, since));
         if now - since < self.hover_delay {
-            let wait = (self.hover_delay - (now - since)).max(0.01);
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(wait));
+            // A hostile delay (NaN, infinite, huge) never panics: it falls back to a short wait.
+            let wait = std::time::Duration::try_from_secs_f64((self.hover_delay - (now - since)).clamp(0.01, 3600.0))
+                .unwrap_or(std::time::Duration::from_millis(10));
+            ctx.request_repaint_after(wait);
             return;
         }
         if self.hover.is_none() {
