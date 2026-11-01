@@ -17,6 +17,7 @@
 
 use std::path::PathBuf;
 
+use cadcraft_ui_egui::switch::Switch;
 use ecad_trial::{TITLE, Trial};
 use eframe::egui;
 
@@ -27,7 +28,7 @@ impl eframe::App for App {
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        self.0.cad.raw_input_hook(raw);
+        self.0.cad.raw_input_hook(ctx, raw);
         cadcraft_ui_egui::cmdline::capture_tab(ctx, raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -46,6 +47,9 @@ ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwis
 project. Save and Save As write .ecad project files; keep them in your Linux home folder.\n\
 --snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
 See ecad/docs/quick-start.md.";
+
+/// Stencil bits of the window's render pass, as in CADCraft's desktop app (the canvas needs them).
+const STENCIL_BITS: u8 = 8;
 
 fn main() -> eframe::Result {
     let mut snapshots = None;
@@ -82,7 +86,7 @@ fn main() -> eframe::Result {
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
     let surface = cadcraft_ui_egui::gpu::surface_config(
-        std::env::var("CADCRAFT_VSYNC").ok().as_deref(),
+        Switch::parse("CADCRAFT_VSYNC", std::env::var("CADCRAFT_VSYNC").ok().as_deref()),
         cfg!(all(unix, not(target_os = "macos"))),
     );
     let mut options = eframe::NativeOptions {
@@ -92,6 +96,7 @@ fn main() -> eframe::Result {
             .with_inner_size([1400.0, 900.0])
             .with_min_inner_size([900.0, 560.0]),
         persist_window: false,
+        stencil_buffer: STENCIL_BITS,
         ..Default::default()
     };
     // As in CADCraft's desktop app: large command previews outgrow wgpu's default buffer cap.
@@ -112,7 +117,7 @@ fn main() -> eframe::Result {
                 None => Trial::new(snapshots)?,
             };
             if let Some(rs) = &cc.wgpu_render_state {
-                trial.cad.set_wgpu(rs);
+                trial.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }
             Ok(Box::new(App(trial)))
         }),

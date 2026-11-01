@@ -271,8 +271,9 @@ mod tests {
         let mut s = Session::empty();
         let handle = Project::create(&mut s, "P", 1).unwrap();
         let held = handle.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The engine's start check finds the owner held and refuses before the command runs.
         let r = s.execute("wire", &serde_json::json!({"points": [[0, 0], [10, 0]]}));
-        assert!(r.is_err_and(|e| e.to_string().contains(BUSY)));
+        assert!(r.is_err_and(|e| e.to_string().contains("busy (re-entrant call)")));
         assert_eq!(handle.read(&mut s, |_, _| ()).err().as_deref(), Some(BUSY));
         assert_eq!(handle.snapshot(&mut s, None).err().as_deref(), Some(BUSY));
         drop(held);

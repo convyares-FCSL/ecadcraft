@@ -1,6 +1,8 @@
-//! Blocks: BLOCK, INSERT, ATTDEF, ATTEDIT (programmatic), WBLOCK, BASE, PURGE, block listing.
+//! Blocks: BLOCK, INSERT, ATTDEF, ATTEDIT (programmatic), WBLOCK, BASE, PURGE, block listing, the
+//! Block Editor.
 
-mod purge;
+pub(crate) mod bedit;
+pub(in crate::cmd) mod purge;
 
 use std::sync::Arc;
 
@@ -10,23 +12,29 @@ use serde_json::{Value, json};
 
 use super::helpers::v3;
 use super::machines::{SelOutcome, SelectPhase, number};
-use super::*;
+use super::{CommandSpec, bad, bool_or, f64_or, find_command, ok, point_param, point_req, point_value, str_param, targets};
+
+use super::has_doc;
 use crate::{Accept, EngineError, Input, Interactive, Prompt, Result, Session, Step};
 
 mod attedit;
+mod burst;
+mod description;
+mod dyngrip;
 mod extract;
+pub(crate) mod refedit;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("block", "Make...", run_block)
             .menu(&["Draw", "Block", "Make..."])
             .alias(&["b", "bmake"])
-            .params("{name, base: [x,y], handles?, keep?: \"convert\"|\"retain\"|\"delete\" (default \"convert\"), description?, annotative?}")
+            .params("{name, base: [x,y], handles?, keep?: \"convert\"|\"retain\"|\"delete\" (default \"convert\"), description? (up to 255 characters, one line), annotative?}")
             .interactive(|_| Ok(Box::new(BlockM::default()))),
         // -BLOCK erases the selected objects once the block is defined.
         CommandSpec::new("-block", "Create Block", run_dash_block)
             .alias(&["-b"])
-            .params("{name, base: [x,y], handles?, keep?: \"delete\"|\"retain\"|\"convert\" (default \"delete\"), description?}")
+            .params("{name, base: [x,y], handles?, keep?: \"delete\"|\"retain\"|\"convert\" (default \"delete\"), description? (up to 255 characters, one line)}")
             .interactive(|_| Ok(Box::new(BlockM { dash: true, ..BlockM::default() }))),
         CommandSpec::new("insert", "Block...", run_insert)
             .menu(&["Insert", "Block..."])
@@ -42,6 +50,24 @@ pub fn specs() -> Vec<CommandSpec> {
         attedit::dash_attedit_spec(),
         CommandSpec::new("wblock", "Write Block", run_wblock).alias(&["w"]).params("{path, name? | handles?, base?}"),
         CommandSpec::new("base", "Base", run_base).menu(&["Draw", "Block", "Base"]).params("{at: [x,y]}"),
+        CommandSpec::new("blocks.dynamic", "Dynamic Block Data", run_dynamic)
+            .params("{name (a block, or \"*Model_Space\" for a drawing that is a dynamic block's own)} → {parameters, actions, other} | null (not a dynamic block)")
+            .enabled(has_doc)
+            .noundo(),
+        CommandSpec::new("blocks.reference", "Dynamic Block Reference", run_reference)
+            .params("{handle (a block reference)} → {definition, values (by parameter graph id), properties: [{name, value, choices}]} | null (not a dynamic block reference)")
+            .enabled(has_doc)
+            .noundo(),
+        CommandSpec::new("blocks.reference.set", "Set Dynamic Property", run_reference_set)
+            .params("{handle (a dynamic block reference), name (a custom property as Properties names it: a visibility state, a lookup, a distance or \"Position1 X\"), value (lengths in drawing units)} → {properties}")
+            .enabled(has_doc),
+        CommandSpec::new("blocks.reference.grips", "Dynamic Block Grips", dyngrip::run_grips)
+            .params("{handle} → [{node, part: base|end|at, shape: linear|point|list, at: [x,y], dir: [x,y], property, choices?}] (empty: not a dynamic block reference)")
+            .enabled(has_doc)
+            .noundo(),
+        CommandSpec::new("blocks.reference.grip", "Drag Dynamic Grip", dyngrip::run_grip)
+            .params("{handle, node (the parameter's graph id), part: base|end|at, to: [x,y] (drawing coordinates)} → {properties}: a distance's arrow changes the distance (snapped to its values), a position's square moves it")
+            .enabled(has_doc),
         CommandSpec::new("purge", "Purge", purge::run)
             .alias(&["pu", "-purge"])
             .params("{type?: all|blocks|dimstyles|groups|layers|linetypes|mleaderstyles|tablestyles|textstyles|zerolength|emptytext (default all: every named type), names?: \"A*,B\" (default *)} → purged")
@@ -50,25 +76,38 @@ pub fn specs() -> Vec<CommandSpec> {
         battman::battman_spec(),
         attribs::attdisp_spec(),
         attribs::attsync_spec(),
+        burst::burst_spec(),
+        blockreplace::blockreplace_spec(),
         extract::dataextraction_spec(),
         extract::eattext_spec(),
+        description::description_spec(),
     ]
     .into_iter()
+    .chain(attribs::attdisp_menu_specs())
     .chain(xref::specs())
+    .chain(refedit::specs())
+    .chain(bedit::specs())
     .collect()
 }
 
-fn valid_block_name(n: &str) -> bool {
+pub(crate) fn valid_block_name(n: &str) -> bool {
     !n.trim().is_empty() && n.len() <= 255 && !n.starts_with('*') && !n.chars().any(|c| "<>/\\\":;?*|,=`".contains(c))
 }
 
-/// The block an entity references, when it is a block reference.
+/// The block an entity draws, if any: a block reference's block, a dimension's block or a
+/// multileader's block content.
 fn referenced_block(e: &Entity) -> Option<String> {
-    if let EntityKind::Insert(i) = &e.kind { Some(i.block.clone()) } else { None }
+    match &e.kind {
+        EntityKind::Insert(i) => Some(i.block.clone()),
+        EntityKind::Dimension(dm) => dm.block.clone(),
+        EntityKind::MLeader(m) => m.block.as_ref().map(|b| b.block.clone()),
+        _ => None,
+    }
 }
 
-/// Whether any of `ents` refers to block `name`, directly or through nested block references.
-fn references_block(d: &cadcraft_doc::Drawing, ents: &[Entity], name: &str) -> bool {
+/// Whether any of `ents` refers to block `name`, directly or through nested block references,
+/// dimension blocks and multileader block content.
+pub(crate) fn references_block(d: &cadcraft_doc::Drawing, ents: &[Entity], name: &str) -> bool {
     let mut todo: Vec<String> = ents.iter().filter_map(referenced_block).collect();
     let mut seen = std::collections::HashSet::new();
     while let Some(b) = todo.pop() {
@@ -84,8 +123,41 @@ fn references_block(d: &cadcraft_doc::Drawing, ents: &[Entity], name: &str) -> b
     false
 }
 
+/// What BLOCK does with the selected objects once the block is defined (the dialog's Convert to
+/// block, Retain and Delete).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Keep {
+    /// Replace the objects by a reference to the new block.
+    Convert,
+    /// Leave the objects in the drawing.
+    Retain,
+    /// Erase the objects.
+    Delete,
+}
+
+impl Keep {
+    /// The `keep` parameter's documented values, in any case; `None` for anything else.
+    pub(crate) fn parse(value: &str) -> Option<Keep> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "convert" => Some(Keep::Convert),
+            "retain" => Some(Keep::Retain),
+            "delete" => Some(Keep::Delete),
+            _ => None,
+        }
+    }
+}
+
+/// The `keep` parameter of `cmd`, `default` when absent. A value that is not documented is an
+/// error (issue #935: a misspelt value used to erase the objects without converting them).
+fn keep_param(cmd: &str, p: &Value, default: Keep) -> Result<Keep> {
+    match str_param(p, "keep") {
+        None => Ok(default),
+        Some(v) => Keep::parse(v).ok_or_else(|| bad(cmd, format!("`keep` must be \"convert\", \"retain\" or \"delete\", not {v:?}"))),
+    }
+}
+
 /// Create a block from entities. Returns the insert handle when converting.
-pub(crate) fn make_block(s: &mut Session, name: &str, base: Vec2, hs: &[Handle], keep: &str, description: &str) -> Result<Option<Handle>> {
+pub(crate) fn make_block(s: &mut Session, name: &str, base: Vec2, hs: &[Handle], keep: Keep, description: &str) -> Result<Option<Handle>> {
     if !valid_block_name(name) {
         return Err(bad("block", "invalid block name"));
     }
@@ -96,6 +168,9 @@ pub(crate) fn make_block(s: &mut Session, name: &str, base: Vec2, hs: &[Handle],
     }
     if references_block(d, &ents, name) {
         return Err(bad("block", format!("Block \"{name}\" references itself.")));
+    }
+    if d.refedit.as_ref().is_some_and(|r| r.block.eq_ignore_ascii_case(name)) {
+        return Err(bad("block", format!("Block \"{name}\" is being edited in place; finish with REFCLOSE first.")));
     }
     // Block names are case-insensitive: redefining keeps the existing definition's name.
     let name = d.blocks.keys().find(|k| k.eq_ignore_ascii_case(name)).cloned().unwrap_or_else(|| name.to_string());
@@ -109,13 +184,13 @@ pub(crate) fn make_block(s: &mut Session, name: &str, base: Vec2, hs: &[Handle],
         b.entities.push(e);
     }
     doc.blocks.insert(name.to_string(), Arc::new(b));
-    if keep != "retain" {
+    if keep != Keep::Retain {
         for h in hs {
             doc.remove_entity(*h);
         }
     }
     s.set_selection(Vec::new());
-    if keep == "convert" {
+    if keep == Keep::Convert {
         let h = insert(s, name, base, 1.0, 0.0, &serde_json::Map::new())?;
         return Ok(Some(h));
     }
@@ -127,13 +202,13 @@ pub(crate) fn insert(s: &mut Session, name: &str, at: Vec2, scale: f64, rotation
     insert_with(s, name, at, Vec2::new(scale, scale), rotation, None, values)
 }
 
-/// The block reference INSERT places: X/Y scale factors, and an optional base point (in block
+/// The block reference INSERT places: X/Y/Z scale factors, and an optional base point (in block
 /// coordinates) that lands on `at` instead of the block's own base point.
-fn insert_entity(blk: &Block, at: Vec2, scale: Vec2, rotation: f64, base: Option<Vec2>) -> Insert {
+fn insert_entity(blk: &Block, at: Vec2, scale: Vec3, rotation: f64, base: Option<Vec2>) -> Insert {
     let mut ins = Insert {
         block: blk.name.clone(),
         insert: v3(at),
-        scale: Vec3::new(scale.x, scale.y, scale.x),
+        scale,
         rotation,
         attribs: Vec::new(),
         cols: 1,
@@ -148,12 +223,26 @@ fn insert_entity(blk: &Block, at: Vec2, scale: Vec2, rotation: f64, base: Option
     ins
 }
 
-/// [`insert`] with separate X/Y scale factors and an optional base point (see [`insert_entity`]).
+/// [`insert`] with separate X/Y scale factors (Z as X) and an optional base point (see
+/// [`insert_entity`]).
 pub(crate) fn insert_with(
     s: &mut Session,
     name: &str,
     at: Vec2,
     scale: Vec2,
+    rotation: f64,
+    base: Option<Vec2>,
+    values: &serde_json::Map<String, Value>,
+) -> Result<Handle> {
+    insert_scaled(s, name, at, Vec3::new(scale.x, scale.y, scale.x), rotation, base, values)
+}
+
+/// [`insert_with`] with a Z scale factor of its own.
+fn insert_scaled(
+    s: &mut Session,
+    name: &str,
+    at: Vec2,
+    scale: Vec3,
     rotation: f64,
     base: Option<Vec2>,
     values: &serde_json::Map<String, Value>,
@@ -180,6 +269,8 @@ pub(crate) fn insert_with(
                 constant: false,
                 prompt: String::new(),
                 props: Default::default(),
+                multiline: ad.multiline.as_ref().map(|ml| ml.transformed(&m)),
+                modes: ad.modes.for_reference(),
             });
         }
     }
@@ -190,8 +281,10 @@ fn run_block(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").ok_or_else(|| bad("block", "`name` is required"))?.to_string();
     let base = point_param(p, "base").unwrap_or(Vec2::ZERO);
     let hs = targets(s, p)?;
-    let keep = str_param(p, "keep").unwrap_or("convert").to_string();
-    let r = make_block(s, &name, base, &hs, &keep, str_param(p, "description").unwrap_or(""))?;
+    let keep = keep_param("block", p, Keep::Convert)?;
+    let description = str_param(p, "description").unwrap_or("");
+    description::check_text("block", description)?;
+    let r = make_block(s, &name, base, &hs, keep, description)?;
     // An annotative block: its references (the converted selection too) are annotative.
     if bool_or(p, "annotative", false) {
         let d = s.doc_mut()?;
@@ -252,6 +345,8 @@ fn attdef_kind(s: &Session, tag: &str, prompt: &str, default: &str, at: Vec2, he
         constant: false,
         prompt: prompt.into(),
         props: Default::default(),
+        multiline: None,
+        modes: Default::default(),
     })
 }
 
@@ -321,9 +416,61 @@ fn run_base(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn run_list(s: &mut Session, _p: &Value) -> Result<Value> {
     let d = s.doc()?;
-    Ok(
-        json!({ "blocks": d.blocks.values().filter(|b| !b.anonymous).map(|b| json!({"name": b.name, "entities": b.entities.len(), "base": [b.base.x, b.base.y], "description": b.description})).collect::<Vec<_>>() }),
-    )
+    let block = |b: &Block| {
+        let dynamic = cadcraft_doc::dynblock::dynamic_block(d, &b.name).is_some();
+        json!({"name": b.name, "entities": b.entities.len(), "base": [b.base.x, b.base.y], "description": b.description, "dynamic": dynamic})
+    };
+    Ok(json!({ "blocks": d.blocks.values().filter(|b| !b.anonymous).map(|b| block(b)).collect::<Vec<_>>() }))
+}
+
+/// A dynamic block's parameters and actions as read from the file (null for a block that has
+/// none).
+fn run_dynamic(s: &mut Session, p: &Value) -> Result<Value> {
+    let name = str_param(p, "name").ok_or_else(|| bad("blocks.dynamic", "`name` is required"))?;
+    let d = s.doc()?;
+    if d.block(name).is_none() && !name.trim().eq_ignore_ascii_case("*Model_Space") {
+        return Err(bad("blocks.dynamic", format!("no block `{name}`")));
+    }
+    serde_json::to_value(cadcraft_doc::dynblock::dynamic_block(d, name)).map_err(|e| bad("blocks.dynamic", e.to_string()))
+}
+
+/// The dynamic block a block reference shows, the values it was given and its custom properties
+/// (null for any other reference).
+fn run_reference(s: &mut Session, p: &Value) -> Result<Value> {
+    let h = super::curves::handle_param(p, "handle").ok_or_else(|| bad("blocks.reference", "`handle` is required"))?;
+    let d = s.doc()?;
+    match d.entity(h).map(|e| &e.kind) {
+        Some(EntityKind::Insert(_)) => {}
+        Some(_) => return Err(bad("blocks.reference", "`handle` is not a block reference")),
+        None => return Err(bad("blocks.reference", format!("no object {}", h.hex()))),
+    }
+    let (Some(r), Some((_, properties))) = (cadcraft_doc::dynblock::reference(d, h), cadcraft_doc::dynblock::custom_properties(d, h)) else {
+        return Ok(Value::Null);
+    };
+    Ok(json!({ "definition": r.definition, "values": r.values, "properties": properties }))
+}
+
+/// Change a custom property of a dynamic block reference (one undo step).
+fn run_reference_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "blocks.reference.set";
+    let h = super::curves::handle_param(p, "handle").ok_or_else(|| bad(cmd, "`handle` is required"))?;
+    let name = str_param(p, "name").ok_or_else(|| bad(cmd, "`name` is required"))?;
+    let value = match p.get("value") {
+        Some(Value::String(v)) => v.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => return Err(bad(cmd, "`value` is required")),
+    };
+    if !matches!(s.doc()?.entity(h).map(|e| &e.kind), Some(EntityKind::Insert(_))) {
+        return Err(bad(cmd, "`handle` is not a block reference"));
+    }
+    if super::curves::is_locked(s, h) {
+        return Err(bad(cmd, "the reference is on a locked layer"));
+    }
+    let mut d = s.doc()?.clone();
+    cadcraft_doc::dynblock::set_property(&mut d, h, name, &value).map_err(|e| bad(cmd, e))?;
+    let properties = cadcraft_doc::dynblock::custom_properties(&d, h).map(|(_, p)| p).unwrap_or_default();
+    *s.doc_mut()? = d;
+    Ok(json!({ "properties": properties }))
 }
 
 // ---------------- interactive ----------------
@@ -412,7 +559,7 @@ impl BlockM {
     fn finish(&mut self, s: &mut Session, hs: &[Handle]) -> Result<Step> {
         let (Some(name), Some(base)) = (self.name.clone(), self.base) else { return Ok(Step::Cancel) };
         // A definition that can't be made (e.g. one that would reference itself) ends the command.
-        let keep = if self.dash { "delete" } else { "convert" };
+        let keep = if self.dash { Keep::Delete } else { Keep::Convert };
         if let Err(e) = make_block(s, &name, base, hs, keep, "") {
             s.echo(e.to_string());
             return Ok(Step::Done);
@@ -433,15 +580,19 @@ enum InsStage {
     /// A file whose block already exists: redefine it from the file?
     Redefine,
     Point,
-    /// Basepoint: a new base point, picked on the block shown at its definition position.
+    /// Basepoint: a new base point, picked on the block dropped where it was (at the cursor).
     BasePoint,
     /// Scale preset before the insertion point.
     PresetScale,
+    /// X, Y or Z scale preset (0, 1, 2) before the insertion point: that axis alone.
+    PresetAxis(usize),
     /// Rotate preset before the insertion point.
     PresetRotation,
     XScale,
     Corner,
     YScale,
+    /// XYZ: the Z scale factor, after X and Y.
+    ZScale,
     Rotation,
     Attribs,
 }
@@ -454,6 +605,15 @@ struct InsertM {
     base: Option<Vec2>,
     x_scale: Option<f64>,
     scale: Option<Vec2>,
+    /// The Z scale factor when given (a preset or XYZ); otherwise the X factor's size. AutoCAD
+    /// keeps a Z factor typed at XYZ's Z prompt as given, and stores the size of any other.
+    z_scale: Option<f64>,
+    /// X/Y/Z presets given so far.
+    axes: [Option<f64>; 3],
+    /// XYZ at the X scale prompt: X, Y and Z are asked in turn.
+    xyz: bool,
+    /// Where the block was dropped to pick a Basepoint on it.
+    dropped: Option<Vec2>,
     rotation: Option<f64>,
     attdefs: Vec<(String, String, String)>,
     values: serde_json::Map<String, Value>,
@@ -477,7 +637,7 @@ impl InsertM {
             && self.values.len() >= self.attdefs.len()
             && let (Some(n), Some(a), Some(sc), Some(r)) = (self.name.clone(), self.at, self.scale, self.rotation)
         {
-            let h = insert_with(s, &n, a, sc, r, self.base, &self.values)?;
+            let h = insert_scaled(s, &n, a, self.scale3(sc), r, self.base, &self.values)?;
             if self.explode {
                 insert_file::explode_insert(s, h)?;
             }
@@ -523,6 +683,23 @@ impl InsertM {
         }
     }
 
+    /// X/Y scale factors with Z: as given, else the X factor's size (AutoCAD 2024: X -1 with Y
+    /// as X stores Z +1).
+    /// X and Y from a corner: XYZ still asks Z, which defaults to the size of X.
+    fn corner_scale(&mut self, s: &mut Session, sc: Vec2) -> Result<Step> {
+        self.scale = Some(sc);
+        if self.xyz {
+            self.x_scale = Some(sc.x);
+            self.stage = InsStage::ZScale;
+            return Ok(Step::Continue);
+        }
+        self.advance(s)
+    }
+
+    fn scale3(&self, sc: Vec2) -> Vec3 {
+        Vec3::new(sc.x, sc.y, self.z_scale.unwrap_or(sc.x.abs()))
+    }
+
     /// Scale factors from an opposite corner: the X and Y distances from the insertion point.
     fn corner(a: Vec2, p: Vec2) -> Result<Vec2> {
         let d = p - a;
@@ -553,15 +730,18 @@ impl Interactive for InsertM {
                 let name = self.file.as_ref().map(|f| f.name.clone()).unwrap_or_default();
                 Prompt::new(format!("Block \"{name}\" already exists. Redefine it?"), super::curves::KW).kw(&["Yes", "No"]).default("N")
             }
-            InsStage::Point => Prompt::new("Specify insertion point", Accept::POINT).kw(&["Basepoint", "Scale", "Rotate"]),
+            InsStage::Point => Prompt::new("Specify insertion point", Accept::POINT).kw(&["Basepoint", "Scale", "X", "Y", "Z", "Rotate"]),
             InsStage::BasePoint => Prompt::new("Specify base point", Accept::POINT),
             InsStage::PresetScale => Prompt::new("Specify scale factor for XYZ axes", Accept::NUMBER).default("1"),
+            InsStage::PresetAxis(i) => Prompt::new(format!("Specify {} scale factor", ["X", "Y", "Z"][i.min(2)]), Accept::NUMBER).default("1"),
             InsStage::PresetRotation => Prompt::new("Specify rotation angle", Accept::NUMBER).default("0"),
+            InsStage::XScale if self.xyz => Prompt::new("Specify X scale factor", Accept::POINT_OR_NUMBER).kw(&["Corner"]).default("1").base(at),
             InsStage::XScale => {
-                Prompt::new("Enter X scale factor, specify opposite corner", Accept::POINT_OR_NUMBER).kw(&["Corner"]).default("1").base(at)
+                Prompt::new("Enter X scale factor, specify opposite corner", Accept::POINT_OR_NUMBER).kw(&["Corner", "XYZ"]).default("1").base(at)
             }
             InsStage::Corner => Prompt::new("Specify opposite corner", Accept::POINT).base(at),
             InsStage::YScale => Prompt::new("Enter Y scale factor", Accept::NUMBER).default("use X scale factor"),
+            InsStage::ZScale => Prompt::new("Specify Z scale factor or", Accept::NUMBER).default("use X scale factor"),
             InsStage::Rotation => Prompt::new("Specify rotation angle", Accept::POINT_OR_NUMBER).default("0").base(at),
             InsStage::Attribs => {
                 let (_, prompt, default) = self.attdefs.get(self.values.len()).cloned().unwrap_or_default();
@@ -609,14 +789,25 @@ impl Interactive for InsertM {
                     self.at = Some(p);
                     return self.advance(s);
                 }
-                Input::Keyword(k) if k == "Basepoint" => self.stage = InsStage::BasePoint,
+                Input::Keyword(k) if k == "Basepoint" => {
+                    // AutoCAD drops the block where it is being dragged, at the cursor (the origin
+                    // in a script: 2024 inserted (15, 5) for base point (612350.678, 2398770.432)
+                    // and insertion point (612365.678, 2398775.432)).
+                    self.dropped = Some(s.cursor);
+                    self.stage = InsStage::BasePoint;
+                }
                 Input::Keyword(k) if k == "Scale" => self.stage = InsStage::PresetScale,
+                Input::Keyword(k) if k == "X" => self.stage = InsStage::PresetAxis(0),
+                Input::Keyword(k) if k == "Y" => self.stage = InsStage::PresetAxis(1),
+                Input::Keyword(k) if k == "Z" => self.stage = InsStage::PresetAxis(2),
                 Input::Keyword(k) if k == "Rotate" => self.stage = InsStage::PresetRotation,
                 _ => {}
             },
             InsStage::BasePoint => {
                 if let Input::Point(p) = i {
-                    self.base = Some(p);
+                    // From the dropped block to its own coordinates.
+                    let def = s.doc()?.block(self.name.as_deref().unwrap_or_default()).map_or(Vec2::ZERO, |b| b.base.xy());
+                    self.base = Some(def + (p - self.dropped.unwrap_or(def)));
                     self.stage = InsStage::Point;
                 }
             }
@@ -627,10 +818,28 @@ impl Interactive for InsertM {
                     _ => return Ok(Step::Continue),
                 };
                 self.scale = Some(Vec2::new(f, f));
+                self.z_scale = Some(f.abs());
+                // An axis preset after it changes that axis alone (Scale -3 then X 2: 2/-3/3).
+                self.axes = [Some(f), Some(f), Some(f.abs())];
                 // Exploded insertion asks its one scale factor after the insertion point.
                 if self.at.is_some() {
                     return self.advance(s);
                 }
+                self.stage = InsStage::Point;
+            }
+            // One axis preset: the others are 1, and no scale factors are asked after the point.
+            InsStage::PresetAxis(ax) => {
+                let f = match i {
+                    Input::Text(t) => nonzero(&t)?,
+                    Input::Enter => 1.0,
+                    _ => return Ok(Step::Continue),
+                };
+                if let Some(a) = self.axes.get_mut(ax) {
+                    *a = Some(f);
+                }
+                let [x, y, z] = self.axes.map(|a| a.unwrap_or(1.0));
+                self.scale = Some(Vec2::new(x, y));
+                self.z_scale = Some(z.abs());
                 self.stage = InsStage::Point;
             }
             InsStage::PresetRotation => {
@@ -643,9 +852,10 @@ impl Interactive for InsertM {
             }
             InsStage::XScale => match i {
                 Input::Keyword(k) if k == "Corner" => self.stage = InsStage::Corner,
+                Input::Keyword(k) if k == "XYZ" => self.xyz = true,
                 Input::Point(p) => {
-                    self.scale = Some(Self::corner(self.at.unwrap_or_default(), p)?);
-                    return self.advance(s);
+                    let sc = Self::corner(self.at.unwrap_or_default(), p)?;
+                    return self.corner_scale(s, sc);
                 }
                 Input::Text(t) => {
                     self.x_scale = Some(nonzero(&t)?);
@@ -659,8 +869,8 @@ impl Interactive for InsertM {
             },
             InsStage::Corner => {
                 if let Input::Point(p) = i {
-                    self.scale = Some(Self::corner(self.at.unwrap_or_default(), p)?);
-                    return self.advance(s);
+                    let sc = Self::corner(self.at.unwrap_or_default(), p)?;
+                    return self.corner_scale(s, sc);
                 }
             }
             InsStage::YScale => {
@@ -671,6 +881,18 @@ impl Interactive for InsertM {
                     _ => return Ok(Step::Continue),
                 };
                 self.scale = Some(Vec2::new(x, y));
+                if self.xyz {
+                    self.stage = InsStage::ZScale;
+                    return Ok(Step::Continue);
+                }
+                return self.advance(s);
+            }
+            InsStage::ZScale => {
+                self.z_scale = Some(match i {
+                    Input::Text(t) => nonzero(&t)?,
+                    Input::Enter => self.x_scale.unwrap_or(1.0).abs(),
+                    _ => return Ok(Step::Continue),
+                });
                 return self.advance(s);
             }
             InsStage::Rotation => {
@@ -699,7 +921,7 @@ impl Interactive for InsertM {
         let Some(b) = d.block(n) else { return Vec::new() };
         // Picking a new base point: the block sits at its definition position.
         if self.stage == InsStage::BasePoint {
-            return vec![EntityKind::Insert(insert_entity(b, b.base.xy(), Vec2::new(1.0, 1.0), 0.0, None))];
+            return vec![EntityKind::Insert(insert_entity(b, self.dropped.unwrap_or(b.base.xy()), Vec3::new(1.0, 1.0, 1.0), 0.0, None))];
         }
         let at = self.at.unwrap_or(c);
         let scale = self.scale.unwrap_or_else(|| match (self.stage, self.x_scale) {
@@ -708,7 +930,7 @@ impl Interactive for InsertM {
             _ => Vec2::new(1.0, 1.0),
         });
         let rot = self.rotation.unwrap_or(if self.stage == InsStage::Rotation { at.angle_to(c) } else { 0.0 });
-        vec![EntityKind::Insert(insert_entity(b, at, scale, rot, self.base))]
+        vec![EntityKind::Insert(insert_entity(b, at, self.scale3(scale), rot, self.base))]
     }
 }
 
@@ -760,3 +982,4 @@ impl Interactive for AttdefM {
 
 mod attribs;
 mod battman;
+mod blockreplace;

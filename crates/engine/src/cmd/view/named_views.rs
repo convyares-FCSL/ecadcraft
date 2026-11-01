@@ -10,7 +10,8 @@ use cadcraft_geom::{Bounds2, Vec2};
 use serde_json::{Value, json};
 
 use super::super::qselect::wildcard;
-use super::super::*;
+use super::super::{CommandSpec, bad, point_param, str_param};
+
 use crate::{Accept, EngineError, Input, Interactive, Prompt, Result, Session, Step, View};
 
 /// Most names one Delete or list takes.
@@ -152,10 +153,10 @@ fn restore(s: &mut Session, name: &str) -> Result<Value> {
     match &v.layout {
         Some(l) => {
             // A paper space view: its layout (an unknown one: the current or first layout).
-            let target = match (l.is_empty(), s.layout_space()) {
+            let target = match (l.is_empty(), s.layout_space().layout()) {
                 (false, _) => l.clone(),
-                (true, Space::Paper(cur)) => cur,
-                (true, Space::Model) => s.doc()?.layouts.iter().min_by_key(|x| x.tab_order).map(|x| x.name.clone()).unwrap_or_default(),
+                (true, Some(cur)) => cur.to_string(),
+                (true, None) => s.doc()?.layouts.iter().min_by_key(|x| x.tab_order).map(|x| x.name.clone()).unwrap_or_default(),
             };
             if s.doc()?.layout(&target).is_none() {
                 return Err(EngineError::Other(format!("View \"{}\" belongs to layout \"{target}\", which does not exist.", v.name)));
@@ -279,7 +280,7 @@ impl Interactive for ViewM {
             Stage::Restore => Prompt::new("Enter view name to restore", Accept::TEXT),
             Stage::Save | Stage::WindowName => Prompt::new("Enter view name to save", Accept::TEXT),
             Stage::WindowFirst => Prompt::new("Specify first corner", Accept::POINT),
-            Stage::WindowSecond(a) => Prompt::new("Specify opposite corner", Accept::POINT).base(a),
+            Stage::WindowSecond(a) => Prompt::new("Specify opposite corner", Accept::POINT).corner(a),
             Stage::Settings => Prompt::new("Enter an option", Accept::TEXT).kw(&["Layer snapshot"]),
             Stage::Snapshot => {
                 let on = if s.settings.view_layer_snapshot { "Yes" } else { "No" };

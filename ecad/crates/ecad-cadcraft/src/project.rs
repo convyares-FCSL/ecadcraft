@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, Weak};
 use cadcraft_engine::doc::{
     Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Text,
 };
-use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Verdict};
+use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
@@ -987,7 +987,31 @@ fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTree
     out
 }
 
+/// Commands refused on ECAD pages before they start (owner decision, 2026-10-31, brief 007): the
+/// Block Editor and in-place reference editing swap or rewrite the page drawing and its blocks
+/// outside the commit gate, and APPLOAD and LISP evaluate LISP (see [`LISP_REFUSED`]).
+pub const REFUSED_COMMANDS: &[&str] =
+    &["bedit", "bsave", "bsaveas", "bclose", "refedit", "refset", "refclose", "appload", "lisp"];
+
+/// Why LISP is refused on ECAD pages: its built-ins change the drawing outside any command, and a
+/// routine keeps an undo step of its own.
+pub const LISP_REFUSED: &str =
+    "LISP is not available on ECAD pages: it changes the drawing outside the commands ECAD records";
+
 impl DocumentOwner for Project {
+    fn refuse_start(&self, _s: &Session, uid: u64, start: Start<'_>) -> Option<String> {
+        self.page_of(uid)?;
+        match start {
+            Start::Lisp => Some(LISP_REFUSED.into()),
+            Start::Command("appload" | "lisp") => Some(LISP_REFUSED.into()),
+            Start::Command(id) if REFUSED_COMMANDS.contains(&id) => Some(format!(
+                "{} is not available on ECAD pages: it edits blocks outside the commands ECAD records",
+                id.to_ascii_uppercase()
+            )),
+            Start::Command(_) => None,
+        }
+    }
+
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
         let pg = &mut Pages(s);
         #[cfg(feature = "fault-injection")]

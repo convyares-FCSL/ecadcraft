@@ -201,8 +201,10 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     let (mut h, c1, ..) = fixture();
     h.run("newpage", json!({"title": "2"})).unwrap();
     let session = std::mem::replace(&mut h.s, cadcraft_engine::Session::empty());
-    let mut app =
-        cadcraft_ui_egui::CadApp::new(session, cadcraft_ui_egui::Services { pick_open: None, pick_save: None });
+    let mut app = cadcraft_ui_egui::CadApp::new(
+        session,
+        cadcraft_ui_egui::Services { pick_open: None, pick_save: None, pick_lisp: None, no_file_system: false },
+    );
     // A project that was never saved has no file name: Save asks for one (Save As).
     app.session.active = 0;
     app.run("saveas", json!({"path": "demo.ecad"})).unwrap();

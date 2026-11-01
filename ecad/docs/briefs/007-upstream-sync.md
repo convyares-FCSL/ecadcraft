@@ -1,6 +1,6 @@
 # Brief 007: Upstream sync to the latest CADCraft
 
-Status: Draft (overseer, 2026-10-31; requested by the owner as part of the baseline)
+Status: Approved (owner, 2026-10-31, with the overseer's two recommendations: craft-update kept out or disabled; sync to the newest release tag if close to main, else 7cee285)
 Branch: `upstream-sync/2026-10-31`
 Designer: no · Size: L
 Depends on: 001 (so both Linux and Windows CI judge the result)

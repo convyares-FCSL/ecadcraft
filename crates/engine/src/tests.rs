@@ -77,6 +77,43 @@ fn programmatic_undo_during_a_command_ends_it_first() {
 }
 
 #[test]
+fn undo_during_line_removes_the_last_segment_and_keeps_line_running() {
+    let mut s = Session::new();
+    s.cmdline("line 0,0 10,0 10,10 20,10").unwrap();
+    assert_eq!(kinds(&s), vec!["Line", "Line", "Line"]);
+    // Ctrl+Z / the U command / the menu (Session::start) act as the Undo keyword.
+    s.start("u").unwrap();
+    assert!(s.running.is_some());
+    assert_eq!(kinds(&s), vec!["Line", "Line"]);
+    s.start("u").unwrap();
+    assert!(s.running.is_some());
+    assert_eq!(kinds(&s), vec!["Line"]);
+    // The command goes on from the last remaining point.
+    s.cmdline("10,5").unwrap();
+    assert_eq!(kinds(&s), vec!["Line", "Line"]);
+    s.cmdline("").unwrap();
+    assert!(s.running.is_none());
+}
+
+#[test]
+fn undo_during_a_command_without_undo_keyword_ends_it_and_undoes() {
+    let mut s = Session::new();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    // LINE at its first point offers no Undo: Ctrl+Z ends it, then undoes the earlier line.
+    s.cmdline("line").unwrap();
+    assert!(s.running.is_some());
+    s.start("u").unwrap();
+    assert!(s.running.is_none());
+    assert!(kinds(&s).is_empty());
+    // TEXT offers no Undo keyword either.
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    s.script("TEXT 0,0 5 0 HELLO\n").unwrap();
+    s.start("u").unwrap();
+    assert!(s.running.is_none());
+    assert_eq!(kinds(&s), vec!["Line"]);
+}
+
+#[test]
 fn polar_and_direct_distance() {
     let mut s = Session::new();
     s.cmdline("line 1,1").unwrap();
@@ -308,6 +345,15 @@ fn fillet_two_lines() {
 }
 
 #[test]
+fn offset_zero_distance_is_rejected() {
+    let mut s = Session::new();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    let r = s.execute("offset", &json!({"handle": "100", "distance": 0, "side": [1, 1]}));
+    assert!(r.is_err(), "offset distance 0 made a coincident copy: {r:?}");
+    assert_eq!(s.doc().unwrap().model.len(), 1);
+}
+
+#[test]
 fn offset_circle_and_polyline() {
     let mut s = Session::new();
     let c = s.execute("circle", &json!({"center": [0, 0], "radius": 5})).unwrap();
@@ -474,6 +520,22 @@ fn properties_set_transparency() {
 }
 
 #[test]
+fn properties_set_thickness() {
+    // Issue #1722: `properties.set` used to ignore `thickness` while still reporting a change.
+    let mut s = Session::new();
+    let r = s.execute("circle", &json!({"center": [0, 0], "radius": 5})).unwrap();
+    let h = r["handle"].as_str().unwrap().to_string();
+    let hh = cadcraft_doc::Handle::parse_hex(&h).unwrap();
+    let th = |s: &Session| s.doc().unwrap().entity(hh).unwrap().common.thickness;
+    s.execute("properties.set", &json!({"handles": [h], "thickness": 8})).unwrap();
+    assert_eq!(th(&s), 8.0);
+    let p = s.execute("properties", &json!({"handles": [h]})).unwrap();
+    assert_eq!(p["objects"][0]["thickness"], json!(8.0));
+    assert!(s.execute("properties.set", &json!({"handles": [h], "thickness": "thick"})).is_err());
+    assert_eq!(th(&s), 8.0);
+}
+
+#[test]
 fn zoom_extents_fits_drawing() {
     let mut s = Session::new();
     s.viewport_px = (1000.0, 500.0);
@@ -581,6 +643,17 @@ fn setvar_keeps_header_types() {
 }
 
 #[test]
+fn setvar_rejects_out_of_range_units() {
+    let mut s = Session::new();
+    for (name, v) in [("LUPREC", 100), ("LUNITS", 9), ("LUNITS", 0), ("AUPREC", -5), ("AUNITS", 5)] {
+        assert!(s.execute("setvar", &json!({"name": name, "value": v})).is_err(), "{name} {v}");
+    }
+    s.execute("setvar", &json!({"name": "LUPREC", "value": 8})).unwrap();
+    assert_eq!(s.doc().unwrap().header.i64("LUPREC", 0), 8);
+    assert_ne!(s.doc().unwrap().header.i64("LUNITS", 2), 9);
+}
+
+#[test]
 fn dynamic_input_pointer_settings() {
     let mut s = Session::new();
     assert_eq!(sysvars::get(&s, "DYNPIFORMAT"), Some(json!(0)));
@@ -625,23 +698,6 @@ fn cancel_keeps_partial_line_as_one_undo() {
     assert_eq!(s.doc().unwrap().model.len(), 2);
     s.undo().unwrap();
     assert_eq!(s.doc().unwrap().model.len(), 0);
-}
-
-#[test]
-fn hostile_params_never_panic() {
-    let mut s = Session::new();
-    for c in command_specs() {
-        for p in [
-            json!(null),
-            json!([]),
-            json!("x"),
-            json!({"points": [[1e308, -1e308], ["a"]]}),
-            json!({"handles": ["zz", 99999]}),
-            json!({"radius": -1, "center": [0, 0]}),
-        ] {
-            let _ = s.execute(c.id, &p);
-        }
-    }
 }
 
 #[test]
@@ -860,6 +916,21 @@ fn gradient_pick_point_keeps_island_of_separate_lines() {
 }
 
 #[test]
+fn boundary_point_batch_is_capped() {
+    let mut s = Session::new();
+    let sq = [[0, 0], [20, 0], [20, 20], [0, 20]];
+    for i in 0..4 {
+        s.execute("line", &json!({"points": [sq[i], sq[(i + 1) % 4]]})).unwrap();
+    }
+    let many: Vec<_> = (0..100_000).map(|_| json!([2, 2])).collect();
+    let t = std::time::Instant::now();
+    assert!(s.execute("boundary", &json!({"points": many})).is_err());
+    assert!(t.elapsed().as_secs() < 5);
+    let ok: Vec<_> = (0..8).map(|_| json!([2, 2])).collect();
+    assert!(s.execute("boundary", &json!({"points": ok})).is_ok());
+}
+
+#[test]
 fn boundary_pick_point_keeps_island_of_separate_lines() {
     for lines in [true, false] {
         let mut s = square_hole_fixture(lines);
@@ -979,6 +1050,27 @@ fn line_first_point_deferred_tangent() {
     s.cmdline("").unwrap();
     assert_eq!(line_ends(&s).len(), 2);
     assert!(line_ends(&s)[1].0.near(b, 1e-12));
+}
+
+#[test]
+fn line_deferred_tangent_with_typed_polar() {
+    let mut s = Session::new();
+    s.cmdline("circle 0,0 5").unwrap();
+    s.execute("osnap", &json!({"modes": ["tan"]})).unwrap();
+    s.cmdline("line").unwrap();
+    snap_click(&mut s, Vec2::new(0.1, 5.2)); // deferred TAN, near the top of the circle
+    s.cmdline("@150<218").unwrap();
+    s.cmdline("").unwrap();
+    let ends = line_ends(&s);
+    assert_eq!(ends.len(), 1);
+    let (a, b) = ends[0];
+    // The start is the tangent point on the circle.
+    assert!((a.len() - 5.0).abs() < 1e-9, "start not on circle: {a:?}");
+    // The typed direction and distance are exact.
+    let v = b - a;
+    assert!((v.len() - 150.0).abs() < 1e-9, "length was {}", v.len());
+    let angle = v.y.atan2(v.x).to_degrees().rem_euclid(360.0);
+    assert!((angle - 218.0).abs() < 1e-9, "angle was {angle}");
 }
 
 #[test]
@@ -1183,4 +1275,193 @@ fn block_rotation_property_turns_attribute_text() {
     assert!((t.rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
     assert_eq!(t.value, "hello");
     assert!((t.height - 2.5).abs() < 1e-12);
+}
+
+#[test]
+fn bare_variable_name_runs_setvar() {
+    let mut s = Session::new();
+    s.cmdline("pickadd").unwrap();
+    assert!(s.current_prompt().is_some());
+    s.cmdline("0").unwrap();
+    assert!(s.current_prompt().is_none());
+    assert_eq!(crate::sysvars::get(&s, "PICKADD"), Some(json!(0)));
+    // Not a command and not a variable: still an error.
+    assert!(s.cmdline("nosuchthing").is_err());
+    // A dash or dot prefix never means a variable.
+    assert!(s.cmdline("-pickadd").is_err());
+}
+
+#[test]
+fn typed_ltscale_asks_for_the_scale() {
+    let mut s = Session::new();
+    s.execute("setvar", &json!({"name": "LTSCALE", "value": 2.5})).unwrap();
+    s.cmdline("ltscale").unwrap();
+    assert!(s.prompt_text().contains("Enter new linetype scale factor <2.5000>"), "{}", s.prompt_text());
+    // A scale that is not positive is refused and asked again.
+    s.cmdline("0").unwrap();
+    assert!(s.current_prompt().is_some(), "asked again");
+    s.cmdline("0.1").unwrap();
+    assert!(s.current_prompt().is_none());
+    assert_eq!(s.doc().unwrap().header.f64("LTSCALE", 0.0), 0.1);
+    // Enter keeps the current scale.
+    s.cmdline("lts").unwrap();
+    s.cmdline("").unwrap();
+    assert!(s.current_prompt().is_none());
+    assert_eq!(s.doc().unwrap().header.f64("LTSCALE", 0.0), 0.1);
+}
+
+#[test]
+fn format_thickness_asks_for_the_thickness() {
+    let mut s = Session::new();
+    s.start("thickness").unwrap();
+    assert!(s.prompt_text().contains("Enter new value for THICKNESS <0.0000>"), "{}", s.prompt_text());
+    // After text that is not a number, the prompt asks again.
+    s.cmdline("thick").unwrap();
+    assert!(s.current_prompt().is_some(), "asked again");
+    assert_eq!(s.log.last().map(String::as_str), Some("Requires a number."));
+    // A value out of range says so, and the prompt asks again.
+    s.cmdline("2e12").unwrap();
+    assert!(s.current_prompt().is_some(), "asked again");
+    assert_eq!(s.log.last().map(String::as_str), Some("Requires a value between -1e12 and 1e12."));
+    assert_eq!(s.doc().unwrap().header.f64("THICKNESS", 0.0), 0.0);
+    // A negative thickness is accepted.
+    s.cmdline("-1.5").unwrap();
+    assert!(s.current_prompt().is_none());
+    assert_eq!(s.doc().unwrap().header.f64("THICKNESS", 0.0), -1.5);
+    // Typed, Enter keeps the current thickness.
+    s.cmdline("thickness").unwrap();
+    assert!(s.prompt_text().contains("<-1.5000>"), "{}", s.prompt_text());
+    s.cmdline("").unwrap();
+    assert!(s.current_prompt().is_none());
+    assert_eq!(s.doc().unwrap().header.f64("THICKNESS", 0.0), -1.5);
+    assert!(s.execute("thickness", &json!({"thickness": "thick"})).is_err());
+    assert!(s.execute("thickness", &json!({"thickness": 1e13})).is_err());
+}
+
+#[test]
+fn new_objects_take_the_current_thickness() {
+    let mut s = Session::new();
+    s.execute("thickness", &json!({"thickness": 2.5})).unwrap();
+    s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    s.execute("arc", &json!({"center": [0, 0], "radius": 3, "start": 0, "end": 90})).unwrap();
+    s.execute("circle", &json!({"center": [0, 0], "radius": 5})).unwrap();
+    s.execute("point", &json!({"at": [1, 1]})).unwrap();
+    s.execute("pline", &json!({"vertices": [[0, 0], [5, 0], [5, 5]]})).unwrap();
+    s.execute("polygon", &json!({"sides": 6, "center": [20, 20], "radius": 2})).unwrap();
+    s.execute("donut", &json!({"center": [30, 30], "inside": 1, "outside": 2})).unwrap();
+    let thick: Vec<(&str, f64)> = s.doc().unwrap().model.iter().map(|e| (e.kind.type_name(), e.common.thickness)).collect();
+    assert_eq!(thick.len(), 7, "{thick:?}");
+    assert!(thick.iter().all(|(_, t)| *t == 2.5), "{thick:?}");
+    // RECTANG keeps its own thickness option, and text does not take THICKNESS.
+    s.execute("rectang", &json!({"p1": [0, 0], "p2": [4, 4]})).unwrap();
+    assert_eq!(s.doc().unwrap().model.last().unwrap().common.thickness, 0.0);
+    s.execute("rectang", &json!({"p1": [0, 0], "p2": [4, 4], "thickness": 1})).unwrap();
+    assert_eq!(s.doc().unwrap().model.last().unwrap().common.thickness, 1.0);
+    let before = s.doc().unwrap().model.len();
+    s.cmdline("rectang 0,0 4,4").unwrap();
+    assert_eq!(s.doc().unwrap().model.len(), before + 1);
+    assert_eq!(s.doc().unwrap().model.last().unwrap().common.thickness, 0.0);
+    s.execute("text", &json!({"at": [0, 0], "text": "A"})).unwrap();
+    assert_eq!(s.doc().unwrap().model.last().unwrap().common.thickness, 0.0);
+    // An ellipse has no thickness.
+    s.execute("ellipse", &json!({"center": [0, 0], "major": [4, 0], "ratio": 0.5})).unwrap();
+    assert_eq!(s.doc().unwrap().model.last().unwrap().common.thickness, 0.0);
+}
+
+fn setvar_prompt_open(s: &Session) -> bool {
+    s.running.as_ref().is_some_and(|r| r.id == "setvar")
+}
+
+#[test]
+fn every_variable_name_starts_setvar_unless_it_is_a_command() {
+    let mut s = Session::new();
+    let names: Vec<String> = match crate::sysvars::list(&s) {
+        Value::Object(m) => m.keys().cloned().collect(),
+        _ => Vec::new(),
+    };
+    assert!(names.len() > 50, "expected the full variable list, got {}", names.len());
+    let (mut prompted, mut read_only, mut commands) = (0, 0, 0);
+    for n in &names {
+        s.cancel();
+        let lower = n.to_ascii_lowercase();
+        let is_command = crate::cmd::find_command(&crate::cmd::resolve_alias(&lower)).is_some();
+        let result = s.cmdline(&lower);
+        if is_command {
+            // A real command keeps its name (it may refuse to run without parameters, as a bare
+            // CLAYER does); the variable is reached with SETVAR.
+            assert!(!setvar_prompt_open(&s), "{n} is a command but started SETVAR");
+            commands += 1;
+        } else if let Err(e) = result {
+            panic!("{n}: {e}");
+        } else if setvar_prompt_open(&s) {
+            prompted += 1;
+        } else {
+            // A read-only variable prints its value and ends.
+            assert!(s.current_prompt().is_none(), "{n}: neither SETVAR nor finished");
+            read_only += 1;
+        }
+    }
+    s.cancel();
+    assert!(prompted > 50 && read_only > 0, "prompted {prompted}, read-only {read_only}, commands {commands}");
+}
+
+#[test]
+fn hostile_variable_like_input_never_panics() {
+    let mut s = Session::new();
+    let long = "a".repeat(1 << 20);
+    for t in [
+        "'",
+        "''",
+        "'''pickadd",
+        "\0pickadd",
+        "pickadd\0",
+        " ",
+        "\t",
+        "pick add",
+        "PICKADD\u{0}0",
+        "ｐｉｃｋａｄｄ",
+        "pickadd;0",
+        "ÿ",
+        &long,
+        "pickadd\n0",
+        "'\u{202e}pickadd",
+    ] {
+        s.cancel();
+        let _ = s.cmdline(t);
+    }
+    s.cancel();
+    // The session is still usable afterwards.
+    s.cmdline("pickadd").unwrap();
+    assert!(setvar_prompt_open(&s));
+}
+
+#[test]
+fn chamfer_rejects_negative_distances() {
+    let mut s = Session::new();
+    let h1 = s.execute("line", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
+    let h2 = s.execute("line", &json!({"points": [[0, 0], [0, 10]]})).unwrap();
+    let before = format!("{:?}", s.doc().unwrap().model.iter().map(|e| e.kind.clone()).collect::<Vec<_>>());
+    let r = s.execute("chamfer", &json!({"h1": h1["handles"][0], "h2": h2["handles"][0], "p1": [5, 0], "p2": [0, 5], "d1": -3, "d2": 2}));
+    assert!(r.is_err(), "negative chamfer distance accepted: {r:?}");
+    let after = format!("{:?}", s.doc().unwrap().model.iter().map(|e| e.kind.clone()).collect::<Vec<_>>());
+    assert_eq!(before, after);
+}
+
+#[test]
+fn array_counts_reject_invalid_values() {
+    let mut s = Session::new();
+    s.execute("line", &json!({"points": [[0, 0], [1, 0]]})).unwrap();
+    for bad in [json!(-3), json!(0), json!(2.5)] {
+        for key in ["count", "rows", "levels"] {
+            let mut p = json!({"center": [0, 0], "associative": false});
+            p[key] = bad.clone();
+            assert!(s.execute("arraypolar", &p).is_err(), "arraypolar {key}={bad}");
+        }
+        for key in ["rows", "cols", "levels"] {
+            let mut p = json!({"associative": false});
+            p[key] = bad.clone();
+            assert!(s.execute("arrayrect", &p).is_err(), "arrayrect {key}={bad}");
+        }
+    }
+    s.execute("arraypolar", &json!({"center": [0, 0], "count": 1, "associative": false})).unwrap();
 }

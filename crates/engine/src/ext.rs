@@ -4,6 +4,9 @@
 //! authoritative model and treats the drawing as a view of it. The engine then reports to the owner
 //! at a few well-defined moments and lets it decide:
 //!
+//! - **start**: before a command or a LISP evaluation starts on an owned drawing, the owner may
+//!   refuse it before the drawing changes (a command still running is cancelled first, as for
+//!   any new command).
 //! - **commit**: after a command changed (or did not change) an owned drawing, and after the
 //!   post-command passes, the owner accepts the result (possibly after amending the drawing
 //!   itself) or refuses it (and restores the drawing). No undo snapshot is pushed for owned
@@ -56,6 +59,16 @@ pub struct ClipboardCopy {
     pub handles: Vec<Handle>,
 }
 
+/// What is about to start on an owned document ([`DocumentOwner::refuse_start`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start<'a> {
+    /// A command, by its id (programmatic, typed, or from a menu or tool).
+    Command(&'a str),
+    /// A LISP evaluation: an expression typed at the command line, a loaded file, or a `c:`
+    /// command defined in LISP.
+    Lisp,
+}
+
 /// What the engine tells the owner when a command commits.
 #[derive(Debug)]
 pub struct Commit<'a> {
@@ -98,6 +111,15 @@ pub enum Verdict {
 /// the engine gets the same refusals, so embedders should expose an API that releases the lock
 /// before calling the engine (ECAD's adapter does).
 pub trait DocumentOwner: Send {
+    /// `start` is about to begin on owned document `uid`. `Some(message)` refuses it before the
+    /// drawing changes; the message is shown to the user. The default allows everything.
+    ///
+    /// It may be asked more than once for one command (for example when an interactive command
+    /// with no prompts runs through `execute`), so it must answer from its state alone and have no
+    /// side effects.
+    fn refuse_start(&self, _s: &Session, _uid: u64, _start: Start<'_>) -> Option<String> {
+        None
+    }
     /// A command committed on owned document `c.uid`.
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict;
     /// UNDO on an owned document. Returns the label undone, `None` when there is nothing to undo.
@@ -249,6 +271,22 @@ pub(crate) fn gate(s: &mut Session, uid: u64, command: &str, before: &Arc<cadcra
         Err(_) => {
             recover(s, &owner);
             Gate::Refused(format!("internal error while recording `{command}`; the drawing was rebuilt from the document"))
+        }
+    }
+}
+
+/// Whether the owner of the active document refuses `start`, with the message to show. A busy
+/// owner (asked from inside one of its callbacks) refuses, as a re-entrant command would be; one
+/// whose answer panics is asked to recover and refuses.
+pub(crate) fn refused(s: &mut Session, start: Start<'_>) -> Option<String> {
+    let uid = s.state().ok()?.uid;
+    let owner = s.ext.owner_of(uid)?;
+    match catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|o| o.refuse_start(s, uid, start)))) {
+        Ok(Some(answer)) => answer,
+        Ok(None) => Some(REENTRANT.into()),
+        Err(_) => {
+            recover(s, &owner);
+            Some("internal error in the document owner; nothing was started".into())
         }
     }
 }
