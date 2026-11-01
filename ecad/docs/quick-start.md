@@ -246,7 +246,8 @@ cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allo
 **What the drawing shows.** Every terminal has a small cyan ring; a wire end attached to a
 terminal has a green dot, and a loose wire end a small grey square. They keep their size at every
 zoom and are only display: they cannot be selected or printed. With no command running, resting
-the pointer on a component, a terminal marker or a wire for half a second shows a tooltip with its
+the pointer on a component, a terminal ring (any terminal, free or connected, of a drawn component
+or a symbol; near a ring the terminal wins over the wire ending on it) or a wire for half a second shows a tooltip with its
 name or ID and its connections; hovering never changes anything.
 
 Each ECAD command answers at the command line in words, with the full IDs it created. Note IDs
@@ -285,8 +286,8 @@ of the drawing area; type there (or in the banner's field) only where a step say
    ends, and no grey squares. A click near a terminal but outside the green ring does not attach:
    that end shows a grey square instead.
 6. **Look before you type IDs.** With no command running, rest the pointer on the coil, on the
-   ring at 40,10 or on the wire. Expected: a tooltip with `Component (no tag)` and its terminals,
-   `Terminal 1` and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
+   ring at 40,10 (or the coil's ring at 90,0) or on the wire. Expected: a tooltip with
+   `Component (no tag)` and its terminals, `Terminal 1` (or `Terminal A1`) and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
    `End B: terminal A1 of …`. Nothing changes in the banner's change count.
 
 Typing instead of clicking still works, in the banner's Command field:

@@ -18,7 +18,7 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | --- | --- | --- | --- |
 | `ecad.terminal` | 4 (cyan) | `#00FFFF` | Terminal markers (free or connected) |
 | `ecad.attached` | 3 (green) | `#00FF00` | A wire end attached to a terminal |
-| `ecad.loose` | 1 (red) | `#FF0000` | A wire end attached to nothing |
+| `ecad.loose` | 9 (light grey) | `#C0C0C0` | A wire end attached to nothing: a neutral colour, not red, because a dangling end is not necessarily an error (owner answer Q3 to design 008, 2026-11-01) |
 | `ecad.attach-preview` | 3 (green) | `#00FF00` | "Will attach" ring and name while a command runs |
 | `ecad.preview` | — | CADCraft's rubber-band colour | Rubber band, symbol preview (as CADCraft draws previews) |
 
