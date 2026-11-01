@@ -938,6 +938,31 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     });
 }
 
+// ECAD-SEAM(owner): owner-drawn overlay marks (approved 2026-11-01, ECAD brief 008).
+/// The shapes for a document owner's overlay marks ([`cadcraft_engine::ext::Mark`]): each centred
+/// on its drawing position under `xf`, at its own size in screen points whatever the zoom. Marks
+/// outside `clip` (with their size as margin) are left out.
+pub fn owner_mark_shapes(marks: &[cadcraft_engine::ext::Mark], xf: &Xf, clip: Rect) -> Vec<Shape> {
+    use cadcraft_engine::ext::MarkShape;
+    marks
+        .iter()
+        .filter_map(|m| {
+            let c = xf.to_screen(m.at);
+            let r = m.size / 2.0;
+            if !(c.x.is_finite() && c.y.is_finite()) || !clip.expand(r + m.stroke).contains(c) {
+                return None;
+            }
+            let color = Color32::from_rgb(m.color.0, m.color.1, m.color.2);
+            let stroke = Stroke::new(m.stroke, color);
+            Some(match m.shape {
+                MarkShape::Ring => Shape::circle_stroke(c, r, stroke),
+                MarkShape::Dot => Shape::circle_filled(c, r, color),
+                MarkShape::Square => Shape::rect_stroke(Rect::from_center_size(c, vec2(m.size, m.size)), 0.0, stroke, egui::StrokeKind::Middle),
+            })
+        })
+        .collect()
+}
+
 fn paint_canvas(frame: CanvasPaint<'_>) {
     let CanvasPaint {
         app,
@@ -1021,6 +1046,8 @@ fn paint_canvas(frame: CanvasPaint<'_>) {
         selection_look,
     );
     app.canvas.draw_ms = crate::now_ms() - t0;
+    // ECAD-SEAM(owner): marks the document's owner draws over it, at a constant size on screen.
+    painter.extend(owner_mark_shapes(&app.session.owner_overlay(), &xf, rect));
     compare::paint(app, ui.ctx(), painter, &xf_paper, rect);
     blockedit::paint(app, ui.ctx(), painter, &xf_paper, rect);
     // Constraint bars and dynamic dimensional constraints (model space, or inside a viewport).

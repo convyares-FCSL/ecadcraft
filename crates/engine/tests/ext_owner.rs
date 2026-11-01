@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, EntityKind, Handle, Space};
-use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Source, Start, Verdict};
+use cadcraft_engine::ext::{Commit, DocumentOwner, Mark, MarkShape, OwnerRef, Source, Start, Verdict};
 use serde_json::{Value, json};
 
 #[derive(Default)]
@@ -38,6 +38,8 @@ struct TestOwner {
     /// Refuse CIRCLE and LISP before they start; panic when asked (`panic_in_start`).
     refuse_starts: bool,
     panic_in_start: bool,
+    /// What `overlay` draws (ECAD-SEAM(owner): overlay marks).
+    marks: Vec<Mark>,
 }
 
 impl TestOwner {
@@ -55,6 +57,7 @@ impl TestOwner {
             unsaved: false,
             refuse_starts: false,
             panic_in_start: false,
+            marks: Vec::new(),
         }
     }
     fn swap_to(&mut self, s: &mut Session, uid: u64, d: Arc<Drawing>) {
@@ -142,6 +145,10 @@ impl DocumentOwner for TestOwner {
     }
     fn drag_extra(&self, _s: &Session, _uid: u64, _drag: &cadcraft_engine::Drag) -> Vec<EntityKind> {
         vec![EntityKind::Point(cadcraft_engine::doc::Point { p: Default::default(), angle: 0.0 })]
+    }
+    fn overlay(&self, _s: &Session, _uid: u64) -> Vec<Mark> {
+        assert!(!self.panic_in_query, "injected overlay failure");
+        self.marks.clone()
     }
     fn recover(&mut self, s: &mut Session) {
         self.log.lock().unwrap().recovered += 1;
@@ -314,6 +321,47 @@ fn the_owner_adds_drag_preview_geometry() {
     let (_, extra) = s.drag(cadcraft_engine::geom::Vec2::new(5.0, 5.0)).expect("MOVE drags");
     assert!(extra.iter().any(|e| matches!(e.kind, EntityKind::Point(_))));
     s.cancel();
+}
+
+/// ECAD-SEAM(owner): overlay marks. The owner's marks for the active document are passed on;
+/// a plain drawing has none; marks that cannot be drawn are dropped and the count is capped; a
+/// busy or panicking owner draws nothing; asking changes nothing.
+#[test]
+fn the_owner_draws_overlay_marks() {
+    use cadcraft_engine::doc::color::Rgb;
+    use cadcraft_engine::ext::{MAX_MARK_SIZE, MAX_MARKS};
+    use cadcraft_engine::geom::Vec2;
+    let mark = |x: f64, size: f32| Mark { at: Vec2::new(x, 1.0), shape: MarkShape::Ring, size, stroke: 1.0, color: Rgb(0, 255, 255) };
+    let mut plain = Session::new();
+    assert!(plain.owner_overlay().is_empty(), "a plain drawing has no overlay");
+    let (s, owner, _, _) = owned_session();
+    assert!(s.owner_overlay().is_empty(), "an owner draws nothing by default");
+    let good = vec![mark(0.0, 8.0), Mark { shape: MarkShape::Dot, ..mark(1.0, 4.0) }, Mark { shape: MarkShape::Square, ..mark(2.0, 6.0) }];
+    let bad = vec![
+        mark(f64::NAN, 8.0),
+        mark(f64::INFINITY, 8.0),
+        mark(3.0, f32::NAN),
+        mark(3.0, -1.0),
+        mark(3.0, MAX_MARK_SIZE * 2.0),
+        Mark { stroke: f32::INFINITY, ..mark(3.0, 8.0) },
+    ];
+    owner.lock().unwrap().marks = good.iter().chain(&bad).copied().collect();
+    let revision = s.state().unwrap().revision;
+    assert_eq!(s.owner_overlay(), good, "drawable marks pass, in order");
+    assert_eq!(s.state().unwrap().revision, revision, "asking changes nothing");
+    owner.lock().unwrap().marks = vec![mark(0.0, 8.0); MAX_MARKS + 10];
+    assert_eq!(s.owner_overlay().len(), MAX_MARKS, "capped");
+    {
+        let _held = owner.lock().unwrap();
+        assert!(s.owner_overlay().is_empty(), "a busy owner draws nothing, without blocking");
+    }
+    owner.lock().unwrap().panic_in_query = true;
+    assert!(s.owner_overlay().is_empty(), "a panicking owner draws nothing");
+    owner.lock().unwrap_or_else(std::sync::PoisonError::into_inner).panic_in_query = false;
+    // Another document in the same session is plain: nothing is drawn over it.
+    plain = s;
+    plain.execute("new", &Value::Null).unwrap();
+    assert!(plain.owner_overlay().is_empty());
 }
 
 #[test]

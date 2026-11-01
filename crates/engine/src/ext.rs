@@ -17,6 +17,8 @@
 //! - **provenance**: copy-like operations record which new object came from which source, and a
 //!   clipboard copy is reported, so the owner can carry its own meaning across a copy.
 //! - **drag preview**: the owner may add rubber-band geometry to the running command's preview.
+//! - **overlay**: the owner may draw marks over its document at drawing positions, at a constant
+//!   size on screen ([`Mark`]); display only.
 //!
 //! Plain drawings have no owner and behave exactly as before. Nothing here is specific to any
 //! embedder: the interface passes drawings, handles, command ids and provenance only.
@@ -26,7 +28,9 @@ use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
+use cadcraft_doc::color::Rgb;
 use cadcraft_doc::{EntityKind, Handle};
+use cadcraft_geom::Vec2;
 use serde_json::Value;
 
 use crate::prompt::Drag;
@@ -89,6 +93,39 @@ pub enum Verdict {
     Refuse(String),
 }
 
+// ECAD-SEAM(owner): owner-drawn overlay marks (approved 2026-11-01, ECAD brief 008).
+/// The shape of an overlay [`Mark`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarkShape {
+    /// An open circle.
+    Ring,
+    /// A filled circle.
+    Dot,
+    /// An open square.
+    Square,
+}
+
+/// A mark an owner draws over its document ([`DocumentOwner::overlay`]): centred on a drawing
+/// position, at a constant size on screen whatever the zoom. Display only: it is not an object,
+/// cannot be picked, snapped to or plotted, and drawing it changes nothing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mark {
+    /// Where, in the coordinates of the space being edited.
+    pub at: Vec2,
+    pub shape: MarkShape,
+    /// Diameter (or side) in screen points.
+    pub size: f32,
+    /// Line width in screen points (a filled dot has none).
+    pub stroke: f32,
+    pub color: Rgb,
+}
+
+/// Most overlay marks drawn for one document.
+pub const MAX_MARKS: usize = 100_000;
+
+/// Largest overlay mark size or line width, in screen points.
+pub const MAX_MARK_SIZE: f32 = 256.0;
+
 /// An object that owns documents. Implemented by the embedder.
 ///
 /// # Semantics
@@ -137,6 +174,12 @@ pub trait DocumentOwner: Send {
     fn closed(&mut self, s: &mut Session, uid: u64) -> bool;
     /// Extra rubber-band geometry while the running command drags objects of document `uid`.
     fn drag_extra(&self, _s: &Session, _uid: u64, _drag: &Drag) -> Vec<EntityKind> {
+        Vec::new()
+    }
+    // ECAD-SEAM(owner): overlay marks.
+    /// Marks drawn over document `uid` while it is shown ([`Mark`]). Asked every frame, so it must
+    /// be quick and have no side effects. The default draws none.
+    fn overlay(&self, _s: &Session, _uid: u64) -> Vec<Mark> {
         Vec::new()
     }
     /// A callback panicked: bring every owned drawing back to a consistent state.
@@ -358,6 +401,13 @@ pub(crate) fn drag_extra(s: &Session, drag: &Drag) -> Vec<EntityKind> {
     catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|o| o.drag_extra(s, uid, drag)).unwrap_or_default())).unwrap_or_default()
 }
 
+/// Whether a mark can be drawn: a finite position, and a size and line width from zero to
+/// [`MAX_MARK_SIZE`].
+fn drawable(m: &Mark) -> bool {
+    let size = |v: f32| v.is_finite() && (0.0..=MAX_MARK_SIZE).contains(&v);
+    m.at.is_finite() && size(m.size) && size(m.stroke)
+}
+
 /// Ask an owner a yes/no question about its state. A busy owner (asked from inside one of its
 /// callbacks) or one whose answer panics gives `true`: "unsaved" and "ask first" are the safe
 /// answers, so no work is lost by a faulty owner.
@@ -382,6 +432,17 @@ impl Session {
             Some(o) => ask(&o, |o| o.close_needs_prompt(d.uid)),
             None => d.is_dirty(),
         }
+    }
+
+    // ECAD-SEAM(owner): overlay marks.
+    /// The overlay marks of the active document's owner ([`DocumentOwner::overlay`]); none for a
+    /// plain drawing. Marks that cannot be drawn (non-finite, negative or huge) are dropped, and at
+    /// most [`MAX_MARKS`] are kept. A busy owner, or one whose answer panics, draws none.
+    pub fn owner_overlay(&self) -> Vec<Mark> {
+        let Some(uid) = self.state().ok().map(|st| st.uid) else { return Vec::new() };
+        let Some(owner) = self.ext.owner_of(uid) else { return Vec::new() };
+        let marks = catch_unwind(AssertUnwindSafe(|| lock(&owner).map(|o| o.overlay(self, uid)).unwrap_or_default())).unwrap_or_default();
+        marks.into_iter().filter(drawable).take(MAX_MARKS).collect()
     }
 
     /// Whether any open document or owner holds unsaved work (quit asks first).
