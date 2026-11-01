@@ -92,7 +92,8 @@ fn save_asks_for_a_file_name_once_then_saves_to_it() {
     t.after_logic();
     let (kind, suggested, _) = t.dialog().unwrap();
     assert_eq!(kind, DialogKind::SaveAs);
-    assert_eq!(suggested, "~/ecad-projects/untitled.ecad");
+    let sep = std::path::MAIN_SEPARATOR;
+    assert_eq!(suggested, format!("{}{sep}untitled.ecad", ecad_trial::DEFAULT_FOLDER));
     t.cancel_dialog();
     assert!(t.status().unwrap().unsaved > 0, "cancel saves nothing");
     // Saved to a chosen file (the extension is added).
@@ -378,8 +379,9 @@ fn frames_lay_out_headless_with_every_dialog() {
 #[test]
 fn the_quick_start_trial_runs_headless() {
     use cadcraft_engine::doc::EntityKind;
-    let d = TempDir::new("quickstart");
+    let home = TempDir::new("quickstart-home");
     let mut t = trial(None);
+    t.home = Some(home.0.clone());
     let p = t.project().unwrap().clone();
     let ok = |t: &mut Trial, line: &str| {
         let e = t.submit_command(line);
@@ -455,9 +457,21 @@ fn the_quick_start_trial_runs_headless() {
     ok(&mut t, &format!("openpage {{\"page\":\"{}\"}}", p2.hex()));
     assert_eq!(t.cad.session.docs.len(), 2);
     assert_eq!(t.cad.session.doc().unwrap().model.len(), 1, "page 2's wire is drawn again");
-    // 7. Save, close and reopen: connectivity, IDs and history survive.
-    let path = d.path("quick-start.ecad");
-    save_via_dialog(&mut t, &path);
+    // 7. Save, close and reopen: connectivity, IDs and history survive. The guide's `~/` path,
+    // under a temporary home folder (on Linux the default folder is created by this save; on
+    // Windows the guide's default is `C:\dev\ecad-projects`, so the folder is made first).
+    if cfg!(windows) {
+        std::fs::create_dir_all(home.0.join("ecad-projects")).unwrap();
+    }
+    save_via_dialog(&mut t, "~/ecad-projects/demo");
+    let path = home.path("ecad-projects/demo.ecad");
+    assert_eq!(
+        ecad_trial::status_line(&t.status().unwrap()),
+        format!("Project \"demo\": 2 pages open, file {path}, no unsaved changes."),
+        "the banner the guide quotes"
+    );
+    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1"), "the tab the guide quotes");
+    assert!(t.cad.session.log.iter().any(|l| l.starts_with("Saved:")));
     let saved = doc(&mut t);
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap();
     t.cad.request_close_all();
