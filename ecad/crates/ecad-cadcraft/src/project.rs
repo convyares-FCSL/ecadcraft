@@ -1211,7 +1211,12 @@ impl DocumentOwner for Project {
     }
 
     /// Terminal rings and wire-end marks over an open page (brief 008, design §4.1).
-    fn overlay(&self, _s: &Session, uid: u64) -> Vec<cadcraft_engine::ext::Mark> {
+    /// Only while model space is shown: the marks are at model positions, and a paper-space layout
+    /// shows the page at another place and scale (or not at all).
+    fn overlay(&self, s: &Session, uid: u64) -> Vec<cadcraft_engine::ext::Mark> {
+        if s.space() != cadcraft_engine::doc::Space::Model {
+            return Vec::new();
+        }
         crate::interact::overlay_marks(self, uid)
     }
 

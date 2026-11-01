@@ -87,11 +87,16 @@ struct AddTerminal {
 }
 
 impl AddTerminal {
+    /// The name the next terminal gets: a typed one, else the default of the component under the
+    /// cursor (the one a click there adds to, so the prompt and the commit agree), else of the
+    /// component the last terminal went to, else 1.
     fn shown_name(&self, s: &Session) -> String {
         if let Some(n) = &self.name {
             return n.clone();
         }
-        self.last
+        let under = Self::resolve(s, s.cursor, true).ok().map(|(_, c, _)| c);
+        under
+            .or(self.last)
             .and_then(|c| read(s, |p, _| Ok(next_terminal_name(p.ledger.document(), c))).ok())
             .unwrap_or_else(|| "1".into())
     }

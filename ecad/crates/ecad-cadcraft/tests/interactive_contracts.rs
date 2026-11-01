@@ -464,6 +464,9 @@ fn errors_are_shown_and_the_prompt_repeats() {
     ];
     for (cmd, at, msg) in cases {
         start(&mut h, cmd);
+        // The Add Terminal prompt names the default of the component under the cursor: compare
+        // it with the cursor already where the click goes.
+        h.s.cursor = *at;
         let first = prompt(&h);
         click(&mut h, *at);
         assert_eq!(h.s.log.last().map(String::as_str), Some(*msg), "{cmd} at {at:?}");

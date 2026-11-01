@@ -154,11 +154,20 @@ pub struct Trial {
     /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
     focus_drawing: bool,
     /// The ECAD object under the pointer and since when (egui time, seconds).
-    hovered: Option<(Handle, f64)>,
+    hovered: Option<(Hovered, f64)>,
     /// The hover description shown now (design 008 §4.3).
     hover: Option<Vec<String>>,
     /// How long the pointer rests on an object before its description shows, in seconds.
     pub hover_delay: f64,
+}
+
+/// What the pointer rests on, for the hover tooltip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hovered {
+    /// A terminal within the capture aperture (drawn or symbol, free or connected).
+    Terminal(ecad_model::TerminalId),
+    /// The object CADCraft's rollover highlights.
+    Object(Handle),
 }
 
 /// The hover tooltip's egui id (and element name, design 008 §4.3).
@@ -747,6 +756,22 @@ impl Trial {
         self.hover_tooltip(ui.ctx());
     }
 
+    /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the
+    /// drawing area, with its hover description. Only reads.
+    fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
+        let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
+        if !rect.contains(at) {
+            return None;
+        }
+        let world = xf.to_world(at);
+        let aperture = self.cad.session.pixel_size() * self.cad.session.settings.aperture.max(1.0);
+        let uid = self.cad.session.state().ok()?.uid;
+        let p = self.project.as_ref()?;
+        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_terminal(p, uid, world, aperture))
+            .ok()
+            .flatten()
+    }
+
     /// The hover description shown now, if any (design 008 §4.3).
     pub fn hover_lines(&self) -> Option<&[String]> {
         self.hover.as_deref()
@@ -757,8 +782,17 @@ impl Trial {
     /// pointer leaves the object, a button is pressed or a command starts. Only reads.
     fn hover_tooltip(&mut self, ctx: &egui::Context) {
         let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
-        let target = self.cad.canvas.hover.filter(|_| self.cad.session.running.is_none() && !pressed);
-        let (Some(h), Some(pointer)) = (target, pointer) else {
+        let idle = self.cad.session.running.is_none() && !pressed;
+        // A terminal under the pointer wins over the wire ending on it or the symbol around it.
+        let terminal = match pointer.filter(|_| idle) {
+            Some(at) => self.terminal_under(at),
+            None => None,
+        };
+        let target = match terminal {
+            Some((t, lines)) => Some((Hovered::Terminal(t), Some(lines))),
+            None => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
+        };
+        let (Some((h, terminal_lines)), Some(pointer)) = (target, pointer) else {
             self.hovered = None;
             self.hover = None;
             return;
@@ -777,12 +811,18 @@ impl Trial {
             return;
         }
         if self.hover.is_none() {
-            let uid = self.cad.session.state().map(|st| st.uid).ok();
-            self.hover = match (self.project.as_ref(), uid) {
-                (Some(p), Some(uid)) => {
-                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h)).ok().flatten()
+            self.hover = match h {
+                Hovered::Terminal(_) => terminal_lines,
+                Hovered::Object(h) => {
+                    let uid = self.cad.session.state().map(|st| st.uid).ok();
+                    match (self.project.as_ref(), uid) {
+                        (Some(p), Some(uid)) => p
+                            .read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h))
+                            .ok()
+                            .flatten(),
+                        _ => None,
+                    }
                 }
-                _ => None,
             };
         }
         let Some(lines) = &self.hover else { return };

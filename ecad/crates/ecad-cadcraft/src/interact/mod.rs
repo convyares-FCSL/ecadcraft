@@ -369,12 +369,31 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         },
         Mapped::Marker(_, t) => terminal_lines(doc, t),
     };
+    capped(&mut lines);
+    Some(lines)
+}
+
+/// The terminal shown on page drawing `uid` within `aperture` drawing units of `cursor` (the
+/// nearest, as a capture picks it), with what hovering it shows: drawn and symbol terminals
+/// alike, connected or free. A terminal under the pointer wins over the objects around it (the
+/// wire ending on it, the symbol it belongs to). Read only.
+pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Option<(TerminalId, Vec<String>)> {
+    let page = p.page_of(uid)?;
+    if p.pages.get(&page).is_none_or(|v| v.unavailable) {
+        return None;
+    }
+    let c = capture(p, page, cursor, aperture)?;
+    let mut lines = terminal_lines(p.ledger.document(), c.terminal);
+    capped(&mut lines);
+    Some((c.terminal, lines))
+}
+
+fn capped(lines: &mut Vec<String>) {
     if lines.len() > MAX_HOVER_LINES {
         let more = lines.len() - (MAX_HOVER_LINES - 1);
         lines.truncate(MAX_HOVER_LINES - 1);
         lines.push(format!("… and {more} more"));
     }
-    Some(lines)
 }
 
 fn component_lines(doc: &Document, c: ComponentId) -> Vec<String> {
