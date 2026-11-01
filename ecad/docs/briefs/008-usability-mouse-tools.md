@@ -1,6 +1,6 @@
 # Brief 008: Usability, ECAD tools by mouse
 
-Status: Draft (overseer, 2026-11-01; the owner asked for this next, after 007)
+Status: Approved (owner, 2026-11-01)
 Branch: `ecad/usability-mouse-tools`
 Designer: **yes**, first (`ecad/docs/design/008.md`) · Size: M-L
 
