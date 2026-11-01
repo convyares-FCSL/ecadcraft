@@ -49,6 +49,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev mesa-vulkan-drivers libgl1-mesa-dev
+      # Mirrors upstream CADCraft's CI (craft-common-actions gate.yml, called with
+      # craft-fonts-ref in upstream ci.yml at v0.15.1): its tests build with craft-fonts embedded,
+      # and some need its CJK glyphs. Bump the pin with each upstream sync. ECAD jobs build
+      # without craft-fonts, as ECAD code and tests must work without it.
+      - name: Check out craft-fonts
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/craft-fonts
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+          path: craft-fonts
+          persist-credentials: false
+      - name: Build with craft-fonts
+        run: |
+          echo "CRAFT_FONTS_DIR=$GITHUB_WORKSPACE/craft-fonts" >> "$GITHUB_ENV"
+          echo "CRAFT_FONTS_REQUIRED=1" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
