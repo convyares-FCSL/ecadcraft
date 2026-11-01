@@ -21,9 +21,30 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   and file checks only on request, on copies. Keep it that way.
 - Branch from `dev`; every change arrives as a PR into `dev`. Never merge your own PR: green CI is
   not approval.
-- Before every commit run `cargo xtask ci` from `ecad/` (fmt, clippy `-D warnings`, tests, layers,
-  upstream patch guard, wasm). Build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0` to keep
-  the target directory near 6 GB.
+- Before every commit run the **local checks** below from `ecad/`. The full `cargo xtask ci`
+  (which adds the wasm build) runs in CI on every pull request, and needs to run locally only when
+  a change could affect wasm (dependencies, `cfg(target_arch)`, `ecad-model`/`ecad-store`/`ecad-file`
+  platform code).
+- **Builds (owner decision, 2026-11-01):** to stop every agent compiling from scratch, agents that
+  run one after another share one build folder, even from their own git worktree:
+  `CARGO_TARGET_DIR=C:/dev/ecad-target` for the ECAD workspace and `C:/dev/ecad-target-root` for
+  CADCraft's root workspace, always with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0`. Only an
+  agent that builds while another agent is building at the same time uses its own folder
+  (`C:/dev/ecad-target-<agent>`), and deletes it when done. Never delete the shared folders.
+
+```sh
+# local checks (from ecad/), with CARGO_TARGET_DIR=C:/dev/ecad-target
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo test --workspace            # plain, without extra features
+cargo xtask layers
+cargo xtask patches
+```
+
+  Root CADCraft checks (`cargo build --workspace`, the affected crates' tests, fmt and clippy
+  `-D warnings`, with `CARGO_TARGET_DIR=C:/dev/ecad-target-root`) run only when a change touches
+  files outside `ecad/`.
 - `ecad-model`, `ecad-store` and `ecad-file` must never depend on a `cadcraft-*` crate. Only
   `ecad-cadcraft` touches the engine.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
