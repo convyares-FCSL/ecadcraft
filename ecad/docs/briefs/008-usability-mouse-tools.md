@@ -69,3 +69,23 @@ terminals), stop and report: a new seam needs the owner's approval.
 
 The owner repeats the quick-start example on native Windows by clicking only, and says whether it
 is easy enough. That trial is this brief's real acceptance.
+
+## Owner answers to design 008 open points (2026-11-01)
+
+All as the overseer recommended:
+
+- **O1** Terminal capture: ECAD-side capture from the cursor, no seam. Revisit only if the owner
+  trial shows it confusing.
+- **O2** **Approved: one small generic seam** letting a document owner draw a screen-sized overlay
+  in world coordinates (terminal glyphs, attached/loose end marks). Generic, no ECAD semantics,
+  marked `ECAD-SEAM(owner)`, listed in `UPSTREAM-PATCHES.md`, tested in CADCraft's tests.
+- **O3** Rotate/mirror as keywords with Enter; no single-key seam.
+- **O4** Hover tooltip drawn by the trial, no seam; fallback a Hover line in the debugger panel.
+- **O5** ECAD menu only if extension menu paths show without an upstream change; otherwise none.
+- **O6** The worker confirms a commit per input works; if it needs a seam, stop and ask.
+- **Q1** One transaction per placed object.
+- **Q2** Default terminal labels: smallest unused positive integer per component (editable later).
+- **Q3** Attached ends green; loose ends a neutral colour, not red.
+- **Q4** Typed points taken literally; only the cursor is captured.
+- **Q5** Every terminal shown on the page is capturable.
+- **Q6** No new aliases.
