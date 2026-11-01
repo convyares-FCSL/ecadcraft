@@ -1,8 +1,12 @@
-//! ECAD commands (Path A). JSON forms only in the experiment: they build transactions from
-//! resolved inputs (IDs, coordinates) and commit them through [`Project::apply_edit`].
+//! ECAD commands (Path A). Their JSON forms build transactions from resolved inputs (IDs,
+//! coordinates) and commit them through [`Project::apply_edit`].
 //!
 //! They reach the command line, scripts, the control channel and MCP through the engine's
-//! extension command registry. Interactive prompting versions are not part of the experiment.
+//! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect` and
+//! `disconnect` also have click-based interactive forms ([`crate::interact`], brief 008), started
+//! by a bare command name, a menu or a tool button; they commit through these JSON forms.
+//! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
+//! prompt.
 
 use std::collections::BTreeMap;
 
@@ -16,6 +20,7 @@ use ecad_model::{
 use serde_json::{Value, json};
 
 use crate::access::{Pages, owner_of_active, try_lock};
+use crate::interact;
 use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 
@@ -24,16 +29,23 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("convertcomponent", "Convert to Component", run_convert)
             .params("{handles?: [hex]} (default: selection)")
+            .interactive(interact::convert)
             .noundo(),
         CommandSpec::new("addterminal", "Add Terminal", run_addterminal)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
+            .interactive(interact::addterminal)
             .noundo(),
-        CommandSpec::new("wire", "Wire", run_wire).params("{points: [[x,y], …]} (ends on terminals attach)").noundo(),
+        CommandSpec::new("wire", "Wire", run_wire)
+            .params("{points: [[x,y], …]} (ends on terminals attach)")
+            .interactive(interact::wire)
+            .noundo(),
         CommandSpec::new("connect", "Connect", run_connect)
             .params("{conductor: id, end: \"A\"|\"B\", terminal: id}")
+            .interactive(interact::connect)
             .noundo(),
         CommandSpec::new("disconnect", "Disconnect", run_disconnect)
             .params("{conductor: id, end: \"A\"|\"B\"}")
+            .interactive(interact::disconnect)
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
             .params("{conductor: id} | {component: id}")
@@ -46,6 +58,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .noundo(),
         CommandSpec::new("place", "Place Symbol", run_place)
             .params("{at: [x,y], rotation?: degrees, mirror?: bool, definition?: id}")
+            .interactive(interact::place)
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage).params("{title}").noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
@@ -141,7 +154,7 @@ fn opt_typed<'a, T>(
 }
 
 /// Most points one WIRE accepts.
-const MAX_WIRE_POINTS: usize = 10_000;
+pub(crate) const MAX_WIRE_POINTS: usize = 10_000;
 
 fn point(v: &Value) -> Option<Pt> {
     let a = v.as_array()?;
@@ -158,7 +171,7 @@ fn end_param(p: &Value) -> Result<End, String> {
 }
 
 /// Most handles one call may name.
-const MAX_HANDLES: usize = 100_000;
+pub(crate) const MAX_HANDLES: usize = 100_000;
 
 /// The `handles` parameter, or the selection when it is absent. Every entry must be a valid hex
 /// handle: a typo is an error, never a silently smaller set.

@@ -12,7 +12,9 @@
 //! - [`ProjectHandle`] is the only way to reach a project from outside the crate. It enforces the
 //!   lock and re-entry contract (see the `access` module): nothing can call the session while it
 //!   holds the project.
-//! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry.
+//! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry, and
+//!   [`interact`] their click-based interactive forms, the terminal and wire-end marks drawn over
+//!   pages, and the hover description.
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
@@ -35,6 +37,7 @@ pub mod commands;
 pub mod convert;
 pub mod debug;
 pub mod file;
+pub mod interact;
 pub mod project;
 mod translate;
 pub mod verify;

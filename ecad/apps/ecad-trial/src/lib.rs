@@ -15,18 +15,22 @@
 //!   CADCraft's prompt for ECAD pages, through `CadApp`'s public close API; no upstream change);
 //! - optional export of inspector snapshots (`--snapshots <dir>`), which are diagnostic files, not
 //!   saved projects;
-//! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]) for testing the implemented ECAD
-//!   commands: buttons run them through the command line or prefill the command field.
+//! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]): buttons start the click-based
+//!   forms of the ECAD commands (brief 008), run a command, or prefill the command field;
+//! - terminal and wire-end marks over ECAD pages (drawn by CADCraft from the project's overlay),
+//!   and a hover tooltip naming the ECAD object under the pointer and its connections
+//!   ([`Trial::hover_lines`]), read only.
 //! - the read-only **debugger** panel (persistence stage 2b, [`debugger`]), opened from the
 //!   banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
 //!   transactions with before/after values → saved record offsets and bytes, with pending
 //!   changes kept apart from durably saved history.
 //!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
-//! written), autosave, the control channel, saved window or profile state, ECAD menus and
-//! interactive ECAD prompts. ECAD commands are typed in their JSON form
-//! in the banner's command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's own
-//! command line takes a space as Enter, so it cannot take a JSON argument).
+//! written), autosave, the control channel, saved window or profile state and ECAD menus
+//! (CADCraft shows no top-level menu supplied by an embedder). The JSON forms of ECAD commands are
+//! typed in the banner's command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
+//! own command line takes a space as Enter, so it cannot take a JSON argument); a bare command
+//! name starts its interactive form in either field.
 //!
 //! The supported place for project files under WSL is the Linux home folder (for example
 //! `~/ecad-projects`); other file systems, including Windows drives under `/mnt`, are unverified.
@@ -47,6 +51,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use cadcraft_engine::Session;
+use cadcraft_engine::doc::Handle;
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
 use debugger::Debugger;
@@ -70,8 +75,10 @@ pub const DEFAULT_FOLDER: &str = "~/ecad-projects";
 /// Lines echoed at the command line when a project is created.
 const INTRO: &[&str] = &[
     "ECAD trial (experiment): Save As writes the project to a .ecad file; Open (in the banner) opens one.",
-    "Type ECAD commands with JSON parameters in the banner's \"Command\" field (the command line below takes a \
-space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
+    "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Terminal, Place Symbol, Wire, Connect and \
+Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
+    "JSON forms go in the banner's \"Command\" field (the command line below takes a space as Enter), for \
+example:  wire {\"points\":[[0,0],[40,0]]}",
     "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
 ];
@@ -144,7 +151,29 @@ pub struct Trial {
     focus_command: bool,
     /// The read-only debugger panel (closed until opened from the banner).
     pub debugger: Debugger,
+    /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
+    focus_drawing: bool,
+    /// The ECAD object under the pointer and since when (egui time, seconds).
+    hovered: Option<(Hovered, f64)>,
+    /// The hover description shown now (design 008 §4.3).
+    hover: Option<Vec<String>>,
+    /// How long the pointer rests on an object before its description shows, in seconds.
+    pub hover_delay: f64,
 }
+
+/// What the pointer rests on, for the hover tooltip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hovered {
+    /// A terminal within the capture aperture (drawn or symbol, free or connected).
+    Terminal(ecad_model::TerminalId),
+    /// The object CADCraft's rollover highlights.
+    Object(Handle),
+}
+
+/// The hover tooltip's egui id (and element name, design 008 §4.3).
+pub const HOVER_ID: &str = "ecad.hover";
+/// Default [`Trial::hover_delay`].
+pub const HOVER_DELAY: f64 = 0.5;
 
 /// The trial has no native file dialogs. When CADCraft asks for a file name to save a drawing,
 /// the request is passed on (`requested` is set) and the trial opens its own path dialog for the
@@ -217,6 +246,10 @@ impl Trial {
             command_hint: None,
             focus_command: false,
             debugger: Debugger::default(),
+            focus_drawing: false,
+            hovered: None,
+            hover: None,
+            hover_delay: HOVER_DELAY,
         }
     }
 
@@ -577,10 +610,12 @@ impl Trial {
         self.command_hint
     }
 
-    /// Act on a click of an ECAD Tool Sets button (see [`tools`]): run its command through the
-    /// command line (the same path as typing it), or put its template in the command field. The
-    /// selection is left as it is. A CADCraft command waiting at a prompt is cancelled first, as
-    /// CADCraft's own Tool Sets buttons do, so the button's line is never taken as prompt input.
+    /// Act on a click of an ECAD Tool Sets button (see [`tools`]): start its command's interactive
+    /// form (as typing its bare name does; the Command field is cleared and the drawing gets the
+    /// keyboard, so the next key answers the prompt), run its command through the command line
+    /// (the same path as typing it), or put its template in the command field. The selection is
+    /// left as it is. A command waiting at a prompt is cancelled first, as CADCraft's own Tool Sets
+    /// buttons do, so the button's line is never taken as prompt input.
     ///
     /// # Errors
     /// An unknown tool, or the command's own refusal (also echoed at the command line).
@@ -594,6 +629,17 @@ impl Trial {
             self.cad.session.cancel();
         }
         match tool.kind {
+            tools::Kind::Start(command) => {
+                self.command.clear();
+                self.command_hint = None;
+                self.focus_drawing = true;
+                let r = self.cad.session.start(command).map_err(|e| e.to_string());
+                if let Err(e) = &r {
+                    self.cad.session.echo(e.clone());
+                }
+                self.after_logic();
+                r
+            }
             // A template waiting in the command field keeps its note and its placeholder check.
             tools::Kind::Run(line) => match self.run_line(line) {
                 None => Ok(()),
@@ -699,6 +745,115 @@ impl Trial {
         }
         self.cad.ui(ui);
         self.handle_tools();
+        if std::mem::take(&mut self.focus_drawing) {
+            // Keys go to CADCraft's command line when no text field has the keyboard.
+            ui.ctx().memory_mut(|m| {
+                if let Some(id) = m.focused() {
+                    m.surrender_focus(id);
+                }
+            });
+        }
+        self.hover_tooltip(ui.ctx());
+    }
+
+    /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the
+    /// drawing area, with its hover description; none while a paper-space layout is shown. Only
+    /// reads.
+    fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
+        // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
+        // canvas shows the sheet, and nothing on it is a terminal.
+        if self.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
+            return None;
+        }
+        let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
+        if !rect.contains(at) {
+            return None;
+        }
+        let world = xf.to_world(at);
+        let aperture = self.cad.session.pixel_size() * self.cad.session.settings.aperture.max(1.0);
+        let uid = self.cad.session.state().ok()?.uid;
+        let p = self.project.as_ref()?;
+        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_terminal(p, uid, world, aperture))
+            .ok()
+            .flatten()
+    }
+
+    /// The hover description shown now, if any (design 008 §4.3).
+    pub fn hover_lines(&self) -> Option<&[String]> {
+        self.hover.as_deref()
+    }
+
+    /// With no command running, the ECAD object CADCraft highlights under the pointer gets a
+    /// tooltip after [`Trial::hover_delay`]: its name or ID and its connections. It goes when the
+    /// pointer leaves the object, a button is pressed or a command starts. Only reads.
+    fn hover_tooltip(&mut self, ctx: &egui::Context) {
+        let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
+        let idle = self.cad.session.running.is_none() && !pressed;
+        // A terminal under the pointer wins over the wire ending on it or the symbol around it.
+        let terminal = match pointer.filter(|_| idle) {
+            Some(at) => self.terminal_under(at),
+            None => None,
+        };
+        let target = match terminal {
+            Some((t, lines)) => Some((Hovered::Terminal(t), Some(lines))),
+            None => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
+        };
+        let (Some((h, terminal_lines)), Some(pointer)) = (target, pointer) else {
+            self.hovered = None;
+            self.hover = None;
+            return;
+        };
+        let since = match self.hovered {
+            Some((was, since)) if was == h => since,
+            _ => {
+                self.hover = None;
+                now
+            }
+        };
+        self.hovered = Some((h, since));
+        if now - since < self.hover_delay {
+            // A hostile delay (NaN, infinite, huge) never panics: it falls back to a short wait.
+            let wait = std::time::Duration::try_from_secs_f64((self.hover_delay - (now - since)).clamp(0.01, 3600.0))
+                .unwrap_or(std::time::Duration::from_millis(10));
+            ctx.request_repaint_after(wait);
+            return;
+        }
+        if self.hover.is_none() {
+            self.hover = match h {
+                Hovered::Terminal(_) => terminal_lines,
+                Hovered::Object(h) => {
+                    let uid = self.cad.session.state().map(|st| st.uid).ok();
+                    match (self.project.as_ref(), uid) {
+                        (Some(p), Some(uid)) => p
+                            .read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h))
+                            .ok()
+                            .flatten(),
+                        _ => None,
+                    }
+                }
+            };
+        }
+        let Some(lines) = &self.hover else { return };
+        let t = cadcraft_ui_egui::theme::Tokens::get();
+        egui::Area::new(egui::Id::unique(HOVER_ID))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(pointer + egui::vec2(16.0, 16.0))
+            .constrain(true)
+            .interactable(false)
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(t.panel)
+                    .stroke(egui::Stroke::new(1.0, t.border))
+                    .corner_radius(0.0)
+                    .inner_margin(egui::Margin::symmetric(6, 4))
+                    .show(ui, |ui| {
+                        for (i, line) in lines.iter().enumerate() {
+                            let dim = i > 0 && (line.starts_with("id ") || line.contains("not connected"));
+                            let text = RichText::new(line).monospace().small();
+                            ui.label(text.color(if dim { t.text_dim } else { t.text }));
+                        }
+                    });
+            });
     }
 
     /// The app is exiting normally: export a final snapshot if enabled and a project is open.
