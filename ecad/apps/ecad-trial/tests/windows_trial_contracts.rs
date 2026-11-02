@@ -468,3 +468,49 @@ fn snapshots_argument_with_a_tilde_goes_to_the_home_folder() {
     }
     assert!(!home.0.join("~").exists());
 }
+
+// ---- Round 3 (component-by-component `~` expansion) ----
+
+/// `~/ecad-projects/demo` and `~\ecad-projects\demo` expand with the platform's separator only,
+/// and a mixed `~/a\b` is the folder `a` holding `b`.
+#[test]
+fn tilde_paths_use_one_separator_throughout() {
+    let home = Path::new(if cfg!(windows) { r"C:\Users\tester" } else { "/home/tester" });
+    let foreign = if cfg!(windows) { '/' } else { '\\' };
+    let rows = [
+        ("~/ecad-projects/demo", home.join("ecad-projects").join("demo.ecad")),
+        (r"~\ecad-projects\demo", home.join("ecad-projects").join("demo.ecad")),
+        (r"~/a\b", home.join("a").join("b.ecad")),
+        (r"~\a/b", home.join("a").join("b.ecad")),
+        ("~//a///b", home.join("a").join("b.ecad")),
+        (r"~\\a\\b.ecad", home.join("a").join("b.ecad")),
+        ("~/./a", home.join(".").join("a.ecad")),
+    ];
+    for (typed, want) in rows {
+        let got = normalize_with(typed, Some(home)).unwrap();
+        assert_eq!(got, want.display().to_string(), "{typed:?}");
+        let tail = got.strip_prefix(&home.display().to_string()).unwrap();
+        assert!(!tail.contains(foreign), "{typed:?} -> {got}");
+        // Normalising the result again changes nothing.
+        assert_eq!(normalize_with(&got, Some(home)).as_deref(), Ok(got.as_str()), "{typed:?}");
+    }
+}
+
+/// Saved through the dialog with either spelling, the banner and the bound file name the same
+/// single-separator path, and the file is there.
+#[test]
+fn the_banner_shows_the_expanded_path_with_one_separator() {
+    let home = TempDir::new("r3-banner");
+    std::fs::create_dir_all(home.0.join("ecad-projects")).unwrap();
+    let foreign = if cfg!(windows) { '/' } else { '\\' };
+    for (typed, file) in [("~/ecad-projects/demo", "demo.ecad"), (r"~\ecad-projects\demo2", "demo2.ecad")] {
+        let mut t = trial(Some(&home.0), None);
+        assert_eq!(save_as(&mut t, typed), None, "{typed}");
+        let want = home.0.join("ecad-projects").join(file).display().to_string();
+        let s = t.status().unwrap();
+        assert_eq!(s.file.path.as_deref(), Some(want.as_str()), "{typed}");
+        assert!(!want.contains(foreign), "{want}");
+        assert!(ecad_trial::status_line(&s).contains(&format!("file {want},")), "{typed}");
+        assert!(Path::new(&want).is_file());
+    }
+}
