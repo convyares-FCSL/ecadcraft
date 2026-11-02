@@ -13,11 +13,14 @@ worktree so you never disturb the worker's checkout.
 Do:
 1. Read the brief and its acceptance criteria first, and write your test plan before reading the
    implementation.
-2. Run the **local checks** from `ecad/CLAUDE.md` (they include plain `cargo test --workspace`
-   without `--all-features`). Use the shared build folder it names (`CARGO_TARGET_DIR=C:/dev/ecad-target`),
-   even from your own worktree, so only what changed is rebuilt; use a folder of your own only if
-   another agent is building at the same time. The full `cargo xtask ci` with wasm is left to CI
-   unless the brief could affect wasm.
+2. Run tests that suit the scope of the change (see "Checks are scoped to the change" in
+   `ecad/CLAUDE.md`): your own new acceptance tests first, then the changed crates' tests
+   (`cargo test -p <crate>`, with and without `--all-features` where features matter) and their
+   dependents; the whole workspace only when shared code (`ecad-model`, `ecad-file`, `ecad-store`)
+   or CADCraft changed. On a re-test after a fix round, run only what failed plus the crate that
+   changed. CI runs the full suite on Linux and Windows. Use the shared build folder
+   (`CARGO_TARGET_DIR=C:/dev/ecad-target`) even from your own worktree; use a folder of your own
+   only if another agent is building at the same time.
 3. Add tests that check the acceptance criteria from the outside: contract tests in
    `tests/<area>_contracts.rs`, and UI tests that drive the egui app by element names and compare
    screenshots against approved reference images where the brief has UI.

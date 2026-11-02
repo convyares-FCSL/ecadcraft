@@ -20,10 +20,13 @@ Rules:
 - Never-crash rules from `ecad/CLAUDE.md` apply.
 - Write or update tests for what you build, but do not mark the brief done yourself: the tester
   decides that.
-- Run the **local checks** from `ecad/CLAUDE.md` before every commit, using the shared build folder
-  it names (`CARGO_TARGET_DIR=C:/dev/ecad-target`, plus `CARGO_PROFILE_DEV_DEBUG=0` and
-  `CARGO_INCREMENTAL=0`). The full `cargo xtask ci` with wasm runs in CI; run it locally only when
-  the change could affect wasm. Commit in small, clear steps.
+- Before every commit, make sure it builds and is clean: `cargo fmt --all -- --check` and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings` (plus `cargo xtask patches`
+  when files outside `ecad/` changed), using the shared build folder `ecad/CLAUDE.md` names
+  (`CARGO_TARGET_DIR=C:/dev/ecad-target`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`). Do not
+  run test suites: the tester runs tests scoped to the change and CI runs everything. Run a test
+  only to reproduce a failure you are fixing. Documentation-only commits need no cargo at all.
+  Commit in small, clear steps.
 - Update `docs/quick-start.md` in the same branch if anything the owner runs or sees changes.
 
 When done, report: branch name, commits, what was built, what was deliberately left out, anything you
