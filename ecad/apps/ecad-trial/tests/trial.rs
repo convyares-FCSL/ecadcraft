@@ -464,7 +464,7 @@ fn the_quick_start_trial_runs_headless() {
         std::fs::create_dir_all(home.0.join("ecad-projects")).unwrap();
     }
     save_via_dialog(&mut t, "~/ecad-projects/demo");
-    let path = home.path("ecad-projects/demo.ecad");
+    let path = home.0.join("ecad-projects").join("demo.ecad").display().to_string();
     assert_eq!(
         ecad_trial::status_line(&t.status().unwrap()),
         format!("Project \"demo\": 2 pages open, file {path}, no unsaved changes."),

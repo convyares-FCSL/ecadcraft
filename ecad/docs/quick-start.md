@@ -194,9 +194,10 @@ OneDrive-redirected Documents folder.
    cargo run --release -p ecad-trial
    ```
 
-   A release build opens only the trial's window, with no console window beside it. Run from
-   PowerShell (directly or through `cargo run`), its messages, `--help` and usage errors still
-   print there; started from Explorer or by double-clicking, they are not shown.
+   A release build opens only the trial's window, with no console window beside it, and shows no
+   console output, also when run from PowerShell or through `cargo run`. For `--help` and usage
+   errors use a debug build (`cargo run -p ecad-trial -- --help`), or redirect the output
+   (`... > out.txt`).
    To open a saved project: `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\demo.ecad`.
    To update later, use section 2's commands in `C:\dev\ecadcraft`.
 
@@ -538,9 +539,11 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   R-S1). Other file systems, including OneDrive and other synced folders, Windows drives under
   `/mnt`, network drives, removable drives and macOS builds, are **unverified**: file locking and
   the durability guarantees are not known to hold there.
-- **Windows release builds** open no console window. Started from Explorer or by
-  double-clicking, their `--help`, `--version` and usage errors are not shown; run them from
-  PowerShell (or through `cargo run`) to see that text.
+- **Windows release builds** open no console window and show no console output, however they
+  are started; `--help`, `--version` and usage errors print only when the output is redirected to
+  a file or pipe. Use a debug build (`cargo run -p ecad-trial -- --help`) to see them.
+- Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
+  in the Command field saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
 - No library files (`.ecadlib`) and no checkpoints.

@@ -24,7 +24,8 @@ prove:
   needs proof, together with the movement, copy and deletion policies built on it.
 - **Part C, integration experiment.** The smallest experiment that would prove or disprove
   Part B. It is specified here but not run.
-- **Part E, persistence and live inspection** (revision 4.1; stage 1 approved). It sets out the
+- **Part E, persistence and live inspection** (revision 4.1; stages 1, 2a and 2b merged, 2b on
+  2026-10-15). It sets out the
   `.ecad`/`.ecadlib` container, how embedded definitions are stored, durability, recovery,
   versioning and checkpoints, and a read-only live debugger panel, with acceptance criteria.
 - **Part D, decisions,** split into four groups: direction already supported, revised
@@ -78,7 +79,7 @@ Changes from revision 1 (details in [Revision 2 changes](#revision-2-changes)):
 18. [Decision table](#18-decision-table)
 19. [Room for later features](#19-room-for-later-features)
 
-**Part E: persistence and live inspection (revision 4.1; stage 1 approved)**
+**Part E: persistence and live inspection (revision 4.1; stages 1, 2a and 2b merged)**
 
 20. [Persistence design](#20-persistence-design)
 21. [Live debugger (developer panel)](#21-live-debugger-developer-panel)
@@ -982,7 +983,7 @@ Each item names the constraint to preserve. None is decided by this proposal.
 | Library replacement | `UpdateDefinition` + terminal remapping transaction |
 | DWG adopt | an import that emits ordinary transactions, then a review |
 
-# Part E: persistence and live inspection (proposal for review)
+# Part E: persistence and live inspection (proposal; stages 1, 2a and 2b merged)
 
 > **Status: revision 4.1.** The owner reviewed revision 4 at `b0444b9`. The direction is
 > supported: JSON Lines for development, inline embedded definitions, separate versioned file
@@ -1529,7 +1530,7 @@ Each stage is one PR into `dev` and starts only after approval. Nothing in a lat
 built early.
 
 **Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13). **Approved.**
-Implemented on branch `ecad/file-stage1` for review. Modules of `ecad-file`: `v1` (records and
+Implemented on branch `ecad/file-stage1` and merged. Modules of `ecad-file`: `v1` (records and
 conversions), `record` (header, limits, upcasts, definition hash), `canonical`, `crc`, `chain`,
 `codec` (`jsonl/1`), `read` (open and classify), `write` (create, save with retry). Contract tests:
 `ecad-file/tests/{canonical,records,recovery,save}_contracts.rs` and the golden file
@@ -1588,7 +1589,7 @@ never panic and always classify the result.
 
 **Stage 2: files, harness persistence, debugger panel.** Split by the owner (2026-10-13) into
 **2a**, files and harness persistence (merged as PR #10 after the owner's WSL trial), and **2b**,
-the debugger panel (implemented on branch `ecad/debugger` for review; tests in
+the debugger panel (merged 2026-10-15 as PR #11; tests in
 `ecad-cadcraft/tests/debugger.rs` and `ecad-trial/tests/debugger.rs`). The criteria below marked
 *(2b)* belong to 2b.
 - Save, quit, reopen: the same document, IDs, log and head, with persisted = head. *(2b)* The

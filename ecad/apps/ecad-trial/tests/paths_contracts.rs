@@ -46,8 +46,15 @@ fn typed_paths_are_expanded_completed_or_refused() {
         ("~/demo", true, Is(ecad(&profile.join("demo")))),
         (r"~\demo", true, Is(ecad(&profile.join("demo")))),
         ("~//demo", true, Is(ecad(&profile.join("demo")))),
-        ("  ~/ecad-projects/demo.ecad  ", true, Is(profile.join("ecad-projects/demo.ecad").display().to_string())),
-        ("~/Schaltpläne/Anlage ü", true, Is(ecad(&profile.join("Schaltpläne/Anlage ü")))),
+        (
+            "  ~/ecad-projects/demo.ecad  ",
+            true,
+            Is(profile.join("ecad-projects").join("demo.ecad").display().to_string()),
+        ),
+        ("~/Schaltpläne/Anlage ü", true, Is(ecad(&profile.join("Schaltpläne").join("Anlage ü")))),
+        // The rest is joined component by component: one separator throughout, the platform's.
+        ("~/ecad-projects/demo", true, Is(ecad(&profile.join("ecad-projects").join("demo")))),
+        (r"~\ecad-projects/sub\demo", true, Is(ecad(&profile.join("ecad-projects").join("sub").join("demo")))),
         // No home folder known: refused, never a folder named `~`.
         ("~/demo", false, Refused(HOME_UNKNOWN)),
         (r"~\demo", false, Refused(HOME_UNKNOWN)),

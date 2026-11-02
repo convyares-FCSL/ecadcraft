@@ -69,8 +69,9 @@ pub fn home() -> Option<std::path::PathBuf> {
     std::env::home_dir().filter(|h| !h.as_os_str().is_empty())
 }
 
-/// `path` with a leading `~`, `~/` or `~\` replaced by `home`, built with `Path::join`. Any other
-/// path is returned as typed.
+/// `path` with a leading `~`, `~/` or `~\` replaced by `home`, the rest joined component by
+/// component (split on `/` and `\`) with `Path::join`, so that it uses the platform's separator.
+/// Any other path is returned as typed.
 ///
 /// # Errors
 /// The path starts with `~` but `home` is `None` (a folder literally named `~` is never made).
@@ -81,7 +82,7 @@ pub fn expand_home(path: &str, home: Option<&std::path::Path>) -> Result<std::pa
         _ => return Ok(std::path::PathBuf::from(path)),
     };
     let home = home.ok_or(HOME_UNKNOWN)?;
-    Ok(if rest.is_empty() { home.to_path_buf() } else { home.join(rest) })
+    Ok(rest.split(['/', '\\']).filter(|c| !c.is_empty()).fold(home.to_path_buf(), |p, c| p.join(c)))
 }
 
 /// A `.ecad` path from what the user typed: surrounding spaces trimmed, a leading `~` expanded
