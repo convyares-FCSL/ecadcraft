@@ -1088,6 +1088,9 @@ dependencies = [
 [[package]]
 name = "ecad-store"
 version = "0.1.0-dev"
+dependencies = [
+ "same-file",
+]
 
 [[package]]
 name = "ecad-trial"

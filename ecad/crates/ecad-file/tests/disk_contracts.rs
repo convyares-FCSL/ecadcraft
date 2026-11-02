@@ -137,11 +137,17 @@ fn a_failed_folder_flush_after_replacement_is_unconfirmed_until_a_save_confirms_
     assert!(project.unconfirmed());
     assert!(ledger.is_unsaved(), "nothing acknowledged while durability is unconfirmed");
     assert_reopens_as(&p, &ledger); // the new file is in place
-    // Confirming fails again: still unconfirmed, still unsaved, reported as such.
+    // Confirming fails again: still unconfirmed, still unsaved, and the plain Save says that
+    // nothing new was written (not "written").
     edit(&mut ledger, "2");
+    let before = std::fs::read(&p).unwrap();
     project.faults.fail_dir_sync = true;
     let e = project.save(&mut ledger).unwrap_err();
-    assert!(e.to_string().contains("could not confirm the change is durable"), "{e}");
+    assert!(matches!(e, DiskError::NotConfirmed(_)), "{e}");
+    let text = e.to_string();
+    assert!(text.starts_with("not saved:") && text.contains("new changes were not written"), "{text}");
+    assert!(text.contains("Save As to a folder that can be flushed"), "{text}");
+    assert_eq!(std::fs::read(&p).unwrap(), before, "nothing appended");
     assert_eq!(ledger.persisted(), 0);
     // The next Save confirms the replacement, then appends.
     project.save(&mut ledger).unwrap();
@@ -234,15 +240,98 @@ fn a_second_opener_is_read_only_and_can_save_a_copy() {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "R-M4: the lock is mandatory on Windows, so the holder record cannot be read")]
-fn a_second_opener_is_told_who_is_editing() {
+fn a_second_opener_is_told_who_is_editing_where_the_system_shows_it() {
     let d = TempDir::new("holder");
     let p = d.path("p.ecad");
     let mut ledger = fixture().ledger;
     let (_first, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
     let o = DiskProject::open(&p, SEED, "second session").unwrap();
     let Some(ReadOnly::Locked { holder }) = o.project.read_only().cloned() else { panic!("not read-only") };
-    assert!(holder.as_deref().is_some_and(|h| h.contains(WRITER)), "{holder:?}");
+    let text = o.project.read_only().unwrap().to_string();
+    if cfg!(windows) {
+        // The lock is mandatory on Windows, so the holder's record cannot be read; the message
+        // says so rather than leaving it out (owner decision, brief 002).
+        assert_eq!(holder, None);
+        assert!(text.contains("Windows does not say which session"), "{text}");
+    } else {
+        assert!(holder.as_deref().is_some_and(|h| h.contains(WRITER)), "{holder:?}");
+        assert!(text.contains(WRITER), "{text}");
+    }
+    // A session that has just ended may not have released its lock yet (review R-M3).
+    assert!(text.contains("another session is editing it") && text.contains("may take a moment"), "{text}");
+    // Save As onto that file is refused with the same explanation.
+    let mut other = fixture().ledger;
+    let q = d.path("q.ecad");
+    let (mut project, _) = create(&q, &mut other, StepFaults::default()).unwrap();
+    let e = project.save_as(&p, &mut other, None, WRITER).unwrap_err().to_string();
+    assert!(e.contains("being edited in another session") && e.contains("may take a moment"), "{e}");
+    assert_eq!(e.contains("Windows does not say which session"), cfg!(windows), "{e}");
+}
+
+#[test]
+fn a_lock_that_cannot_be_taken_is_no_lock_not_another_session() {
+    let d = TempDir::new("nolock");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    drop(create(&p, &mut ledger, StepFaults::default()).unwrap());
+    // Nothing can be created or opened where the lock file belongs (as in a folder that cannot
+    // be written): no lock can be taken, which says nothing about other sessions.
+    let lock = ecad_store::disk::lock_path(&p);
+    std::fs::remove_file(&lock).unwrap();
+    std::fs::create_dir(&lock).unwrap();
+    let o = DiskProject::open(&p, SEED, WRITER).unwrap();
+    assert!(matches!(o.project.read_only(), Some(ReadOnly::NoLock(_))), "{:?}", o.project.read_only());
+    assert_eq!(o.ledger.log(), ledger.log(), "it can still be read");
+    let (mut project, mut copy) = (o.project, o.ledger);
+    edit(&mut copy, "2");
+    let e = project.save(&mut copy).unwrap_err().to_string();
+    assert!(e.contains("no writer lock could be taken") && !e.contains("another session"), "{e}");
+    // Save As to a file whose lock can be taken rescues the work.
+    let q = d.path("q.ecad");
+    assert_eq!(project.save_as(&q, &mut copy, None, WRITER).unwrap(), Durability::Confirmed);
+    drop(project);
+    assert_reopens_as(&q, &copy);
+}
+
+/// Make `path` read-only (the read-only attribute on Windows, no write permission on Unix), or
+/// writable again.
+fn set_read_only(path: &Path, read_only: bool) {
+    let mut perms = std::fs::metadata(path).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)] // a test file in a private temporary folder
+    perms.set_readonly(read_only);
+    std::fs::set_permissions(path, perms).unwrap();
+}
+
+#[test]
+fn a_read_only_file_opens_read_only_and_says_why() {
+    let d = TempDir::new("readonly");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    drop(create(&p, &mut ledger, StepFaults::default()).unwrap());
+    set_read_only(&p, true);
+    let o = DiskProject::open(&p, SEED, WRITER).unwrap();
+    assert!(matches!(o.project.read_only(), Some(ReadOnly::NotWritable(_))), "{:?}", o.project.read_only());
+    assert_eq!(o.report.outcome, Outcome::Clean);
+    assert_eq!(o.ledger.log(), ledger.log());
+    assert_eq!(o.project.lock_file(), None, "the lock is left to a session that can write");
+    let (mut project, mut copy) = (o.project, o.ledger);
+    edit(&mut copy, "2");
+    let before = std::fs::read(&p).unwrap();
+    let e = project.save(&mut copy).unwrap_err().to_string();
+    assert!(e.contains("the file cannot be written") && e.contains("Save As"), "{e}");
+    assert_eq!(std::fs::read(&p).unwrap(), before);
+    // A second session is told the same, not that another session is editing.
+    let second = DiskProject::open(&p, SEED, "second").unwrap();
+    assert!(matches!(second.project.read_only(), Some(ReadOnly::NotWritable(_))));
+    drop(second);
+    // Save As to another file rescues the work.
+    let q = d.path("q.ecad");
+    assert_eq!(project.save_as(&q, &mut copy, None, WRITER).unwrap(), Durability::Confirmed);
+    drop(project);
+    assert_reopens_as(&q, &copy);
+    // Writable again: it opens writable.
+    set_read_only(&p, false);
+    assert!(DiskProject::open(&p, SEED, WRITER).unwrap().project.read_only().is_none());
 }
 
 #[test]
@@ -319,7 +408,6 @@ fn external_changes_are_refused_and_the_file_left_alone() {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "R-S1: no file identity on Windows, so a file renamed over the project is not detected")]
 fn a_file_renamed_over_the_project_is_refused_and_left_alone() {
     let d = TempDir::new("replaced");
     let p = d.path("p.ecad");
@@ -333,6 +421,86 @@ fn a_file_renamed_over_the_project_is_refused_and_left_alone() {
     assert!(matches!(e, DiskError::Replaced(_)), "{e}");
     assert_eq!(std::fs::read(&p).unwrap(), b"replacement");
     assert!(ledger.is_unsaved());
+}
+
+#[test]
+fn a_project_deleted_and_recreated_is_refused_and_left_alone() {
+    let d = TempDir::new("recreated");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (mut project, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
+    edit(&mut ledger, "2");
+    // Deleted and written again at the same path (as some editors and sync clients save), with
+    // the same bytes, so only the file's identity tells them apart.
+    let bytes = std::fs::read(&p).unwrap();
+    std::fs::remove_file(&p).unwrap();
+    std::fs::write(&p, &bytes).unwrap();
+    let e = project.save(&mut ledger).unwrap_err();
+    assert!(matches!(e, DiskError::Replaced(_)), "{e}");
+    assert_eq!(std::fs::read(&p).unwrap(), bytes);
+    assert!(ledger.is_unsaved());
+    // Deleted and not recreated: refused too.
+    std::fs::remove_file(&p).unwrap();
+    assert!(matches!(project.save(&mut ledger).unwrap_err(), DiskError::Replaced(_)));
+    assert!(!p.exists());
+}
+
+/// Windows only: a file at the project's path that another program holds open without sharing
+/// cannot even be looked at. Save waits briefly, then says it could not check, rather than
+/// calling it a replacement; once the file is released, the check runs and finds what is there.
+/// (The project's own file cannot be held this way while the project has it open, so a file
+/// moved over it stands in for it.) Elsewhere opening a file never stops another reading it.
+#[cfg(windows)]
+#[test]
+fn a_file_another_program_holds_exclusively_is_not_reported_as_replaced() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let d = TempDir::new("exclusive");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (mut project, _) = create(&p, &mut ledger, StepFaults::default()).unwrap();
+    edit(&mut ledger, "2");
+    let other = d.path("other");
+    std::fs::write(&other, b"replacement").unwrap();
+    std::fs::rename(&other, &p).unwrap();
+    let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(&p).unwrap();
+    let start = std::time::Instant::now();
+    let e = project.save(&mut ledger).unwrap_err();
+    assert!(matches!(e, DiskError::CannotCheck { .. }), "{e}");
+    assert!(e.to_string().contains("could not check") && e.to_string().contains("nothing was written"), "{e}");
+    assert!(start.elapsed() >= ecad_store::disk::TRANSIENT_PAUSE, "retried before giving up");
+    assert!(ledger.is_unsaved());
+    // Released after a moment: the retry waits for it, and the check finds the other file.
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        drop(held);
+    });
+    let e = project.save(&mut ledger).unwrap_err();
+    release.join().unwrap();
+    assert!(matches!(e, DiskError::Replaced(_)), "{e}");
+    assert_eq!(std::fs::read(&p).unwrap(), b"replacement");
+}
+
+#[test]
+fn save_as_is_confirmed_only_when_the_folder_flush_ran_and_succeeded() {
+    // Ran and succeeded (the folder flush is real on Unix and on Windows).
+    let d = TempDir::new("confirmed");
+    let mut ledger = fixture().ledger;
+    let (_project, durability) = create(&d.path("p.ecad"), &mut ledger, StepFaults::default()).unwrap();
+    assert_eq!(durability, Durability::Confirmed);
+    assert!(!ledger.is_unsaved());
+    // Failed, or not available on this system: unconfirmed, with the reason, and nothing
+    // acknowledged.
+    let failed = StepFaults { fail_dir_sync: true, ..StepFaults::default() };
+    let unavailable = StepFaults { dir_sync_unavailable: true, ..StepFaults::default() };
+    for (name, faults, reason) in
+        [("failed", failed, "injected folder flush failure"), ("unavailable", unavailable, "not available")]
+    {
+        let mut ledger = fixture().ledger;
+        let (project, durability) = create(&d.path(&format!("{name}.ecad")), &mut ledger, faults).unwrap();
+        let Durability::Unconfirmed(why) = durability else { panic!("{name}: confirmed without a flush") };
+        assert!(why.contains(reason), "{name}: {why}");
+        assert!(project.unconfirmed() && ledger.is_unsaved(), "{name}");
+    }
 }
 
 #[test]
