@@ -31,7 +31,7 @@ Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | On Windows, tests for known gaps are marked ignored with the gap's id: the holder of a lock cannot be named (R-M4), and a file replaced behind an open project is not detected (R-S1); see `ecad/docs/review-2026-10-31.md`. Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
+| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/disk_contracts.rs`, `disk_edge_contracts.rs`). Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
@@ -141,9 +141,9 @@ Recorded as you reported them:
 
 ## 1W. First-time setup (native Windows)
 
-The same trial runs natively on Windows 11 (no WSL). Use **PowerShell**. Native Windows file
-locking has known gaps listed in section 9; keep projects in a local folder such as
-`C:\dev\ecad-projects`, not in OneDrive.
+The same trial runs natively on Windows 11 (no WSL). Use **PowerShell**. Saving on Windows
+differs from Linux in a few ways listed in section 9; keep projects in a local NTFS folder such as
+`C:\dev\ecad-projects`, not in OneDrive (unverified).
 
 1. Install Git for Windows, the Visual Studio Build Tools with the "Desktop development with C++"
    workload, and Rust from <https://rustup.rs> (the default `x86_64-pc-windows-msvc` toolchain).
@@ -488,10 +488,23 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   written.
 - **Where files may live.** The Linux home folder under WSL (for example `~/ecad-projects`) is
   the supported and tested location. On native Windows, use a local folder such as
-  `C:\dev\ecad-projects` and type the full path in Save As; two known gaps are open there (the
-  holder of a lock cannot be named, R-M4; a file replaced behind an open project is not detected,
-  R-S1). Other file systems, including Windows drives under `/mnt`,
-  network drives and macOS builds, are **unverified**: file locking and the
+  `C:\dev\ecad-projects` (NTFS) and type the full path in Save As. There, as on Linux, a file
+  replaced or deleted behind an open project is detected and Save is refused. Saving differs from
+  Linux in these ways:
+  - A read-only file (the read-only attribute) opens read-only and says the file cannot be
+    written; Save As saves a copy.
+  - If no writer lock can be taken at all, the project opens read-only and says so; this is not
+    reported as another session editing.
+  - A second window says another session is editing the file but cannot name it.
+  - After a crash, or after closing the other window, the lock may take a moment to be released;
+    open again shortly.
+  - A save waits up to about half a second while another program (antivirus, the indexer, a sync
+    client) briefly holds the file.
+  - If the folder cannot be flushed, Save As reports the save as unconfirmed and later Saves stay
+    unconfirmed; Save As to a folder on a local drive rescues the project.
+
+  Other file systems, including FAT and exFAT drives (USB sticks), network shares, OneDrive
+  folders, Windows drives under `/mnt`, and macOS builds, are **unverified**: file locking and the
   durability guarantees are not known to hold there.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
