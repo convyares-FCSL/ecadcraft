@@ -8,3 +8,8 @@ rust-version.workspace = true
 
 [lints]
 workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# File identity (device and inode on Unix, volume serial and file index on Windows) without
+# `unsafe` (BurntSushi, Unlicense OR MIT; owner approved 2026-10-31, brief 002).
+same-file = "1.0.6"

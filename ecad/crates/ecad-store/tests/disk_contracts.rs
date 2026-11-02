@@ -88,16 +88,31 @@ fn an_active_lock_refuses_other_writers_and_a_crash_never_locks_out() {
     // `_still_running` is released here, before `d` removes the folder (Windows keeps open files).
 }
 
+/// What a refused writer is told about the holder: its record, except on Windows, where the
+/// mandatory lock keeps the record unreadable and nothing is shown (owner decision, brief 002).
+fn expected_holder(record: &str) -> Option<&str> {
+    assert_eq!(disk::HOLDER_SHOWN, !cfg!(windows));
+    disk::HOLDER_SHOWN.then_some(record)
+}
+
 #[test]
-#[cfg_attr(windows, ignore = "R-M4: the lock is mandatory on Windows, so the holder record cannot be read")]
-fn a_refused_writer_is_told_who_holds_the_lock() {
+fn a_refused_writer_is_told_who_holds_the_lock_where_the_system_shows_it() {
     let d = TempDir::new("holder");
     let p = d.path("p.ecad");
     let (_lock, _) = acquired(&p, "pid 1 since t0");
     match WriterLock::try_acquire(&p, "pid 2").unwrap() {
-        LockAttempt::HeldByOther { holder } => assert_eq!(holder.as_deref(), Some("pid 1 since t0")),
+        LockAttempt::HeldByOther { holder } => assert_eq!(holder.as_deref(), expected_holder("pid 1 since t0")),
         LockAttempt::Acquired { .. } => panic!("two writers"),
     }
+}
+
+#[test]
+fn a_lock_file_that_cannot_be_opened_is_an_error_not_another_writer() {
+    let d = TempDir::new("nolock");
+    let p = d.path("p.ecad");
+    // Something that is not a file where the lock file belongs: no lock can be taken.
+    std::fs::create_dir(disk::lock_path(&p)).unwrap();
+    assert!(WriterLock::try_acquire(&p, "pid 1").is_err());
 }
 
 #[test]
@@ -123,16 +138,95 @@ fn replacement_steps_are_atomic_and_identity_tracks_the_file() {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "R-S1: no file identity on Windows (FileIdentity::of returns None)")]
 fn identity_changes_when_another_file_replaces_the_path() {
     let d = TempDir::new("identity");
     let target = d.path("p.ecad");
     std::fs::write(&target, b"old").unwrap();
+    // Renamed over.
     let before = FileIdentity::at(&target).unwrap();
+    assert_eq!(before, FileIdentity::at(&target).unwrap(), "the same file, looked at twice");
     let temp = disk::temp_path(&target);
     disk::write_new_file(&temp, b"new").unwrap();
     disk::replace(&temp, &target).unwrap();
     assert_ne!(before, FileIdentity::at(&target).unwrap());
+    // Deleted and recreated, while a handle to the old file is still open (as the writer's is).
+    let open = FileMedium::open(&target, true).unwrap();
+    let before = open.identity().unwrap();
+    disk::remove_file(&target).unwrap();
+    std::fs::write(&target, b"recreated").unwrap();
+    assert_ne!(before, FileIdentity::at(&target).unwrap());
+    assert!(FileIdentity::at(&d.path("missing")).is_err(), "nothing there");
+}
+
+#[test]
+fn a_folder_flush_really_runs() {
+    let d = TempDir::new("syncdir");
+    disk::sync_dir(&d.0).unwrap();
+    // It is not a no-op: a folder that is not there cannot be flushed.
+    assert!(disk::sync_dir(&d.path("missing")).is_err());
+}
+
+#[test]
+fn transient_failures_are_retried_on_windows_only_and_a_bounded_number_of_times() {
+    for (code, transient) in [(32, true), (33, true), (5, true), (2, false)] {
+        let mut tries = 0;
+        let start = std::time::Instant::now();
+        let r: std::io::Result<()> = disk::retry_transient(|| {
+            tries += 1;
+            Err(std::io::Error::from_raw_os_error(code))
+        });
+        assert!(r.is_err());
+        let expected = if cfg!(windows) && transient { disk::TRANSIENT_ATTEMPTS } else { 1 };
+        assert_eq!(tries, expected, "os error {code}");
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "bounded");
+    }
+    // A failure that clears up is retried until it succeeds (on Windows).
+    let mut tries = 0;
+    let r = disk::retry_transient(|| {
+        tries += 1;
+        if tries < 3 { Err(std::io::Error::from_raw_os_error(32)) } else { Ok(tries) }
+    });
+    if cfg!(windows) {
+        assert_eq!(r.unwrap(), 3);
+    } else {
+        assert!(r.is_err());
+    }
+}
+
+/// Windows only: another program holding the target open without letting it be deleted (as a
+/// virus scanner or indexer may, briefly) delays the replacement instead of failing it. Elsewhere
+/// an open file never stops a rename.
+#[cfg(windows)]
+#[test]
+fn a_replacement_waits_for_a_program_that_briefly_holds_the_target() {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 1;
+    let d = TempDir::new("sharing");
+    let target = d.path("p.ecad");
+    std::fs::write(&target, b"old").unwrap();
+    let hold = || std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(&target).unwrap();
+    // Released after 150 ms: the replacement succeeds.
+    let held = hold();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        drop(held);
+    });
+    let temp = disk::temp_path(&target);
+    disk::write_new_file(&temp, b"new").unwrap();
+    disk::replace(&temp, &target).unwrap();
+    release.join().unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"new");
+    // Held throughout: it fails after a bounded wait, and nothing changes.
+    let held = hold();
+    let temp = disk::temp_path(&target);
+    disk::write_new_file(&temp, b"newer").unwrap();
+    let start = std::time::Instant::now();
+    assert!(disk::replace(&temp, &target).is_err());
+    assert!(start.elapsed() < std::time::Duration::from_secs(2), "bounded");
+    assert!(disk::remove_file(&target).is_err(), "removal is refused too");
+    drop(held);
+    assert_eq!(std::fs::read(&target).unwrap(), b"new");
+    disk::remove_file(&temp).unwrap();
 }
 
 /// Run by the killed-writer tests in a child process: take the lock named by
@@ -194,8 +288,7 @@ fn a_killed_writer_releases_its_lock() {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "R-M4: the lock is mandatory on Windows, so the holder record cannot be read")]
-fn another_process_is_told_who_holds_the_lock() {
+fn another_process_is_told_who_holds_the_lock_where_the_system_shows_it() {
     let d = TempDir::new("holder-process");
     let p = d.path("p.ecad");
     let (mut child, child_record) = child_holding_lock(&p);
@@ -203,7 +296,7 @@ fn another_process_is_told_who_holds_the_lock() {
     child.kill().unwrap();
     child.wait().unwrap();
     match attempt {
-        LockAttempt::HeldByOther { holder } => assert_eq!(holder.as_deref(), Some(child_record.as_str())),
+        LockAttempt::HeldByOther { holder } => assert_eq!(holder.as_deref(), expected_holder(&child_record)),
         LockAttempt::Acquired { .. } => panic!("the child's lock was not respected"),
     }
 }

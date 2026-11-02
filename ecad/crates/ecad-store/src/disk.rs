@@ -3,8 +3,21 @@
 //! this module only performs each step and reports its result.
 //!
 //! Guarantees are those of the operating system and file system: they are relied on, and tested,
-//! on a Linux file system (ext4, including the Linux home directory under WSL). Other file
-//! systems, including Windows drives mounted under WSL (`/mnt/c`), are not verified.
+//! on a Linux file system (ext4, including the Linux home directory under WSL) and on NTFS under
+//! native Windows. Other file systems are not verified: FAT and exFAT drives, network shares
+//! (SMB), ReFS (including Windows 11 Dev Drives, where a 64-bit file index is not guaranteed
+//! unique, so file identity is unverified there), and Windows drives mounted under WSL
+//! (`/mnt/c`).
+//!
+//! Where Windows differs:
+//! - A file's identity is its volume serial number and file index (Unix: device and inode).
+//! - A folder is flushed by opening it with backup semantics and flushing that handle.
+//! - Renaming a temporary file over a target and removing a file are retried briefly when another
+//!   program (a virus scanner, the search indexer, a sync client) has the file open
+//!   ([`retry_transient`]).
+//! - The writer lock is mandatory, so a refused writer cannot read who holds it
+//!   ([`HOLDER_SHOWN`]), and the operating system may release a killed process's lock a moment
+//!   after it ends.
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -74,9 +87,9 @@ impl FileMedium {
     /// The identity of the open file (not of whatever is at its path now).
     ///
     /// # Errors
-    /// The file's metadata cannot be read.
-    pub fn identity(&self) -> io::Result<Option<FileIdentity>> {
-        Ok(FileIdentity::of(&self.file.metadata()?))
+    /// The handle cannot be duplicated or its identity cannot be read.
+    pub fn identity(&self) -> io::Result<FileIdentity> {
+        Ok(FileIdentity(same_file::Handle::from_file(self.file.try_clone()?)?))
     }
 
     fn read_only() -> io::Error {
@@ -139,32 +152,24 @@ impl Medium for FileMedium {
     }
 }
 
-/// Which file a path or handle refers to (device and inode), to notice a file replaced behind
-/// the writer's back. Only available on Unix; elsewhere this check is not made (unverified).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FileIdentity {
-    dev: u64,
-    ino: u64,
-}
+/// Which file a path or handle refers to, to notice a file replaced behind the writer's back:
+/// device and inode on Unix, volume serial number and file index on Windows (through
+/// `same-file`, without `unsafe`).
+///
+/// # Semantics
+/// An identity keeps its file open. Windows only guarantees a file index while a handle to the
+/// file is open, so identities are compared while both are held; a deleted file's index cannot
+/// be reused by a new file while its identity lives.
+#[derive(Debug, PartialEq, Eq)]
+pub struct FileIdentity(same_file::Handle);
 
 impl FileIdentity {
-    #[cfg(unix)]
-    fn of(m: &std::fs::Metadata) -> Option<Self> {
-        use std::os::unix::fs::MetadataExt;
-        Some(Self { dev: m.dev(), ino: m.ino() })
-    }
-
-    #[cfg(not(unix))]
-    fn of(_m: &std::fs::Metadata) -> Option<Self> {
-        None
-    }
-
-    /// The identity of the file now at `path`; `Ok(None)` where identities are not available.
+    /// The identity of the file now at `path`.
     ///
     /// # Errors
-    /// Nothing is at `path`, or its metadata cannot be read.
-    pub fn at(path: &Path) -> io::Result<Option<Self>> {
-        Ok(Self::of(&std::fs::metadata(path)?))
+    /// Nothing is at `path`, or it cannot be opened to read its identity.
+    pub fn at(path: &Path) -> io::Result<Self> {
+        Ok(Self(same_file::Handle::from_path(path)?))
     }
 }
 
@@ -193,10 +198,16 @@ pub enum LockAttempt {
     },
     /// Another session holds the lock: open read-only.
     HeldByOther {
-        /// What the holder recorded about itself, when it can be read.
+        /// What the holder recorded about itself, when it can be read; always `None` where the
+        /// record cannot be shown ([`HOLDER_SHOWN`]).
         holder: Option<String>,
     },
 }
+
+/// Whether a refused writer is told what the lock's holder recorded about itself. Not on
+/// Windows: there the lock (`LockFileEx`) is mandatory and stops every other handle reading the
+/// lock file, and no unlocked copy of the record is kept beside it (owner decision, brief 002).
+pub const HOLDER_SHOWN: bool = cfg!(not(windows));
 
 /// An exclusive writer lock: an operating-system lock (`flock` on Unix, `LockFileEx` on Windows,
 /// through `std::fs::File::try_lock`) on the project's lock file, held for as long as this value
@@ -229,8 +240,11 @@ impl WriterLock {
             Ok(()) => {}
             Err(TryLockError::WouldBlock) => {
                 let mut s = String::new();
-                // Best effort: some systems refuse reads of a locked file.
-                let holder = file.read_to_string(&mut s).ok().map(|_| s.trim().to_string()).filter(|s| !s.is_empty());
+                // Best effort where it is shown at all.
+                let holder = HOLDER_SHOWN
+                    .then(|| file.read_to_string(&mut s).ok().map(|_| s.trim().to_string()))
+                    .flatten()
+                    .filter(|s| !s.is_empty());
                 return Ok(LockAttempt::HeldByOther { holder });
             }
             Err(TryLockError::Error(e)) => return Err(e),
@@ -273,29 +287,87 @@ pub fn unique() -> String {
     format!("{}-{t}-{n}", std::process::id())
 }
 
-/// Rename `from` over `to`, replacing it (atomic within one file system).
+/// Rename `from` over `to`, replacing it (atomic within one file system). Retried briefly on
+/// Windows while another program has either file open ([`retry_transient`]).
 ///
 /// # Errors
 /// The rename failed; `to` is unchanged.
 pub fn replace(from: &Path, to: &Path) -> io::Result<()> {
-    std::fs::rename(from, to)
+    retry_transient(|| std::fs::rename(from, to))
 }
 
-/// Make a folder's entries (a rename or a new file) durable. On Unix this flushes the folder; on
-/// other systems it is not available and succeeds without doing anything (unverified).
+/// Remove a file, retried briefly on Windows while another program has it open
+/// ([`retry_transient`]).
 ///
 /// # Errors
-/// The folder could not be flushed.
+/// The file could not be removed (`NotFound` if nothing is there).
+pub fn remove_file(path: &Path) -> io::Result<()> {
+    retry_transient(|| std::fs::remove_file(path))
+}
+
+/// How many times [`retry_transient`] tries an operation on Windows.
+pub const TRANSIENT_ATTEMPTS: u32 = 5;
+
+/// The pause between tries in [`retry_transient`] (so at most about 0.4 s is spent waiting).
+pub const TRANSIENT_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Run `op`, and on Windows try it again (up to [`TRANSIENT_ATTEMPTS`] times in all, with
+/// [`TRANSIENT_PAUSE`] between tries) while it fails because another program briefly has the file
+/// open: a virus scanner, the search indexer or a sync client. Elsewhere `op` runs once.
+///
+/// # Errors
+/// The last failure of `op`.
+pub fn retry_transient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut tries = 1;
+    loop {
+        match op() {
+            Err(e) if is_transient(&e) && tries < TRANSIENT_ATTEMPTS => {
+                tries += 1;
+                std::thread::sleep(TRANSIENT_PAUSE);
+            }
+            r => return r,
+        }
+    }
+}
+
+/// Whether `e` is a failure that another program holding a file open can cause for a moment.
+/// On Windows: access denied (also given while a deletion is pending), a sharing violation or a
+/// lock violation. Never elsewhere, where opening a file does not stop it being renamed or
+/// removed.
+pub fn is_transient(e: &io::Error) -> bool {
+    // ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION.
+    cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32 | 33))
+}
+
+/// Make a folder's entries (a rename or a new file) durable: on Unix the folder is opened and
+/// flushed; on Windows it is opened with backup semantics, for writing (which flushing needs),
+/// and flushed. Elsewhere it is not available and fails with [`io::ErrorKind::Unsupported`], so
+/// that nothing is reported durable without a flush.
+///
+/// # Errors
+/// The folder could not be opened or flushed, or flushing a folder is not available.
 pub fn sync_dir(dir: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
         File::open(dir)?.sync_all()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_BACKUP_SEMANTICS: without it a folder cannot be opened.
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        OpenOptions::new().read(true).write(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(dir)?.sync_all()
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = dir;
-        Ok(())
+        Err(folder_flush_unavailable())
     }
+}
+
+/// The failure [`sync_dir`] gives where flushing a folder is not available.
+pub fn folder_flush_unavailable() -> io::Error {
+    io::Error::new(io::ErrorKind::Unsupported, "flushing a folder is not available on this system")
 }
 
 /// The folder holding `path` (`.` for a bare file name).
@@ -316,7 +388,7 @@ pub fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let r = f.write_all(bytes).and_then(|()| f.sync_all());
     if r.is_err() {
         drop(f);
-        let _ = std::fs::remove_file(path);
+        let _ = remove_file(path);
     }
     r
 }

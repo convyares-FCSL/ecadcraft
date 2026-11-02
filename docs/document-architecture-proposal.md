@@ -1188,8 +1188,8 @@ never lost: the in-memory log is the source of every batch.
 | Phase | Steps | Outcome if it fails |
 | --- | --- | --- |
 | **Before replacement** | (a) take the target's writer lock (below); refuse if another writer holds it; (b) create a uniquely named temporary file in the target folder; (c) write the header and every transaction (FILE-05); (d) flush it | The target was never touched: an existing target is exactly as it was. The temporary file is removed (best effort, reported if that fails). The project stays bound to its previous path, with `persisted` unchanged. The error names the step. |
-| **Replacement** | (e) rename the temporary file over the target (atomic on one file system; on Windows `MoveFileEx` with replace-existing and write-through) | A failed rename leaves the target as it was, and is handled as above. |
-| **After replacement** | (f) flush the containing folder (Unix) | The new file is at the target path, but **durability of the replacement is uncertain**: after a crash the folder could show either the old or the new file. The writer does **not** say the old target is untouched or that the save is durable. The project is bound to the new path, because that file is ours. `persisted` is **not** advanced. The state is "replaced; durability unconfirmed", so the next Save retries the folder flush (and the file flush) before acknowledging. In-memory work is unaffected. |
+| **Replacement** | (e) rename the temporary file over the target (atomic on one file system; `std::fs::rename`, which replaces an existing target on Windows too; no write-through, which std does not offer without `unsafe`; on Windows retried briefly while another program holds a file) | A failed rename leaves the target as it was, and is handled as above. |
+| **After replacement** | (f) flush the containing folder (Unix: `fsync` on the folder; Windows: `FlushFileBuffers` on a folder handle opened for writing with backup semantics; elsewhere not available, which counts as a failed flush) | The new file is at the target path, but **durability of the replacement is uncertain**: after a crash the folder could show either the old or the new file. The writer does **not** say the old target is untouched or that the save is durable. The project is bound to the new path, because that file is ours. `persisted` is **not** advanced. The state is "replaced; durability unconfirmed", so the next Save retries the folder flush (and the file flush) before acknowledging. In-memory work is unaffected. |
 
 The error text says which phase failed: "not saved, the existing file is unchanged" versus
 "written, but the system could not confirm the change is durable; save again". The user is
@@ -1209,21 +1209,28 @@ never told more than the writer knows.
   lock file and clears it on a clean release. An opener that gets the lock while the file still
   holds a record has found a lock left by a session that ended without releasing it: it reclaims
   it and reports that record. An opener that cannot get the lock is refused write access and
-  shown the holder's record (where the system allows reading it).
+  shown the holder's record where the system allows reading it. On Windows the lock is
+  mandatory, so the record cannot be read and the holder is not named (no unlocked copy is kept);
+  the OS may also release a killed process's lock a moment late, and the message says so.
 - **The lock file is never deleted.** Deleting it could let two writers lock two different
   files; an empty lock file is harmless.
 - **A second opener** of a locked project gets it read-only, and Save As can save a copy.
 - **File identity.** Before appending, Save also checks that the file at the path is still the
-  one opened (device and inode on Unix), so a file replaced or removed behind the writer is
-  refused like any other external change.
+  one opened (device and inode on Unix, volume serial number and file index on Windows, through
+  `same-file`, compared while both files are held open), so a file replaced or removed behind the
+  writer is refused like any other external change.
 
 **Implementation.** Stage 1 implemented the writer, its state and the Save retry rules over the
 in-memory medium. Stage 2a implements files on disk: `ecad_store::disk` (the file medium with
 `sync_data` as the flush, the lock through `std::fs::File::try_lock`, the replacement steps) and
 `ecad_file::disk::DiskProject` (the phases above, the lock across replacement, the E13
 sidecar), each with fault injection at every step. They are tested on a Linux file system,
-including the Linux home folder under WSL. Folder flushes and file identity are Unix-only; on
-other systems, and on other file systems such as Windows drives under WSL, these guarantees are
+including the Linux home folder under WSL, and on NTFS under native Windows (brief 002). A file
+that cannot be opened for writing opens read-only with its reason, and a lock that cannot be
+taken is reported as such, not as another writer. Durability is `Unconfirmed` whenever the folder
+flush fails or is not available; it is never reported confirmed without a flush that ran. On
+other file systems (FAT, exFAT, network shares, ReFS including Windows 11 Dev Drives, where a
+64-bit file index is not guaranteed unique, and Windows drives under WSL) these guarantees are
 unverified.
 
 ### 20.6 Recovery on open
@@ -1706,3 +1713,4 @@ Corrections carried from revision 1:
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |
 | 2026-11-01 | Corrections of record (brief 003; review 2026-10-31 D3, D4, D11): the status header, E10 and E12 show stage 2b as merged (2026-10-15); E14 is marked superseded by native Windows and Linux support; §8 is marked as the target layout and names the crates as built. §20.5 on Windows (D10) is left to follow brief 002 |
+| 2026-11-02 | §20.5 for native Windows (brief 002): replacement by `std::fs::rename` plus a folder flush through `FlushFileBuffers` on a folder handle, instead of `MoveFileEx` with write-through; durability unconfirmed when that flush fails or is unavailable; file identity by volume serial and file index; the lock holder not named on Windows; ReFS and Dev Drives unverified. Needs the owner's approval |
