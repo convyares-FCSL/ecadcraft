@@ -1223,7 +1223,8 @@ including the Linux home folder under WSL, and on NTFS under native Windows (bri
 that cannot be opened for writing opens read-only with its reason, and a lock that cannot be
 taken is reported as such, not as another writer. Durability is `Unconfirmed` whenever the folder
 flush fails or is not available; it is never reported confirmed without a flush that ran. On
-other file systems (FAT, exFAT, network shares, Windows drives under WSL) these guarantees are
+other file systems (FAT, exFAT, network shares, ReFS including Windows 11 Dev Drives, where a
+64-bit file index is not guaranteed unique, and Windows drives under WSL) these guarantees are
 unverified.
 
 ### 20.6 Recovery on open
@@ -1705,4 +1706,4 @@ Corrections carried from revision 1:
 | 2026-10-13 | Revision 4.1, corrections from the stage 1 code review: Save re-reads the whole verified prefix against a running digest (not only its last record); embedded content hashes are recomputed on open (a mismatch is corruption); canonical numbers break equal-distance ties to the even digit as ECMA-262 does; the header gets the same size and integer limits as other records; a named version must name a transaction before the one naming it |
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |
-| 2026-11-02 | §20.5 for native Windows (brief 002): replacement by `std::fs::rename` plus a folder flush through `FlushFileBuffers` on a folder handle, instead of `MoveFileEx` with write-through; durability unconfirmed when that flush fails or is unavailable; file identity by volume serial and file index; the lock holder not named on Windows. Needs the owner's approval |
+| 2026-11-02 | §20.5 for native Windows (brief 002): replacement by `std::fs::rename` plus a folder flush through `FlushFileBuffers` on a folder handle, instead of `MoveFileEx` with write-through; durability unconfirmed when that flush fails or is unavailable; file identity by volume serial and file index; the lock holder not named on Windows; ReFS and Dev Drives unverified. Needs the owner's approval |

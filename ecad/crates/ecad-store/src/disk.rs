@@ -5,7 +5,9 @@
 //! Guarantees are those of the operating system and file system: they are relied on, and tested,
 //! on a Linux file system (ext4, including the Linux home directory under WSL) and on NTFS under
 //! native Windows. Other file systems are not verified: FAT and exFAT drives, network shares
-//! (SMB), and Windows drives mounted under WSL (`/mnt/c`).
+//! (SMB), ReFS (including Windows 11 Dev Drives, where a 64-bit file index is not guaranteed
+//! unique, so file identity is unverified there), and Windows drives mounted under WSL
+//! (`/mnt/c`).
 //!
 //! Where Windows differs:
 //! - A file's identity is its volume serial number and file index (Unix: device and inode).

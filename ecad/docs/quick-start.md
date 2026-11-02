@@ -500,11 +500,12 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     open again shortly.
   - A save waits up to about half a second while another program (antivirus, the indexer, a sync
     client) briefly holds the file.
-  - If the folder cannot be flushed, Save As reports the save as unconfirmed and later Saves stay
-    unconfirmed; Save As to a folder on a local drive rescues the project.
+  - If the folder cannot be flushed, Save As reports the save as unconfirmed, and later Saves
+    write nothing (they say so) until a Save As to a folder that can be flushed, such as one on a
+    local NTFS drive, rescues the project.
 
-  Other file systems, including FAT and exFAT drives (USB sticks), network shares, OneDrive
-  folders, Windows drives under `/mnt`, and macOS builds, are **unverified**: file locking and the
+  Other file systems, including FAT and exFAT drives (USB sticks), network shares, ReFS
+  (including Windows 11 Dev Drives), OneDrive folders, Windows drives under `/mnt`, and macOS builds, are **unverified**: file locking and the
   durability guarantees are not known to hold there.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.

@@ -21,7 +21,8 @@
 //!
 //! Guarantees are those of the file system: relied on, and tested, on a Linux file system
 //! (including the Linux home directory under WSL) and on NTFS under native Windows. Others are
-//! unverified: FAT and exFAT drives, network shares, and Windows drives under WSL. How Windows
+//! unverified: FAT and exFAT drives, network shares, ReFS (including Windows 11 Dev Drives),
+//! and Windows drives under WSL. How Windows
 //! differs is listed in [`ecad_store::disk`].
 
 use std::path::{Path, PathBuf};
@@ -111,6 +112,17 @@ pub enum DiskError {
     BeforeReplacement { step: &'static str, error: String, cleanup: String },
     #[error("written, but the system could not confirm the change is durable ({0}); save again")]
     Unconfirmed(String),
+    /// A plain Save after a Save As whose durability is still unconfirmed, which could not be
+    /// confirmed now either: nothing new was written.
+    #[error(
+        "not saved: the earlier Save As is still not confirmed durable ({0}); the new changes were not written; \
+save again, or use Save As to a folder that can be flushed"
+    )]
+    NotConfirmed(String),
+    #[error(
+        "not saved: could not check that {path} is still the file this project opened ({error}); nothing was written; try again"
+    )]
+    CannotCheck { path: String, error: String },
     #[error("not saved: this project was opened read-only because {0}; use Save As to save a copy")]
     ReadOnly(ReadOnly),
     #[error(
@@ -274,15 +286,17 @@ impl DiskProject {
         if durability == Durability::Confirmed {
             file.acknowledge(ledger)?;
         }
-        let (identity, read_only) = match file.medium().identity() {
-            Ok(id) => (Some(id), None),
-            Err(e) => (None, Some(no_identity(&e))),
+        // Without an identity the file is not written again, so the lock is left to others, as
+        // on open.
+        let (identity, read_only, lock) = match file.medium().identity() {
+            Ok(id) => (Some(id), None, Some(lock)),
+            Err(e) => (None, Some(no_identity(&e)), None),
         };
         let unconfirmed = durability != Durability::Confirmed;
         let me = Self {
             path: path.to_path_buf(),
             file,
-            lock: Some(lock),
+            lock,
             read_only,
             identity,
             unconfirmed,
@@ -351,13 +365,20 @@ impl DiskProject {
         if let Some(r) = &self.read_only {
             return Err(DiskError::ReadOnly(r.clone()));
         }
-        // The file at the path must still be the one this project wrote or opened.
-        match (&self.identity, FileIdentity::at(&self.path)) {
+        // The file at the path must still be the one this project wrote or opened. A program
+        // briefly holding it (Windows) is waited for; a failure to look is not a replacement.
+        match (&self.identity, disk::retry_transient(|| FileIdentity::at(&self.path))) {
             (Some(ours), Ok(now)) if *ours == now => {}
+            (_, Err(e)) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(DiskError::CannotCheck { path: show(&self.path), error: e.to_string() });
+            }
             _ => return Err(DiskError::Replaced(show(&self.path))),
         }
         if self.unconfirmed {
-            self.confirm(ledger)?;
+            self.confirm(ledger).map_err(|e| match e {
+                DiskError::Unconfirmed(why) => DiskError::NotConfirmed(why),
+                e => e,
+            })?;
         }
         self.preserve_fragment()?;
         Ok(self.file.save(ledger)?)
