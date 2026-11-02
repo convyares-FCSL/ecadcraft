@@ -320,7 +320,10 @@ fn an_unopenable_project_argument_is_reported_in_the_window() {
 }
 
 /// Save and reopen through a UNC path (`\\localhost\C$\...`) when the administrative share is
-/// reachable on this machine; the network itself stays unverified by design.
+/// reachable on this machine; the network itself stays unverified by design. A share may refuse
+/// the folder flush after Save As: the save is then reported as written but unconfirmed (typed
+/// status `unconfirmed`, "could not confirm ... durable"), never as confirmed, and the file must
+/// still be there and reopen read-write with the same document.
 #[cfg(windows)]
 #[test]
 fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
@@ -334,12 +337,41 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     }
     let mut t = trial(None, None);
     let typed = unc.join("over unc").display().to_string();
-    assert_eq!(save_as(&mut t, &typed), None, "{typed}");
+    let saved_as = format!("{typed}.ecad");
+    let model = t.cad.session.doc().unwrap().model.len();
+    let p = t.project().unwrap().clone();
+    let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap();
+    match save_as(&mut t, &typed) {
+        None => {
+            println!("UNC branch: confirmed");
+            assert!(!t.status().unwrap().file.unconfirmed, "a confirmed save is not marked unconfirmed");
+        }
+        Some(e) => {
+            println!("UNC branch: unconfirmed ({e})");
+            // Only the honest "written but not confirmed" outcome is accepted; any other failure fails.
+            assert!(e.contains("could not confirm") && e.contains("durable"), "{typed}: {e}");
+            let s = t.status().unwrap();
+            assert!(s.file.unconfirmed, "typed status says unconfirmed: {:?}", s.file);
+            assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()), "bound to the written file");
+        }
+    }
     assert!(d.0.join("over unc.ecad").is_file());
     t.cad.request_close_all();
     t.after_logic();
-    t.open_project(&format!("{typed}.ecad")).unwrap();
-    assert!(t.status().unwrap().file.read_only.is_none());
+    // After an unconfirmed save, closing asks first (the change is not known to be durable);
+    // the file is already written, so Discard closes without writing again.
+    if t.pending_close().is_some() {
+        println!("UNC close asked: {:?}", t.pending_close());
+        t.answer(ecad_trial::Answer::Discard);
+        t.after_logic();
+    }
+    t.open_project(&saved_as).unwrap();
+    let s = t.status().unwrap();
+    assert!(s.file.read_only.is_none(), "{:?}", s.file);
+    assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()));
+    assert_eq!(t.cad.session.doc().unwrap().model.len(), model, "the same drawing");
+    let p = t.project().unwrap().clone();
+    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap(), history, "the same history");
 }
 
 // ---- Round 2 (fixes for F1-F3) ----
