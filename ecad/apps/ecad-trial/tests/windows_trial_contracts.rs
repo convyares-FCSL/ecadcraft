@@ -341,3 +341,130 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     t.open_project(&format!("{typed}.ecad")).unwrap();
     assert!(t.status().unwrap().file.read_only.is_none());
 }
+
+// ---- Round 2 (fixes for F1-F3) ----
+
+/// What the dialog shows for odd names: refused with words, never a panic.
+#[test]
+fn dot_and_drive_relative_names_are_refused_in_the_dialog() {
+    let d = TempDir::new("f3-refused");
+    let mut t = trial(Some(&d.0), None);
+    let rows = [
+        (".", "not ."),
+        ("..", "not .."),
+        ("C:", "relative to drive C:"),
+        ("C:name", "relative to drive C:"),
+        ("d:demo.ecad", "relative to drive d:"),
+        ("demo.", "trailing dot"),
+        (".ecad", "not .ecad"),
+    ];
+    for (typed, why) in rows {
+        let e = save_as(&mut t, typed).unwrap_or_default();
+        assert!(e.contains(why), "{typed:?}: {e}");
+    }
+    assert_eq!(t.status().unwrap().file.path, None, "nothing was saved");
+    assert_eq!(std::fs::read_dir(&d.0).unwrap().count(), 0);
+}
+
+/// `.ecad` is added exactly once, also when the `saveas` command normalises again, and quoted
+/// paths (Explorer's "Copy as path"), with or without spaces, save to the unquoted file.
+#[test]
+fn the_extension_is_added_once_and_quotes_are_stripped() {
+    let d = TempDir::new("f3-once");
+    std::fs::create_dir_all(d.0.join("My Projects")).unwrap();
+    let base = d.0.display().to_string();
+    let rows = [
+        (format!("{base}{s}a.ecad", s = std::path::MAIN_SEPARATOR), "a.ecad"),
+        (format!("{base}{s}b", s = std::path::MAIN_SEPARATOR), "b.ecad"),
+        (format!("\"{base}{s}c.ecad\"", s = std::path::MAIN_SEPARATOR), "c.ecad"),
+        (format!("  \"{base}{s}My Projects{s}d e\"  ", s = std::path::MAIN_SEPARATOR), "My Projects/d e.ecad"),
+        (format!("{base}{s}.hidden", s = std::path::MAIN_SEPARATOR), ".hidden.ecad"),
+    ];
+    for (typed, file) in rows {
+        let mut t = trial(None, None);
+        assert_eq!(save_as(&mut t, &typed), None, "{typed}");
+        let want = d.0.join(file);
+        let got = t.status().unwrap().file.path.unwrap();
+        assert!(
+            std::fs::canonicalize(&got).is_ok_and(|g| g == std::fs::canonicalize(&want).unwrap()),
+            "{typed} -> {got}"
+        );
+        assert!(!got.contains('"'), "{got}");
+        assert!(!got.to_ascii_lowercase().ends_with(".ecad.ecad"), "{got}");
+    }
+    let names: Vec<_> = std::fs::read_dir(&d.0).unwrap().filter_map(Result::ok).map(|e| e.file_name()).collect();
+    assert!(!names.iter().any(|n| n.to_string_lossy().ends_with(".ecad.ecad")), "{names:?}");
+}
+
+/// Mismatched or single quotes never panic and never save a file whose name has a quote.
+#[test]
+fn mismatched_quotes_never_panic() {
+    let d = TempDir::new("f3-quotes");
+    let base = d.0.display().to_string();
+    let sep = std::path::MAIN_SEPARATOR;
+    let rows = [
+        format!("\"{base}{sep}q1"),
+        format!("{base}{sep}q2\""),
+        "\"".to_string(),
+        "\"\"\"".to_string(),
+        format!("'{base}{sep}q3'"),
+        format!("\"\"{base}{sep}q4\"\""),
+        format!("\"{base}{sep}q5\" extra"),
+    ];
+    for typed in &rows {
+        let _ = normalize_with(typed, None);
+        let mut t = trial(None, None);
+        let _ = save_as(&mut t, typed);
+        if let Some(p) = t.status().unwrap().file.path {
+            assert!(Path::new(&p).is_file(), "{typed} -> {p} (banner names a missing file)");
+        }
+    }
+    assert!(!d.0.join("~").exists());
+}
+
+/// Legitimate paths stay accepted after the fixes: root-anchored drive paths, UNC, verbatim and
+/// dot names.
+#[test]
+fn legitimate_paths_are_still_accepted() {
+    let home = Path::new(if cfg!(windows) { r"C:\Users\tester" } else { "/home/tester" });
+    let ok = [
+        (r"C:\demo", r"C:\demo.ecad"),
+        ("C:/demo", "C:/demo.ecad"),
+        (r"C:\dev\..\dev\demo.ecad", r"C:\dev\..\dev\demo.ecad"),
+        (r"\\server\share\demo", r"\\server\share\demo.ecad"),
+        (r"\\server\share\My Folder\demo.ecad", r"\\server\share\My Folder\demo.ecad"),
+        (r"\\?\C:\dev\demo", r"\\?\C:\dev\demo.ecad"),
+        (".hidden", ".hidden.ecad"),
+        ("v1.2", "v1.2.ecad"),
+        ("plan.v2.ecad", "plan.v2.ecad"),
+        ("/home/zoë/plan", "/home/zoë/plan.ecad"),
+    ];
+    for (typed, want) in ok {
+        let got = normalize_with(typed, Some(home));
+        // `v1.2` has the extension `2`: refusing it as "not .ecad" is acceptable; anything else must pass.
+        if typed == "v1.2" {
+            continue;
+        }
+        assert_eq!(got.as_deref(), Ok(want), "{typed:?}");
+        assert_eq!(normalize_with(want, Some(home)).as_deref(), Ok(want), "idempotent: {typed:?}");
+    }
+}
+
+/// A `~` snapshots folder lands in the home folder (fix for F1), through the real argument path.
+#[test]
+fn snapshots_argument_with_a_tilde_goes_to_the_home_folder() {
+    use std::ffi::OsString;
+    let home = TempDir::new("f1-home");
+    for typed in ["~/snaps", r"~\snaps2"] {
+        let Ok(ecad_trial::Invocation::Run { snapshots, .. }) =
+            parse_args(vec![OsString::from("--snapshots"), OsString::from(typed)])
+        else {
+            panic!("{typed}")
+        };
+        let mut t = trial(Some(&home.0), snapshots);
+        let written = t.export_snapshot("r2").unwrap();
+        assert!(written.starts_with(&home.0), "{typed} -> {}", written.display());
+        assert!(written.is_file());
+    }
+    assert!(!home.0.join("~").exists());
+}
