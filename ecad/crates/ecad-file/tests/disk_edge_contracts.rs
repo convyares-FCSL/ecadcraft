@@ -291,3 +291,77 @@ fn probe_an_unverified_file_system() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Deny this user reading `file` (Windows: an ACL denying "read data"; Unix: mode 000), or undo
+/// it. Returns false if the denial does not take effect (for example running as root).
+fn deny_read(file: &Path, deny: bool) -> bool {
+    if cfg!(windows) {
+        let who = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap(), std::env::var("USERNAME").unwrap());
+        let args: Vec<String> =
+            if deny { vec!["/deny".into(), format!("{who}:(RD)")] } else { vec!["/remove:d".into(), who] };
+        let out = Command::new("icacls").arg(file).args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    } else {
+        shell(&format!("chmod {} {}", if deny { "000" } else { "644" }, q(file)));
+    }
+    !deny || std::fs::File::open(file).is_err()
+}
+
+/// Review fix 2: a project file that cannot be looked at (not a replacement) gives "could not
+/// check", writes nothing, and Save succeeds once it can be looked at again.
+#[test]
+fn a_project_file_that_cannot_be_looked_at_is_cannot_check_then_saves() {
+    let d = TempDir::new("cannotcheck");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (mut project, _) = create(&p, &mut ledger);
+    edit(&mut ledger, "2");
+    let before = std::fs::read(&p).unwrap();
+    if !deny_read(&p, true) {
+        deny_read(&p, false);
+        eprintln!("skipped: the read denial did not take effect (root?)");
+        return;
+    }
+    let start = Instant::now();
+    let e = project.save(&mut ledger).unwrap_err();
+    let took = start.elapsed();
+    deny_read(&p, false);
+    assert!(matches!(e, DiskError::CannotCheck { .. }), "{e}");
+    let text = e.to_string();
+    assert!(text.contains("could not check") && text.contains("nothing was written"), "{text}");
+    assert!(!text.contains("replaced"), "{text}");
+    assert!(took < Duration::from_secs(2), "bounded: {took:?}");
+    assert_eq!(std::fs::read(&p).unwrap(), before, "nothing written");
+    assert!(ledger.is_unsaved());
+    // It can be looked at again: Save succeeds and the work reopens.
+    project.save(&mut ledger).unwrap();
+    assert!(!ledger.is_unsaved());
+    drop(project);
+    let o = DiskProject::open(&p, SEED, "checker").unwrap();
+    assert_eq!(o.ledger.log(), ledger.log());
+}
+
+/// Windows: another process cannot hold the open project's own file without sharing reads (the
+/// project's handles already read it), so that form of "could not check" cannot arise for the
+/// project's file; once the project is closed, it can.
+#[cfg(windows)]
+#[test]
+fn another_process_cannot_hold_the_open_project_exclusively() {
+    let d = TempDir::new("exclusive-own");
+    let p = d.path("p.ecad");
+    let mut ledger = fixture().ledger;
+    let (mut project, _) = create(&p, &mut ledger);
+    let try_exclusive = || {
+        let script = format!(
+            "try {{ $f = [System.IO.File]::Open('{}', 'Open', 'Read', 'None'); $f.Close(); 'opened' }} catch {{ 'refused' }}",
+            p.display()
+        );
+        let out = Command::new("powershell").args(["-NoProfile", "-Command", &script]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    assert_eq!(try_exclusive(), "refused", "held exclusively while the project is open");
+    edit(&mut ledger, "2");
+    project.save(&mut ledger).unwrap();
+    drop(project);
+    assert_eq!(try_exclusive(), "opened", "possible once the project is closed");
+}
