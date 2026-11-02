@@ -72,6 +72,27 @@ fn typed_paths_are_expanded_completed_or_refused() {
         ("aux.backup.ecad", false, Refused("reserves for a device")),
         ("COM10.ecad", false, Is("COM10.ecad".into())),
         ("console.ecad", false, Is("console.ecad".into())),
+        // Explorer's "Copy as path" quotes: one surrounding pair is removed.
+        (r#""C:\dev\ecad-projects\demo.ecad""#, false, Is(r"C:\dev\ecad-projects\demo.ecad".into())),
+        (r#"  "C:\My Projects\demo"  "#, false, Is(r"C:\My Projects\demo.ecad".into())),
+        (r#""~/demo""#, true, Is(ecad(&profile.join("demo")))),
+        (r#""""#, false, Refused("needs a file name")),
+        // `.`, `..` and a bare extension are not file names.
+        (".", false, Refused("not .")),
+        ("..", false, Refused("not ..")),
+        (r"C:\dev\..", false, Refused("not ..")),
+        ("~/.", true, Refused("not .")),
+        (".ecad", false, Refused("not .ecad")),
+        // Drive-relative paths depend on a hidden current folder per drive.
+        ("C:", false, Refused("relative to drive C:")),
+        ("c:demo", false, Refused("relative to drive c:")),
+        ("C:demo.ecad", false, Refused("relative to drive C:")),
+        (r"C:\dev\a:b", false, Refused("cannot contain ':'")),
+        // A trailing dot would be dropped by Windows.
+        ("demo.", false, Refused("trailing dot")),
+        ("demo.ecad.", false, Refused("trailing dot")),
+        // A dot file is a name like any other.
+        (".hidden", false, Is(".hidden.ecad".into())),
         // Other extensions and nothing at all.
         ("plan.dxf", false, Refused(".ecad files, not .dxf")),
         ("   ", false, Refused("needs a file name")),
@@ -79,7 +100,11 @@ fn typed_paths_are_expanded_completed_or_refused() {
     for (typed, known, expect) in rows {
         let got = normalize_with(typed, known.then_some(profile));
         match expect {
-            Is(want) => assert_eq!(got.as_deref(), Ok(want.as_str()), "{typed:?}"),
+            Is(want) => {
+                assert_eq!(got.as_deref(), Ok(want.as_str()), "{typed:?}");
+                // Normalised once: the `saveas` command normalising again changes nothing.
+                assert_eq!(normalize_with(&want, known.then_some(profile)).as_deref(), Ok(want.as_str()), "{typed:?}");
+            }
             Refused(why) => {
                 let e = got.expect_err(typed);
                 assert!(e.contains(why), "{typed:?}: {e}");
@@ -280,4 +305,21 @@ fn the_banner_names_the_file_as_saved() {
         status_line(&t.status().unwrap()),
         format!("Project \"demo\": 1 page open, file {file}, no unsaved changes.")
     );
+}
+
+#[test]
+fn a_tilde_snapshots_folder_is_under_the_home_folder() {
+    let home = TempDir::new("snaps-home");
+    for typed in ["~/snaps", r"~\snaps"] {
+        ecad_cadcraft::install();
+        let mut t = Trial::new(Some(PathBuf::from(typed))).unwrap();
+        t.home = Some(home.0.clone());
+        let written = t.export_snapshot("paths").unwrap();
+        assert_eq!(written.parent(), Some(home.0.join("snaps").as_path()), "{typed}");
+    }
+    assert!(!home.0.join("~").exists());
+    // With no home folder known, the export is refused and nothing is made.
+    let mut t = Trial::new(Some(PathBuf::from("~/snaps"))).unwrap();
+    t.home = None;
+    assert_eq!(t.export_snapshot("paths").unwrap_err(), HOME_UNKNOWN);
 }

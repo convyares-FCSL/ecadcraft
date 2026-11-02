@@ -96,20 +96,43 @@ pub fn normalize(path: &str) -> Result<String, String> {
 /// [`normalize`] with the home folder given.
 ///
 /// # Errors
-/// Empty, no file name (a folder), `~` without a known home, a reserved device name (`CON.ecad`),
-/// or a different extension.
+/// Empty, no file name (a folder, `.`, `..`, `.ecad`), a drive-relative path (`C:`, `C:name`),
+/// `:` in the file name, a trailing dot, `~` without a known home, a reserved device name
+/// (`CON.ecad`), or a different extension. A path it returns normalises to itself.
 pub fn normalize_with(path: &str, home: Option<&std::path::Path>) -> Result<String, String> {
-    let p = path.trim();
+    let mut p = path.trim();
+    // Explorer's "Copy as path" puts the path in double quotes.
+    if let Some(inner) = p.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        p = inner.trim();
+    }
     if p.is_empty() {
         return Err(SAVE_AS_NEEDS_PATH.into());
     }
     if p == "~" || p.ends_with(['/', '\\']) {
         return Err(format!("{SAVE_AS_NEEDS_PATH}, not a folder ({p})"));
     }
+    let mut chars = p.chars();
+    if let (Some(drive), Some(':')) = (chars.next(), chars.next())
+        && drive.is_ascii_alphabetic()
+        && !chars.next().is_some_and(|c| c == '/' || c == '\\')
+    {
+        return Err(format!(
+            "{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"
+        ));
+    }
     let full = expand_home(p, home)?;
     let p = full.to_str().ok_or_else(|| format!("{} is not a valid Unicode path", full.display()))?;
     // The last component after either separator, so that a Windows path reads the same everywhere.
     let name = p.rsplit(['/', '\\']).next().unwrap_or(p);
+    if name == "." || name == ".." || name.eq_ignore_ascii_case(".ecad") {
+        return Err(format!("{SAVE_AS_NEEDS_PATH}, not {name} ({p})"));
+    }
+    if name.contains(':') {
+        return Err(format!("{name} cannot be used: a file name cannot contain ':'"));
+    }
+    if name.ends_with('.') {
+        return Err(format!("{name} cannot be used: Windows drops a file name's trailing dot; remove it"));
+    }
     let device = name.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
     if RESERVED.contains(&device.as_str()) {
         return Err(format!("{name} cannot be used: {device} is a name Windows reserves for a device; choose another"));

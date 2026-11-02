@@ -764,6 +764,11 @@ impl Trial {
     /// Snapshots are not enabled, there is no project, or writing failed.
     pub fn export_snapshot(&mut self, why: &str) -> Result<PathBuf, String> {
         let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
+        // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
+        let dir = match dir.to_str() {
+            Some(typed) => ecad_cadcraft::expand_home(typed, self.home.as_deref())?,
+            None => dir,
+        };
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
         let head = snap.get("seq").and_then(serde_json::Value::as_u64).unwrap_or(0);
