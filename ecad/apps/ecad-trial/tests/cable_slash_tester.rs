@@ -292,7 +292,9 @@ fn the_cable_slash_entry_sits_in_wiring_between_disconnect_and_add_to_cable() {
     let ids: Vec<&str> = wiring.tools.iter().map(|t| t.id.as_str()).collect();
     let at = |id: &str| ids.iter().position(|x| *x == id).unwrap_or_else(|| panic!("{id} in {ids:?}"));
     assert_eq!(at("ecad.cableslash"), at("ecad.disconnect") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cableadd"), at("ecad.cableslash") + 1, "{ids:?}");
+    // Design 005 §3.1 puts Cable View right after Cable Slash, before Add to Cable.
+    assert_eq!(at("ecad.cableview"), at("ecad.cableslash") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cableadd"), at("ecad.cableview") + 1, "{ids:?}");
     let delete = tools::TOOLS.iter().find(|t| t.id == "ecad.delete").unwrap();
     assert_eq!(delete.tooltip, "Delete a component, wire or cable with its connections (fills in the Command field)");
 }

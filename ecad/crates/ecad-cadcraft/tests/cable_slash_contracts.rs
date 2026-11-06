@@ -485,7 +485,8 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let lines = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
     assert_eq!(lines[0], "Cable (no tag)");
     assert_eq!(lines[1], format!("id {}", k.hex()));
-    assert_eq!(lines[2..], ["Wires: 3", "  W0", "  W5", "  W10"]);
+    // Design 005 §4.2: the view follows the `id` line.
+    assert_eq!(lines[2..], ["View: traditional", "Wires: 3", "  W0", "  W5", "  W10"]);
     let w5 = f.h.route_handle(f.page, f.w5);
     let lines = f.h.p(|p| hover_lines(p, uid, w5)).unwrap();
     assert!(lines.contains(&format!("In cable {}…", &k.hex()[..8])), "{lines:?}");

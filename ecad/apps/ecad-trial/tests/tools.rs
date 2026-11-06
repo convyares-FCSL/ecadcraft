@@ -132,6 +132,7 @@ fn the_interactive_buttons_start_their_prompts() {
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
         ("Cable Slash", "cableslash", "Specify first point of cable slash:"),
+        ("Cable View", "cableview", "Select a cable to switch its view:"),
     ];
     for (label, id, first) in firsts {
         h.state_mut().tool("ecad.newpage").unwrap();

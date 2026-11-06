@@ -276,6 +276,12 @@ pub fn slashes_of(doc: &Document, page: PageId, cable: CableId) -> Vec<(ItemId, 
 /// §7.2): one point per member and slash, by the rules above, from the current geometry. A member
 /// moved away from its slash gets none.
 pub fn member_crossing_points(doc: &Document, page: PageId, tol: f64) -> Vec<Pt> {
+    member_crossing_points_where(doc, page, tol, |_| true)
+}
+
+/// [`member_crossing_points`] for the slashes `shown` accepts only (by slash item): a slash that
+/// is not drawn, because its cable is shown as a fan (brief 005), has no dots.
+pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, shown: impl Fn(ItemId) -> bool) -> Vec<Pt> {
     let tol = usable(tol);
     let routes = routes(doc, page);
     let mut by_conductor: BTreeMap<ConductorId, Vec<&Primitive>> = BTreeMap::new();
@@ -286,8 +292,8 @@ pub fn member_crossing_points(doc: &Document, page: PageId, tol: f64) -> Vec<Pt>
     }
     let mut out = Vec::new();
     for (k, cable) in &doc.cables {
-        for (_, from, to) in slashes_of(doc, page, *k) {
-            if !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
+        for (item, from, to) in slashes_of(doc, page, *k) {
+            if !shown(item) || !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
                 continue;
             }
             for m in &cable.members {

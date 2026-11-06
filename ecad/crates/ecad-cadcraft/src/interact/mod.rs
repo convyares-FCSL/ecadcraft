@@ -1,6 +1,6 @@
-//! Click-based forms of the ECAD commands (briefs 008 and 004), and what the drawing shows about
-//! ECAD objects: terminal and wire-end marks, cable slash crossing dots, the capture of a terminal
-//! under the cursor, and the hover description.
+//! Click-based forms of the ECAD commands (briefs 008, 004 and 005), and what the drawing shows
+//! about ECAD objects: terminal and wire-end marks, cable slash crossing dots, the capture of a
+//! terminal under the cursor, and the hover description (with a cable's view).
 //!
 //! # Semantics
 //! - Each interactive form is CADCraft's prompt machine (`Interactive`) on the command's existing
@@ -36,8 +36,9 @@ use ecad_model::{
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
+use crate::views::{FAN_REFUSED, FanOnPage, View, fan_on_page};
 
-pub(crate) use forms::{addterminal, cableslash, connect, convert, disconnect, place, wire};
+pub(crate) use forms::{addterminal, cableslash, cableview, connect, convert, disconnect, place, wire};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -370,7 +371,9 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             });
         }
     }
-    out.extend(crate::slash::member_crossing_points(doc, page, p.tolerance).into_iter().map(|at| Mark {
+    let map = p.pages.get(&page).map(|v| &v.map);
+    let shown = |i| map.is_some_and(|m| m.item(i).is_some());
+    out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
         at: v2(at),
         shape: MarkShape::Dot,
         size: CROSSING_PX,
@@ -397,9 +400,20 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::Item(i) => match doc.representation_of_item(i)?.1.subject {
             Subject::Component(c) => component_lines(doc, c),
             Subject::Conductor(w) => wire_lines(doc, w),
-            Subject::Cable(k) => cable_lines(doc, k),
+            // A drawn slash: traditional, or a fan that cannot be drawn on this page.
+            Subject::Cable(k) => {
+                let shown = match p.view_of(k) {
+                    View::Traditional => "View: traditional",
+                    View::Fan => match fan_on_page(doc, page, k, p.tolerance) {
+                        FanOnPage::Failed => "View: fan (cannot be drawn on this page)",
+                        _ => "View: fan",
+                    },
+                };
+                with_view(cable_lines(doc, k), shown)
+            }
         },
         Mapped::Marker(_, t) => terminal_lines(doc, t),
+        Mapped::Fan(k) => with_view(cable_lines(doc, k), "View: fan"),
     };
     capped(&mut lines);
     Some(lines)
@@ -418,6 +432,12 @@ pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Opt
     let mut lines = terminal_lines(p.ledger.document(), c.terminal);
     capped(&mut lines);
     Some((c.terminal, lines))
+}
+
+/// A cable's hover with its view after the `id …` line (design 005 §4.2).
+fn with_view(mut lines: Vec<String>, view: &str) -> Vec<String> {
+    lines.insert(lines.len().min(2), view.to_string());
+    lines
 }
 
 fn capped(lines: &mut Vec<String>) {
@@ -526,6 +546,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
         Some(Mapped::Marker(..)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Fan(_)) => return Err(FAN_REFUSED.into()),
         None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

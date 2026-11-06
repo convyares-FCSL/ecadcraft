@@ -101,6 +101,13 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cableslash"),
     },
     Tool {
+        id: "ecad.cableview",
+        group: "Wiring",
+        label: "Cable View",
+        tooltip: "Click a cable to switch it between traditional and fan view (changes nothing in the project)",
+        kind: Kind::Start("cableview"),
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
@@ -177,7 +184,7 @@ pub struct Picked {
     pub handles: Vec<Handle>,
     pub components: Vec<ComponentId>,
     pub conductors: Vec<ConductorId>,
-    /// Cables whose slashes are selected.
+    /// Cables whose slashes or fan lines are selected.
     pub cables: Vec<CableId>,
     /// Terminals whose markers are selected.
     pub terminals: Vec<TerminalId>,
@@ -211,6 +218,10 @@ impl Picked {
                         subjects.insert(r.subject);
                     }
                     terminals.insert(t);
+                }
+                // A line of a cable's fan view names its cable (brief 005).
+                Some(Mapped::Fan(k)) => {
+                    subjects.insert(Subject::Cable(k));
                 }
                 None => {}
             }

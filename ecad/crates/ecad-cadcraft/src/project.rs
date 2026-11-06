@@ -18,7 +18,7 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
+    Author, CableId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
     ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
@@ -26,7 +26,8 @@ use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
 use crate::translate;
-use crate::verify::verify_page;
+use crate::verify::verify_page_with;
+pub use crate::views::View;
 
 /// What a projected handle stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +35,8 @@ pub enum Mapped {
     Item(ecad_model::ItemId),
     /// A terminal marker of a drawn representation.
     Marker(RepresentationId, TerminalId),
+    /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
+    Fan(CableId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -42,6 +45,8 @@ pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
     markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
+    /// Fan view lines: (cable, index of the line in the fan) → handle.
+    fans: BTreeMap<(CableId, u32), Handle>,
 }
 
 impl HandleMap {
@@ -62,6 +67,17 @@ impl HandleMap {
         self.markers.insert((rep, t), h);
         self.by_handle.insert(h, Mapped::Marker(rep, t));
     }
+    pub fn fan(&self, cable: CableId, index: u32) -> Option<Handle> {
+        self.fans.get(&(cable, index)).copied()
+    }
+    pub fn insert_fan(&mut self, cable: CableId, index: u32, h: Handle) {
+        self.fans.insert((cable, index), h);
+        self.by_handle.insert(h, Mapped::Fan(cable));
+    }
+    /// Every handle of a fan view line.
+    pub fn fan_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.fans.values().copied()
+    }
     pub fn len(&self) -> usize {
         self.by_handle.len()
     }
@@ -74,9 +90,10 @@ impl HandleMap {
     }
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
-        self.by_handle.len() == self.items.len() + self.markers.len()
+        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
+            && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
     }
 }
 
@@ -224,6 +241,13 @@ pub struct Project {
     me: Weak<Mutex<Project>>,
     /// Points `DocState::saved` away from the drawing while the project is unsaved.
     unsaved_marker: Arc<Drawing>,
+    /// Cables shown in fan view (brief 005); every other cable is traditional. Presentation only:
+    /// never in the ledger, never a transaction, never the unsaved state (P5, SAVE-03).
+    pub views: BTreeSet<CableId>,
+    /// Where this user's cable views are remembered ([`crate::views::Settings`]).
+    pub settings: crate::views::Settings,
+    /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
+    pub(crate) said_not_remembered: bool,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -263,6 +287,23 @@ pub fn session_seed() -> u64 {
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     z ^ (z >> 31)
+}
+
+/// The reserved layer of cable fan views (`ecad.cable`, plots).
+fn cables_layer() -> CLayer {
+    let mut l = CLayer::new(crate::views::LAYER);
+    l.color = cadcraft_engine::doc::color::Color::Index(crate::views::CABLE_ACI);
+    l
+}
+
+/// One line of a fan view: a line for two points, else an open polyline, ByLayer on the reserved
+/// layer.
+pub(crate) fn fan_entity(path: &[Pt], handle: Handle) -> Entity {
+    let kind = match path {
+        [a, b] => kind_for_primitive(&ecad_model::Primitive::Line { a: *a, b: *b }),
+        _ => kind_for_primitive(&ecad_model::Primitive::Polyline { vertices: path.to_vec(), closed: false }),
+    };
+    Entity { handle, common: Common { layer: crate::views::LAYER.into(), ..Common::default() }, kind }
 }
 
 fn base_drawing() -> Drawing {
@@ -318,6 +359,24 @@ pub fn project_page(
     base: &Drawing,
     prev: &HandleMap,
 ) -> Result<(Drawing, HandleMap), String> {
+    project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0)
+}
+
+/// [`project_page`] with cable views (brief 005): each cable in `fan` whose fan can be drawn on
+/// the page is shown as its fan ([`crate::views::fan_on_page`], with tolerance `tol`) on layer
+/// [`crate::views::LAYER`] instead of its member routes and slashes. Everything else is projected
+/// exactly as by [`project_page`].
+///
+/// # Errors
+/// As [`project_page`].
+pub fn project_page_with(
+    doc: &Document,
+    page: PageId,
+    base: &Drawing,
+    prev: &HandleMap,
+    fan: &BTreeSet<CableId>,
+    tol: f64,
+) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
         if d.layer(&l.name).is_none() {
@@ -328,6 +387,9 @@ pub fn project_page(
         let mut l = CLayer::new(MARKER_LAYER);
         l.plot = false;
         d.layers.push(l);
+    }
+    if d.layer(crate::views::LAYER).is_none() {
+        d.layers.push(cables_layer());
     }
     for h in prev.handles() {
         d.bump_handseed(h);
@@ -367,9 +429,11 @@ pub fn project_page(
         }
         d.blocks.insert(name, Arc::new(b));
     }
+    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let hidden: BTreeSet<ecad_model::ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut map = HandleMap::default();
     let mut ents: Vec<Entity> = Vec::new();
-    for (id, item) in doc.items.iter().filter(|(_, i)| i.page == page) {
+    for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
         let h = prev.item(*id).unwrap_or_else(|| d.new_handle());
         let e = entity_for(doc, item, h).ok_or_else(|| format!("item {id} cannot be drawn"))?;
         ents.push(e);
@@ -391,6 +455,14 @@ pub fn project_page(
                 selectable: true,
                 members,
             });
+        }
+    }
+    for (k, f) in &fans {
+        for (i, path) in f.paths().enumerate() {
+            let index = u32::try_from(i).map_err(|_| "a fan has too many lines")?;
+            let h = prev.fan(*k, index).unwrap_or_else(|| d.new_handle());
+            ents.push(fan_entity(path, h));
+            map.insert_fan(*k, index, h);
         }
     }
     ents.sort_by_key(|e| e.handle);
@@ -463,9 +535,17 @@ impl Project {
             default_layer: layer,
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
+            views: BTreeSet::new(),
+            settings: crate::views::Settings::none(),
+            said_not_remembered: false,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Automated tests (the test store) never touch the user's settings unless they choose a
+        // folder; a new project has no remembered views to read.
+        if persistence != Persistence::TestStore {
+            p.settings = crate::views::Settings::from_env();
+        }
         p.pages.insert(page, PageView::default());
         p.open_page(&mut Pages(s), page)?;
         drop(p);
@@ -511,6 +591,9 @@ impl Project {
             default_layer,
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
+            views: BTreeSet::new(),
+            settings: crate::views::Settings::none(),
+            said_not_remembered: false,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -529,6 +612,22 @@ impl Project {
     /// # Errors
     /// The file cannot be read, or is not a project file this build supports.
     pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(ProjectHandle, String), String> {
+        Self::open_file_in(s, path, seed, crate::views::Settings::from_env())
+    }
+
+    /// [`Project::open_file`], remembering cable views in `settings` instead of this user's
+    /// settings folder (tests, and trials that must not touch it). The views remembered for the
+    /// project are read here; an unusable settings file adds [`crate::views::UNREADABLE`] to what
+    /// opening reports and never fails the open.
+    ///
+    /// # Errors
+    /// As [`Project::open_file`].
+    pub fn open_file_in(
+        s: &mut Session,
+        path: &str,
+        seed: u64,
+        settings: crate::views::Settings,
+    ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path)?;
         let o = crate::file::Binding::open(&path, seed, &writer())?;
         let ledger = o.ledger;
@@ -551,6 +650,13 @@ impl Project {
         if let Some(r) = o.binding.status().read_only {
             summary.push(format!("Opened read-only: {r}. Save As can save a copy."));
         }
+        // Cable views remembered by this user (brief 005); IDs not at the head are ignored.
+        let loaded = settings.load(o.project);
+        if loaded.unreadable {
+            summary.push(crate::views::UNREADABLE.into());
+        }
+        let views: BTreeSet<CableId> =
+            loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
         let summary = summary.join("\n");
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
@@ -571,9 +677,14 @@ impl Project {
             default_layer,
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
+            views: BTreeSet::new(),
+            settings: crate::views::Settings::none(),
+            said_not_remembered: false,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        p.views = views;
+        p.settings = settings;
         let head = p.ledger.head();
         p.events.record(EventKind::ProjectOpened, None, head, None, summary.clone());
         if let Some(first) = pages.first() {
@@ -655,6 +766,35 @@ impl Project {
         result
     }
 
+    /// Project `page` with this project's cable views.
+    fn project(&self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
+        project_page_with(self.ledger.document(), page, base, prev, &self.views, self.tolerance)
+    }
+
+    /// The view `cable` is shown in.
+    pub fn view_of(&self, cable: CableId) -> View {
+        if self.views.contains(&cable) { View::Fan } else { View::Traditional }
+    }
+
+    /// Show `cable` in `view` (brief 005): presentation only, so no transaction, no head move, no
+    /// unsaved change. Every open page is redrawn through the same path as after an undo, and the
+    /// fan-view set is remembered in [`Project::settings`]. Returns whether the view changed and,
+    /// when it changed, whether it was remembered (else why not).
+    pub(crate) fn set_view(&mut self, pg: &mut Pages<'_>, cable: CableId, view: View) -> (bool, Result<(), String>) {
+        let changed = match view {
+            View::Fan => self.views.insert(cable),
+            View::Traditional => self.views.remove(&cable),
+        };
+        if !changed {
+            return (false, Ok(()));
+        }
+        // IDs no longer at the head are dropped from what is remembered.
+        let doc = self.ledger.document();
+        self.views.retain(|k| doc.cables.contains_key(k));
+        self.refresh_pages(pg, Some("cableview"));
+        (true, self.settings.store(self.id, &self.views))
+    }
+
     fn owner_ref(&self) -> Option<OwnerRef> {
         let strong = self.me.upgrade()?;
         let r: OwnerRef = strong;
@@ -708,7 +848,7 @@ impl Project {
         {
             return Ok(uid);
         }
-        let (d, map) = project_page(self.ledger.document(), page, &base_drawing(), &HandleMap::default())?;
+        let (d, map) = self.project(page, &base_drawing(), &HandleMap::default())?;
         let title = self.page_title(page);
         let owner = self.owner_ref().ok_or("project is not shared")?;
         let uid = pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?;
@@ -775,7 +915,7 @@ impl Project {
         let first = if self.take_projection_fault() {
             Err("injected projection failure".to_string())
         } else {
-            project_page(self.ledger.document(), page, &base, &prev)
+            self.project(page, &base, &prev)
         };
         // Only a normal projection keeps the engine's handles, so only then is fidelity comparable.
         let normal = first.is_ok();
@@ -787,7 +927,7 @@ impl Project {
                     Err("injected rebuild failure".to_string())
                 } else {
                     // Rebuild from scratch: fresh handles, nothing trusted from the failed state.
-                    project_page(self.ledger.document(), page, &base_drawing(), &HandleMap::default())
+                    self.project(page, &base_drawing(), &HandleMap::default())
                 };
                 match &rebuilt {
                     Ok(_) => self.events.record(
@@ -805,7 +945,7 @@ impl Project {
         // Recovery path: fresh handles, so the check is by content against the document.
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
-                let v = verify_page(self.ledger.document(), page, &d, &map);
+                let v = verify_page_with(self.ledger.document(), page, &d, &map, &self.views, self.tolerance);
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
                     Ok((d, map))
@@ -828,7 +968,11 @@ impl Project {
         match result {
             Ok((d, map)) => {
                 if let Some((committed, amended)) = committed.filter(|_| normal) {
-                    let mismatched = fidelity_mismatches(committed, &d, amended);
+                    // Fan lines are recomputed from the document (a terminal moved by M2 moves
+                    // them), so they are not compared with what the engine committed.
+                    let mut amended = amended.clone();
+                    amended.extend(prev.fan_handles().chain(map.fan_handles()));
+                    let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
                             EventKind::FidelityMismatch,
@@ -919,7 +1063,7 @@ impl Project {
                 let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
-                        project_page(doc, *p, &st.doc, &v.map)
+                        project_page_with(doc, *p, &st.doc, &v.map, &self.views, self.tolerance)
                             .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
                             .unwrap_or(false),
                     ),
