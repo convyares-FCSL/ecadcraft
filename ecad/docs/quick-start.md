@@ -658,7 +658,13 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     `ECAD_SETTINGS_DIR` names another folder. If the file cannot be read, every cable opens
     traditional and opening says `Cable views file could not be read; all cables start in
     traditional view.`; if it cannot be written, the switch still happens and says
-    `(not remembered: <reason>)`.
+    `(not remembered: <reason>)`. A file that is not JSON is replaced at the next switch; one that
+    is locked by another program, has another format (for example from a newer version) or is
+    over 1 MiB is left alone, and switches are not remembered until it is fixed. The file never
+    grows past 1 MiB: the projects used least recently are dropped from it first.
+  - Two windows switching views at the same moment (the same project in a read-only second
+    window, or two projects) can lose one of the two switches from the file: views are
+    presentation only, so the file is not locked. Switch again to remember it.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** Native Windows and Linux are supported. Keep projects in a local

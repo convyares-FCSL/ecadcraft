@@ -29,6 +29,8 @@ pub fn id<T: From<u128>>(v: &Value, key: &str) -> T {
 impl H {
     pub fn new(seed: u64) -> H {
         ecad_cadcraft::install();
+        // Never the developer's own cable-views.json (brief 005 review M4).
+        ecad_cadcraft::views::isolate_for_tests();
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", seed).unwrap();
         let mut h = H { s, project, trail: Vec::new() };

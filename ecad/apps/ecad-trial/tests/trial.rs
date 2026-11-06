@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 fn trial(snapshots: Option<PathBuf>) -> Trial {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     Trial::new(snapshots).unwrap()
 }
 
@@ -287,6 +288,7 @@ fn open_reopens_a_saved_project_with_its_history() {
     t.confirm_dialog();
     assert!(t.dialog().unwrap().2.unwrap_or_default().contains("could not open"));
     // Starting the app with a file that cannot be opened starts a new project and says why.
+    ecad_cadcraft::views::isolate_for_tests();
     let t2 = Trial::with_file(None, &junk).unwrap();
     assert!(t2.project_open());
     assert!(t2.notice().unwrap_or_default().contains("could not be opened"));
@@ -299,6 +301,7 @@ fn a_second_window_on_the_same_file_is_read_only() {
     let mut first = trial(None);
     edit(&mut first);
     save_via_dialog(&mut first, &path);
+    ecad_cadcraft::views::isolate_for_tests();
     let mut second = Trial::with_file(None, &path).unwrap();
     assert!(second.notice().unwrap_or_default().contains("read-only"), "{:?}", second.notice());
     assert!(second.status().unwrap().file.read_only.is_some());

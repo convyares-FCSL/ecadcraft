@@ -629,3 +629,125 @@ fn the_json_form() {
     assert_eq!(g.h.run("cableview", json!({"cable": g.c1.hex(), "view": "fan"})).unwrap()["view"], "fan");
     assert_eq!(views_of(&mut g.h)[g.c1.hex()], "fan");
 }
+
+/// A settings file with `n` other projects, each listing one cable, last used at `used + i`.
+fn crowded(n: usize, used: u64) -> Value {
+    let projects: serde_json::Map<String, Value> = (0..n)
+        .map(|i| {
+            (
+                format!("{:032x}", 0xabc0_0000_u128 + i as u128),
+                json!({"fan": [format!("{:032x}", i + 1)], "used": used + i as u64}),
+            )
+        })
+        .collect();
+    json!({"format": views::FORMAT, "projects": projects})
+}
+
+/// Review M1: only a missing file or one that is not JSON is rewritten; a file of another format
+/// or over 1 MiB is left alone and the switch is "not remembered", with the reason.
+#[test]
+fn store_rewrites_only_a_missing_or_non_json_file() {
+    let dir = TempDir::new("m1");
+    let settings = Settings::at(&dir.0);
+    let file = dir.0.join(views::FILE_NAME);
+    let project = ecad_model::ProjectId(0x1234);
+    let fan: std::collections::BTreeSet<CableId> = [CableId(7)].into_iter().collect();
+    // Missing: written.
+    settings.store(project, &fan).unwrap();
+    assert_eq!(settings.load(project).fan, fan);
+    // Not JSON: replaced.
+    std::fs::write(&file, [0xde, 0xad, 0x00]).unwrap();
+    settings.store(project, &fan).unwrap();
+    assert_eq!(settings.load(project).fan, fan);
+    // Another format (a newer version) and an oversized file: left byte for byte.
+    let newer = br#"{"format":"ecad-cable-views/2","projects":{}}"#.to_vec();
+    let mut big = b"{\"format\":\"ecad-cable-views/1\",\"projects\":{},\"pad\":\"".to_vec();
+    big.extend(std::iter::repeat_n(b'x', views::MAX_FILE_BYTES as usize));
+    big.extend(b"\"}");
+    for (what, bytes) in [("newer format", newer), ("over 1 MiB", big)] {
+        std::fs::write(&file, &bytes).unwrap();
+        let e = settings.store(project, &fan).unwrap_err();
+        assert!(e.contains("left as it is"), "{what}: {e}");
+        assert_eq!(std::fs::read(&file).unwrap(), bytes, "{what}: untouched");
+    }
+    // Through the command: the switch happens, not remembered, with the reason.
+    let mut g = fixture();
+    g.h.cfg(|p| p.settings = Settings::at(&dir.0));
+    let before = std::fs::read(&file).unwrap();
+    let r = view(&mut g.h, g.c1, "fan");
+    assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("fan"), Some(false)), "{r}");
+    assert!(r["reason"].as_str().is_some_and(|x| x.contains("larger than 1 MiB")), "{r}");
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+    assert_eq!(fan_paths(&mut g.h, g.page).len(), 7);
+}
+
+/// Review M2: a project with no fan cables has no entry; the file never grows past what the reader
+/// accepts (the least recently used projects go first); too many cables for one project are not
+/// remembered and the file is left alone.
+#[test]
+fn store_keeps_the_file_readable() {
+    let dir = TempDir::new("m2");
+    let settings = Settings::at(&dir.0);
+    let file = dir.0.join(views::FILE_NAME);
+    let project = ecad_model::ProjectId(0x5555);
+    let one: std::collections::BTreeSet<CableId> = [CableId(9)].into_iter().collect();
+    settings.store(project, &one).unwrap();
+    settings.store(project, &Default::default()).unwrap();
+    let v: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert!(v["projects"].get(project.hex()).is_none(), "no entry without fan cables: {v}");
+    // Nearly full of other projects: the oldest are dropped, the newest kept, ours added.
+    let mut n = 0;
+    let mut full = crowded(n, 1000);
+    // Grow in big steps, then small ones, to just under the cap (never over it).
+    let cap = views::MAX_FILE_BYTES as usize;
+    while full.to_string().len() < cap - 1000 {
+        n += if full.to_string().len() < cap - 60_000 { 500 } else { 5 };
+        full = crowded(n, 1000);
+    }
+    assert!(full.to_string().len() < cap);
+    std::fs::write(&file, full.to_string()).unwrap();
+    let many: std::collections::BTreeSet<CableId> = (1..=50u128).map(CableId).collect();
+    settings.store(project, &many).unwrap();
+    let bytes = std::fs::read(&file).unwrap();
+    assert!(bytes.len() as u64 <= views::MAX_FILE_BYTES);
+    assert!(!settings.load(project).unreadable);
+    assert_eq!(settings.load(project).fan, many);
+    let v: Value = serde_json::from_slice(&bytes).unwrap();
+    let kept = v["projects"].as_object().unwrap();
+    assert!(kept.len() < n + 1, "some projects were dropped");
+    let oldest = format!("{:032x}", 0xabc0_0000_u128);
+    let newest = format!("{:032x}", 0xabc0_0000_u128 + (n - 1) as u128);
+    assert!(!kept.contains_key(&oldest) && kept.contains_key(&newest), "least recently used first");
+    // One project alone over the cap, or over the per-project limit: nothing written.
+    let before = std::fs::read(&file).unwrap();
+    let huge: std::collections::BTreeSet<CableId> = (1..=40_000u128).map(CableId).collect();
+    assert!(settings.store(project, &huge).unwrap_err().contains("larger than 1 MiB"));
+    let over: std::collections::BTreeSet<CableId> =
+        (1..=views::MAX_CABLES_PER_PROJECT as u128 + 1).map(CableId).collect();
+    assert!(settings.store(project, &over).is_err());
+    assert_eq!(std::fs::read(&file).unwrap(), before, "left alone");
+}
+
+/// Review M5: switching a selection of cables reports each cable's result and carries on past
+/// one that fails.
+#[test]
+fn a_failed_switch_does_not_stop_the_others() {
+    let mut g = fixture();
+    for (y, tag) in [(30, "W30"), (35, "W35"), (40, "W40")] {
+        wire(&mut g.h, json!([[0, y], [60, y]]), tag);
+    }
+    let r = g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap();
+    let (c2, slash2): (CableId, ItemId) = (id(&r, "cable"), id(&r, "item"));
+    let (s1, s2) = (g.h.handle_of(g.page, g.slash), g.h.handle_of(g.page, slash2));
+    g.h.cfg(|p| p.faults.fail_view_switches = 1);
+    g.h.s.set_selection(vec![s1, s2]);
+    g.h.s.start("cableview").unwrap();
+    assert!(g.h.s.running.is_none());
+    let vs = views_of(&mut g.h);
+    let fans = [g.c1, c2].iter().filter(|k| vs[k.hex()] == "fan").count();
+    assert_eq!(fans, 1, "one switched, one failed: {vs}");
+    let log = g.h.s.log.clone();
+    assert!(log.iter().any(|l| l.contains("was not switched: injected view switch failure")), "{log:?}");
+    assert!(log.iter().any(|l| l.ends_with("now shown in fan view.")), "{log:?}");
+    g.h.check();
+}

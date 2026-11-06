@@ -74,6 +74,7 @@ fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
 /// A new-project harness whose views are remembered in `settings`.
 fn harness(settings: &Tmp, deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     let p = t.project().unwrap().clone();
@@ -469,6 +470,7 @@ fn child_trial_reopen() {
     };
     let settings = PathBuf::from(std::env::var_os("ECAD_SETTINGS_DIR").unwrap());
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     let mut h = build(t, None);
@@ -493,6 +495,7 @@ fn child_trial_reopen() {
     assert_eq!(h.state_mut().status().unwrap().unsaved, 0, "a switch is not an unsaved change");
     drop(h);
     // Reopen through the trial (reads ECAD_SETTINGS_DIR).
+    ecad_cadcraft::views::isolate_for_tests();
     let t = Trial::with_file(None, &path).unwrap();
     let mut h = build(t, None);
     assert!(h.state().notice().is_none_or(|n| !n.contains("could not be read")), "{:?}", h.state().notice());
@@ -503,6 +506,7 @@ fn child_trial_reopen() {
     drop(h);
     // Garbage settings: all traditional, the message once, the open works.
     std::fs::write(settings.join(views::FILE_NAME), [0xde, 0xad, 0xbe, 0xef, 0x00, 0x7b]).unwrap();
+    ecad_cadcraft::views::isolate_for_tests();
     let t = Trial::with_file(None, &path).unwrap();
     let mut h = build(t, None);
     let log = h.state().cad.session.log.clone();

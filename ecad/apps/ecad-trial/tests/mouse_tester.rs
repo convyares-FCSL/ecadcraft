@@ -40,6 +40,7 @@ impl egui_kittest::TestRenderer for Collect {
 
 fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0));

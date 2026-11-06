@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 fn harness() -> Harness<'static, Trial> {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     // Never the user's own settings folder: views last for this test only.

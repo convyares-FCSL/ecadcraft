@@ -16,6 +16,7 @@ mod hover_and_marks {
 
     fn harness() -> Harness<'static, Trial> {
         ecad_cadcraft::install();
+        ecad_cadcraft::views::isolate_for_tests();
         let mut t = Trial::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
@@ -325,6 +326,7 @@ mod layout_refusals {
 
     fn harness() -> Harness<'static, Trial> {
         ecad_cadcraft::install();
+        ecad_cadcraft::views::isolate_for_tests();
         let mut t = Trial::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(

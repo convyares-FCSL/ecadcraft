@@ -43,7 +43,7 @@ pub const FILE_NAME: &str = "cable-views.json";
 pub const FORMAT: &str = "ecad-cable-views/1";
 /// Larger settings files are not read (treated as empty).
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
-/// Most cable IDs read for one project.
+/// Most cable IDs read or written for one project.
 pub const MAX_CABLES_PER_PROJECT: usize = 100_000;
 /// Environment variable naming the settings folder (tests and manual trials).
 pub const SETTINGS_ENV: &str = "ECAD_SETTINGS_DIR";
@@ -293,12 +293,30 @@ pub struct Loaded {
     pub unreadable: bool,
 }
 
+/// This process's settings folder, used where `ECAD_SETTINGS_DIR` is not set.
+static PROCESS_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Use `dir` as this process's settings folder wherever `ECAD_SETTINGS_DIR` is not set, instead of
+/// the user's own folder. The first call wins. Automated tests use it (through
+/// [`isolate_for_tests`]) so that no test reads or writes the user's real `cable-views.json`:
+/// setting the environment variable from inside a test process would need `unsafe`.
+pub fn use_process_settings_dir(dir: impl Into<PathBuf>) {
+    let _ = PROCESS_DIR.set(dir.into());
+}
+
+/// Automated tests: a settings folder of this process's own under the system temp folder
+/// ([`use_process_settings_dir`]).
+pub fn isolate_for_tests() {
+    use_process_settings_dir(std::env::temp_dir().join(format!("ecad-test-settings-{}", process_id())));
+}
+
 fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
 impl Settings {
-    /// The folder for this user: `ECAD_SETTINGS_DIR` when set; else `%APPDATA%\ECAD` on Windows,
+    /// The folder for this user: `ECAD_SETTINGS_DIR` when set; else the folder given to
+    /// [`use_process_settings_dir`]; else `%APPDATA%\ECAD` on Windows,
     /// `$XDG_CONFIG_HOME/ecad` or `$HOME/.config/ecad` elsewhere; none on wasm.
     pub fn from_env() -> Settings {
         #[cfg(target_arch = "wasm32")]
@@ -309,6 +327,9 @@ impl Settings {
         {
             if let Some(d) = env_dir(SETTINGS_ENV) {
                 return Settings::at(d);
+            }
+            if let Some(d) = PROCESS_DIR.get() {
+                return Settings::at(d.clone());
             }
             #[cfg(windows)]
             let dir = env_dir("APPDATA").map(|d| d.join("ECAD"));
@@ -340,37 +361,38 @@ impl Settings {
         self.dir.as_ref().map(|d| d.join(FILE_NAME))
     }
 
-    /// The whole file as JSON: `Ok(None)` when it does not exist, `Err` when it cannot be used.
-    fn read_all(&self) -> Result<Option<Map<String, Value>>, ()> {
-        let Some(path) = self.file() else { return Ok(None) };
+    /// What the settings file holds now.
+    fn read_all(&self) -> FileState {
+        let Some(path) = self.file() else { return FileState::Missing };
         let f = match std::fs::File::open(&path) {
             Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(_) => return Err(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return FileState::Missing,
+            Err(e) => return FileState::Unusable(format!("the settings file cannot be read: {e}")),
         };
         let mut bytes = Vec::new();
-        f.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).map_err(|_| ())?;
+        if let Err(e) = f.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes) {
+            return FileState::Unusable(format!("the settings file cannot be read: {e}"));
+        }
         if bytes.len() as u64 > MAX_FILE_BYTES {
-            return Err(());
+            return FileState::Unusable("the settings file is larger than 1 MiB".into());
         }
-        let v: Value = serde_json::from_slice(&bytes).map_err(|_| ())?;
-        let Value::Object(top) = v else { return Err(()) };
-        if top.get("format").and_then(Value::as_str) != Some(FORMAT) {
-            return Err(());
+        let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { return FileState::NotJson };
+        let Value::Object(top) = v else { return FileState::Unusable(OTHER_FORMAT.into()) };
+        if top.get("format").and_then(Value::as_str) != Some(FORMAT)
+            || !top.get("projects").is_some_and(Value::is_object)
+        {
+            return FileState::Unusable(OTHER_FORMAT.into());
         }
-        if !top.get("projects").is_some_and(Value::is_object) {
-            return Err(());
-        }
-        Ok(Some(top))
+        FileState::Usable(top)
     }
 
     /// The cables remembered in fan view for `project`. Never fails: a missing file means none, an
     /// unusable one (unreadable, not JSON, another format, over 1 MiB) is reported and means none.
     pub fn load(&self, project: ProjectId) -> Loaded {
         match self.read_all() {
-            Ok(None) => Loaded::default(),
-            Err(()) => Loaded { fan: BTreeSet::new(), unreadable: true },
-            Ok(Some(top)) => {
+            FileState::Missing => Loaded::default(),
+            FileState::NotJson | FileState::Unusable(_) => Loaded { fan: BTreeSet::new(), unreadable: true },
+            FileState::Usable(top) => {
                 let list = top
                     .get("projects")
                     .and_then(|p| p.get(project.hex()))
@@ -388,31 +410,49 @@ impl Settings {
     }
 
     /// Remember `fan` as `project`'s cables in fan view: read the file again, change only this
-    /// project's entry, write a temporary file in the same folder and rename it over the old one.
-    /// An unusable file is replaced.
+    /// project's entry (removed when `fan` is empty), write a temporary file in the same folder and
+    /// rename it over the old one.
+    ///
+    /// # Semantics
+    /// - Only a missing file or one that is not JSON is (re)written from scratch. A file that cannot
+    ///   be read for another reason (locked by another program, another format such as a newer
+    ///   version, over 1 MiB) is left alone and nothing is remembered.
+    /// - Each project's entry records when it was last written (`used`, ms since the epoch). The
+    ///   file written is never one [`Settings::load`] would refuse: when it would exceed
+    ///   [`MAX_FILE_BYTES`], the least recently used other projects are dropped first; if this
+    ///   project's entry alone is too large, or lists more than [`MAX_CABLES_PER_PROJECT`]
+    ///   cables, nothing is written.
+    /// - Two windows writing at the same moment may lose one of the two changes (no lock: views
+    ///   are presentation only).
     ///
     /// # Errors
-    /// There is no settings folder, or the folder or file cannot be written: the reason in words.
+    /// Nothing was remembered: no settings folder, a file left alone, too many cables, or the
+    /// folder or file cannot be written. The reason in words.
     pub fn store(&self, project: ProjectId, fan: &BTreeSet<CableId>) -> Result<(), String> {
         let (Some(dir), Some(path)) = (self.dir.as_ref(), self.file()) else {
             return Err("no settings folder".into());
         };
-        let mut top = self.read_all().ok().flatten().unwrap_or_default();
+        if fan.len() > MAX_CABLES_PER_PROJECT {
+            return Err(format!("more than {MAX_CABLES_PER_PROJECT} cables of this project are in fan view"));
+        }
+        let mut top = match self.read_all() {
+            FileState::Missing | FileState::NotJson => Map::new(),
+            FileState::Unusable(reason) => return Err(format!("{reason}; it was left as it is")),
+            FileState::Usable(top) => top,
+        };
         top.insert("format".into(), Value::String(FORMAT.into()));
-        let projects = top.entry("projects").or_insert_with(|| Value::Object(Map::new()));
-        if !projects.is_object() {
-            *projects = Value::Object(Map::new());
+        let mut projects = match top.remove("projects") {
+            Some(Value::Object(m)) => m,
+            _ => Map::new(),
+        };
+        let key = project.hex();
+        if fan.is_empty() {
+            projects.remove(&key);
+        } else {
+            let ids: Vec<Value> = fan.iter().map(|k| Value::String(k.hex())).collect();
+            projects.insert(key.clone(), json!({ "fan": ids, "used": crate::project::now_ms().unwrap_or(0) }));
         }
-        if let Value::Object(projects) = projects {
-            if fan.is_empty() {
-                projects.remove(&project.hex());
-            } else {
-                let ids: Vec<Value> = fan.iter().map(|k| Value::String(k.hex())).collect();
-                projects.insert(project.hex(), json!({ "fan": ids }));
-            }
-        }
-        let mut text = serde_json::to_string(&Value::Object(top)).map_err(|e| e.to_string())?;
-        text.push('\n');
+        let text = fit(top, projects, &key)?;
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let tmp = dir.join(format!("{FILE_NAME}.{}.{}.tmp", process_id(), next_serial()));
         let written = std::fs::write(&tmp, text.as_bytes()).and_then(|()| std::fs::rename(&tmp, &path));
@@ -421,6 +461,53 @@ impl Settings {
             return Err(e.to_string());
         }
         Ok(())
+    }
+}
+
+/// Said when the file is JSON but not this format (for example a newer version's).
+const OTHER_FORMAT: &str = "the settings file has another format";
+
+/// What reading the settings file found.
+enum FileState {
+    Missing,
+    /// Not JSON at all: replaced at the next write.
+    NotJson,
+    /// Exists but cannot be used, and must not be overwritten: why.
+    Unusable(String),
+    Usable(Map<String, Value>),
+}
+
+/// The file's text (LF-terminated) with `projects` under `top`, at most [`MAX_FILE_BYTES`]: the
+/// least recently used projects other than `keep` are dropped until it fits.
+fn fit(mut top: Map<String, Value>, mut projects: Map<String, Value>, keep: &str) -> Result<String, String> {
+    let used = |v: &Value| v.get("used").and_then(Value::as_u64).unwrap_or(0);
+    // Oldest first; equal times by key, so the order is total and repeatable.
+    let mut others: Vec<(u64, String)> =
+        projects.iter().filter(|(k, _)| k.as_str() != keep).map(|(k, v)| (used(v), k.clone())).collect();
+    others.sort();
+    let mut others = others.into_iter();
+    loop {
+        top.insert("projects".into(), Value::Object(projects.clone()));
+        let mut text = serde_json::to_string(&Value::Object(top.clone())).map_err(|e| e.to_string())?;
+        text.push('\n');
+        if text.len() as u64 <= MAX_FILE_BYTES {
+            return Ok(text);
+        }
+        // Drop old projects in steps sized to the excess, so this ends after few passes.
+        let mut excess = text.len() as u64 - MAX_FILE_BYTES;
+        let mut dropped = false;
+        while excess > 0 {
+            let Some((_, k)) = others.next() else { break };
+            let size = projects.get(&k).map_or(0, |v| v.to_string().len() + k.len() + 4) as u64;
+            projects.remove(&k);
+            excess = excess.saturating_sub(size);
+            dropped = true;
+        }
+        if !dropped {
+            return Err("too many cables of this project are in fan view to remember (the settings file would be \
+larger than 1 MiB)"
+                .into());
+        }
     }
 }
 

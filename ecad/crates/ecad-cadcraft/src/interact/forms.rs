@@ -1039,20 +1039,31 @@ impl CableView {
             return Ok(None);
         }
         let target = if found.iter().all(|(_, v, _, _)| *v == View::Fan) { View::Traditional } else { View::Fan };
-        let mut lines = Vec::new();
+        // Each cable's own result; one that fails never stops the others (review M5).
+        let (mut switched, mut other_lines) = (Vec::new(), Vec::new());
         for (k, current, one_wire, title) in found {
             if target == View::Fan && current != View::Fan && one_wire {
-                lines.push(format!("Cable {title} {}", crate::views::ONE_WIRE));
+                other_lines.push(format!("Cable {title} {}", crate::views::ONE_WIRE));
                 continue;
             }
-            lines.push(Self::switch(s, k, Some(target))?);
+            match Self::switch(s, k, Some(target)) {
+                Ok(line) => switched.push(line),
+                Err(e) => other_lines.push(format!("Cable {title} was not switched: {e}")),
+            }
         }
-        let shown = lines.len().min(slash::MAX_NAMES);
-        for l in lines.iter().take(shown) {
+        let shown = switched.len().min(slash::MAX_NAMES);
+        for l in switched.iter().take(shown) {
             s.echo(l.clone());
         }
-        if lines.len() > shown {
-            s.echo(format!("and {} more cables switched.", lines.len() - shown));
+        if switched.len() > shown {
+            s.echo(format!("and {} more cables switched.", switched.len() - shown));
+        }
+        let shown = other_lines.len().min(slash::MAX_NAMES);
+        for l in other_lines.iter().take(shown) {
+            s.echo(l.clone());
+        }
+        if other_lines.len() > shown {
+            s.echo(format!("and {} more cables not switched.", other_lines.len() - shown));
         }
         // The selected objects may no longer be drawn.
         s.set_selection(Vec::new());

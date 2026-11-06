@@ -113,6 +113,8 @@ pub struct PageView {
 pub struct Faults {
     /// The next `n` projection attempts fail.
     pub fail_projections: u32,
+    /// The next `n` cable view switches (`cableview` with a cable) fail before changing anything.
+    pub fail_view_switches: u32,
     /// The next commit callback panics (`fault-injection` feature only).
     #[cfg(feature = "fault-injection")]
     pub panic_in_commit: bool,

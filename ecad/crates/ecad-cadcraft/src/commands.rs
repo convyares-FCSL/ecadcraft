@@ -636,6 +636,10 @@ fn run_cableview(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         if !doc.cables.contains_key(&k) {
             return Err("no such cable".into());
         }
+        if p.faults.fail_view_switches > 0 {
+            p.faults.fail_view_switches -= 1;
+            return Err("injected view switch failure".into());
+        }
         let current = p.view_of(k);
         let target = view.unwrap_or_else(|| current.toggled());
         if target == View::Fan && current != View::Fan && !views::offers_fan(doc, k) {

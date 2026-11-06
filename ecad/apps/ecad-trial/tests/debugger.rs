@@ -32,6 +32,7 @@ impl Drop for TempDir {
 
 fn trial() -> Trial {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     Trial::new(None).unwrap()
 }
 
