@@ -19,7 +19,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_engine::doc::Handle;
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_cadcraft::{Mapped, Project};
-use ecad_model::{ComponentId, ConductorId, ItemId, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, ConductorId, ItemId, Subject, TerminalId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";
@@ -94,6 +94,13 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("disconnect"),
     },
     Tool {
+        id: "ecad.cableslash",
+        group: "Wiring",
+        label: "Cable Slash",
+        tooltip: "Draw a short line across wires to make them one cable",
+        kind: Kind::Start("cableslash"),
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
@@ -111,7 +118,7 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.delete",
         group: "Edit",
         label: "Delete Electrical Object",
-        tooltip: "Delete a component or wire with its connections (fills in the Command field)",
+        tooltip: "Delete a component, wire or cable with its connections (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
@@ -170,6 +177,8 @@ pub struct Picked {
     pub handles: Vec<Handle>,
     pub components: Vec<ComponentId>,
     pub conductors: Vec<ConductorId>,
+    /// Cables whose slashes are selected.
+    pub cables: Vec<CableId>,
     /// Terminals whose markers are selected.
     pub terminals: Vec<TerminalId>,
     /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
@@ -217,6 +226,7 @@ impl Picked {
                 .iter()
                 .filter_map(|s| if let Subject::Conductor(c) = s { Some(*c) } else { None })
                 .collect(),
+            cables: subjects.iter().filter_map(|s| if let Subject::Cable(c) = s { Some(*c) } else { None }).collect(),
             terminals: terminals.into_iter().collect(),
         }
     }
@@ -260,15 +270,18 @@ to add to an existing one). Then press Enter.",
             )
         }
         "ecad.delete" => {
-            let target = match (component, conductor) {
-                (Some(c), None) => format!(r#""component":"{c}""#),
-                (None, Some(c)) => format!(r#""conductor":"{c}""#),
+            let cable = one(&picked.cables).map(CableId::hex);
+            let target = match (component, conductor, cable) {
+                (Some(c), None, None) => format!(r#""component":"{c}""#),
+                (None, Some(c), None) => format!(r#""conductor":"{c}""#),
+                (None, None, Some(c)) => format!(r#""cable":"{c}""#),
                 _ => r#""component":"<component id>""#.to_string(),
             };
             (
                 format!(r#"ecaddelete {{{target}}}"#),
-                "Delete Electrical Object: select one component or wire to fill in its ID (use \"conductor\" for a \
-wire). Undo brings it back. Then press Enter.",
+                "Delete Electrical Object: select one component, wire or cable slash to fill in its ID (use \
+\"conductor\" for a wire, \"cable\" for a cable; deleting a cable keeps its wires). Undo brings it back. Then \
+press Enter.",
             )
         }
         "ecad.newpage" => (

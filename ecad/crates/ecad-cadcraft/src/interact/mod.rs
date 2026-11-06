@@ -1,6 +1,6 @@
-//! Click-based forms of the ECAD commands (brief 008), and what the drawing shows about ECAD
-//! objects: terminal and wire-end marks, the capture of a terminal under the cursor, and the
-//! hover description.
+//! Click-based forms of the ECAD commands (briefs 008 and 004), and what the drawing shows about
+//! ECAD objects: terminal and wire-end marks, cable slash crossing dots, the capture of a terminal
+//! under the cursor, and the hover description.
 //!
 //! # Semantics
 //! - Each interactive form is CADCraft's prompt machine (`Interactive`) on the command's existing
@@ -29,13 +29,15 @@ use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
 use ecad_model::derive::terminal_positions;
-use ecad_model::{ComponentId, ConductorId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId};
+use ecad_model::{
+    CableId, ComponentId, ConductorId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId,
+};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 
-pub(crate) use forms::{addterminal, connect, convert, disconnect, place, wire};
+pub(crate) use forms::{addterminal, cableslash, connect, convert, disconnect, place, wire};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -60,6 +62,10 @@ pub(crate) const LOOSE_ACI: u8 = 9;
 const TERMINAL_RGB: Rgb = Rgb(0x00, 0xff, 0xff);
 const ATTACHED_RGB: Rgb = Rgb(0x00, 0xff, 0x00);
 const LOOSE_RGB: Rgb = Rgb(0xc0, 0xc0, 0xc0);
+/// Cables (`ecad.cable`, ACI 6, magenta).
+const CABLE_RGB: Rgb = Rgb(0xff, 0x00, 0xff);
+/// "Will be refused" (`ecad.refuse-preview`, ACI 1, red).
+pub(crate) const REFUSE_ACI: u8 = 1;
 
 /// Glyph sizes in screen pixels (design tokens).
 pub(crate) const TERMINAL_PX: f64 = 8.0;
@@ -67,6 +73,8 @@ const DOT_PX: f32 = 4.0;
 const LOOSE_PX: f32 = 6.0;
 pub(crate) const RING_PX: f64 = 16.0;
 const PREVIEW_TEXT_PX: f64 = 12.0;
+/// Crossing dot of a cable slash on a member wire (`ecad.crossing-size`).
+const CROSSING_PX: f32 = 5.0;
 
 pub(crate) fn pt(v: Vec2) -> Pt {
     Pt::new(v.x, v.y)
@@ -289,11 +297,17 @@ pub(crate) fn capture_preview(s: &Session, c: &Capture, aci: u8) -> Vec<Entity> 
         .map(|d| preview_entity(s, ring_kind(c.at, d, px), aci))
         .collect();
     let at = Pt::new(c.at.x + 10.0 * px + RING_PX * px / 2.0, c.at.y + 10.0 * px);
+    out.push(preview_text(s, at, px, format!("-> {}", c.name), aci));
+    out
+}
+
+/// A preview text line (`ecad.preview-text`: 12 px high) at `at`, in ACI colour `aci`.
+pub(crate) fn preview_text(s: &Session, at: Pt, px: f64, value: String, aci: u8) -> Entity {
     let text = Text {
         insert: v3(at),
         align_pt: None,
         height: PREVIEW_TEXT_PX * px,
-        value: format!("-> {}", c.name),
+        value,
         rotation: 0.0,
         width_factor: 1.0,
         oblique: 0.0,
@@ -301,8 +315,7 @@ pub(crate) fn capture_preview(s: &Session, c: &Capture, aci: u8) -> Vec<Entity> 
         halign: Default::default(),
         valign: Default::default(),
     };
-    out.push(preview_entity(s, EntityKind::Text(text), aci));
-    out
+    preview_entity(s, EntityKind::Text(text), aci)
 }
 
 /// Where conductor routes on `page` start and end, once per conductor (its first route).
@@ -325,8 +338,9 @@ fn route_ends(doc: &Document, page: PageId) -> Vec<(ConductorId, Pt, Pt)> {
     out
 }
 
-/// The marks shown over page drawing `uid` (design §4.1): a ring on every terminal shown, a dot
-/// on every attached wire end, a square on every loose one. Display only.
+/// The marks shown over page drawing `uid` (design 008 §4.1): a ring on every terminal shown, a
+/// dot on every attached wire end, a square on every loose one; and (design 004 §7.2) a magenta
+/// dot where a cable slash crosses one of its own members. Display only.
 pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let Some(page) = p.page_of(uid) else { return Vec::new() };
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
@@ -356,6 +370,13 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             });
         }
     }
+    out.extend(crate::slash::member_crossing_points(doc, page, p.tolerance).into_iter().map(|at| Mark {
+        at: v2(at),
+        shape: MarkShape::Dot,
+        size: CROSSING_PX,
+        stroke: 0.0,
+        color: CABLE_RGB,
+    }));
     out
 }
 
@@ -376,7 +397,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::Item(i) => match doc.representation_of_item(i)?.1.subject {
             Subject::Component(c) => component_lines(doc, c),
             Subject::Conductor(w) => wire_lines(doc, w),
-            Subject::Cable(_) => return None,
+            Subject::Cable(k) => cable_lines(doc, k),
         },
         Mapped::Marker(_, t) => terminal_lines(doc, t),
     };
@@ -446,12 +467,36 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     lines
 }
 
+/// A cable slash (design 004 §7.3): its tag, ID and members in stored (crossing) order.
+fn cable_lines(doc: &Document, k: CableId) -> Vec<String> {
+    let cable = doc.cables.get(&k);
+    let mut lines = vec![
+        format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")),
+        format!("id {}", k.hex()),
+    ];
+    let members = cable.map(|x| x.members.as_slice()).unwrap_or_default();
+    if members.is_empty() {
+        lines.push("Wires: none".into());
+    } else {
+        lines.push(format!("Wires: {} (in crossing order)", members.len()));
+        lines.extend(members.iter().map(|m| format!("  {}", crate::slash::wire_name(doc, m.conductor))));
+    }
+    lines
+}
+
 fn wire_lines(doc: &Document, w: ConductorId) -> Vec<String> {
     let conductor = doc.conductors.get(&w);
     let mut lines = vec![
         format!("Wire {}", conductor.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")),
         format!("id {}", w.hex()),
     ];
+    if let Some(k) = doc.cables_of(w).first() {
+        let name = match doc.cables.get(k).and_then(|x| tag(&x.properties)) {
+            Some(t) => t.to_string(),
+            None => format!("{}…", short(&k.hex())),
+        };
+        lines.push(format!("In cable {name}"));
+    }
     for end in End::BOTH {
         lines.push(match conductor.and_then(|x| x.end(end)) {
             Some(t) => {

@@ -1,5 +1,5 @@
-//! The interactive forms (design 008 §5 to §8). Each one resolves values from clicks, keys and
-//! typed points, then commits the command's JSON form with them.
+//! The interactive forms (design 008 §5 to §8, design 004 §5). Each one resolves values from
+//! clicks, keys and typed points, then commits the command's JSON form with them.
 
 use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -12,12 +12,13 @@ use ecad_model::{ComponentId, ConductorId, Definition, End, Placement, Primitive
 use serde_json::{Value, json};
 
 use super::{
-    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start, capture_at,
-    capture_preview, drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name, pick, pixel,
-    preview_entity, pt, read, ring_kind, terminal_for, terminal_name, v2, valid_name,
+    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start,
+    capture_at, capture_preview, drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name,
+    pick, pixel, preview_entity, preview_text, pt, read, ring_kind, terminal_for, terminal_name, v2, valid_name,
 };
 use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, builtin_coil, with_project};
 use crate::project::Mapped;
+use crate::slash;
 
 type R<T> = cadcraft_engine::Result<T>;
 
@@ -796,5 +797,167 @@ impl Interactive for Convert {
                 e
             })
             .collect()
+    }
+}
+
+// ---------------------------------------------------------------- Cable Slash (design 004 §5)
+
+/// `cableslash`: two clicks across wires make one cable of the wires crossed.
+pub(crate) fn cableslash(s: &Session) -> R<Box<dyn Interactive>> {
+    can_start(s)?;
+    Ok(Box::new(Safe(CableSlash::default())))
+}
+
+#[derive(Default)]
+struct CableSlash {
+    first: Option<Pt>,
+}
+
+/// Rings drawn by the crossing preview at most (the text still counts every crossing).
+const MAX_PREVIEW_RINGS: usize = 200;
+
+/// What the crossing preview shows for a slash: ring positions (will join, blocks) and the text
+/// line, with whether the slash would be refused.
+struct SlashPreview {
+    join: Vec<Pt>,
+    block: Vec<Pt>,
+    text: String,
+    refused: bool,
+}
+
+impl CableSlash {
+    fn tolerance(s: &Session) -> f64 {
+        read(s, |p, _| Ok(p.tolerance)).unwrap_or(1e-6)
+    }
+
+    /// The preview for `from → to`, from the same crossing function the JSON form uses. `None`
+    /// when the project cannot be read now (busy) or the slash has no length.
+    fn look(s: &Session, from: Pt, to: Pt) -> Option<SlashPreview> {
+        read(s, |p, page| {
+            if from.near(to, p.tolerance) {
+                return Ok(None);
+            }
+            let doc = p.ledger.document();
+            let found = slash::crossings(doc, page, from, to, p.tolerance);
+            let blocked = slash::blocked(doc, &found.members);
+            let blocking: BTreeSet<ConductorId> = blocked.iter().map(|(m, _)| m.conductor).collect();
+            let (n, others) = (found.members.len(), found.ignored.len());
+            let (text, refused) = if n > slash::MAX_CABLE_MEMBERS {
+                (format!("-> refused: more than {} wires", slash::MAX_CABLE_MEMBERS), true)
+            } else if !blocked.is_empty() {
+                (format!("-> refused: {} already in a cable", slash::wires(blocked.len())), true)
+            } else if n == 0 {
+                ("-> no wires".to_string(), false)
+            } else if others > 0 {
+                let objects =
+                    if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
+                (format!("-> {}, {objects} ignored", slash::wires(n)), false)
+            } else {
+                (format!("-> {}", slash::wires(n)), false)
+            };
+            let (mut join, mut block) = (Vec::new(), Vec::new());
+            for m in found.members.iter().take(MAX_PREVIEW_RINGS) {
+                if blocking.contains(&m.conductor) {
+                    block.push(m.at);
+                } else {
+                    join.push(m.at);
+                }
+            }
+            Ok(Some(SlashPreview { join, block, text, refused }))
+        })
+        .ok()
+        .flatten()
+    }
+
+    fn finish(s: &mut Session, from: Pt, to: Pt) -> R<Step> {
+        let r = commit(s, "cableslash", &json!({"from": [from.x, from.y], "to": [to.x, to.y]}))?;
+        let ids = |key: &str| -> Vec<u128> {
+            r.get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().and_then(|t| u128::from_str_radix(t, 16).ok()))
+                .collect()
+        };
+        let (members, ignored, touched) = (ids("conductors"), ids("ignored").len(), ids("touched").len());
+        let cable = u128::from_str_radix(&hex_of(&r, "cable"), 16).unwrap_or_default();
+        let lines = read(s, |p, _| {
+            let members: Vec<ConductorId> = members.iter().map(|c| ConductorId::from(*c)).collect();
+            Ok(slash::created_lines(p.ledger.document(), cable.into(), &members, ignored, touched))
+        })
+        .unwrap_or_else(|_| vec![format!("Cable {} created.", hex_of(&r, "cable"))]);
+        for l in lines {
+            s.echo(l);
+        }
+        Ok(Step::Done)
+    }
+
+    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        match i {
+            Input::Point(p) => {
+                if !in_range(p) {
+                    return Err(other(OUT_OF_RANGE));
+                }
+                let q = pt(p);
+                match self.first {
+                    None => {
+                        self.first = Some(q);
+                        Ok(Step::Continue)
+                    }
+                    // The same point again is ignored (as Wire ignores a repeated point).
+                    Some(a) if a.near(q, Self::tolerance(s)) => Ok(Step::Continue),
+                    // A refusal keeps the first point: the prompt of step 2 repeats.
+                    Some(a) => Self::finish(s, a, q),
+                }
+            }
+            Input::Keyword(k) if k == "Undo" => {
+                self.first = None;
+                Ok(Step::Continue)
+            }
+            // A slash needs two clicks: Enter never commits.
+            Input::Enter => Ok(Step::Done),
+            Input::Text(t) => Err(not_a_point(&t)),
+            _ => Ok(Step::Continue),
+        }
+    }
+}
+
+impl Interactive for CableSlash {
+    fn name(&self) -> &'static str {
+        "CABLESLASH"
+    }
+    fn prompt(&self, _s: &Session) -> Prompt {
+        match self.first {
+            None => Prompt::new("Specify first point of cable slash", Accept::POINT),
+            Some(a) => Prompt::new("Specify second point of cable slash", Accept::POINT).kw(&["Undo"]).base(v2(a)),
+        }
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
+        safely(s, "cableslash", |s| self.step(s, i))
+    }
+    /// The rubber band from the first point to the cursor.
+    fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
+        match self.first {
+            Some(a) if super::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            _ => Vec::new(),
+        }
+    }
+    /// The crossing preview (design 004 §5.2): a green ring on each wire that will join, a red one
+    /// on each wire that blocks the slash, and one line of text beside the cursor.
+    fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
+        let (Some(a), Some(px)) = (self.first, pixel(s)) else { return Vec::new() };
+        if !in_range(cursor) {
+            return Vec::new();
+        }
+        let Some(look) = Self::look(s, a, pt(cursor)) else { return Vec::new() };
+        let ring = |at: &Pt, aci: u8| {
+            [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci))
+        };
+        let mut out: Vec<Entity> = look.join.iter().flat_map(|at| ring(at, ATTACHED_ACI)).collect();
+        out.extend(look.block.iter().flat_map(|at| ring(at, REFUSE_ACI)));
+        let at = Pt::new(cursor.x + 10.0 * px, cursor.y + 10.0 * px);
+        out.push(preview_text(s, at, px, look.text, if look.refused { REFUSE_ACI } else { ATTACHED_ACI }));
+        out
     }
 }
