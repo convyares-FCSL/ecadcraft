@@ -1,6 +1,6 @@
 # Brief 004: Wires to cable, the slash gesture
 
-Status: Draft (overseer, 2026-10-31)
+Status: Approved (owner, 2026-11-06)
 Branch: `ecad/cable-slash`
 Designer: **yes**, first (`ecad/docs/design/004.md`) · Size: M-L
 Depends on: 002 (saves are safe on Windows before new visible features)

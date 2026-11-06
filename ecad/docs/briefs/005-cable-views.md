@@ -1,6 +1,6 @@
 # Brief 005: Traditional / fan cable view
 
-Status: Draft (overseer, 2026-10-31)
+Status: Approved (owner, 2026-11-06)
 Branch: `ecad/cable-views`
 Designer: **yes**, first (`ecad/docs/design/005.md`) · Size: M
 Depends on: 004
@@ -27,12 +27,9 @@ membership or connections, and is instant.
    - anything more needs the owner's decision.
 4. The switch is **per cable** and **remembered between sessions** (owner, 2026-10-31). It is never a
    transaction and never moves the head (P5, SAVE-03).
-   - **Open before approval:** where it is remembered.
-     - (a) A per-user settings file keyed by project ID and cable ID. This needs no format change, but
-       the view does not travel with an emailed file.
-     - (b) A non-history record in the `.ecad`. The view travels with the file, but this is a
-       container change (E5 strict reading; a new container version) and amends §18.4.
-   - The overseer recommends (a) for now.
+   - **Where it is remembered (owner, 2026-11-06, approving the overseer's recommendation):** a
+     per-user settings file keyed by project ID and cable ID. No `.ecad` format change; the view does
+     not travel with an emailed file (a non-history record in the `.ecad` stays a later option).
 5. Update the quick-start guide.
 
 **Out of scope:**
