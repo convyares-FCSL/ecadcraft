@@ -2,9 +2,10 @@
 //! coordinates) and commit them through [`Project::apply_edit`].
 //!
 //! They reach the command line, scripts, the control channel and MCP through the engine's
-//! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect` and
-//! `disconnect` also have click-based interactive forms ([`crate::interact`], brief 008), started
-//! by a bare command name, a menu or a tool button; they commit through these JSON forms.
+//! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect`,
+//! `disconnect` and `cableslash` also have click-based interactive forms ([`crate::interact`],
+//! briefs 008 and 004), started by a bare command name, a menu or a tool button; they commit
+//! through these JSON forms.
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
 //! prompt.
 
@@ -22,6 +23,7 @@ use serde_json::{Value, json};
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::{Mapped, Project};
+use crate::slash::{self, MAX_CABLE_MEMBERS};
 use crate::translate::terminal_at;
 
 /// The commands this crate adds.
@@ -47,8 +49,12 @@ pub fn specs() -> Vec<CommandSpec> {
             .params("{conductor: id, end: \"A\"|\"B\"}")
             .interactive(interact::disconnect)
             .noundo(),
+        CommandSpec::new("cableslash", "Cable Slash", run_cableslash)
+            .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
+            .interactive(interact::cableslash)
+            .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
-            .params("{conductor: id} | {component: id}")
+            .params("{conductor: id} | {component: id} | {cable: id}")
             .noundo(),
         CommandSpec::new("setprop", "Set Property", run_setprop)
             .params("{component|conductor|cable: id, key, value: string|null}")
@@ -407,12 +413,33 @@ fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                 ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
             }
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+        } else if let Ok(k) = id::<CableId>(params, "cable") {
+            // Design 004 §8 (owner answer O3): the members leave, the slashes go, every conductor
+            // stays.
+            let cable = doc.cables.get(&k).ok_or("no such cable")?;
+            for (index, member) in cable.members.iter().enumerate().rev() {
+                ops.push(Op::RemoveCableMember { cable: k, index, member: member.clone() });
+            }
+            ops.extend(remove_representations(doc, Subject::Cable(k)));
+            ops.push(Op::DeleteCable { id: k, cable: ecad_model::Cable { members: Vec::new(), ..cable.clone() } });
+            let kept = cable.members.len();
+            p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
+            let message = format!("Cable {} deleted; its {} kept.", k.hex(), kept_words(kept));
+            return Ok(json!({"deleted": true, "kept": kept, "message": message}));
         } else {
-            return Err("`conductor` or `component` (hex id) is required".into());
+            return Err("`conductor`, `component` or `cable` (hex id) is required".into());
         }
         p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
         Ok(json!({"deleted": true}))
     })
+}
+
+fn kept_words(n: usize) -> String {
+    match n {
+        0 => "0 wires are".into(),
+        1 => "1 wire is".into(),
+        n => format!("{n} wires are"),
+    }
 }
 
 fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
@@ -450,9 +477,6 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     })
 }
 
-/// Most conductors one CABLEADD accepts (input-derived sizes are capped, never trusted).
-const MAX_CABLE_MEMBERS: usize = 10_000;
-
 fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let conductors: Vec<ConductorId> = id_list(params, "conductors", MAX_CABLE_MEMBERS).map_err(err)?;
     if conductors.is_empty() {
@@ -463,9 +487,31 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
     let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
+        // A conductor is in at most one cable (design 004, owner answer O5; §18.4 defers several).
+        let mut blocked = Vec::new();
+        for w in &conductors {
+            if let Some(k) = doc.cables_of(*w).first() {
+                blocked.push((*w, *k));
+            }
+        }
+        if !blocked.is_empty() {
+            return Err(slash::already_in_cable(doc, &blocked, "Nothing was changed."));
+        }
         let mut ops = Vec::new();
+        // Each wire once per call, and the cap holds for the whole cable, not only for one call.
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(w) = conductors.iter().find(|w| !seen.insert(**w)) {
+            return Err(format!("`conductors` lists wire {} twice; nothing was changed", w.hex()));
+        }
+        let had = match existing {
+            Some(c) => doc.cables.get(&c).ok_or("no such cable")?.members.len(),
+            None => 0,
+        };
+        if had.saturating_add(conductors.len()) > MAX_CABLE_MEMBERS {
+            return Err(format!("a cable holds at most {MAX_CABLE_MEMBERS} wires; nothing was changed"));
+        }
         let (cable, mut index) = match existing {
-            Some(c) => (c, doc.cables.get(&c).ok_or("no such cable")?.members.len()),
+            Some(c) => (c, had),
             None => {
                 let c: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();
@@ -482,6 +528,75 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         }
         p.apply_edit(pg, "cableadd", "Add to cable", ops)?;
         Ok(json!({"cable": cable.hex()}))
+    })
+}
+
+/// A slash end: a finite `[x,y]` within ±[`interact::MAX_COORD`].
+fn slash_point(p: &Value, key: &str) -> Result<Pt, String> {
+    let v = p.get(key).filter(|v| !v.is_null()).ok_or_else(|| format!("`{key}` [x,y] is required"))?;
+    point(v)
+        .filter(|q| q.x.abs() <= interact::MAX_COORD && q.y.abs() <= interact::MAX_COORD)
+        .ok_or_else(|| format!("`{v}` is not a finite [x,y] point"))
+}
+
+/// `cableslash` (brief 004, design 004 §2, §4, §6): the conductors the slash `from → to` crosses
+/// on the active page become one new cable, in crossing order, with the slash as its drawn
+/// representation; one transaction. Refused when it crosses no wire, more than
+/// [`MAX_CABLE_MEMBERS`], or a wire already in a cable.
+fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let from = slash_point(params, "from").map_err(err)?;
+    let to = slash_point(params, "to").map_err(err)?;
+    let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
+    with_project(s, |p, pg, page| {
+        if from.near(to, p.tolerance) {
+            return Err("`from` and `to` must differ".into());
+        }
+        let doc = p.ledger.document();
+        let found = slash::crossings(doc, page, from, to, p.tolerance);
+        if found.members.len() > MAX_CABLE_MEMBERS {
+            return Err(slash::too_many());
+        }
+        if found.members.is_empty() {
+            return Err(slash::no_wires(found.ignored.len()));
+        }
+        let blocked: Vec<(ConductorId, CableId)> =
+            slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+        if !blocked.is_empty() {
+            return Err(slash::already_in_cable(doc, &blocked, "Nothing was created."));
+        }
+        let (cable, item, rep): (CableId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+        let mut c = ecad_model::Cable::default();
+        if let Some(t) = tag {
+            c.properties.insert("tag".into(), t);
+        }
+        let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
+        for (index, m) in found.members.iter().enumerate() {
+            ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: None } });
+        }
+        ops.push(Op::AddItem {
+            id: item,
+            item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
+        });
+        ops.push(Op::LinkRepresentation {
+            id: rep,
+            rep: Representation {
+                subject: Subject::Cable(cable),
+                page,
+                form: Form::Drawn,
+                role: "slash".into(),
+                items: vec![item],
+                connection_points: BTreeMap::new(),
+            },
+        });
+        p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
+        Ok(json!({
+            "cable": cable.hex(),
+            "item": item.hex(),
+            "representation": rep.hex(),
+            "conductors": found.members.iter().map(|m| m.conductor.hex()).collect::<Vec<_>>(),
+            "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
+            "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+        }))
     })
 }
 

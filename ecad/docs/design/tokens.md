@@ -21,9 +21,12 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.loose` | 9 (light grey) | `#C0C0C0` | A wire end attached to nothing: a neutral colour, not red, because a dangling end is not necessarily an error (owner answer Q3 to design 008, 2026-11-01) |
 | `ecad.attach-preview` | 3 (green) | `#00FF00` | "Will attach" ring and name while a command runs |
 | `ecad.preview` | — | CADCraft's rubber-band colour | Rubber band, symbol preview (as CADCraft draws previews) |
+| `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the fan trunk and fan lines and the reserved layer `ECAD-CABLES` (005) |
+| `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
 
-Drawn geometry (rectangles, wires, symbol graphics) keeps its own layer colour: ECAD does not
-recolour objects.
+Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
+does not recolour stored objects. Computed drawing that is not stored (the fan view of a cable) is
+drawn in `ecad.cable` so it reads as a view, not as editable geometry.
 
 ## Sizes and line weights
 
@@ -37,7 +40,8 @@ same size at every zoom). They scale with the UI scale like CADCraft's own snap 
 | `ecad.terminal-size` | 8 px diameter | Terminal marker circle |
 | `ecad.dot-size` | 4 px diameter, filled | Attached-end dot |
 | `ecad.loose-size` | 6 px square | Loose-end square |
-| `ecad.ring-size` | 16 px diameter | Attach-preview ring |
+| `ecad.ring-size` | 16 px diameter | Attach-preview ring; also the refuse-preview ring |
+| `ecad.crossing-size` | 5 px diameter, filled | Crossing dot of a cable slash on a member wire |
 | `ecad.aperture` | CADCraft `APERTURE` setting (default 10 px) | How close the cursor must be for an ECAD capture |
 
 ## Panels and text

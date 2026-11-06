@@ -900,7 +900,8 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
 
 /// The objects that refer to `id`: a definition's components and symbol instances, a component's
 /// terminals and representations, a terminal's attached conductors, a conductor's cables and
-/// representations.
+/// representations, a cable's members (in member order) and then its representations (design 004
+/// §9: slash → cable → conductors).
 pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     let reps_of = |s: Subject| {
         doc.representations.iter().filter(move |(_, r)| r.subject == s).map(|(i, _)| ObjectId::Representation(*i))
@@ -938,7 +939,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Conductor(c)))
             .collect(),
-        ObjectId::Cable(c) => reps_of(Subject::Cable(c)).collect(),
+        ObjectId::Cable(c) => doc
+            .cables
+            .get(&c)
+            .into_iter()
+            .flat_map(|k| k.members.iter().map(|m| ObjectId::Conductor(m.conductor)))
+            .chain(reps_of(Subject::Cable(c)))
+            .collect(),
         ObjectId::Page(p) => {
             doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect()
         }

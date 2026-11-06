@@ -14,7 +14,7 @@
 //!   holds the project.
 //! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry, and
 //!   [`interact`] their click-based interactive forms, the terminal and wire-end marks drawn over
-//!   pages, and the hover description.
+//!   pages, and the hover description. [`slash`] decides what a cable slash crosses (brief 004).
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
@@ -39,6 +39,7 @@ pub mod debug;
 pub mod file;
 pub mod interact;
 pub mod project;
+pub mod slash;
 mod translate;
 pub mod verify;
 
