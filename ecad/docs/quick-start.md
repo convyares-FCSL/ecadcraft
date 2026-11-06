@@ -8,8 +8,9 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
 > are saved as `.ecad` files (persistence stage 2a). A read-only debugger panel (stage 2b)
 > opens from the banner; it is never shown unless you open it. An **ECAD** tab in Tool Sets has
-> buttons for the ECAD commands; six of them (Convert to Component, Add Terminal, Place Symbol,
-> Wire, Connect, Disconnect) work by clicking, with prompts at CADCraft's command line.
+> buttons for the ECAD commands; eight of them (Convert to Component, Add Terminal, Place Symbol,
+> Wire, Connect, Disconnect, Cable Slash, Cable View) work by clicking, with prompts at CADCraft's
+> command line.
 
 ## Which revision this describes, and what has been tried
 
@@ -43,6 +44,16 @@ to the ECAD tab: a short line drawn across wires makes them one cable (section 5
 outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
 checks and your trial on native Windows (2026-11-06, below); no agent has run it on a display.
 
+**Branch `ecad/cable-views` (brief 005, design `ecad/docs/design/005.md`)**, cut from `dev`
+after brief 004 was merged, adds **Cable View** to the ECAD tab: one click switches a cable
+between the traditional view (every wire and the slash) and a fan view (one magenta trunk that
+fans out to the wire ends), and back (section 5B). The switch is presentation only: it writes no
+transaction and never changes the banner's change count. Each cable's view is remembered for you
+outside the `.ecad` file, in `cable-views.json` in your ECAD settings folder (section 9). Nothing
+outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
+checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
+display yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -50,6 +61,7 @@ Three kinds of evidence exist, and they are kept apart:
 | **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/disk_contracts.rs`, `disk_edge_contracts.rs`). The model outcomes of sections 5 to 7 (what the project holds, not how it looks), across the trial, tools, mouse and files tests together: `the_quick_start_trial_runs_headless` (`ecad/apps/ecad-trial/tests/trial.rs`) follows the typed version of sections 5 to 7, saving through the dialog as `~/ecad-projects/demo` under a temporary home folder and checking the banner line and tab title quoted in section 7; the click-based steps are in `mouse.rs` and `tools.rs` (next row and below); plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/apps/ecad-trial/tests/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
 | **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/apps/ecad-trial/tests/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
@@ -370,7 +382,7 @@ to read.
    banner's change count goes up by one. The wires are listed bottom to top: the order is the
    direction you drew the slash.
 4. **Look.** With no command running, rest the pointer on the slash. Expected: a tooltip with
-   `Cable (no tag)`, its ID, `Wires: 3` and the three wires. On a wire:
+   `Cable (no tag)`, its ID, `View: traditional`, `Wires: 3` and the three wires. On a wire:
    its usual lines plus `In cable …`.
 5. **Undo and redo.** Type `u`: the slash, its dots and the cable go in one step. `redo` brings
    them back with the same IDs.
@@ -387,6 +399,43 @@ to read.
 `cableslash {"from":[28,-3],"to":[32,18]}` in the Command field does the same as steps 2 and 3
 (add `"tag":"-W1"` to name the cable). In the debugger, selecting the slash shows its trail:
 item → representation `slash` → cable → its wires in order.
+
+## 5B. Switch the cable's view (by clicking)
+
+Continue on the page of section 5A, with the cable made in step 3 (redo it if you deleted it).
+A cable can be shown **traditional** (every wire, and the slash) or as a **fan** (one cable line
+that fans out to the wire ends). Switching changes only what is drawn: nothing is written to the
+project.
+
+1. **Switch to fan.** Click **Cable View** (Wiring group, after Cable Slash). The prompt says
+   `Select a cable to switch its view:`. Click the slash.
+   Expected on the same frame: the three wires, the slash and its magenta dots go; one magenta
+   line runs along the middle wire from about `5,5` to `55,5`, and three short magenta lines fan
+   out from each end of it to the wire ends. The grey squares at the wire ends stay where they
+   were, at the ends of the fan lines. The command line says
+   `Cable <first 8 hex digits>… now shown in fan view.` The banner's change count does **not**
+   change. The prompt repeats.
+2. **Switch back.** Click the magenta trunk. Expected: the three wires and the slash are back,
+   `… now shown in traditional view.`, the change count still unchanged. Press Enter (or Esc) to
+   end the command.
+3. **Undo skips it.** Switch to fan again and end the command. Type `u`: the last real edit is
+   undone (if it was the slash, the cable goes), never the switch. `redo` brings it back; the
+   cable is still a fan.
+4. **Editing the fan is refused.** Select the trunk, type `move`, pick a base point and a second
+   point. Expected: `This cable is shown in fan view; switch to traditional view to edit.`; the
+   drawing is as before and the change count unchanged. Selecting fan lines is allowed; Connect's
+   "select wire" on a fan line gives the same message. Moving a component whose terminals have
+   fan-view wires attached is allowed: the fan follows.
+5. **Hover.** Rest the pointer on a fan line. Expected: `Cable (no tag)`, its ID, `View: fan`
+   and the three wires.
+6. **Remembered.** Save the project (Ctrl+S), close it and reopen it. Expected: the cable opens in
+   the view you left it in. Two cables in different views keep their own views. The view is not
+   in the `.ecad` file: someone else opening the file sees every cable traditional.
+
+With objects selected, **Cable View** switches every cable they name at once (a slash, a fan line
+or a wire in a cable): if all of them are fans they all go back to traditional, otherwise they all
+become fans. Typed: `cableview {"cable":"<id>"}` switches one cable, with `"view":"fan"` or
+`"view":"traditional"` to set it; `cableview {}` lists every cable's view and changes nothing.
 
 ## 6. Check connected movement, undo/redo and pages
 
@@ -591,8 +640,25 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     its magenta dot goes (no warning). Deleting a cable's last wire leaves an empty cable.
   - On a project opened read-only, a slash works as the other ECAD edits do: edits work in
     memory; use Save As to keep them.
-  - Only straight two-point slashes; arcs and circles are never taken; one cable per slash. The
-    fan view of a cable is brief 005.
+  - Only straight two-point slashes; arcs and circles are never taken; one cable per slash.
+- **Cable View** (brief 005, owner answers of 2026-11-06):
+  - The fan is ordinary drawing content on the reserved layer `ECAD-CABLES` (magenta): it snaps,
+    selects, plots and appears in a DXF export of the page as shown. Drawing new objects on that
+    layer is refused.
+  - There is no single-key shortcut: use the button, a click on the cable, or type `cableview`.
+  - Editing the fan itself is refused; anything else is allowed, including moving equipment with
+    fan-view wires attached (the hidden wires' ends follow and the fan is redrawn). Typed and
+    scripted JSON commands act on IDs and behave the same whatever any cable's view is.
+  - The fan leaves each end at 45° for neatly spaced wires, sized to the spread of the wire ends
+    and at most 40 % of the middle wire's length. Wires going to different places fan with long
+    diagonal lines. The trunk has no label. A cable with one wire is not offered a fan view.
+  - Views are remembered per user and per project in `cable-views.json`: on Windows in
+    `%APPDATA%\ECAD\` (for example `C:\Users\<you>\AppData\Roaming\ECAD\cable-views.json`), on
+    Linux in `$XDG_CONFIG_HOME/ecad/` or `~/.config/ecad/`. The environment variable
+    `ECAD_SETTINGS_DIR` names another folder. If the file cannot be read, every cable opens
+    traditional and opening says `Cable views file could not be read; all cables start in
+    traditional view.`; if it cannot be written, the switch still happens and says
+    `(not remembered: <reason>)`.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** Native Windows and Linux are supported. Keep projects in a local
