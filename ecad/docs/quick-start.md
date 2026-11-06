@@ -27,12 +27,18 @@ marks drawn by a document's owner, listed in `ecad/UPSTREAM-PATCHES.md`). Until 
 this branch there are automated checks and your first click-only trial on native Windows (below);
 no agent has run it on a display.
 
+**Branch `ecad/cable-slash` (brief 004, design `ecad/docs/design/004.md`)** adds **Cable Slash**
+to the ECAD tab: a short line drawn across wires makes them one cable (section 5A). Nothing
+outside `ecad/` changes, and the file format is unchanged. For this branch there are only
+automated checks so far; nothing has been tried by you or run by an agent on a display.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
 | **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/disk_contracts.rs`, `disk_edge_contracts.rs`). Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
 | **Agent smoke run on a virtual display, ECAD Tool Sets tab** | the development agent, as above, 2026-10-15 | Tool Sets shows **Drafting**, **Modeling** and **ECAD** tabs; the ECAD tab shows Components, Wiring, Edit, Pages and Inspect; clicking a rectangle's four lines and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected). The first version (a group at the bottom of Drafting) was also run: **Wire** filled the Command field with its template and note, and Enter on it unedited was refused. Not looked at: a real WSLg display |
@@ -298,6 +304,47 @@ edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
 `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`. The headless test
 `the_quick_start_trial_runs_headless` follows that typed version.
 
+## 5A. Make a cable (by clicking)
+
+A cable groups existing wires; the wires themselves do not change. You draw it as a short line
+(the *slash*) across the wires. This example uses a page of its own so the coordinates are easy
+to read.
+
+1. **A page with three wires and a plain line.** In the Command field:
+   `newpage {"title":"cables"}`. Then click **Wire**, click at `0,0` and `60,0` and press Enter;
+   do the same at `0,5` → `60,5` and `0,10` → `60,10` (typing the points at the command line, or
+   `wire {"points":[[0,0],[60,0]]}` in the Command field, works too). Draw a plain line with
+   `line 0,15 60,15` and press Enter, then `zoom e`.
+   Expected: three wires with grey squares at their loose ends, and a line without marks.
+2. **Draw the slash.** Click **Cable Slash** (Wiring group). The prompt says
+   `Specify first point of cable slash:`. Click below the wires, at about `28,-3`. Move the
+   pointer up across them to about `32,18`, above the plain line.
+   Expected before the second click: a rubber band, a green ring where it crosses each wire, and
+   `-> 3 wires, 1 other object ignored` beside the pointer. Nothing is written yet.
+3. **Click.** Expected: `Cable <id> created with 3 wires: wire …, wire …, wire ….` and
+   `1 object that is not a wire was ignored.` at the command line; the slash stays as a plain
+   line in the wire colour, with a small magenta dot on each wire it holds and no end marks; the
+   banner's change count goes up by one. The wires are listed bottom to top: the order is the
+   direction you drew the slash.
+4. **Look.** With no command running, rest the pointer on the slash. Expected: a tooltip with
+   `Cable (no tag)`, its ID, `Wires: 3 (in crossing order)` and the three wires. On a wire:
+   its usual lines plus `In cable …`.
+5. **Undo and redo.** Type `u`: the slash, its dots and the cable go in one step. `redo` brings
+   them back with the same IDs.
+6. **A refusal.** Click **Cable Slash** again and slash across the middle wire only (click at
+   about `40,3`, move to `40,7`). Expected before the click: a **red** ring and
+   `-> refused: 1 wire already in a cable` in red. Click: `Wire … is already in cable …; a wire
+   can be in only one cable. Nothing was created.`; the prompt for the second point stays, so you
+   can try another point. Press Esc: nothing was written.
+7. **Delete.** Erasing the slash (select it, `erase`) removes only the drawing: the cable stays
+   (the debugger still lists it). To delete the cable itself, select the slash first and click
+   **Delete Electrical Object**: it fills in `ecaddelete {"cable":"<id>"}`; press Enter.
+   Expected: `Cable <id> deleted; its 3 wires are kept.` in the reply; the wires stay.
+
+`cableslash {"from":[28,-3],"to":[32,18]}` in the Command field does the same as steps 2 and 3
+(add `"tag":"-W1"` to name the cable). In the debugger, selecting the slash shows its trail:
+item → representation `slash` → cable → its wires in order.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -484,6 +531,20 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     are hard to see.
   - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page and Open
     Page still fill in the Command field.
+- **Cable Slash** (brief 004, owner answers of 2026-11-06):
+  - A wire counts when the slash crosses it, passes through one of its bends, or ends on it. A
+    slash that meets a wire only at the wire's own end, or runs along it, does not take it; the
+    reply says how many such wires were left out.
+  - Each wire can be in only one cable: a slash across a wire already in a cable is refused, and
+    so is `cableadd` with such a wire.
+  - Any crossed wires may form a cable; the member order is the crossing order and means
+    nothing else (no core numbers, no spares).
+  - The slash is drawn in the same style as a wire (no cable layer or colour of its own).
+  - Moving a wire does not change the cables it is in; if the slash no longer crosses it, only
+    its magenta dot goes (no warning). Deleting a cable's last wire leaves an empty cable.
+  - Read-only projects behave as for the other ECAD edits.
+  - Only straight two-point slashes; arcs and circles are never taken; one cable per slash. The
+    fan view of a cable is brief 005.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** The Linux home folder under WSL (for example `~/ecad-projects`) is
