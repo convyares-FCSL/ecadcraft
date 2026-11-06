@@ -1,6 +1,6 @@
 # Brief 003: The trial on native Windows, and document corrections
 
-Status: Draft (overseer, 2026-10-31)
+Status: Approved (owner, 2026-11-01)
 Branch: `ecad/windows-trial`
 Designer: no · Size: M
 Gate: part B changes files outside `ecad/` and recorded decisions. The owner approved the

@@ -43,7 +43,9 @@ mod translate;
 pub mod verify;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use file::{FileStatus, NO_FILE_YET, SAVE_AS_NEEDS_PATH, normalize};
+pub use file::{
+    FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
+};
 pub use project::{
     Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, project_page, session_seed,
 };

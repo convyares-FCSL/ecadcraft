@@ -3,10 +3,9 @@
 > **Status:** revision 4.1. Revision 2 was approved as the basis for the bounded integration
 > experiment (§17); the integration choices in Part B stay provisional until demonstrated.
 > Revision 4 added **Part E** (persistence and the live debugger). Revision 4.1 revises its
-> contracts after review. **Stage 1 and stage 2a (files on disk) are implemented and merged;
-> stage 2b (the debugger panel) is implemented for review; later stages need approval each
-> (§22).** **Written:** 2026-10-12 against `dev`
-> at `baee1b8` (CADCraft 0.6.2). **Reads with:**
+> contracts after review. **Stages 1, 2a (files on disk) and 2b (the debugger panel, merged
+> 2026-10-15) are implemented and merged; later stages need approval each (§22).**
+> **Written:** 2026-10-12 against `dev` at `baee1b8` (CADCraft 0.6.2). **Reads with:**
 > [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) (takes precedence),
 > [`concept-spec.md`](concept-spec.md) and [`cadcraft-assessment.md`](cadcraft-assessment.md).
 
@@ -25,7 +24,8 @@ prove:
   needs proof, together with the movement, copy and deletion policies built on it.
 - **Part C, integration experiment.** The smallest experiment that would prove or disprove
   Part B. It is specified here but not run.
-- **Part E, persistence and live inspection** (revision 4.1; stage 1 approved). It sets out the
+- **Part E, persistence and live inspection** (revision 4.1; stages 1, 2a and 2b merged, 2b on
+  2026-10-15). It sets out the
   `.ecad`/`.ecadlib` container, how embedded definitions are stored, durability, recovery,
   versioning and checkpoints, and a read-only live debugger panel, with acceptance criteria.
 - **Part D, decisions,** split into four groups: direction already supported, revised
@@ -79,7 +79,7 @@ Changes from revision 1 (details in [Revision 2 changes](#revision-2-changes)):
 18. [Decision table](#18-decision-table)
 19. [Room for later features](#19-room-for-later-features)
 
-**Part E: persistence and live inspection (revision 4.1; stage 1 approved)**
+**Part E: persistence and live inspection (revision 4.1; stages 1, 2a and 2b merged)**
 
 20. [Persistence design](#20-persistence-design)
 21. [Live debugger (developer panel)](#21-live-debugger-developer-panel)
@@ -463,6 +463,12 @@ Everything in Part B is a proposal to be proved by the experiment (§17). The re
 is supported in direction; the rest are hypotheses.
 
 ## 8. Repository layout
+
+**Target layout, not the current one.** As built (2026-11-01) the `ecad/` workspace has
+`ecad-model` (connectivity and nets in its `derive` module), `ecad-store`, `ecad-file`,
+`ecad-inspect`, `ecad-cadcraft` and `apps/ecad-trial` (§20.12). `ecad-library`, `ecad-derive`,
+`ecad-ui`, `ecad-testkit`, `apps/ecad` and `ecad-cli` do not exist yet (`xtask` registers
+`ecad-cli` ahead of it).
 
 ```
 ecadcraft/                          fork of storytold/cadcraft
@@ -977,7 +983,7 @@ Each item names the constraint to preserve. None is decided by this proposal.
 | Library replacement | `UpdateDefinition` + terminal remapping transaction |
 | DWG adopt | an import that emits ordinary transactions, then a review |
 
-# Part E: persistence and live inspection (proposal for review)
+# Part E: persistence and live inspection (proposal; stages 1, 2a and 2b merged)
 
 > **Status: revision 4.1.** The owner reviewed revision 4 at `b0444b9`. The direction is
 > supported: JSON Lines for development, inline embedded definitions, separate versioned file
@@ -1531,7 +1537,7 @@ Each stage is one PR into `dev` and starts only after approval. Nothing in a lat
 built early.
 
 **Stage 1: records and JSON in memory** (`ecad-file`, model additions from §20.13). **Approved.**
-Implemented on branch `ecad/file-stage1` for review. Modules of `ecad-file`: `v1` (records and
+Implemented on branch `ecad/file-stage1` and merged. Modules of `ecad-file`: `v1` (records and
 conversions), `record` (header, limits, upcasts, definition hash), `canonical`, `crc`, `chain`,
 `codec` (`jsonl/1`), `read` (open and classify), `write` (create, save with retry). Contract tests:
 `ecad-file/tests/{canonical,records,recovery,save}_contracts.rs` and the golden file
@@ -1590,7 +1596,7 @@ never panic and always classify the result.
 
 **Stage 2: files, harness persistence, debugger panel.** Split by the owner (2026-10-13) into
 **2a**, files and harness persistence (merged as PR #10 after the owner's WSL trial), and **2b**,
-the debugger panel (implemented on branch `ecad/debugger` for review; tests in
+the debugger panel (merged 2026-10-15 as PR #11; tests in
 `ecad-cadcraft/tests/debugger.rs` and `ecad-trial/tests/debugger.rs`). The criteria below marked
 *(2b)* belong to 2b.
 - Save, quit, reopen: the same document, IDs, log and head, with persisted = head. *(2b)* The
@@ -1667,11 +1673,11 @@ the table; the debugger scope of §21 confirmed, to be built after the owner's t
 | E7 | Checkpoints disabled; trust contract unresolved | **settled** as disabled; the contract is open for stage 4 |
 | E8 | Save refuses on an external change and offers Save As; an OS lock on a lock file guards writers; a second opener is read-only; a crash never locks out, and a leftover lock is told apart from an active one | **settled** (2026-10-13; implemented in stage 2a) |
 | E9 | Save As keeps `project_id`; "Save a Copy As" with a new ID deferred | **settled** (2026-10-13; implemented in stage 2a) |
-| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled**; scope of §21 confirmed 2026-10-13; implemented in stage 2b (for review) |
+| E10 | The debugger is an egui developer panel in `ecad-trial`; the HTML inspector stays; snapshot format `ecad-inspect/2` | **settled**; scope of §21 confirmed 2026-10-13; implemented in stage 2b (merged 2026-10-15) |
 | E11 | Length unit in project settings, mm by default, fixed at creation for now | **settled** (2026-10-13; implemented in stage 1) |
-| E12 | Stages as in §22 | stages 1 and 2a merged; 2b implemented for review; later stages need approval each |
+| E12 | Stages as in §22 | stages 1, 2a and 2b merged (2b on 2026-10-15); later stages need approval each |
 | E13 | An unterminated trailing fragment is copied to a uniquely named sidecar before a save removes it; a failed copy leaves the file untouched and is reported | **settled** (2026-10-13; implemented in stage 2a) |
-| E14 | The supported location for project files under WSL is the Linux home folder; other file systems are unverified unless tested | **settled** (2026-10-13) |
+| E14 | The supported location for project files under WSL is the Linux home folder; other file systems are unverified unless tested | **settled** (2026-10-13); **superseded** 2026-10-31: native Windows and Linux are supported (`docs/decisions.md`) |
 
 ## Revision 2 changes
 
@@ -1706,4 +1712,5 @@ Corrections carried from revision 1:
 | 2026-10-13 | Revision 4.1, corrections from the stage 1 code review: Save re-reads the whole verified prefix against a running digest (not only its last record); embedded content hashes are recomputed on open (a mismatch is corruption); canonical numbers break equal-distance ties to the even digit as ECMA-262 does; the header gets the same size and integer limits as other records; a named version must name a transaction before the one naming it |
 | 2026-10-12 | Revision 4.1: the owner's review of revision 4. Recovery distinguishes an unterminated trailing write from a complete corrupt record (read-only, source preserved, final-record failures covered); save retry with verified prefix, acknowledged position and attempt state; Save As phases before and after replacement, uncertain durability after a folder-flush failure, writer lock across replacement; checkpoints disabled with their trust contract unresolved; accepted partial results of cancelled commands recorded; exact CRC framing, domain-separated chain seeds, integrity before upcasting, canonical numbers, the unkeyed chain's limits. Stage 1 approved |
 | 2026-10-12 | Revision 4 draft: Part E (§20-§23), persistence design (container options, inline versus separate definitions, transaction boundaries, durable saving, recovery, versioning, checkpoints, libraries, integrity, JSON Lines) and a live read-only debugger panel, with staged acceptance criteria and decisions E1-E12; §5 points to it. For review; not implemented |
+| 2026-11-01 | Corrections of record (brief 003; review 2026-10-31 D3, D4, D11): the status header, E10 and E12 show stage 2b as merged (2026-10-15); E14 is marked superseded by native Windows and Linux support; §8 is marked as the target layout and names the crates as built. §20.5 on Windows (D10) is left to follow brief 002 |
 | 2026-11-02 | §20.5 for native Windows (brief 002): replacement by `std::fs::rename` plus a folder flush through `FlushFileBuffers` on a folder handle, instead of `MoveFileEx` with write-through; durability unconfirmed when that flush fails or is unavailable; file identity by volume serial and file index; the lock holder not named on Windows; ReFS and Dev Drives unverified. Needs the owner's approval |

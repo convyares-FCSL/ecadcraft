@@ -2,6 +2,15 @@
 
 Oct 12, 2026 · Carl
 
+> **Partly superseded (note added 2026-11-01).** Where this spec differs from
+> [`ecad-architecture-foundations.md`](ecad-architecture-foundations.md) and
+> [`document-architecture-proposal.md`](document-architecture-proposal.md), those documents take
+> precedence: the file encoding (JSON Lines `jsonl/1`, E1; not CBOR or MessagePack), identity by
+> stable IDs with tags as properties (P2), cables that reference existing conductors (not
+> inferred cores), checkpoints and compaction (disabled; no destructive compaction, P9, E7) and
+> schema evolution (FILE-06; E4 is open). Crate names are as built (`docs/decisions.md`,
+> 2026-11-01). The text below is kept as written.
+
 ## Vision and principles
 
 A fast, modern electrical CAD that does for schematics what Onshape did for 3D: the designer just draws, and the software infers wires, cables, devices and cross-references in the background. It is not an AutoCAD clone and not an attempt to kill EPLAN; it is a better tool for the people current ECAD serves badly.

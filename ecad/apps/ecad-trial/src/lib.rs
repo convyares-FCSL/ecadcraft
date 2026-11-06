@@ -32,8 +32,10 @@
 //! own command line takes a space as Enter, so it cannot take a JSON argument); a bare command
 //! name starts its interactive form in either field.
 //!
-//! The supported place for project files under WSL is the Linux home folder (for example
-//! `~/ecad-projects`); other file systems, including Windows drives under `/mnt`, are unverified.
+//! Project files belong in a local folder: by default `C:\dev\ecad-projects` on Windows (never the
+//! OneDrive-redirected Documents folder) and `~/ecad-projects` on Linux, including the Linux home
+//! under WSL. Network, synced and removable folders, and Windows drives under `/mnt`, are
+//! unverified.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -46,6 +48,7 @@
 pub mod debugger;
 pub mod tools;
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,15 +65,98 @@ use serde_json::json;
 
 /// Window title.
 pub const TITLE: &str = "ECAD trial (experiment)";
+/// The default projects folder, as typed (see [`DEFAULT_FOLDER`]).
+#[cfg(windows)]
+macro_rules! default_folder {
+    () => {
+        r"C:\dev\ecad-projects"
+    };
+}
+#[cfg(not(windows))]
+macro_rules! default_folder {
+    () => {
+        "~/ecad-projects"
+    };
+}
+
 /// The banner shown above CADCraft's window contents.
-pub const BANNER: &str = "ECAD TRIAL (experiment). Projects are saved as .ecad files. Keep them in your Linux home \
-folder (for example ~/ecad-projects); other locations are unverified.";
+pub const BANNER: &str = concat!(
+    "ECAD TRIAL (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
+    default_folder!(),
+    "); other locations are unverified."
+);
 /// Said wherever snapshots are mentioned.
 pub const SNAPSHOT_NOTE: &str = "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
 /// Name of a new project until it is saved.
 pub const PROJECT_NAME: &str = "Untitled";
-/// Where the Save As dialog suggests saving.
-pub const DEFAULT_FOLDER: &str = "~/ecad-projects";
+/// Where the Save As dialog suggests saving, created by the first save into it: `C:\dev\ecad-projects`
+/// on Windows (owner decision 2026-10-31; never the OneDrive-redirected Documents folder),
+/// `~/ecad-projects` elsewhere.
+pub const DEFAULT_FOLDER: &str = default_folder!();
+/// Command-line usage.
+pub const USAGE: &str = concat!(
+    "usage: ecad-trial [--snapshots <dir>] [<project.ecad>]\n\n\
+ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
+project. Save and Save As write .ecad project files; keep them in a local folder such as ",
+    default_folder!(),
+    ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
+See ecad/docs/quick-start.md."
+);
+
+/// What the command line asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Invocation {
+    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given.
+    Run { snapshots: Option<PathBuf>, project: Option<String> },
+    /// Print [`USAGE`].
+    Help,
+    /// Print the version.
+    Version,
+}
+
+/// Parse the command line (without the program name), as given by `std::env::args_os`.
+///
+/// # Errors
+/// A usage error, in words (print it with [`USAGE`]): an unknown option, `--snapshots` without a
+/// folder, more than one project file, or a project file name that is not valid Unicode.
+pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, String> {
+    let mut snapshots = None;
+    let mut project: Option<String> = None;
+    let mut args = args.into_iter();
+    while let Some(a) = args.next() {
+        match a.to_str() {
+            Some("--snapshots") => match args.next() {
+                Some(d) => snapshots = Some(PathBuf::from(d)),
+                None => return Err("--snapshots needs a folder".into()),
+            },
+            Some("--help" | "-h") => return Ok(Invocation::Help),
+            Some("--version" | "-V") => return Ok(Invocation::Version),
+            Some(other) if other.starts_with('-') => return Err(format!("unknown argument {other:?}")),
+            Some(path) if project.is_none() => project = Some(path.to_string()),
+            Some(extra) => return Err(format!("only one project file can be opened ({extra:?})")),
+            None => {
+                return Err(format!(
+                    "the argument {:?} is not valid Unicode; project files need a Unicode name",
+                    a.to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(Invocation::Run { snapshots, project })
+}
+
+/// The project line of the banner, for example
+/// `Project "demo": 1 page open, file C:\dev\ecad-projects\demo.ecad, no unsaved changes.`
+pub fn status_line(s: &Status) -> String {
+    let plural = |n: u64, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
+    let file = s.file.path.as_deref().map_or("not saved to a file yet".to_string(), |p| format!("file {p}"));
+    let changes = if s.unsaved == 0 {
+        "no unsaved changes".to_string()
+    } else {
+        format!("{} not saved", plural(s.unsaved, "change"))
+    };
+    format!("Project \"{}\": {}, {file}, {changes}.", s.name, plural(s.pages as u64, "page") + " open")
+}
 
 /// Lines echoed at the command line when a project is created.
 const INTRO: &[&str] = &[
@@ -159,6 +245,8 @@ pub struct Trial {
     hover: Option<Vec<String>>,
     /// How long the pointer rests on an object before its description shows, in seconds.
     pub hover_delay: f64,
+    /// The home folder that `~` in typed paths stands for ([`ecad_cadcraft::home`] by default).
+    pub home: Option<PathBuf>,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -191,14 +279,6 @@ pub fn services(requested: Arc<AtomicBool>) -> Services {
         // No APPLOAD file dialog either: CADCraft asks for the file name at its command line.
         pick_lisp: None,
         no_file_system: false,
-    }
-}
-
-/// `~/` expanded, for checking folders.
-fn expand(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) if !home.is_empty() => Path::new(&home).join(rest),
-        _ => PathBuf::from(path),
     }
 }
 
@@ -250,6 +330,7 @@ impl Trial {
             hovered: None,
             hover: None,
             hover_delay: HOVER_DELAY,
+            home: ecad_cadcraft::home(),
         }
     }
 
@@ -278,7 +359,8 @@ impl Trial {
         if self.project_open() {
             return Err("an ECAD project is already open; close it first".into());
         }
-        let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, path, session_seed())?;
+        let path = ecad_cadcraft::normalize_with(path, self.home.as_deref())?;
+        let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
             self.cad.session.echo(line.to_string());
@@ -307,21 +389,22 @@ impl Trial {
         r
     }
 
-    /// Save the project as `path` (a `.ecad` file; the extension is added when missing). The
-    /// default folder is created if it does not exist yet.
+    /// Save the project as `path` (a `.ecad` file; the extension is added when missing; `~` is
+    /// [`Trial::home`]). The default folder is created if it does not exist yet; no other folder is.
     ///
     /// # Errors
-    /// No project is open, or the save failed (also shown in a dialog).
+    /// No project is open, the path is refused, or the save failed (also shown in a dialog).
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
         self.focus_project()?;
-        let target = expand(path.trim());
-        if let Some(dir) = target.parent()
-            && dir == expand(DEFAULT_FOLDER)
+        let target = ecad_cadcraft::normalize_with(path, self.home.as_deref())?;
+        if let Some(dir) = Path::new(&target).parent()
+            && let Ok(default) = ecad_cadcraft::expand_home(DEFAULT_FOLDER, self.home.as_deref())
+            && ecad_cadcraft::same_path(dir, &default)
             && !dir.exists()
         {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        let r = self.cad.run("saveas", json!({ "path": path.trim() })).map(|_| ());
+        let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
         self.after_logic();
         r
     }
@@ -379,9 +462,9 @@ impl Trial {
     fn open_dialog(&mut self, kind: DialogKind, then_close: Option<Closing>) {
         let suggested = match (kind, self.status()) {
             (DialogKind::SaveAs, Some(s)) => {
-                s.file.path.unwrap_or_else(|| format!("{DEFAULT_FOLDER}/{}.ecad", s.name.to_lowercase()))
+                s.file.path.unwrap_or_else(|| in_default_folder(&format!("{}.ecad", s.name.to_lowercase())))
             }
-            _ => format!("{DEFAULT_FOLDER}/"),
+            _ => in_default_folder(""),
         };
         self.dialog = Some(FileDialog {
             kind,
@@ -416,11 +499,13 @@ impl Trial {
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
             DialogKind::SaveAs => {
-                let target = ecad_cadcraft::normalize(&path).map(|p| expand(&p));
-                let own = self.status().and_then(|s| s.file.path).map(|p| expand(&p));
+                let target = ecad_cadcraft::normalize_with(&path, self.home.as_deref()).map(PathBuf::from);
+                let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
                 match target {
                     Ok(t)
-                        if t.exists() && Some(&t) != own.as_ref() && d.confirmed_replace.as_deref() != Some(&path) =>
+                        if t.exists()
+                            && !own.as_deref().is_some_and(|o| ecad_cadcraft::same_path(&t, o))
+                            && d.confirmed_replace.as_deref() != Some(&path) =>
                     {
                         d.confirmed_replace = Some(path.clone());
                         Err(format!("{} already exists. Press Save again to replace it.", t.display()))
@@ -679,6 +764,11 @@ impl Trial {
     /// Snapshots are not enabled, there is no project, or writing failed.
     pub fn export_snapshot(&mut self, why: &str) -> Result<PathBuf, String> {
         let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
+        // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
+        let dir = match dir.to_str() {
+            Some(typed) => ecad_cadcraft::expand_home(typed, self.home.as_deref())?,
+            None => dir,
+        };
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
         let head = snap.get("seq").and_then(serde_json::Value::as_u64).unwrap_or(0);
@@ -881,19 +971,7 @@ impl Trial {
             ui.label(RichText::new(BANNER).strong().color(warn));
             ui.horizontal_wrapped(|ui| match &status {
                 Some(s) => {
-                    let plural = |n: u64, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
-                    let file =
-                        s.file.path.as_deref().map_or("not saved to a file yet".to_string(), |p| format!("file {p}"));
-                    let changes = if s.unsaved == 0 {
-                        "no unsaved changes".to_string()
-                    } else {
-                        format!("{} not saved", plural(s.unsaved, "change"))
-                    };
-                    ui.label(format!(
-                        "Project \"{}\": {}, {file}, {changes}.",
-                        s.name,
-                        plural(s.pages as u64, "page") + " open"
-                    ));
+                    ui.label(status_line(s));
                     if let Some(r) = &s.file.read_only {
                         ui.label(RichText::new(format!("Read-only: {r}. Use Save As.")).color(warn));
                     }
@@ -1056,8 +1134,9 @@ impl Trial {
             ui.label(RichText::new(heading).strong());
             ui.add_space(4.0);
             ui.label(format!(
-                "A .ecad project file (the extension is added if missing). Keep projects in your Linux home folder, \
-for example {DEFAULT_FOLDER}/demo.ecad; other locations are unverified."
+                "A .ecad project file (the extension is added if missing). Keep projects in a local folder, for \
+example {}; other locations are unverified.",
+                in_default_folder("demo.ecad")
             ));
             let field = ui.add(egui::TextEdit::singleline(&mut d.path).desired_width(f32::INFINITY));
             // Enter ends the text field's input (it gives up focus): checked before focus is
@@ -1086,6 +1165,12 @@ for example {DEFAULT_FOLDER}/demo.ecad; other locations are unverified."
             ctx.request_repaint();
         }
     }
+}
+
+/// `name` in [`DEFAULT_FOLDER`], as typed (with the platform's separator; a trailing one when
+/// `name` is empty).
+fn in_default_folder(name: &str) -> String {
+    format!("{DEFAULT_FOLDER}{}{name}", std::path::MAIN_SEPARATOR)
 }
 
 /// Seconds since the epoch, for unique snapshot file names.

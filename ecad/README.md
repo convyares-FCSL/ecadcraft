@@ -8,8 +8,9 @@ All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the par
 >   [`docs/quick-start.md`](docs/quick-start.md)**, the single maintained guide. It also records
 >   what has been tried, and how.
 > - **Projects are saved as `.ecad` files** (persistence stage 2a): Open, Save and Save As, a
->   writer lock, and recovery from interrupted or damaged files. The supported place for project
->   files under WSL is the Linux home folder; other file systems are unverified.
+>   writer lock, and recovery from interrupted or damaged files. Native Windows and Linux are
+>   supported: keep projects in a local folder (`C:\dev\ecad-projects` on Windows, the Linux home
+>   folder on Linux and under WSL); other file systems are unverified.
 > - **A read-only debugger panel** (stage 2b) in the trial follows a selected object to its
 >   ECAD IDs, model objects, transactions (with before/after values) and saved record bytes,
 >   and keeps pending changes apart from saved history. The static inspector still loads

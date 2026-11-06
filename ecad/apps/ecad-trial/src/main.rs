@@ -6,6 +6,10 @@
 //! `--snapshots <dir>` enables exporting inspector snapshots (a banner button, before a project is
 //! discarded, and at exit). Snapshots are diagnostic files, not saved projects.
 //! See `ecad/docs/quick-start.md` for building, running and the manual trial.
+//!
+//! Release builds on Windows open no console window beside the trial, as CADCraft's desktop app;
+//! their `--help`, `--version` and usage errors are then not shown (use a debug build).
+#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -15,10 +19,8 @@
     clippy::unreachable
 )]
 
-use std::path::PathBuf;
-
 use cadcraft_ui_egui::switch::Switch;
-use ecad_trial::{TITLE, Trial};
+use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
 struct App(Trial);
@@ -42,47 +44,25 @@ impl eframe::App for App {
     }
 }
 
-const USAGE: &str = "usage: ecad-trial [--snapshots <dir>] [<project.ecad>]\n\n\
-ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
-project. Save and Save As write .ecad project files; keep them in your Linux home folder.\n\
---snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
-See ecad/docs/quick-start.md.";
-
 /// Stencil bits of the window's render pass, as in CADCraft's desktop app (the canvas needs them).
 const STENCIL_BITS: u8 = 8;
 
 fn main() -> eframe::Result {
-    let mut snapshots = None;
-    let mut project: Option<String> = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(a) = args.next() {
-        match a.as_str() {
-            "--snapshots" => match args.next() {
-                Some(d) => snapshots = Some(PathBuf::from(d)),
-                None => {
-                    eprintln!("--snapshots needs a folder\n\n{USAGE}");
-                    std::process::exit(2);
-                }
-            },
-            "--help" | "-h" => {
-                println!("{USAGE}");
-                return Ok(());
-            }
-            "--version" | "-V" => {
-                println!("ecad-trial {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
-                return Ok(());
-            }
-            other if other.starts_with('-') => {
-                eprintln!("unknown argument {other:?}\n\n{USAGE}");
-                std::process::exit(2);
-            }
-            path if project.is_none() => project = Some(path.to_string()),
-            extra => {
-                eprintln!("only one project file can be opened ({extra:?})\n\n{USAGE}");
-                std::process::exit(2);
-            }
+    let (snapshots, project) = match parse_args(std::env::args_os().skip(1)) {
+        Ok(Invocation::Run { snapshots, project }) => (snapshots, project),
+        Ok(Invocation::Help) => {
+            println!("{USAGE}");
+            return Ok(());
         }
-    }
+        Ok(Invocation::Version) => {
+            println!("ecad-trial {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("{e}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+    };
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
     let surface = cadcraft_ui_egui::gpu::surface_config(
