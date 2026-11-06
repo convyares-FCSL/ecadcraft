@@ -379,7 +379,8 @@ fn refusals_write_nothing_and_say_why() {
         .count();
     assert_eq!(red_rings, 3, "one bold red ring on W5");
     // No wires is a refusal too: red text (design §5.2).
-    let empty = Vec2::new(28.0, -20.0);
+    // From the first point (40,3) to (45,4): between W0 and W5, crossing nothing.
+    let empty = Vec2::new(45.0, 4.0);
     f.h.s.cursor = empty;
     let preview = f.h.s.preview(empty);
     assert!(
@@ -574,7 +575,9 @@ fn hostile_slashes_never_panic() {
     h.check();
     // The cap holds for the whole cable: one more wire through `cableadd` is refused.
     let cable = r["cable"].as_str().unwrap().to_string();
-    let last = h.doc().conductors.keys().last().copied().unwrap();
+    // The one wire the slash did not take (IDs do not follow creation order).
+    let taken: Vec<&str> = r["conductors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
+    let last = h.doc().conductors.keys().copied().find(|c| !taken.contains(&c.hex().as_str())).unwrap();
     let e = h.s.execute("cableadd", &json!({"cable": cable, "conductors": [last.hex()]})).unwrap_err();
     assert!(e.to_string().contains("a cable holds at most 10000 wires"), "{e}");
     assert_eq!(h.head(), head + 1);
