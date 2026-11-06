@@ -145,10 +145,9 @@ fn file_names_are_checked_and_completed() {
     assert!(normalize("plan.dxf").unwrap_err().contains(".ecad"));
     assert_eq!(normalize("a/b").unwrap(), "a/b.ecad");
     assert_eq!(normalize("a/B.ECAD").unwrap(), "a/B.ECAD");
-    if let Ok(home) = std::env::var("HOME")
-        && !home.is_empty()
-    {
-        assert_eq!(normalize("~/p").unwrap(), format!("{}/p.ecad", home.trim_end_matches('/')));
+    // `~` is the home folder from the user profile, not `HOME` (see `apps/ecad-trial/tests/paths_contracts.rs`).
+    if let Some(home) = ecad_cadcraft::home() {
+        assert_eq!(normalize("~/p").unwrap(), format!("{}.ecad", home.join("p").display()));
     }
     let (mut h, ..) = small_project(33);
     h.cfg(|p| p.persistence = Persistence::File);

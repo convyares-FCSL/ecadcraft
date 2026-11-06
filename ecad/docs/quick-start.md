@@ -16,32 +16,45 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
 Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.15.1**
 (upstream tag `v0.15.1`, commit `660e15c`, brief 007, 2026-10-31; egui 0.37, Rust 1.95 or later).
-The steps below did not change with that sync; the Block Editor, REFEDIT and LISP are refused on ECAD pages (section 9). Every trial recorded below as yours was on the
-earlier CADCraft 0.6.2 base; nothing has been tried by you on 0.15.1 yet.
+The steps below did not change with that sync; the Block Editor, REFEDIT and LISP are refused on ECAD pages (section 9). Your trials recorded below were on the
+earlier CADCraft 0.6.2 base, except your click-only trial of brief 008 on native Windows, which
+was on 0.15.1.
 
-**Branch `ecad/usability-mouse-tools` (brief 008, design `ecad/docs/design/008.md`)** changes how
+**Brief 008 (design `ecad/docs/design/008.md`)**, merged into `dev` (PR #16), changed how
 sections 4 to 7 are done: the ECAD tools work by clicking, terminals and wire ends are marked on
 the drawing, and hovering an ECAD object names it. It adds one approved CADCraft change (overlay
-marks drawn by a document's owner, listed in `ecad/UPSTREAM-PATCHES.md`). Until it is merged,
-`dev` still works as the earlier version of this guide said (typed JSON, template buttons). For
-this branch there are automated checks and your first click-only trial on native Windows (below);
-no agent has run it on a display.
+marks drawn by a document's owner, listed in `ecad/UPSTREAM-PATCHES.md`). For it there are
+automated checks and your first click-only trial on native Windows (below); no agent has run it on
+a display.
+
+**Branch `ecad/windows-trial` (brief 003)**, cut from `dev` at `0afaf1d`, makes the trial behave
+natively on Windows: `~` in a typed path is your home folder (on Windows your user profile, such
+as `C:\Users\<you>`, whether or not `HOME` is set) and may be written `~/` or `~\`; the Save As
+dialog suggests `C:\dev\ecad-projects` on Windows (`~/ecad-projects` on Linux) and creates that
+folder the first time you save into it; a reserved device name such as `CON.ecad` is refused;
+typing the project's own file in another letter case saves it without a "replace?" question;
+release builds on Windows open no console window. Until it is merged, `dev` behaves as the
+previous version of this guide said. For this branch there are automated checks only (below),
+run on native Windows 11 Pro (10.0.26200) with Rust 1.99.1, 2026-11-01; nobody has tried it on a
+display yet.
 
 **Branch `ecad/cable-slash` (brief 004, design `ecad/docs/design/004.md`)** adds **Cable Slash**
 to the ECAD tab: a short line drawn across wires makes them one cable (section 5A). Nothing
-outside `ecad/` changes, and the file format is unchanged. For this branch there are only
-automated checks so far; nothing has been tried by you or run by an agent on a display.
+outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
+checks and your trial on native Windows (2026-11-06, below); no agent has run it on a display.
 
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/disk_contracts.rs`, `disk_edge_contracts.rs`). Everything in sections 4 to 7 as headless tests (`ecad/apps/ecad-trial/tests/trial.rs`, `the_quick_start_trial_runs_headless`), plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
+| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/disk_contracts.rs`, `disk_edge_contracts.rs`). The model outcomes of sections 5 to 7 (what the project holds, not how it looks), across the trial, tools, mouse and files tests together: `the_quick_start_trial_runs_headless` (`ecad/apps/ecad-trial/tests/trial.rs`) follows the typed version of sections 5 to 7, saving through the dialog as `~/ecad-projects/demo` under a temporary home folder and checking the banner line and tab title quoted in section 7; the click-based steps are in `mouse.rs` and `tools.rs` (next row and below); plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/apps/ecad-trial/tests/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
 | **Agent smoke run on a virtual display, ECAD Tool Sets tab** | the development agent, as above, 2026-10-15 | Tool Sets shows **Drafting**, **Modeling** and **ECAD** tabs; the ECAD tab shows Components, Wiring, Edit, Pages and Inspect; clicking a rectangle's four lines and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected). The first version (a group at the bottom of Drafting) was also run: **Wire** filled the Command field with its template and note, and Enter on it unedited was refused. Not looked at: a real WSLg display |
+| **Tried by you (the owner), brief 004 (cable slash)** | you, on native Windows, 2026-11-06, branch `ecad/cable-slash` (exact commit and build not restated) | You reported that every check passed: the steps of section 5A; the preview text readable past the Dynamic Input box; the red refusal text readable near the right edge of the drawing; the red `-> no wires`; and the crossing rules behaving as designed. You approved the three reference images `004-slash.png`, `004-slash-preview.png` and `004-slash-refused.png` (`ecad/apps/ecad-trial/tests/reference/`) |
 | **Tried by you (the owner), brief 008 (ECAD tools by mouse)** | you, on native Windows 11, 2026-11-01, branch `ecad/usability-mouse-tools` at `8c64c08` (release build of `ecad-trial`, CADCraft 0.15.1) | By clicking: a drawn component with terminals (cyan rings), a second component with terminal A1, and a wire whose ends attached to both (green rings). Hovering terminal A1 showed "Terminal A1", its component's ID, its own ID and its wire ("end B"). You reported it as a big improvement that starts to feel like an ECAD. Not reported as tried: save and reopen, Esc and undo, connect and disconnect, and the paper-space refusal; the three reference screenshots are not yet approved. Noted for the later tidy-up (not a separate brief): the tooltip shows long IDs where tags or names would read better, along with default sizes and feel |
 | **Tried by you (the owner), stage 2b and the ECAD Tool Sets tab** | you, on WSL, 2026-10-15; you accepted both for merging (PRs #11 and #12) | You observed the debugger panel's appearance, the revised **ECAD** tab with its five groups (Components, Wiring, Edit, Pages, Inspect), and a successful **Convert to Component** from that tab. Nothing else was reported as tried: see "Not yet tried by you" below |
 | **Tried by you (the owner), first ECAD Tool Sets version** | you, on WSL, 2026-10-15, the first version of PR #12 (a group at the bottom of Drafting) | The ECAD group appeared; you asked for it as a tab of its own beside Drafting and Modeling, which the merged version does |
@@ -83,8 +96,10 @@ Recorded as you reported them:
 
 **Not yet tried by you** (covered by automated tests or the agent's virtual-display runs only):
 - everything from brief 008: the ECAD tools by clicking (section 5), the terminal and wire-end
-  marks, the hover tooltip, and the native Windows steps (section 1W). Your trial of section 5 on
-  native Windows, by mouse, is that brief's real acceptance;
+  marks and the hover tooltip beyond your first click-only trial;
+- everything from brief 003: the native Windows steps of section 1W as now written, `~\` paths,
+  the default folder `C:\dev\ecad-projects` being created by Save As, a reserved name refused,
+  and no console window beside a release build;
 - section 8's worked example beyond the panel's appearance: following a selection into the trail,
   pending versus saved transactions, **Read bytes**, history at an earlier transaction, and the
   three checks;
@@ -147,13 +162,23 @@ Recorded as you reported them:
 
 ## 1W. First-time setup (native Windows)
 
-The same trial runs natively on Windows 11 (no WSL). Use **PowerShell**. Saving on Windows
-differs from Linux in a few ways listed in section 9; keep projects in a local NTFS folder such as
-`C:\dev\ecad-projects`, not in OneDrive (unverified).
+The same trial runs natively on Windows 11 (no WSL), which is supported alongside Linux. Use
+**PowerShell**. Saving on Windows differs from Linux in a few ways listed in section 9; keep
+projects in a local NTFS folder such as `C:\dev\ecad-projects` (the trial's default), not in
+OneDrive or the OneDrive-redirected Documents folder (unverified).
 
 1. Install Git for Windows, the Visual Studio Build Tools with the "Desktop development with C++"
-   workload, and Rust from <https://rustup.rs> (the default `x86_64-pc-windows-msvc` toolchain).
-   Check with `rustc --version` (1.95 or later; tested with 1.99.1).
+   workload (MSVC and a Windows SDK), and Rust from <https://rustup.rs> (the default
+   `x86_64-pc-windows-msvc` toolchain). Open a **new** PowerShell window afterwards so that
+   `cargo` is on the `PATH`. Check, and keep the output for any report:
+
+   ```powershell
+   rustc --version          # 1.95 or later; tested with 1.99.1
+   cargo --version
+   git --version
+   [System.Environment]::OSVersion.VersionString
+   ```
+
 2. Clone and choose the branch:
 
    ```powershell
@@ -164,11 +189,9 @@ differs from Linux in a few ways listed in section 9; keep projects in a local N
    git switch dev        # or: git switch <branch-name>
    ```
 
-3. Make the projects folder (Save As does not create it on Windows yet):
-
-   ```powershell
-   mkdir C:\dev\ecad-projects
-   ```
+3. The projects folder `C:\dev\ecad-projects` is created by Save As the first time you save into
+   it (on `dev` before brief 003, make it yourself with `mkdir C:\dev\ecad-projects`). No other
+   missing folder is created: saving into one fails with a message and changes nothing.
 
 4. Build and start. The first build takes several minutes and 6-10 GB of disk.
 
@@ -178,12 +201,22 @@ differs from Linux in a few ways listed in section 9; keep projects in a local N
    cargo run --release -p ecad-trial
    ```
 
+   A release build opens only the trial's window, with no console window beside it, and shows no
+   console output, also when run from PowerShell or through `cargo run`. For `--help` and usage
+   errors use a debug build (`cargo run -p ecad-trial -- --help`), or redirect the output
+   (`... > out.txt`).
    To open a saved project: `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\demo.ecad`.
    To update later, use section 2's commands in `C:\dev\ecadcraft`.
 
 Everything from section 4 on is the same on Windows. Only file paths differ: where this guide says
-`~/ecad-projects/demo`, type `C:\dev\ecad-projects\demo`. The Save As dialog suggests a path
-under `~/ecad-projects`; replace it with the full Windows path.
+`~/ecad-projects/demo`, type `C:\dev\ecad-projects\demo` (the Save As dialog suggests
+`C:\dev\ecad-projects\untitled.ecad`). `~\` and `~/` also work and mean your user profile, for
+example `~\Desktop\demo` is `C:\Users\<you>\Desktop\demo.ecad`. Forward slashes, spaces and
+non-ASCII letters in paths are fine. Names Windows reserves for devices (`CON`, `PRN`, `AUX`,
+`NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, with any extension) are refused with a message, as are
+drive-relative paths such as `C:demo` (type `C:\…`) and a name ending in a dot. A path pasted
+from Explorer's "Copy as path" may keep its double quotes. `--snapshots ~\snaps` means the
+`snaps` folder in your user profile.
 
 ## 2. Updating an existing checkout
 
@@ -208,6 +241,16 @@ export CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0
 cargo run --release -p ecad-trial                                    # a new project
 cargo run --release -p ecad-trial -- ~/ecad-projects/demo.ecad       # open a saved project
 cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allow diagnostic snapshots
+```
+
+On native Windows (PowerShell):
+
+```powershell
+cd C:\dev\ecadcraft\ecad
+$env:CARGO_PROFILE_RELEASE_DEBUG = "0"; $env:CARGO_INCREMENTAL = "0"
+cargo run --release -p ecad-trial                                           # a new project
+cargo run --release -p ecad-trial -- C:\dev\ecad-projects\demo.ecad         # open a saved project
+cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   # allow diagnostic snapshots
 ```
 
 `--snapshots <folder>` and a project file can be given together.
@@ -365,7 +408,9 @@ item → representation `slash` → cable → its wires in order.
    in the trial's own dialog: type `~/ecad-projects/demo` (on native Windows
    `C:\dev\ecad-projects\demo`) and press Enter. `.ecad` is added.
    Expected:
-   - the banner shows `file /home/<you>/ecad-projects/demo.ecad, no unsaved changes`;
+   - the banner shows `file /home/<you>/ecad-projects/demo.ecad, no unsaved changes` (on native
+     Windows `file C:\dev\ecad-projects\demo.ecad, no unsaved changes`; the whole line reads
+     `Project "demo": 2 pages open, file …, no unsaved changes.` after section 6);
    - the tab is called "demo - page 1";
    - the command line says `Saved: …`.
 2. **Save again.** Make an edit, then Ctrl+S.
@@ -496,9 +541,11 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   diagnostic files, not saved projects, and cannot be reopened. Their format is
   `ecad-inspect/2`: the design, its history and, new in stage 2b, the file's persistence facts
   (path, header, record offsets, lock).
-- **Viewing them.** Open `ecad/tools/inspector/index.html` in a Windows browser and load the
-  files from `\\wsl$\<distro>\home\<you>\<folder>`. It shows whether each transaction was
-  saved, and where.
+- **Viewing them.** Open `ecad/tools/inspector/index.html` in a browser (on native Windows,
+  double-click `C:\dev\ecadcraft\ecad\tools\inspector\index.html`, or type that path in the
+  address bar) and load the files from the folder given to `--snapshots`, for example
+  `C:\dev\ecad-trial-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
+  whether each transaction was saved, and where.
 
 ## 9. Current limitations
 
@@ -548,11 +595,11 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     fan view of a cable is brief 005.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
-- **Where files may live.** The Linux home folder under WSL (for example `~/ecad-projects`) is
-  the supported and tested location. On native Windows, use a local folder such as
-  `C:\dev\ecad-projects` (NTFS) and type the full path in Save As. There, as on Linux, a file
-  replaced or deleted behind an open project is detected and Save is refused. Saving differs from
-  Linux in these ways:
+- **Where files may live.** Native Windows and Linux are supported. Keep projects in a local
+  folder: `C:\dev\ecad-projects` (NTFS) on Windows, the dialog's default, and the Linux home
+  folder on Linux and under WSL (for example `~/ecad-projects`). On native Windows, as on Linux,
+  a file replaced or deleted behind an open project is detected and Save is refused. Saving
+  differs from Linux in these ways:
   - A read-only file (the read-only attribute) opens read-only and says the file cannot be
     written; Save As saves a copy.
   - If no writer lock can be taken at all, the project opens read-only and says so; this is not
@@ -569,6 +616,11 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   Other file systems, including FAT and exFAT drives (USB sticks), network shares, ReFS
   (including Windows 11 Dev Drives), OneDrive folders, Windows drives under `/mnt`, and macOS builds, are **unverified**: file locking and the
   durability guarantees are not known to hold there.
+- **Windows release builds** open no console window and show no console output, however they
+  are started; `--help`, `--version` and usage errors print only when the output is redirected to
+  a file or pipe. Use a debug build (`cargo run -p ecad-trial -- --help`) to see them.
+- Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
+  in the Command field saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
 - No library files (`.ecadlib`) and no checkpoints.
@@ -595,4 +647,5 @@ Please send:
 - what you saw at each "Expected" above, with screenshots where something looks wrong (for the
   debugger, a screenshot of the whole window, panel included);
 - the terminal output;
-- the output of `git log --oneline -1` and the environment checks from section 1.
+- the output of `git log --oneline -1` and the environment checks from section 1 (WSL) or
+  section 1W step 1 (native Windows).

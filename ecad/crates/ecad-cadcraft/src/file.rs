@@ -53,25 +53,110 @@ pub struct Binding {
     pub faults: ecad_file::StepFaults,
 }
 
-/// A `.ecad` path from what the user typed: surrounding spaces trimmed, a leading `~/` expanded
-/// to the home folder, and `.ecad` added when there is no extension.
+/// What a path starting with `~` says when the home folder is not known.
+pub const HOME_UNKNOWN: &str = "the home folder is not known, so ~ cannot be used; type the full path";
+
+/// Device names Windows reserves in every folder (`CON.ecad` is the console, not a file). Refused
+/// on every platform, so that a project's file name works everywhere.
+const RESERVED: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+    "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// The user's home folder (`std::env::home_dir`: on Windows the user profile, whether or not
+/// `HOME` is set). `None` when it is not known.
+pub fn home() -> Option<std::path::PathBuf> {
+    std::env::home_dir().filter(|h| !h.as_os_str().is_empty())
+}
+
+/// `path` with a leading `~`, `~/` or `~\` replaced by `home`, the rest joined component by
+/// component (split on `/` and `\`) with `Path::join`, so that it uses the platform's separator.
+/// Any other path is returned as typed.
 ///
 /// # Errors
-/// Empty, or a different extension.
+/// The path starts with `~` but `home` is `None` (a folder literally named `~` is never made).
+pub fn expand_home(path: &str, home: Option<&std::path::Path>) -> Result<std::path::PathBuf, String> {
+    let rest = match path.strip_prefix('~') {
+        Some("") => "",
+        Some(r) if r.starts_with(['/', '\\']) => r.trim_start_matches(['/', '\\']),
+        _ => return Ok(std::path::PathBuf::from(path)),
+    };
+    let home = home.ok_or(HOME_UNKNOWN)?;
+    Ok(rest.split(['/', '\\']).filter(|c| !c.is_empty()).fold(home.to_path_buf(), |p, c| p.join(c)))
+}
+
+/// A `.ecad` path from what the user typed: surrounding spaces trimmed, a leading `~` expanded
+/// to the home folder ([`home`]), and `.ecad` added when there is no extension.
+///
+/// # Errors
+/// As [`normalize_with`].
 pub fn normalize(path: &str) -> Result<String, String> {
-    let p = path.trim();
+    normalize_with(path, home().as_deref())
+}
+
+/// [`normalize`] with the home folder given.
+///
+/// # Errors
+/// Empty, no file name (a folder, `.`, `..`, `.ecad`), a drive-relative path (`C:`, `C:name`),
+/// `:` in the file name, a trailing dot, `~` without a known home, a reserved device name
+/// (`CON.ecad`), or a different extension. A path it returns normalises to itself.
+pub fn normalize_with(path: &str, home: Option<&std::path::Path>) -> Result<String, String> {
+    let mut p = path.trim();
+    // Explorer's "Copy as path" puts the path in double quotes.
+    if let Some(inner) = p.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        p = inner.trim();
+    }
     if p.is_empty() {
         return Err(SAVE_AS_NEEDS_PATH.into());
     }
-    let p = match (p.strip_prefix("~/"), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) if !home.is_empty() => format!("{}/{rest}", home.trim_end_matches('/')),
-        _ => p.to_string(),
-    };
-    let ext = std::path::Path::new(&p).extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
+    if p == "~" || p.ends_with(['/', '\\']) {
+        return Err(format!("{SAVE_AS_NEEDS_PATH}, not a folder ({p})"));
+    }
+    let mut chars = p.chars();
+    if let (Some(drive), Some(':')) = (chars.next(), chars.next())
+        && drive.is_ascii_alphabetic()
+        && !chars.next().is_some_and(|c| c == '/' || c == '\\')
+    {
+        return Err(format!(
+            "{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"
+        ));
+    }
+    let full = expand_home(p, home)?;
+    let p = full.to_str().ok_or_else(|| format!("{} is not a valid Unicode path", full.display()))?;
+    // The last component after either separator, so that a Windows path reads the same everywhere.
+    let name = p.rsplit(['/', '\\']).next().unwrap_or(p);
+    if name == "." || name == ".." || name.eq_ignore_ascii_case(".ecad") {
+        return Err(format!("{SAVE_AS_NEEDS_PATH}, not {name} ({p})"));
+    }
+    if name.contains(':') {
+        return Err(format!("{name} cannot be used: a file name cannot contain ':'"));
+    }
+    if name.ends_with('.') {
+        return Err(format!("{name} cannot be used: Windows drops a file name's trailing dot; remove it"));
+    }
+    let device = name.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
+    if RESERVED.contains(&device.as_str()) {
+        return Err(format!("{name} cannot be used: {device} is a name Windows reserves for a device; choose another"));
+    }
+    let ext = std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
     match ext.as_deref() {
         None => Ok(format!("{p}.ecad")),
-        Some("ecad") => Ok(p),
+        Some("ecad") => Ok(p.to_string()),
         Some(other) => Err(format!("ECAD projects are saved as .ecad files, not .{other} ({p})")),
+    }
+}
+
+/// Whether `a` and `b` name the same file or folder: their canonical paths when both exist,
+/// otherwise their spelling (ignoring case and the separator on Windows).
+pub fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return x == y;
+    }
+    if cfg!(windows) {
+        let fold = |p: &std::path::Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+        fold(a) == fold(b)
+    } else {
+        a == b
     }
 }
 

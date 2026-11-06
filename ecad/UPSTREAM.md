@@ -2,7 +2,8 @@
 
 The CADCraft (upstream) commit this repository incorporates. It is tracked separately from the
 ECAD product version (`0.1.0-dev`, `ecad/Cargo.toml`) and from document format versions
-(`ecad_model::SCHEMA_VERSION`, `ecad_store::TEST_STORE_FORMAT`). See
+(`ecad_model::SCHEMA_VERSION`, and the container and record versions in `ecad-file`, such as
+`ecad_file::CONTAINER_VERSION`). See
 `docs/document-architecture-proposal.md` §8.1.
 
 Repository: `https://github.com/storytold/cadcraft` (release tag `v0.15.1`)
