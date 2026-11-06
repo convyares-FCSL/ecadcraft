@@ -17,8 +17,8 @@ ecad-model = { workspace = true }
 ecad-file = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
-# The same eframe build as CADCraft's desktop app (without its persistence of window state).
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+# The same eframe build as CADCraft's desktop app (system clipboard included; without its persistence of window state).
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
