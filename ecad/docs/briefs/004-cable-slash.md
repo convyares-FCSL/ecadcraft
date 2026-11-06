@@ -81,3 +81,20 @@ under E5 and E4.
 
 The look of the slash and how it feels to draw on Windows. The tester lists anything else it cannot
 see.
+
+## Owner answers to designs 004 and 005 (2026-11-06)
+
+All as the overseer recommended. Design 004: O1 touching rules as proposed (bends and a slash end
+on a wire count; touching only a wire's end or running along it does not, and is reported); O2 the
+slash behaves like other ECAD edits on a read-only project (no special refusal; a project-wide
+read-only rule is a separate question); O3 `ecaddelete` deletes a cable, in this brief; O4 slash
+in the same style as wires, no cable layer; O5 `cableadd` also refuses a conductor already in a
+cable; Q1 a wire met only at its end is not a member; Q2 member order is stored order only; Q3 any
+crossed wires may form a cable; Q4 an emptied cable stays, no prompt; Q5 no diagnostic when a
+member leaves the slash, only its dot goes.
+
+Design 005 (for brief 005): O1 fan drawn by the ECAD projection, so it snaps, plots and exports as
+shown; O2 no single-key shortcut yet (button, click, typed `cableview`); O3 moving equipment with a
+fan-view cable attached is allowed; O4 programmatic calls ignore views; O5 settings file as the
+spec proposes; O6 selection rule as proposed; Q1 45° fan sized to the spread as the default; Q2 no
+trunk label; Q3 cables to different equipment may fan; Q4 single-member cables do not offer fan.
