@@ -847,7 +847,8 @@ impl CableSlash {
             } else if !blocked.is_empty() {
                 (format!("-> refused: {} already in a cable", slash::wires(blocked.len())), true)
             } else if n == 0 {
-                ("-> no wires".to_string(), false)
+                // Refused too (design 004 §5.2: red whenever the slash would be refused).
+                ("-> no wires".to_string(), true)
             } else if others > 0 {
                 let objects =
                     if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };

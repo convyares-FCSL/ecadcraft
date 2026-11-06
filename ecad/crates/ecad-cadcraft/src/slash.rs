@@ -177,10 +177,25 @@ fn meet_route(m: &mut Meets, prim: &Primitive, from: Pt, to: Pt, tol: f64) {
     }
 }
 
+/// Crossing order: by distance along the slash (a total order: `f64::total_cmp`, then wire ID),
+/// then each run of crossings whose neighbours are within `tol` of each other is ordered by wire
+/// ID. Both passes are total orders, so sorting never panics and the result is deterministic.
 fn order(members: &mut [Crossing], tol: f64) {
-    members.sort_by(|x, y| {
-        if (x.along - y.along).abs() <= tol { x.conductor.cmp(&y.conductor) } else { x.along.total_cmp(&y.along) }
-    });
+    members.sort_by(|x, y| x.along.total_cmp(&y.along).then(x.conductor.cmp(&y.conductor)));
+    let mut start = 0;
+    while start < members.len() {
+        let mut end = start + 1;
+        while let (Some(prev), Some(next)) = (members.get(end - 1), members.get(end)) {
+            if (next.along - prev.along).abs() > tol {
+                break;
+            }
+            end += 1;
+        }
+        if let Some(run) = members.get_mut(start..end) {
+            run.sort_by_key(|m| m.conductor);
+        }
+        start = end;
+    }
 }
 
 /// What the slash `from → to` crosses on `page` (module rules). A slash of no length, or with

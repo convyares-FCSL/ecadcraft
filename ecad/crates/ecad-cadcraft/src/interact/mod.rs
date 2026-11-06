@@ -467,7 +467,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     lines
 }
 
-/// A cable slash (design 004 §7.3): its tag, ID and members in stored (crossing) order.
+/// A cable slash (design 004 §7.3): its tag, ID and members in stored order.
 fn cable_lines(doc: &Document, k: CableId) -> Vec<String> {
     let cable = doc.cables.get(&k);
     let mut lines = vec![
@@ -478,7 +478,8 @@ fn cable_lines(doc: &Document, k: CableId) -> Vec<String> {
     if members.is_empty() {
         lines.push("Wires: none".into());
     } else {
-        lines.push(format!("Wires: {} (in crossing order)", members.len()));
+        // The stored member order, nothing more (owner answer Q2).
+        lines.push(format!("Wires: {}", members.len()));
         lines.extend(members.iter().map(|m| format!("  {}", crate::slash::wire_name(doc, m.conductor))));
     }
     lines

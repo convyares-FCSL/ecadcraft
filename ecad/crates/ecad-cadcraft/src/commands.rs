@@ -498,8 +498,20 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
             return Err(slash::already_in_cable(doc, &blocked, "Nothing was changed."));
         }
         let mut ops = Vec::new();
+        // Each wire once per call, and the cap holds for the whole cable, not only for one call.
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(w) = conductors.iter().find(|w| !seen.insert(**w)) {
+            return Err(format!("`conductors` lists wire {} twice; nothing was changed", w.hex()));
+        }
+        let had = match existing {
+            Some(c) => doc.cables.get(&c).ok_or("no such cable")?.members.len(),
+            None => 0,
+        };
+        if had.saturating_add(conductors.len()) > MAX_CABLE_MEMBERS {
+            return Err(format!("a cable holds at most {MAX_CABLE_MEMBERS} wires; nothing was changed"));
+        }
         let (cable, mut index) = match existing {
-            Some(c) => (c, doc.cables.get(&c).ok_or("no such cable")?.members.len()),
+            Some(c) => (c, had),
             None => {
                 let c: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();

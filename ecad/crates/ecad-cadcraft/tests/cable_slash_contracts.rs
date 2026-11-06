@@ -378,6 +378,14 @@ fn refusals_write_nothing_and_say_why() {
         .filter(|e| matches!(e.kind, EntityKind::Circle(_)) && e.common.color == CColor::Index(1))
         .count();
     assert_eq!(red_rings, 3, "one bold red ring on W5");
+    // No wires is a refusal too: red text (design §5.2).
+    let empty = Vec2::new(28.0, -20.0);
+    f.h.s.cursor = empty;
+    let preview = f.h.s.preview(empty);
+    assert!(
+        preview.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "-> no wires")
+            && e.common.color == CColor::Index(1))
+    );
     f.h.s.cancel();
     assert_eq!(members(&mut f.h, cable), vec![f.w0, f.w5, f.w10]);
 }
@@ -398,6 +406,10 @@ fn cableadd_refuses_a_wire_already_in_a_cable() {
     }
     // A wire in no cable can still be added.
     let other = wire(&mut f.h, json!([[0, 60], [60, 60]]), "W60");
+    let head = f.h.head();
+    let e = f.h.run("cableadd", json!({"conductors": [other.hex(), other.hex()]})).expect_err("listed twice");
+    assert!(e.contains(&format!("`conductors` lists wire {} twice", other.hex())), "{e}");
+    assert_eq!(f.h.head(), head);
     f.h.run("cableadd", json!({"conductors": [other.hex()]})).unwrap();
 }
 
@@ -472,7 +484,7 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let lines = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
     assert_eq!(lines[0], "Cable (no tag)");
     assert_eq!(lines[1], format!("id {}", k.hex()));
-    assert_eq!(lines[2..], ["Wires: 3 (in crossing order)", "  W0", "  W5", "  W10"]);
+    assert_eq!(lines[2..], ["Wires: 3", "  W0", "  W5", "  W10"]);
     let w5 = f.h.route_handle(f.page, f.w5);
     let lines = f.h.p(|p| hover_lines(p, uid, w5)).unwrap();
     assert!(lines.contains(&format!("In cable {}…", &k.hex()[..8])), "{lines:?}");
@@ -505,13 +517,19 @@ fn the_debugger_trail_goes_from_cable_to_its_wires_in_order() {
 /// `n` short vertical wires at x = 0, 1, 2 …, committed in one transaction straight to the ledger
 /// (a fixture: drawing them one by one would take too long). The page is redrawn by the next edit.
 fn many_wires(h: &mut H, n: usize) {
+    let xs: Vec<f64> = (0..n).map(|i| i as f64).collect();
+    wires_at(h, &xs);
+}
+
+/// Short vertical wires from y -1 to 1 at each x, in that order (IDs ascend along `xs`), committed
+/// as [`many_wires`] does.
+fn wires_at(h: &mut H, xs: &[f64]) {
     h.cfg(|p| {
         let page = p.ledger.document().page_order[0];
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let mut ops = Vec::new();
-        for i in 0..n {
+        for &x in xs {
             let (c, item, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            let x = i as f64;
             ops.push(Op::CreateConductor { id: c, conductor: Default::default() });
             ops.push(Op::AddItem {
                 id: item,
@@ -554,6 +572,12 @@ fn hostile_slashes_never_panic() {
     assert_eq!(r["conductors"].as_array().unwrap().len(), MAX_CABLE_MEMBERS);
     assert_eq!(h.head(), head + 1);
     h.check();
+    // The cap holds for the whole cable: one more wire through `cableadd` is refused.
+    let cable = r["cable"].as_str().unwrap().to_string();
+    let last = h.doc().conductors.keys().last().copied().unwrap();
+    let e = h.s.execute("cableadd", &json!({"cable": cable, "conductors": [last.hex()]})).unwrap_err();
+    assert!(e.to_string().contains("a cable holds at most 10000 wires"), "{e}");
+    assert_eq!(h.head(), head + 1);
 
     let mut f = fixture();
     let _ = f.h.run("cableslash", json!({"from": [-1e12, -1e12], "to": [1e12, 1e12]}));
@@ -569,4 +593,37 @@ fn hostile_slashes_never_panic() {
     }
     f.h.s.cancel();
     f.h.check();
+}
+
+/// Review finding (sort order): crossings closer together than the tolerance, with wire IDs in
+/// shuffled order against their positions, never panic (the order must be a total order) and give
+/// the same member order every time; crossings within tolerance of each other go by wire ID.
+#[test]
+fn crossings_closer_than_the_tolerance_are_ordered_without_panicking() {
+    const N: usize = 2_000;
+    // A fixed shuffle of positions 0.6e-6 apart (tolerance 1e-6): neighbours tie, next-but-one
+    // neighbours do not.
+    let mut xs: Vec<f64> = (0..N).map(|i| i as f64 * 0.6e-6).collect();
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    for i in (1..N).rev() {
+        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        xs.swap(i, (state >> 33) as usize % (i + 1));
+    }
+    let run = || {
+        let mut h = H::new(SEED);
+        wires_at(&mut h, &xs);
+        let r = h.s.execute("cableslash", &json!({"from": [-1, 0], "to": [1, 0]})).unwrap();
+        r["conductors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap().to_string()).collect::<Vec<_>>()
+    };
+    let first = run();
+    assert_eq!(first.len(), N);
+    assert_eq!(run(), first, "the same order every time");
+    // Two wires at the same point: by ID.
+    let mut h = H::new(SEED);
+    wires_at(&mut h, &[0.5, 0.0, 0.0]);
+    let r = h.s.execute("cableslash", &json!({"from": [-1, 0], "to": [1, 0]})).unwrap();
+    let got: Vec<&str> = r["conductors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
+    let mut tied = got[..2].to_vec();
+    tied.sort();
+    assert_eq!(got[..2], tied[..], "a tie goes by wire ID");
 }

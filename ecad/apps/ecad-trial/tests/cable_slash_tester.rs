@@ -351,7 +351,7 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     h.run_steps(5);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
     assert!(lines.iter().any(|l| l == "Cable (no tag)"), "hover on the slash: {lines:?}");
-    assert!(lines.iter().any(|l| l == "Wires: 3 (in crossing order)"), "hover on the slash: {lines:?}");
+    assert!(lines.iter().any(|l| l == "Wires: 3"), "hover on the slash: {lines:?}");
     assert_eq!(head(&mut h), before + 1, "hovering writes nothing");
     // Pointer away (empty canvas, off the compass); dots at the three crossings, none on the plain
     // line, no end marks on the slash.

@@ -327,7 +327,7 @@ to read.
    banner's change count goes up by one. The wires are listed bottom to top: the order is the
    direction you drew the slash.
 4. **Look.** With no command running, rest the pointer on the slash. Expected: a tooltip with
-   `Cable (no tag)`, its ID, `Wires: 3 (in crossing order)` and the three wires. On a wire:
+   `Cable (no tag)`, its ID, `Wires: 3` and the three wires. On a wire:
    its usual lines plus `In cable …`.
 5. **Undo and redo.** Type `u`: the slash, its dots and the cable go in one step. `redo` brings
    them back with the same IDs.
@@ -542,7 +542,8 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   - The slash is drawn in the same style as a wire (no cable layer or colour of its own).
   - Moving a wire does not change the cables it is in; if the slash no longer crosses it, only
     its magenta dot goes (no warning). Deleting a cable's last wire leaves an empty cable.
-  - Read-only projects behave as for the other ECAD edits.
+  - On a project opened read-only, a slash works as the other ECAD edits do: edits work in
+    memory; use Save As to keep them.
   - Only straight two-point slashes; arcs and circles are never taken; one cable per slash. The
     fan view of a cable is brief 005.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
