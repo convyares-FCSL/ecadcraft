@@ -253,7 +253,7 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
 - **The banner's `Command:` field (top of the window).** Use this for ECAD commands, which take
   JSON parameters, for example `wire {"points":[[0,0],[40,0]]}`. It takes a whole line, spaces
   included, so it also accepts CADCraft command lines such as `line 0,0 40,0`. Press Enter or
-  **Run**.
+  **Run**. Copy and paste (Ctrl+C, Ctrl+V) work with other programs such as Notepad.
 - **CADCraft's command line (bottom of the drawing area).** A space there means Enter, so it
   cannot take JSON. Use it for plain CADCraft commands and for the prompts of mouse-driven
   commands such as `move`.
