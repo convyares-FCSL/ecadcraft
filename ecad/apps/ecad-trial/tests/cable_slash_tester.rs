@@ -391,6 +391,30 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     h.run_steps(2);
     assert!(h.state().cad.session.running.is_none());
     assert_eq!(head(&mut h), head1);
+    // Round 2 (design §5.2): a slash across no wires previews `-> no wires` in red. Rendered as
+    // `004-slash-no-wires.png` (a tester check, not a reference image).
+    button(&mut h, "Cable Slash");
+    let (p, q) = (screen(&h, 10.0, -3.0), screen(&h, 14.0, -8.0));
+    click(&mut h, p);
+    pointer_to(&mut h, q);
+    h.run_steps(3);
+    let none_img = out.as_ref().and_then(|dir| shot(&h, &deltas, &dir.join("004-slash-no-wires.png")));
+    let none_cursor = q;
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert_eq!(head(&mut h), head1);
+    if let Some(img) = &none_img {
+        // Red text 10 px right of and 10 px above the cursor, and no green there.
+        let count = |want: fn(egui::Color32) -> bool| {
+            (8..160)
+                .flat_map(|dx| (-30..0).map(move |dy| (dx, dy)))
+                .filter(|(dx, dy)| want(pixel(img, none_cursor + egui::vec2(*dx as f32, *dy as f32))))
+                .count()
+        };
+        let red = count(|c| c.r() > 180 && c.g() < 90 && c.b() < 90);
+        let green = count(|c| c.g() > 180 && c.r() < 90 && c.b() < 90);
+        assert!(red > 20 && green == 0, "`-> no wires` is red: {red} red, {green} green pixels");
+    }
     // Pixel checks when frames were rendered.
     let Some(done) = done_img else {
         eprintln!("ECAD_TESTER_SHOTS not set or no wgpu adapter: screenshots skipped");

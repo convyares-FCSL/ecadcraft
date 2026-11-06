@@ -498,6 +498,21 @@ fn ac5_read_only_project_treats_the_slash_like_other_ecad_edits() {
     assert_eq!(sl.is_ok(), w, "the slash behaves like `wire` on a read-only project: {sl:?}");
     assert!(h2.run("qsave", Value::Null).is_err(), "Save refused read-only");
     assert_eq!(std::fs::read(&path).unwrap(), file, "the other session's file is untouched");
+    // Round 2, quick-start limitation: "edits work in memory; use Save As to keep them".
+    let k: CableId = id(&sl.unwrap(), "cable");
+    let live = h2.doc();
+    let copy = dir.path("mine.ecad");
+    h2.run("saveas", json!({"path": copy})).unwrap();
+    assert!(!h2.p(|p| p.unsaved()));
+    assert_eq!(std::fs::read(&path).unwrap(), file, "Save As does not touch the original");
+    close_all(&mut h2.s);
+    let mut s = Session::empty();
+    let (project, summary) = ProjectHandle::open_file(&mut s, &copy, 8).unwrap();
+    assert!(!summary.contains("read-only"), "{summary}");
+    let mut h3 = H { s, project, trail: Vec::new() };
+    assert_eq!(h3.doc(), live, "the copy keeps the wire and the cable made while read-only");
+    assert_eq!(members(&h3.doc(), k), vec![f.w0, f.w5, f.w10]);
+    h3.check();
 }
 
 // ------------------------------------------------------------------ AC6, scope 4
@@ -926,25 +941,22 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
     assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("K1"));
 }
 
-/// AC8 and check L: `MAX_CABLE_MEMBERS` (10 000) crossed wires are accepted; 10 001 are refused with
-/// the design's message; neither panics, and the preview caps its rings at 200.
-///
-/// To keep the run short the wires are made in one transaction: the ops of one real `wire` are
-/// copied with fresh IDs and moved up by 1 each, committed to the ledger, saved, and the project
-/// reopened so its pages are projected from the history like any opened project.
-#[test]
-fn ac8_max_cable_members_is_the_cap() {
+/// A reopened project with `n` + 1 parallel unit wires at y = 0 ..= n (x from 0 to 1), made in one
+/// transaction to keep the run short: the ops of one real `wire` are copied with fresh IDs and
+/// moved up by 1 each, committed to the ledger, saved, and the project reopened so its pages are
+/// projected from the history like any opened project. Returns the wires bottom to top.
+fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
     use ecad_model::{Author, RepresentationId};
-    let max = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
-    assert_eq!(max, 10_000);
     let mut h = H::new(SEED);
-    wire(&mut h, &[(0.0, 0.0), (1.0, 0.0)]);
+    let first = wire(&mut h, &[(0.0, 0.0), (1.0, 0.0)]);
     let template = last_tx(&mut h).ops;
     let mut ops = Vec::new();
-    for i in 1..=max {
+    let mut ws = vec![first];
+    for i in 1..=n {
         let y = i as f64;
         let base = (0xABCD_u128 << 64) + 4 * i as u128;
         let (c, it, r) = (ConductorId::from(base), ItemId::from(base + 1), RepresentationId::from(base + 2));
+        ws.push(c);
         for op in &template {
             ops.push(match op.clone() {
                 Op::CreateConductor { conductor, .. } => Op::CreateConductor { id: c, conductor },
@@ -961,7 +973,6 @@ fn ac8_max_cable_members_is_the_cap() {
             });
         }
     }
-    // Wires y = 0 ..= 10 000 exist after this: 10 001 in all.
     // The old session's page is not reprojected after this direct commit, so it is saved without
     // the harness checks and only the reopened project is used.
     h.cfg(|p| p.ledger.commit(Author::User, "bulk wires", ops)).unwrap();
@@ -970,8 +981,18 @@ fn ac8_max_cable_members_is_the_cap() {
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "Big", medium, 5).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    assert_eq!(h.doc().conductors.len(), max + 1);
+    assert_eq!(h.doc().conductors.len(), n + 1);
     h.check();
+    (h, ws)
+}
+
+/// AC8 and check L: `MAX_CABLE_MEMBERS` (10 000) crossed wires are accepted; 10 001 are refused with
+/// the design's message; neither panics, and the preview caps its rings at 200.
+#[test]
+fn ac8_max_cable_members_is_the_cap() {
+    let max = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
+    assert_eq!(max, 10_000);
+    let (mut h, _) = bulk_wires(max);
     // Exactly 10 000 (y = 0 ..= 9 999): accepted.
     let head = h.head();
     let r = h.run("cableslash", json!({"from": [0.5, -0.5], "to": [0.5, max as f64 - 0.5]})).unwrap();
@@ -1032,4 +1053,192 @@ fn scope5_debugger_trail_slash_cable_conductors() {
         assert!(used_by(&d, ObjectId::Conductor(w)).contains(&ObjectId::Cable(k)));
     }
     let _ = Pt::new(0.0, 0.0);
+}
+
+// ------------------------------------------------------------------ Round 2 (fix round 1)
+
+/// The members a JSON slash gives, or the error.
+fn slash_members(h: &mut H, from: (f64, f64), to: (f64, f64)) -> Result<Vec<String>, String> {
+    slash(h, from, to).map(|r| hexes(&r, "conductors"))
+}
+
+fn sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v
+}
+
+/// Round 2, item 1 (sort fix in `order`): crossings equal or within the tolerance (1e-6) of each
+/// other are ordered by wire ID whichever way the slash is drawn; crossings further apart keep
+/// distance order; the same input gives the same order on repeated runs; nothing panics.
+#[test]
+fn r2_near_tolerance_crossings_order_by_id_and_are_deterministic() {
+    // (case, wire heights, expect ID order for the whole set)
+    let cases: Vec<(&str, Vec<f64>, bool)> = vec![
+        ("identical", vec![5.0, 5.0, 5.0], true),
+        ("within tol", vec![5.0, 5.0 + 4e-7, 5.0 - 4e-7], true),
+        ("chain each within tol", vec![5.0, 5.0 + 6e-7, 5.0 + 1.2e-6, 5.0 + 1.8e-6], true),
+        ("apart", vec![5.0, 5.0 + 1e-3, 5.0 + 2e-3], false),
+    ];
+    for (case, ys, by_id) in cases {
+        let mut runs = Vec::new();
+        for _ in 0..3 {
+            let mut h = H::new(SEED);
+            let ws: Vec<ConductorId> = ys.iter().map(|y| wire(&mut h, &[(0.0, *y), (10.0, *y)])).collect();
+            let up = slash_members(&mut h, (5.0, 0.0), (5.0, 10.0)).unwrap();
+            h.run("u", Value::Null).unwrap();
+            let down = slash_members(&mut h, (5.0, 10.0), (5.0, 0.0)).unwrap();
+            let want_up: Vec<String> =
+                if by_id { sorted(ws.iter().map(|w| w.hex()).collect()) } else { ws.iter().map(|w| w.hex()).collect() };
+            assert_eq!(up, want_up, "{case}: upward");
+            if by_id {
+                assert_eq!(down, want_up, "{case}: ID order whichever way the slash runs");
+            } else {
+                assert_eq!(down, want_up.iter().rev().cloned().collect::<Vec<_>>(), "{case}: downward");
+            }
+            runs.push((up, down));
+        }
+        assert!(runs.windows(2).all(|w| w[0] == w[1]), "{case}: same order every run");
+    }
+}
+
+/// Round 2, item 1: many wires through (nearly) one point of the slash, at huge coordinates and
+/// next to non-finite input: no panic, ID order, deterministic.
+#[test]
+fn r2_many_wires_crossing_at_nearly_one_point() {
+    for (case, cx, cy, jitter) in
+        [("origin exact", 10.0, 10.0, 0.0), ("origin jitter", 10.0, 10.0, 1e-9), ("huge", 1e11, -1e11, 1e-3)]
+    {
+        let mut runs = Vec::new();
+        for _ in 0..2 {
+            let mut h = H::new(SEED);
+            let mut ws = Vec::new();
+            for i in 0..60 {
+                // Angles from 5 to 64 degrees, never along the vertical slash.
+                let a = (5.0 + i as f64).to_radians();
+                let off = jitter * (i % 7) as f64;
+                let (dx, dy) = (a.cos() * 5.0, a.sin() * 5.0);
+                ws.push(wire(&mut h, &[(cx - dx, cy - dy + off), (cx + dx, cy + dy + off)]));
+            }
+            let r = slash_members(&mut h, (cx, cy - 20.0), (cx, cy + 20.0));
+            // NaN-adjacent: the preview at a non-finite cursor after a valid first point.
+            h.s.start("cableslash").unwrap();
+            click(&mut h, cx, cy - 20.0);
+            let _ = h.s.preview(Vec2::new(f64::NAN, cy));
+            let _ = h.s.preview(Vec2::new(cx, f64::INFINITY));
+            let _ = h.s.preview(Vec2::new(cx, cy + 1e300));
+            h.s.input(Input::Cancel).unwrap();
+            h.check();
+            let got = r.unwrap_or_else(|e| panic!("{case}: {e}"));
+            assert_eq!(sorted(got.clone()), sorted(ws.iter().map(|w| w.hex()).collect()), "{case}: all 60 wires");
+            if jitter == 0.0 {
+                assert_eq!(got, sorted(got.clone()), "{case}: all at one point, so ID order");
+            }
+            runs.push(got);
+        }
+        assert_eq!(runs[0], runs[1], "{case}: deterministic");
+    }
+}
+
+/// Round 2, item 2 (design §5.2): the preview text is red whenever the slash would be refused,
+/// including `-> no wires`, and green when it would be accepted.
+#[test]
+fn r2_preview_text_is_red_when_refused() {
+    use cadcraft_engine::doc::EntityKind;
+    use cadcraft_engine::doc::color::Color as CColor;
+    let text = |e: &[cadcraft_engine::doc::Entity]| {
+        e.iter().find_map(|x| match &x.kind {
+            EntityKind::Text(t) => Some((t.value.clone(), x.common.color)),
+            _ => None,
+        })
+    };
+    let mut f = fixture(SEED);
+    f.h.s.start("cableslash").unwrap();
+    click(&mut f.h, 28.0, -3.0);
+    let (green, red) = (CColor::Index(3), CColor::Index(1));
+    for (to, want, colour) in [
+        ((32.0, 18.0), "-> 3 wires, 1 other object ignored", green),
+        ((28.5, 2.0), "-> 1 wire", green),
+        ((20.0, -10.0), "-> no wires", red),
+    ] {
+        let p = f.h.s.preview(Vec2::new(to.0, to.1));
+        assert_eq!(text(&p), Some((want.to_string(), colour)), "{want}");
+    }
+    f.h.s.input(Input::Cancel).unwrap();
+    // Plain line only: still `no wires`, red.
+    f.h.s.start("cableslash").unwrap();
+    click(&mut f.h, 10.0, 13.0);
+    let p = f.h.s.preview(Vec2::new(10.0, 17.0));
+    assert_eq!(text(&p).map(|t| t.1), Some(red), "{:?}", text(&p));
+    f.h.s.input(Input::Cancel).unwrap();
+    // Blocked: red.
+    slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
+    f.h.s.start("cableslash").unwrap();
+    click(&mut f.h, 40.0, 3.0);
+    let p = f.h.s.preview(Vec2::new(40.0, 7.0));
+    assert_eq!(text(&p), Some(("-> refused: 1 wire already in a cable".to_string(), red)));
+    f.h.s.input(Input::Cancel).unwrap();
+}
+
+/// Round 2, item 3: `cableadd` refuses a wire listed twice, with a clear message, head and document
+/// unchanged; also on an existing cable.
+#[test]
+fn r2_cableadd_refuses_a_wire_listed_twice() {
+    let mut f = fixture(SEED);
+    let (w0, w5) = (f.w0.hex(), f.w5.hex());
+    for params in [
+        json!({"conductors": [w0, w0]}),
+        json!({"conductors": [w0, w5, w0], "tag": "X"}),
+        json!({"conductors": [w5, w5.to_uppercase()]}),
+    ] {
+        let (head, before) = (f.h.head(), f.h.doc());
+        let r = f.h.run("cableadd", params.clone());
+        assert_eq!(f.h.head(), head, "{params}");
+        assert_eq!(f.h.doc(), before, "{params}");
+        let e = r.expect_err(&params.to_string());
+        assert!(e.contains("twice") && e.contains("nothing was changed"), "{params}: {e}");
+    }
+    let r = f.h.run("cableadd", json!({"conductors": [w0], "tag": "K"})).unwrap();
+    let k = r["cable"].as_str().unwrap().to_string();
+    let (head, before) = (f.h.head(), f.h.doc());
+    let e = f.h.run("cableadd", json!({"cable": k, "conductors": [w5, w5]})).unwrap_err();
+    assert!(e.contains(&format!("`conductors` lists wire {w5} twice; nothing was changed")), "{e}");
+    assert_eq!((f.h.head(), f.h.doc()), (head, before));
+    // Adding a member again (already in this cable) is refused too.
+    assert!(f.h.run("cableadd", json!({"cable": k, "conductors": [w0]})).is_err());
+    assert_eq!(f.h.head(), head);
+}
+
+/// Round 2, item 3: the cap holds for the whole cable. A new cable of exactly 10 000 wires is
+/// accepted and 10 001 refused; an existing cable of 9 999 takes one more (10 000) but not two, and
+/// a full cable takes none. Every refusal leaves head and document unchanged.
+#[test]
+fn r2_cableadd_cap_holds_for_the_whole_cable() {
+    let max = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
+    let (mut h, ws) = bulk_wires(max);
+    let hx = |r: std::ops::Range<usize>| ws[r].iter().map(|w| w.hex()).collect::<Vec<_>>();
+    let refused = |h: &mut H, params: Value, why: &str| {
+        let (head, before) = (h.head(), h.doc());
+        let r = h.run("cableadd", params);
+        assert!(r.is_err(), "{why}: accepted");
+        assert_eq!(h.head(), head, "{why}");
+        assert_eq!(h.doc(), before, "{why}");
+        r.unwrap_err()
+    };
+    // New cable: exactly max, then max + 1.
+    let r = h.run("cableadd", json!({"conductors": hx(0..max)})).unwrap();
+    let k: CableId = id(&r, "cable");
+    assert_eq!(h.doc().cables[&k].members.len(), max);
+    h.run("u", Value::Null).unwrap();
+    let e = refused(&mut h, json!({"conductors": hx(0..max + 1)}), "new cable of max + 1");
+    assert!(!e.to_lowercase().contains("panic"), "{e}");
+    // Existing cable of max - 1.
+    let r = h.run("cableadd", json!({"conductors": hx(0..max - 1)})).unwrap();
+    let kid: CableId = id(&r, "cable");
+    let k = kid.hex();
+    let e = refused(&mut h, json!({"cable": k, "conductors": hx(max - 1..max + 1)}), "max - 1 + 2");
+    assert_eq!(e, format!("a cable holds at most {max} wires; nothing was changed"));
+    h.run("cableadd", json!({"cable": k, "conductors": hx(max - 1..max)})).unwrap();
+    assert_eq!(h.doc().cables[&kid].members.len(), max, "exactly max via an existing cable");
+    let e = refused(&mut h, json!({"cable": k, "conductors": hx(max..max + 1)}), "full + 1");
+    assert_eq!(e, format!("a cable holds at most {max} wires; nothing was changed"));
 }
