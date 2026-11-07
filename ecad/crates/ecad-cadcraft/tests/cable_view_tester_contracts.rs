@@ -442,7 +442,8 @@ fn child_reopen_through_env() {
     assert!(!text.contains('\r'), "LF only");
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["format"], "ecad-cable-views/1");
-    assert_eq!(v["projects"][project.hex()], json!({"fan": [g.c1.hex()]}), "{text}");
+    assert_eq!(v["projects"].as_object().unwrap().len(), 1, "{text}");
+    assert_eq!(v["projects"][project.hex()]["fan"], json!([g.c1.hex()]), "{text}");
 
     let mut s = Session::empty();
     let (handle, summary) = ProjectHandle::open_file(&mut s, &path, 8).unwrap();
@@ -740,11 +741,11 @@ fn ac2_writes_keep_other_projects_and_drop_unknown_cables() {
     assert_eq!(set(&mut g.h, g.c1, "fan")["remembered"], true);
     let v: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&settings.0)).unwrap()).unwrap();
     assert_eq!(v["projects"][other], json!({"fan": [stale]}), "another project's entry is kept");
-    assert_eq!(v["projects"][&project], json!({"fan": [g.c1.hex()]}), "unknown cable dropped");
+    assert_eq!(v["projects"][&project]["fan"], json!([g.c1.hex()]), "unknown cable dropped");
     // Back to traditional: this project's entry goes, the other stays.
     set(&mut g.h, g.c1, "traditional");
     let v: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&settings.0)).unwrap()).unwrap();
-    assert!(v["projects"].get(&project).is_none_or(|e| e["fan"] == json!([])), "{v}");
+    assert!(v["projects"].get(&project).is_none(), "no entry without fan cables (review M2): {v}");
     assert_eq!(v["projects"][other], json!({"fan": [stale]}));
 }
 
@@ -1225,4 +1226,311 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     let paths = fan_paths(&mut g.h, g.page);
     assert!(paths.iter().any(|p| p.iter().any(|q| q.near(ends.1, 1e-9))), "fan ends at {:?}: {paths:?}", ends.1);
     g.h.check();
+}
+
+// ------------------------------------------------------------------- round 2 (review M1-M5)
+
+fn ids(range: std::ops::RangeInclusive<u128>) -> BTreeSet<CableId> {
+    range.map(CableId).collect()
+}
+
+fn stamp(path: &std::path::Path) -> (Vec<u8>, std::time::SystemTime) {
+    (std::fs::read(path).unwrap(), std::fs::metadata(path).unwrap().modified().unwrap())
+}
+
+/// M1: which settings files a write replaces and which it leaves alone (same bytes, same mtime).
+/// Every case goes through the command: the switch happens; a left-alone file says "not
+/// remembered" with the reason.
+#[test]
+fn round2_m1_only_missing_or_non_json_files_are_rewritten() {
+    let mut g = fixture();
+    let p = g.h.p(|pr| pr.id).hex();
+    let c1 = g.c1.hex();
+    let newer = valid(&p, &c1).replace("views/1", "views/2");
+    let mut big = valid(&p, &c1).trim_end().trim_end_matches('}').to_string();
+    big.push_str("},\"pad\":\"");
+    big.push_str(&"x".repeat(views::MAX_FILE_BYTES as usize));
+    big.push_str("\"}");
+    let mut bom = vec![0xef, 0xbb, 0xbf];
+    bom.extend(valid(&p, &c1).into_bytes());
+    // (name, bytes, rewritten)
+    let cases: Vec<(&str, Vec<u8>, bool)> = vec![
+        ("garbage", vec![0xde, 0xad, 0x00], true),
+        ("truncated JSON", valid(&p, &c1).as_bytes()[..30].to_vec(), true),
+        ("empty", Vec::new(), true),
+        ("UTF-8 BOM", bom, true),
+        ("newer format", newer.into_bytes(), false),
+        ("top-level array", b"[1,2]".to_vec(), false),
+        ("projects not an object", br#"{"format":"ecad-cable-views/1","projects":[]}"#.to_vec(), false),
+        ("over 1 MiB", big.into_bytes(), false),
+    ];
+    let mut out = Vec::new();
+    for (name, bytes, rewritten) in cases {
+        let dir = Tmp::new("m1");
+        let file = file_in(&dir.0);
+        std::fs::write(&file, &bytes).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let before = stamp(&file);
+        g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+        let head = g.h.head();
+        let r = g.h.run("cableview", json!({"cable": c1})).unwrap();
+        assert_eq!(g.h.head(), head);
+        g.h.check();
+        out.push(format!("{name}: {r}"));
+        if rewritten {
+            assert_eq!(r["remembered"], true, "{name}: {r}");
+            let l = Settings::at(&dir.0).load(g.h.p(|pr| pr.id));
+            assert!(!l.unreadable, "{name}: the rewritten file reads back");
+        } else {
+            assert_eq!(r["remembered"], false, "{name}: {r}");
+            assert!(r["reason"].as_str().is_some_and(|x| x.contains("left as it is")), "{name}: {r}");
+            assert_eq!(stamp(&file), before, "{name}: same bytes and mtime");
+        }
+    }
+    eprintln!("M1 outcomes:\n{}", out.join("\n"));
+}
+
+/// M1 on Windows: a file held open by another program with no sharing is left alone; the switch
+/// still happens and is "not remembered"; an open at that moment never fails.
+#[cfg(windows)]
+#[test]
+fn round2_m1_a_locked_file_is_left_alone() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let mut g = fixture();
+    let dir = Tmp::new("m1-locked");
+    let file = file_in(&dir.0);
+    let p = g.h.p(|pr| pr.id).hex();
+    std::fs::write(&file, valid(&p, &g.c1.hex())).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let before = stamp(&file);
+    let work = Tmp::new("m1-locked-work");
+    g.h.cfg(|pr| pr.persistence = Persistence::File);
+    g.h.run("saveas", json!({"path": work.path("l")})).unwrap();
+    let lock = std::fs::OpenOptions::new().read(true).share_mode(0).open(&file).unwrap();
+    g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+    let head = g.h.head();
+    let r = g.h.run("cableview", json!({"cable": g.c1.hex(), "view": "fan"})).unwrap();
+    assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("fan"), Some(false)), "{r}");
+    assert!(r["reason"].as_str().is_some_and(|x| x.contains("left as it is")), "{r}");
+    assert_eq!(g.h.head(), head);
+    // Interactive echo while locked.
+    g.h.cmdline("cableview");
+    click(&mut g.h, 40.0, 5.0);
+    let _ = g.h.s.input(Input::Enter);
+    let line = g.h.s.log.iter().rev().find(|l| l.starts_with("Cable C1 now shown")).cloned().unwrap_or_default();
+    assert!(line.contains("(not remembered: "), "{line}");
+    // A read-only second window opened while the file is locked: never fails, says so.
+    let mut s = Session::empty();
+    let (_h2, summary) = ProjectHandle::open_file_in(&mut s, &work.path("l.ecad"), 4, Settings::at(&dir.0)).unwrap();
+    assert!(summary.contains(views::UNREADABLE), "{summary}");
+    drop(lock);
+    assert_eq!(stamp(&file), before, "same bytes and mtime after the lock is gone");
+    eprintln!("locked: {r}\n{line}");
+}
+
+/// M2: a project's entry goes when its last fan cable goes back to traditional.
+#[test]
+fn round2_m2_no_entry_without_fan_cables() {
+    let mut g = fixture();
+    let dir = Tmp::new("m2-entry");
+    g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+    set(&mut g.h, g.c1, "fan");
+    set(&mut g.h, g.c1, "traditional");
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&dir.0)).unwrap()).unwrap();
+    assert_eq!(v["projects"], json!({}), "{v}");
+}
+
+/// M2: the per-project limits and the round trip. The largest set the writer accepts reads back
+/// exactly; one more is refused and leaves the file alone; the declared cap and cap+1 are refused
+/// without a write; the file is never one the reader refuses.
+#[test]
+fn round2_m2_caps_and_round_trip() {
+    let dir = Tmp::new("m2-caps");
+    let st = Settings::at(&dir.0);
+    let file = file_in(&dir.0);
+    let project = ecad_model::ProjectId(0x00a1);
+    // Largest n that fits (binary search on the writer itself).
+    let (mut lo, mut hi) = (1u128, views::MAX_CABLES_PER_PROJECT as u128);
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let _ = std::fs::remove_file(&file);
+        if st.store(project, &ids(1..=mid)).is_ok() { lo = mid } else { hi = mid - 1 }
+    }
+    let max = lo;
+    let _ = std::fs::remove_file(&file);
+    st.store(project, &ids(1..=max)).unwrap();
+    let bytes = std::fs::read(&file).unwrap();
+    assert!(bytes.len() as u64 <= views::MAX_FILE_BYTES);
+    let l = st.load(project);
+    assert!(!l.unreadable);
+    assert_eq!(l.fan, ids(1..=max), "round trip at the largest accepted set");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let before = stamp(&file);
+    let e = st.store(project, &ids(1..=max + 1)).unwrap_err();
+    assert_eq!(stamp(&file), before, "max+1 left the file alone: {e}");
+    eprintln!("store of {} ids: {e}", max + 1);
+    for n in [views::MAX_CABLES_PER_PROJECT as u128, views::MAX_CABLES_PER_PROJECT as u128 + 1] {
+        let e = st.store(project, &ids(1..=n)).unwrap_err();
+        assert_eq!(stamp(&file), before, "{n}: {e}");
+        eprintln!("store of {n} ids: {e}");
+    }
+    eprintln!("largest per-project set that is remembered: {max} cables (file {} bytes)", bytes.len());
+}
+
+/// M2: many projects written in turn with pseudo-random fan sets: every file written reads back,
+/// holds the writing project's set exactly and stays within 1 MiB.
+#[test]
+fn round2_m2_many_projects_always_readable() {
+    let dir = Tmp::new("m2-many");
+    let st = Settings::at(&dir.0);
+    let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    let mut last: std::collections::BTreeMap<u128, BTreeSet<CableId>> = Default::default();
+    for round in 0..600 {
+        let project = u128::from(next() % 400) + 1;
+        let n = match next() % 10 {
+            0 => 0,
+            1 => 5_000 + next() % 4_000,
+            _ => next() % 40,
+        };
+        let base = u128::from(next());
+        let fan: BTreeSet<CableId> = (0..n).map(|i| CableId(base + u128::from(i))).collect();
+        st.store(ecad_model::ProjectId(project), &fan).unwrap_or_else(|e| panic!("round {round}: {e}"));
+        let bytes = std::fs::read(file_in(&dir.0)).unwrap();
+        assert!(bytes.len() as u64 <= views::MAX_FILE_BYTES, "round {round}: {}", bytes.len());
+        let l = st.load(ecad_model::ProjectId(project));
+        assert!(!l.unreadable, "round {round}");
+        assert_eq!(l.fan, fan, "round {round}");
+        last.insert(project, fan);
+    }
+    let v: Value = serde_json::from_slice(&std::fs::read(file_in(&dir.0)).unwrap()).unwrap();
+    let kept = v["projects"].as_object().unwrap().len();
+    for (p, fan) in &last {
+        let got = st.load(ecad_model::ProjectId(*p)).fan;
+        assert!(got == *fan || got.is_empty(), "project {p:x}: neither its last set nor dropped");
+    }
+    eprintln!("projects kept in the file at the end: {kept} of {}", last.len());
+}
+
+/// M3: the two-writer limitation in the quick start. Two different projects written one after the
+/// other: both kept. The same project in a read-only second window: what happens to window 2's
+/// earlier switch when window 1 switches later (printed for the report).
+#[test]
+fn round2_m3_two_windows() {
+    let settings = Tmp::new("m3-settings");
+    let work = Tmp::new("m3-work");
+    let mut g = fixture();
+    for y in [30, 35, 40] {
+        g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+    }
+    let c2: CableId =
+        id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
+    g.h.cfg(|pr| {
+        pr.persistence = Persistence::File;
+        pr.settings = Settings::at(&settings.0);
+    });
+    g.h.run("saveas", json!({"path": work.path("m3")})).unwrap();
+    let mut s2 = Session::empty();
+    let (h2, summary) =
+        ProjectHandle::open_file_in(&mut s2, &work.path("m3.ecad"), 6, Settings::at(&settings.0)).unwrap();
+    assert!(summary.contains("read-only"), "{summary}");
+    let mut w2 = H { s: s2, project: h2, trail: Vec::new() };
+    // Window 2 switches C2; afterwards (not at the same moment) window 1 switches C1.
+    set(&mut w2, c2, "fan");
+    set(&mut g.h, g.c1, "fan");
+    let project = g.h.p(|pr| pr.id);
+    let file = Settings::at(&settings.0).load(project).fan;
+    assert!(file.contains(&g.c1));
+    eprintln!(
+        "same project, one switch in each window, one after the other: C2 kept in the file: {}",
+        file.contains(&c2)
+    );
+    // Two different projects one after the other: both kept.
+    let mut other = fixture_on(H::new(SEED + 9));
+    other.h.cfg(|pr| pr.settings = Settings::at(&settings.0));
+    set(&mut other.h, other.c1, "fan");
+    set(&mut g.h, g.c1, "traditional");
+    set(&mut g.h, g.c1, "fan");
+    assert!(Settings::at(&settings.0).load(other.h.p(|pr| pr.id)).fan.contains(&other.c1), "another project kept");
+}
+
+/// M5: a selection of four cables (one of one wire) with one switch failing: each cable reports
+/// its outcome, the others switch, nothing is recorded. Then every switch failing.
+#[test]
+fn round2_m5_selection_with_a_failure_carries_on() {
+    let mut g = fixture();
+    let mut cables = vec![g.c1];
+    for (y0, n) in [(30, 3), (50, 3), (70, 1)] {
+        for i in 0..n {
+            g.h.run("wire", json!({"points": [[0, y0 + 5 * i], [60, y0 + 5 * i]]})).unwrap();
+        }
+        let r = g.h.run("cableslash", json!({"from": [30, y0 - 3], "to": [30, y0 + 5 * n - 2]})).unwrap();
+        cables.push(id(&r, "cable"));
+    }
+    let slash_handles = |h: &mut H| -> Vec<Handle> {
+        let doc = h.doc();
+        let page = h.first_page();
+        let items: Vec<ItemId> = cables
+            .iter()
+            .flat_map(|k| ecad_cadcraft::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0))
+            .collect();
+        items.into_iter().filter_map(|i| h.p(|p| p.pages[&page].map.item(i))).collect()
+    };
+    let before = snap(&mut g.h);
+    let log0 = g.h.s.log.len();
+    g.h.cfg(|p| p.faults.fail_view_switches = 1);
+    let sel = slash_handles(&mut g.h);
+    assert_eq!(sel.len(), 4);
+    g.h.s.set_selection(sel);
+    g.h.s.start("cableview").unwrap();
+    assert!(g.h.s.running.is_none());
+    let log: Vec<String> = g.h.s.log[log0..].to_vec();
+    eprintln!("selection echo, one failing: {log:#?}");
+    let vs = views_of(&mut g.h);
+    assert_eq!(cables.iter().filter(|k| vs[k.hex()] == "fan").count(), 2, "{vs}");
+    assert_eq!(vs[cables[3].hex()], "traditional", "the one-wire cable");
+    assert_eq!(log.iter().filter(|l| l.ends_with("now shown in fan view.")).count(), 2, "{log:?}");
+    assert_eq!(log.iter().filter(|l| l.contains("was not switched: injected view switch failure")).count(), 1);
+    assert_eq!(log.iter().filter(|l| l.contains(views::ONE_WIRE)).count(), 1, "{log:?}");
+    assert_eq!(snap(&mut g.h), before, "nothing recorded");
+    g.h.check();
+    // Every switch failing: the slashes still drawn plus the fan lines of the two fan cables.
+    let log0 = g.h.s.log.len();
+    g.h.cfg(|p| p.faults.fail_view_switches = 10);
+    let mut sel = slash_handles(&mut g.h);
+    sel.extend(fan_handles(&mut g.h, g.page));
+    g.h.s.set_selection(sel);
+    let vs0 = views_of(&mut g.h);
+    g.h.s.start("cableview").unwrap();
+    let log: Vec<String> = g.h.s.log[log0..].to_vec();
+    eprintln!("selection echo, all failing: {log:#?}");
+    assert_eq!(views_of(&mut g.h), vs0, "{log:?}");
+    assert_eq!(log.iter().filter(|l| l.contains("was not switched")).count(), 3, "{log:?}");
+    assert_eq!(snap(&mut g.h), before);
+    g.h.cfg(|p| p.faults.fail_view_switches = 0);
+    g.h.check();
+}
+
+/// Round-1 observation 5: a fan cable's slash undone, another cable switched, then redo.
+#[test]
+fn round2_observation5_view_after_undo_switch_redo() {
+    let mut h = H::new(SEED + 13);
+    for y in [0, 5, 10, 30, 35, 40] {
+        h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+    }
+    let k2: CableId = id(&h.run("cableslash", json!({"from": [30, 25], "to": [30, 45]})).unwrap(), "cable");
+    let k1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");
+    set(&mut h, k1, "fan");
+    h.run("u", Value::Null).unwrap();
+    assert!(!h.doc().cables.contains_key(&k1));
+    set(&mut h, k2, "fan");
+    h.run("redo", Value::Null).unwrap();
+    assert!(h.doc().cables.contains_key(&k1));
+    eprintln!("observation 5: after undo, another switch and redo, the first cable is {}", view_of(&mut h, k1));
+    h.check();
 }
