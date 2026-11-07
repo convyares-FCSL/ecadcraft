@@ -683,11 +683,11 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     let flag = path(&of_role(&d, Role::Flag)[0].shape);
     let min_x = flag.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
     assert!(min_x < -20.0 - 0.5 * look::LABEL_HEIGHT - 1e-9, "the point is on the left: {flag:?}");
-    // The trunk runs from the junction (97.5, 22.5) to M on the flag's flat (right) side.
+    // The trunk runs from the junction, now the middle of the spine (97.5, 7.5; owner request of
+    // 2026-11-07), to M on the flag's flat (right) side, in axis-aligned steps.
     let trunk: Vec<Pt> = of_role(&d, Role::Trunk).into_iter().flat_map(|p| path(&p.shape)).collect();
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(97.5, 22.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(97.5, 7.5))), "{trunk:?}");
     assert!(trunk.iter().any(|p| near(*p, m)), "{m:?} in {trunk:?}");
-    assert!(trunk.iter().all(|p| (p.y - 22.5).abs() < 1e-9), "{trunk:?}");
     // No loose-end squares at x = 0 (the reference end); none expected anywhere here.
     let sq = squares(&mut f.h, f.page);
     assert!(sq.iter().all(|q| q.x.abs() > 1e-6), "{sq:?}");

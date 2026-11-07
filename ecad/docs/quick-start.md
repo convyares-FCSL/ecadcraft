@@ -59,7 +59,8 @@ brief 005 was merged, restyles the fan to read like a cable on an electrical dra
 a thick trunk and spines, curved bends and thin tails with each core's label and wire number),
 adds **Core Label** to the ECAD tab (a core number or colour per wire in a cable, shown just past
 the slash in traditional view and at the tail start in fan view), and draws brief 010's cable
-reference end as a marker where the fan stops (section 5C). Nothing outside `ecad/` changes, and
+reference end as a marker where the fan stops (section 5C). At your request of 2026-11-07 the
+trunk joins the middle of each spine, and **Cable Join** slides it up or down the spine. Nothing outside `ecad/` changes, and
 the file format is unchanged: a core label is the existing member `core` field, set with the
 existing member ops. For this branch there are automated checks only, written with the branch,
 and reference screenshots rendered headless for the owner to approve
@@ -423,13 +424,14 @@ project.
 1. **Switch to fan.** Click **Cable View** (Wiring group, after Cable Slash). The prompt says
    `Select a cable to switch its view:`. Click the slash.
    Expected on the same frame (brief 009's look): the three wires, the slash and its magenta dots
-   go; in magenta, a label box (the cable's tag, `?` without one) on a thick trunk at about
-   `y = 17.5`, a thick vertical spine at `x = 22.5` and another at `x = 37.5`, a small curved bend
-   per wire where it leaves each spine, and a thin tail from each bend to its wire end. The grey
+   go; in magenta, a label box (the cable's tag, `?` without one) on a thick trunk that joins the
+   middle of a thick vertical spine at `x = 22.5` and of another at `x = 37.5` (along the middle
+   wire, `y = 5`), a small curved bend where each outer wire leaves a spine (the middle wire leaves
+   it straight), and a thin tail to each wire end. The grey
    squares at the wire ends stay where they were, at the ends of the tails. The command line says
    `Cable <first 8 hex digits>… now shown in fan view.` The banner's change count does **not**
    change. The prompt repeats.
-2. **Switch back.** Click the magenta trunk (left of the label box). Expected: the three wires and the slash are back,
+2. **Switch back.** Click the magenta trunk (between a spine and the label box). Expected: the three wires and the slash are back,
    `… now shown in traditional view.`, the change count still unchanged. Press Enter (or Esc) to
    end the command.
 3. **Undo skips it.** Switch to fan again and end the command. Type `u`: the last real edit is
@@ -475,6 +477,10 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
    further out, one text height apart; the trunk and spines are thick and the bends and tails
    thin (the trial turns **Show/Hide Lineweight** on when it opens or creates a project, unless
    you switched it yourself since the trial started).
+   **Slide the join.** The trunk joins the middle of each spine. Click **Cable Join** (Wiring
+   group), click the fan near its left end, then click higher or lower: the trunk now joins that
+   end there (kept on the spine, between the outermost wires), and the change count goes up by
+   one. At the second prompt, `Middle` puts it back. `u` undoes it.
 4. **Hover.** Rest the pointer on a tail: `Cable C1`, then `Core: 1 (W1)`, its ID, its type and
    its wires with their cores (`  W1  core 1`). On a wire in traditional view: `In cable C1, core 1`.
 5. **A reference end (brief 010's model).** Brief 010 adds the command that places a cable's
@@ -487,6 +493,9 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
 Typed: `cablecore {"conductor":"<id>","core":"1"}` sets one label (`"core":null`, `""` or spaces
 clear it); `cablecore {"cable":"<id>","cores":["1","2",null]}` sets every member at once, one
 label (or `null`) per member in member order, as one transaction.
+`cablefan {"cable":"<id>","end":"A","at":[x,y]}` moves where the trunk joins end A (the point is
+put onto the spine); `"at":0.25` places it a quarter of the way along the spine; `"at":null`
+returns it to the middle. Without `end`, a point picks the nearer end.
 
 ## 6. Check connected movement, undo/redo and pages
 
@@ -702,9 +711,11 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     scripted JSON commands act on IDs and behave the same whatever any cable's view is.
   - Brief 009's fan: a label box (tag, else `?`; designation; type) on a thick trunk, a thick
     spine per fanned end, a quarter-circle bend per wire and a thin tail at least 20 drawing units
-    long to the wire's end. Sizes are fixed drawing units for now (text 2.5, tails 20, bends 2.5),
-    so the labels are small when zoomed out. The trunk joins each spine at the end nearer the
-    other end of the cable (ties: the top, then the left); its corners are sharp. Thick and thin
+    long to the wire's end. The trunk joins the middle of each spine unless moved with
+    **Cable Join** (stored in the project as a hidden point of the cable, one per end and page;
+    no format change); a join is always kept on the spine between the outermost wires, also when
+    wires move later. Sizes are fixed drawing units for now (text 2.5, tails 20, bends 2.5),
+    so the labels are small when zoomed out. The trunk's corners are sharp. Thick and thin
     show only with **Show/Hide Lineweight** on, which the trial turns on when it opens or creates
     a project unless you switched it yourself since the trial started;
     plots and DXF exports carry the weights either way. A cable with one wire is not offered a fan

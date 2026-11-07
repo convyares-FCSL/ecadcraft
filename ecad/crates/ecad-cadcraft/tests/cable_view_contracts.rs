@@ -171,10 +171,10 @@ fn ten_switches_change_nothing_in_the_project() {
         } else {
             g.h.s.start("cableview").unwrap();
             assert_eq!(prompt(&g.h), "Select a cable to switch its view:");
-            // The slash in traditional view, the trunk in fan view (brief 009: at y = 17.5, left
-            // of the label box).
+            // The slash in traditional view, the trunk in fan view (brief 009: joining the middle
+            // of the spine at y = 5, left of the label box).
             if fan_before {
-                click(&mut g.h, 24.5, 17.5)
+                click(&mut g.h, 24.0, 5.0)
             } else {
                 click(&mut g.h, 30.0, 7.5)
             }

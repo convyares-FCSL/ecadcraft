@@ -129,6 +129,13 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Template,
     },
     Tool {
+        id: "ecad.cablefan",
+        group: "Wiring",
+        label: "Cable Join",
+        tooltip: "Click a cable shown as a fan near one end, then where its trunk should join the spine",
+        kind: Kind::Start("cablefan"),
+    },
+    Tool {
         id: "ecad.delete",
         group: "Edit",
         label: "Delete Electrical Object",

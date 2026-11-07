@@ -402,7 +402,8 @@ fn f_traditional_core_labels_at_the_slash() {
     f.h.check();
 }
 
-/// Check G (AC1, AC4): the fan of H is §4.6's worked example.
+/// Check G (AC1, AC4): the fan of H is §4.6's worked example, with the trunk joining the middle of
+/// each spine (owner request of 2026-11-07, replacing §4.2 step 6's end join).
 #[test]
 fn g_fan_is_the_worked_example() {
     let mut f = fixture(true);
@@ -411,8 +412,9 @@ fn g_fan_is_the_worked_example() {
     let fan = fan(&mut f.h, f.page, f.c1);
     let spines: Vec<Vec<Pt>> = of_role(&fan, Role::Spine).into_iter().map(path).collect();
     assert_eq!(spines.len(), 2);
-    assert!(spines.iter().any(|s| same_segment(s, Pt::new(22.5, 22.5), Pt::new(22.5, 2.5))), "{spines:?}");
-    assert!(spines.iter().any(|s| same_segment(s, Pt::new(97.5, 22.5), Pt::new(97.5, 2.5))), "{spines:?}");
+    // The join at the middle (y = 7.5): each core bends away from it; the spine spans the bends.
+    assert!(spines.iter().any(|s| same_segment(s, Pt::new(22.5, 2.5), Pt::new(22.5, 12.5))), "{spines:?}");
+    assert!(spines.iter().any(|s| same_segment(s, Pt::new(97.5, 2.5), Pt::new(97.5, 12.5))), "{spines:?}");
     let bends: Vec<(Pt, f64)> = of_role(&fan, Role::Bend)
         .into_iter()
         .map(|s| match s {
@@ -424,21 +426,22 @@ fn g_fan_is_the_worked_example() {
     let tails: Vec<Vec<Pt>> = of_role(&fan, Role::Tail).into_iter().map(path).collect();
     assert_eq!(tails.len(), 8);
     for y in [0.0, 5.0, 10.0, 15.0] {
+        let cy = if y < 7.5 { y + 2.5 } else { y - 2.5 };
         for cx in [20.0, 100.0] {
-            assert!(bends.iter().any(|(c, r)| near(*c, Pt::new(cx, y + 2.5)) && *r == 2.5), "bend at {cx},{y}");
+            assert!(bends.iter().any(|(c, r)| near(*c, Pt::new(cx, cy)) && *r == 2.5), "bend at {cx},{y}");
         }
         assert!(tails.iter().any(|t| same_segment(t, Pt::new(20.0, y), Pt::new(0.0, y))), "left tail {y}");
         assert!(tails.iter().any(|t| same_segment(t, Pt::new(100.0, y), Pt::new(120.0, y))), "right tail {y}");
     }
-    // The trunk runs along y = 22.5 between the junctions, clipped by the box centred at (60,22.5).
+    // The trunk runs along y = 7.5 between the junctions, clipped by the box centred at (60,7.5).
     let trunk: Vec<Vec<Pt>> = of_role(&fan, Role::Trunk).into_iter().map(path).collect();
     assert_eq!(trunk.len(), 2, "{trunk:?}");
-    assert!(trunk.iter().flatten().all(|p| (p.y - 22.5).abs() < 1e-9));
+    assert!(trunk.iter().flatten().all(|p| (p.y - 7.5).abs() < 1e-9));
     let xs: Vec<f64> = trunk.iter().flatten().map(|p| p.x).collect();
     assert!(xs.iter().any(|x| (x - 22.5).abs() < 1e-9) && xs.iter().any(|x| (x - 97.5).abs() < 1e-9));
     let frame = path(of_role(&fan, Role::LabelBox)[0]);
     let centre = Pt::new(frame.iter().map(|p| p.x).sum::<f64>() / 4.0, frame.iter().map(|p| p.y).sum::<f64>() / 4.0);
-    assert!(near(centre, Pt::new(60.0, 22.5)), "{centre:?}");
+    assert!(near(centre, Pt::new(60.0, 7.5)), "{centre:?}");
     let lines: Vec<String> = of_role(&fan, Role::BoxText)
         .into_iter()
         .map(|s| match s {
@@ -493,11 +496,14 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     let tails: Vec<Vec<Pt>> = of_role(&fan, Role::Tail).into_iter().map(path).collect();
     assert_eq!(tails.len(), 4);
     assert!(tails.iter().all(|t| t.iter().all(|p| p.x <= 20.0 + 1e-9)), "{tails:?}");
-    // The trunk runs straight from J₀ to the attach point M = (123.75, 22.5).
+    // The trunk runs from J₀ (the middle of the left spine) to the attach point M = (123.75, 22.5),
+    // in axis-aligned steps.
     let trunk: Vec<Pt> = of_role(&fan, Role::Trunk).into_iter().flat_map(path).collect();
-    assert!(trunk.iter().all(|p| (p.y - 22.5).abs() < 1e-9), "{trunk:?}");
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(22.5, 22.5))));
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))));
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(22.5, 7.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))), "{trunk:?}");
+    for piece in of_role(&fan, Role::Trunk).into_iter().map(path) {
+        assert!(piece.windows(2).all(|w| (w[0].x - w[1].x).abs() < 1e-9 || (w[0].y - w[1].y).abs() < 1e-9));
+    }
     // The flag points right, away from the cable.
     let flag = path(of_role(&fan, Role::Flag)[0]);
     assert!(flag.iter().any(|p| p.x > 125.0 + look::font_width(look::REFERENCE_PLACEHOLDER) + 1.25 + 1e-9));
@@ -743,4 +749,123 @@ fn s2_selections_with_core_labels_edit_the_rest() {
 
 fn slash_items(doc: &ecad_model::Document, page: PageId, k: CableId) -> Vec<ItemId> {
     ecad_cadcraft::slash::slashes_of(doc, page, k).into_iter().map(|(i, _, _)| i).collect()
+}
+
+// --------------------------------------------------------------------------- the fan's join
+
+fn join_of(f: &views::Fan, left: bool) -> Pt {
+    // The junction: the trunk point on that end's spine line (x = 22.5 left, 97.5 right).
+    let x = if left { 22.5 } else { 97.5 };
+    of_role(f, Role::Trunk)
+        .into_iter()
+        .flat_map(path)
+        .find(|p| (p.x - x).abs() < 1e-9)
+        .unwrap_or_else(|| panic!("no junction at x = {x}"))
+}
+
+/// Owner request (2026-11-07): the trunk joins the middle of each spine by default; `cablefan`
+/// moves one end's join along its spine (a point snapped and clamped onto the spine, a fraction
+/// from 0 to 1, or null for the middle), as one transaction of existing ops; undo, redo and replay
+/// work; hostile values are refused. JSON-form contract, ready for the MCP harness (brief 011).
+#[test]
+fn cablefan_moves_the_join_along_the_spine() {
+    let mut f = fixture(true);
+    view(&mut f.h, f.c1, "fan");
+    let k = f.c1.hex();
+    assert!(near(join_of(&fan(&mut f.h, f.page, f.c1), true), Pt::new(22.5, 7.5)), "the middle by default");
+    let (head, before) = (f.h.head(), f.h.doc());
+    // A point snapped onto the spine: (30, 11) -> (22.5, 11) on the left end.
+    let r = f.h.run("cablefan", json!({"cable": k, "at": [30, 11]})).unwrap();
+    assert_eq!(r, json!({"cable": k, "end": "A", "at": [22.5, 11.0], "changed": true}));
+    assert_eq!(f.h.head(), head + 1);
+    let t = last_tx(&mut f.h);
+    assert_eq!(t.label, "Cable join");
+    assert!(matches!(t.ops.as_slice(), [Op::AddItem { .. }, Op::LinkRepresentation { .. }]), "{:?}", t.ops);
+    let fan1 = fan(&mut f.h, f.page, f.c1);
+    assert!(near(join_of(&fan1, true), Pt::new(22.5, 11.0)));
+    assert!(near(join_of(&fan1, false), Pt::new(97.5, 7.5)), "the other end stays in the middle");
+    f.h.check();
+    // Clamped to the cores' range: far above -> the top core's level (y = 15).
+    let r = f.h.run("cablefan", json!({"cable": k, "end": "A", "at": [22.5, 400]})).unwrap();
+    assert_eq!(r["at"], json!([22.5, 15.0]));
+    assert!(matches!(last_tx(&mut f.h).ops.as_slice(), [Op::ModifyItem { .. }]), "moving it is one ModifyItem");
+    // A fraction, on the other end; the same value again changes nothing.
+    let r = f.h.run("cablefan", json!({"cable": k, "end": "B", "at": 0.0})).unwrap();
+    assert_eq!(r["changed"], true);
+    let h1 = f.h.head();
+    let r = f.h.run("cablefan", json!({"cable": k, "end": "B", "at": 0.0})).unwrap();
+    assert_eq!((r["changed"].as_bool(), f.h.head()), (Some(false), h1));
+    // The stored joins are not drawn; the page is consistent; undo and redo; null resets.
+    let anchors = f.h.doc().representations.values().filter(|r| r.role == look::ANCHOR_ROLE).count();
+    assert_eq!(anchors, 2);
+    f.h.check();
+    f.h.run("u", Value::Null).unwrap();
+    f.h.run("redo", Value::Null).unwrap();
+    f.h.check();
+    f.h.run("cablefan", json!({"cable": k, "end": "A", "at": null})).unwrap();
+    f.h.run("cablefan", json!({"cable": k, "end": "B", "at": null})).unwrap();
+    assert!(near(join_of(&fan(&mut f.h, f.page, f.c1), true), Pt::new(22.5, 7.5)));
+    assert_eq!(f.h.doc().representations.len(), before.representations.len(), "both joins removed");
+    // Works whatever the view (programmatic calls ignore views).
+    view(&mut f.h, f.c1, "traditional");
+    f.h.run("cablefan", json!({"cable": k, "end": "A", "at": 1.0})).unwrap();
+    f.h.check();
+    // Hostile input: nothing written.
+    let head = f.h.head();
+    let cases = [
+        (json!({"cable": k, "at": [1e300, 0]}), "Point out of range."),
+        (json!({"cable": k, "at": 1.5, "end": "A"}), "`at` as a fraction must be from 0 to 1"),
+        (json!({"cable": k, "at": 0.5}), "is required unless `at` is a point"),
+        (json!({"cable": k, "at": "x"}), "`at` must be a point"),
+        (json!({"cable": k, "end": "C", "at": 0.5}), "`end` must be"),
+        (json!({"cable": "zz", "at": 0.5}), "`cable` (hex id) is required"),
+        (json!({"cable": "ab", "end": "A", "at": 0.5}), "no such cable"),
+    ];
+    for (params, words) in cases {
+        let e = f.h.run("cablefan", params.clone()).unwrap_err();
+        assert!(e.contains(words), "{params}: {e}");
+    }
+    assert_eq!(f.h.head(), head);
+}
+
+/// The interactive form commits the same transaction as the JSON form; an end that stops at a
+/// reference has no spine.
+#[test]
+fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
+    let mut a = fixture(true);
+    view(&mut a.h, a.c1, "fan");
+    a.h.run("cablefan", json!({"cable": a.c1.hex(), "end": "A", "at": [22.5, 11.0]})).unwrap();
+    let json_ops = last_tx(&mut a.h).ops;
+    let mut b = fixture(true);
+    view(&mut b.h, b.c1, "fan");
+    b.h.s.start("cablefan").unwrap();
+    assert_eq!(prompt(&b.h), "Select a cable shown as a fan, near the end to change:");
+    click(&mut b.h, 22.5, 4.0).unwrap();
+    assert_eq!(prompt(&b.h), "Specify where the cable joins or [Middle]:");
+    click(&mut b.h, 30.0, 11.0).unwrap();
+    assert_eq!(last_echo(&b.h), "Cable C1 now joins end A at 22.5, 11.");
+    assert!(b.h.s.running.is_none());
+    let ops = last_tx(&mut b.h).ops;
+    // Same ops apart from the fresh IDs of the new item and representation.
+    let strip = |ops: &[Op]| -> Vec<Op> {
+        ops.iter()
+            .map(|o| match o.clone() {
+                Op::AddItem { item, .. } => Op::AddItem { id: ItemId::from(1), item },
+                Op::LinkRepresentation { mut rep, .. } => {
+                    rep.items = vec![ItemId::from(1)];
+                    Op::LinkRepresentation { id: RepresentationId::from(2), rep }
+                }
+                other => other,
+            })
+            .collect()
+    };
+    assert_eq!(strip(&ops), strip(&json_ops));
+    // A one-sided fan: the end at the reference has no spine.
+    let mut c = fixture(false);
+    view(&mut c.h, c.c1, "fan");
+    reference_end(&mut c.h, c.page, c.c1, Pt::new(125.0, 21.25), 1);
+    let e = c.h.run("cablefan", json!({"cable": c.c1.hex(), "end": "B", "at": 0.5})).unwrap_err();
+    assert!(e.contains("End B of cable C1 stops at a reference; it has no spine."), "{e}");
+    c.h.run("cablefan", json!({"cable": c.c1.hex(), "end": "A", "at": 1.0})).unwrap();
+    c.h.check();
 }

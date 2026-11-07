@@ -65,6 +65,13 @@ pub fn specs() -> Vec<CommandSpec> {
             )
             .interactive(interact::cablecore)
             .noundo(),
+        CommandSpec::new("cablefan", "Cable Join", run_cablefan)
+            .params(
+                "{cable: id, end?: \"A\"|\"B\", at: [x,y] | fraction 0..1 | null} (where the trunk joins a fanned \
+end's spine; null: the middle)",
+            )
+            .interactive(interact::cablefan)
+            .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
             .params("{conductor: id} | {component: id} | {cable: id}")
             .noundo(),
@@ -617,6 +624,120 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             p.apply_edit(pg, "cablecore", "Core labels", ops)?;
         }
         Ok(json!({"cable": cable.hex(), "cores": cores, "changed": changed}))
+    })
+}
+
+/// What `cablefan`'s `at` asks for.
+enum JoinAt {
+    Point(Pt),
+    Fraction(f64),
+    Middle,
+}
+
+/// `cablefan` (owner request on brief 009, 2026-11-07): where the trunk joins one fanned end of a
+/// cable on the active page. The join is stored as a `fan-anchor` representation of the cable
+/// holding one Point item (existing ops, no format change), snapped onto the spine; `null` removes
+/// it and the trunk joins the middle again. Works whatever the cable's view (programmatic calls
+/// ignore views).
+fn run_cablefan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let cable: CableId = id(params, "cable").map_err(err)?;
+    let end = match params.get("end") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(e)) if e == "A" => Some(crate::look::MarkerEnd::A),
+        Some(Value::String(e)) if e == "B" => Some(crate::look::MarkerEnd::B),
+        Some(_) => return Err(err("`end` must be \"A\" or \"B\"")),
+    };
+    let at = match params.get("at") {
+        Some(Value::Null) => JoinAt::Middle,
+        Some(Value::Number(n)) => match n.as_f64().filter(|f| f.is_finite() && (0.0..=1.0).contains(f)) {
+            Some(f) => JoinAt::Fraction(f),
+            None => return Err(err("`at` as a fraction must be from 0 to 1")),
+        },
+        Some(v @ Value::Array(_)) => match point(v) {
+            Some(p) if p.x.abs() <= 1e12 && p.y.abs() <= 1e12 => JoinAt::Point(p),
+            Some(_) => return Err(err("Point out of range.")),
+            None => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
+        },
+        _ => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
+    };
+    with_project(s, |p, pg, page| {
+        let doc = p.ledger.document();
+        if !doc.cables.contains_key(&cable) {
+            return Err("no such cable".into());
+        }
+        let title = views::cable_title(doc, cable);
+        let ends = crate::look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
+        if ends.is_empty() {
+            return Err(format!("Cable {title} has no fanned end on this page."));
+        }
+        let name = |e: crate::look::MarkerEnd| if e == crate::look::MarkerEnd::A { "A" } else { "B" };
+        let fe = match (end, &at) {
+            (Some(e), _) => ends
+                .iter()
+                .find(|f| f.end == e)
+                .ok_or_else(|| format!("End {} of cable {title} stops at a reference; it has no spine.", name(e)))?,
+            (None, JoinAt::Point(q)) => ends
+                .iter()
+                .min_by(|a, b| {
+                    let d = |f: &crate::look::FanEnd| f.spine.join_for(*q).map_or(f64::INFINITY, |j| j.dist(*q));
+                    d(a).total_cmp(&d(b))
+                })
+                .ok_or("no fanned end")?,
+            (None, _) => return Err("`end` (\"A\" or \"B\") is required unless `at` is a point".into()),
+        };
+        let sp = fe.spine;
+        let join = match at {
+            JoinAt::Point(q) => Some(sp.join_for(q).ok_or("Point out of range.")?),
+            JoinAt::Fraction(f) => Some(sp.point(sp.tmin + f * (sp.tmax - sp.tmin))),
+            JoinAt::Middle => None,
+        };
+        let mut r = json!({
+            "cable": cable.hex(), "end": name(fe.end),
+            "at": join.map(|j| json!([j.x, j.y])), "changed": true,
+        });
+        let ops = match (fe.anchor, join) {
+            (None, None) => {
+                r["changed"] = Value::Bool(false);
+                return Ok(r);
+            }
+            (Some((_, _, old)), Some(j)) if old.near(j, 1e-9) => {
+                r["changed"] = Value::Bool(false);
+                return Ok(r);
+            }
+            (Some((rid, item, _)), None) => {
+                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
+                let rep = doc.representations.get(&rid).cloned().ok_or("anchor missing")?;
+                vec![Op::UnlinkRepresentation { id: rid, rep }, Op::RemoveItem { id: item, item: before }]
+            }
+            (Some((_, item, _)), Some(j)) => {
+                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
+                let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: j }), ..before.clone() };
+                vec![Op::ModifyItem { id: item, before, after }]
+            }
+            (None, Some(j)) => {
+                let (item, rid): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
+                let style = plain_style(p);
+                vec![
+                    Op::AddItem {
+                        id: item,
+                        item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: j }) },
+                    },
+                    Op::LinkRepresentation {
+                        id: rid,
+                        rep: Representation {
+                            subject: Subject::Cable(cable),
+                            page,
+                            form: Form::Drawn,
+                            role: crate::look::ANCHOR_ROLE.into(),
+                            items: vec![item],
+                            connection_points: BTreeMap::new(),
+                        },
+                    },
+                ]
+            }
+        };
+        p.apply_edit(pg, "cablefan", "Cable join", ops)?;
+        Ok(r)
     })
 }
 

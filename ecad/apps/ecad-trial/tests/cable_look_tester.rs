@@ -468,15 +468,17 @@ fn check_a_core_label_by_label_and_reference_screenshots() {
         let x = 58.0 + 4.0 * (y + 3.0) / 21.0;
         assert!(magenta_near(&trad, screen(&h, x + 2.0, y + 2.0), 6), "core label at y {y}");
     }
-    // Fan: the routes hidden mid-way; the trunk (thick) at y = 22.5 left of the box; the spines;
-    // tails (thin) at y = 5 near x = 10.
+    // Fan: the routes hidden between the spines (x = 80, clear of the label box, which now sits on
+    // the wires' rows); the trunk (thick) at y = 7.5 left of the box; the spines; tails (thin) at
+    // y = 5 near x = 10.
     for y in [0.0, 5.0, 10.0, 15.0] {
-        assert!(!drawn_near(&fan, screen(&h, 60.0, y), 1), "route at y {y} hidden");
+        assert!(!drawn_near(&fan, screen(&h, 80.0, y), 1), "route at y {y} hidden");
     }
-    assert!(magenta_near(&fan, screen(&h, 35.0, 22.5), 1), "trunk");
+    // The trunk joins the middle of each spine (owner request of 2026-11-07): y = 7.5.
+    assert!(magenta_near(&fan, screen(&h, 35.0, 7.5), 1), "trunk");
     assert!(magenta_near(&fan, screen(&h, 22.5, 10.0), 1), "left spine");
     assert!(magenta_near(&fan, screen(&h, 97.5, 10.0), 1), "right spine");
-    let thick = magenta_run(&fan, screen(&h, 35.0, 22.5).x, screen(&h, 35.0, 24.0).y, screen(&h, 35.0, 21.0).y);
+    let thick = magenta_run(&fan, screen(&h, 35.0, 7.5).x, screen(&h, 35.0, 9.0).y, screen(&h, 35.0, 6.0).y);
     let thin = magenta_run(&fan, screen(&h, 10.0, 5.0).x, screen(&h, 10.0, 6.0).y, screen(&h, 10.0, 4.0).y);
     assert!(thin >= 1 && thick > thin, "thick trunk ({thick} px) and thin tail ({thin} px)");
     // Design §5.1 step 2: "The picked wire is highlighted." W3 (y = 10) must look different from
@@ -529,4 +531,39 @@ fn one_sided_fan_reference_screenshot() {
     for y in [0.0, 5.0, 10.0, 15.0] {
         assert!(!drawn_near(&img, screen(&h, 110.0, y), 1), "route at y {y} hidden near the reference end");
     }
+}
+
+/// Owner request of 2026-11-07: fixture H in fan view with each end's join moved by `cablefan`
+/// (left to the top core, right to the bottom core), screenshot `009-fan-moved-join.png`.
+#[test]
+fn moved_join_reference_screenshot() {
+    let out = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from);
+    if let Some(dir) = &out {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let settings = Tmp::new("moved-join");
+    let deltas: Deltas = Arc::default();
+    let mut h = harness(&settings, Some(deltas.clone()));
+    let (cable, wires) = fixture(&mut h, true);
+    let cores: Vec<Value> = (1..=wires.len()).map(|i| json!(i.to_string())).collect();
+    h.state_mut().cad.run("cablecore", json!({"cable": cable, "cores": cores})).unwrap();
+    h.state_mut().cad.run("cableview", json!({"cable": cable, "view": "fan"})).unwrap();
+    let r = h.state_mut().cad.run("cablefan", json!({"cable": cable, "end": "A", "at": [22.5, 100]})).unwrap();
+    assert_eq!(r["at"], json!([22.5, 15.0]), "clamped to the top core");
+    let r = h.state_mut().cad.run("cablefan", json!({"cable": cable, "end": "B", "at": [97.5, -100]})).unwrap();
+    assert_eq!(r["at"], json!([97.5, 0.0]), "clamped to the bottom core");
+    ok(&mut h, "zoom e");
+    h.get_by_label(tools::TAB).click();
+    h.run_steps(3);
+    let away = screen(&h, 60.0, 45.0);
+    pointer_to(&mut h, away);
+    h.run_steps(3);
+    let Some(img) = out.as_ref().and_then(|d| shot(&h, &deltas, &d.join("009-fan-moved-join.png"))) else {
+        eprintln!("ECAD_TESTER_SHOTS not set or no wgpu adapter: screenshot skipped");
+        return;
+    };
+    // The trunk leaves the left spine at the top core (y = 15) and the right one at the bottom
+    // core (y = 0): magenta at both junction rows next to their spines.
+    assert!(magenta_near(&img, screen(&h, 25.0, 15.0), 1), "left join at the top");
+    assert!(magenta_near(&img, screen(&h, 95.0, 0.0), 1), "right join at the bottom");
 }

@@ -35,8 +35,6 @@ pub const LABEL_SPACING: f64 = LABEL_HEIGHT;
 pub const TAIL_MIN: f64 = 20.0;
 /// `ecad.bend-radius`, capped at half the core pitch.
 pub const BEND_RADIUS: f64 = 2.5;
-/// `ecad.spine-lead`: the spine beyond the first core, before the trunk joins it.
-pub const SPINE_LEAD: f64 = 5.0;
 /// `ecad.box-line-pitch`: line spacing in the label box.
 pub const BOX_LINE_PITCH: f64 = 1.5 * LABEL_HEIGHT;
 /// `ecad.box-pad`: padding in the label box and the reference flag.
@@ -52,6 +50,10 @@ pub const MAX_CORE_CHARS: usize = 32;
 pub const MAX_SHOWN_CHARS: usize = 24;
 /// The representation role of a cable's reference end (brief 010's model).
 pub const REFERENCE_ROLE: &str = "reference";
+/// The representation role of a stored fan join (owner request, 2026-11-07): one Point item per
+/// fanned cable end per page, where the trunk joins the spine. Without one the trunk joins the
+/// middle of the spine.
+pub const ANCHOR_ROLE: &str = "fan-anchor";
 /// The text a reference marker shows until brief 010 makes it a live reference.
 pub const REFERENCE_PLACEHOLDER: &str = "->";
 
@@ -428,7 +430,51 @@ fn sides(members: &[Member]) -> Option<(usize, Vec<(Pt, Pt)>)> {
     Some((reference, out))
 }
 
-/// A fanned end: its junction J, the trunk's outward direction σv, and its parts.
+/// One fanned end's spine (design §4.2, with the owner's movable join): origin O (the reference
+/// member's end), `u` towards the spine (snapped to an axis), `v` along it, the spine on the line
+/// a = `c`, and the cores' range `tmin..=tmax` along `v`. The trunk joins the spine somewhere in
+/// that range.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Spine {
+    pub o: Pt,
+    pub u: Pt,
+    pub v: Pt,
+    pub c: f64,
+    pub tmin: f64,
+    pub tmax: f64,
+}
+
+impl Spine {
+    /// The point of the spine's line at `t`.
+    pub fn point(&self, t: f64) -> Pt {
+        at(self.o, self.u, self.v, self.c, t)
+    }
+    /// Where the trunk joins for a requested point `p`: `p` projected onto the spine and kept
+    /// within the cores' range; `None` for a point that is not finite.
+    pub fn join_for(&self, p: Pt) -> Option<Pt> {
+        let t = dot(sub(p, self.o), self.v);
+        t.is_finite().then(|| self.point(t.clamp(self.tmin, self.tmax)))
+    }
+    /// The default join: the middle of the cores' range.
+    pub fn middle(&self) -> Pt {
+        self.point(self.tmin + 0.5 * (self.tmax - self.tmin))
+    }
+    /// Distance from `p` to the spine segment.
+    fn distance(&self, p: Pt) -> f64 {
+        let (a, t) = (dot(sub(p, self.o), self.u), dot(sub(p, self.o), self.v));
+        let dt = if t < self.tmin {
+            self.tmin - t
+        } else if t > self.tmax {
+            t - self.tmax
+        } else {
+            0.0
+        };
+        (a - self.c).hypot(dt)
+    }
+}
+
+/// A fanned end: its junction J, the trunk's outward direction (`u`: away from the tails), its
+/// spine and its parts.
 struct FannedEnd {
     junction: Pt,
     outward: Pt,
@@ -443,21 +489,26 @@ struct Labels {
     wire_w: f64,
 }
 
-/// One fanned end (design §4.2). `ends`: each member's end on this side; `q`: the other side's
-/// centroid or attach point.
+/// Everything one fanned end needs before its join is known.
+struct Frame {
+    spine: Spine,
+    t: Vec<f64>,
+    rho: f64,
+    labels: Vec<Labels>,
+}
+
+/// The frame of one fanned end (design §4.2 steps 1 to 5). `ends`: each member's end on this side.
 #[allow(clippy::too_many_arguments)]
-fn fan_end(
+fn frame(
     doc: &Document,
     members: &[Member],
     reference: usize,
     side: usize,
     ends: &[Pt],
-    q: Pt,
     tol: f64,
     measure: &dyn Fn(&str) -> f64,
-) -> Option<FannedEnd> {
+) -> Option<Frame> {
     let g = LABEL_GAP;
-    let h = LABEL_HEIGHT;
     let o = *ends.get(reference)?;
     let rpath = &members.get(reference)?.path;
     let u = if side == 0 { leaving(rpath.iter().copied(), tol)? } else { leaving(rpath.iter().rev().copied(), tol)? };
@@ -498,42 +549,40 @@ fn fan_end(
     let amax = a.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let c = amax + tail + rho;
     let (tmin, tmax) = (sorted.first().copied()?, sorted.last().copied()?);
-    // Which spine end the trunk joins.
-    let tq = dot(sub(q, o), v);
-    let (dhi, dlo) = ((tq - tmax).abs(), (tq - tmin).abs());
-    let hi_end = if (dhi - dlo).abs() <= tol {
-        let (phi, plo) = (at(o, u, v, c, tmax), at(o, u, v, c, tmin));
-        if (phi.y - plo.y).abs() > tol { phi.y > plo.y } else { phi.x <= plo.x }
-    } else {
-        dhi < dlo
-    };
-    let sigma = if hi_end { 1.0 } else { -1.0 };
-    let (tnear, tfar) = if hi_end { (tmax, tmin) } else { (tmin, tmax) };
-    let junction = at(o, u, v, c, tnear + sigma * (rho + SPINE_LEAD));
-    let spine_end = at(o, u, v, c, tfar + sigma * rho);
-    if !(junction.is_finite() && spine_end.is_finite() && c.is_finite()) {
+    let spine = Spine { o, u, v, c, tmin, tmax };
+    (c.is_finite() && spine.middle().is_finite()).then_some(Frame { spine, t, rho, labels })
+}
+
+/// One fanned end joined at `join` (a point on its spine; design §4.2 steps 6 to 9, with the
+/// owner's movable join). Each core bends from the spine towards its tail, away from the join;
+/// a core level with the join leaves the spine straight.
+fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Option<FannedEnd> {
+    let g = LABEL_GAP;
+    let h = LABEL_HEIGHT;
+    let Spine { o, u, v, c, .. } = f.spine;
+    let tj = dot(sub(join, o), v);
+    if !tj.is_finite() {
         return None;
     }
-    let mut parts =
-        vec![Part::new(Role::Spine, Shape::Path { points: vec![junction, spine_end], closed: false }, Weight::Cable)];
-    // Cores in order of distance from the junction end; equal t in member order.
-    let mut order: Vec<usize> = (0..members.len()).collect();
-    order.sort_by(|x, y| {
-        let (tx, ty) = (t.get(*x).copied().unwrap_or(0.0), t.get(*y).copied().unwrap_or(0.0));
-        (sigma * ty).total_cmp(&(sigma * tx)).then(x.cmp(y))
-    });
+    let mut parts = Vec::new();
+    let (mut lo, mut hi) = (tj, tj);
     let r = mul(u, -1.0);
-    for i in order {
-        let (Some(m), Some(e), Some(ti), Some(l)) = (members.get(i), ends.get(i), t.get(i), labels.get(i)) else {
-            continue;
-        };
-        let start = at(o, u, v, c - rho, *ti);
-        if rho > tol {
-            let centre = at(o, u, v, c - rho, *ti + sigma * rho);
-            let (a1, a2) = (angle(u), angle(mul(v, -sigma)));
-            let (s0, s1) = if cross(u, mul(v, -sigma)) > 0.0 { (a1, a2) } else { (a2, a1) };
+    for (i, m) in members.iter().enumerate() {
+        let (Some(e), Some(ti), Some(l)) = (ends.get(i), f.t.get(i), f.labels.get(i)) else { continue };
+        // Towards the join along the spine (+1 above the core, -1 below), and the bend radius.
+        let s = if tj >= *ti { 1.0 } else { -1.0 };
+        let rad = f.rho.min((tj - ti).abs());
+        let bend = rad > tol;
+        let start = if bend { at(o, u, v, c - rad, *ti) } else { at(o, u, v, c, *ti) };
+        let on_spine = if bend { *ti + s * rad } else { *ti };
+        lo = lo.min(on_spine);
+        hi = hi.max(on_spine);
+        if bend {
+            let centre = at(o, u, v, c - rad, *ti + s * rad);
+            let (a1, a2) = (angle(u), angle(mul(v, -s)));
+            let (s0, s1) = if cross(u, mul(v, -s)) > 0.0 { (a1, a2) } else { (a2, a1) };
             parts.push(
-                Part::new(Role::Bend, Shape::Arc { center: centre, radius: rho, start: s0, end: s1 }, Weight::Wire)
+                Part::new(Role::Bend, Shape::Arc { center: centre, radius: rad, start: s0, end: s1 }, Weight::Wire)
                     .of_core(m.conductor),
             );
         }
@@ -572,10 +621,21 @@ fn fan_end(
             );
         }
     }
-    if parts.iter().any(|p| !shape_finite(&p.shape)) {
+    let junction = at(o, u, v, c, tj);
+    if hi - lo > tol {
+        parts.insert(
+            0,
+            Part::new(
+                Role::Spine,
+                Shape::Path { points: vec![at(o, u, v, c, lo), at(o, u, v, c, hi)], closed: false },
+                Weight::Cable,
+            ),
+        );
+    }
+    if !junction.is_finite() || parts.iter().any(|p| !shape_finite(&p.shape)) {
         return None;
     }
-    Some(FannedEnd { junction, outward: mul(v, sigma), parts })
+    Some(FannedEnd { junction, outward: u, parts })
 }
 
 fn shape_finite(s: &Shape) -> bool {
@@ -613,10 +673,17 @@ fn trunk_between(a: &FannedEnd, b: &FannedEnd, tol: f64) -> Vec<Pt> {
     }
 }
 
-/// The trunk from a fanned end to a reference end's attach point `m`.
+/// The trunk from a fanned end to a reference end's attach point `m`: out from the junction
+/// half-way, across to the attach point's row (or column), then on to it.
 fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
     let w = dot(sub(m, a.junction), a.outward);
-    if w > tol { vec![a.junction, add(a.junction, mul(a.outward, w)), m] } else { vec![a.junction, m] }
+    if w > tol {
+        let p1 = add(a.junction, mul(a.outward, 0.5 * w));
+        let p2 = add(p1, mul(sub(m, add(a.junction, mul(a.outward, w))), 1.0));
+        vec![a.junction, p1, p2, m]
+    } else {
+        vec![a.junction, m]
+    }
 }
 
 /// The label box on the trunk (design §4.4): its parts and the trunk clipped by it.
@@ -806,8 +873,7 @@ fn cable_unfiltered(
         if let Some((reference, _)) = &sides
             && members.len() >= 2
         {
-            fanned =
-                fan_parts(doc, idx, cable, &members, *reference, &side_ends, &cents, &stopped, &flags, tol, measure);
+            fanned = fan_parts(doc, idx, cable, &members, *reference, &side_ends, &stopped, &flags, tol, measure);
         }
     }
     match fanned {
@@ -842,6 +908,10 @@ fn cable_unfiltered(
         }
         None => out.parts = slash_labels(doc, idx, cable, tol),
     }
+    // Stored fan joins are not drawn: the trunk shows where the cable joins (owner request).
+    out.hidden.extend(
+        idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()),
+    );
     for (m, (flag, _)) in markers.iter().zip(&flags) {
         out.parts.push(
             Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id),
@@ -867,7 +937,6 @@ fn fan_parts(
     members: &[Member],
     reference: usize,
     side_ends: &[Vec<Pt>; 2],
-    cents: &[Option<Pt>; 2],
     stopped: &[Option<usize>; 2],
     flags: &[(Vec<Pt>, Pt)],
     tol: f64,
@@ -875,18 +944,21 @@ fn fan_parts(
 ) -> Option<(Vec<Part>, Vec<ItemId>, [Option<Pt>; 2])> {
     let attach = |s: usize| stopped.get(s).copied().flatten().and_then(|i| flags.get(i)).map(|(_, m)| *m);
     let m = [attach(0), attach(1)];
+    // Each fanned end's frame, then its stored join (if any), then its parts.
+    let mut frames: [Option<Frame>; 2] = [None, None];
+    for (s, slot) in frames.iter_mut().enumerate() {
+        if m.get(s).copied().flatten().is_none() {
+            *slot = Some(frame(doc, members, reference, s, side_ends.get(s)?, tol, measure)?);
+        }
+    }
+    let spines = [frames[0].as_ref().map(|f| f.spine), frames[1].as_ref().map(|f| f.spine)];
+    let joins = anchors_by_side(doc, idx, cable, &spines);
     let mut fanned: [Option<FannedEnd>; 2] = [None, None];
-    for s in 0..2 {
-        if m.get(s).copied().flatten().is_some() {
-            continue;
-        }
-        let other = 1 - s;
-        let q = m.get(other).copied().flatten().or(cents.get(other).copied().flatten())?;
-        let ends = side_ends.get(s)?;
-        let f = fan_end(doc, members, reference, s, ends, q, tol, measure)?;
-        if let Some(slot) = fanned.get_mut(s) {
-            *slot = Some(f);
-        }
+    for (s, slot) in fanned.iter_mut().enumerate() {
+        let Some(f) = frames.get(s).and_then(Option::as_ref) else { continue };
+        let join =
+            joins.get(s).copied().flatten().and_then(|(_, _, p)| f.spine.join_for(p)).unwrap_or(f.spine.middle());
+        *slot = Some(fan_end(f, members, side_ends.get(s)?, join, tol)?);
     }
     let trunk = match (&fanned[0], &fanned[1], m[0], m[1]) {
         (Some(a), Some(b), _, _) => trunk_between(a, b, tol),
@@ -915,10 +987,120 @@ fn fan_parts(
     hidden.extend(
         idx.cable_reps(cable)
             .iter()
-            .filter(|(_, r)| r.role != REFERENCE_ROLE)
+            .filter(|(_, r)| r.role != REFERENCE_ROLE && r.role != ANCHOR_ROLE)
             .flat_map(|(_, r)| r.items.iter().copied()),
     );
     Some((parts, hidden, m))
+}
+
+/// The stored fan join of each fanned end (design: owner request): each `fan-anchor`
+/// representation of `cable` on the page, with the point of its first Point item, goes to the
+/// fanned end whose spine is nearest (one per end; the nearest pair first, then the other end).
+/// Each entry: representation, item, point.
+fn anchors_by_side(
+    doc: &Document,
+    idx: &PageIndex<'_>,
+    cable: CableId,
+    spines: &[Option<Spine>; 2],
+) -> [Option<(RepresentationId, ItemId, Pt)>; 2] {
+    let found: Vec<(RepresentationId, ItemId, Pt)> = idx
+        .cable_reps(cable)
+        .iter()
+        .filter(|(_, r)| r.role == ANCHOR_ROLE)
+        .filter_map(|(id, r)| {
+            r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+                Some(ItemKind::Primitive(Primitive::Point { at })) if at.is_finite() => Some((*id, *i, *at)),
+                _ => None,
+            })
+        })
+        .collect();
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+    for (i, (_, _, p)) in found.iter().enumerate() {
+        for (s, spine) in spines.iter().enumerate() {
+            if let Some(d) = spine.map(|sp| sp.distance(*p)).filter(|d| d.is_finite()) {
+                pairs.push((d, i, s));
+            }
+        }
+    }
+    pairs.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2)));
+    let mut out: [Option<(RepresentationId, ItemId, Pt)>; 2] = [None, None];
+    let mut used = BTreeSet::new();
+    for (_, i, s) in pairs {
+        if used.contains(&i) || out.get(s).is_some_and(Option::is_some) {
+            continue;
+        }
+        if let (Some(slot), Some(a)) = (out.get_mut(s), found.get(i)) {
+            *slot = Some(*a);
+            used.insert(i);
+        }
+    }
+    out
+}
+
+/// A fanned cable end on a page, for moving where the trunk joins it (`cablefan`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FanEnd {
+    /// `A` (the reference member's first point) or `B`.
+    pub end: MarkerEnd,
+    pub spine: Spine,
+    /// The stored join, when there is one: representation, item and stored point.
+    pub anchor: Option<(RepresentationId, ItemId, Pt)>,
+}
+
+/// The fanned ends of `cable` on `page` as its fan would draw them (whatever its view): none when
+/// the fan cannot be drawn there; an end that stops at a reference end has no spine.
+pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<FanEnd> {
+    let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
+    let idx = PageIndex::new(doc, page);
+    let drawing = cable_in(doc, &idx, cable, true, tol, measure);
+    if drawing.state != FanState::Drawn {
+        return Vec::new();
+    }
+    let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
+    let mut seen = BTreeSet::new();
+    let members: Vec<Member> = c
+        .members
+        .iter()
+        .filter(|m| seen.insert(m.conductor))
+        .filter_map(|m| {
+            idx.route(m.conductor).and_then(path_of).map(|path| Member {
+                conductor: m.conductor,
+                core: m.core.clone(),
+                path,
+            })
+        })
+        .collect();
+    let Some((reference, s)) = sides(&members) else { return Vec::new() };
+    let ends: [Vec<Pt>; 2] = [s.iter().map(|x| x.0).collect(), s.iter().map(|x| x.1).collect()];
+    let stopped: BTreeSet<usize> = drawing
+        .markers
+        .values()
+        .filter_map(|e| match e {
+            MarkerEnd::A => Some(0),
+            MarkerEnd::B => Some(1),
+            MarkerEnd::Extra => None,
+        })
+        .collect();
+    let mut spines: [Option<Spine>; 2] = [None, None];
+    for (side, slot) in spines.iter_mut().enumerate() {
+        if !stopped.contains(&side)
+            && let Some(f) = ends.get(side).and_then(|e| frame(doc, &members, reference, side, e, tol, measure))
+        {
+            *slot = Some(f.spine);
+        }
+    }
+    let anchors = anchors_by_side(doc, &idx, cable, &spines);
+    spines
+        .iter()
+        .enumerate()
+        .filter_map(|(side, sp)| {
+            sp.map(|spine| FanEnd {
+                end: if side == 0 { MarkerEnd::A } else { MarkerEnd::B },
+                spine,
+                anchor: anchors.get(side).copied().flatten(),
+            })
+        })
+        .collect()
 }
 
 /// Every cable's computed drawing on `page` (cables in `fan` drawn as fans where they can be),

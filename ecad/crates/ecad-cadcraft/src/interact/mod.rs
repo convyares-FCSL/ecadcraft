@@ -38,7 +38,9 @@ use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
-pub(crate) use forms::{addterminal, cablecore, cableslash, cableview, connect, convert, disconnect, place, wire};
+pub(crate) use forms::{
+    addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, place, wire,
+};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";

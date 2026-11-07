@@ -839,7 +839,9 @@ fn ac3_fan_lengths_are_capped_at_forty_percent() {
     assert_tails_end_at(&t, &[(0.0, 0.0), (0.0, 50.0), (0.0, 100.0), (60.0, 0.0), (60.0, 50.0), (60.0, 100.0)]);
     for tail in &t {
         assert!((tail[0].y - tail[1].y).abs() < 1e-9, "horizontal: {tail:?}");
-        assert!((tail[0].dist(tail[1]) - ecad_cadcraft::look::TAIL_MIN).abs() < 1e-9, "{tail:?}");
+        // At least tail-min; the core level with the join leaves the spine straight, so its tail
+        // also runs the bend radius (owner request of 2026-11-07).
+        assert!(tail[0].dist(tail[1]) >= ecad_cadcraft::look::TAIL_MIN - 1e-9, "{tail:?}");
     }
     h.check();
 }

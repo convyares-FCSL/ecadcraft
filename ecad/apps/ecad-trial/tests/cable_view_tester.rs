@@ -367,7 +367,7 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     let slash = screen(&h, 30.0, 7.5);
     click(&mut h, slash);
     assert_eq!(views_of(&mut h)[&cable], "fan");
-    assert_eq!(fan_lines(&mut h), 18, "brief 009: trunk 2, box 2, spines 2, bends 6, tails 6");
+    assert_eq!(fan_lines(&mut h), 16, "brief 009: trunk 2, box 2, spines 2, bends 4, tails 6");
     assert!(h.state().cad.session.log.iter().any(|l| l == "Cable C1 now shown in fan view."), "echo");
     assert_eq!(prompt(&h), "Select a cable to switch its view:", "the prompt repeats");
     pointer_to(&mut h, away);
@@ -398,8 +398,8 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     assert!(h.state().cad.session.running.is_none());
     assert_eq!(views_of(&mut h)[&cable], "fan", "Esc keeps the switch");
     // Hover on the trunk (design §4.2): the cable, `View: fan`.
-    // Brief 009: the trunk runs at y = 17.5, left of the label box.
-    let trunk = screen(&h, 24.5, 17.5);
+    // Brief 009: the trunk joins the middle of the spine, at y = 5, left of the label box.
+    let trunk = screen(&h, 24.0, 5.0);
     pointer_to(&mut h, trunk);
     h.run_steps(5);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
@@ -415,7 +415,7 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     assert_eq!(fan_lines(&mut h), 0);
     ok(&mut h, "redo");
     assert_eq!(views_of(&mut h)[&cable], "fan");
-    assert_eq!(fan_lines(&mut h), 18, "brief 009: trunk 2, box 2, spines 2, bends 6, tails 6");
+    assert_eq!(fan_lines(&mut h), 16, "brief 009: trunk 2, box 2, spines 2, bends 4, tails 6");
     // The setting was remembered in the temporary folder only.
     let text = std::fs::read_to_string(settings.0.join(views::FILE_NAME)).unwrap();
     assert!(text.contains(&cable), "{text}");
@@ -431,13 +431,14 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
         assert!(magenta_near(&trad, crossing(y), 2), "crossing dot at y {y} in 005-traditional.png");
     }
     assert!(drawn_near(&trad, screen(&h, 40.0, 0.0), 1), "W0 drawn in traditional");
-    assert!(!magenta_near(&trad, screen(&h, 24.5, 17.5), 1), "no magenta trunk in traditional");
-    // Fan (brief 009's look): magenta trunk at (24.5,17.5) and tails at (10,0) and (50,10); the
-    // routes not drawn between the spines (x = 30); no crossing dots at the slash.
-    assert!(magenta_near(&fan, screen(&h, 24.5, 17.5), 1), "trunk in 005-fan.png");
+    assert!(!magenta_near(&trad, screen(&h, 24.0, 5.0), 1), "no magenta trunk in traditional");
+    // Fan (brief 009's look, joining the middle): magenta trunk at (24,5) and tails at (10,0) and
+    // (50,10); the routes not drawn between the spines (x = 30); no crossing dots at the slash.
+    assert!(magenta_near(&fan, screen(&h, 24.0, 5.0), 1), "trunk in 005-fan.png");
     assert!(magenta_near(&fan, screen(&h, 10.0, 0.0), 1), "tail in 005-fan.png");
     assert!(magenta_near(&fan, screen(&h, 50.0, 10.0), 1), "tail in 005-fan.png");
-    for y in [0.0, 5.0, 10.0] {
+    // y = 5 is the trunk's line now, so only the outer routes are checked.
+    for y in [0.0, 10.0] {
         assert!(!drawn_near(&fan, screen(&h, 30.0, y), 1), "route at y {y} hidden in 005-fan.png");
     }
     assert!(!magenta_near(&fan, crossing(0.0), 2), "no crossing dot in fan view");
@@ -502,7 +503,7 @@ fn child_trial_reopen() {
     assert!(h.state().notice().is_none_or(|n| !n.contains("could not be read")), "{:?}", h.state().notice());
     let vs = views_of(&mut h);
     assert_eq!((vs[&fan_id].as_str(), vs[&trad_id].as_str()), (Some("fan"), Some("traditional")), "{vs}");
-    assert_eq!(fan_lines(&mut h), 18, "brief 009: trunk 2, box 2, spines 2, bends 6, tails 6");
+    assert_eq!(fan_lines(&mut h), 16, "brief 009: trunk 2, box 2, spines 2, bends 4, tails 6");
     assert_eq!(h.state_mut().status().unwrap().unsaved, 0);
     drop(h);
     // Garbage settings: all traditional, the message once, the open works.
