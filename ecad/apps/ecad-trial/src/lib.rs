@@ -376,6 +376,9 @@ impl Trial {
         self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
+        // Thick and thin cable lines only show with lineweights on (design 009 §9); Show/Hide
+        // Lineweight still toggles it.
+        self.cad.session.settings.lwdisplay = true;
     }
 
     /// Save the project to its file (Save As when it has none yet).

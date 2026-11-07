@@ -23,7 +23,7 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use crate::project::{HandleMap, Mapped, fan_entity};
+use crate::project::{HandleMap, Mapped, part_entity};
 
 /// What [`verify_page`] compared and what disagreed.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -104,13 +104,14 @@ pub fn verify_page_with(
     tol: f64,
 ) -> Verification {
     let mut v = Verification::default();
-    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
     for f in fans.values() {
-        for path in f.paths() {
-            *fan_expected.entry(format!("{:?}", fan_entity(path, Handle(0)).kind)).or_default() += 1;
+        for part in &f.parts {
+            let e = part_entity(part, Handle(0));
+            *fan_expected.entry(format!("{:?} {:?}", e.kind, e.common.lineweight)).or_default() += 1;
         }
     }
     let mut problems: Vec<String> = Vec::new();
@@ -128,7 +129,7 @@ pub fn verify_page_with(
             if e.common.layer != crate::views::LAYER {
                 problems.push(format!("a fan line is not on layer {}", crate::views::LAYER));
             }
-            *fan_shown.entry(format!("{:?}", e.kind)).or_default() += 1;
+            *fan_shown.entry(format!("{:?} {:?}", e.kind, e.common.lineweight)).or_default() += 1;
             continue;
         }
         match item_from(doc, page, e) {

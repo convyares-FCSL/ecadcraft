@@ -147,8 +147,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 t.ops.push(Op::RemoveItem { id, item });
                 counts[2] += 1;
             }
-            // Brief 005: a fan line is a view, not an object; it cannot be erased.
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            // Briefs 005, 009: computed cable drawing is a view, not an object; it cannot be erased.
+            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
                 rep(&mut reps, rid, cx.doc)?;
@@ -179,7 +179,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::Marker(rid, term)) => {
                 let at = marker_position(new).ok_or("terminal markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
@@ -274,8 +274,8 @@ fn copy_batch(
                 (&snap.doc, &snap.map, *handle)
             }
         };
-        if matches!(map.get(h), Some(Mapped::Fan(_))) {
-            return Err(crate::views::FAN_REFUSED.into());
+        if let Some(Mapped::Fan(k)) = map.get(h) {
+            return Err(crate::views::refusal(map, k).into());
         }
         src_doc = Some(doc);
         src_map = Some(map);

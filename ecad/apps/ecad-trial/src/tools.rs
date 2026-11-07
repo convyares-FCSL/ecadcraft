@@ -108,10 +108,17 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cableview"),
     },
     Tool {
+        id: "ecad.cablecore",
+        group: "Wiring",
+        label: "Core Label",
+        tooltip: "Click a wire in a cable and type its core number or colour",
+        kind: Kind::Start("cablecore"),
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
-        tooltip: "Set a property such as the tag (fills in the Command field)",
+        tooltip: "Set a property such as the tag, or a cable's designation or type (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {

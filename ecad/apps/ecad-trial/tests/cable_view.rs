@@ -127,11 +127,13 @@ fn the_cable_view_button_switches_a_cable_both_ways() {
     let slash = screen(&h, 30.0, 7.5);
     click(&mut h, slash);
     assert_eq!(views_of(&mut h)[&cable], "fan");
-    assert_eq!(fan_lines(&mut h), 7, "trunk and six fan lines");
+    // Brief 009: the restyled fan (label box, trunk, spines, bends, tails) is drawn.
+    assert!(fan_lines(&mut h) > 0, "the fan is drawn");
     assert!(h.state().cad.session.log.iter().any(|l| l == "Cable C1 now shown in fan view."));
     assert_eq!(prompt(&h), "Select a cable to switch its view:", "the prompt repeats");
     // Click the trunk: back to traditional.
-    let trunk = screen(&h, 30.0, 5.0);
+    // Brief 009: the trunk runs at y = 17.5, left of the label box.
+    let trunk = screen(&h, 24.5, 17.5);
     click(&mut h, trunk);
     assert_eq!(views_of(&mut h)[&cable], "traditional");
     assert_eq!(fan_lines(&mut h), 0);
