@@ -677,6 +677,12 @@ impl Debugger {
             ));
         }
         ui.separator();
+        // Brief 010: derived from the snapshot's copy of the document, never saved.
+        ui.label(RichText::new("Cable references").strong());
+        for line in ecad_cadcraft::references::diagnostics(&snap.doc) {
+            ui.label(line);
+        }
+        ui.separator();
         ui.label(RichText::new("Runtime events (diagnostics; never saved in the project)").strong());
         pager(ui, "events", snap.events.len(), &mut self.events_page);
         for e in snap.events.iter().rev().skip(self.events_page * PAGE).take(PAGE) {

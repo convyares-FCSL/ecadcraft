@@ -232,13 +232,14 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
     if trunk.iter().any(|q| !q.is_finite()) {
         return FanOnPage::Failed;
     }
-    // What the fan replaces: the members' route representations here, and the slashes.
+    // What the fan replaces: the members' route representations here, and the slashes. A cable
+    // reference end stays drawn (brief 010, design 010 §6.5).
     let members: BTreeSet<ecad_model::ConductorId> = routes.iter().map(|(c, _)| *c).collect();
     let mut hidden = Vec::new();
     for r in doc.representations.values().filter(|r| r.page == page) {
         let hide = match r.subject {
             Subject::Conductor(w) => members.contains(&w),
-            Subject::Cable(x) => x == cable,
+            Subject::Cable(x) => x == cable && !crate::references::is_reference(r),
             Subject::Component(_) => false,
         };
         if hide {
