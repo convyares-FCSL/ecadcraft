@@ -610,33 +610,54 @@ numbers; it is never part of `cargo xtask ci`, `cargo test --workspace` or GitHu
 `ecad/`:
 
 ```sh
-cargo xtask bench                    # small and medium (release build)
-cargo xtask bench --tier all         # small, medium and large; large takes a long time
+cargo xtask bench                    # small and medium (release build), about half an hour
+cargo xtask bench --tier small       # about two minutes
+cargo xtask bench --tier large --runs 1
 cargo xtask bench --tier small --keep C:\dev\ecad-bench-projects
-cargo xtask bench --compare target/bench/load-<date>-<commit>.json
+cargo xtask bench --tier small --compare target/bench/load-<date>-<time>-<commit>.json
 ```
 
 It generates synthetic projects (the same tier always gives the same file), writes them as
 `.ecad` files and times each one. Tiers: small (10 pages, 100 components, 500 wires, 50 cables),
 medium (×10) and large (×50). Each has a **lean** history (one transaction per object) and a
 **churned** one (the same project after moves, renames, undo and redo, about five times as many
-transactions). Columns, each the median of 5 runs:
+transactions). Columns, each the median of 5 runs (`--runs N` to change):
 
 | Column | What it times |
 | --- | --- |
 | file MB, txs | The file's size and its number of transactions. |
-| open ms | Read the file, check every record and replay the history (no drawing). |
-| derive ms | Work out the nets of the opened project. |
+| open ms | Open the file as the app does: take the writer lock, read it, check every record and replay the history (no drawing). |
+| derive ms | Work out the **nets** of the opened project (cable references are the next column). |
+| xref ms | Work out the cable references. Shown as `—` (`null` in the JSON) until brief 010 is merged. |
 | 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
-| save ms | Save one small change (append one transaction and flush). |
+| edit ms | Record one new wire in the open project (one transaction, checked as any edit is). |
+| save ms | Save that wire (append one transaction and flush). |
 
-The table is printed and also written as JSON to `ecad/target/bench/load-<date>-<commit>.json`,
-with the machine, OS, commit and build. `--keep <folder>` keeps the projects so you can open them
-in the trial (**Open project…**). Results depend on the machine and what else it is doing; compare
-runs from the same machine. There are no pass or fail limits yet, and peak memory is not
-measured. The generated cable references (each page's first cable continued on the next page)
-are recorded as brief 010 records them; on a revision without brief 010 they open as ordinary
-points and lines.
+Open and first page open the file afresh in every run; edit and save all run on one copy of the
+file opened once. Every open reads from a warm file cache (the file was just written), so a cold
+open after a restart can be slower.
+
+**How long it takes** (one run on native Windows 11, 2026-11-07, which is also the first result
+below): small about 1 minute, medium about 30 minutes, both together 32 minutes. Opening grows
+with the number of transactions times the size of the project, so the large tier is estimated
+(not measured) at 10 to 12 hours with the default 5 runs, or 1 to 1.5 hours with `--runs 1`.
+
+| tier | history | file MB | txs | open ms | derive ms | 1st page ms | edit ms | save ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| small | lean | 0.86 | 678 | 238 | 0.14 | 230 | 0.81 | 30 |
+| small | churned | 3.24 | 3 386 | 1 050 | 0.14 | 1 064 | 0.92 | 26 |
+| medium | lean | 8.69 | 6 798 | 27 772 | 1.98 | 27 975 | 9.6 | 40 |
+| medium | churned | 32.62 | 33 986 | 138 928 | 1.96 | 140 887 | 15.8 | 62 |
+
+The table is printed and also written as JSON to
+`ecad/target/bench/load-<date>-<time>-<commit>.json` (UTC; an existing file is never
+overwritten), with the machine, OS, commit and build. `--compare` reads the earlier file before
+the run starts and prints the change per row after it. `--keep <folder>` keeps the projects so
+you can open them in the trial (**Open project…**); it refuses to replace a project that is open
+in another session. Results depend on the machine and what else it is doing; compare runs from
+the same machine. There are no pass or fail limits yet, and peak memory is not measured. The
+generated cable references (each page's first cable continued on the next page) are recorded as
+brief 010 records them; on a revision without brief 010 they open as ordinary points and lines.
 
 ## 9. Current limitations
 

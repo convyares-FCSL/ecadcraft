@@ -16,11 +16,25 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 4] =
-    [("open_ms", "open ms"), ("derive_ms", "derive ms"), ("first_page_ms", "1st page ms"), ("save_ms", "save ms")];
+const COLUMNS: [(&str, &str); 6] = [
+    ("open_ms", "open ms"),
+    ("derive_ms", "derive ms"),
+    ("xref_ms", "xref ms"),
+    ("first_page_ms", "1st page ms"),
+    ("edit_ms", "edit ms"),
+    ("save_ms", "save ms"),
+];
 
-fn values(m: &Measured) -> [f64; 4] {
-    [m.open_ms, m.derive_ms, m.first_page_ms, m.save_ms]
+fn values(m: &Measured) -> [Option<f64>; 6] {
+    [Some(m.open_ms), Some(m.derive_ms), m.xref_ms, Some(m.first_page_ms), Some(m.edit_ms), Some(m.save_ms)]
+}
+
+/// A table cell: `—` where nothing was measured.
+fn cell(v: Option<f64>, width: usize, places: usize) -> String {
+    match v {
+        Some(v) => format!("{v:>width$.places$}"),
+        None => format!("{:>width$}", "—"),
+    }
 }
 
 fn mb(bytes: u64) -> f64 {
@@ -30,24 +44,29 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>12} {:>9}\n",
-        "tier", "history", "file MB", "txs", "open ms", "derive ms", "1st page ms", "save ms"
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9}\n",
+        "tier", "history", "file MB", "txs", "open ms", "derive ms", "xref ms", "1st page ms", "edit ms", "save ms"
     );
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {:>10.1} {:>10.2} {:>12.1} {:>9.2}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {}\n",
             r.tier,
             r.variant,
             mb(m.bytes),
             m.transactions,
-            m.open_ms,
-            m.derive_ms,
-            m.first_page_ms,
-            m.save_ms
+            cell(Some(m.open_ms), 10, 1),
+            cell(Some(m.derive_ms), 10, 2),
+            cell(m.xref_ms, 9, 2),
+            cell(Some(m.first_page_ms), 12, 1),
+            cell(Some(m.edit_ms), 9, 2),
+            cell(Some(m.save_ms), 9, 2),
         ));
     }
-    out.push_str(&format!("Median of {runs} runs each; generation not timed. Peak memory is not measured.\n"));
+    out.push_str(&format!(
+        "Median of {runs} runs each; generation not timed. xref (cable references) is measured once brief \
+         010 is merged. Peak memory is not measured.\n"
+    ));
     out
 }
 
@@ -65,16 +84,42 @@ pub fn commit(root: &Path) -> String {
     }
 }
 
-/// Today's UTC date, `YYYY-MM-DD`, and the full UTC time.
-pub fn now() -> (String, String) {
+/// The results file's name stem for this moment, `load-<YYYY-MM-DD>-<HHMMSS>-<commit>` (UTC), and
+/// the full UTC time.
+pub fn stem_and_time(commit: &str) -> (String, String) {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let full = ecad_file::disk::utc(secs);
-    (full.chars().take(10).collect(), full)
+    let date: String = full.chars().take(10).collect();
+    let time: String = full.chars().skip(11).take(8).filter(|c| *c != ':').collect();
+    (format!("load-{date}-{time}-{commit}"), full)
+}
+
+/// A path in `dir` for `stem` that no earlier file has: `<stem>.json`, else `<stem>-2.json`, ….
+pub fn unused_path(dir: &Path, stem: &str) -> std::path::PathBuf {
+    let mut path = dir.join(format!("{stem}.json"));
+    let mut n = 2u32;
+    while path.exists() && n < 10_000 {
+        path = dir.join(format!("{stem}-{n}.json"));
+        n += 1;
+    }
+    path
+}
+
+/// This machine's name: `COMPUTERNAME` (Windows), `HOSTNAME`, then `/etc/hostname`; empty when
+/// none is set.
+fn machine_name() -> String {
+    ["COMPUTERNAME", "HOSTNAME"]
+        .iter()
+        .filter_map(|k| std::env::var(k).ok())
+        .chain(std::fs::read_to_string("/etc/hostname").ok())
+        .map(|s| s.trim().to_string())
+        .find(|s| !s.is_empty())
+        .unwrap_or_default()
 }
 
 /// The JSON written to `target/bench/`.
 pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
-    let machine = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
+    let machine = machine_name();
     let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
     json!({
         "benchmark": "ecad project load (brief 012)",
@@ -93,7 +138,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "transactions": m.transactions,
                 "open_ms": m.open_ms,
                 "derive_ms": m.derive_ms,
+                "xref_ms": m.xref_ms,
                 "first_page_ms": m.first_page_ms,
+                "edit_ms": m.edit_ms,
                 "save_ms": m.save_ms,
             })
         }).collect::<Vec<_>>(),
@@ -126,10 +173,14 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
             continue;
         };
         for ((key, _), now) in COLUMNS.iter().zip(values(&r.measured)) {
-            let cell = match before.get(*key).and_then(Value::as_f64) {
-                Some(was) if was > 0.0 => format!("{was:.1} → {now:.1} ({:+.0}%)", (now - was) / was * 100.0),
-                Some(was) => format!("{was:.1} → {now:.1}"),
-                None => "—".into(),
+            let cell = match (before.get(*key).and_then(Value::as_f64), now) {
+                (Some(was), Some(now)) if was > 0.0 => {
+                    format!("{was:.1} → {now:.1} ({:+.0}%)", (now - was) / was * 100.0)
+                }
+                (Some(was), Some(now)) => format!("{was:.1} → {now:.1}"),
+                (None, Some(now)) => format!("— → {now:.1}"),
+                (Some(was), None) => format!("{was:.1} → —"),
+                (None, None) => "—".into(),
             };
             out.push_str(&format!("{cell:>22}"));
         }

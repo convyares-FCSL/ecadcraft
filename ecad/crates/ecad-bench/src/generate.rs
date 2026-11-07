@@ -11,7 +11,8 @@
 //!   representation of the cable with role [`REFERENCE_ROLE`] and one Point item), one stub per
 //!   member on the next page (a second route of the same conductor) and a slash there.
 //! - Only existing ops are used, shaped as the commands record them (`place`, `wire`,
-//!   `cableslash`, `newpage`, `cableref`, `cablecontinue`, `renamepage`, `move`, `undo`, `redo`).
+//!   `cableslash`, `newpage`, `cableref`, `cablecontinue`, `move`, `undo`, `redo`; a page rename is
+//!   recorded as a page removed and added again, the only way an existing op can rename one).
 //! - **Lean**: one transaction per object. **Churned**: the same final document, each object step
 //!   followed by an undo, a redo and an edit made and reverted (a move or a rename), so the log
 //!   is about five times longer.
@@ -35,6 +36,7 @@ use ecad_store::{Medium, MemoryMedium};
 
 /// The role brief 010 gives a cable reference end (`ecad_model::derive::REFERENCE_ROLE` once that
 /// brief is merged).
+// TODO(brief 010, PR #28): use `ecad_model::derive::REFERENCE_ROLE` once that PR is merged.
 pub const REFERENCE_ROLE: &str = "reference";
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
@@ -215,6 +217,55 @@ fn drawn(subject: Subject, page: PageId, role: &str, items: Vec<ItemId>) -> Repr
     Representation { subject, page, form: Form::Drawn, role: role.into(), items, connection_points: BTreeMap::new() }
 }
 
+/// The ops of one wire as `wire` records it: a conductor tagged `tag`, its route on `page`
+/// through `vertices`, and its ends attached to `ends` (A, then B). Returns the new conductor.
+pub fn wire_ops(
+    ids: &mut IdAllocator,
+    page: PageId,
+    style: &Style,
+    vertices: Vec<Pt>,
+    ends: [TerminalId; 2],
+    tag: &str,
+) -> (ConductorId, Vec<Op>) {
+    let (w, item, rep): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let mut conductor = Conductor::default();
+    conductor.properties.insert("tag".into(), tag.into());
+    let [a, b] = ends;
+    let ops = vec![
+        Op::CreateConductor { id: w, conductor },
+        Op::AddItem {
+            id: item,
+            item: Item {
+                page,
+                style: style.clone(),
+                kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }),
+            },
+        },
+        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Conductor(w), page, "route", vec![item]) },
+        Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
+        Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b) },
+    ];
+    (w, ops)
+}
+
+/// The add-wire transaction the edit timing commits on an opened project: a wire on the first
+/// page between the first two distinct terminals shown there, on layer `0`. `ids` must be a
+/// stream the project has not used.
+///
+/// # Errors
+/// The project has no page, no layer `0`, or fewer than two terminals on its first page.
+pub fn added_wire(doc: &Document, ids: &mut IdAllocator, tag: &str) -> Result<Vec<Op>, String> {
+    let page = *doc.page_order.first().ok_or("the project has no page")?;
+    let layer =
+        doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
+    let shown = ecad_model::derive::terminal_positions(doc, page);
+    let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
+    let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
+    let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let bend = Pt::new(p1.x, p2.y);
+    Ok(wire_ops(ids, page, &style, vec![p1, bend, p2], [t1, t2], tag).1)
+}
+
 /// Generate `tier` with the history of `variant`.
 ///
 /// # Errors
@@ -357,24 +408,8 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let high = ROW_Y + 20.0 + LANE * lane;
             let mid = a.x + PITCH / 2.0;
             let vertices = vec![a, Pt::new(a.x, low), Pt::new(mid, low), Pt::new(mid, high), Pt::new(z.x, high), z];
-            let (w, item, rep): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
             let tag = format!("W{wire_no}");
-            let mut conductor = Conductor::default();
-            conductor.properties.insert("tag".into(), tag.clone());
-            let ops = vec![
-                Op::CreateConductor { id: w, conductor },
-                Op::AddItem {
-                    id: item,
-                    item: Item {
-                        page,
-                        style: style.clone(),
-                        kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }),
-                    },
-                },
-                Op::LinkRepresentation { id: rep, rep: drawn(Subject::Conductor(w), page, "route", vec![item]) },
-                Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(from_t) },
-                Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(to_t) },
-            ];
+            let (w, ops) = wire_ops(&mut ids, page, &style, vertices, [from_t, to_t], &tag);
             b.step("Wire", ops, "Rename", vec![renamed(ObjectRef::Conductor(w), &tag)])?;
             if let Some(list) = pair_wires.get_mut(pair) {
                 list.push(w);

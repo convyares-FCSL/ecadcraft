@@ -32,24 +32,26 @@ pub use generate::{Generated, TIERS, Tier, Variant, generate, tier};
 
 /// What `cargo xtask bench` accepts.
 pub const USAGE: &str = "usage: cargo xtask bench [--tier small|medium|large|all|<list>] [--keep <folder>] \
-                         [--compare <earlier.json>]\n  --tier     tiers to measure, comma-separated (default \
-                         small,medium)\n  --keep     write the generated projects to <folder> and keep them\n  \
-                         --compare  print the change per row against an earlier results file";
+                         [--compare <earlier.json>] [--runs N]\n  --tier     tiers to measure, comma-separated \
+                         (default small,medium)\n  --keep     write the generated projects to <folder> and keep \
+                         them\n  --compare  print the change per row against an earlier results file\n  --runs     \
+                         runs per measurement, the median is reported (default 5)";
 
 /// Parsed options.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     pub tiers: Vec<Tier>,
     pub keep: Option<PathBuf>,
     pub compare: Option<PathBuf>,
+    pub runs: usize,
 }
 
 /// Parse the command-line options.
 ///
 /// # Errors
-/// An unknown option or tier, or a missing value.
+/// An unknown option or tier, a missing or bad value.
 pub fn parse(args: &[String]) -> Result<Options, String> {
-    let mut o = Options::default();
+    let mut o = Options { tiers: Vec::new(), keep: None, compare: None, runs: measure::RUNS };
     let mut tiers = "small,medium".to_string();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -58,6 +60,13 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             "--tier" | "--tiers" => tiers = value()?,
             "--keep" => o.keep = Some(PathBuf::from(value()?)),
             "--compare" => o.compare = Some(PathBuf::from(value()?)),
+            "--runs" => {
+                let v = value()?;
+                o.runs =
+                    v.trim().parse::<usize>().ok().filter(|n| (1..=measure::MAX_RUNS).contains(n)).ok_or_else(
+                        || format!("--runs must be a whole number from 1 to {}\n{USAGE}", measure::MAX_RUNS),
+                    )?;
+            }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown option {other}\n{USAGE}")),
         }
@@ -87,37 +96,37 @@ pub fn ecad_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Generate, write and measure one tier, lean then churned; checks that both replay to the same
-/// document.
+/// Generate one tier, lean and churned, check that both histories end in the same document, write
+/// both files to `folder`, then measure each.
 ///
 /// # Errors
-/// Generation, writing or a measurement failed, or the two histories replay differently.
+/// Generation fails, the two histories end differently (before anything is measured), a target
+/// file is open in another session, or a measurement fails.
 pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Result<Vec<report::Row>, String> {
-    let mut rows = Vec::new();
-    let mut docs = Vec::new();
-    for variant in Variant::BOTH {
-        eprintln!("{} {}: generating…", tier.name, variant.name());
-        let g = generate(tier, variant)?;
-        let path = folder.join(format!("{}-{}.ecad", tier.name, variant.name()));
-        measure::remove(&path);
-        let bytes = g.file_bytes()?;
-        std::fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
-        drop(g);
-        eprintln!(
-            "{} {}: measuring {} ({} runs of each; a large project takes a long time)…",
-            tier.name,
-            variant.name(),
-            path.display(),
-            runs
-        );
-        let (measured, doc) = measure::measure(&path, runs, scratch)?;
-        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured });
-        docs.push(doc);
-    }
-    if let [lean, churned] = docs.as_slice()
-        && lean != churned
+    let mut paths = Vec::new();
     {
-        return Err(format!("tier {}: the lean and churned projects replay to different documents", tier.name));
+        eprintln!("{}: generating the lean and churned projects…", tier.name);
+        let lean = generate(tier, Variant::Lean)?;
+        let churned = generate(tier, Variant::Churned)?;
+        if lean.ledger.document() != churned.ledger.document() {
+            return Err(format!("tier {}: the lean and churned histories end in different documents", tier.name));
+        }
+        for g in [&lean, &churned] {
+            let path = folder.join(format!("{}-{}.ecad", tier.name, g.variant.name()));
+            measure::claim(&path)?;
+            let bytes = g.file_bytes()?;
+            std::fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+            paths.push((g.variant, path));
+        }
+    }
+    let mut rows = Vec::new();
+    for (variant, path) in paths {
+        eprintln!("{} {}: measuring {} ({runs} runs of each)…", tier.name, variant.name(), path.display());
+        let measured = measure::measure(&path, runs, scratch);
+        // The opens leave an empty lock file beside a kept project: remove it once released.
+        measure::release_lock_file(&path);
+        let (measured, _) = measured?;
+        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured });
     }
     Ok(rows)
 }
@@ -125,9 +134,22 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
 /// The whole benchmark: what `cargo xtask bench` runs.
 ///
 /// # Errors
-/// Bad options, or any step failed.
+/// Bad options, an unreadable `--compare` file, or any step failed.
 pub fn main_with(args: &[String]) -> Result<(), String> {
     let o = parse(args)?;
+    // Read the earlier results first, so a bad path fails before a long run.
+    let earlier = match &o.compare {
+        Some(c) => {
+            let text = std::fs::read_to_string(c).map_err(|e| format!("{}: {e}", c.display()))?;
+            let v: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| format!("{}: not a results file: {e}", c.display()))?;
+            if v.get("rows").and_then(serde_json::Value::as_array).is_none() {
+                return Err(format!("{}: not a results file (no `rows`)", c.display()));
+            }
+            Some(v)
+        }
+        None => None,
+    };
     let root = ecad_root();
     let scratch = measure::scratch_dir("work")?;
     let folder = match &o.keep {
@@ -140,30 +162,28 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
     let result = (|| {
         let mut rows = Vec::new();
         for t in &o.tiers {
-            rows.extend(run_tier(*t, &folder, &scratch, measure::RUNS)?);
+            rows.extend(run_tier(*t, &folder, &scratch, o.runs)?);
         }
         Ok::<_, String>(rows)
     })();
     let _ = std::fs::remove_dir_all(&scratch);
     let rows = result?;
-    println!("{}", report::table(&rows, measure::RUNS));
-    let (date, when) = report::now();
+    println!("{}", report::table(&rows, o.runs));
     let commit = report::commit(&root);
+    let (stem, when) = report::stem_and_time(&commit);
     let out_dir = root.join("target").join("bench");
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
-    let out = out_dir.join(format!("load-{date}-{commit}.json"));
-    let value = report::json(&rows, measure::RUNS, &commit, &when);
+    // Never overwrite an earlier run, which may be the one being compared with.
+    let out = report::unused_path(&out_dir, &stem);
+    let value = report::json(&rows, o.runs, &commit, &when);
     let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
     std::fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
     println!("Results written to {}", out.display());
     if let Some(k) = &o.keep {
-        println!("Projects kept in {} (open them in the trial with OPEN).", k.display());
+        println!("Projects kept in {} (open them in the trial with Open project…).", k.display());
     }
-    if let Some(c) = &o.compare {
-        let text = std::fs::read_to_string(c).map_err(|e| format!("{}: {e}", c.display()))?;
-        let earlier: serde_json::Value =
-            serde_json::from_str(&text).map_err(|e| format!("{}: not a results file: {e}", c.display()))?;
-        println!("{}", report::compare(&rows, &earlier)?);
+    if let Some(earlier) = &earlier {
+        println!("{}", report::compare(&rows, earlier)?);
     }
     Ok(())
 }
