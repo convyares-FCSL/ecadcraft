@@ -169,6 +169,20 @@ impl ProjectHandle {
     pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
         Project::open_file(s, path, seed)
     }
+
+    /// Open a project file from disk, remembering cable views in `settings`; see
+    /// [`Project::open_file_in`].
+    ///
+    /// # Errors
+    /// As [`ProjectHandle::open_file`].
+    pub fn open_file_in(
+        s: &mut Session,
+        path: &str,
+        seed: u64,
+        settings: crate::views::Settings,
+    ) -> Result<(Self, String), String> {
+        Project::open_file_in(s, path, seed, settings)
+    }
 }
 
 /// The project that owns the active document, for ECAD commands.

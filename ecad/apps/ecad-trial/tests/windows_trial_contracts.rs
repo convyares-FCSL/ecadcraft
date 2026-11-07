@@ -27,6 +27,7 @@ impl Drop for TempDir {
 
 fn trial(home: Option<&Path>, snapshots: Option<PathBuf>) -> Trial {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(snapshots).unwrap();
     t.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
@@ -211,6 +212,7 @@ fn a_second_opener_through_another_spelling_is_read_only() {
     assert_eq!(save_as(&mut first, &own), None);
     let other = d.0.join("sHARED.ecad").display().to_string().replace('\\', "/");
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut second = Trial::with_file(None, &other).unwrap();
     let s = second.status().unwrap();
     assert!(s.file.read_only.is_some(), "second opener must be read-only: {:?}", s.file);
@@ -310,6 +312,7 @@ fn an_unopenable_project_argument_is_reported_in_the_window() {
     ecad_cadcraft::install();
     for name in ["nothere.ecad", "CON.ecad"] {
         let typed = d.0.join(name).display().to_string();
+        ecad_cadcraft::views::isolate_for_tests();
         let mut t = Trial::with_file(None, &typed).unwrap();
         let notice = t.notice().unwrap_or_default().to_string();
         assert!(notice.contains("could not be opened"), "{name}: {notice}");

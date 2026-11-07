@@ -52,6 +52,10 @@ membership or connections, and is instant.
    by the control's element name.
 6. Edits refused in fan view leave the head unchanged and give the spec's message.
 
+Note (owner answer Q4 to design 005, 2026-11-06): a cable of one conductor is not offered fan
+view. This replaces criterion 3's one-conductor wording: switching a one-wire cable to fan is
+refused with a message, and a fan cable left with one conductor still draws without panic.
+
 ## Needs owner check
 
 Whether the fan view reads well and the switch feels instant on Windows.

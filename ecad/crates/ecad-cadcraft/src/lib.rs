@@ -15,6 +15,8 @@
 //! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry, and
 //!   [`interact`] their click-based interactive forms, the terminal and wire-end marks drawn over
 //!   pages, and the hover description. [`slash`] decides what a cable slash crosses (brief 004).
+//! - [`views`] holds each cable's traditional / fan view (brief 005): presentation only, drawn by
+//!   the projection, remembered per user outside the `.ecad` file.
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
@@ -42,13 +44,15 @@ pub mod project;
 pub mod slash;
 mod translate;
 pub mod verify;
+pub mod views;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use file::{
     FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
 };
 pub use project::{
-    Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, project_page, session_seed,
+    Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, View, project_page, project_page_with,
+    session_seed,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

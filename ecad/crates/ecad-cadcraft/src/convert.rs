@@ -197,6 +197,9 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     if e.common.layer == MARKER_LAYER {
         return Err(format!("the {MARKER_LAYER} layer is reserved for terminal markers"));
     }
+    if e.common.layer == crate::views::LAYER {
+        return Err(crate::views::LAYER_RESERVED.into());
+    }
     let layer: LayerId =
         doc.layers.iter().find(|(_, l)| l.name == e.common.layer).map(|(id, _)| *id).ok_or_else(|| {
             format!("layer {} is not part of the project (layer edits are not supported yet)", e.common.layer)

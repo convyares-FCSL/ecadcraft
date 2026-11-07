@@ -3,9 +3,10 @@
 //!
 //! They reach the command line, scripts, the control channel and MCP through the engine's
 //! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect`,
-//! `disconnect` and `cableslash` also have click-based interactive forms ([`crate::interact`],
-//! briefs 008 and 004), started by a bare command name, a menu or a tool button; they commit
-//! through these JSON forms.
+//! `disconnect`, `cableslash` and `cableview` also have click-based interactive forms
+//! ([`crate::interact`], briefs 008, 004 and 005), started by a bare command name, a menu or a
+//! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
+//! view is presentation only ([`crate::views`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
 //! prompt.
 
@@ -25,6 +26,7 @@ use crate::interact;
 use crate::project::{Mapped, Project};
 use crate::slash::{self, MAX_CABLE_MEMBERS};
 use crate::translate::terminal_at;
+use crate::views::{self, View};
 
 /// The commands this crate adds.
 pub fn specs() -> Vec<CommandSpec> {
@@ -52,6 +54,10 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("cableslash", "Cable Slash", run_cableslash)
             .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
+            .noundo(),
+        CommandSpec::new("cableview", "Cable View", run_cableview)
+            .params("{cable?: id, view?: \"traditional\"|\"fan\"} (no cable: every cable's view; presentation only)")
+            .interactive(interact::cableview)
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
             .params("{conductor: id} | {component: id} | {cable: id}")
@@ -204,6 +210,7 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         for h in hs {
             match map.get(h) {
                 Some(Mapped::Item(i)) if p.ledger.document().representation_of_item(i).is_none() => items.push(i),
+                Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
                 Some(_) => {
                     return Err(
                         "only plain geometry can be converted; part of the selection already has a meaning".into()
@@ -245,7 +252,11 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
     let label = params.get("label").and_then(Value::as_str).map(str::to_string);
     with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
-        let Some(Mapped::Item(item)) = map.get(h) else { return Err("pick an item of a component".into()) };
+        let item = match map.get(h) {
+            Some(Mapped::Item(item)) => item,
+            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            _ => return Err("pick an item of a component".into()),
+        };
         let doc = p.ledger.document();
         let (rid, r) = doc.representation_of_item(item).ok_or("that item is not part of a component")?;
         let Subject::Component(c) = r.subject else { return Err("that item is not part of a component".into()) };
@@ -597,6 +608,64 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
             "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         }))
+    })
+}
+
+/// `cableview` (brief 005, design 005 §3.4): show a cable traditional or fan. Presentation only:
+/// no transaction, no head move, no unsaved change, never refused because of the project's state
+/// (read-only, an unavailable page). Without `cable` it changes nothing and lists every cable's
+/// view.
+fn run_cableview(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let cable: Option<CableId> = opt_id(params, "cable").map_err(err)?;
+    let bad_view = || err("`view` must be \"traditional\" or \"fan\"");
+    let view = match params.get("view") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(View::parse(t).ok_or_else(bad_view)?),
+        Some(_) => return Err(bad_view()),
+    };
+    if cable.is_none() && view.is_some() {
+        return Err(err("`view` needs `cable`"));
+    }
+    with_any_page(s, |p, pg| {
+        let doc = p.ledger.document();
+        let Some(k) = cable else {
+            let views: serde_json::Map<String, Value> =
+                doc.cables.keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
+            return Ok(json!({ "views": views }));
+        };
+        if !doc.cables.contains_key(&k) {
+            return Err("no such cable".into());
+        }
+        if p.faults.fail_view_switches > 0 {
+            p.faults.fail_view_switches -= 1;
+            return Err("injected view switch failure".into());
+        }
+        let current = p.view_of(k);
+        let target = view.unwrap_or_else(|| current.toggled());
+        if target == View::Fan && current != View::Fan && !views::offers_fan(doc, k) {
+            return Err(format!("Cable {} {}", views::cable_title(doc, k), views::ONE_WIRE));
+        }
+        let (changed, stored) = p.set_view(pg, k, target);
+        let mut r = json!({"cable": k.hex(), "view": target.name()});
+        let remembered = match (&stored, p.settings.dir()) {
+            (Ok(()), Some(_)) => true,
+            (Err(e), Some(_)) => {
+                r["reason"] = Value::String(e.clone());
+                false
+            }
+            (_, None) => {
+                if changed && !p.said_not_remembered {
+                    p.said_not_remembered = true;
+                    r["notice"] = Value::String(views::NOT_REMEMBERED.into());
+                }
+                false
+            }
+        };
+        r["remembered"] = Value::Bool(remembered);
+        if !changed {
+            r["changed"] = Value::Bool(false);
+        }
+        Ok(r)
     })
 }
 

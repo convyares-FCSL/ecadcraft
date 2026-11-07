@@ -12,6 +12,7 @@ use serde_json::json;
 
 fn trial() -> Trial {
     ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     Trial::new(None).unwrap()
 }
 
@@ -132,6 +133,7 @@ fn the_interactive_buttons_start_their_prompts() {
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
         ("Cable Slash", "cableslash", "Specify first point of cable slash:"),
+        ("Cable View", "cableview", "Select a cable to switch its view:"),
     ];
     for (label, id, first) in firsts {
         h.state_mut().tool("ecad.newpage").unwrap();
@@ -207,6 +209,7 @@ fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
     let mut first = trial();
     first.save_as(&path).unwrap();
     // A second window: the same file opens read-only.
+    ecad_cadcraft::views::isolate_for_tests();
     let mut second = Trial::with_file(None, &path).unwrap();
     assert!(second.status().unwrap().file.read_only.is_some());
     second.tool("ecad.inspect").unwrap();

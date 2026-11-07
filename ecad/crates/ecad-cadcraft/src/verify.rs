@@ -20,10 +20,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
-use ecad_model::{Document, End, Form, ItemKind, PageId, Pt, Subject};
+use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use crate::project::{HandleMap, Mapped};
+use crate::project::{HandleMap, Mapped, fan_entity};
 
 /// What [`verify_page`] compared and what disagreed.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -89,7 +89,30 @@ fn same_points(a: Vec<Pt>, b: Vec<Pt>) -> bool {
 
 /// Check that `drawing` (with `map`) shows `page` of `doc`, without relying on handle numbers.
 pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap) -> Verification {
+    verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0)
+}
+
+/// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
+/// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
+/// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
+pub fn verify_page_with(
+    doc: &Document,
+    page: PageId,
+    drawing: &Drawing,
+    map: &HandleMap,
+    fan: &BTreeSet<CableId>,
+    tol: f64,
+) -> Verification {
     let mut v = Verification::default();
+    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
+    let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
+    let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    for f in fans.values() {
+        for path in f.paths() {
+            *fan_expected.entry(format!("{:?}", fan_entity(path, Handle(0)).kind)).or_default() += 1;
+        }
+    }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
 
@@ -101,19 +124,29 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
             markers_shown.push(p);
             continue;
         }
+        if let Some(Mapped::Fan(_)) = map.get(e.handle) {
+            if e.common.layer != crate::views::LAYER {
+                problems.push(format!("a fan line is not on layer {}", crate::views::LAYER));
+            }
+            *fan_shown.entry(format!("{:?}", e.kind)).or_default() += 1;
+            continue;
+        }
         match item_from(doc, page, e) {
             Ok(item) => *shown.entry(serde_json::to_string(&item).unwrap_or_default()).or_default() += 1,
             Err(m) => problems.push(format!("an entity cannot be read back as an item: {m}")),
         }
     }
     let mut expected: BTreeMap<String, usize> = BTreeMap::new();
-    for item in doc.items.values().filter(|i| i.page == page) {
+    for item in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)).map(|(_, i)| i) {
         *expected.entry(serde_json::to_string(item).unwrap_or_default()).or_default() += 1;
     }
     let items: usize = expected.values().sum();
     if shown != expected {
         let missing = expected.iter().filter(|(k, n)| shown.get(*k) != Some(n)).count();
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
+    }
+    if fan_shown != fan_expected {
+        problems.push("the cable fans drawn differ from the fans computed from the document".into());
     }
 
     // 2. Identity: each mapped handle shows the item (or marker) it is mapped to, and the map
@@ -124,7 +157,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
     if map.len() != entities.len() {
         problems.push(format!("{} entities but {} mapped handles", entities.len(), map.len()));
     }
-    for (id, item) in doc.items.iter().filter(|(_, i)| i.page == page) {
+    for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
         match map.item(*id).and_then(|h| entities.get(&h)) {
             Some(e) if item_from(doc, page, e).is_ok_and(|x| x == *item) => {}
             Some(_) => problems.push(format!("item {id} is mapped to an entity that shows something else")),
