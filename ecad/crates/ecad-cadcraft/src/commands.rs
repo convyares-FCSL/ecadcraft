@@ -1050,10 +1050,10 @@ fn run_renamepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         if old.title == title {
             return Ok(json!({"page": page.hex(), "title": title, "index": index + 1, "changed": false}));
         }
-        let ops = vec![
-            Op::RemovePage { id: page, page: old, index },
-            Op::AddPage { id: page, page: Page { title: title.clone() }, index },
-        ];
+        // The page as it is with only its title changed, so any other field of a page is kept.
+        let mut renamed = old.clone();
+        renamed.title = title.clone();
+        let ops = vec![Op::RemovePage { id: page, page: old, index }, Op::AddPage { id: page, page: renamed, index }];
         p.apply_edit(pg, "renamepage", "Rename page", ops)?;
         Ok(json!({"page": page.hex(), "title": title, "index": index + 1, "changed": true}))
     })

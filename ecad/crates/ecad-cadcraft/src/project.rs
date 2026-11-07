@@ -486,11 +486,14 @@ pub fn project_page_with(
             map.insert_fan(*k, index, h);
         }
     }
-    // Brief 010: each reference's derived text, on the reserved layer (it plots and exports).
-    for m in crate::references::markers_on_page(doc, page) {
-        let h = prev.ref_text(m.reference).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::references::text_entity(&m, h));
-        map.insert_ref_text(m.reference, h);
+    // Brief 010: each reference end's derived text, on the reserved layer (it plots and exports).
+    // The references are derived once for this draw.
+    let markers = crate::references::markers_on_page(doc, page);
+    for (r, e) in
+        crate::references::draw_reference_ends(&markers, |r| prev.ref_text(r).unwrap_or_else(|| d.new_handle()))
+    {
+        map.insert_ref_text(r, e.handle);
+        ents.push(e);
     }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
@@ -1292,7 +1295,7 @@ impl DocumentOwner for Project {
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
         // A reference text on another open page may name this page's objects (brief 010): those
         // pages are redrawn from the document too.
-        if !linked.is_empty() || !crate::references::all(self.ledger.document()).is_empty() {
+        if !linked.is_empty() || self.ledger.document().representations.values().any(crate::references::is_reference) {
             let others: Vec<PageId> = self
                 .pages
                 .iter()
@@ -1304,6 +1307,9 @@ impl DocumentOwner for Project {
             }
         }
         self.say_orphaned(pg, &linked);
+        for note in &t.notes {
+            pg.echo(note.clone());
+        }
         self.sync_saved(pg);
         Verdict::Accept
     }

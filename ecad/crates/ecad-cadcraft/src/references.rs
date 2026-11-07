@@ -29,7 +29,7 @@ use ecad_model::{
     CableId, ConductorId, Document, End, ItemId, LengthUnit, PageId, Pt, Representation, RepresentationId, Subject,
 };
 
-pub use ecad_model::derive::REFERENCE_ROLE;
+pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
 
 /// `ecad.reference`: ACI 6, magenta (the colour of `ECAD-CABLES`, so a linked text is ByLayer).
 pub const REFERENCE_ACI: u8 = 6;
@@ -44,8 +44,6 @@ pub const STUB_SPACING_MM: f64 = 5.0;
 pub const RING_PX: f32 = 12.0;
 /// `ecad.bold`, in screen pixels.
 pub const BOLD_PX: f32 = 2.0;
-/// Most references one cable may have in this version (owner question Q2).
-pub const MAX_REFERENCES: usize = ecad_inspect::MAX_REFERENCES_PER_CABLE;
 
 /// Refusal of an edit of the derived text (design 010 §9).
 pub const TEXT_DERIVED: &str = "The reference text is derived; move the reference point instead.";
@@ -117,9 +115,15 @@ pub struct Marker {
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
 /// out; `cablerefs` and the hover still list them with `/?`.
 pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
+    markers_from(doc, cable_references(doc), page)
+}
+
+/// [`markers_on_page`] from references already derived (`refs`, as [`all`] returns them), so one
+/// draw derives them once.
+pub fn markers_from(doc: &Document, refs: Vec<CableReference>, page: PageId) -> Vec<Marker> {
     let z = sizes(doc);
-    references_on_page(doc, page)
-        .into_iter()
+    refs.into_iter()
+        .filter(|r| r.page == page)
         .filter_map(|r| {
             let at = r.at?;
             let text_at = Pt::new(at.x + r.text_dir.x * z.spacing, at.y + r.text_dir.y * z.spacing);
@@ -143,6 +147,24 @@ pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
 /// `reference` is no cable reference.
 pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(String, bool)> {
     cable_references(doc).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan))
+}
+
+// ---------------------------------------------------------------- the minimal marker drawing
+//
+// BRIEF-009 MERGE: this is the only code of brief 010 that draws a reference end on the page (the
+// overlay ring aside, `interact::overlay_marks`). At the merge with brief 009, its `look.rs`
+// becomes the only code that draws reference ends: `draw_reference_ends` and `text_entity` are
+// replaced there (keeping the `Mapped::RefText` mapping so hover, Go to Reference and erasing the
+// text keep working), and `look::reference_text` takes its text from [`marker_text`].
+
+/// The entities brief 010 draws for the reference ends on a page (one Text each), from markers
+/// already derived; each with the reference it is mapped to (`Mapped::RefText`). `handle_for`
+/// gives the handle to use (the previous one where the reference was already drawn).
+pub fn draw_reference_ends(
+    markers: &[Marker],
+    mut handle_for: impl FnMut(RepresentationId) -> Handle,
+) -> Vec<(RepresentationId, Entity)> {
+    markers.iter().map(|m| (m.reference, text_entity(m, handle_for(m.reference)))).collect()
 }
 
 /// The projected text entity of a marker: on `ECAD-CABLES`, middle vertical alignment, ByLayer
@@ -173,17 +195,31 @@ pub fn text_entity(m: &Marker, handle: Handle) -> Entity {
 /// reference on the page, each member route there whose conductor also has a route on another
 /// page, the end nearer to the reference point. The overlay draws no end mark there.
 pub fn leaving_ends(doc: &Document, page: PageId) -> BTreeSet<(ConductorId, End)> {
-    let markers = markers_on_page(doc, page);
+    leaving_ends_for(doc, page, &markers_on_page(doc, page))
+}
+
+/// [`leaving_ends`] for markers already derived. At most [`MAX_REFERENCES_PER_CABLE`] markers of
+/// one cable are considered (more come only from a hostile file), so the work stays bounded.
+pub fn leaving_ends_for(doc: &Document, page: PageId, markers: &[Marker]) -> BTreeSet<(ConductorId, End)> {
     if markers.is_empty() {
         return BTreeSet::new();
     }
+    let mut per_cable: BTreeMap<CableId, usize> = BTreeMap::new();
+    let markers: Vec<&Marker> = markers
+        .iter()
+        .filter(|m| {
+            let n = per_cable.entry(m.cable).or_default();
+            *n += 1;
+            *n <= MAX_REFERENCES_PER_CABLE
+        })
+        .collect();
     let routes = route_ends_by_page(doc);
     let mut pages_of: BTreeMap<ConductorId, usize> = BTreeMap::new();
     for (c, _) in routes.keys() {
         *pages_of.entry(*c).or_default() += 1;
     }
     let mut out = BTreeSet::new();
-    for m in &markers {
+    for m in markers {
         let Some(cable) = doc.cables.get(&m.cable) else { continue };
         for member in &cable.members {
             let Some((a, b)) = routes.get(&(member.conductor, page)) else { continue };
@@ -194,6 +230,36 @@ pub fn leaving_ends(doc: &Document, page: PageId) -> BTreeSet<(ConductorId, End)
         }
     }
     out
+}
+
+/// The reference end on `page` under `p`: the nearest reference point within `radius`, else a
+/// reference whose drawn text (its box, grown by `radius`) holds `p`. Used before the generic pick
+/// by Go to Reference and the hover (design 010 §4.5, §8), because a continued end's middle stub
+/// starts exactly on its reference point and would otherwise win the pick.
+pub fn reference_at(doc: &Document, page: PageId, p: Pt, radius: f64) -> Option<RepresentationId> {
+    if !(p.is_finite() && radius.is_finite() && radius >= 0.0) {
+        return None;
+    }
+    let markers = markers_on_page(doc, page);
+    let near = markers
+        .iter()
+        .map(|m| (m.at.dist(p), m.reference))
+        .filter(|(d, _)| *d <= radius)
+        .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    if let Some((_, r)) = near {
+        return Some(r);
+    }
+    markers.iter().find(|m| text_box_holds(m, p, radius)).map(|m| m.reference)
+}
+
+/// Whether `p` lies in a marker's text box grown by `pad`. The width is estimated from the
+/// characters (the drafting font's glyphs are at most about one text height wide).
+fn text_box_holds(m: &Marker, p: Pt, pad: f64) -> bool {
+    let width = m.height * m.text.chars().count() as f64;
+    let (x0, x1) =
+        if m.right_aligned { (m.text_at.x - width, m.text_at.x) } else { (m.text_at.x, m.text_at.x + width) };
+    let half = m.height / 2.0;
+    p.x >= x0 - pad && p.x <= x1 + pad && p.y >= m.text_at.y - half - pad && p.y <= m.text_at.y + half + pad
 }
 
 /// The pages (in page order) where `conductor` has a route.
@@ -276,7 +342,7 @@ pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(
     if refs.iter().any(|(_, r)| r.page == page) {
         return Err(already_here(doc, cable));
     }
-    if refs.len() >= MAX_REFERENCES {
+    if refs.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(already_continues(doc, cable));
     }
     let routes = route_ends_by_page(doc);
@@ -356,7 +422,7 @@ pub fn plan_continue(
     let c = doc.cables.get(&cable).ok_or("no such cable")?;
     let refs = references_of(doc, cable);
     let Some((source, s)) = refs.first().map(|(id, r)| (*id, *r)) else { return Err(no_reference(doc, cable)) };
-    if refs.len() >= MAX_REFERENCES {
+    if refs.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(already_continues(doc, cable));
     }
     if s.page == page {
@@ -522,13 +588,17 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
         }
         Some(o) => {
             lines.push(format!("Other end: {}", place(o)));
+            // Built once per hover; the lines stop one past the hover's cap, so the caller still
+            // says `… and N more`.
             let routes = route_ends_by_page(doc);
-            for m in doc.cables.get(&r.cable).map(|c| c.members.as_slice()).unwrap_or_default() {
-                if !routes.contains_key(&(m.conductor, o.page)) {
-                    continue;
+            let shown: BTreeSet<ecad_model::TerminalId> =
+                ecad_model::derive::terminal_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
+            let members = doc.cables.get(&r.cable).map(|c| c.members.as_slice()).unwrap_or_default();
+            for m in members.iter().filter(|m| routes.contains_key(&(m.conductor, o.page))) {
+                if lines.len() > crate::interact::MAX_HOVER_LINES {
+                    break;
                 }
-                let terminal =
-                    doc.conductors.get(&m.conductor).map(|c| terminals_on(doc, o.page, c)).unwrap_or_default();
+                let terminal = doc.conductors.get(&m.conductor).and_then(|c| terminal_on(doc, &shown, c));
                 let to = terminal.unwrap_or_else(|| "(not connected)".into());
                 lines.push(format!("  {} -> {to}", crate::slash::wire_name(doc, m.conductor)));
             }
@@ -537,10 +607,8 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
     Some(lines)
 }
 
-/// `K2:1`: the terminal (shown on `page`) a conductor attaches to there.
-fn terminals_on(doc: &Document, page: PageId, c: &ecad_model::Conductor) -> Option<String> {
-    let shown: BTreeSet<ecad_model::TerminalId> =
-        ecad_model::derive::terminal_positions(doc, page).into_iter().map(|(t, _, _)| t).collect();
+/// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
+fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &ecad_model::Conductor) -> Option<String> {
     let t = End::BOTH.into_iter().filter_map(|e| c.end(e)).find(|t| shown.contains(t))?;
     let term = doc.terminals.get(&t)?;
     let comp = doc
@@ -570,8 +638,12 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
     if out.is_empty() {
         out.push("No orphan references.".into());
     }
-    for k in ecad_inspect::over_referenced(&refs) {
-        let n = refs.iter().filter(|r| r.cable == k).count();
+    // Counted once for every cable (a hostile file may hold many references of many cables).
+    let mut counts: BTreeMap<CableId, usize> = BTreeMap::new();
+    for r in &refs {
+        *counts.entry(r.cable).or_default() += 1;
+    }
+    for (k, n) in counts.into_iter().filter(|(_, n)| *n > MAX_REFERENCES_PER_CABLE) {
         out.push(format!("{} has {n} references; only two are supported.", cable_words(doc, k)));
     }
     out

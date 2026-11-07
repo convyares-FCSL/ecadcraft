@@ -175,8 +175,18 @@ pub const COLUMN_WIDTH_MM: f64 = 40.0;
 /// The highest column a reference text names; larger values are clamped to it.
 pub const MAX_COLUMN: u32 = 999;
 
-/// Most other ends one reference text lists before `+N` (design 010 §6.2).
+/// Most other ends one reference text lists before `+N` (design 010 §6.2); also the most partner
+/// IDs a [`CableReference`] keeps, so a hostile file with many references of one cable costs
+/// linear, not quadratic, memory.
 pub const MAX_LISTED_PARTNERS: usize = 3;
+
+/// Most references one cable may have (design 010, owner question Q2): one continuation. More
+/// can only come from a file; they are reported, never made by a command.
+pub const MAX_REFERENCES_PER_CABLE: usize = 2;
+
+/// Most member routes on a page whose direction is averaged to place one reference text: enough
+/// for any real cable, and a bound on the work per reference.
+pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
 /// The column grid's width in the project's length unit.
 pub fn column_width(doc: &Document) -> f64 {
@@ -218,8 +228,11 @@ pub struct CableReference {
     pub at: Option<Pt>,
     /// The column of `at`.
     pub column: Option<u32>,
-    /// The cable's other references, in page order, then column, then ID.
+    /// The cable's other references, in page order, then column, then ID: at most
+    /// [`MAX_LISTED_PARTNERS`] of them (the count is [`CableReference::partner_count`]).
     pub partners: Vec<RepresentationId>,
+    /// How many other references the cable has.
+    pub partner_count: usize,
     /// `/<page>.<column>` of each partner (at most [`MAX_LISTED_PARTNERS`], then `+N`), separated
     /// by a space; `/?` for an orphan, and for a partner that cannot be located.
     pub text: String,
@@ -284,6 +297,15 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     let width = column_width(doc);
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let routes = route_ends_by_page(doc);
+    // The member routes of each (cable, page) with a reference, built once per pair.
+    let mut here: BTreeMap<(CableId, PageId), Vec<(Pt, Pt)>> = BTreeMap::new();
+    for (_, r) in &refs {
+        let Subject::Cable(cable) = r.subject else { continue };
+        here.entry((cable, r.page)).or_insert_with(|| {
+            let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
+            members.iter().filter_map(|m| routes.get(&(m.conductor, r.page)).copied()).collect()
+        });
+    }
     let mut out: Vec<CableReference> = Vec::with_capacity(refs.len());
     for (rid, r) in &refs {
         let Subject::Cable(cable) = r.subject else { continue };
@@ -292,12 +314,10 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
             ItemKind::Primitive(Primitive::Point { at }) if at.is_finite() => Some(*at),
             _ => None,
         });
-        let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
-        let mut wires_here = 0;
+        let ends = here.get(&(cable, r.page)).map(Vec::as_slice).unwrap_or_default();
+        let wires_here = ends.len();
         let (mut sx, mut sy) = (0.0_f64, 0.0_f64);
-        for m in members {
-            let Some((a, b)) = routes.get(&(m.conductor, r.page)) else { continue };
-            wires_here += 1;
+        for (a, b) in ends.iter().take(MAX_DIRECTION_SAMPLES) {
             if let Some(p) = at {
                 let (near, far) = if a.dist(p) <= b.dist(p) { (*a, *b) } else { (*b, *a) };
                 sx += far.x - near.x;
@@ -315,6 +335,7 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
             at,
             column: at.and_then(|p| column_of(p.x, width)),
             partners: Vec::new(),
+            partner_count: 0,
             text: String::new(),
             orphan: true,
             wires_here,
@@ -323,7 +344,9 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     }
     // Page order (a page in no order last), then column, then ID.
     out.sort_by_key(|r| (r.page_number.unwrap_or(usize::MAX), r.column.unwrap_or(u32::MAX), r.reference));
-    // Partners: every other reference of the same cable, already in that order.
+    // Partners: the cable's other references, already in that order. Each reference keeps at
+    // most MAX_LISTED_PARTNERS of them and a count, so the work and memory are linear in the
+    // number of references (a hostile file may hold many of one cable).
     let mut by_cable: BTreeMap<CableId, Vec<usize>> = BTreeMap::new();
     for (i, r) in out.iter().enumerate() {
         by_cable.entry(r.cable).or_default().push(i);
@@ -331,18 +354,20 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     let locators: Vec<String> = out.iter().map(CableReference::locator).collect();
     let ids: Vec<RepresentationId> = out.iter().map(|r| r.reference).collect();
     for (i, r) in out.iter_mut().enumerate() {
-        let others: Vec<usize> = by_cable.get(&r.cable).into_iter().flatten().copied().filter(|j| *j != i).collect();
-        r.partners = others.iter().filter_map(|j| ids.get(*j).copied()).collect();
-        r.orphan = others.is_empty();
+        let same = by_cable.get(&r.cable).map(Vec::as_slice).unwrap_or_default();
+        let count = same.len().saturating_sub(1);
+        let shown: Vec<usize> = same.iter().copied().filter(|j| *j != i).take(MAX_LISTED_PARTNERS).collect();
+        r.partners = shown.iter().filter_map(|j| ids.get(*j).copied()).collect();
+        r.partner_count = count;
+        r.orphan = count == 0;
         r.text = if r.orphan {
             "/?".into()
         } else {
-            let mut shown: Vec<String> =
-                others.iter().take(MAX_LISTED_PARTNERS).filter_map(|j| locators.get(*j).cloned()).collect();
-            if others.len() > MAX_LISTED_PARTNERS {
-                shown.push(format!("+{}", others.len() - MAX_LISTED_PARTNERS));
+            let mut words: Vec<String> = shown.iter().filter_map(|j| locators.get(*j).cloned()).collect();
+            if count > MAX_LISTED_PARTNERS {
+                words.push(format!("+{}", count - MAX_LISTED_PARTNERS));
             }
-            shown.join(" ")
+            words.join(" ")
         };
     }
     out

@@ -126,6 +126,9 @@ pub struct Debugger {
     list_page: usize,
     history_page: usize,
     events_page: usize,
+    /// The `Cable references` diagnostics (brief 010), derived once per snapshot.
+    ref_lines: Vec<String>,
+    refs_page: usize,
     at_text: String,
     historical: Option<Historical>,
     checks: Vec<Ran>,
@@ -149,6 +152,8 @@ impl Default for Debugger {
             list_page: 0,
             history_page: 0,
             events_page: 0,
+            ref_lines: Vec::new(),
+            refs_page: 0,
             at_text: String::new(),
             historical: None,
             checks: Vec::new(),
@@ -251,6 +256,7 @@ impl Debugger {
             self.tx = None;
             self.record = None;
         }
+        self.ref_lines = ecad_cadcraft::references::diagnostics(&snap.doc);
         self.snap = Some(snap);
         self.taken = now();
         self.stale = None;
@@ -677,10 +683,11 @@ impl Debugger {
             ));
         }
         ui.separator();
-        // Brief 010: derived from the snapshot's copy of the document, never saved.
+        // Brief 010: derived once per snapshot from its copy of the document, never saved; paged.
         ui.label(RichText::new("Cable references").strong());
-        for line in ecad_cadcraft::references::diagnostics(&snap.doc) {
-            ui.label(line);
+        pager(ui, "references", self.ref_lines.len(), &mut self.refs_page);
+        for line in self.ref_lines.iter().skip(self.refs_page * PAGE).take(PAGE) {
+            ui.label(line.as_str());
         }
         ui.separator();
         ui.label(RichText::new("Runtime events (diagnostics; never saved in the project)").strong());

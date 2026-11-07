@@ -14,7 +14,8 @@ use serde_json::{Value, json};
 
 use super::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
 use super::{
-    OUT_OF_RANGE, can_start, in_range, line_kind, pick, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
+    OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read,
+    ring_kind, v2,
 };
 use crate::project::{Mapped, Project};
 use crate::references::{self as refs, ORPHAN_ACI, REFERENCE_ACI};
@@ -23,6 +24,8 @@ use crate::references::{self as refs, ORPHAN_ACI, REFERENCE_ACI};
 const RING: f64 = refs::RING_PX as f64;
 /// `ecad.attach-preview` (ACI 3) for the preview text that says what will happen.
 const PREVIEW_ACI: u8 = super::ATTACHED_ACI;
+/// `ecad.preview-text` height in screen pixels.
+const PREVIEW_TEXT_PX: f64 = 12.0;
 
 /// The cables the current selection names (slashes, fan lines, member wires, reference ends).
 fn selected_cables(s: &Session) -> Vec<CableId> {
@@ -52,12 +55,16 @@ fn reference_named(p: &Project, m: Mapped) -> Option<RepresentationId> {
 }
 
 /// The ring and text a reference preview shows at `at`.
-fn ring_and_text(s: &Session, at: Pt, text: &str, orphan: bool) -> Vec<Entity> {
+/// `left`: the text goes left of the ring (the wires run to the right), as it will be drawn.
+fn ring_and_text(s: &Session, at: Pt, text: &str, orphan: bool, left: bool) -> Vec<Entity> {
     let Some(px) = pixel(s) else { return Vec::new() };
     let aci = if orphan { ORPHAN_ACI } else { REFERENCE_ACI };
     let mut out: Vec<Entity> =
         [RING - 1.0, RING, RING + 1.0].into_iter().map(|d| preview_entity(s, ring_kind(at, d, px), aci)).collect();
-    out.push(preview_text(s, Pt::new(at.x + RING * px, at.y - 4.0 * px), px, text.to_string(), aci));
+    // The preview text is left-aligned; its width is estimated from its characters.
+    let width = text.chars().count() as f64 * PREVIEW_TEXT_PX * 0.8 * px;
+    let x = if left { at.x - RING * px - width } else { at.x + RING * px };
+    out.push(preview_text(s, Pt::new(x, at.y - 4.0 * px), px, text.to_string(), aci));
     out
 }
 
@@ -174,7 +181,7 @@ impl Interactive for CableRef {
             return Vec::new();
         }
         let Ok((text, orphan)) = read(s, |p, _| Ok(next_text(p.ledger.document(), k))) else { return Vec::new() };
-        ring_and_text(s, pt(cursor), &text, orphan)
+        ring_and_text(s, pt(cursor), &text, orphan, false)
     }
 }
 
@@ -401,9 +408,9 @@ impl Interactive for Continue {
         }
         let Ok((text, orphan)) = read(s, |p, _| Ok(next_text(p.ledger.document(), k))) else { return Vec::new() };
         match self.at {
-            None => ring_and_text(s, pt(cursor), &text, orphan),
+            None => ring_and_text(s, pt(cursor), &text, orphan, false),
             Some(at) => {
-                let mut out = ring_and_text(s, at, &text, orphan);
+                let mut out = ring_and_text(s, at, &text, orphan, cursor.x > at.x);
                 let Some(px) = pixel(s) else { return out };
                 let words = match Self::plan(s, k, at, pt(cursor)) {
                     Some(plan) => {
@@ -417,7 +424,8 @@ impl Interactive for Continue {
                     }
                     None => "->".to_string(),
                 };
-                out.push(preview_text(s, Pt::new(cursor.x + 10.0 * px, cursor.y + 10.0 * px), px, words, PREVIEW_ACI));
+                // Above the cursor, clear of CADCraft's dynamic-input box below and right of it.
+                out.push(preview_text(s, Pt::new(cursor.x + 10.0 * px, cursor.y + 28.0 * px), px, words, PREVIEW_ACI));
                 out
             }
         }
@@ -458,12 +466,30 @@ impl Goto {
         Ok(Step::Done)
     }
 
+    /// The reference end under a click: a reference point or text inside the pick box first (a
+    /// continued end's middle wire starts exactly on its point and would win the generic pick),
+    /// then whatever the generic pick finds.
+    fn under(s: &Session, p: Vec2) -> Result<(RepresentationId, bool), String> {
+        let radius = pick_radius(s).unwrap_or(0.0);
+        let direct = read(s, |proj, page| {
+            let doc = proj.ledger.document();
+            Ok(refs::reference_at(doc, page, pt(p), radius).map(|r| {
+                let orphan = refs::all(doc).iter().find(|x| x.reference == r).is_none_or(|x| x.orphan);
+                (r, orphan)
+            }))
+        })?;
+        if let Some(found) = direct {
+            return Ok(found);
+        }
+        let h = pick(s, p).ok_or(NOTHING_TO_GO)?;
+        Self::named(s, h)
+    }
+
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
         match i {
             Input::Point(p) if !in_range(p) => Err(other(OUT_OF_RANGE)),
             Input::Point(p) => {
-                let h = pick(s, p).ok_or_else(|| other(NOTHING_TO_GO))?;
-                let (r, orphan) = Self::named(s, h).map_err(other)?;
+                let (r, orphan) = Self::under(s, p).map_err(other)?;
                 if orphan {
                     return Err(other(ORPHAN));
                 }

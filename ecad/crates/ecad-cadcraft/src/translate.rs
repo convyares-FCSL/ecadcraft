@@ -42,6 +42,8 @@ pub(crate) struct Translation {
     /// Handles whose geometry the owner changed beyond what the engine committed (M2, M3).
     pub amended: BTreeSet<Handle>,
     pub summary: String,
+    /// Lines to echo after the commit (for example why a wire end was not connected).
+    pub notes: Vec<String>,
 }
 
 /// Parts of the drawing outside model-space entities that ECAD pages do not record yet. A change
@@ -447,6 +449,7 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
     let new_pos = positions(&proposed, cx.page);
     let mut amend: BTreeMap<ItemId, Item> = BTreeMap::new();
     let mut attach: Vec<Op> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     for (cid, c) in &proposed.conductors {
         let Some((route_id, prim)) = route_on_page(&proposed, *cid, cx.page) else { continue };
         let Some((new_a, new_b)) = prim.path_ends() else { continue };
@@ -478,6 +481,14 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
                         if found != Some(term) {
                             attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
                         }
+                    } else if end_moved && terminal_at(&proposed, cx.page, new_end, cx.tol).is_some() {
+                        // The end leaving toward a reference was dropped on a terminal here: it
+                        // stays connected on the other page, and the user is told so.
+                        notes.push(format!(
+                            "End {end:?} of {} is connected on another page, so it was not connected here; \
+disconnect it there first.",
+                            crate::slash::wire_name(&proposed, *cid)
+                        ));
                     }
                 }
                 None if end_moved => {
@@ -520,5 +531,6 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
         }
     }
     t.ops.extend(attach);
+    t.notes.extend(notes);
     Ok(())
 }

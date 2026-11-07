@@ -128,13 +128,18 @@ pub(crate) fn from_cursor(s: &Session, p: Vec2) -> bool {
     p.is_finite() && s.cursor.is_finite() && p.near(s.cursor, tol)
 }
 
+/// The pick box's radius in drawing units (as CADCraft's single-object prompts pick).
+pub(crate) fn pick_radius(s: &Session) -> Option<f64> {
+    Some(pixel(s)? * s.settings.pickbox.max(1.0) * 1.5)
+}
+
 /// The object under the pick box at `p` (as CADCraft's single-object prompts pick).
 pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
-    let px = pixel(s)?;
+    let r = pick_radius(s)?;
     if !in_range(p) {
         return None;
     }
-    s.pick_object(&s.space(), p, px * s.settings.pickbox.max(1.0) * 1.5).ok().flatten()
+    s.pick_object(&s.space(), p, r).ok().flatten()
 }
 
 /// A terminal under the cursor.
@@ -365,20 +370,38 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             color: TERMINAL_RGB,
         })
         .collect();
-    let leaving = crate::references::leaving_ends(doc, page);
+    // The references are derived once for this frame (brief 010).
+    let markers = crate::references::markers_on_page(doc, page);
+    let leaving = crate::references::leaving_ends_for(doc, page, &markers);
     for (c, a, b) in route_ends(doc, page) {
         let Some(conductor) = doc.conductors.get(&c) else { continue };
         for (end, at) in [(End::A, a), (End::B, b)] {
             if leaving.contains(&(c, end)) {
                 continue;
             }
-            out.push(match conductor.end(end) {
+            match conductor.end(end) {
+                // An end attached to a terminal shown on this page: a dot on the terminal. One
+                // attached to a terminal on another page (a wire continued across pages) gets no
+                // mark here: its connection is not on this page.
                 Some(t) => {
-                    let at = positions.iter().find(|(x, _, _)| *x == t).map_or(at, |(_, _, q)| *q);
-                    Mark { at: v2(at), shape: MarkShape::Dot, size: DOT_PX, stroke: 0.0, color: ATTACHED_RGB }
+                    if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
+                        out.push(Mark {
+                            at: v2(*q),
+                            shape: MarkShape::Dot,
+                            size: DOT_PX,
+                            stroke: 0.0,
+                            color: ATTACHED_RGB,
+                        });
+                    }
                 }
-                None => Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_PX, stroke: 1.0, color: LOOSE_RGB },
-            });
+                None => out.push(Mark {
+                    at: v2(at),
+                    shape: MarkShape::Square,
+                    size: LOOSE_PX,
+                    stroke: 1.0,
+                    color: LOOSE_RGB,
+                }),
+            }
         }
     }
     let map = p.pages.get(&page).map(|v| &v.map);
@@ -390,7 +413,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         stroke: 0.0,
         color: CABLE_RGB,
     }));
-    out.extend(crate::references::markers_on_page(doc, page).into_iter().map(|m| Mark {
+    out.extend(markers.into_iter().map(|m| Mark {
         at: v2(m.at),
         shape: MarkShape::Ring,
         size: crate::references::RING_PX,
@@ -453,6 +476,26 @@ pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Opt
     let mut lines = terminal_lines(p.ledger.document(), c.terminal);
     capped(&mut lines);
     Some((c.terminal, lines))
+}
+
+/// The cable reference end on page drawing `uid` under `cursor` (its point within `radius`
+/// drawing units, or its text), with what hovering it shows (design 010 §8). It wins over the
+/// objects around it: a continued end's middle wire starts exactly on its point. Read only.
+pub fn hover_reference(
+    p: &Project,
+    uid: u64,
+    cursor: Vec2,
+    radius: f64,
+) -> Option<(ecad_model::RepresentationId, Vec<String>)> {
+    let page = p.page_of(uid)?;
+    if p.pages.get(&page).is_none_or(|v| v.unavailable) || !in_range(cursor) {
+        return None;
+    }
+    let doc = p.ledger.document();
+    let r = crate::references::reference_at(doc, page, pt(cursor), radius)?;
+    let mut lines = crate::references::hover_lines(doc, r)?;
+    capped(&mut lines);
+    Some((r, lines))
 }
 
 /// A cable's hover with the pages it is drawn on and its references, after the view line

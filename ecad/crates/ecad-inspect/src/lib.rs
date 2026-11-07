@@ -25,7 +25,7 @@
 
 use std::collections::VecDeque;
 
-use ecad_model::derive::{CableReference, cable_references, mismatches, nets};
+use ecad_model::derive::{CableReference, MAX_REFERENCES_PER_CABLE, cable_references, mismatches, nets};
 use ecad_model::{Document, Ledger, ModelError, PageId, Subject, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -319,9 +319,6 @@ pub fn snapshot(
         },
     }))
 }
-
-/// Most references one cable may have (design 010, owner question Q2): one continuation.
-pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 
 /// Cables with more than [`MAX_REFERENCES_PER_CABLE`] references (possible only from a file), in
 /// ID order.
