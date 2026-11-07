@@ -977,9 +977,10 @@ fn ac5_clicking_the_continued_ends_point_or_text_jumps() {
     // (row, page the click is on, where)
     let rows: Vec<(&str, bool, (f64, f64))> = vec![
         ("Field's point, where the middle stub starts", true, (20.0, 5.0)),
-        ("Field's text", true, (13.0, 5.0)),
+        // Combined trial with 009: the text sits in 009's flag, just right of and above the point.
+        ("Field's text", true, (21.5, 6.0)),
         ("Supply's point", false, (65.0, 5.0)),
-        ("Supply's text", false, (72.0, 5.0)),
+        ("Supply's text", false, (66.5, 6.0)),
     ];
     let mut failures = Vec::new();
     for (row, on_field, (x, y)) in rows {

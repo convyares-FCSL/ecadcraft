@@ -522,7 +522,8 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     // Hover of the reference point.
     let h_point = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, h_point)).unwrap();
-    assert_eq!(lines, vec!["Reference \"->\"", "Cable C1", "At end: B side"]);
+    // Combined trial with 010: a reference end hovers with 010's lens (one source of hover text).
+    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  /?"), "{lines:?}");
     // ERASE the reference point: both ends fan again; `u` brings it back.
     f.h.run("erase", json!({"handles": [h_point.hex()]})).unwrap();
     assert!(!f.h.doc().representations.contains_key(&rep));
@@ -550,7 +551,20 @@ fn i_both_ends_at_reference_ends() {
     assert!(of_role(&fan, Role::Spine).is_empty() && of_role(&fan, Role::Tail).is_empty());
     assert!(of_role(&fan, Role::Bend).is_empty());
     let trunk: Vec<Pt> = of_role(&fan, Role::Trunk).into_iter().flat_map(path).collect();
-    let w = look::font_width(look::REFERENCE_PLACEHOLDER);
+    // Combined trial with 010: the flag is as wide as the left end's live text.
+    let doc = f.h.doc();
+    let left = doc
+        .representations
+        .iter()
+        .find(|(_, r)| {
+            r.role == look::REFERENCE_ROLE
+                && r.items
+                    .iter()
+                    .any(|i| matches!(doc.items[i].kind, ItemKind::Primitive(Primitive::Point { at }) if at.x < 0.0))
+        })
+        .map(|(id, _)| *id)
+        .unwrap();
+    let w = look::font_width(&look::reference_text(&doc, left));
     assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))), "{trunk:?}");
     assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + w + 1.25, 22.5))), "{trunk:?}");
     assert_eq!(of_role(&fan, Role::Flag).len(), 2);

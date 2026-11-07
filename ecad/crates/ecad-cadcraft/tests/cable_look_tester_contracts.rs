@@ -702,7 +702,8 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let hp = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, hp)).unwrap();
-    assert_eq!(lines.last().map(String::as_str), Some("At end: A side"), "{lines:?}");
+    // Combined trial with 010: 010's lens; the A side is checked through `markers` above.
+    assert!(lines.first().is_some_and(|l| l.starts_with("Cable reference")), "{lines:?}");
     // Traditional view: the reference end is drawn (flag) and nothing else changes; the loose ends
     // at x = 0 show their squares again.
     view(&mut f.h, f.c1, "traditional");
@@ -743,7 +744,9 @@ fn ac2_moving_and_extra_references() {
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let h3 = f.h.handle_of(f.page, p3);
     let lines = f.h.p(|p| hover_lines(p, uid, h3)).unwrap();
-    assert!(lines.iter().any(|l| l == "Extra reference: not at an end of the cable on this page."), "{lines:?}");
+    // Combined trial with 010: a reference end hovers with 010's lens; that it stops no end is in
+    // `markers` above.
+    assert!(lines.first().is_some_and(|l| l.starts_with("Cable reference")), "{lines:?}");
     // Erase the third: nothing changes at the ends. Then erase the right one: the right end fans
     // again; undo: it stops again (design §7.1 "Editing and removing").
     let h3 = f.h.handle_of(f.page, p3);
