@@ -1003,16 +1003,17 @@ fn ac5_clicking_the_continued_ends_point_or_text_jumps() {
 }
 
 /// Never-crash (input-sized work is bounded): a hostile file whose one cable has many references.
-/// Each reference's `partners` lists every other reference, so the derivation's time and memory
-/// grow with the square of the count (measured on Windows: 20 000 references, 3.9 s and 400 million
-/// partner entries, about 6.4 GB, per derivation, which runs on every draw); 2 000 must stay quick.
+/// Round 1 measured the derivation growing with the square of the count (20 000 references: 3.9 s
+/// and 400 million partner entries, about 6.4 GB, on every draw). Round 2: each reference keeps at
+/// most 3 partner IDs and a count, so time and memory are linear; the debugger's diagnostics stay
+/// quick too.
 #[test]
 fn many_references_of_one_cable_derive_in_bounded_time() {
     let base = continued(SEED + 19).h.doc();
     let cable = *base.cables.keys().next().unwrap();
     let page = base.page_order[0];
     // (references added, seconds allowed for one derivation)
-    for (n, secs) in [(2_000u128, 2u64)] {
+    for (n, secs) in [(2_000u128, 2u64), (20_000, 5)] {
         let mut doc = base.clone();
         for i in 0..n {
             add_ref(&mut doc, 1_000_000 + i, Pt::new(i as f64, 0.0), page, Subject::Cable(cable));
@@ -1026,5 +1027,29 @@ fn many_references_of_one_cable_derive_in_bounded_time() {
             took < Duration::from_secs(secs),
             "{n} references: one derivation took {took:?} ({partners} partner entries)"
         );
+        assert!(partners <= 3 * refs.len(), "{partners} partner entries for {} references", refs.len());
+        let started = Instant::now();
+        let lines = diagnostics(&doc);
+        assert!(started.elapsed() < Duration::from_secs(secs), "diagnostics took {:?}", started.elapsed());
+        assert!(lines.iter().any(|l| l.contains("references; only two are supported.")), "{lines:?}");
     }
+}
+
+/// Round 2 nit: an end attached to a terminal on another page gets no mark on this page, even
+/// when it is no longer a leaving end (its page lost its reference): no green dot drawn where
+/// nothing is connected on this page, and no grey "loose" square either.
+#[test]
+fn an_end_attached_on_another_page_gets_no_mark_here() {
+    let mut r = connected(SEED + 20);
+    r.h.activate(r.field);
+    let fid = ref_on(&mut r.h, r.field).unwrap();
+    let point = r.h.doc().representations[&fid].items[0];
+    let hp = r.h.handle_of(r.field, point);
+    r.h.run("erase", json!({"handles": [hp.hex()]})).unwrap();
+    let u = uid(&mut r.h, r.field);
+    let marks = r.h.p(|p| overlay_marks(p, u));
+    let at_20: Vec<_> = marks.iter().filter(|m| (m.at.x - 20.0).abs() < 1e-9 && m.shape != MarkShape::Ring).collect();
+    assert!(at_20.is_empty(), "marks at the ends attached to K1 on Supply: {at_20:?}");
+    let dots_at_k2 = marks.iter().filter(|m| m.shape == MarkShape::Dot && (m.at.x - 100.0).abs() < 1e-9).count();
+    assert_eq!(dots_at_k2, 3, "the ends connected here keep their dots");
 }
