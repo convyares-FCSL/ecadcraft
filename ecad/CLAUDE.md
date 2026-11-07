@@ -105,6 +105,13 @@ Loop for each brief in `docs/briefs/`:
    ready, with the brief, the test report and the review summary in it. **Never merge.** The owner
    merges.
 
+**Agent access is built in (owner decision, 2026-11-07, brief 011).** Every brief that adds or
+changes an ECAD command includes, in its acceptance criteria, an MCP contract test: it drives the
+command through `ecad-mcp`'s `execute` tool (as `ecad/apps/ecad-mcp/tests/mcp_contracts.rs` does)
+and checks the transaction it records and its author (`Author::Agent(<client name>)`), and that
+the command is refused with writes off. The worker writes it with the command; the tester covers
+it like any other criterion. A brief without one is not ready for approval.
+
 Gates where the overseer stops and asks the owner: starting any brief not marked `Approved`; any
 change outside `ecad/` that the brief does not approve; any change to a fixed principle (proposal
 Part A) or a recorded decision; marking a PR ready for review; pushing to `dev` or `main`; anything
