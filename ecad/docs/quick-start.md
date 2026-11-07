@@ -54,6 +54,13 @@ outside `ecad/` changes, and the file format is unchanged. For this branch there
 checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
 display yet.
 
+**Branch `ecad/load-benchmark` (brief 012)**, cut from `dev` at `60c7c35`, adds the on-demand load
+benchmark `cargo xtask bench` (section 8, "Measuring load time"). The app, the file format and CI
+are unchanged. Evidence: the generator's shape tests (`ecad/crates/ecad-bench/tests/
+generator_contracts.rs`), written with the branch and run by the tester and CI; one agent run of
+`cargo xtask bench --tier small` on native Windows 11 Pro, 2026-11-07, which printed the table and
+wrote the JSON. You have not run it yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -595,6 +602,41 @@ the banner's Command field. IDs and offsets will differ from any shown here.
   address bar) and load the files from the folder given to `--snapshots`, for example
   `C:\dev\ecad-trial-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
   whether each transaction was saved, and where.
+
+### Measuring load time (brief 012)
+
+A benchmark measures how opening and saving scale as projects grow. You run it when you want
+numbers; it is never part of `cargo xtask ci`, `cargo test --workspace` or GitHub CI. From
+`ecad/`:
+
+```sh
+cargo xtask bench                    # small and medium (release build)
+cargo xtask bench --tier all         # small, medium and large; large takes a long time
+cargo xtask bench --tier small --keep C:\dev\ecad-bench-projects
+cargo xtask bench --compare target/bench/load-<date>-<commit>.json
+```
+
+It generates synthetic projects (the same tier always gives the same file), writes them as
+`.ecad` files and times each one. Tiers: small (10 pages, 100 components, 500 wires, 50 cables),
+medium (×10) and large (×50). Each has a **lean** history (one transaction per object) and a
+**churned** one (the same project after moves, renames, undo and redo, about five times as many
+transactions). Columns, each the median of 5 runs:
+
+| Column | What it times |
+| --- | --- |
+| file MB, txs | The file's size and its number of transactions. |
+| open ms | Read the file, check every record and replay the history (no drawing). |
+| derive ms | Work out the nets of the opened project. |
+| 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
+| save ms | Save one small change (append one transaction and flush). |
+
+The table is printed and also written as JSON to `ecad/target/bench/load-<date>-<commit>.json`,
+with the machine, OS, commit and build. `--keep <folder>` keeps the projects so you can open them
+in the trial (**Open project…**). Results depend on the machine and what else it is doing; compare
+runs from the same machine. There are no pass or fail limits yet, and peak memory is not
+measured. The generated cable references (each page's first cable continued on the next page)
+are recorded as brief 010 records them; on a revision without brief 010 they open as ordinary
+points and lines.
 
 ## 9. Current limitations
 

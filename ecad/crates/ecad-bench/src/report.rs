@@ -1,0 +1,139 @@
+//! The table on stdout, the JSON file and `--compare` (brief 012 §4).
+
+use std::path::Path;
+use std::process::Command;
+
+use serde_json::{Value, json};
+
+use crate::measure::Measured;
+
+/// One measured project.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub tier: String,
+    pub variant: String,
+    pub measured: Measured,
+}
+
+/// The measured columns: JSON key, table heading.
+const COLUMNS: [(&str, &str); 4] =
+    [("open_ms", "open ms"), ("derive_ms", "derive ms"), ("first_page_ms", "1st page ms"), ("save_ms", "save ms")];
+
+fn values(m: &Measured) -> [f64; 4] {
+    [m.open_ms, m.derive_ms, m.first_page_ms, m.save_ms]
+}
+
+fn mb(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
+}
+
+/// The plain table.
+pub fn table(rows: &[Row], runs: usize) -> String {
+    let mut out = format!(
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>12} {:>9}\n",
+        "tier", "history", "file MB", "txs", "open ms", "derive ms", "1st page ms", "save ms"
+    );
+    for r in rows {
+        let m = &r.measured;
+        out.push_str(&format!(
+            "{:<8} {:<8} {:>9.2} {:>8} {:>10.1} {:>10.2} {:>12.1} {:>9.2}\n",
+            r.tier,
+            r.variant,
+            mb(m.bytes),
+            m.transactions,
+            m.open_ms,
+            m.derive_ms,
+            m.first_page_ms,
+            m.save_ms
+        ));
+    }
+    out.push_str(&format!("Median of {runs} runs each; generation not timed. Peak memory is not measured.\n"));
+    out
+}
+
+fn git(root: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("git").args(args).current_dir(root).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The short commit of `root`'s checkout, with `-dirty` when it has uncommitted changes.
+pub fn commit(root: &Path) -> String {
+    let Some(head) = git(root, &["rev-parse", "--short", "HEAD"]) else { return "unknown".into() };
+    match git(root, &["status", "--porcelain"]) {
+        Some(s) if !s.is_empty() => format!("{head}-dirty"),
+        _ => head,
+    }
+}
+
+/// Today's UTC date, `YYYY-MM-DD`, and the full UTC time.
+pub fn now() -> (String, String) {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let full = ecad_file::disk::utc(secs);
+    (full.chars().take(10).collect(), full)
+}
+
+/// The JSON written to `target/bench/`.
+pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
+    let machine = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
+    let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
+    json!({
+        "benchmark": "ecad project load (brief 012)",
+        "when": when,
+        "commit": commit,
+        "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+        "machine": { "name": machine, "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "cpus": cpus },
+        "runs": runs,
+        "peak_memory": "not measured",
+        "rows": rows.iter().map(|r| {
+            let m = &r.measured;
+            json!({
+                "tier": r.tier,
+                "variant": r.variant,
+                "bytes": m.bytes,
+                "transactions": m.transactions,
+                "open_ms": m.open_ms,
+                "derive_ms": m.derive_ms,
+                "first_page_ms": m.first_page_ms,
+                "save_ms": m.save_ms,
+            })
+        }).collect::<Vec<_>>(),
+    })
+}
+
+/// The change of each row against an earlier JSON file's matching row (same tier and history).
+///
+/// # Errors
+/// The earlier file is not a benchmark result.
+pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
+    let old = earlier.get("rows").and_then(Value::as_array).ok_or("the earlier file has no `rows`")?;
+    let what = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    let mut out = format!(
+        "Compared with {} ({}):\n{:<8} {:<8} {}\n",
+        what(earlier, "commit").unwrap_or_default(),
+        what(earlier, "when").unwrap_or_default(),
+        "tier",
+        "history",
+        COLUMNS.iter().map(|(_, h)| format!("{h:>22}")).collect::<String>()
+    );
+    for r in rows {
+        let before = old.iter().find(|o| {
+            what(o, "tier").as_deref() == Some(r.tier.as_str())
+                && what(o, "variant").as_deref() == Some(r.variant.as_str())
+        });
+        out.push_str(&format!("{:<8} {:<8} ", r.tier, r.variant));
+        let Some(before) = before else {
+            out.push_str("(not in the earlier run)\n");
+            continue;
+        };
+        for ((key, _), now) in COLUMNS.iter().zip(values(&r.measured)) {
+            let cell = match before.get(*key).and_then(Value::as_f64) {
+                Some(was) if was > 0.0 => format!("{was:.1} → {now:.1} ({:+.0}%)", (now - was) / was * 100.0),
+                Some(was) => format!("{was:.1} → {now:.1}"),
+                None => "—".into(),
+            };
+            out.push_str(&format!("{cell:>22}"));
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
