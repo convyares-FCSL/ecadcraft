@@ -352,6 +352,68 @@ fn apply_tx(
     result
 }
 
+/// Apply `ops` to `doc` in place, check the end state as [`apply_tx`] does, run `read` on it, and
+/// always roll back (also when `read` panics: the [`Journal`] reverts on drop). Returns `read`'s
+/// result and, apart from the result, any rollback failure (the document has then been restored
+/// from `history` when possible).
+fn applied_then_reverted<R>(
+    doc: &mut Document,
+    ops: &[Op],
+    verify: bool,
+    history: Option<&[Transaction]>,
+    health: &mut Health,
+    read: impl FnOnce(&Document) -> R,
+) -> (Result<R>, Option<String>) {
+    let mut journal = Journal::new(doc, ops, history, health);
+    let (checked, disagreement) = match journal.apply() {
+        Ok(touched) => validate(journal.doc, &touched, verify),
+        Err(e) => (Err(e), None),
+    };
+    let result = checked.map(|()| read(journal.doc));
+    let rollback_failure = journal.roll_back();
+    drop(journal);
+    // Assertions only now, with the document settled: a panic here loses nothing.
+    debug_assert!(rollback_failure.is_none(), "{rollback_failure:?}");
+    debug_assert!(disagreement.is_none(), "{disagreement:?}");
+    (result, rollback_failure)
+}
+
+impl Document {
+    /// Run `read` on the document as it would be after `ops`, without copying it and without
+    /// keeping the change.
+    ///
+    /// # Semantics
+    /// The ops are applied in place, in order, and the end state is checked exactly as
+    /// [`Ledger::commit`] checks it (only where the ops touched the document; in verify mode also
+    /// in full). Only if that succeeds does `read` run, on the changed document. Afterwards the
+    /// ops are always reverted in reverse order, leaving the document, its indexes and
+    /// everything `==` compares exactly as they were, also when `read` panics (the rollback
+    /// journal reverts on unwinding). The cost follows the size of `ops`, not of the document.
+    ///
+    /// # Errors
+    /// The first op's precondition failure or the end state's invariant failure, with the same
+    /// error [`Ledger::commit`] would report; `read` has then not run. In the never expected case
+    /// that reverting an op fails, [`ModelError::Invariant`] says so: the document may then no
+    /// longer be valid and should be discarded.
+    ///
+    /// # Example
+    /// ```rust
+    /// use ecad_model::{Document, Op, Page, PageId};
+    /// let mut doc = Document::default();
+    /// let add = vec![Op::AddPage { id: PageId(1), page: Page { title: "1".into() }, index: 0 }];
+    /// let pages = doc.with_applied(&add, |d| d.pages.len()).unwrap();
+    /// assert_eq!(pages, 1);
+    /// assert!(doc.pages.is_empty()); // reverted
+    /// ```
+    pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
+        let (result, failure) = applied_then_reverted(self, ops, false, None, &mut Health::default(), read);
+        match failure {
+            Some(f) => Err(ModelError::Invariant(format!("{f}: the document may no longer be valid"))),
+            None => result,
+        }
+    }
+}
+
 /// [`apply_tx`] for a scratch document that the caller discards on error.
 fn apply_scratch(doc: &mut Document, ops: &[Op], verify: bool) -> Result<()> {
     apply_tx(doc, ops, verify, None, &mut Health::default(), || Ok(()))
@@ -556,6 +618,28 @@ impl Ledger {
         let mut next = self.doc.clone();
         apply_scratch(&mut next, ops, self.verify)?;
         Ok(next)
+    }
+
+    /// Run `read` on the document as it would be after `ops`, without copying it and without
+    /// committing anything: [`Document::with_applied`] on the live document, in this ledger's
+    /// verify mode.
+    ///
+    /// # Semantics
+    /// The document, its indexes and the log are left exactly as they were, also when `read`
+    /// panics. In the never expected case that reverting an op fails, the document is rebuilt by
+    /// replaying the log, as for a failed commit, and [`Ledger::diagnostics`] records it.
+    ///
+    /// # Errors
+    /// Precondition or invariant failures, exactly as [`Ledger::commit`] would report them (then
+    /// `read` has not run); the ledger refuses, as it refuses commits, after a rollback it could
+    /// not repair.
+    pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
+        if self.health.broken {
+            return Err(ModelError::CorruptLog(
+                "the document could not be restored after a failed rollback; reopen the project".into(),
+            ));
+        }
+        applied_then_reverted(&mut self.doc, ops, self.verify, Some(&self.log), &mut self.health, read).0
     }
 
     /// Validate and append an edit.
@@ -837,5 +921,94 @@ mod tests {
     #[test]
     fn the_test_build_verifies() {
         assert!(verifying(false), "every cargo test runs in verify mode");
+    }
+
+    #[test]
+    fn with_applied_shows_the_changed_document_and_reverts_it() {
+        let mut l = ledger();
+        let (doc, head) = (json(l.document()), l.head());
+        let seen = l
+            .with_applied(&three_ops(), |d| {
+                (d.ends_at(TerminalId(5)), d.cables_of(ConductorId(6)), d.pages.len(), d.check().is_ok())
+            })
+            .unwrap();
+        assert_eq!(seen, (vec![(ConductorId(6), End::B)], vec![], 2, true));
+        assert_unchanged(&l, &doc, head);
+        // The plain document form does the same.
+        let mut d = l.document().clone();
+        assert_eq!(d.with_applied(&three_ops(), |d| d.pages.len()).unwrap(), 2);
+        assert_eq!(json(&d), doc);
+        d.check_index().unwrap();
+    }
+
+    #[test]
+    fn with_applied_refuses_as_commit_does_without_running_the_closure() {
+        let mut l = ledger();
+        let (doc, head) = (json(l.document()), l.head());
+        let bad_end = vec![
+            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+        ];
+        let bad_before =
+            vec![Op::AttachEnd { conductor: ConductorId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
+        for ops in [bad_end, bad_before] {
+            let mut ran = false;
+            let previewed = l.with_applied(&ops, |_| ran = true).map_err(|e| e.to_string());
+            assert!(!ran, "the closure runs only on a valid end state");
+            let committed = l.clone().commit(Author::User, "x", ops).map(|_| ()).map_err(|e| e.to_string());
+            assert!(previewed.is_err());
+            assert_eq!(previewed, committed, "the same error as a commit");
+            assert_unchanged(&l, &doc, head);
+        }
+    }
+
+    #[test]
+    fn a_panic_inside_the_with_applied_closure_leaves_document_indexes_and_log_as_they_were() {
+        let mut l = ledger();
+        let (doc, head) = (json(l.document()), l.head());
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            l.with_applied(&three_ops(), |d| {
+                assert_eq!(d.pages.len(), 2, "the closure sees the change");
+                std::panic::resume_unwind(Box::new("panic in the closure"));
+            })
+        }));
+        assert!(r.is_err());
+        assert_unchanged(&l, &doc, head);
+        assert!(l.diagnostics().is_empty());
+        // A panic while the ops are being applied is reverted too.
+        for at in 0..=3 {
+            hooks::PANIC_AT.with(|c| c.set(Some(at)));
+            let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
+            hooks::PANIC_AT.with(|c| c.set(None));
+            assert!(r.is_err(), "panicked at {at}");
+            assert_unchanged(&l, &doc, head);
+        }
+        // And the plain document form.
+        let mut d = l.document().clone();
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            d.with_applied(&three_ops(), |_| std::panic::resume_unwind(Box::new("boom")))
+        }));
+        assert!(r.is_err());
+        assert_eq!(json(&d), doc);
+        d.check_index().unwrap();
+        // The ledger carries on.
+        l.commit(Author::User, "edit", three_ops()).unwrap();
+    }
+
+    #[test]
+    fn with_applied_runs_the_full_check_in_verify_mode() {
+        // A terminal written straight into the map: the full check passes, the index check does
+        // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
+        let mut l = ledger();
+        l.doc.terminals.insert(TerminalId(50), Terminal { component: ComponentId(3), label: None, key: None });
+        let doc = json(l.document());
+        let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
+        match r {
+            Ok(r) => assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}"),
+            // The disagreement between the scoped and the full check is asserted in debug builds,
+            // once the document is settled.
+            Err(_) => assert!(std::hint::black_box(cfg!(debug_assertions)), "only the debug assertion may panic"),
+        }
+        assert_eq!(json(l.document()), doc);
     }
 }
