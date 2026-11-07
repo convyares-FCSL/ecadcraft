@@ -54,6 +54,12 @@ outside `ecad/` changes, and the file format is unchanged. For this branch there
 checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
 display yet.
 
+**Branch `ecad/agent-mcp` (brief 011)**, cut from `ecad/cable-views` (PR #24) with `dev`
+merged, adds `ecad-mcp`: an AI agent such as Claude Code can read and change a project through
+MCP, headless (section 7A). Nothing outside `ecad/` changes, and the file format is unchanged. For
+this branch there are automated checks only, written with the branch and run by the tester and
+CI; nobody has connected Claude Code to it yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -62,6 +68,7 @@ Three kinds of evidence exist, and they are kept apart:
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/apps/ecad-trial/tests/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
+| **Automated checks, brief 011 (agent access through MCP)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 7A without a client (`ecad/apps/ecad-mcp/tests/mcp_contracts.rs`): the tools and every ECAD command with its parameter docs are listed; the cable examples of sections 5A and 5B through `execute` record exactly the JSON forms' transactions, each by `agent <client name>`, and `u` undoes each in one step; with writes off, or on a project opened read-only, every change and `save` is refused and the history is unchanged; the Block Editor, REFEDIT and LISP are refused with your refusal; save only with `--write`, and reopening shows the agent as author; malformed, oversized and non-UTF-8 requests, long batches and unknown tools get JSON-RPC errors; the built `ecad-mcp` over real stdin and stdout. Not checked: Claude Code itself connected to it |
 | **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/apps/ecad-trial/tests/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
@@ -505,6 +512,107 @@ become fans. Typed: `cableview {"cable":"<id>"}` switches one cable, with `"view
      leftover lock; nothing stays locked.
    - A file such as `demo.ecad.tail-<offset>-<…>` appears only after a save was interrupted. It
      keeps the incomplete bytes that the next save removed from the end of the project file.
+
+## 7A. Let an AI agent work on a project (MCP, headless)
+
+`ecad-mcp` (brief 011) lets an AI agent such as Claude Code read and change an ECAD project
+through the Model Context Protocol. It runs **headless**: no window; the agent works on the
+project file in a process of its own. Watching an agent work in the running trial (bridged mode)
+is a later brief.
+
+Every step below uses the **same project file**: `C:\dev\ecad-projects\agent.ecad` on native
+Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your system.
+
+1. **Build it once** (from `ecad/`):
+
+   ```sh
+   cargo build --release -p ecad-mcp
+   ```
+
+   The program is `target/release/ecad-mcp` (`target\release\ecad-mcp.exe` on Windows), or under
+   `$CARGO_TARGET_DIR` if you set it.
+2. **Create the project file.** The folder must exist: `ecad-mcp` does not create folders (the
+   trial's Save As creates the default folder the first time; otherwise make it yourself). The
+   file must not exist yet, and the trial must not have it open (a project open elsewhere opens
+   read-only, and the agent can then only read it). `--create` makes the file and saves it; the
+   server then waits for an agent on its input, so stop it with Ctrl+C. Native Windows:
+
+   ```powershell
+   mkdir C:\dev\ecad-projects -Force
+   target\release\ecad-mcp.exe --write --create C:\dev\ecad-projects\agent.ecad
+   ```
+
+   Linux or WSL:
+
+   ```sh
+   mkdir -p ~/ecad-projects
+   target/release/ecad-mcp --write --create ~/ecad-projects/agent.ecad
+   ```
+
+   A missing folder is refused with `the folder … does not exist; create it first.`
+3. **Add it to Claude Code** (one line, from the folder where you run Claude Code). Native
+   Windows:
+
+   ```powershell
+   claude mcp add ecad -- C:\dev\ecadcraft\ecad\target\release\ecad-mcp.exe --write C:\dev\ecad-projects\agent.ecad
+   ```
+
+   Linux or WSL:
+
+   ```sh
+   claude mcp add ecad -- ~/ecadcraft/ecad/target/release/ecad-mcp --write ~/ecad-projects/agent.ecad
+   ```
+
+   Or put it in the project's `.mcp.json`:
+   `{"mcpServers": {"ecad": {"command": "<path to ecad-mcp>", "args": ["--write", "<project.ecad>"]}}}`.
+   Leave out `--write` to let the agent only read.
+4. **Ask the agent**, for example: *"With the ecad tools, draw three wires from 0,0 to 60,0,
+   0,5 to 60,5 and 0,10 to 60,10, make them a cable with a slash from 28,-3 to 32,18, show it as
+   a fan, then save."*
+   Expected: the agent calls `execute` with `wire`, `cableslash` and `cableview`, and `save`;
+   `ecad_history` lists one transaction per wire and one for the cable, each by
+   `agent <its name>` (Claude Code gives its own name), and nothing for the view switch.
+5. **Look at it in the trial.** Stop the agent's session (or quit Claude Code) so the file is
+   released, then open the same file. Native Windows:
+
+   ```powershell
+   cargo run --release -p ecad-trial -- C:\dev\ecad-projects\agent.ecad
+   ```
+
+   Linux or WSL:
+
+   ```sh
+   cargo run --release -p ecad-trial -- ~/ecad-projects/agent.ecad
+   ```
+
+   Expected: the wires and the slash on page 1; the debugger (section 8) shows each transaction
+   with `agent <name>` as its author, and `u` undoes the cable in one step. The cable opens **as a
+   fan**: the view is not in the file (section 5B), but `ecad-mcp` remembers views in your own
+   settings folder, the one the trial reads (`cable-views.json`). To keep the agent's views apart
+   from yours, start the server with `ECAD_SETTINGS_DIR` set to another folder (section 9); the
+   cable then opens traditional in your trial.
+
+What the agent can and cannot do:
+
+- **Read** (always): `ecad_project` (pages, components and terminals, wires and their ends,
+  cables and their members, nets), `ecad_history` (transactions with their authors),
+  `ecad_inspect`, and CADCraft's `inspect_drawing`, `query_entities`, `find_text`, `render` and
+  `list_commands` (every ECAD command with its parameters).
+- **Write** (only with `--write`, and only when the project did not open read-only): one command
+  per `execute` call, with JSON parameters, through the same checks and refusals as yours; each
+  change is one transaction by the agent and one step of `u`. A call is one request line, batches
+  included: a line may record at most one transaction, and a second one in the same batch is
+  refused and taken back. `undo`, `redo` and `mredo` go one step per call (no counts above 1,
+  no `undo` back, no `mredo` all). `save` writes the project to its file.
+- **Never:** Save As, open, new or close (you choose the file when you start it), other files
+  (export, import, plot, scripts, AUDIT and its log), CADCraft's command line, or anything ECAD
+  refuses for you (the Block Editor, REFEDIT, LISP on ECAD pages). Without `--write` every
+  change and `save` is refused with
+  `Refused: this ECAD MCP server is read-only (started without --write)...`.
+- `ecad-mcp --help` lists the options; `--agent <name>` records another author name. The author
+  name is taken from the first `initialize` only.
+- Quitting the server cleanly (the client closes it) releases the writer lock; the
+  `agent.ecad.lock` file stays beside the project, empty, as the trial leaves it.
 
 ## 8. Diagnostics and the debugger
 

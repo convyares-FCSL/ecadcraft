@@ -250,6 +250,10 @@ pub struct Project {
     pub settings: crate::views::Settings,
     /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
     pub(crate) said_not_remembered: bool,
+    /// Who the project's edits, undos and redos are recorded as (FILE-07): [`Author::User`] by
+    /// default, `Author::Agent(<client name>)` when an agent drives the session (brief 011). A
+    /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
+    pub author: Author,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -540,6 +544,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -596,6 +601,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -682,6 +688,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1035,7 +1042,7 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        let tx = self.ledger.commit_at(Author::User, label, ops, now_ms()).map_err(|e| {
+        let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
@@ -1231,7 +1238,7 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
-        if let Err(e) = self.ledger.commit_at(Author::User, &label, t.ops, now_ms()) {
+        if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -1413,9 +1420,9 @@ impl Project {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }
         let r = if undo {
-            self.ledger.undo_at(Author::User, now_ms())
+            self.ledger.undo_at(self.author.clone(), now_ms())
         } else {
-            self.ledger.redo_at(Author::User, now_ms())
+            self.ledger.redo_at(self.author.clone(), now_ms())
         };
         match r {
             Ok(_) => {
