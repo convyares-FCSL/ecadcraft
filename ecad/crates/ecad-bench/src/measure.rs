@@ -8,6 +8,12 @@
 //!   commits one add-wire transaction (timed as edit), then saves it (timed as save).
 //! - **xref** (cable references) is measured only where the derivation exists; see
 //!   [`cable_references_ms`].
+//! - **draw edit** (brief 014) runs on another copy, opened once (not timed) in a headless
+//!   CADCraft session with page 1 open, as the trial opens it. Each run makes one edit the way a
+//!   person makes it, through the engine: **move** moves a component that has wires attached
+//!   (MOVE on its symbol; the commit goes through the translation and the movement policy, and
+//!   the page is projected again), alternately down and back up; **wire** draws one wire between
+//!   two terminals with the `wire` command, as the mouse wire tool does.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -43,6 +49,10 @@ pub struct Measured {
     pub edit_ms: f64,
     /// Append that transaction to the file and flush (`DiskProject::save`).
     pub save_ms: f64,
+    /// Move a component with wires attached on page 1, in a headless CADCraft session (brief 014).
+    pub draw_move_ms: f64,
+    /// Draw one wire between two terminals on page 1, in a headless CADCraft session (brief 014).
+    pub draw_wire_ms: f64,
 }
 
 /// The median of `samples` (0 for none).
@@ -122,6 +132,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     }
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
+    let (mut draw_move_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -132,6 +143,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         first_page_ms: median(&mut first_page_ms),
         edit_ms: median(&mut edit_ms),
         save_ms: median(&mut save_ms),
+        draw_move_ms: median(&mut draw_move_ms),
+        draw_wire_ms: median(&mut draw_wire_ms),
     };
     Ok((m, doc))
 }
@@ -178,6 +191,94 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
             }
         }
         Ok((edit, save))
+    })();
+    remove(copy);
+    result
+}
+
+/// What a draw-edit run reads from the session before it edits.
+struct DrawTarget {
+    head: u64,
+    /// The symbol of a component on page 1 that has wires attached.
+    symbol: cadcraft_engine::doc::Handle,
+    /// Two terminal positions on page 1, of other components.
+    from: ecad_model::Pt,
+    to: ecad_model::Pt,
+}
+
+fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::Session) -> Result<DrawTarget, String> {
+    use ecad_model::{Form, ItemKind, Subject};
+    let found = project.read(s, |p, _| {
+        let doc = p.ledger.document();
+        let page = doc.page_order.first().copied()?;
+        let (component, item) = doc.representations.values().find_map(|r| {
+            let Subject::Component(c) = r.subject else { return None };
+            let item = *r.items.first()?;
+            let wired = doc.terminals_of(c).any(|(t, _)| !doc.ends_at(t).is_empty());
+            (r.page == page
+                && r.form == Form::Symbol
+                && wired
+                && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
+            .then_some((c, item))
+        })?;
+        let symbol = p.pages.get(&page)?.map.item(item)?;
+        let shown = ecad_model::derive::terminal_positions(doc, page);
+        let mut others =
+            shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component != component));
+        let (_, _, from) = *others.next()?;
+        let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6))?;
+        Some(DrawTarget { head: p.ledger.head(), symbol, from, to })
+    })?;
+    found.ok_or_else(|| "page 1 has no wired component and two other terminals to edit".into())
+}
+
+/// Copy `path` to `copy` and open it once in a headless CADCraft session (not timed). Then per
+/// run: move a component that has wires attached (timed), and separately draw one wire between
+/// two terminals (timed). Every edit must be recorded as exactly one transaction.
+fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64>), String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
+            &mut s,
+            path_text(copy)?,
+            OPEN_SEED,
+            ecad_cadcraft::views::Settings::none(),
+        )?;
+        let one_tx = |before: u64, after: u64, what: &str| {
+            if after == before + 1 {
+                Ok(())
+            } else {
+                Err(format!("the {what} was not recorded as one transaction (head {before} → {after})"))
+            }
+        };
+        let (mut moves, mut wires) = (Vec::with_capacity(runs), Vec::with_capacity(runs));
+        for run in 0..runs {
+            let target = draw_target(&project, &mut s)?;
+            let dy = if run % 2 == 0 { -5.0 } else { 5.0 };
+            let params = json!({"handles": [target.symbol.hex()], "delta": [0.0, dy]});
+            let t = Instant::now();
+            s.execute("move", &params).map_err(|e| format!("move {}: {e}", run + 1))?;
+            moves.push(ms(t));
+            one_tx(target.head, draw_target(&project, &mut s)?.head, "move")?;
+        }
+        for run in 0..runs {
+            let target = draw_target(&project, &mut s)?;
+            let (a, b) = (target.from, target.to);
+            let params = json!({ "points": [[a.x, a.y], [a.x, b.y], [b.x, b.y]] });
+            let t = Instant::now();
+            s.execute("wire", &params).map_err(|e| format!("wire {}: {e}", run + 1))?;
+            wires.push(ms(t));
+            one_tx(target.head, draw_target(&project, &mut s)?.head, "wire")?;
+        }
+        // Dropping the session and the handle releases the project and its writer lock.
+        drop(project);
+        drop(s);
+        Ok((moves, wires))
     })();
     remove(copy);
     result

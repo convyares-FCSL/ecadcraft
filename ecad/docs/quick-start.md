@@ -632,9 +632,12 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
 | edit ms | Record one new wire in the open project (one transaction, checked as any edit is). |
 | save ms | Save that wire (append one transaction and flush). |
+| draw move ms | In a headless drawing session with page 1 open, move a component that has wires attached, as MOVE does it on its symbol: the drawing change is turned into ECAD ops (the wires follow), recorded, and page 1 is drawn again (brief 014). |
+| draw wire ms | In the same session, draw one wire between two terminals on page 1 with the `wire` command, as the mouse wire tool does (brief 014). |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
-file opened once. Every open reads from a warm file cache (the file was just written), so a cold
+file opened once; the two draw columns run on another copy, opened once in one drawing session
+(the moves go alternately down and back up). Every open reads from a warm file cache (the file was just written), so a cold
 open after a restart can be slower.
 
 **How long it takes** (one run on native Windows 11, 2026-11-07, which is also the first result

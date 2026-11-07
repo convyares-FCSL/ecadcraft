@@ -66,6 +66,8 @@ fn row(variant: &str, open_ms: f64) -> Row {
             first_page_ms: 2.0,
             edit_ms: 0.5,
             save_ms: 0.0,
+            draw_move_ms: 3.0,
+            draw_wire_ms: 1.5,
         },
     }
 }
