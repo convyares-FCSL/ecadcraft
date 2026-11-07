@@ -247,6 +247,9 @@ pub struct Trial {
     pub hover_delay: f64,
     /// The home folder that `~` in typed paths stands for ([`ecad_cadcraft::home`] by default).
     pub home: Option<PathBuf>,
+    /// The lineweight display the trial last set when it opened a project; `None` before the
+    /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
+    lwdisplay_set: Option<bool>,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -331,6 +334,7 @@ impl Trial {
             hover: None,
             hover_delay: HOVER_DELAY,
             home: ecad_cadcraft::home(),
+            lwdisplay_set: None,
         }
     }
 
@@ -376,6 +380,13 @@ impl Trial {
         self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
+        // Thick and thin cable lines only show with lineweights on (design 009 §9), unless the
+        // user has chosen Show/Hide Lineweight since the trial started (brief 009 review).
+        let shown = &mut self.cad.session.settings.lwdisplay;
+        if self.lwdisplay_set.is_none_or(|set| *shown == set) {
+            *shown = true;
+            self.lwdisplay_set = Some(true);
+        }
     }
 
     /// Save the project to its file (Save As when it has none yet).

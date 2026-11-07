@@ -40,6 +40,7 @@ pub mod convert;
 pub mod debug;
 pub mod file;
 pub mod interact;
+pub mod look;
 pub mod project;
 pub mod slash;
 mod translate;

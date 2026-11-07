@@ -105,6 +105,23 @@ impl ProjectHandle {
         Ok(f(&mut p))
     }
 
+    /// Commit `ops` as one transaction labelled `label`, exactly as an ECAD command's JSON form
+    /// does (validation, undo, refresh of the open pages). For objects no command makes yet: tests
+    /// build brief 010's cable reference ends with it.
+    ///
+    /// # Errors
+    /// [`BUSY`] or [`NOT_ATTACHED`], a refused transaction, or a read-only project.
+    #[cfg(feature = "test-ops")]
+    #[doc(hidden)]
+    pub fn apply_ops(
+        &self,
+        s: &mut Session,
+        label: &str,
+        ops: Vec<ecad_model::Op>,
+    ) -> Result<ecad_model::TxId, String> {
+        self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops)
+    }
+
     /// Open `page` as a document (or switch to it).
     ///
     /// # Errors

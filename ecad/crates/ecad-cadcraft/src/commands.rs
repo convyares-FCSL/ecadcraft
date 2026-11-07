@@ -3,8 +3,8 @@
 //!
 //! They reach the command line, scripts, the control channel and MCP through the engine's
 //! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect`,
-//! `disconnect`, `cableslash` and `cableview` also have click-based interactive forms
-//! ([`crate::interact`], briefs 008, 004 and 005), started by a bare command name, a menu or a
+//! `disconnect`, `cableslash`, `cableview` and `cablecore` also have click-based interactive forms
+//! ([`crate::interact`], briefs 008, 004, 005 and 009), started by a bare command name, a menu or a
 //! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
 //! view is presentation only ([`crate::views`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
@@ -58,6 +58,19 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("cableview", "Cable View", run_cableview)
             .params("{cable?: id, view?: \"traditional\"|\"fan\"} (no cable: every cable's view; presentation only)")
             .interactive(interact::cableview)
+            .noundo(),
+        CommandSpec::new("cablecore", "Core Label", run_cablecore)
+            .params(
+                "{conductor: id, core: string|null} | {cable: id, cores: [string|null, …]} (null, empty or spaces clear)",
+            )
+            .interactive(interact::cablecore)
+            .noundo(),
+        CommandSpec::new("cablefan", "Cable Join", run_cablefan)
+            .params(
+                "{cable: id, end?: \"A\"|\"B\", at: [x,y] | fraction 0..1 | null} (where the trunk joins a fanned \
+end's spine; null: the middle)",
+            )
+            .interactive(interact::cablefan)
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
             .params("{conductor: id} | {component: id} | {cable: id}")
@@ -207,10 +220,14 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let mut items = Vec::new();
+        // Computed parts of a traditional-view cable are left out of a selection with other
+        // objects (brief 009 review S2); on their own they are refused below.
+        let mut drawn = None;
         for h in hs {
             match map.get(h) {
                 Some(Mapped::Item(i)) if p.ledger.document().representation_of_item(i).is_none() => items.push(i),
-                Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+                Some(Mapped::Fan(k)) if !map.is_fan(k) => drawn = Some(k),
+                Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
                 Some(_) => {
                     return Err(
                         "only plain geometry can be converted; part of the selection already has a meaning".into()
@@ -220,7 +237,10 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             }
         }
         if items.is_empty() {
-            return Err("select the geometry to convert".into());
+            return Err(match drawn {
+                Some(k) => views::refusal(map, k).into(),
+                None => "select the geometry to convert".into(),
+            });
         }
         let (c, r): (ComponentId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         let ops = vec![
@@ -254,7 +274,7 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let item = match map.get(h) {
             Some(Mapped::Item(item)) => item,
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
             _ => return Err("pick an item of a component".into()),
         };
         let doc = p.ledger.document();
@@ -485,6 +505,239 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         }
         p.apply_edit(pg, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
         Ok(json!({"changed": true}))
+    })
+}
+
+/// A core label as given (design 009 §5.4): trimmed; empty or only spaces clears it (`None`).
+///
+/// # Errors
+/// Longer than [`crate::look::MAX_CORE_CHARS`] characters, or a control character, in words.
+pub fn core_label(text: Option<&str>) -> Result<Option<String>, String> {
+    let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
+    if t.chars().any(char::is_control) {
+        return Err("A core label cannot contain control characters.".into());
+    }
+    if t.chars().count() > crate::look::MAX_CORE_CHARS {
+        return Err(format!("A core label can be at most {} characters.", crate::look::MAX_CORE_CHARS));
+    }
+    Ok(Some(t.to_string()))
+}
+
+/// The `core` of one entry: a string or `null`.
+fn core_value(v: Option<&Value>) -> Result<Option<String>, String> {
+    match v {
+        Some(Value::Null) => core_label(None),
+        Some(Value::String(t)) => core_label(Some(t)),
+        _ => Err("`core` must be a string, or null to clear it".into()),
+    }
+}
+
+/// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).
+fn core_ops(cable: CableId, index: usize, conductor: ConductorId, old: Option<String>, new: Option<String>) -> [Op; 2] {
+    [
+        Op::RemoveCableMember { cable, index, member: CableMember { conductor, core: old } },
+        Op::AddCableMember { cable, index, member: CableMember { conductor, core: new } },
+    ]
+}
+
+/// The other members of `cable` with core label `core` (design 009 §5.4, duplicates allowed).
+fn duplicates(doc: &ecad_model::Document, cable: CableId, conductor: ConductorId, core: &str) -> Vec<ConductorId> {
+    doc.cables
+        .get(&cable)
+        .map(|c| {
+            c.members
+                .iter()
+                .filter(|m| m.conductor != conductor && m.core.as_deref() == Some(core))
+                .map(|m| m.conductor)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `cablecore` (design 009 §5.2): set or clear the core label of one member, or of every member of
+/// a cable at once. One transaction; nothing changed, no transaction.
+fn run_cablecore(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("cores").is_some() {
+        return run_cablecores(s, params);
+    }
+    let conductor: ConductorId = id(params, "conductor").map_err(err)?;
+    let core = core_value(params.get("core")).map_err(err)?;
+    with_project(s, |p, pg, _page| {
+        let doc = p.ledger.document();
+        if !doc.conductors.contains_key(&conductor) {
+            return Err("no such conductor".into());
+        }
+        let Some(cable) = doc.cables_of(conductor).first().copied() else {
+            return Err(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor)));
+        };
+        let index = doc
+            .cables
+            .get(&cable)
+            .and_then(|c| c.members.iter().position(|m| m.conductor == conductor))
+            .ok_or("no such conductor")?;
+        let old = doc.cables.get(&cable).and_then(|c| c.members.get(index)).and_then(|m| m.core.clone());
+        let dups = core.as_deref().map(|c| duplicates(doc, cable, conductor, c)).unwrap_or_default();
+        let mut r = json!({
+            "cable": cable.hex(), "conductor": conductor.hex(), "index": index,
+            "core": core, "changed": old != core,
+        });
+        if !dups.is_empty() {
+            r["duplicates"] = Value::Array(dups.iter().map(|w| Value::String(w.hex())).collect());
+        }
+        if old == core {
+            return Ok(r);
+        }
+        p.apply_edit(pg, "cablecore", "Core label", core_ops(cable, index, conductor, old, core).to_vec())?;
+        Ok(r)
+    })
+}
+
+/// `cablecore {cable, cores}`: one label (or null) per member, in member order.
+fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let cable: CableId = id(params, "cable").map_err(err)?;
+    with_project(s, |p, pg, _page| {
+        let doc = p.ledger.document();
+        let members = doc.cables.get(&cable).ok_or("no such cable")?.members.clone();
+        let wrong = || {
+            format!(
+                "`cores` must list one label (or null) per member: cable {} has {} members",
+                views::cable_title(doc, cable),
+                members.len()
+            )
+        };
+        let list = params.get("cores").and_then(Value::as_array).ok_or_else(wrong)?;
+        if list.len() != members.len() {
+            return Err(wrong());
+        }
+        let mut cores = Vec::with_capacity(list.len());
+        for (i, v) in list.iter().enumerate() {
+            cores.push(core_value(Some(v)).map_err(|e| format!("Core {}: {e}", i + 1))?);
+        }
+        let mut ops = Vec::new();
+        for (index, (m, new)) in members.iter().zip(&cores).enumerate() {
+            if m.core != *new {
+                ops.extend(core_ops(cable, index, m.conductor, m.core.clone(), new.clone()));
+            }
+        }
+        let changed = !ops.is_empty();
+        if changed {
+            p.apply_edit(pg, "cablecore", "Core labels", ops)?;
+        }
+        Ok(json!({"cable": cable.hex(), "cores": cores, "changed": changed}))
+    })
+}
+
+/// What `cablefan`'s `at` asks for.
+enum JoinAt {
+    Point(Pt),
+    Fraction(f64),
+    Middle,
+}
+
+/// `cablefan` (owner request on brief 009, 2026-11-07): where the trunk joins one fanned end of a
+/// cable on the active page. The join is stored as a `fan-anchor` representation of the cable
+/// holding one Point item (existing ops, no format change), snapped onto the spine; `null` removes
+/// it and the trunk joins the middle again. Works whatever the cable's view (programmatic calls
+/// ignore views).
+fn run_cablefan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let cable: CableId = id(params, "cable").map_err(err)?;
+    let end = match params.get("end") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(e)) if e == "A" => Some(crate::look::MarkerEnd::A),
+        Some(Value::String(e)) if e == "B" => Some(crate::look::MarkerEnd::B),
+        Some(_) => return Err(err("`end` must be \"A\" or \"B\"")),
+    };
+    let at = match params.get("at") {
+        Some(Value::Null) => JoinAt::Middle,
+        Some(Value::Number(n)) => match n.as_f64().filter(|f| f.is_finite() && (0.0..=1.0).contains(f)) {
+            Some(f) => JoinAt::Fraction(f),
+            None => return Err(err("`at` as a fraction must be from 0 to 1")),
+        },
+        Some(v @ Value::Array(_)) => match point(v) {
+            Some(p) if p.x.abs() <= 1e12 && p.y.abs() <= 1e12 => JoinAt::Point(p),
+            Some(_) => return Err(err("Point out of range.")),
+            None => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
+        },
+        _ => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
+    };
+    with_project(s, |p, pg, page| {
+        let doc = p.ledger.document();
+        if !doc.cables.contains_key(&cable) {
+            return Err("no such cable".into());
+        }
+        let title = views::cable_title(doc, cable);
+        let ends = crate::look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
+        if ends.is_empty() {
+            return Err(format!("Cable {title} has no fanned end on this page."));
+        }
+        let name = |e: crate::look::MarkerEnd| if e == crate::look::MarkerEnd::A { "A" } else { "B" };
+        let fe = match (end, &at) {
+            (Some(e), _) => ends
+                .iter()
+                .find(|f| f.end == e)
+                .ok_or_else(|| format!("End {} of cable {title} stops at a reference; it has no spine.", name(e)))?,
+            (None, JoinAt::Point(q)) => ends
+                .iter()
+                .min_by(|a, b| {
+                    let d = |f: &crate::look::FanEnd| f.spine.join_for(*q).map_or(f64::INFINITY, |j| j.dist(*q));
+                    d(a).total_cmp(&d(b))
+                })
+                .ok_or("no fanned end")?,
+            (None, _) => return Err("`end` (\"A\" or \"B\") is required unless `at` is a point".into()),
+        };
+        let sp = fe.spine;
+        let join = match at {
+            JoinAt::Point(q) => Some(sp.join_for(q).ok_or("Point out of range.")?),
+            JoinAt::Fraction(f) => Some(sp.point(sp.tmin + f * (sp.tmax - sp.tmin))),
+            JoinAt::Middle => None,
+        };
+        let mut r = json!({
+            "cable": cable.hex(), "end": name(fe.end),
+            "at": join.map(|j| json!([j.x, j.y])), "changed": true,
+        });
+        let ops = match (fe.anchor, join) {
+            (None, None) => {
+                r["changed"] = Value::Bool(false);
+                return Ok(r);
+            }
+            (Some((_, _, old)), Some(j)) if old.near(j, 1e-9) => {
+                r["changed"] = Value::Bool(false);
+                return Ok(r);
+            }
+            (Some((rid, item, _)), None) => {
+                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
+                let rep = doc.representations.get(&rid).cloned().ok_or("anchor missing")?;
+                vec![Op::UnlinkRepresentation { id: rid, rep }, Op::RemoveItem { id: item, item: before }]
+            }
+            (Some((_, item, _)), Some(j)) => {
+                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
+                let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: j }), ..before.clone() };
+                vec![Op::ModifyItem { id: item, before, after }]
+            }
+            (None, Some(j)) => {
+                let (item, rid): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
+                let style = plain_style(p);
+                vec![
+                    Op::AddItem {
+                        id: item,
+                        item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: j }) },
+                    },
+                    Op::LinkRepresentation {
+                        id: rid,
+                        rep: Representation {
+                            subject: Subject::Cable(cable),
+                            page,
+                            form: Form::Drawn,
+                            role: crate::look::ANCHOR_ROLE.into(),
+                            items: vec![item],
+                            connection_points: BTreeMap::new(),
+                        },
+                    },
+                ]
+            }
+        };
+        p.apply_edit(pg, "cablefan", "Cable join", ops)?;
+        Ok(r)
     })
 }
 
