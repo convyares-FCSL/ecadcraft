@@ -1,6 +1,6 @@
 # Brief 009: Cable look and feel, and core designation
 
-Status: Draft (overseer, 2026-11-07, from the owner's feedback on brief 005)
+Status: Approved (owner, 2026-11-07)
 Branch: `ecad/cable-look`
 Designer: **yes**, first (`ecad/docs/design/009.md`) · Size: L
 Depends on: 004, 005
@@ -35,7 +35,8 @@ tail is the wire.
    tails sized for labels. Drawn by the ECAD projection (design 005 O1), so it snaps, plots and
    exports as shown.
 2. Fan at either end, one end or both ends, per cable end.
-3. A cable-end reference marker (text only in this brief: the target area or page the user types).
+3. A cable-end reference marker: free text only in this brief (the target area or page the user
+   types). Live references are brief 010.
 4. Core designation:
    - set and change a member's core number or colour (interactive and JSON forms, identical
      transactions);
@@ -50,7 +51,7 @@ tail is the wire.
 
 **Out of scope:**
 - Linking the two halves of a cable across pages into one cable with live cross-references (the
-  "cable by tag across pages" deferral from brief 004): a separate brief.
+  "cable by tag across pages" deferral from brief 004): brief 010, references.
 - Core numbering schemes or automatic numbering; the cable schedule; spares.
 - The general tidy-up (defaults, sizes across the app).
 
@@ -71,8 +72,11 @@ tail is the wire.
 
 Whether the cable reads like a real drawing on Windows, and where labels sit at small zoom.
 
-## Questions for the owner
+## Owner answers (2026-11-07)
 
-1. Is the label box part of this brief, or only the line work?
-2. Core colour: free text (`BK`, `BN`, `GNYE`), or a fixed list?
-3. The reference marker: free text now, live cross-reference later. Is that split right?
+1. The label box is part of this brief.
+2. Core colour is free text for now. Later it will follow how wire and cable colours are set up,
+   ideally defaulting to the standard German abbreviations (as used by Lapp and others); not in this
+   brief.
+3. The reference marker is free text here; brief 010 focuses on references. This brief focuses on
+   cable look and cores.
