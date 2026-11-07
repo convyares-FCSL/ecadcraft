@@ -55,6 +55,52 @@ The owner's idea, snapshots as parts, answers A and B. It doesn't answer C or D,
    `checkpoints/*.snap`, `libraries/`, each written atomically; zip only for transport (EPLAN-like).
    Parts are real files, but one project is no longer one file to copy, lock and back up.
 
+## 4a. Option C, from the owner's follow-up: index plus log plus snapshot parts, append-only
+
+The owner's model, a struct of an index, the live log and an array of snapshots, is a good logical
+view. On disk only the end of a file can grow, so an index at the front can't grow without
+overwriting bytes in place: either a reserved region or two alternating slots with a CRC, as LMDB
+does. Putting **each new index at the end** keeps every write an append, as PDF incremental
+updates and an appended zip do:
+
+```
+[header][tx 1 … 1000][snapshot parts @1000][index v1][tx 1001 … 1050][index v2]   ← read the last valid index
+```
+
+- **The log is never duplicated.** It is one sequence of transactions stored in segments, and
+  snapshot and index records sit between them. Full history reads the `tx` records in order and
+  skips the rest.
+- **A snapshot is materialised state, not history.** It is a cache: delete it and nothing is lost.
+  Opening reads the last index, loads the snapshot and replays only the tail, so open time follows
+  the project's size, not the length of its history.
+- **Parts make snapshots incremental.** Split the state into parts, for example one per page plus
+  one for project-wide objects (components, cables, settings). A new snapshot writes only the
+  parts that changed, and the index points at the newest copy of each, much as git does with
+  trees. This is where the owner's "concrete and deliberate" division lives.
+- **Snapshot when the tail costs more than the snapshot,** not on every save.
+- **Compaction** is the only rewrite: write a new file, then swap it in with an atomic rename,
+  keeping the full log, the latest parts and the named versions.
+- **Hash chain:** transactions are chained (`chain.rs`). Each snapshot records the chain hash at its
+  point, so opening checks only the tail, and a full-history check becomes an on-demand verify
+  (the debugger's Verify replay and Verify file already exist).
+- **The wrapper is still open:** a real zip (7-Zip can open it, and parts are zip entries) or our own
+  CRC framing (one integrity scheme). Either can be append-only.
+
+The overseer recommends C with the index at the end. The live format and the transport package
+could then become the same thing.
+
+## 4b. First benchmark result (brief 012, small tier, owner's machine, 2026-11-07)
+
+| History | File | Transactions | Open |
+| --- | --- | --- | --- |
+| lean | 0.86 MB | 678 | 230 ms |
+| churned | 3.24 MB | 3 386 | 1 050 ms |
+
+Opening takes roughly the number of transactions times the size of the document: replay copies
+and validates the whole document after every transaction. That is a replay inefficiency to fix
+whatever the container is (validate once at the end, or incrementally). It also means the first
+page waits almost entirely on open. Snapshots hide it, but they shouldn't be the only fix.
+
 ## 5. Questions for the architect
 
 1. Is "snapshots as explicit parts" satisfied by checkpoint records plus a manifest inside one file,
@@ -66,3 +112,8 @@ The owner's idea, snapshots as parts, answers A and B. It doesn't answer C or D,
 4. What numbers from brief 012 should trigger stage 4 (open time and file size budgets)?
 5. Does any of this change a fixed principle (one append-only log, not a database), and if so who
    approves it?
+6. Option C: index at the end (pure append) or at the front (two slots, rewritten in place)? A real
+   zip wrapper or our own framing?
+7. How should the state be split into snapshot parts: per page plus project-wide, or finer?
+8. Should replay's whole-document validation per transaction be fixed now, as its own brief, since
+   it dominates open time before any snapshot exists?
