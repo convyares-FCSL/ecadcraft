@@ -25,7 +25,7 @@
 
 use std::collections::VecDeque;
 
-use ecad_model::derive::{mismatches, nets};
+use ecad_model::derive::{CableReference, cable_references, mismatches, nets};
 use ecad_model::{Document, Ledger, ModelError, PageId, Subject, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -34,7 +34,9 @@ use serde_json::{Value, json};
 ///
 /// `ecad-inspect/2` adds `persistence` (live snapshots only, `null` otherwise): where the project's
 /// file stands (path, header, writer state, record offsets, lock, read-only reason). Everything in
-/// `ecad-inspect/1` is unchanged.
+/// `ecad-inspect/1` is unchanged. Brief 010 adds three derived entries to `checks`
+/// (`cable_references`, `orphan_references`, `over_referenced_cables`); readers that do not know
+/// them ignore them, so the tag is unchanged.
 pub const SNAPSHOT_FORMAT: &str = "ecad-inspect/2";
 
 /// What happened at runtime.
@@ -268,6 +270,7 @@ pub fn snapshot(
         None => Some(ledger.replay_matches()?),
         Some(_) => None,
     };
+    let refs = cable_references(doc);
     let pages: Vec<Value> = doc
         .page_order
         .iter()
@@ -306,6 +309,51 @@ pub fn snapshot(
             "invariants_hold": doc.check().is_ok(),
             "mismatches": mismatches(doc, 1e-6),
             "nets": nets(doc),
+            "cable_references": references_json(doc, &refs),
+            "orphan_references": refs.iter().filter(|r| r.orphan).map(|r| json!({
+                "reference": r.reference.hex(),
+                "cable": r.cable.hex(),
+                "page": r.page.hex(),
+            })).collect::<Vec<_>>(),
+            "over_referenced_cables": over_referenced(&refs).iter().map(|k| k.hex()).collect::<Vec<_>>(),
         },
     }))
+}
+
+/// Most references one cable may have (design 010, owner question Q2): one continuation.
+pub const MAX_REFERENCES_PER_CABLE: usize = 2;
+
+/// Cables with more than [`MAX_REFERENCES_PER_CABLE`] references (possible only from a file), in
+/// ID order.
+pub fn over_referenced(refs: &[CableReference]) -> Vec<ecad_model::CableId> {
+    let mut n: std::collections::BTreeMap<ecad_model::CableId, usize> = std::collections::BTreeMap::new();
+    for r in refs {
+        *n.entry(r.cable).or_default() += 1;
+    }
+    n.into_iter().filter(|(_, c)| *c > MAX_REFERENCES_PER_CABLE).map(|(k, _)| k).collect()
+}
+
+/// The cable references of `doc` as `cablerefs` and the snapshot's `checks.cable_references` list
+/// them (design 010 §7.4): one object per reference, in page order, then column, then ID.
+pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
+    Value::Array(
+        refs.iter()
+            .map(|r| {
+                json!({
+                    "reference": r.reference.hex(),
+                    "cable": r.cable.hex(),
+                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.properties.get("tag")),
+                    "page": r.page.hex(),
+                    "page_number": r.page_number,
+                    "page_title": doc.pages.get(&r.page).map(|p| p.title.clone()).unwrap_or_default(),
+                    "at": r.at.map(|p| json!([p.x, p.y])),
+                    "column": r.column,
+                    "text": r.text,
+                    "partner": r.partner().map(|p| p.hex()),
+                    "orphan": r.orphan,
+                    "wires_here": r.wires_here,
+                })
+            })
+            .collect(),
+    )
 }
