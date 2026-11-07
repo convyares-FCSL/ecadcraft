@@ -174,6 +174,137 @@ fn u_and_redo_are_one_step_each_and_the_agents() {
     }
 }
 
+/// Fix round 1: UNDO, REDO and MREDO asking for more than one step are refused before they run,
+/// with a message that says nothing was changed, and the head does not move.
+#[test]
+fn multi_step_undo_and_redo_are_refused_before_they_run() {
+    let mut c = writer();
+    three_wires(&mut c);
+    c.exec("u", json!({}));
+    let log = c.log();
+    let doc = c.doc();
+    for (cmd, p) in [
+        ("undo", json!({"count": 2})),
+        ("undo", json!({"count": 1000})),
+        ("undo", json!({"count": 1.5})),
+        ("undo", json!({"count": "3"})),
+        ("undo", json!({"count": 1e300})),
+        ("undo", json!({"mode": "back"})),
+        ("undo", json!({"mode": "BACK", "confirm": true})),
+        ("UNDO", json!({"count": 2})),
+        ("redo", json!({"count": 2})),
+        ("redo", json!({"count": 18446744073709551615u64})),
+        ("mredo", json!({"count": 2})),
+        ("mredo", json!({"all": true})),
+        ("mredo", json!({"all": "yes"})),
+    ] {
+        let r = c.exec_raw(cmd, p.clone());
+        assert_eq!(r["isError"], json!(true), "{cmd} {p}: {r}");
+        let m = r["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(m.starts_with("Refused:") && m.contains("Nothing was changed"), "{cmd} {p}: {m}");
+        assert!(!m.contains("taken back"), "refused before it ran, not after: {cmd} {p}: {m}");
+        assert_eq!(c.log(), log, "{cmd} {p}: the head moved");
+        assert_eq!(c.doc(), doc, "{cmd} {p}");
+    }
+    // Spellings the gate does not catch reach ECAD's own refusal of non-count UNDO modes, or run
+    // as one step: never more than one transaction.
+    for (cmd, p) in
+        [("undo", json!({"mode": " back "})), ("undo", json!({"mode": "begin"})), ("mredo", json!({"all": false}))]
+    {
+        let before = c.log().len();
+        let _ = c.exec_raw(cmd, p.clone());
+        assert!(c.log().len() <= before + 1, "{cmd} {p}");
+    }
+}
+
+/// Run one batch line; return the replies in id order.
+fn batch(c: &mut Client, calls: &[(&str, Value)]) -> Vec<Value> {
+    let msgs: Vec<Value> = calls
+        .iter()
+        .enumerate()
+        .map(|(i, (cmd, p))| {
+            json!({"jsonrpc": "2.0", "id": 100 + i, "method": "tools/call",
+                "params": {"name": "execute", "arguments": {"command": cmd, "params": p}}})
+        })
+        .collect();
+    let reply = c.s.handle_line(&Value::Array(msgs).to_string()).expect("replies");
+    let v: Value = serde_json::from_str(&reply).unwrap();
+    let mut out = v.as_array().cloned().unwrap_or_default();
+    out.sort_by_key(|r| r["id"].as_u64());
+    out
+}
+
+fn is_err(r: &Value) -> bool {
+    r.get("error").is_some() || r["result"]["isError"] == json!(true)
+}
+
+/// Fix round 1: a batch line is one call. A second transaction in the line, whatever its kind
+/// (edit, undo, redo), is refused and taken back by the opposite step, so the design is as after
+/// the first; the person's earlier transactions are never touched.
+#[test]
+fn a_batch_over_the_cap_is_taken_back_by_kind_and_spares_the_persons_work() {
+    let mut c = writer();
+    // The person's own wire, recorded as the person's.
+    c.s.with_session(|s, p| {
+        p.configure(s, |p| p.author = Author::User).unwrap();
+        s.execute("wire", &json!({"points": [[0, -20], [60, -20]]})).unwrap();
+        p.configure(s, |p| p.author = Author::Agent(AGENT.into())).unwrap();
+    })
+    .unwrap();
+    let person: Vec<Transaction> = c.log();
+    assert_eq!(person.last().unwrap().author, Author::User);
+    let only_person = c.doc();
+    let wire = |y: i32| ("wire", json!({"points": [[0, y], [60, y]]}));
+
+    // Edit then edit: the second edit is undone.
+    let r = batch(&mut c, &[wire(0), wire(5)]);
+    assert!(!is_err(&r[0]), "{}", r[0]);
+    assert!(is_err(&r[1]), "{}", r[1]);
+    let msg = r[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
+    assert!(msg.contains("taken back") && msg.contains("as before"), "a truthful message: {msg}");
+    let with_w0 = c.doc();
+    assert_eq!(with_w0.conductors.len(), only_person.conductors.len() + 1, "{msg}");
+
+    // Undo then undo: the second undo is redone.
+    let r = batch(&mut c, &[("u", json!({})), ("u", json!({}))]);
+    assert!(!is_err(&r[0]) && is_err(&r[1]), "{r:?}");
+    assert_eq!(c.doc(), only_person, "one undo stands, the second was taken back by a redo");
+
+    // Redo then edit: the edit is undone, the redo stands.
+    let r = batch(&mut c, &[("redo", json!({})), wire(10)]);
+    assert!(!is_err(&r[0]) && is_err(&r[1]), "{r:?}");
+    assert_eq!(c.doc(), with_w0);
+
+    // Undo then redo: the redo is undone, the undo stands.
+    let r = batch(&mut c, &[("u", json!({})), ("redo", json!({}))]);
+    assert!(!is_err(&r[0]) && is_err(&r[1]), "{r:?}");
+    assert_eq!(c.doc(), only_person);
+
+    // A long batch of edits: only the first stands; every later one is refused and taken back.
+    let calls: Vec<(&str, Value)> = (0..10).map(|i| wire(30 + i)).collect();
+    let r = batch(&mut c, &calls);
+    assert!(!is_err(&r[0]));
+    assert!(r[1..].iter().all(is_err), "{r:?}");
+    assert_eq!(c.doc().conductors.len(), only_person.conductors.len() + 1);
+
+    // A batch of reads and refusals records nothing beyond its one write.
+    let before = c.log().len();
+    let r = batch(&mut c, &[("ecadinspect", json!({})), ("nosuch", json!({})), wire(50), ("entities", json!({}))]);
+    assert!(!is_err(&r[0]) && is_err(&r[1]) && !is_err(&r[2]) && !is_err(&r[3]), "{r:?}");
+    assert_eq!(c.log().len(), before + 1);
+
+    // The person's transactions are untouched, still the person's, and their wire survives.
+    let log = c.log();
+    assert_eq!(&log[..person.len()], &person[..], "earlier history is append-only and unchanged");
+    let doc = c.doc();
+    for id in only_person.conductors.keys() {
+        assert!(doc.conductors.contains_key(id), "the person's wire survives every rollback");
+    }
+    // Each new line starts a fresh call: a single write after a refused batch is accepted.
+    let r = c.exec_raw("wire", json!({"points": [[0, 70], [60, 70]]}));
+    assert_ne!(r["isError"], json!(true), "{r}");
+}
+
 // ---------- criterion 3: writes off ----------
 
 #[test]
