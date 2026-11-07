@@ -72,8 +72,9 @@ fn full_check_runs_with_the_switch_in_release() {
     let off = run_child(None);
     let zero = run_child(Some("0"));
     eprintln!("switch on: {on}\nswitch off: {off}\nswitch 0: {zero}");
-    if cfg!(debug_assertions) {
-        // Debug builds always verify: the disagreement is caught (assertion or refusal).
+    if cfg!(feature = "verify-invariants") {
+        // Test builds always verify (the feature, through dev-dependencies): the disagreement is
+        // caught, by the debug assertion or a refusal. The switch itself is unit-tested in ledger.rs.
         for v in [&on, &off, &zero] {
             assert!(v.starts_with("VERDICT=refused") || v == "VERDICT=panicked", "debug: {v}");
         }
