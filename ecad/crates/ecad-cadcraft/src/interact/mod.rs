@@ -518,9 +518,10 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     lines
 }
 
-/// The core label of member `w` of cable `k`, when it has one.
+/// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: ConductorId) -> Option<String> {
-    doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.clone()
+    let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
+    (!core.trim().is_empty()).then(|| crate::look::shorten(core, crate::look::MAX_CORE_CHARS))
 }
 
 /// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
@@ -551,8 +552,8 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     } else {
         // The stored member order, nothing more (owner answer Q2).
         lines.push(format!("Wires: {}", members.len()));
-        lines.extend(members.iter().map(|m| match &m.core {
-            Some(c) => format!("  {}  core {}", crate::slash::wire_name(doc, m.conductor), crate::look::shorten(c, 32)),
+        lines.extend(members.iter().map(|m| match core_of(doc, k, m.conductor) {
+            Some(c) => format!("  {}  core {c}", crate::slash::wire_name(doc, m.conductor)),
             None => format!("  {}", crate::slash::wire_name(doc, m.conductor)),
         }));
     }
@@ -588,7 +589,7 @@ fn wire_lines(doc: &Document, w: ConductorId) -> Vec<String> {
             None => format!("{}…", short(&k.hex())),
         };
         match core_of(doc, *k, w) {
-            Some(c) => lines.push(format!("In cable {name}, core {}", crate::look::shorten(&c, 32))),
+            Some(c) => lines.push(format!("In cable {name}, core {c}")),
             None => lines.push(format!("In cable {name}")),
         }
     }

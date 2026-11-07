@@ -312,7 +312,6 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
 /// [`member_crossing_points`] rules), with the member and the direction of its route segment there
 /// (design 009 §6): one entry per member and slash, in slash order then member order.
 pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<(ConductorId, Pt, Pt)> {
-    let tol = usable(tol);
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let routes = routes(doc, page);
     let mut by_conductor: BTreeMap<ConductorId, Vec<&Primitive>> = BTreeMap::new();
@@ -321,13 +320,27 @@ pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f6
             by_conductor.entry(*w).or_default().push(prim);
         }
     }
+    let slashes: Vec<(Pt, Pt)> = slashes_of(doc, page, cable).into_iter().map(|(_, a, b)| (a, b)).collect();
+    member_crossings_with(c, &slashes, |w| by_conductor.get(&w).map(Vec::as_slice).unwrap_or_default(), tol)
+}
+
+/// [`member_crossings_of`] for one cable with its `slashes` on the page and each member's route
+/// primitives there (`prims`), already gathered by the caller (one index per page, brief 009
+/// review S4).
+pub fn member_crossings_with<'p>(
+    c: &ecad_model::Cable,
+    slashes: &[(Pt, Pt)],
+    prims: impl Fn(ConductorId) -> &'p [&'p Primitive],
+    tol: f64,
+) -> Vec<(ConductorId, Pt, Pt)> {
+    let tol = usable(tol);
     let mut out = Vec::new();
-    for (_, from, to) in slashes_of(doc, page, cable) {
+    for (from, to) in slashes.iter().copied() {
         if !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
             continue;
         }
         for m in &c.members {
-            let prims = by_conductor.get(&m.conductor).map(Vec::as_slice).unwrap_or_default();
+            let prims = prims(m.conductor);
             let mut meets = Meets::default();
             for prim in prims {
                 meet_route(&mut meets, prim, from, to, tol);

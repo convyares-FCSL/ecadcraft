@@ -213,9 +213,13 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     with_project(s, |p, pg, page| {
         let map = &p.pages.get(&page).ok_or("page view not found")?.map;
         let mut items = Vec::new();
+        // Computed parts of a traditional-view cable are left out of a selection with other
+        // objects (brief 009 review S2); on their own they are refused below.
+        let mut drawn = None;
         for h in hs {
             match map.get(h) {
                 Some(Mapped::Item(i)) if p.ledger.document().representation_of_item(i).is_none() => items.push(i),
+                Some(Mapped::Fan(k)) if !map.is_fan(k) => drawn = Some(k),
                 Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
                 Some(_) => {
                     return Err(
@@ -226,7 +230,10 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             }
         }
         if items.is_empty() {
-            return Err("select the geometry to convert".into());
+            return Err(match drawn {
+                Some(k) => views::refusal(map, k).into(),
+                None => "select the geometry to convert".into(),
+            });
         }
         let (c, r): (ComponentId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         let ops = vec![

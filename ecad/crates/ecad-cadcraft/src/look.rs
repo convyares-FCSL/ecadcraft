@@ -28,6 +28,9 @@ use ecad_model::{
 pub const LABEL_HEIGHT: f64 = 2.5;
 /// `ecad.label-gap`: between the bend and the first label, between labels, after the last.
 pub const LABEL_GAP: f64 = 1.0;
+/// Between a core label and the wire number after it: one text height, so the two never read as
+/// one (overseer decision on the brief 009 review, `W4 4` not `W44`).
+pub const LABEL_SPACING: f64 = LABEL_HEIGHT;
 /// `ecad.tail-min`: the shortest tail in fan view.
 pub const TAIL_MIN: f64 = 20.0;
 /// `ecad.bend-radius`, capped at half the core pitch.
@@ -361,14 +364,15 @@ impl Marker {
             Pt::new(self.at.x + self.width + 0.5 * h, self.at.y + 1.5 * h),
         )
     }
+    /// Midpoints as `lo + (hi - lo) / 2`, which stays finite for a point near ±f64::MAX.
     fn centre(&self) -> Pt {
         let (lo, hi) = self.rect();
-        mul(add(lo, hi), 0.5)
+        add(lo, mul(sub(hi, lo), 0.5))
     }
     /// The flag (flat side towards `toward`) and its attach point M.
     fn flag(&self, toward: Option<Pt>) -> (Vec<Pt>, Pt) {
         let (lo, hi) = self.rect();
-        let ym = 0.5 * (lo.y + hi.y);
+        let ym = lo.y + 0.5 * (hi.y - lo.y);
         let flat_left = toward.is_none_or(|q| self.centre().x > q.x);
         if flat_left {
             let tip = Pt::new(hi.x + LABEL_HEIGHT, ym);
@@ -382,10 +386,10 @@ impl Marker {
 
 /// The reference ends of `cable` on `page`, in ID order: each with the point of its first Point
 /// (or Text) item. Ends whose point is not finite are left out.
-fn markers_of(doc: &Document, page: PageId, cable: CableId, measure: &dyn Fn(&str) -> f64) -> Vec<Marker> {
-    doc.representations
+fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn Fn(&str) -> f64) -> Vec<Marker> {
+    idx.cable_reps(cable)
         .iter()
-        .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(cable) && r.role == REFERENCE_ROLE)
+        .filter(|(_, r)| r.role == REFERENCE_ROLE)
         .filter_map(|(id, r)| {
             let at = r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
                 Some(ItemKind::Primitive(Primitive::Point { at } | Primitive::Text { at, .. })) => Some(*at),
@@ -490,7 +494,7 @@ fn fan_end(
         .collect();
     let wc = labels.iter().map(|l| l.core_w).fold(0.0, f64::max);
     let ww = labels.iter().map(|l| l.wire_w).fold(0.0, f64::max);
-    let tail = TAIL_MIN.max(g + wc + g + ww + g);
+    let tail = TAIL_MIN.max(g + wc + LABEL_SPACING + ww + g);
     let amax = a.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let c = amax + tail + rho;
     let (tmin, tmax) = (sorted.first().copied()?, sorted.last().copied()?);
@@ -540,7 +544,7 @@ fn fan_end(
             );
         }
         // Labels at the tail start, reading left to right or bottom to top (design §4.5).
-        let second = if l.core.is_some() { g + l.core_w + g } else { g };
+        let second = if l.core.is_some() { g + l.core_w + LABEL_SPACING } else { g };
         let lift = 0.3 * h;
         let (core_at, wire_at, rotation) = if r.x > 0.5 {
             (add(start, Pt::new(g, lift)), add(start, Pt::new(second, lift)), 0.0)
@@ -659,7 +663,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
 }
 
 /// Core labels just past the slash crossings (design §6).
-fn slash_labels(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<Part> {
+fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let core_of: BTreeMap<ConductorId, String> = c
         .members
@@ -673,7 +677,17 @@ fn slash_labels(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<P
     }
     let h = LABEL_HEIGHT;
     let mut out = Vec::new();
-    for (w, p, dir) in crate::slash::member_crossings_of(doc, page, cable, tol) {
+    let slashes: Vec<(Pt, Pt)> = idx
+        .cable_reps(cable)
+        .iter()
+        .flat_map(|(_, r)| r.items.iter())
+        .filter_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+            Some(ItemKind::Primitive(Primitive::Line { a, b })) => Some((*a, *b)),
+            _ => None,
+        })
+        .collect();
+    let crossings = crate::slash::member_crossings_with(c, &slashes, |w| idx.route_prims(w), tol);
+    for (w, p, dir) in crossings {
         let Some(text) = core_of.get(&w) else { continue };
         let len = dir.x.hypot(dir.y);
         if !(len.is_finite() && len > 0.0 && p.is_finite()) {
@@ -703,6 +717,33 @@ pub fn cable_on_page(
     tol: f64,
     measure: &dyn Fn(&str) -> f64,
 ) -> CableDrawing {
+    cable_in(doc, &PageIndex::new(doc, page), cable, fan, tol, measure)
+}
+
+/// [`cable_on_page`] with the page's [`PageIndex`] built once by the caller. Any part that is not
+/// finite (a point near ±f64::MAX) is left out, in both views.
+fn cable_in(
+    doc: &Document,
+    idx: &PageIndex<'_>,
+    cable: CableId,
+    fan: bool,
+    tol: f64,
+    measure: &dyn Fn(&str) -> f64,
+) -> CableDrawing {
+    let mut out = cable_unfiltered(doc, idx, cable, fan, tol, measure);
+    out.parts.retain(|p| shape_finite(&p.shape));
+    out.quiet.retain(|p| p.is_finite());
+    out
+}
+
+fn cable_unfiltered(
+    doc: &Document,
+    idx: &PageIndex<'_>,
+    cable: CableId,
+    fan: bool,
+    tol: f64,
+    measure: &dyn Fn(&str) -> f64,
+) -> CableDrawing {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     let Some(c) = doc.cables.get(&cable) else { return CableDrawing::default() };
     let mut seen = BTreeSet::new();
@@ -711,11 +752,11 @@ pub fn cable_on_page(
         if !seen.insert(m.conductor) {
             continue;
         }
-        if let Some(path) = ecad_model::derive::route_on_page(doc, m.conductor, page).and_then(|(_, p)| path_of(&p)) {
+        if let Some(path) = idx.route(m.conductor).and_then(path_of) {
             members.push(Member { conductor: m.conductor, core: m.core.clone(), path });
         }
     }
-    let markers = markers_of(doc, page, cable, measure);
+    let markers = markers_of(doc, idx, cable, measure);
     let sides = sides(&members);
     // Ends of each side and their centroids.
     let side_ends: [Vec<Pt>; 2] = match &sides {
@@ -766,7 +807,7 @@ pub fn cable_on_page(
             && members.len() >= 2
         {
             fanned =
-                fan_parts(doc, page, cable, &members, *reference, &side_ends, &cents, &stopped, &flags, tol, measure);
+                fan_parts(doc, idx, cable, &members, *reference, &side_ends, &cents, &stopped, &flags, tol, measure);
         }
     }
     match fanned {
@@ -799,7 +840,7 @@ pub fn cable_on_page(
                 }
             }
         }
-        None => out.parts = slash_labels(doc, page, cable, tol),
+        None => out.parts = slash_labels(doc, idx, cable, tol),
     }
     for (m, (flag, _)) in markers.iter().zip(&flags) {
         out.parts.push(
@@ -821,7 +862,7 @@ pub fn cable_on_page(
 #[allow(clippy::too_many_arguments)]
 fn fan_parts(
     doc: &Document,
-    page: PageId,
+    idx: &PageIndex<'_>,
     cable: CableId,
     members: &[Member],
     reference: usize,
@@ -867,18 +908,16 @@ fn fan_parts(
     }
     // What the fan replaces: the members' routes here and the cable's slashes (not its reference
     // ends, which stay drawn).
-    let used: BTreeSet<ConductorId> = members.iter().map(|m| m.conductor).collect();
-    let mut hidden = Vec::new();
-    for r in doc.representations.values().filter(|r| r.page == page) {
-        let hide = match r.subject {
-            Subject::Conductor(w) => used.contains(&w),
-            Subject::Cable(x) => x == cable && r.role != REFERENCE_ROLE,
-            Subject::Component(_) => false,
-        };
-        if hide {
-            hidden.extend(r.items.iter().copied());
-        }
+    let mut hidden: Vec<ItemId> = Vec::new();
+    for m in members {
+        hidden.extend(idx.conductor_reps(m.conductor).iter().flat_map(|r| r.items.iter().copied()));
     }
+    hidden.extend(
+        idx.cable_reps(cable)
+            .iter()
+            .filter(|(_, r)| r.role != REFERENCE_ROLE)
+            .flat_map(|(_, r)| r.items.iter().copied()),
+    );
     Some((parts, hidden, m))
 }
 
@@ -891,11 +930,74 @@ pub fn cables_on_page(
     tol: f64,
     measure: &dyn Fn(&str) -> f64,
 ) -> BTreeMap<CableId, CableDrawing> {
-    doc.cables
-        .keys()
-        .map(|k| (*k, cable_on_page(doc, page, *k, fan.contains(k), tol, measure)))
+    let idx = PageIndex::new(doc, page);
+    // Only cables shown on the page: with a representation there, or a member routed there.
+    let mut shown: BTreeSet<CableId> = idx.cables.keys().copied().collect();
+    for (k, c) in &doc.cables {
+        if c.members.iter().any(|m| idx.routes.contains_key(&m.conductor)) {
+            shown.insert(*k);
+        }
+    }
+    shown
+        .into_iter()
+        .map(|k| (k, cable_in(doc, &idx, k, fan.contains(&k), tol, measure)))
         .filter(|(_, d)| !d.parts.is_empty() || !d.hidden.is_empty())
         .collect()
+}
+
+/// What one page shows, indexed once per projection (brief 009 review S4): each conductor's
+/// route (its first route item, as `derive::route_on_page` picks it), its route primitives and
+/// representations, and each cable's representations. Every cable is then drawn without scanning
+/// the whole document again.
+pub struct PageIndex<'a> {
+    routes: BTreeMap<ConductorId, &'a Primitive>,
+    prims: BTreeMap<ConductorId, Vec<&'a Primitive>>,
+    conductors: BTreeMap<ConductorId, Vec<&'a ecad_model::Representation>>,
+    cables: BTreeMap<CableId, Vec<(RepresentationId, &'a ecad_model::Representation)>>,
+}
+
+impl<'a> PageIndex<'a> {
+    /// One pass over the document's representations on `page`.
+    pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
+        let mut idx = PageIndex {
+            routes: BTreeMap::new(),
+            prims: BTreeMap::new(),
+            conductors: BTreeMap::new(),
+            cables: BTreeMap::new(),
+        };
+        for (id, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
+            match r.subject {
+                Subject::Conductor(w) => {
+                    idx.conductors.entry(w).or_default().push(r);
+                    let prim = |i: &ItemId| match doc.items.get(i).map(|x| &x.kind) {
+                        Some(ItemKind::Primitive(p)) => Some(p),
+                        _ => None,
+                    };
+                    idx.prims.entry(w).or_default().extend(r.items.iter().filter_map(prim));
+                    if !idx.routes.contains_key(&w)
+                        && let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some())
+                    {
+                        idx.routes.insert(w, p);
+                    }
+                }
+                Subject::Cable(k) => idx.cables.entry(k).or_default().push((*id, r)),
+                Subject::Component(_) => {}
+            }
+        }
+        idx
+    }
+    fn route(&self, w: ConductorId) -> Option<&'a Primitive> {
+        self.routes.get(&w).copied()
+    }
+    fn route_prims(&self, w: ConductorId) -> &[&'a Primitive] {
+        self.prims.get(&w).map(Vec::as_slice).unwrap_or_default()
+    }
+    fn conductor_reps(&self, w: ConductorId) -> &[&'a ecad_model::Representation] {
+        self.conductors.get(&w).map(Vec::as_slice).unwrap_or_default()
+    }
+    fn cable_reps(&self, k: CableId) -> &[(RepresentationId, &'a ecad_model::Representation)] {
+        self.cables.get(&k).map(Vec::as_slice).unwrap_or_default()
+    }
 }
 
 #[cfg(test)]

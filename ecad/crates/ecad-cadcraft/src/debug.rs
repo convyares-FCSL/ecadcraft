@@ -993,10 +993,12 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Conductor(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
-                k.members
-                    .iter()
-                    .find(|m| m.conductor == c)
-                    .and_then(|m| m.core.as_deref().map(|x| crate::look::shorten(x, 32)))
+                k.members.iter().find(|m| m.conductor == c).and_then(|m| {
+                    m.core
+                        .as_deref()
+                        .filter(|x| !x.trim().is_empty())
+                        .map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS))
+                })
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),

@@ -13,6 +13,10 @@ workspace = true
 # Deliberate panics inside owner callbacks and ECAD commands, for the experiment's containment
 # tests only. Never enabled in normal builds; `cargo xtask ci` tests with all features.
 fault-injection = []
+# `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
+# cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
+# release or the trial (brief 009 review S3). Delete once brief 010's `cableref` is merged.
+test-ops = []
 
 [dependencies]
 ecad-model = { workspace = true }
@@ -25,3 +29,5 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# This crate's own tests see `apply_ops`.
+ecad-cadcraft = { path = ".", features = ["test-ops"] }

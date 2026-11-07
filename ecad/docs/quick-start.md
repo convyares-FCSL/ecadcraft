@@ -61,9 +61,11 @@ adds **Core Label** to the ECAD tab (a core number or colour per wire in a cable
 the slash in traditional view and at the tail start in fan view), and draws brief 010's cable
 reference end as a marker where the fan stops (section 5C). Nothing outside `ecad/` changes, and
 the file format is unchanged: a core label is the existing member `core` field, set with the
-existing member ops. For this branch there are automated checks only, written with the branch;
-nobody has run it on a display yet, and the reference screenshots for the owner are still to be
-made.
+existing member ops. For this branch there are automated checks only, written with the branch,
+and reference screenshots rendered headless for the owner to approve
+(`ecad/apps/ecad-trial/tests/reference/009-*.png`, and `005-fan.png` redrawn in the new look);
+nobody has run it on a display yet. The reference end's marker text `->` is a placeholder: it
+becomes the live reference when brief 010 is merged.
 
 Three kinds of evidence exist, and they are kept apart:
 
@@ -458,19 +460,21 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
    `"key":"type","value":"3/C #10"` (and `"designation"` if you like: it becomes the box's second
    line). Give the wires numbers the same way, `"conductor":"<id>","key":"tag","value":"W1"`.
 2. **Core labels.** Click **Core Label** (Wiring group, after Cable View). The prompt says
-   `Select a wire in a cable:`. Click the bottom wire. The prompt becomes
+   `Select a wire in a cable:`. Click the bottom wire. It turns green and the prompt becomes
    `Core number or colour for W1 <none>:`; type `1` and press Enter. Expected:
    `Wire W1 is now core 1 of cable C1.`, a small magenta `1` just past the slash, above the wire;
    the change count goes up by one. The prompt asks for the next wire: click the middle wire and
    type `2`, the top wire and type `3`. Press Enter to end the command.
-   - Enter with nothing typed leaves the label as it was; a single `.` clears it.
+   - Enter with nothing typed leaves the label as it was; a single `.` (or only spaces) clears
+     it; on a wire with no label that says `W1 has no core label.` and writes nothing.
    - Clicking the slash says `That is the cable; click one of its wires.`; a label longer than 32
      characters is refused and the same wire's prompt repeats.
    - `u` undoes one label at a time; `redo` brings it back.
 3. **Fan view.** Click **Cable View** and the slash. Expected: the label box shows `C1` and
    `3/C #10`; each tail starts with its core label next to the spine, then its wire number
-   further out; the trunk and spines are thick and the bends and tails thin (the trial turns
-   **Show/Hide Lineweight** on when it opens a project).
+   further out, one text height apart; the trunk and spines are thick and the bends and tails
+   thin (the trial turns **Show/Hide Lineweight** on when it opens or creates a project, unless
+   you switched it yourself since the trial started).
 4. **Hover.** Rest the pointer on a tail: `Cable C1`, then `Core: 1 (W1)`, its ID, its type and
    its wires with their cores (`  W1  core 1`). On a wire in traditional view: `In cable C1, core 1`.
 5. **A reference end (brief 010's model).** Brief 010 adds the command that places a cable's
@@ -701,7 +705,8 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     long to the wire's end. Sizes are fixed drawing units for now (text 2.5, tails 20, bends 2.5),
     so the labels are small when zoomed out. The trunk joins each spine at the end nearer the
     other end of the cable (ties: the top, then the left); its corners are sharp. Thick and thin
-    show only with **Show/Hide Lineweight** on, which the trial turns on when it opens a project;
+    show only with **Show/Hide Lineweight** on, which the trial turns on when it opens or creates
+    a project unless you switched it yourself since the trial started;
     plots and DXF exports carry the weights either way. A cable with one wire is not offered a fan
     view; a fan-view cable with only one of its wires on a page is drawn traditional there.
 - **Core labels and reference ends** (brief 009, overseer decisions of 2026-11-07, to be confirmed

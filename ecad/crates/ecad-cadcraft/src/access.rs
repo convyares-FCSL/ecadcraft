@@ -111,6 +111,7 @@ impl ProjectHandle {
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`], a refused transaction, or a read-only project.
+    #[cfg(feature = "test-ops")]
     #[doc(hidden)]
     pub fn apply_ops(
         &self,

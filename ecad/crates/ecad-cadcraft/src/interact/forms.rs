@@ -1164,7 +1164,8 @@ impl CableCore {
                 Ok(Step::Continue)
             }
             (Some((w, name, old)), Input::Text(t)) => {
-                let clear = t.trim() == ".";
+                // `.` clears, and so does a blank label, as in the JSON form (design 009 §5.4).
+                let clear = t.trim() == "." || t.trim().is_empty();
                 if clear && old.is_none() {
                     s.echo(format!("{name} has no core label."));
                     return Ok(Step::Continue);
@@ -1212,6 +1213,17 @@ impl CableCore {
 impl Interactive for CableCore {
     fn name(&self) -> &'static str {
         "CABLECORE"
+    }
+    /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
+    fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
+        let Some((w, _, _)) = &self.picked else { return Vec::new() };
+        let route = read(s, |p, page| {
+            Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim))
+        });
+        match route {
+            Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
+            _ => Vec::new(),
+        }
     }
     fn prompt(&self, _s: &Session) -> Prompt {
         match &self.picked {

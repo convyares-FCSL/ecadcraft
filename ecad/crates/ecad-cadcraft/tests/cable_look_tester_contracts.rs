@@ -602,10 +602,16 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
         };
         // Left: S = (20, y).
         assert!(near(find(Role::CoreLabel, &core, true), Pt::new(20.0 - g - wc, y + lift)), "left core {core}");
-        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - g - ww, y + lift)), "left {wire}");
+        assert!(
+            near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::LABEL_SPACING - ww, y + lift)),
+            "left {wire}"
+        );
         // Right: S = (100, y).
         assert!(near(find(Role::CoreLabel, &core, false), Pt::new(100.0 + g, y + lift)), "right core {core}");
-        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + g, y + lift)), "right {wire}");
+        assert!(
+            near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::LABEL_SPACING, y + lift)),
+            "right {wire}"
+        );
         // Labels sit on their own wire's tail, never on the spine side of the tail start.
         let tail_end_x = |left: bool| if left { 0.0 } else { 120.0 };
         for left in [true, false] {
@@ -785,7 +791,9 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
             // The tails are long enough for the longest labels on their side (design §4.2 step 4).
             let wc = look::font_width(&shown32);
             let ww = look::font_width(&shown24("T"));
-            let need = 3.0 * look::LABEL_GAP + wc + ww;
+            // The gap between core label and wire number is one text height (overseer decision on
+            // the brief 009 review); the gaps at either end stay `ecad.label-gap`.
+            let need = 2.0 * look::LABEL_GAP + look::LABEL_SPACING + wc + ww;
             for t in of_role(&d, Role::Tail) {
                 let p = path(&t.shape);
                 assert!((p[0].dist(p[1]) - need).abs() < 1e-6, "tail {} long, want {need}", p[0].dist(p[1]));

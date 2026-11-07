@@ -677,3 +677,70 @@ fn m_hostile_geometry_never_panics() {
         ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
     let _ = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
 }
+
+// --------------------------------------------------------------------------- review S2
+
+/// A labelled cable of three loose wires, its handles (wires, slash, core labels) and the labels'.
+fn loose_labelled_cable(h: &mut H) -> (PageId, CableId, Vec<Handle>, Vec<Handle>) {
+    let page = h.first_page();
+    for y in [0.0, 5.0, 10.0] {
+        h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+    }
+    let k: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 13]})).unwrap(), "cable");
+    h.run("cablecore", json!({"cable": k.hex(), "cores": ["1", "2", "3"]})).unwrap();
+    let (all, labels) = h.p(|p| {
+        let map = &p.pages[&page].map;
+        let labels: Vec<Handle> = map.fan_handles().collect();
+        (map.handles().collect::<Vec<_>>(), labels)
+    });
+    assert_eq!(labels.len(), 3, "three core labels at the slash");
+    (page, k, all, labels)
+}
+
+/// Review S2: a selection holding a labelled cable's core labels and its wires and slash moves,
+/// copies or erases the wires and slash; the labels are left out and drawn again. Labels alone
+/// are still refused.
+#[test]
+fn s2_selections_with_core_labels_edit_the_rest() {
+    for (cmd, extra) in [("move", json!({"delta": [0, 40]})), ("copy", json!({"delta": [0, 40]})), ("erase", json!({}))]
+    {
+        let mut h = H::new(SEED + 2);
+        let (page, k, all, _) = loose_labelled_cable(&mut h);
+        let head = h.head();
+        let mut params = extra.clone();
+        params["handles"] = json!(all.iter().map(|x| x.hex()).collect::<Vec<_>>());
+        h.run(cmd, params).unwrap_or_else(|e| panic!("{cmd}: {e}"));
+        assert_eq!(h.head(), head + 1, "{cmd}: one transaction");
+        h.check();
+        let doc = h.doc();
+        let texts = h
+            .pv(|p, pg| pg.entities_of(p, page))
+            .iter()
+            .filter(|e| e.common.layer == views::LAYER && matches!(e.kind, EntityKind::Text(_)))
+            .count();
+        match cmd {
+            "move" => {
+                assert_eq!(texts, 3, "{cmd}: labels drawn again at the moved slash");
+                assert!(doc.items.values().all(|i| !matches!(i.kind, ItemKind::Primitive(Primitive::Text { .. }))));
+            }
+            "copy" => assert_eq!(texts, 3, "{cmd}: the copy is no cable; its labels are not copied as text"),
+            _ => {
+                assert!(slash_items(&doc, page, k).is_empty(), "{cmd}: the slash is gone");
+                assert_eq!(texts, 0, "{cmd}: no slash, no labels");
+            }
+        }
+        // Labels alone: refused, nothing written.
+        let mut h = H::new(SEED + 2);
+        let (_, _, _, labels_only) = loose_labelled_cable(&mut h);
+        let head = h.head();
+        let mut params = extra;
+        params["handles"] = json!(labels_only.iter().map(|x| x.hex()).collect::<Vec<_>>());
+        let e = h.run(cmd, params).unwrap_err();
+        assert!(e.contains(views::DRAWN_REFUSED), "{cmd}: {e}");
+        assert_eq!(h.head(), head);
+    }
+}
+
+fn slash_items(doc: &ecad_model::Document, page: PageId, k: CableId) -> Vec<ItemId> {
+    ecad_cadcraft::slash::slashes_of(doc, page, k).into_iter().map(|(i, _, _)| i).collect()
+}
