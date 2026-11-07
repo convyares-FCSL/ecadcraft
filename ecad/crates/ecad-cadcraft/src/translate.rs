@@ -42,6 +42,8 @@ pub(crate) struct Translation {
     /// Handles whose geometry the owner changed beyond what the engine committed (M2, M3).
     pub amended: BTreeSet<Handle>,
     pub summary: String,
+    /// Lines to echo after the commit (for example why a wire end was not connected).
+    pub notes: Vec<String>,
 }
 
 /// Parts of the drawing outside model-space entities that ECAD pages do not record yet. A change
@@ -133,6 +135,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let mut removed: Vec<(Handle, &Arc<Entity>)> =
         before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
     removed.sort_by_key(|(h, _)| *h);
+    // Reference texts erased (brief 010): each erases its reference, after the loop.
+    let mut erased_refs: Vec<RepresentationId> = Vec::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -149,6 +153,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             }
             // Brief 005: a fan line is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::RefText(rid)) => erased_refs.push(rid),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
                 rep(&mut reps, rid, cx.doc)?;
@@ -157,6 +162,24 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 }
             }
             None => {}
+        }
+    }
+    // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
+    // it was erased with it, and the emptied representation is removed below.
+    for rid in erased_refs {
+        linked_removed = true;
+        rep(&mut reps, rid, cx.doc)?;
+        let items: Vec<ItemId> = reps.get(&rid).map(|r| r.items.clone()).unwrap_or_default();
+        for id in items {
+            let item = cx.doc.items.get(&id).cloned().ok_or("mapped item missing")?;
+            t.ops.push(Op::RemoveItem { id, item });
+            counts[2] += 1;
+            if let Some(h) = cx.map.item(id) {
+                t.amended.insert(h);
+            }
+        }
+        if let Some(r) = reps.get_mut(&rid) {
+            r.items.clear();
         }
     }
     let mut changed: Vec<(Handle, &Arc<Entity>)> = before
@@ -180,6 +203,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 }
             }
             Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
                 let at = marker_position(new).ok_or("terminal markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
@@ -274,8 +298,10 @@ fn copy_batch(
                 (&snap.doc, &snap.map, *handle)
             }
         };
-        if matches!(map.get(h), Some(Mapped::Fan(_))) {
-            return Err(crate::views::FAN_REFUSED.into());
+        match map.get(h) {
+            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            _ => {}
         }
         src_doc = Some(doc);
         src_map = Some(map);
@@ -423,6 +449,7 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
     let new_pos = positions(&proposed, cx.page);
     let mut amend: BTreeMap<ItemId, Item> = BTreeMap::new();
     let mut attach: Vec<Op> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     for (cid, c) in &proposed.conductors {
         let Some((route_id, prim)) = route_on_page(&proposed, *cid, cx.page) else { continue };
         let Some((new_a, new_b)) = prim.path_ends() else { continue };
@@ -445,12 +472,23 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
                         {
                             route = r;
                         }
-                    } else if end_moved {
-                        // M3: a deliberate reconnection, resolved once.
+                    } else if end_moved && old_pos.contains_key(&term) {
+                        // M3: a deliberate reconnection, resolved once. Only for a terminal shown
+                        // on this page: an end attached on another page (a wire continued across
+                        // pages, brief 010) is the end that leaves toward the reference here,
+                        // and moving it never detaches it.
                         let found = terminal_at(&proposed, cx.page, new_end, cx.tol);
                         if found != Some(term) {
                             attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
                         }
+                    } else if end_moved && terminal_at(&proposed, cx.page, new_end, cx.tol).is_some() {
+                        // The end leaving toward a reference was dropped on a terminal here: it
+                        // stays connected on the other page, and the user is told so.
+                        notes.push(format!(
+                            "End {end:?} of {} is connected on another page, so it was not connected here; \
+disconnect it there first.",
+                            crate::slash::wire_name(&proposed, *cid)
+                        ));
                     }
                 }
                 None if end_moved => {
@@ -493,5 +531,6 @@ fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]
         }
     }
     t.ops.extend(attach);
+    t.notes.extend(notes);
     Ok(())
 }

@@ -23,6 +23,8 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.preview` | — | CADCraft's rubber-band colour | Rubber band, symbol preview (as CADCraft draws previews) |
 | `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the fan trunk and fan lines and the reserved layer `ECAD-CABLES` (005) |
 | `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
+| `ecad.reference` | 6 (magenta) | `#FF00FF` | A linked cable reference: its ring and its derived `/page.column` text (010); same colour as `ecad.cable` |
+| `ecad.orphan` | 1 (red) | `#FF0000` | A cable reference with no other end: ring and `/?` text (010), the concept spec's red orphan marker |
 
 Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
 does not recolour stored objects. Computed drawing that is not stored (the fan view of a cable) is
@@ -42,6 +44,7 @@ same size at every zoom). They scale with the UI scale like CADCraft's own snap 
 | `ecad.loose-size` | 6 px square | Loose-end square |
 | `ecad.ring-size` | 16 px diameter | Attach-preview ring; also the refuse-preview ring |
 | `ecad.crossing-size` | 5 px diameter, filled | Crossing dot of a cable slash on a member wire |
+| `ecad.ref-size` | 12 px diameter | Ring on a cable reference point (010), stroke `ecad.bold` |
 | `ecad.aperture` | CADCraft `APERTURE` setting (default 10 px) | How close the cursor must be for an ECAD capture |
 
 ## Panels and text
@@ -59,3 +62,14 @@ same size at every zoom). They scale with the UI scale like CADCraft's own snap 
 The ECAD trial is used with CADCraft's dark theme. On the light theme, ACI cyan and green have poor
 contrast; until a spec says otherwise ECAD keeps the same ACI colours (as CADCraft does for drawing
 colours) and this is a known limitation.
+
+## Drawing-unit sizes
+
+Sizes in **drawing units** (they plot and scale with zoom), for derived drawing the projection adds.
+In an inch project the millimetre values are divided by 25.4.
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.ref-text-height` | 2.5 mm | Derived text of a cable reference (010) |
+| `ecad.ref-stub-spacing` | 5 mm | Spacing between continued wire stubs, and the gap between a reference point and its text (010) |
+| `ecad.column-width` | 40 mm | Column width of the fixed column grid (from x = 0) used by reference texts until drawing frames define columns (010) |

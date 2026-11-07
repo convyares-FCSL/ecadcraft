@@ -113,6 +113,13 @@ pub fn verify_page_with(
             *fan_expected.entry(format!("{:?}", fan_entity(path, Handle(0)).kind)).or_default() += 1;
         }
     }
+    // Reference texts (brief 010): exactly the derived markers' texts, each mapped to its reference.
+    let markers = crate::references::markers_on_page(doc, page);
+    let mut ref_expected: BTreeMap<String, usize> = BTreeMap::new();
+    for m in &markers {
+        *ref_expected.entry(format!("{:?}", crate::references::text_entity(m, Handle(0)))).or_default() += 1;
+    }
+    let mut ref_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
 
@@ -131,6 +138,19 @@ pub fn verify_page_with(
             *fan_shown.entry(format!("{:?}", e.kind)).or_default() += 1;
             continue;
         }
+        if let Some(Mapped::RefText(r)) = map.get(e.handle) {
+            let Some(m) = markers.iter().find(|m| m.reference == r) else {
+                problems.push(format!("a reference text is drawn for {r}, which shows none"));
+                continue;
+            };
+            let mut probe = (*e).clone();
+            probe.handle = Handle(0);
+            if probe != crate::references::text_entity(m, Handle(0)) {
+                problems.push(format!("the text of reference {r} differs from the one derived from the document"));
+            }
+            *ref_shown.entry(format!("{probe:?}")).or_default() += 1;
+            continue;
+        }
         match item_from(doc, page, e) {
             Ok(item) => *shown.entry(serde_json::to_string(&item).unwrap_or_default()).or_default() += 1,
             Err(m) => problems.push(format!("an entity cannot be read back as an item: {m}")),
@@ -147,6 +167,9 @@ pub fn verify_page_with(
     }
     if fan_shown != fan_expected {
         problems.push("the cable fans drawn differ from the fans computed from the document".into());
+    }
+    if ref_shown != ref_expected {
+        problems.push("the cable reference texts drawn differ from those derived from the document".into());
     }
 
     // 2. Identity: each mapped handle shows the item (or marker) it is mapped to, and the map

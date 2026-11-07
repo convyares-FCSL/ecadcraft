@@ -870,6 +870,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         }
         // A fan view line (brief 005) stands for its cable; it is no item.
         Mapped::Fan(_) => {}
+        // A reference's derived text (brief 010) stands for its reference representation.
+        Mapped::RefText(rep) => r.representation = Some(rep),
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
@@ -915,10 +917,20 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
 /// The objects that refer to `id`: a definition's components and symbol instances, a component's
 /// terminals and representations, a terminal's attached conductors, a conductor's cables and
 /// representations, a cable's members (in member order) and then its representations (design 004
-/// §9: slash → cable → conductors).
+/// §9: slash → cable → conductors). Representations of a conductor or a cable are listed by page,
+/// in page order (design 010 §8: a cable drawn on several pages, a conductor's route on each), and
+/// a cable reference's are its cable and its partner reference.
 pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
+    let page_index: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let reps_of = |s: Subject| {
-        doc.representations.iter().filter(move |(_, r)| r.subject == s).map(|(i, _)| ObjectId::Representation(*i))
+        let mut v: Vec<(usize, RepresentationId)> = doc
+            .representations
+            .iter()
+            .filter(|(_, r)| r.subject == s)
+            .map(|(i, r)| (page_index.get(&r.page).copied().unwrap_or(usize::MAX), *i))
+            .collect();
+        v.sort();
+        v.into_iter().map(|(_, i)| ObjectId::Representation(i))
     };
     match id {
         ObjectId::Definition(d) => doc
@@ -963,7 +975,17 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Page(p) => {
             doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect()
         }
-        ObjectId::Layer(_) | ObjectId::Item(_) | ObjectId::Representation(_) | ObjectId::Settings => Vec::new(),
+        ObjectId::Representation(r) => match doc.representations.get(&r) {
+            Some(rep) if crate::references::is_reference(rep) => {
+                let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
+                if let Some(x) = crate::references::all(doc).into_iter().find(|x| x.reference == r) {
+                    out.extend(x.partners.into_iter().map(ObjectId::Representation));
+                }
+                out
+            }
+            _ => Vec::new(),
+        },
+        ObjectId::Layer(_) | ObjectId::Item(_) | ObjectId::Settings => Vec::new(),
     }
 }
 

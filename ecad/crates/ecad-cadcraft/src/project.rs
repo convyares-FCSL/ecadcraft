@@ -37,6 +37,9 @@ pub enum Mapped {
     Marker(RepresentationId, TerminalId),
     /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
     Fan(CableId),
+    /// The derived text of a cable reference (brief 010), by its reference representation:
+    /// computed, not an item. Erasing it erases its reference; other edits are refused.
+    RefText(RepresentationId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -47,6 +50,8 @@ pub struct HandleMap {
     markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
     /// Fan view lines: (cable, index of the line in the fan) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
+    /// Reference texts (brief 010): reference representation → handle.
+    refs: BTreeMap<RepresentationId, Handle>,
 }
 
 impl HandleMap {
@@ -78,6 +83,18 @@ impl HandleMap {
     pub fn fan_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.fans.values().copied()
     }
+    /// The handle of a reference's derived text.
+    pub fn ref_text(&self, reference: RepresentationId) -> Option<Handle> {
+        self.refs.get(&reference).copied()
+    }
+    pub fn insert_ref_text(&mut self, reference: RepresentationId, h: Handle) {
+        self.refs.insert(reference, h);
+        self.by_handle.insert(h, Mapped::RefText(reference));
+    }
+    /// Every handle of a reference text.
+    pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.refs.values().copied()
+    }
     pub fn len(&self) -> usize {
         self.by_handle.len()
     }
@@ -90,10 +107,11 @@ impl HandleMap {
     }
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
-        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len()
+        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
+            && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
     }
 }
 
@@ -367,7 +385,8 @@ pub fn project_page(
 /// [`project_page`] with cable views (brief 005): each cable in `fan` whose fan can be drawn on
 /// the page is shown as its fan ([`crate::views::fan_on_page`], with tolerance `tol`) on layer
 /// [`crate::views::LAYER`] instead of its member routes and slashes. Everything else is projected
-/// exactly as by [`project_page`].
+/// exactly as by [`project_page`]. Both draw each cable reference's derived text on that layer
+/// too ([`crate::references::markers_on_page`], brief 010).
 ///
 /// # Errors
 /// As [`project_page`].
@@ -466,6 +485,15 @@ pub fn project_page_with(
             ents.push(fan_entity(path, h));
             map.insert_fan(*k, index, h);
         }
+    }
+    // Brief 010: each reference end's derived text, on the reserved layer (it plots and exports).
+    // The references are derived once for this draw.
+    let markers = crate::references::markers_on_page(doc, page);
+    for (r, e) in
+        crate::references::draw_reference_ends(&markers, |r| prev.ref_text(r).unwrap_or_else(|| d.new_handle()))
+    {
+        map.insert_ref_text(r, e.handle);
+        ents.push(e);
     }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
@@ -974,6 +1002,9 @@ impl Project {
                     // them), so they are not compared with what the engine committed.
                     let mut amended = amended.clone();
                     amended.extend(prev.fan_handles().chain(map.fan_handles()));
+                    // Reference texts are derived too (brief 010): moving a reference point or a
+                    // member route moves or rewrites them.
+                    amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1035,13 +1066,26 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
+        let linked = crate::references::linked(self.ledger.document());
         let tx = self.ledger.commit_at(Author::User, label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         self.refresh_pages(pg, Some(command));
+        self.say_orphaned(pg, &linked);
         Ok(tx)
+    }
+
+    /// Echo the line of design 010 §4.3 when references linked before a change (`before`) have
+    /// lost their other end.
+    pub(crate) fn say_orphaned(&self, pg: &mut Pages<'_>, before: &BTreeSet<RepresentationId>) {
+        if before.is_empty() {
+            return;
+        }
+        if let Some(line) = crate::references::orphaned_line(self.ledger.document(), before) {
+            pg.echo(line);
+        }
     }
 
     /// Restore the last projection of `page` after a refusal.
@@ -1231,6 +1275,7 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
+        let linked = crate::references::linked(self.ledger.document());
         if let Err(e) = self.ledger.commit_at(Author::User, &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
@@ -1248,6 +1293,23 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
+        // A reference text on another open page may name this page's objects (brief 010): those
+        // pages are redrawn from the document too.
+        if !linked.is_empty() || self.ledger.document().representations.values().any(crate::references::is_reference) {
+            let others: Vec<PageId> = self
+                .pages
+                .iter()
+                .filter(|(p, v)| **p != page && v.uid.is_some() && !v.unavailable)
+                .map(|(p, _)| *p)
+                .collect();
+            for other in others {
+                self.refresh_page(pg, other, Some(c.command), None, false);
+            }
+        }
+        self.say_orphaned(pg, &linked);
+        for note in &t.notes {
+            pg.echo(note.clone());
+        }
         self.sync_saved(pg);
         Verdict::Accept
     }
@@ -1412,6 +1474,7 @@ impl Project {
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }
+        let linked = crate::references::linked(self.ledger.document());
         let r = if undo {
             self.ledger.undo_at(Author::User, now_ms())
         } else {
@@ -1423,6 +1486,7 @@ impl Project {
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 self.refresh_pages(pg, Some(command));
+                self.say_orphaned(pg, &linked);
                 Ok(Some(label))
             }
             Err(ecad_model::ModelError::NothingTo(_)) => Ok(None),

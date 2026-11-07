@@ -17,6 +17,9 @@
 //!   pages, and the hover description. [`slash`] decides what a cable slash crosses (brief 004).
 //! - [`views`] holds each cable's traditional / fan view (brief 005): presentation only, drawn by
 //!   the projection, remembered per user outside the `.ecad` file.
+//! - [`references`] holds cable references across pages (brief 010): a cable drawn on several
+//!   pages ends at reference ends whose text (`/<page>.<column>` of the other end) is derived on
+//!   every draw, never stored ([`references::markers_on_page`] is the one source of that text).
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
@@ -41,6 +44,7 @@ pub mod debug;
 pub mod file;
 pub mod interact;
 pub mod project;
+pub mod references;
 pub mod slash;
 mod translate;
 pub mod verify;

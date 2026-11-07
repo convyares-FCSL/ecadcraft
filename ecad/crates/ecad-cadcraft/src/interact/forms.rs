@@ -21,9 +21,9 @@ use crate::project::Mapped;
 use crate::slash;
 use crate::views::View;
 
-type R<T> = cadcraft_engine::Result<T>;
+pub(super) type R<T> = cadcraft_engine::Result<T>;
 
-fn other(m: impl Into<String>) -> EngineError {
+pub(super) fn other(m: impl Into<String>) -> EngineError {
     EngineError::Other(m.into())
 }
 
@@ -31,7 +31,7 @@ fn other(m: impl Into<String>) -> EngineError {
 /// engine, which would put back the drawing from before the command although earlier objects of
 /// this run are committed; instead the page is redrawn from the project (PROJ-02: roll forward)
 /// and the command ends.
-fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -> R<Step>) -> R<Step> {
+pub(super) fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -> R<Step>) -> R<Step> {
     match catch_unwind(AssertUnwindSafe(|| f(&mut *s))) {
         Ok(r) => r,
         Err(_) => {
@@ -53,7 +53,7 @@ fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -> R<Step>) 
 /// the drawing from before the command, behind objects this run already committed. Here such a
 /// panic gives a plain prompt or no preview instead; `input` and `begin` are guarded by
 /// [`safely`].
-struct Safe<M>(M);
+pub(super) struct Safe<M>(pub(super) M);
 
 /// The prompt shown when a form's own prompt failed.
 fn fallback_prompt() -> Prompt {
@@ -106,13 +106,13 @@ impl<M: Interactive> Interactive for Safe<M> {
 
 /// Commit the command's JSON form with resolved values: the same path as `name {json}` typed at
 /// `Command:` (start check, transaction, refresh, commit gate).
-fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
+pub(super) fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
     s.execute(id, params).map_err(|e| other(e.to_string()))
 }
 
 /// Points and picks are refused while a paper-space layout is shown (the user switched layouts
 /// while the form ran): ECAD objects are drawn in the page's model space only.
-fn paper_guard(s: &Session, i: &Input) -> R<()> {
+pub(super) fn paper_guard(s: &Session, i: &Input) -> R<()> {
     if matches!(i, Input::Point(_) | Input::Pick(_)) && !super::model_space(s) {
         return Err(other(super::PAPER_SPACE));
     }
@@ -120,11 +120,11 @@ fn paper_guard(s: &Session, i: &Input) -> R<()> {
 }
 
 /// Text typed at a point prompt that is not a point or keyword.
-fn not_a_point(t: &str) -> EngineError {
+pub(super) fn not_a_point(t: &str) -> EngineError {
     if t.contains(',') || t.contains('<') { other(OUT_OF_RANGE) } else { other("Point or option keyword required.") }
 }
 
-fn hex_of(v: &Value, key: &str) -> String {
+pub(super) fn hex_of(v: &Value, key: &str) -> String {
     v.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
@@ -977,14 +977,19 @@ pub(crate) fn cableview(s: &Session) -> R<Box<dyn Interactive>> {
 
 struct CableView;
 
-const NOTHING_THERE: &str = "Nothing there. Click a cable slash, a fan or a wire in a cable.";
+pub(super) const NOTHING_THERE: &str = "Nothing there. Click a cable slash, a fan or a wire in a cable.";
 const WIRE_NOT_IN_CABLE: &str = "That wire is not in a cable.";
-const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable.";
+pub(super) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable.";
 
-/// The cable a mapped object names (design 005 §3.3): a slash, a fan line, or a wire in a cable.
-fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
+/// The cable a mapped object names (design 005 §3.3): a slash, a fan line, or a wire in a cable
+/// (and, brief 010, a cable reference's point or text).
+pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
     match m {
         Mapped::Fan(k) => Ok(k),
+        Mapped::RefText(r) => match doc.representations.get(&r).map(|r| r.subject) {
+            Some(Subject::Cable(k)) => Ok(k),
+            _ => Err(NOT_A_CABLE),
+        },
         Mapped::Item(i) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
             Some(Subject::Cable(k)) => Ok(k),
             Some(Subject::Conductor(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
