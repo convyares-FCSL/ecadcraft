@@ -311,6 +311,8 @@ pub fn isolate_for_tests() {
     use_process_settings_dir(std::env::temp_dir().join(format!("ecad-test-settings-{}", process_id())));
 }
 
+/// A non-empty environment variable as a path (no settings folder is looked up on wasm).
+#[cfg(not(target_arch = "wasm32"))]
 fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
