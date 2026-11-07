@@ -1111,3 +1111,330 @@ fn ac6_interactive_spaces_clear_like_a_dot() {
     assert_eq!(txs[0], txs[1]);
     assert_eq!(echo, "W3 has no core label.", "the echo for clearing an unset label");
 }
+
+// --------------------------------------------------------------------------- round 2: cablefan
+
+/// The junction of the fan's trunk with the spine at x = `x` (22.5 left, 97.5 right in H).
+fn junction(d: &look::CableDrawing, x: f64) -> Pt {
+    of_role(d, Role::Trunk)
+        .into_iter()
+        .flat_map(|p| path(&p.shape))
+        .find(|p| (p.x - x).abs() < 1e-9)
+        .unwrap_or_else(|| panic!("no junction at x = {x}"))
+}
+
+/// `cablefan` JSON contract (owner request on brief 009): one row per input; `Ok(y)` rows write one
+/// transaction and put the left (A) join at `y`; `Err(words)` rows write nothing.
+#[test]
+fn cablefan_json_contract_table() {
+    struct Row {
+        name: &'static str,
+        params: fn(&str) -> Value,
+        want: Result<f64, &'static str>,
+    }
+    let rows = [
+        Row { name: "point on the spine", params: |k| json!({"cable": k, "at": [22.5, 11]}), want: Ok(11.0) },
+        Row { name: "point off the spine snaps", params: |k| json!({"cable": k, "at": [5, 2]}), want: Ok(2.0) },
+        Row {
+            name: "point above clamps",
+            params: |k| json!({"cable": k, "end": "A", "at": [0, 1e12]}),
+            want: Ok(15.0),
+        },
+        Row {
+            name: "point below clamps",
+            params: |k| json!({"cable": k, "end": "A", "at": [0, -1e12]}),
+            want: Ok(0.0),
+        },
+        Row { name: "fraction 0", params: |k| json!({"cable": k, "end": "A", "at": 0}), want: Ok(0.0) },
+        Row { name: "fraction 1", params: |k| json!({"cable": k, "end": "A", "at": 1}), want: Ok(15.0) },
+        Row { name: "fraction 0.2", params: |k| json!({"cable": k, "end": "A", "at": 0.2}), want: Ok(3.0) },
+        Row {
+            name: "fraction just over 1",
+            params: |k| json!({"cable": k, "end": "A", "at": 1.000001}),
+            want: Err("`at` as a fraction must be from 0 to 1"),
+        },
+        Row {
+            name: "negative fraction",
+            params: |k| json!({"cable": k, "end": "A", "at": -0.1}),
+            want: Err("`at` as a fraction must be from 0 to 1"),
+        },
+        Row {
+            name: "huge fraction",
+            params: |k| json!({"cable": k, "end": "A", "at": 1e308}),
+            want: Err("`at` as a fraction must be from 0 to 1"),
+        },
+        Row {
+            name: "point beyond 1e12",
+            params: |k| json!({"cable": k, "end": "A", "at": [0, 1.0000001e12]}),
+            want: Err("Point out of range."),
+        },
+        Row {
+            name: "point 1e308",
+            params: |k| json!({"cable": k, "at": [1e308, 1e308]}),
+            want: Err("Point out of range."),
+        },
+        Row { name: "at missing", params: |k| json!({"cable": k, "end": "A"}), want: Err("`at` must be a point") },
+        Row {
+            name: "at a bool",
+            params: |k| json!({"cable": k, "end": "A", "at": true}),
+            want: Err("`at` must be a point"),
+        },
+        Row {
+            name: "at a string",
+            params: |k| json!({"cable": k, "end": "A", "at": "0.5"}),
+            want: Err("`at` must be a point"),
+        },
+        Row {
+            name: "at an object",
+            params: |k| json!({"cable": k, "end": "A", "at": {"x": 0, "y": 1}}),
+            want: Err("`at` must be a point"),
+        },
+        Row {
+            name: "at one number",
+            params: |k| json!({"cable": k, "end": "A", "at": [1]}),
+            want: Err("`at` must be a point"),
+        },
+        Row {
+            name: "at strings",
+            params: |k| json!({"cable": k, "end": "A", "at": ["1", "2"]}),
+            want: Err("`at` must be a point"),
+        },
+        Row {
+            name: "end lower case",
+            params: |k| json!({"cable": k, "end": "a", "at": 0.5}),
+            want: Err("`end` must be"),
+        },
+        Row { name: "end a number", params: |k| json!({"cable": k, "end": 0, "at": 0.5}), want: Err("`end` must be") },
+        Row {
+            name: "cable missing",
+            params: |_| json!({"end": "A", "at": 0.5}),
+            want: Err("`cable` (hex id) is required"),
+        },
+        Row { name: "null params", params: |_| Value::Null, want: Err("`cable` (hex id) is required") },
+    ];
+    let mut failures = Vec::new();
+    for row in &rows {
+        let mut f = fixture(true, true);
+        view(&mut f.h, f.c1, "fan");
+        let (head, doc) = (f.h.head(), f.h.doc());
+        let params = (row.params)(&f.c1.hex());
+        let r = f.h.run("cablefan", params.clone());
+        match (&row.want, r) {
+            (Ok(y), Ok(v)) => {
+                let j = junction(&fan(&mut f.h, f.page, f.c1), 22.5);
+                if f.h.head() != head + 1 || (j.y - y).abs() > 1e-9 || v["end"] != "A" {
+                    failures.push(format!("{}: {params} gave {v}, junction {j:?}", row.name));
+                }
+            }
+            (Err(words), Err(e)) => {
+                if !e.contains(words) || f.h.head() != head || f.h.doc() != doc {
+                    failures
+                        .push(format!("{}: {params} refused with {e:?}, want {words:?}, nothing written", row.name));
+                }
+            }
+            (want, got) => failures.push(format!("{}: {params}: want {want:?}, got {got:?}", row.name)),
+        }
+        f.h.check();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// Save and reopen keep the moved joins (a real `.ecad` file); undo after the reopen takes the last
+/// join back; the reopened log equals the saved one and replay matches.
+#[test]
+fn cablefan_join_survives_save_and_reopen() {
+    let work = Tmp::new("fan-reopen");
+    let settings = Tmp::new("fan-reopen-settings");
+    ecad_cadcraft::install();
+    views::isolate_for_tests();
+    let mut s = Session::empty();
+    let handle = Project::create_with(&mut s, "Join", SEED, Persistence::File).unwrap();
+    let mut f = fixture_on(H { s, project: handle, trail: Vec::new() }, true, true);
+    view(&mut f.h, f.c1, "fan");
+    f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "A", "at": [22.5, 15]})).unwrap();
+    f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "B", "at": 0.0})).unwrap();
+    let saved = fan(&mut f.h, f.page, f.c1);
+    let (left, right) = (junction(&saved, 22.5), junction(&saved, 97.5));
+    assert!(near(left, Pt::new(22.5, 15.0)), "{left:?}");
+    // Note: fraction 0 on end B is the top core (y = 15), on end A the bottom one (see the report).
+    let path = work.path("join.ecad");
+    f.h.run("saveas", json!({"path": path})).unwrap();
+    let (doc, log) = (f.h.doc(), f.h.p(|p| p.ledger.log().to_vec()));
+    while !f.h.s.docs.is_empty() {
+        f.h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = Session::empty();
+    let (handle, _) = ProjectHandle::open_file_in(&mut s, &path, 3, Settings::at(&settings.0)).unwrap();
+    let mut h = H { s, project: handle, trail: Vec::new() };
+    assert_eq!(h.doc(), doc);
+    assert_eq!(h.p(|p| p.ledger.log().to_vec()), log);
+    assert!(h.p(|p| p.ledger.replay_matches().unwrap()));
+    h.check();
+    // The view is per user (a fresh settings folder: traditional); switch to fan to see the joins.
+    view(&mut h, f.c1, "fan");
+    let d = fan(&mut h, f.page, f.c1);
+    assert!(near(junction(&d, 22.5), left), "left join kept");
+    assert!(near(junction(&d, 97.5), right), "right join kept: {:?}", junction(&d, 97.5));
+    h.run("u", Value::Null).unwrap();
+    let d = fan(&mut h, f.page, f.c1);
+    assert!(near(junction(&d, 97.5), Pt::new(97.5, 7.5)), "undo after reopen: right join back to the middle");
+    assert!(near(junction(&d, 22.5), left));
+    h.check();
+}
+
+/// The stored join is clamped between the outermost wires when wires move or are removed, and
+/// the cable's other lifecycle edits (delete the cable, undo, erase the slash) stay consistent.
+#[test]
+fn cablefan_join_follows_wires_and_cable_lifecycle() {
+    let mut f = fixture(false, false);
+    view(&mut f.h, f.c1, "fan");
+    f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "A", "at": [22.5, 15]})).unwrap();
+    assert!(near(junction(&fan(&mut f.h, f.page, f.c1), 22.5), Pt::new(22.5, 15.0)));
+    // Delete the top wire (W4, y = 15): the join is clamped to the new top core (y = 10).
+    f.h.run("ecaddelete", json!({"conductor": f.wires[3].hex()})).unwrap();
+    f.h.check();
+    let d = fan(&mut f.h, f.page, f.c1);
+    let j = junction(&d, 22.5);
+    assert!(j.y <= 10.0 + 1e-9 && j.y >= -1e-9, "clamped between the outermost wires: {j:?}");
+    assert!(all_finite(&d));
+    // Move the remaining wires down by 50 (loose wires, in traditional view): still clamped.
+    view(&mut f.h, f.c1, "traditional");
+    let routes: Vec<String> = f.wires[..3].iter().map(|w| f.h.route_handle(f.page, *w).hex()).collect();
+    f.h.run("move", json!({"handles": routes, "delta": [0, -50]})).unwrap();
+    f.h.check();
+    view(&mut f.h, f.c1, "fan");
+    let d = fan(&mut f.h, f.page, f.c1);
+    let spine: Vec<Pt> = of_role(&d, Role::Spine).into_iter().flat_map(|p| path(&p.shape)).collect();
+    let (lo, hi) = spine.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), p| (a.min(p.y), b.max(p.y)));
+    assert!(hi < -30.0, "the spines moved with the wires: {lo}..{hi}");
+    let j = junction(&d, 22.5);
+    assert!((-50.0 - 1e-9..=-40.0 + 1e-9).contains(&j.y), "join within the moved wires: {j:?}");
+    // Undo both, redo both.
+    f.h.run("u", Value::Null).unwrap();
+    f.h.run("u", Value::Null).unwrap();
+    assert!(near(junction(&fan(&mut f.h, f.page, f.c1), 22.5), Pt::new(22.5, 15.0)));
+    f.h.run("redo", Value::Null).unwrap();
+    f.h.run("redo", Value::Null).unwrap();
+    f.h.check();
+    // Delete the whole cable with a stored join: the document stays valid; undo restores both.
+    let anchors = |h: &mut H| h.doc().representations.values().filter(|r| r.role == look::ANCHOR_ROLE).count();
+    assert_eq!(anchors(&mut f.h), 1);
+    f.h.run("ecaddelete", json!({"cable": f.c1.hex()})).unwrap();
+    f.h.check();
+    assert!(!f.h.doc().cables.contains_key(&f.c1));
+    assert_eq!(anchors(&mut f.h), 0, "the join goes with the cable");
+    f.h.run("u", Value::Null).unwrap();
+    f.h.check();
+    assert_eq!(anchors(&mut f.h), 1);
+    // ERASE of the slash in traditional view with a stored join present: never an invalid document.
+    view(&mut f.h, f.c1, "traditional");
+    let slash = ecad_cadcraft::slash::slashes_of(&f.h.doc(), f.page, f.c1)[0].0;
+    let hs = f.h.handle_of(f.page, slash);
+    let r = f.h.run("erase", json!({"handles": [hs.hex()]}));
+    f.h.check();
+    eprintln!("erase slash with a stored join: {r:?}");
+}
+
+/// A hand-edited stored join far off the spine (finite or not) never puts non-finite geometry in
+/// the drawing and keeps the join on the spine.
+#[test]
+fn cablefan_hostile_stored_join_draws_finite() {
+    let mut f = fixture(true, true);
+    view(&mut f.h, f.c1, "fan");
+    f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "A", "at": 0.5})).unwrap();
+    let base = f.h.doc();
+    let item = base.representations.values().find(|r| r.role == look::ANCHOR_ROLE).unwrap().items[0];
+    for at in [Pt::new(1e308, 1e308), Pt::new(-1e308, 1e308), Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY)] {
+        let mut doc = base.clone();
+        doc.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
+        let d = look::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &look::font_width);
+        assert!(d.is_fan(), "{at:?}");
+        assert!(all_finite(&d), "{at:?}");
+        let j = junction(&d, 22.5);
+        assert!((-1e-9..=15.0 + 1e-9).contains(&j.y), "{at:?}: join on the spine {j:?}");
+    }
+    // Committed through the model, a finite far point is accepted and still drawn on the spine.
+    let before = base.items[&item].clone();
+    let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(1e308, -1e308) }), ..before.clone() };
+    f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
+    f.h.check();
+    let d = fan(&mut f.h, f.page, f.c1);
+    assert!(all_finite(&d));
+}
+
+/// The interactive form: `Middle` resets like `at: null`; points out of range and typed text are
+/// refused without writing; Esc writes nothing.
+#[test]
+fn cablefan_interactive_middle_and_refusals() {
+    let mut a = fixture(true, true);
+    view(&mut a.h, a.c1, "fan");
+    a.h.run("cablefan", json!({"cable": a.c1.hex(), "end": "A", "at": 1.0})).unwrap();
+    let mut b = fixture(true, true);
+    view(&mut b.h, b.c1, "fan");
+    b.h.run("cablefan", json!({"cable": b.c1.hex(), "end": "A", "at": 1.0})).unwrap();
+    a.h.run("cablefan", json!({"cable": a.c1.hex(), "end": "A", "at": null})).unwrap();
+    let json_ops = last_tx(&mut a.h).ops;
+    let head = b.h.head();
+    b.h.s.start("cablefan").unwrap();
+    click(&mut b.h, 22.5, 4.0).unwrap();
+    for typed in ["1e400,0", "nan,nan", "hello"] {
+        let _ = b.h.s.cmdline(typed);
+        assert_eq!(b.h.head(), head, "{typed}");
+    }
+    let _ = b.h.s.input(Input::Point(Vec2::new(1e300, 0.0)));
+    assert_eq!(b.h.head(), head);
+    b.h.s.input(Input::Keyword("Middle".into())).unwrap();
+    assert_eq!(b.h.head(), head + 1);
+    assert_eq!(last_tx(&mut b.h).ops, json_ops, "Middle equals at: null");
+    assert_eq!(b.h.doc(), a.h.doc());
+    // Esc after picking: nothing written.
+    b.h.s.start("cablefan").unwrap();
+    click(&mut b.h, 22.5, 4.0).unwrap();
+    b.h.s.input(Input::Cancel).unwrap();
+    assert_eq!(b.h.head(), head + 1);
+    b.h.check();
+}
+
+/// Review S2 through a crossing-window selection made the way a user makes it (every entity in a
+/// window round a labelled cable of attached wires, components included): MOVE, COPY and ERASE
+/// each record one transaction and leave the page consistent.
+#[test]
+fn s2_window_round_a_labelled_cable_with_components() {
+    for (cmd, extra) in [("move", json!({"delta": [0, 60]})), ("copy", json!({"delta": [0, 60]})), ("erase", json!({}))]
+    {
+        let mut f = fixture(true, true);
+        f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4"]})).unwrap();
+        let all: Vec<String> = f.h.p(|p| p.pages[&f.page].map.handles().map(|h| h.hex()).collect());
+        let head = f.h.head();
+        let mut params = extra.clone();
+        params["handles"] = json!(all);
+        let r = f.h.run(cmd, params);
+        assert!(r.is_ok(), "{cmd}: {r:?}");
+        assert_eq!(f.h.head(), head + 1, "{cmd}: one transaction");
+        f.h.check();
+        if cmd == "move" {
+            let texts = layer_texts(&mut f.h, f.page);
+            assert_eq!(texts.len(), 4, "{cmd}: labels drawn again");
+            assert!(texts.iter().all(|t| t.0.y > 55.0), "{cmd}: labels follow the moved slash: {texts:?}");
+        }
+    }
+}
+
+/// Round 2 (round-1 finding 3): a blank stored core (empty or spaces, by another route) is shown
+/// in the hover as no core at all: `  W4`, and `In cable C1` on the wire.
+#[test]
+fn hover_shows_blank_cores_as_unset() {
+    let mut f = fixture(true, true);
+    store_core_raw(&mut f.h, f.c1, 3, Some(""));
+    store_core_raw(&mut f.h, f.c1, 2, Some("   "));
+    let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
+    let slash = ecad_cadcraft::slash::slashes_of(&f.h.doc(), f.page, f.c1)[0].0;
+    let hs = f.h.handle_of(f.page, slash);
+    let lines = f.h.p(|p| hover_lines(p, uid, hs)).unwrap();
+    assert!(lines.iter().any(|l| l == "  W4"), "{lines:?}");
+    assert!(lines.iter().any(|l| l == "  W3"), "{lines:?}");
+    assert!(lines.iter().all(|l| !l.ends_with("core ") && !l.contains("core    ")), "{lines:?}");
+    let route = f.h.route_handle(f.page, f.wires[3]);
+    let lines = f.h.p(|p| hover_lines(p, uid, route)).unwrap();
+    assert!(lines.iter().any(|l| l == "In cable C1"), "{lines:?}");
+}

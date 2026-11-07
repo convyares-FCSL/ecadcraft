@@ -567,3 +567,31 @@ fn moved_join_reference_screenshot() {
     assert!(magenta_near(&img, screen(&h, 25.0, 15.0), 1), "left join at the top");
     assert!(magenta_near(&img, screen(&h, 95.0, 0.0), 1), "right join at the bottom");
 }
+
+/// Round 2 (review nit): the trial turns lineweights on at the first project it opens, but a user
+/// who turned them off with Show/Hide Lineweight keeps that choice when the next project opens.
+#[test]
+fn lineweight_display_keeps_the_users_choice_across_projects() {
+    let settings = Tmp::new("lw-toggle");
+    let work = Tmp::new("lw-toggle-work");
+    let mut h = harness(&settings, None);
+    assert!(h.state().cad.session.settings.lwdisplay, "on after the first project opens");
+    // The user turns it off (LWDISPLAY, as Show/Hide Lineweight does).
+    h.state_mut().cad.session.settings.lwdisplay = false;
+    let path = work.0.join("lw.ecad").display().to_string();
+    h.state_mut().save_as(&path).unwrap();
+    while !h.state().cad.session.docs.is_empty() {
+        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
+    }
+    h.run_steps(2);
+    assert!(!h.state().project_open());
+    h.state_mut().open_project(&path).unwrap();
+    h.run_steps(2);
+    assert!(!h.state().cad.session.settings.lwdisplay, "the user's choice is kept on the next open");
+    // And a new project after that keeps it too.
+    while !h.state().cad.session.docs.is_empty() {
+        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
+    }
+    h.state_mut().new_project().unwrap();
+    assert!(!h.state().cad.session.settings.lwdisplay, "kept for a new project");
+}
