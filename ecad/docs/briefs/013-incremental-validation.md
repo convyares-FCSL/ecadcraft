@@ -1,10 +1,11 @@
 # Brief 013: In-place replay and incremental validation
 
-Status: **Draft** (for owner approval). Constraint on multi-op transactions added by the owner,
-2026-11-07.
+Status: Approved (owner, 2026-11-07, with the rollback-journal approach of scope 2). Constraint
+on multi-op transactions added by the owner, 2026-11-07.
 Branch: `ecad/incremental-validation`
 Designer: no (no UI) · Size: M
-Depends on: 012 (PR #30) merged first, so the benchmark baseline exists to measure against.
+Depends on: nothing for the code (branched from `dev`). Acceptance criterion 5 is measured once
+012 (PR #30) is merged and this branch is rebased on it, so the benchmark exists.
 
 ## Goal
 
