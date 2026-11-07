@@ -449,7 +449,7 @@ fn save_works_only_with_the_write_flag_and_reopening_shows_the_agents_edits() {
     // An unsaved project in memory has no file: Save As stays with the person.
     let mut c = writer();
     let m = c.refused("save", json!({}));
-    assert!(m.contains("Save As needs a file name"), "{m}");
+    assert!(m.contains("no file yet") && m.contains("Save As"), "{m}");
 }
 
 // ---------- criterion 6 ----------
