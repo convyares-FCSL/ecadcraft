@@ -454,8 +454,13 @@ become fans. Typed: `cableview {"cable":"<id>"}` switches one cable, with `"view
 ## 5C. Continue a cable on another page (by clicking)
 
 Continue on the page of section 5A (`cables`, page 2 when you followed section 5 first), with its
-cable of three wires. In this section the cable is named by the first 8 hex digits of its ID, as
-in the replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name instead).
+three wires. In this section the cable is named by the first 8 hex digits of its ID, as in the
+replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name instead).
+
+0. **Make the cable again.** Section 5A step 7 deleted the cable (its wires stayed). Slash them
+   again: click **Cable Slash**, click at about `28,-3` and then `32,18` (or type
+   `cableslash {"from":[28,-3],"to":[32,18]}` in the Command field). Expected: `Cable <id>
+   created with 3 wires: …`. If you skipped step 7 and the cable is still there, skip this step.
 
 1. **Mark where it leaves.** Click **Cable Reference** (Wiring group, after Cable View). The
    prompt says `Select a cable to reference:`. Click the slash. The prompt says

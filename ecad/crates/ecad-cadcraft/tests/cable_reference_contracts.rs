@@ -15,6 +15,7 @@ mod common;
 use cadcraft_engine::Input;
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
+use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
@@ -342,6 +343,14 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(text_of(&mut r.h, r.supply), "/?");
     let doc = r.h.doc();
     assert!(markers_on_page(&doc, r.supply)[0].orphan);
+    // Red: the ring (`ecad.orphan`, #FF0000) and the text (ACI 1).
+    let su = uid(&mut r.h, r.supply);
+    let ring = r.h.p(|p| overlay_marks(p, su)).into_iter().find(|m| m.at == Vec2::new(65.0, 5.0)).expect("ring");
+    assert_eq!((ring.shape, ring.color), (MarkShape::Ring, Rgb(0xff, 0x00, 0x00)));
+    let srid = reference_on(&mut r.h, r.supply);
+    let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
+    let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();
+    assert_eq!(te.common.color, CColor::Index(1));
     assert_eq!(doc.conductors, before.conductors, "conductors and attachments stay");
     assert_eq!(doc.cables, before.cables);
     assert!(
@@ -366,7 +375,7 @@ fn the_text_is_derived_erasing_it_erases_the_reference_and_moving_it_is_refused(
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(rid)).unwrap();
     let head = r.h.head();
     let e = r.h.run("move", json!({"handles": [text.hex()], "delta": [5, 0]}));
-    assert!(e.is_err_and(|m| m.contains("The reference text is derived")) || r.h.head() == head);
+    assert_eq!(e, Err("The reference text is derived; move the reference point instead.".to_string()));
     assert_eq!(r.h.head(), head, "moving the text records nothing");
     r.h.run("erase", json!({"handles": [text.hex()]})).unwrap();
     assert_eq!(r.h.head(), head + 1);
@@ -713,6 +722,121 @@ fn hostile_documents_derive_without_panicking() {
     assert!(lines.iter().any(|l| l.contains("has 5 references; only two are supported.")), "{lines:?}");
     let snap_refs = ecad_inspect::over_referenced(&refs);
     assert_eq!(snap_refs, vec![cable]);
+
+    // A reference on a page that is in no page order (only from a hostile file): it and its
+    // partners read `/?` for it, and nothing panics.
+    let lost_page = PageId::from(9);
+    let mut two = Document::default();
+    two.pages.insert(page, Page { title: "1".into() });
+    two.pages.insert(lost_page, Page { title: "lost".into() });
+    two.page_order.push(page);
+    two.layers.insert(layer, Layer { name: "0".into() });
+    two.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    for (i, pg) in [page, lost_page].into_iter().enumerate() {
+        let item = ItemId::from(300 + i as u128);
+        two.items.insert(
+            item,
+            Item {
+                page: pg,
+                style: style.clone(),
+                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }),
+            },
+        );
+        two.representations.insert(
+            RepresentationId::from(400 + i as u128),
+            Representation {
+                subject: Subject::Cable(cable),
+                page: pg,
+                form: Form::Drawn,
+                role: "reference".into(),
+                items: vec![item],
+                connection_points: Default::default(),
+            },
+        );
+    }
+    let refs = cable_references(&two);
+    let on_lost = refs.iter().find(|r| r.page == lost_page).unwrap();
+    assert_eq!((on_lost.page_number, on_lost.locator()), (None, "/?".to_string()));
+    let on_page = refs.iter().find(|r| r.page == page).unwrap();
+    assert_eq!(on_page.text, "/?", "a partner that cannot be located reads /?");
+    assert!(!on_page.orphan, "it still has another end");
+    assert_eq!(markers_on_page(&two, lost_page).len(), 1);
+    let _ = ecad_cadcraft::references::diagnostics(&two);
+    let _ = ecad_cadcraft::references::hover_lines(&two, on_lost.reference);
+}
+
+/// B1 (never-crash): a hostile file with 20 000 references of one cable derives in bounded time
+/// and memory: each reference keeps at most three partner IDs and a count, and the text ends `+N`.
+#[test]
+fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
+    let page: PageId = PageId::from(1);
+    let layer: LayerId = LayerId::from(2);
+    let cable: CableId = CableId::from(3);
+    let mut doc = Document::default();
+    doc.pages.insert(page, Page { title: "1".into() });
+    doc.page_order.push(page);
+    doc.layers.insert(layer, Layer { name: "0".into() });
+    doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let n: usize = 20_000;
+    for i in 0..n {
+        let item = ItemId::from(1_000_000 + i as u128);
+        doc.items.insert(
+            item,
+            Item {
+                page,
+                style: style.clone(),
+                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }),
+            },
+        );
+        doc.representations.insert(
+            RepresentationId::from(2_000_000 + i as u128),
+            Representation {
+                subject: Subject::Cable(cable),
+                page,
+                form: Form::Drawn,
+                role: "reference".into(),
+                items: vec![item],
+                connection_points: Default::default(),
+            },
+        );
+    }
+    let started = std::time::Instant::now();
+    let refs = cable_references(&doc);
+    let took = started.elapsed();
+    assert_eq!(refs.len(), n);
+    let kept: usize = refs.iter().map(|r| r.partners.len()).sum();
+    assert!(kept <= 3 * n, "{kept} partner IDs kept for {n} references");
+    assert!(refs.iter().all(|r| r.partner_count == n - 1 && r.partners.len() == 3));
+    assert!(refs[0].text.ends_with(&format!("+{}", n - 1 - 3)), "{}", refs[0].text);
+    assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
+    let _ = ecad_cadcraft::references::diagnostics(&doc);
+    let _ = ecad_cadcraft::references::leaving_ends(&doc, page);
+}
+
+/// The per-page movement rule (design 010 §0, translate M3): on the continuation page, moving a
+/// stub whose other end is connected on the first page never detaches that end, and dropping that
+/// end on a terminal here connects nothing and says why.
+#[test]
+fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
+    let (mut r, _) = continued();
+    r.h.activate(r.field);
+    let before = r.h.doc().conductors;
+    let w5 = r.h.route_handle(r.field, r.w[1]);
+    // Away from everything: the end at the reference (end A, attached to K1 on Supply) stays.
+    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
+    assert_eq!(r.h.doc().conductors, before, "no attachment changed");
+    assert_eq!(r.h.route_ends(r.field, r.w[1]).0, Pt::new(20.0, 55.0));
+    // Back, then onto K2's middle terminal at (100,5): end A stays on K1 and the user is told.
+    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, -50]})).unwrap();
+    let n = r.h.s.log.len();
+    r.h.run("move", json!({"handles": [w5.hex()], "delta": [80, 0]})).unwrap();
+    assert_eq!(r.h.doc().conductors, before, "end A is still connected on Supply only");
+    assert!(
+        log_since(&r.h, n).contains("End A of W5 is connected on another page, so it was not connected here"),
+        "{}",
+        log_since(&r.h, n)
+    );
 }
 
 // ---------------------------------------------------------------- scope 5 (check M), fan (check L)
@@ -757,4 +881,79 @@ fn fan_view_keeps_the_reference_drawn() {
         assert!(r.h.p(|p| p.pages[&page].map.ref_text(rid)).is_some(), "the text stays drawn");
     }
     r.h.check();
+}
+
+/// Design check J: a cable of `MAX_CABLE_MEMBERS` (10 000) wires with a reference is continued on
+/// another page in one transaction, in bounded time, with a stub per wire.
+#[test]
+fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
+    use ecad_model::{Author, Conductor};
+    let n = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
+    let mut h = H::new(SEED + 7);
+    let supply = h.first_page();
+    let ops = h.cfg(|p| {
+        let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        let cable: CableId = p.ids.fresh();
+        let mut ops = vec![Op::CreateCable { id: cable, cable: Cable::default() }];
+        for i in 0..n {
+            let (c, it, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+            let y = i as f64;
+            ops.push(Op::CreateConductor { id: c, conductor: Conductor::default() });
+            ops.push(Op::AddItem {
+                id: it,
+                item: Item {
+                    page: supply,
+                    style: style.clone(),
+                    kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(60.0, y) }),
+                },
+            });
+            ops.push(Op::LinkRepresentation {
+                id: r,
+                rep: Representation {
+                    subject: Subject::Conductor(c),
+                    page: supply,
+                    form: Form::Drawn,
+                    role: "route".into(),
+                    items: vec![it],
+                    connection_points: Default::default(),
+                },
+            });
+            ops.push(Op::AddCableMember { cable, index: i, member: CableMember { conductor: c, core: None } });
+        }
+        let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
+        ops.push(Op::AddItem {
+            id: it,
+            item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) },
+        });
+        ops.push(Op::LinkRepresentation {
+            id: r,
+            rep: Representation {
+                subject: Subject::Cable(cable),
+                page: supply,
+                form: Form::Drawn,
+                role: "reference".into(),
+                items: vec![it],
+                connection_points: Default::default(),
+            },
+        });
+        (cable, ops)
+    });
+    let (cable, ops) = ops;
+    // The page is not reprojected after this direct commit: save and reopen, and use the reopened
+    // project (as the 004 bulk tests do).
+    h.cfg(|p| p.ledger.commit(Author::User, "bulk cable", ops)).unwrap();
+    h.s.execute("qsave", &Value::Null).unwrap();
+    let medium = h.p(|p| p.store.medium().clone());
+    let mut s = Session::empty();
+    let project = ProjectHandle::open_from(&mut s, "Big", medium, SEED + 7).unwrap();
+    let mut h = H { s, project, trail: Vec::new() };
+    h.run("newpage", json!({"title": "Field"})).unwrap();
+    let head = h.head();
+    let started = std::time::Instant::now();
+    let v = h.run("cablecontinue", json!({"cable": cable.hex(), "at": [20, 0], "toward": [40, 0]})).unwrap();
+    let took = started.elapsed();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    assert_eq!(v["routes"].as_array().map(Vec::len), Some(n));
+    assert_eq!(v["text"], "/1.2");
+    assert!(took < std::time::Duration::from_secs(120), "continuing {n} wires took {took:?}");
 }
