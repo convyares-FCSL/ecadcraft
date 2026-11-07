@@ -13,6 +13,11 @@ workspace = true
 # Deliberate panics inside owner callbacks and ECAD commands, for the experiment's containment
 # tests only. Never enabled in normal builds; `cargo xtask ci` tests with all features.
 fault-injection = []
+# Test oracle (brief 014): every translation of a drawing edit also runs the earlier
+# whole-document code and aborts the process if the ops differ. Enabled for this crate's own
+# tests (and ecad-bench's differential test) through dev-dependencies, and by `--all-features`;
+# never in app builds.
+translate-oracle = []
 
 [dependencies]
 ecad-model = { workspace = true }
@@ -27,3 +32,5 @@ serde_json = { workspace = true }
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# Every test run compares each drawing-edit translation with the pre-014 code (brief 014).
+ecad-cadcraft = { path = ".", features = ["translate-oracle"] }

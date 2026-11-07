@@ -1204,7 +1204,7 @@ impl DocumentOwner for Project {
             return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
         let t = translate::translate(&mut translate::Ctx {
-            doc: self.ledger.document(),
+            ledger: &mut self.ledger,
             page,
             map: &view.map,
             last: &last,
