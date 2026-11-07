@@ -54,6 +54,19 @@ outside `ecad/` changes, and the file format is unchanged. For this branch there
 checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
 display yet.
 
+**Branch `ecad/cable-references` (brief 010, design `ecad/docs/design/010.md`)**, cut from `dev`
+after brief 005 was merged, lets one cable be drawn on two pages (section 5C). **Cable Reference**
+marks where a cable leaves a page; **Continue Cable** draws the same cable on another page (short
+wires that are the same wires, and a slash); each end shows the other end's page and column, such
+as `/2.1`, worked out every time the page is drawn, so renumbering or moving pages never breaks
+it. **Go to Reference** jumps between the ends, and **Rename Page** and **Move Page** are new in the
+Pages group. Nothing outside `ecad/` changes, and the file format is unchanged. The decisions the
+overseer took on the design's open questions while you were away (one conductor drawn on two
+pages is one core, two references per cable, no continuation on the same page) are listed in the
+pull request for you to confirm. For this branch there are automated checks only (below); nobody
+has run it on a display yet. Brief 009 draws the reference marker's final look; until it is merged
+the marker is a ring and a text.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -62,6 +75,7 @@ Three kinds of evidence exist, and they are kept apart:
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/apps/ecad-trial/tests/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
+| **Automated checks, brief 010 (cable references)** | written with the branch (the worker ran only the new tests once); run by the tester and by CI on Linux and Windows | Section 5C: **Cable Reference**, **Continue Cable** and **Go to Reference** clicked by their labels, their first prompts, the click-only path (reference, continue with Enter and two clicks, jump back), and the **Rename Page** and **Move Page** templates filling in the current page (`ecad/apps/ecad-trial/tests/cable_references.rs`). One cable on two pages keeps its ID, members and nets; continuing is one transaction with the design's ops and geometry; the texts `/2.1` and `/1.2` and where they sit; no end mark where a wire leaves toward a reference; moving or renaming a page is one transaction and the texts follow with none of their own; erasing one drawing makes the other end a red orphan with a diagnostic and a message, and `u` restores it; save, reopen and replay; the hover lens; `cablegoto` there and back; the interactive and JSON forms record the same transactions; refusals R1 to R6; hostile input; the debugger trail; fan view keeps the reference (`ecad/crates/ecad-cadcraft/tests/cable_reference_contracts.rs`, whose JSON-form table is written to move to the MCP harness of brief 011). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/apps/ecad-trial/tests/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
@@ -437,6 +451,63 @@ or a wire in a cable): if all of them are fans they all go back to traditional, 
 become fans. Typed: `cableview {"cable":"<id>"}` switches one cable, with `"view":"fan"` or
 `"view":"traditional"` to set it; `cableview {}` lists every cable's view and changes nothing.
 
+## 5C. Continue a cable on another page (by clicking)
+
+Continue on the page of section 5A (`cables`, page 2 when you followed section 5 first), with its
+cable of three wires. In this section the cable is named by the first 8 hex digits of its ID, as
+in the replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name instead).
+
+1. **Mark where it leaves.** Click **Cable Reference** (Wiring group, after Cable View). The
+   prompt says `Select a cable to reference:`. Click the slash. The prompt says
+   `Specify reference point or [Undo]:`; a red ring and a red `/?` follow the pointer. Click just
+   right of the wire ends, at about `65,5`.
+   Expected: `Reference for cable … placed on page 2.` and `It has no other end yet: open the
+   other page and click Continue Cable.`; a red ring at the point and a small red `/?` to its
+   right. The banner's change count goes up by one.
+2. **A page where it arrives.** `newpage {"title":"field"}` (page 3). Draw a component with three
+   terminals as in section 5: `line 100,-5 110,-5 110,15 100,15 c`, select the four lines, click
+   **Convert to Component**, then **Add Terminal** at `100,0`, `100,5` and `100,10` and press
+   Enter. Then `zoom e`, and zoom out a little so that `20,5` is on screen.
+3. **Continue it.** Click **Continue Cable**. The prompt says
+   `Enter cable to continue or [List] <…>:` with your cable as the default (`L` lists the
+   references waiting for their other end). Press Enter. Click where the cable arrives, at about
+   `20,5` (a magenta ring and `/2.2` follow the pointer: the text this end will show). Move the
+   pointer to the right, to about `40,5`.
+   Expected before the click: three short wires 5 apart, a slash across them and
+   `-> 3 wires continue` beside the pointer. Click.
+   Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
+   now shows /3.1.` and `Connect each wire's free end to its terminal with Connect.`; three short
+   wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
+   `20,5` and a magenta `/2.2` to its left. On page 2 the `/?` is now a magenta `/3.1`, and the
+   wire ends next to the reference lost their grey squares (the wires continue). One change.
+4. **Connect.** Click **Connect**, click each short wire near its right end, then the terminal
+   at the same height. Expected: each wire stretches to its terminal; green dots there. In the
+   debugger the three wires are the same IDs as on page 2.
+5. **Hover.** Rest the pointer on a reference (its ring or its text). Expected: a lens such as
+   `Cable reference  /3.1`, the cable and the reference's ID, `This end: page 2 "cables",
+   column 2, 3 wires`, `Other end: page 3 "field", column 1, 3 wires`, and one line per wire with
+   the terminal it reaches there (`wire … -> …:1`).
+6. **Go there and back.** Click the reference on page 2 to select it, then click **Go to
+   Reference**. Expected: the `field` tab is current, centred on `20,5`, with its reference point
+   selected, and `Page 3 "field", at the other end of cable … (/3.1).` Click **Go to Reference**
+   again: back on page 2. Without a selection the button asks `Select a cable reference:`.
+7. **Move a page.** Click **Move Page** (Pages group). It fills in
+   `movepage {"page":"<this page's id>","index":<new position>}`; replace `<new position>` with
+   `1` and press Enter. Expected: the page is now first; both references show the new numbers at
+   once; the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
+   rename changes the hover lens, not the marker text (it shows numbers, not titles).
+8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
+   `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
+   wires themselves stay, still connected to the component on that page); the other page's
+   marker turns red `/?`; the reply adds `Cable …'s reference on page … now has no other end.`;
+   the debugger's Diagnostics lists it under **Cable references**. Type `u`: everything is back
+   with the same IDs.
+
+Typed: `cableref {"cable":"<id>","at":[65,5]}`, `cablecontinue {"cable":"<id>","at":[20,5],
+"toward":[40,5]}` (optionally `"members":[…]` to continue only some wires),
+`cablegoto {"reference":"<id>"}` and `cablerefs {}` (lists every reference with its text, partner
+and whether it is an orphan; read only).
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -625,8 +696,8 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     model-space views (VPORTS), and only on the Model tab.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
-  - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page and Open
-    Page still fill in the Command field.
+  - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page, Open
+    Page, Rename Page and Move Page still fill in the Command field.
 - **Cable Slash** (brief 004, owner answers of 2026-11-06):
   - A wire counts when the slash crosses it, passes through one of its bends, or ends on it. A
     slash that meets a wire only at the wire's own end, or runs along it, does not take it; the
@@ -666,6 +737,22 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     Two different projects lose a switch only if they write at the same moment. Views are
     presentation only, so the file is not locked.
   - At most 25 000 cables of one project are remembered in fan view.
+- **Cable references** (brief 010; the overseer's decisions, for you to confirm):
+  - A cable has at most two references (one continuation). A third is refused; a chain over more
+    pages needs a later brief.
+  - A cable cannot be continued on the page it is already drawn on (no second area of one page).
+  - A wire drawn on two pages is one wire (one core), connected at one end on each page. Only
+    wires connected at one end at most are continued; a wire connected at both ends is skipped and
+    named in the reply.
+  - Columns are a fixed 40 mm grid counted from x = 0 until drawing frames exist; the page
+    number is the page's position, so renaming a page does not change the marker text.
+  - The hover lens is text, not a picture of the other page. There is no jump on double-click:
+    select the reference and click **Go to Reference**.
+  - The reference text is drawn on the reserved layer `ECAD-CABLES`; erasing it erases its
+    reference; moving or editing it is refused (move the reference point instead). The marker is
+    a ring and a text until brief 009's marker is merged.
+  - Wires connect to their terminals with **Connect** after continuing; there is no automatic
+    routing.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** Native Windows and Linux are supported. Keep projects in a local
