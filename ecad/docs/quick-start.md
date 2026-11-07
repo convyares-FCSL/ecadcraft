@@ -662,9 +662,10 @@ the banner's Command field. IDs and offsets will differ from any shown here.
     is locked by another program, has another format (for example from a newer version) or is
     over 1 MiB is left alone, and switches are not remembered until it is fixed. The file never
     grows past 1 MiB: the projects used least recently are dropped from it first.
-  - Two windows switching views at the same moment (the same project in a read-only second
-    window, or two projects) can lose one of the two switches from the file: views are
-    presentation only, so the file is not locked. Switch again to remember it.
+  - The same project in two windows: the window that switches last decides what is remembered.
+    Two different projects lose a switch only if they write at the same moment. Views are
+    presentation only, so the file is not locked.
+  - At most 25 000 cables of one project are remembered in fan view.
 - One project at a time. Only `.ecad` projects are saved; plain CADCraft drawings cannot be
   written.
 - **Where files may live.** Native Windows and Linux are supported. Keep projects in a local

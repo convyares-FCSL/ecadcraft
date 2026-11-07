@@ -718,14 +718,18 @@ fn store_keeps_the_file_readable() {
     let oldest = format!("{:032x}", 0xabc0_0000_u128);
     let newest = format!("{:032x}", 0xabc0_0000_u128 + (n - 1) as u128);
     assert!(!kept.contains_key(&oldest) && kept.contains_key(&newest), "least recently used first");
-    // One project alone over the cap, or over the per-project limit: nothing written.
+    // Over the per-project limit: nothing written.
     let before = std::fs::read(&file).unwrap();
-    let huge: std::collections::BTreeSet<CableId> = (1..=40_000u128).map(CableId).collect();
-    assert!(settings.store(project, &huge).unwrap_err().contains("larger than 1 MiB"));
-    let over: std::collections::BTreeSet<CableId> =
-        (1..=views::MAX_CABLES_PER_PROJECT as u128 + 1).map(CableId).collect();
-    assert!(settings.store(project, &over).is_err());
+    assert_eq!(views::MAX_CABLES_PER_PROJECT, 25_000);
+    let cap = views::MAX_CABLES_PER_PROJECT as u128;
+    let over: std::collections::BTreeSet<CableId> = (1..=cap + 1).map(CableId).collect();
+    assert!(settings.store(project, &over).unwrap_err().contains("more than 25000 cables"));
     assert_eq!(std::fs::read(&file).unwrap(), before, "left alone");
+    // Exactly the limit is reachable: it fits under 1 MiB beside the other projects and reads back.
+    let at_cap: std::collections::BTreeSet<CableId> = (1..=cap).map(CableId).collect();
+    settings.store(project, &at_cap).unwrap();
+    assert!(std::fs::metadata(&file).unwrap().len() <= views::MAX_FILE_BYTES);
+    assert_eq!(settings.load(project).fan, at_cap);
 }
 
 /// Review M5: switching a selection of cables reports each cable's result and carries on past

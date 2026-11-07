@@ -43,8 +43,9 @@ pub const FILE_NAME: &str = "cable-views.json";
 pub const FORMAT: &str = "ecad-cable-views/1";
 /// Larger settings files are not read (treated as empty).
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
-/// Most cable IDs read or written for one project.
-pub const MAX_CABLES_PER_PROJECT: usize = 100_000;
+/// Most cable IDs read or written for one project. Chosen so that it can be reached: a project at
+/// the cap takes about 875 KiB, under [`MAX_FILE_BYTES`] with room for other projects.
+pub const MAX_CABLES_PER_PROJECT: usize = 25_000;
 /// Environment variable naming the settings folder (tests and manual trials).
 pub const SETTINGS_ENV: &str = "ECAD_SETTINGS_DIR";
 

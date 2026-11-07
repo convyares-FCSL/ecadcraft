@@ -1369,11 +1369,9 @@ fn round2_m2_caps_and_round_trip() {
     let e = st.store(project, &ids(1..=max + 1)).unwrap_err();
     assert_eq!(stamp(&file), before, "max+1 left the file alone: {e}");
     eprintln!("store of {} ids: {e}", max + 1);
-    for n in [views::MAX_CABLES_PER_PROJECT as u128, views::MAX_CABLES_PER_PROJECT as u128 + 1] {
-        let e = st.store(project, &ids(1..=n)).unwrap_err();
-        assert_eq!(stamp(&file), before, "{n}: {e}");
-        eprintln!("store of {n} ids: {e}");
-    }
+    // Round 2 decision: the cap (25 000) is reachable, so the largest accepted set is the cap.
+    assert_eq!(max, views::MAX_CABLES_PER_PROJECT as u128, "the per-project cap is reachable");
+    // max + 1 above is the cap + 1: refused without a write.
     eprintln!("largest per-project set that is remembered: {max} cables (file {} bytes)", bytes.len());
 }
 
