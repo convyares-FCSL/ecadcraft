@@ -101,6 +101,21 @@ and validates the whole document after every transaction. That is a replay ineff
 whatever the container is (validate once at the end, or incrementally). It also means the first
 page waits almost entirely on open. Snapshots hide it, but they shouldn't be the only fix.
 
+## 4c. Outside review (owner, 2026-11-07) and the overseer's check against the code
+
+| Point | Already covered | Gap |
+| --- | --- | --- |
+| Model-first (logical model separate from drawing) | Yes, the core of the design | — |
+| Orphaned representations | DOC-05 and the invariants refuse dangling references; an erased reference end gives the red `/?` | Confirm the cascade rule when a conductor or component is deleted |
+| T-junctions / multi-drop | — | **Undecided.** Proposed: a T resolves to two point-to-point conductors (daisy chain on a terminal), keeping the two-end contract |
+| Silent replay drift | Hash chain; Verify replay | Each snapshot is checked to equal replay when written (option C) |
+| Repeated nudges grow the log | — | Merge repeated moves of the same selection into one transaction (small brief later) |
+| Git and multi-user merging | — | Question 3 (problem D) |
+| Schema evolution | `schema_version` in the header; ops versioned and upcast on replay (`v1.rs`, concept spec) | Snapshots and compaction always write the latest schema |
+| Libraries outside the project | Embedded copy with origin; updates explicit (concept spec, brief 006) | — |
+| Binary attachments (PDF, DXF, images) | — | Never inside the log: content-addressed parts, which is where a real zip wrapper earns its place |
+| Benchmark coverage | Open, nets, first page, one save | One edit on a loaded large project; cable references once brief 010 is merged |
+
 ## 5. Questions for the architect
 
 1. Is "snapshots as explicit parts" satisfied by checkpoint records plus a manifest inside one file,
@@ -117,3 +132,6 @@ page waits almost entirely on open. Snapshots hide it, but they shouldn't be the
 7. How should the state be split into snapshot parts: per page plus project-wide, or finer?
 8. Should replay's whole-document validation per transaction be fixed now, as its own brief, since
    it dominates open time before any snapshot exists?
+9. T-junctions: confirm that a T always resolves to two point-to-point conductors on a shared
+   terminal.
+10. Attachments: content-addressed parts inside the container, or a sidecar folder?
