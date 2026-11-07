@@ -981,7 +981,7 @@ fn run_cablegoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             "{}, at the other end of cable {} ({}).",
             crate::references::page_words(doc, there.page).replacen("page", "Page", 1),
             crate::views::cable_title(doc, there.cable),
-            there.text
+            there.locator()
         );
         let page = there.page;
         let opened = p.pages.get(&page).and_then(|v| v.uid).is_none();
