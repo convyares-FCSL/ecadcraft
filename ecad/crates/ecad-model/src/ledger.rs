@@ -1,10 +1,17 @@
 //! Transactions and the append-only history (proposal §6).
+//!
+//! A transaction applies in place with a rollback journal and is checked only where it touched
+//! the document ([`crate::invariant`]), so its cost follows the size of the change: on every
+//! commit, undo and redo, and per transaction when a file is replayed on open.
+
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 use crate::doc::Document;
 use crate::error::{ModelError, Result};
 use crate::id::{IdAllocator, TxId};
+use crate::invariant::Touched;
 use crate::op::Op;
 
 /// Who made a transaction (FILE-07).
@@ -45,12 +52,21 @@ pub struct Transaction {
 /// The authoritative document and its history.
 ///
 /// # Semantics
-/// - [`Ledger::commit`] applies a transaction to a copy, checks every invariant and only then
-///   appends it (TX-03).
+/// - [`Ledger::commit`] applies a transaction's ops in place, in order, then checks the
+///   invariants the transaction could have affected ([`Document::check_touched`]) and only then
+///   appends it (TX-03). If an op or the check fails, the applied ops are undone with their
+///   inverses in reverse order (the rollback journal), leaving the document exactly as it was.
+/// - States between the ops of one transaction may break invariants; only the end state is
+///   checked. A later op sees what the earlier ops created, changed or removed.
 /// - [`Ledger::undo`] and [`Ledger::redo`] append transactions holding concrete inverse ops
-///   (UNDO-01). The undo/redo position is derived from the log (UNDO-02), never stored.
+///   (UNDO-01). The undo/redo position is derived from the log (UNDO-02): the ledger keeps it in
+///   memory, rebuilt on load and extended on every append, and never stores it in the file.
 /// - The project is unsaved exactly when [`Ledger::head`] differs from
 ///   [`Ledger::persisted`] (SAVE-01).
+/// - **Verify mode** (debug builds, `ECAD_VERIFY_INVARIANTS=1`, or [`Ledger::replay_verified`])
+///   also runs the full [`Document::check`] and the index check after every transaction and
+///   treats any disagreement with the scoped check as a bug: a debug assertion, and in release the
+///   full check's verdict wins.
 ///
 /// # Example
 /// ```rust
@@ -69,57 +85,127 @@ pub struct Ledger {
     log: Vec<Transaction>,
     persisted: u64,
     ids: IdAllocator,
+    /// The undo/redo stacks derived from `log`, kept current.
+    stacks: Stacks,
+    /// Verify mode for this ledger, on top of the build and environment switches.
+    verify: bool,
 }
 
 /// The derived undo/redo stacks: log indices.
+#[derive(Debug, Clone, Default)]
 struct Stacks {
     undo: Vec<usize>,
     redo: Vec<usize>,
 }
 
 impl Stacks {
-    /// Account for `log[i]`, which must follow the entries already pushed.
-    fn push(&mut self, log: &[Transaction], i: usize) -> Result<()> {
+    /// Whether `log[i]` may follow the entries already pushed.
+    fn admit(&self, log: &[Transaction], i: usize) -> Result<()> {
         let Some(tx) = log.get(i) else { return Ok(()) };
+        let top = |stack: &Vec<usize>| stack.last().and_then(|j| log.get(*j)).map(|t| t.id);
+        match tx.kind {
+            TxKind::Edit => Ok(()),
+            TxKind::Undo { of } if top(&self.undo) != Some(of) => {
+                Err(ModelError::CorruptLog(format!("undo {} does not undo the latest step", tx.id)))
+            }
+            TxKind::Redo { of } if top(&self.redo) != Some(of) => {
+                Err(ModelError::CorruptLog(format!("redo {} does not redo the latest undo", tx.id)))
+            }
+            TxKind::Undo { .. } | TxKind::Redo { .. } => Ok(()),
+        }
+    }
+
+    /// Account for `log[i]`, after [`Stacks::admit`] accepted it.
+    fn push(&mut self, log: &[Transaction], i: usize) {
+        let Some(tx) = log.get(i) else { return };
         match tx.kind {
             TxKind::Edit => {
                 self.undo.push(i);
                 self.redo.clear();
             }
-            TxKind::Undo { of } => {
-                let top = self.undo.pop().and_then(|j| log.get(j));
-                if top.map(|t| t.id) != Some(of) {
-                    return Err(ModelError::CorruptLog(format!("undo {} does not undo the latest step", tx.id)));
-                }
+            TxKind::Undo { .. } => {
+                self.undo.pop();
                 self.redo.push(i);
             }
-            TxKind::Redo { of } => {
-                let top = self.redo.pop().and_then(|j| log.get(j));
-                if top.map(|t| t.id) != Some(of) {
-                    return Err(ModelError::CorruptLog(format!("redo {} does not redo the latest undo", tx.id)));
-                }
+            TxKind::Redo { .. } => {
+                self.redo.pop();
                 self.undo.push(i);
             }
         }
-        Ok(())
     }
 }
 
 fn stacks(log: &[Transaction]) -> Result<Stacks> {
-    let mut s = Stacks { undo: Vec::new(), redo: Vec::new() };
+    let mut s = Stacks::default();
     for i in 0..log.len() {
-        s.push(log, i)?;
+        s.admit(log, i)?;
+        s.push(log, i);
     }
     Ok(s)
 }
 
-fn apply_all(doc: &Document, ops: &[Op]) -> Result<Document> {
-    let mut next = doc.clone();
-    for op in ops {
-        op.apply(&mut next)?;
+/// Whether `ECAD_VERIFY_INVARIANTS=1` is set (read once per process).
+fn verify_env() -> bool {
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("ECAD_VERIFY_INVARIANTS").is_some_and(|v| v == "1"))
+}
+
+/// Whether to run the full check alongside the scoped one.
+fn verifying(local: bool) -> bool {
+    local || cfg!(debug_assertions) || verify_env()
+}
+
+/// Undo `applied` (ops that were applied to `doc`, in order) by applying their inverses in
+/// reverse ([`Op::revert`]). Infallible by construction: each inverse meets the state its op
+/// produced, and it does not compare recorded values, which could hold NaN.
+fn rollback(doc: &mut Document, applied: &[Op]) {
+    for op in applied.iter().rev() {
+        let undone = op.revert(doc);
+        debug_assert!(undone.is_ok(), "rollback of {} failed: {undone:?}", op.name());
     }
-    next.check()?;
-    Ok(next)
+}
+
+/// Check the end state of a transaction that touched `touched`.
+fn validate(doc: &Document, touched: &Touched, verify: bool) -> Result<()> {
+    let scoped = doc.check_touched(touched);
+    if verifying(verify) {
+        let full = doc.check().and_then(|()| doc.check_index());
+        debug_assert_eq!(
+            scoped.is_ok(),
+            full.is_ok(),
+            "scoped check {scoped:?} disagrees with the full check {full:?}"
+        );
+        return full.and(scoped);
+    }
+    // On failure, report the full check's first violation, so messages do not depend on which
+    // objects were touched.
+    scoped.map_err(|e| doc.check().err().unwrap_or(e))
+}
+
+/// Apply `ops` to `doc` in place as one transaction: all or nothing.
+///
+/// # Errors
+/// The first op's precondition failure, or an invariant failure of the end state. On error `doc`
+/// is exactly as it was.
+fn apply_tx(doc: &mut Document, ops: &[Op], verify: bool) -> Result<()> {
+    let mut touched = Touched::default();
+    let mut applied = 0;
+    let mut result = Ok(());
+    for op in ops {
+        if let Err(e) = op.apply(doc) {
+            result = Err(e);
+            break;
+        }
+        touched.add(op);
+        applied += 1;
+    }
+    if result.is_ok() {
+        result = validate(doc, &touched, verify);
+    }
+    if result.is_err() {
+        rollback(doc, ops.get(..applied).unwrap_or(&[]));
+    }
+    result
 }
 
 /// A named version must name a transaction before the one naming it (0 is the empty project), so
@@ -144,7 +230,14 @@ fn inverse_ops(ops: &[Op]) -> Vec<Op> {
 impl Ledger {
     /// An empty project. `seed` seeds transaction IDs.
     pub fn new(seed: u64) -> Self {
-        Self { doc: Document::default(), log: Vec::new(), persisted: 0, ids: IdAllocator::seeded(seed) }
+        Self {
+            doc: Document::default(),
+            log: Vec::new(),
+            persisted: 0,
+            ids: IdAllocator::seeded(seed),
+            stacks: Stacks::default(),
+            verify: false,
+        }
     }
 
     /// Rebuild from a log by applying every transaction to an empty document (FILE-02).
@@ -156,12 +249,25 @@ impl Ledger {
         Self::from_checkpoint(Document::default(), 0, log, seed)
     }
 
+    /// [`Ledger::replay`] in verify mode: every transaction is also checked in full, and the
+    /// resulting ledger stays in verify mode. Used by the debugger's **Verify replay**.
+    ///
+    /// # Errors
+    /// As [`Ledger::replay`].
+    pub fn replay_verified(log: Vec<Transaction>, seed: u64) -> Result<Self> {
+        Self::rebuild(Document::default(), 0, log, seed, true)
+    }
+
     /// Replay as much of `log` as is valid: the ledger of the longest valid prefix and, when a
     /// transaction fails, its position in `log` (0-based) and the error. Used by file readers to
     /// open a damaged history read-only at its last good transaction (proposal §20.6).
+    ///
+    /// # Semantics
+    /// Every transaction is checked as it is applied, exactly as when it was committed; a failed
+    /// one is rolled back, so the document is the state after the last good transaction.
     pub fn replay_prefix(log: Vec<Transaction>, seed: u64) -> (Self, Option<(usize, ModelError)>) {
         let mut doc = Document::default();
-        let mut stacks = Stacks { undo: Vec::new(), redo: Vec::new() };
+        let mut stacks = Stacks::default();
         let mut failure = None;
         let mut good = 0;
         for (i, tx) in log.iter().enumerate() {
@@ -174,12 +280,12 @@ impl Ledger {
                 )))
             } else {
                 check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_all(&doc, &tx.ops))
-                    .and_then(|next| stacks.push(&log, i).map(|()| next))
+                    .and_then(|()| apply_tx(&mut doc, &tx.ops, false))
+                    .and_then(|()| stacks.admit(&log, i).inspect_err(|_| rollback(&mut doc, &tx.ops)))
             };
             match step {
-                Ok(next) => {
-                    doc = next;
+                Ok(()) => {
+                    stacks.push(&log, i);
                     good = i + 1;
                 }
                 Err(e) => {
@@ -192,7 +298,8 @@ impl Ledger {
         log.truncate(good);
         let persisted = log.len() as u64;
         let last = log.last().map_or(0, |t| t.id.0);
-        (Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last) }, failure)
+        let ids = IdAllocator::seeded_after(seed, last);
+        (Self { doc, log, persisted, ids, stacks, verify: false }, failure)
     }
 
     /// Rebuild from a checkpoint holding the state after the first `at` transactions, applying
@@ -201,7 +308,13 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::replay`].
     pub fn from_checkpoint(doc: Document, at: u64, log: Vec<Transaction>, seed: u64) -> Result<Self> {
+        Self::rebuild(doc, at, log, seed, false)
+    }
+
+    fn rebuild(doc: Document, at: u64, log: Vec<Transaction>, seed: u64, verify: bool) -> Result<Self> {
         let mut doc = doc;
+        // The checkpoint may have been built without ops; make its index match its objects.
+        doc.rebuild_index();
         for (i, tx) in log.iter().enumerate() {
             if tx.seq != i as u64 + 1 {
                 return Err(ModelError::CorruptLog(format!(
@@ -212,15 +325,15 @@ impl Ledger {
                 )));
             }
             if tx.seq > at {
-                doc = check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_all(&doc, &tx.ops))
+                check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
             }
         }
-        stacks(&log)?;
+        let stacks = stacks(&log)?;
         let persisted = log.len() as u64;
         let last = log.last().map_or(0, |t| t.id.0);
-        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last) })
+        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last), stacks, verify })
     }
 
     /// The current document.
@@ -263,10 +376,16 @@ impl Ledger {
 
     /// The document after `ops`, without committing anything.
     ///
+    /// # Semantics
+    /// Works on a copy of the document (a preview is a second document by nature); the live
+    /// document is not touched.
+    ///
     /// # Errors
     /// Precondition or invariant failures, exactly as [`Ledger::commit`] would report them.
     pub fn preview(&self, ops: &[Op]) -> Result<Document> {
-        apply_all(&self.doc, ops)
+        let mut next = self.doc.clone();
+        apply_tx(&mut next, ops, self.verify)?;
+        Ok(next)
     }
 
     /// Validate and append an edit.
@@ -297,24 +416,32 @@ impl Ledger {
         ops: Vec<Op>,
         time_ms: Option<u64>,
     ) -> Result<TxId> {
-        check_bookmarks(&ops, self.head() + 1)?;
-        let next = apply_all(&self.doc, &ops)?;
+        let seq = self.head() + 1;
+        check_bookmarks(&ops, seq)?;
+        apply_tx(&mut self.doc, &ops, self.verify)?;
         let id: TxId = self.ids.fresh();
-        self.log.push(Transaction { id, seq: self.head() + 1, author, label, kind, time_ms, ops });
-        self.doc = next;
+        self.log.push(Transaction { id, seq, author, label, kind, time_ms, ops });
+        let i = self.log.len() - 1;
+        if let Err(e) = self.stacks.admit(&self.log, i) {
+            // Not reachable through undo/redo (their target is the stack top); kept so a bad
+            // kind can never be recorded.
+            if let Some(tx) = self.log.pop() {
+                rollback(&mut self.doc, &tx.ops);
+            }
+            return Err(e);
+        }
+        self.stacks.push(&self.log, i);
         Ok(id)
     }
 
     /// Label of the step [`Ledger::undo`] would undo.
     pub fn undo_label(&self) -> Option<&str> {
-        let s = stacks(&self.log).ok()?;
-        s.undo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
+        self.stacks.undo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
     }
 
     /// Label of the step [`Ledger::redo`] would redo.
     pub fn redo_label(&self) -> Option<&str> {
-        let s = stacks(&self.log).ok()?;
-        s.redo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
+        self.stacks.redo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
     }
 
     /// Append the inverse of the latest effective step.
@@ -330,8 +457,8 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::undo`].
     pub fn undo_at(&mut self, author: Author, time_ms: Option<u64>) -> Result<TxId> {
-        let s = stacks(&self.log)?;
-        let target = s.undo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to undo"))?;
+        let target =
+            self.stacks.undo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to undo"))?;
         let (of, label, ops) = (target.id, target.label.clone(), inverse_ops(&target.ops));
         self.append(author, label, TxKind::Undo { of }, ops, time_ms)
     }
@@ -349,8 +476,8 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::redo`].
     pub fn redo_at(&mut self, author: Author, time_ms: Option<u64>) -> Result<TxId> {
-        let s = stacks(&self.log)?;
-        let target = s.redo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to redo"))?;
+        let target =
+            self.stacks.redo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to redo"))?;
         let (of, label, ops) = (target.id, target.label.clone(), inverse_ops(&target.ops));
         self.append(author, label, TxKind::Redo { of }, ops, time_ms)
     }
@@ -366,7 +493,7 @@ impl Ledger {
         }
         let mut doc = Document::default();
         for tx in self.log.iter().take(seq as usize) {
-            doc = apply_all(&doc, &tx.ops)?;
+            apply_tx(&mut doc, &tx.ops, self.verify)?;
         }
         Ok(doc)
     }

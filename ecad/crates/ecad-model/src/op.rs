@@ -15,6 +15,7 @@ use crate::error::{ModelError, Result};
 use crate::id::{
     CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
 };
+use crate::index::Delta;
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -152,42 +153,25 @@ fn pre(msg: String) -> ModelError {
     ModelError::Precondition(msg)
 }
 
-fn insert_new<K: Ord + Copy + std::fmt::Display, V>(map: &mut BTreeMap<K, V>, id: K, v: V, what: &str) -> Result<()> {
+/// Precondition: `id` is not in `map`.
+fn absent<K: Ord + Copy + std::fmt::Display, V>(map: &BTreeMap<K, V>, id: K, what: &str) -> Result<()> {
     if map.contains_key(&id) {
         return Err(pre(format!("{what} {id} already exists")));
     }
-    map.insert(id, v);
     Ok(())
 }
 
-fn remove_exact<K: Ord + Copy + std::fmt::Display, V: PartialEq>(
-    map: &mut BTreeMap<K, V>,
+/// Precondition: `map` holds exactly `v` at `id` (only that it holds something at `id` when not
+/// `checked`).
+fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(
+    map: &BTreeMap<K, V>,
     id: K,
     v: &V,
     what: &str,
+    checked: bool,
 ) -> Result<()> {
     match map.get(&id) {
-        Some(cur) if cur == v => {
-            map.remove(&id);
-            Ok(())
-        }
-        Some(_) => Err(pre(format!("{what} {id} differs from the recorded value"))),
-        None => Err(pre(format!("{what} {id} does not exist"))),
-    }
-}
-
-fn replace_exact<K: Ord + Copy + std::fmt::Display, V: PartialEq + Clone>(
-    map: &mut BTreeMap<K, V>,
-    id: K,
-    before: &V,
-    after: &V,
-    what: &str,
-) -> Result<()> {
-    match map.get_mut(&id) {
-        Some(cur) if cur == before => {
-            *cur = after.clone();
-            Ok(())
-        }
+        Some(cur) if !checked || cur == v => Ok(()),
         Some(_) => Err(pre(format!("{what} {id} differs from the recorded value"))),
         None => Err(pre(format!("{what} {id} does not exist"))),
     }
@@ -236,79 +220,173 @@ impl Op {
     /// Apply to `doc`, checking the recorded preconditions.
     ///
     /// # Semantics
-    /// Applies one op only; invariants that span ops are checked per transaction by the ledger.
-    /// On error `doc` may be partly changed, which is why the ledger applies to a copy.
+    /// - **Atomic:** every precondition is checked before anything changes, so on error `doc` is
+    ///   exactly as it was.
+    /// - Applies one op only; invariants that span ops are checked once per transaction by the
+    ///   ledger, so a state between two ops of a transaction may break them.
+    /// - Keeps the document's reverse indexes up to date.
+    /// - After `op.apply(doc)` succeeds, `op.inverse().apply(doc)` succeeds and restores `doc`
+    ///   exactly, unless a recorded value holds NaN (which never equals itself); [`Op::revert`]
+    ///   always does, and the ledger's rollback relies on it.
     ///
     /// # Errors
     /// [`ModelError::Precondition`] when the document does not hold the recorded `before` state.
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
+        self.apply_with(doc, true)
+    }
+
+    /// Undo this op, which was the last change applied to `doc`, by applying its inverse without
+    /// comparing recorded values (only that the objects it names exist and positions are in
+    /// range).
+    ///
+    /// # Semantics
+    /// Used by the ledger to roll back a refused transaction. Comparing recorded values could
+    /// refuse a rollback that must succeed: a value holding NaN (refused by the end-of-transaction
+    /// check) never equals itself. The index is updated from the values actually displaced.
+    ///
+    /// # Errors
+    /// [`ModelError::Precondition`] only when `doc` is not the state this op produced.
+    pub fn revert(&self, doc: &mut Document) -> Result<()> {
+        self.inverse().apply_with(doc, false)
+    }
+
+    fn apply_with(&self, doc: &mut Document, checked: bool) -> Result<()> {
         match self {
             Op::AddPage { id, page, index } => {
-                insert_new(&mut doc.pages, *id, page.clone(), "page")?;
+                absent(&doc.pages, *id, "page")?;
                 if *index > doc.page_order.len() {
                     return Err(pre(format!("page index {index} is past the end")));
                 }
+                doc.pages.insert(*id, page.clone());
                 doc.page_order.insert(*index, *id);
-                Ok(())
             }
             Op::RemovePage { id, page, index } => {
                 if doc.page_order.get(*index) != Some(id) {
                     return Err(pre(format!("page {id} is not at index {index}")));
                 }
-                remove_exact(&mut doc.pages, *id, page, "page")?;
+                holds(&doc.pages, *id, page, "page", checked)?;
+                doc.pages.remove(id);
                 doc.page_order.remove(*index);
-                Ok(())
             }
-            Op::AddLayer { id, layer } => insert_new(&mut doc.layers, *id, layer.clone(), "layer"),
-            Op::RemoveLayer { id, layer } => remove_exact(&mut doc.layers, *id, layer, "layer"),
-            Op::AddItem { id, item } => insert_new(&mut doc.items, *id, item.clone(), "item"),
-            Op::ModifyItem { id, before, after } => replace_exact(&mut doc.items, *id, before, after, "item"),
-            Op::RemoveItem { id, item } => remove_exact(&mut doc.items, *id, item, "item"),
+            Op::AddLayer { id, layer } => {
+                absent(&doc.layers, *id, "layer")?;
+                doc.layers.insert(*id, layer.clone());
+            }
+            Op::RemoveLayer { id, layer } => {
+                holds(&doc.layers, *id, layer, "layer", checked)?;
+                doc.layers.remove(id);
+            }
+            Op::AddItem { id, item } => {
+                absent(&doc.items, *id, "item")?;
+                doc.index.item(*id, item, Delta::Add);
+                doc.items.insert(*id, item.clone());
+            }
+            Op::ModifyItem { id, before, after } => {
+                holds(&doc.items, *id, before, "item", checked)?;
+                if let Some(old) = doc.items.insert(*id, after.clone()) {
+                    doc.index.item(*id, &old, Delta::Remove);
+                }
+                doc.index.item(*id, after, Delta::Add);
+            }
+            Op::RemoveItem { id, item } => {
+                holds(&doc.items, *id, item, "item", checked)?;
+                if let Some(old) = doc.items.remove(id) {
+                    doc.index.item(*id, &old, Delta::Remove);
+                }
+            }
             Op::CreateComponent { id, component } => {
-                insert_new(&mut doc.components, *id, component.clone(), "component")
+                absent(&doc.components, *id, "component")?;
+                doc.index.component(*id, component, Delta::Add);
+                doc.components.insert(*id, component.clone());
             }
-            Op::DeleteComponent { id, component } => remove_exact(&mut doc.components, *id, component, "component"),
-            Op::AddTerminal { id, terminal } => insert_new(&mut doc.terminals, *id, terminal.clone(), "terminal"),
-            Op::RemoveTerminal { id, terminal } => remove_exact(&mut doc.terminals, *id, terminal, "terminal"),
+            Op::DeleteComponent { id, component } => {
+                holds(&doc.components, *id, component, "component", checked)?;
+                if let Some(old) = doc.components.remove(id) {
+                    doc.index.component(*id, &old, Delta::Remove);
+                }
+            }
+            Op::AddTerminal { id, terminal } => {
+                absent(&doc.terminals, *id, "terminal")?;
+                doc.index.terminal(*id, terminal, Delta::Add);
+                doc.terminals.insert(*id, terminal.clone());
+            }
+            Op::RemoveTerminal { id, terminal } => {
+                holds(&doc.terminals, *id, terminal, "terminal", checked)?;
+                if let Some(old) = doc.terminals.remove(id) {
+                    doc.index.terminal(*id, &old, Delta::Remove);
+                }
+            }
             Op::LinkRepresentation { id, rep } => {
-                insert_new(&mut doc.representations, *id, rep.clone(), "representation")
+                absent(&doc.representations, *id, "representation")?;
+                doc.index.representation(*id, rep, Delta::Add);
+                doc.representations.insert(*id, rep.clone());
             }
             Op::ModifyRepresentation { id, before, after } => {
-                replace_exact(&mut doc.representations, *id, before, after, "representation")
+                holds(&doc.representations, *id, before, "representation", checked)?;
+                if let Some(old) = doc.representations.insert(*id, after.clone()) {
+                    doc.index.representation(*id, &old, Delta::Remove);
+                }
+                doc.index.representation(*id, after, Delta::Add);
             }
-            Op::UnlinkRepresentation { id, rep } => remove_exact(&mut doc.representations, *id, rep, "representation"),
+            Op::UnlinkRepresentation { id, rep } => {
+                holds(&doc.representations, *id, rep, "representation", checked)?;
+                if let Some(old) = doc.representations.remove(id) {
+                    doc.index.representation(*id, &old, Delta::Remove);
+                }
+            }
             Op::CreateConductor { id, conductor } => {
-                insert_new(&mut doc.conductors, *id, conductor.clone(), "conductor")
+                absent(&doc.conductors, *id, "conductor")?;
+                doc.index.conductor(*id, conductor, Delta::Add);
+                doc.conductors.insert(*id, conductor.clone());
             }
-            Op::DeleteConductor { id, conductor } => remove_exact(&mut doc.conductors, *id, conductor, "conductor"),
+            Op::DeleteConductor { id, conductor } => {
+                holds(&doc.conductors, *id, conductor, "conductor", checked)?;
+                if let Some(old) = doc.conductors.remove(id) {
+                    doc.index.conductor(*id, &old, Delta::Remove);
+                }
+            }
             Op::AttachEnd { conductor, end, before, after } => {
                 let c = doc
                     .conductors
                     .get_mut(conductor)
                     .ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
-                if c.end(*end) != *before {
+                let current = c.end(*end);
+                if checked && current != *before {
                     return Err(pre(format!("conductor {conductor} end {end:?} is not attached as recorded")));
                 }
                 c.set_end(*end, *after);
-                Ok(())
+                doc.index.conductor_end(*conductor, *end, current, Delta::Remove);
+                doc.index.conductor_end(*conductor, *end, *after, Delta::Add);
             }
-            Op::CreateCable { id, cable } => insert_new(&mut doc.cables, *id, cable.clone(), "cable"),
-            Op::DeleteCable { id, cable } => remove_exact(&mut doc.cables, *id, cable, "cable"),
+            Op::CreateCable { id, cable } => {
+                absent(&doc.cables, *id, "cable")?;
+                doc.index.cable(*id, cable, Delta::Add);
+                doc.cables.insert(*id, cable.clone());
+            }
+            Op::DeleteCable { id, cable } => {
+                holds(&doc.cables, *id, cable, "cable", checked)?;
+                if let Some(old) = doc.cables.remove(id) {
+                    doc.index.cable(*id, &old, Delta::Remove);
+                }
+            }
             Op::AddCableMember { cable, index, member } => {
                 let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
                 if *index > c.members.len() {
                     return Err(pre(format!("cable {cable} member index {index} is past the end")));
                 }
                 c.members.insert(*index, member.clone());
-                Ok(())
+                doc.index.cable_member(*cable, member, Delta::Add);
             }
             Op::RemoveCableMember { cable, index, member } => {
                 let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
-                if c.members.get(*index) != Some(member) {
-                    return Err(pre(format!("cable {cable} member {index} differs from the recorded value")));
+                match c.members.get(*index) {
+                    Some(cur) if !checked || cur == member => {}
+                    _ => {
+                        return Err(pre(format!("cable {cable} member {index} differs from the recorded value")));
+                    }
                 }
-                c.members.remove(*index);
-                Ok(())
+                let old = c.members.remove(*index);
+                doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
                 let props = match object {
@@ -317,43 +395,42 @@ impl Op {
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
                 }
                 .ok_or_else(|| pre(format!("{object:?} does not exist")))?;
-                if props.get(key) != before.as_ref() {
+                if checked && props.get(key) != before.as_ref() {
                     return Err(pre(format!("property {key} of {object:?} differs from the recorded value")));
                 }
                 match after {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
-                Ok(())
             }
             Op::EmbedDefinition { id, definition } => {
-                insert_new(&mut doc.definitions, *id, definition.clone(), "definition")
+                absent(&doc.definitions, *id, "definition")?;
+                doc.definitions.insert(*id, definition.clone());
             }
             Op::RemoveDefinition { id, definition } => {
-                remove_exact(&mut doc.definitions, *id, definition, "definition")
+                holds(&doc.definitions, *id, definition, "definition", checked)?;
+                doc.definitions.remove(id);
             }
             Op::SetProjectSettings { before, after } => {
-                if &doc.settings != before {
+                if checked && &doc.settings != before {
                     return Err(pre("project settings differ from the recorded value".into()));
                 }
                 doc.settings = after.clone();
-                Ok(())
             }
             Op::NameVersion { name, at } => {
                 if doc.versions.contains_key(name) {
                     return Err(pre(format!("version name {name:?} is already used")));
                 }
                 doc.versions.insert(name.clone(), *at);
-                Ok(())
             }
-            Op::UnnameVersion { name, at } => match doc.versions.get(name) {
-                Some(cur) if cur == at => {
-                    doc.versions.remove(name);
-                    Ok(())
+            Op::UnnameVersion { name, at } => {
+                if doc.versions.get(name) != Some(at) {
+                    return Err(pre(format!("version name {name:?} does not name transaction {at}")));
                 }
-                _ => Err(pre(format!("version name {name:?} does not name transaction {at}"))),
-            },
+                doc.versions.remove(name);
+            }
         }
+        Ok(())
     }
 
     /// A short name for listings.
