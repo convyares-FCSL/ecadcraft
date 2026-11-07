@@ -226,8 +226,8 @@ impl Op {
     ///   ledger, so a state between two ops of a transaction may break them.
     /// - Keeps the document's reverse indexes up to date.
     /// - After `op.apply(doc)` succeeds, `op.inverse().apply(doc)` succeeds and restores `doc`
-    ///   exactly, unless a recorded value holds NaN (which never equals itself); [`Op::revert`]
-    ///   always does, and the ledger's rollback relies on it.
+    ///   exactly, unless a recorded value holds NaN (which never equals itself). The ledger's rollback
+    ///   uses a variant that does not compare recorded values, so it always succeeds.
     ///
     /// # Errors
     /// [`ModelError::Precondition`] when the document does not hold the recorded `before` state.
@@ -244,9 +244,13 @@ impl Op {
     /// refuse a rollback that must succeed: a value holding NaN (refused by the end-of-transaction
     /// check) never equals itself. The index is updated from the values actually displaced.
     ///
+    /// It writes the recorded value back, which need not be bit-identical to what the document
+    /// held when that value compared equal: `-0.0` where the document held `0.0`, for example.
+    /// So it is only for undoing the op just applied, whose recorded value is what it wrote.
+    ///
     /// # Errors
     /// [`ModelError::Precondition`] only when `doc` is not the state this op produced.
-    pub fn revert(&self, doc: &mut Document) -> Result<()> {
+    pub(crate) fn revert(&self, doc: &mut Document) -> Result<()> {
         self.inverse().apply_with(doc, false)
     }
 

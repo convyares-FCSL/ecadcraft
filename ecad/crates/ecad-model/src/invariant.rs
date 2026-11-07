@@ -38,7 +38,8 @@
 //!
 //! # Safety net
 //! The ledger also runs the full check, and compares the kept index with a rebuilt one, after
-//! every transaction in debug builds (all tests) and when `ECAD_VERIFY_INVARIANTS=1`, and treats
+//! every transaction with the `verify-invariants` cargo feature (on for every `cargo test`
+//! through dev-dependencies), when `ECAD_VERIFY_INVARIANTS=1`, and in the debugger's Verify replay,, and treats
 //! any disagreement as a bug ([`crate::ledger`]).
 //!
 //! This module changes nothing: it only reads the document.

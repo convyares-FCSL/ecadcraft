@@ -63,10 +63,15 @@ pub struct Transaction {
 ///   memory, rebuilt on load and extended on every append, and never stores it in the file.
 /// - The project is unsaved exactly when [`Ledger::head`] differs from
 ///   [`Ledger::persisted`] (SAVE-01).
-/// - **Verify mode** (debug builds, `ECAD_VERIFY_INVARIANTS=1`, or [`Ledger::replay_verified`])
-///   also runs the full [`Document::check`] and the index check after every transaction and
-///   treats any disagreement with the scoped check as a bug: a debug assertion, and in release the
-///   full check's verdict wins.
+/// - **Verify mode** (the `verify-invariants` cargo feature, which every `cargo test`
+///   turns on; `ECAD_VERIFY_INVARIANTS=1`; or [`Ledger::replay_verified`]) also runs the full
+///   [`Document::check`] and the index check after every transaction and treats any
+///   disagreement with the scoped check as a bug: a debug assertion once the transaction is
+///   settled, and the full check's verdict wins.
+/// - **Panics:** the rollback journal is a drop guard, so a panic in the middle of a transaction
+///   (caught further up, for example by `catch_unwind`) still leaves the document and log as they
+///   were. A revert that fails (a bug) is repaired by replaying the log and reported in
+///   [`Ledger::diagnostics`]; if even that fails, the ledger refuses further changes.
 ///
 /// # Example
 /// ```rust
@@ -89,6 +94,8 @@ pub struct Ledger {
     stacks: Stacks,
     /// Verify mode for this ledger, on top of the build and environment switches.
     verify: bool,
+    /// Rollback failures (never expected) and whether they left the document unusable.
+    health: Health,
 }
 
 /// The derived undo/redo stacks: log indices.
@@ -102,14 +109,19 @@ impl Stacks {
     /// Whether `log[i]` may follow the entries already pushed.
     fn admit(&self, log: &[Transaction], i: usize) -> Result<()> {
         let Some(tx) = log.get(i) else { return Ok(()) };
+        self.admit_kind(log, tx.kind, tx.id)
+    }
+
+    /// Whether transaction `id`, of `kind`, may follow the entries already pushed.
+    fn admit_kind(&self, log: &[Transaction], kind: TxKind, id: impl std::fmt::Display) -> Result<()> {
         let top = |stack: &Vec<usize>| stack.last().and_then(|j| log.get(*j)).map(|t| t.id);
-        match tx.kind {
+        match kind {
             TxKind::Edit => Ok(()),
             TxKind::Undo { of } if top(&self.undo) != Some(of) => {
-                Err(ModelError::CorruptLog(format!("undo {} does not undo the latest step", tx.id)))
+                Err(ModelError::CorruptLog(format!("undo {id} does not undo the latest step")))
             }
             TxKind::Redo { of } if top(&self.redo) != Some(of) => {
-                Err(ModelError::CorruptLog(format!("redo {} does not redo the latest undo", tx.id)))
+                Err(ModelError::CorruptLog(format!("redo {id} does not redo the latest undo")))
             }
             TxKind::Undo { .. } | TxKind::Redo { .. } => Ok(()),
         }
@@ -147,65 +159,202 @@ fn stacks(log: &[Transaction]) -> Result<Stacks> {
 /// Whether `ECAD_VERIFY_INVARIANTS=1` is set (read once per process).
 fn verify_env() -> bool {
     static FLAG: OnceLock<bool> = OnceLock::new();
-    *FLAG.get_or_init(|| std::env::var_os("ECAD_VERIFY_INVARIANTS").is_some_and(|v| v == "1"))
+    *FLAG.get_or_init(|| switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()))
+}
+
+/// Only the value `1` turns verify mode on.
+fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| v == "1")
 }
 
 /// Whether to run the full check alongside the scoped one.
 fn verifying(local: bool) -> bool {
-    local || cfg!(debug_assertions) || verify_env()
+    local || cfg!(feature = "verify-invariants") || verify_env()
 }
 
-/// Undo `applied` (ops that were applied to `doc`, in order) by applying their inverses in
-/// reverse ([`Op::revert`]). Infallible by construction: each inverse meets the state its op
-/// produced, and it does not compare recorded values, which could hold NaN.
-fn rollback(doc: &mut Document, applied: &[Op]) {
-    for op in applied.iter().rev() {
-        let undone = op.revert(doc);
-        debug_assert!(undone.is_ok(), "rollback of {} failed: {undone:?}", op.name());
+/// What went wrong with rollbacks. Empty in any correct build.
+#[derive(Debug, Clone, Default)]
+struct Health {
+    /// One line per rollback that could not revert an op.
+    diagnostics: Vec<String>,
+    /// A failed rollback could not be repaired by replaying the log, so the document may be
+    /// corrupt: the ledger refuses further changes.
+    broken: bool,
+}
+
+/// The document after replaying `history` (already committed transactions), without checks.
+fn restore(history: &[Transaction]) -> Option<Document> {
+    let mut doc = Document::default();
+    for tx in history {
+        for op in &tx.ops {
+            op.apply(&mut doc).ok()?;
+        }
+    }
+    Some(doc)
+}
+
+/// Test-only fault injection.
+#[cfg(test)]
+mod hooks {
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Panic when this many ops of a transaction have been applied.
+        pub(super) static PANIC_AT: Cell<Option<usize>> = const { Cell::new(None) };
+        /// Treat every revert as failed.
+        pub(super) static FAIL_REVERT: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn maybe_panic(applied: usize) {
+        if PANIC_AT.with(Cell::get) == Some(applied) {
+            std::panic::resume_unwind(Box::new("injected panic"));
+        }
+    }
+
+    pub(super) fn fail_revert() -> bool {
+        FAIL_REVERT.with(Cell::get)
     }
 }
 
-/// Check the end state of a transaction that touched `touched`.
-fn validate(doc: &Document, touched: &Touched, verify: bool) -> Result<()> {
+/// The rollback journal of one transaction: the ops applied to the live document so far.
+///
+/// # Semantics
+/// Unless [`Journal::commit`] is called, dropping the journal reverts the applied ops in reverse
+/// order. That includes unwinding from a panic in the middle of a transaction, so the document
+/// never keeps part of a transaction. If a revert fails (it cannot, by construction), the
+/// document is rebuilt by replaying `history`, the committed log it reflects; if that is not
+/// possible either, `health.broken` is set. Nothing here panics, as it may run during unwinding.
+struct Journal<'a> {
+    doc: &'a mut Document,
+    ops: &'a [Op],
+    applied: usize,
+    /// The committed transactions whose replay gives the state before this one; `None` when the
+    /// caller discards the document on error.
+    history: Option<&'a [Transaction]>,
+    health: &'a mut Health,
+    open: bool,
+}
+
+impl<'a> Journal<'a> {
+    fn new(doc: &'a mut Document, ops: &'a [Op], history: Option<&'a [Transaction]>, health: &'a mut Health) -> Self {
+        Self { doc, ops, applied: 0, history, health, open: true }
+    }
+
+    /// Apply every op in order; what they touched.
+    fn apply(&mut self) -> Result<Touched> {
+        let mut touched = Touched::default();
+        for op in self.ops {
+            #[cfg(test)]
+            hooks::maybe_panic(self.applied);
+            op.apply(self.doc)?;
+            touched.add(op);
+            self.applied += 1;
+        }
+        #[cfg(test)]
+        hooks::maybe_panic(self.applied);
+        Ok(touched)
+    }
+
+    /// Keep the applied ops.
+    fn commit(mut self) {
+        self.open = false;
+    }
+
+    /// Revert the applied ops. Returns the failure, if a revert failed (the document has then
+    /// been restored from the history when possible).
+    fn roll_back(&mut self) -> Option<String> {
+        if !self.open {
+            return None;
+        }
+        self.open = false;
+        let applied = self.ops.get(..self.applied).unwrap_or(&[]);
+        self.applied = 0;
+        let mut failed = None;
+        for op in applied.iter().rev() {
+            #[cfg(test)]
+            if hooks::fail_revert() {
+                failed = Some(format!("rollback of {} failed: injected", op.name()));
+                break;
+            }
+            if let Err(e) = op.revert(self.doc) {
+                failed = Some(format!("rollback of {} failed: {e}", op.name()));
+                break;
+            }
+        }
+        let failed = failed?;
+        let repaired = match self.history.map(restore) {
+            Some(Some(doc)) => {
+                *self.doc = doc;
+                format!("{failed}; the document was rebuilt from the log")
+            }
+            Some(None) => {
+                self.health.broken = true;
+                format!("{failed}; rebuilding the document from the log failed too")
+            }
+            None => format!("{failed}; the document was discarded"),
+        };
+        self.health.diagnostics.push(repaired.clone());
+        Some(repaired)
+    }
+}
+
+impl Drop for Journal<'_> {
+    fn drop(&mut self) {
+        self.roll_back();
+    }
+}
+
+/// Check the end state of a transaction that touched `touched`. Also returns a disagreement
+/// between the scoped and the full check, found in verify mode, for the caller to assert on once
+/// the transaction is settled.
+fn validate(doc: &Document, touched: &Touched, verify: bool) -> (Result<()>, Option<String>) {
     let scoped = doc.check_touched(touched);
     if verifying(verify) {
         let full = doc.check().and_then(|()| doc.check_index());
-        debug_assert_eq!(
-            scoped.is_ok(),
-            full.is_ok(),
-            "scoped check {scoped:?} disagrees with the full check {full:?}"
-        );
-        return full.and(scoped);
+        let disagreement = (scoped.is_ok() != full.is_ok())
+            .then(|| format!("scoped check {scoped:?} disagrees with the full check {full:?}"));
+        return (full.and(scoped), disagreement);
     }
     // On failure, report the full check's first violation, so messages do not depend on which
     // objects were touched.
-    scoped.map_err(|e| doc.check().err().unwrap_or(e))
+    (scoped.map_err(|e| doc.check().err().unwrap_or(e)), None)
 }
 
-/// Apply `ops` to `doc` in place as one transaction: all or nothing.
+/// Apply `ops` to `doc` in place as one transaction, then run `then`: all or nothing.
 ///
 /// # Errors
-/// The first op's precondition failure, or an invariant failure of the end state. On error `doc`
-/// is exactly as it was.
-fn apply_tx(doc: &mut Document, ops: &[Op], verify: bool) -> Result<()> {
-    let mut touched = Touched::default();
-    let mut applied = 0;
-    let mut result = Ok(());
-    for op in ops {
-        if let Err(e) = op.apply(doc) {
-            result = Err(e);
-            break;
+/// The first op's precondition failure, an invariant failure of the end state, or `then`'s
+/// error. On error, or if anything panics, `doc` is exactly as it was (see [`Journal`]).
+fn apply_tx(
+    doc: &mut Document,
+    ops: &[Op],
+    verify: bool,
+    history: Option<&[Transaction]>,
+    health: &mut Health,
+    then: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let mut journal = Journal::new(doc, ops, history, health);
+    let (result, disagreement) = match journal.apply() {
+        Ok(touched) => validate(journal.doc, &touched, verify),
+        Err(e) => (Err(e), None),
+    };
+    let result = result.and_then(|()| then());
+    let rollback_failure = match result {
+        Ok(()) => {
+            journal.commit();
+            None
         }
-        touched.add(op);
-        applied += 1;
-    }
-    if result.is_ok() {
-        result = validate(doc, &touched, verify);
-    }
-    if result.is_err() {
-        rollback(doc, ops.get(..applied).unwrap_or(&[]));
-    }
+        Err(_) => journal.roll_back(),
+    };
+    // Assertions only now, with the document settled: a panic here loses nothing.
+    debug_assert!(rollback_failure.is_none(), "{rollback_failure:?}");
+    debug_assert!(disagreement.is_none(), "{disagreement:?}");
     result
+}
+
+/// [`apply_tx`] for a scratch document that the caller discards on error.
+fn apply_scratch(doc: &mut Document, ops: &[Op], verify: bool) -> Result<()> {
+    apply_tx(doc, ops, verify, None, &mut Health::default(), || Ok(()))
 }
 
 /// A named version must name a transaction before the one naming it (0 is the empty project), so
@@ -237,6 +386,7 @@ impl Ledger {
             ids: IdAllocator::seeded(seed),
             stacks: Stacks::default(),
             verify: false,
+            health: Health::default(),
         }
     }
 
@@ -268,6 +418,7 @@ impl Ledger {
     pub fn replay_prefix(log: Vec<Transaction>, seed: u64) -> (Self, Option<(usize, ModelError)>) {
         let mut doc = Document::default();
         let mut stacks = Stacks::default();
+        let mut health = Health::default();
         let mut failure = None;
         let mut good = 0;
         for (i, tx) in log.iter().enumerate() {
@@ -279,10 +430,21 @@ impl Ledger {
                     i + 1
                 )))
             } else {
-                check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_tx(&mut doc, &tx.ops, false))
-                    .and_then(|()| stacks.admit(&log, i).inspect_err(|_| rollback(&mut doc, &tx.ops)))
+                check_bookmarks(&tx.ops, tx.seq).and_then(|()| {
+                    let admit = || stacks.admit(&log, i);
+                    apply_tx(&mut doc, &tx.ops, false, log.get(..i), &mut health, admit)
+                })
             };
+            if health.broken {
+                // Never expected: a rollback failed and the good prefix did not replay either.
+                // Open nothing rather than a document that may be corrupt.
+                doc = Document::default();
+                stacks = Stacks::default();
+                good = 0;
+                let why = health.diagnostics.last().cloned().unwrap_or_default();
+                failure = Some((i, ModelError::CorruptLog(why)));
+                break;
+            }
             match step {
                 Ok(()) => {
                     stacks.push(&log, i);
@@ -299,7 +461,7 @@ impl Ledger {
         let persisted = log.len() as u64;
         let last = log.last().map_or(0, |t| t.id.0);
         let ids = IdAllocator::seeded_after(seed, last);
-        (Self { doc, log, persisted, ids, stacks, verify: false }, failure)
+        (Self { doc, log, persisted, ids, stacks, verify: false, health }, failure)
     }
 
     /// Rebuild from a checkpoint holding the state after the first `at` transactions, applying
@@ -313,6 +475,7 @@ impl Ledger {
 
     fn rebuild(doc: Document, at: u64, log: Vec<Transaction>, seed: u64, verify: bool) -> Result<Self> {
         let mut doc = doc;
+        let mut health = Health::default();
         // The checkpoint may have been built without ops; make its index match its objects.
         doc.rebuild_index();
         for (i, tx) in log.iter().enumerate() {
@@ -326,14 +489,21 @@ impl Ledger {
             }
             if tx.seq > at {
                 check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify))
+                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify, log.get(..i), &mut health, || Ok(())))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
             }
         }
         let stacks = stacks(&log)?;
         let persisted = log.len() as u64;
         let last = log.last().map_or(0, |t| t.id.0);
-        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last), stacks, verify })
+        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last), stacks, verify, health })
+    }
+
+    /// Rollback failures since this ledger was built: one line each, naming the op and how the
+    /// document was repaired. Always empty unless there is a bug; the debugger or a store may
+    /// report it.
+    pub fn diagnostics(&self) -> &[String] {
+        &self.health.diagnostics
     }
 
     /// The current document.
@@ -384,7 +554,7 @@ impl Ledger {
     /// Precondition or invariant failures, exactly as [`Ledger::commit`] would report them.
     pub fn preview(&self, ops: &[Op]) -> Result<Document> {
         let mut next = self.doc.clone();
-        apply_tx(&mut next, ops, self.verify)?;
+        apply_scratch(&mut next, ops, self.verify)?;
         Ok(next)
     }
 
@@ -416,21 +586,21 @@ impl Ledger {
         ops: Vec<Op>,
         time_ms: Option<u64>,
     ) -> Result<TxId> {
+        if self.health.broken {
+            return Err(ModelError::CorruptLog(
+                "the document could not be restored after a failed rollback; reopen the project".into(),
+            ));
+        }
         let seq = self.head() + 1;
         check_bookmarks(&ops, seq)?;
-        apply_tx(&mut self.doc, &ops, self.verify)?;
+        // Not refused through undo/redo (their target is the stack top); kept so a bad kind can
+        // never be recorded.
+        let (stacks, log) = (&self.stacks, &self.log);
+        let admit = || stacks.admit_kind(log, kind, "the new transaction");
+        apply_tx(&mut self.doc, &ops, self.verify, Some(log), &mut self.health, admit)?;
         let id: TxId = self.ids.fresh();
         self.log.push(Transaction { id, seq, author, label, kind, time_ms, ops });
-        let i = self.log.len() - 1;
-        if let Err(e) = self.stacks.admit(&self.log, i) {
-            // Not reachable through undo/redo (their target is the stack top); kept so a bad
-            // kind can never be recorded.
-            if let Some(tx) = self.log.pop() {
-                rollback(&mut self.doc, &tx.ops);
-            }
-            return Err(e);
-        }
-        self.stacks.push(&self.log, i);
+        self.stacks.push(&self.log, self.log.len() - 1);
         Ok(id)
     }
 
@@ -493,7 +663,7 @@ impl Ledger {
         }
         let mut doc = Document::default();
         for tx in self.log.iter().take(seq as usize) {
-            apply_tx(&mut doc, &tx.ops, self.verify)?;
+            apply_scratch(&mut doc, &tx.ops, self.verify)?;
         }
         Ok(doc)
     }
@@ -504,5 +674,168 @@ impl Ledger {
     /// Replay failures.
     pub fn replay_matches(&self) -> Result<bool> {
         Ok(self.state_at(self.head())? == self.doc)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use super::*;
+    use crate::doc::{Cable, CableMember, Component, Conductor, End, Layer, Page, Terminal};
+    use crate::id::{CableId, ComponentId, ConductorId, LayerId, PageId, TerminalId};
+
+    fn json(doc: &Document) -> String {
+        serde_json::to_string(doc).unwrap()
+    }
+
+    /// A ledger with a component, two terminals, a conductor on the first and a cable holding it.
+    fn ledger() -> Ledger {
+        let mut l = Ledger::new(3);
+        let (c, w) = (ComponentId(3), ConductorId(6));
+        l.commit(
+            Author::User,
+            "setup",
+            vec![
+                Op::AddPage { id: PageId(1), page: Page { title: "1".into() }, index: 0 },
+                Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
+                Op::CreateComponent { id: c, component: Component::default() },
+                Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None } },
+                Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None } },
+                Op::CreateConductor { id: w, conductor: Conductor::default() },
+                Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(TerminalId(4)) },
+                Op::CreateCable { id: CableId(7), cable: Cable::default() },
+                Op::AddCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: w, core: None } },
+            ],
+        )
+        .unwrap();
+        l
+    }
+
+    /// A valid three-op transaction touching indexes.
+    fn three_ops() -> Vec<Op> {
+        vec![
+            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(5)) },
+            Op::RemoveCableMember {
+                cable: CableId(7),
+                index: 0,
+                member: CableMember { conductor: ConductorId(6), core: None },
+            },
+            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+        ]
+    }
+
+    fn assert_unchanged(l: &Ledger, doc: &str, head: u64) {
+        assert_eq!(json(l.document()), doc);
+        l.document().check_index().unwrap();
+        assert_eq!(l.head(), head);
+        assert_eq!(l.state_at(head).unwrap(), *l.document());
+        assert_eq!(l.document().ends_at(TerminalId(4)), vec![(ConductorId(6), End::A)]);
+        assert!(l.document().ends_at(TerminalId(5)).is_empty());
+        assert_eq!(l.document().cables_of(ConductorId(6)), vec![CableId(7)]);
+    }
+
+    #[test]
+    fn a_panic_in_the_middle_of_a_transaction_leaves_document_indexes_and_log_as_they_were() {
+        // Panic before op 1, between ops, and after the last op (in the end check's place).
+        for at in 0..=3 {
+            let mut l = ledger();
+            let (doc, head) = (json(l.document()), l.head());
+            hooks::PANIC_AT.with(|c| c.set(Some(at)));
+            let r = catch_unwind(AssertUnwindSafe(|| l.commit(Author::User, "boom", three_ops())));
+            hooks::PANIC_AT.with(|c| c.set(None));
+            assert!(r.is_err(), "panicked at {at}");
+            assert_unchanged(&l, &doc, head);
+            assert!(l.diagnostics().is_empty());
+            // The ledger carries on: the same transaction now commits, replays and undoes.
+            l.commit(Author::User, "again", three_ops()).unwrap();
+            assert_eq!(Ledger::replay(l.log().to_vec(), 0).unwrap().document(), l.document());
+            l.undo(Author::User).unwrap();
+            assert_unchanged(&l, &doc, head + 2);
+        }
+    }
+
+    #[test]
+    fn a_panic_during_undo_also_rolls_back() {
+        let mut l = ledger();
+        l.commit(Author::User, "edit", three_ops()).unwrap();
+        let (doc, head) = (json(l.document()), l.head());
+        hooks::PANIC_AT.with(|c| c.set(Some(2)));
+        let r = catch_unwind(AssertUnwindSafe(|| l.undo(Author::User)));
+        hooks::PANIC_AT.with(|c| c.set(None));
+        assert!(r.is_err());
+        assert_eq!(json(l.document()), doc);
+        assert_eq!(l.head(), head);
+        l.document().check_index().unwrap();
+        assert_eq!(l.undo_label(), Some("edit"));
+    }
+
+    #[test]
+    fn a_failed_revert_rebuilds_the_document_from_the_log() {
+        let mut l = ledger();
+        let (doc, head) = (json(l.document()), l.head());
+        // Ops that apply, then an end state that fails: a conductor end on a missing terminal.
+        let ops = vec![
+            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+        ];
+        hooks::FAIL_REVERT.with(|c| c.set(true));
+        // The debug assertion fires only after the document has been rebuilt.
+        let r = catch_unwind(AssertUnwindSafe(|| l.commit(Author::User, "bad", ops)));
+        hooks::FAIL_REVERT.with(|c| c.set(false));
+        match r {
+            Ok(r) => assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}"),
+            Err(_) => assert!(std::hint::black_box(cfg!(debug_assertions)), "only the debug assertion may panic"),
+        }
+        assert_unchanged(&l, &doc, head);
+        assert_eq!(l.diagnostics().len(), 1, "{:?}", l.diagnostics());
+        assert!(l.diagnostics().iter().all(|d| d.contains("rebuilt from the log")), "{:?}", l.diagnostics());
+        l.commit(Author::User, "fine", three_ops()).unwrap();
+    }
+
+    #[test]
+    fn a_failed_revert_on_a_damaged_file_opens_at_the_last_good_transaction() {
+        let mut l = ledger();
+        l.commit(Author::User, "edit", three_ops()).unwrap();
+        let good = l.document().clone();
+        let mut log = l.log().to_vec();
+        let mut bad = log.get(1).cloned().unwrap();
+        bad.seq = 3;
+        bad.ops = vec![
+            Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
+            Op::RemoveTerminal {
+                id: TerminalId(5),
+                terminal: Terminal { component: ComponentId(3), label: None, key: None },
+            },
+        ];
+        log.push(bad);
+        hooks::FAIL_REVERT.with(|c| c.set(true));
+        let r = catch_unwind(AssertUnwindSafe(|| Ledger::replay_prefix(log.clone(), 0)));
+        hooks::FAIL_REVERT.with(|c| c.set(false));
+        match r {
+            Ok((opened, failure)) => {
+                assert_eq!(opened.document(), &good);
+                opened.document().check_index().unwrap();
+                assert!(matches!(failure, Some((2, ModelError::Invariant(_)))), "{failure:?}");
+                assert_eq!(opened.diagnostics().len(), 1);
+            }
+            Err(_) => assert!(std::hint::black_box(cfg!(debug_assertions)), "only the debug assertion may panic"),
+        }
+    }
+
+    #[test]
+    fn only_the_value_1_turns_the_switch_on() {
+        use std::ffi::OsStr;
+        assert!(switch_on(Some(OsStr::new("1"))));
+        for v in ["0", "", "true", "yes", " 1"] {
+            assert!(!switch_on(Some(OsStr::new(v))), "{v:?}");
+        }
+        assert!(!switch_on(None));
+    }
+
+    #[test]
+    fn the_test_build_verifies() {
+        assert!(verifying(false), "every cargo test runs in verify mode");
     }
 }
