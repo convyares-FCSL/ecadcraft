@@ -1,9 +1,9 @@
 # Brief 011: Agent access through MCP, built in from now on
 
-Status: Draft (overseer, 2026-11-07, from the owner's request)
+Status: Approved (owner, 2026-11-07)
 Branch: `ecad/agent-mcp`
 Designer: no (no visible UI beyond a banner indicator) · Size: M
-Depends on: 005
+Depends on: 005 (branch from `ecad/cable-views` until PR #24 is merged)
 
 ## Goal
 
@@ -30,7 +30,7 @@ now on arrives with its agent access instead of it being added at the end (owner
 1. **ECAD over MCP, headless:** an `ecad-mcp` entry point (stdio) that opens or creates a `.ecad`
    project in-process and serves CADCraft's tools plus the ECAD tools below. Read-only by default;
    writes only with an explicit `--write` flag.
-2. **Bridged to the running trial:** the trial gains an opt-in control channel
+2. **Bridged to the running trial: deferred to a later brief (owner, 2026-11-07).** Later, the trial gains an opt-in control channel
    (`--control PORT`, localhost only, with CADCraft's control token), so the owner can watch an
    agent work. A banner shows when an agent is connected and when it last wrote.
 3. **ECAD tools** (read): inspect the project (pages, components, terminals, conductors, cables
@@ -43,7 +43,7 @@ now on arrives with its agent access instead of it being added at the end (owner
    - refused when the project is read-only, when the write flag is off, or when the agent targets
      anything that bypasses an ECAD command (raw CADCraft entity edits on ECAD pages are already
      refused by `refuse_start`; MCP tools must not get round it);
-   - save, save-as and close are human-only in the bridged mode; headless saves only with `--write`;
+   - an agent may save (owner, 2026-11-07), only with `--write`; save-as and close stay explicit;
    - caps on request size and on transactions per call.
 5. **Built in from now on (process change, needs the owner's approval):** add to `ecad/CLAUDE.md`
    that every brief with a new or changed ECAD command includes, in its acceptance criteria, an MCP
@@ -68,8 +68,8 @@ side over patching it.
    forms, each with `Author::Agent(...)`; `u` undoes each in one step.
 3. With writes off, every write tool is refused with a clear message and the head is unchanged.
 4. An agent cannot edit an ECAD page through raw CADCraft commands; the refusal matches the UI's.
-5. Bridged: the trial with `--control` shows the agent's edits live and the banner indicator; without
-   the flag no port is opened.
+5. Save through MCP works only with `--write`, and reopening gives the agent's edits with their
+   author.
 6. Hostile input (malformed JSON-RPC, huge payloads, unknown tools) never panics and gives
    JSON-RPC errors as `docs/mcp.md` describes.
 7. Works on Windows and Linux; CI covers the headless server.
@@ -79,8 +79,9 @@ side over patching it.
 Connecting Claude Code to the running trial on Windows and watching it build the quick-start
 cable example.
 
-## Questions for the owner
+## Owner answers (2026-11-07)
 
-1. Headless first and bridged second, or both in this brief?
-2. Approve the process rule in scope item 5 (every new command ships with an MCP contract test)?
-3. Should an agent be allowed to save in bridged mode, or always leave saving to you?
+1. Headless (windowless) only in this brief; bridged to the running trial later.
+2. The process rule in scope item 5 is approved: every new or changed ECAD command ships with an MCP
+   contract test.
+3. An agent may save.
