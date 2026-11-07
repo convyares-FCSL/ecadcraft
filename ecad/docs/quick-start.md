@@ -520,6 +520,9 @@ through the Model Context Protocol. It runs **headless**: no window; the agent w
 project file in a process of its own. Watching an agent work in the running trial (bridged mode)
 is a later brief.
 
+Every step below uses the **same project file**: `C:\dev\ecad-projects\agent.ecad` on native
+Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your system.
+
 1. **Build it once** (from `ecad/`):
 
    ```sh
@@ -528,14 +531,25 @@ is a later brief.
 
    The program is `target/release/ecad-mcp` (`target\release\ecad-mcp.exe` on Windows), or under
    `$CARGO_TARGET_DIR` if you set it.
-2. **Choose a project file the trial does not have open.** A project open elsewhere opens
-   read-only (the writer lock), and the agent can then only read it. `--create` makes a new file
-   (it must not exist yet):
+2. **Create the project file.** The folder must exist: `ecad-mcp` does not create folders (the
+   trial's Save As creates the default folder the first time; otherwise make it yourself). The
+   file must not exist yet, and the trial must not have it open (a project open elsewhere opens
+   read-only, and the agent can then only read it). `--create` makes the file and saves it; the
+   server then waits for an agent on its input, so stop it with Ctrl+C. Native Windows:
 
-   ```sh
-   target/release/ecad-mcp --write --create ~/ecad-projects/agent.ecad   # once, to try it; Ctrl+C
+   ```powershell
+   mkdir C:\dev\ecad-projects -Force
+   target\release\ecad-mcp.exe --write --create C:\dev\ecad-projects\agent.ecad
    ```
 
+   Linux or WSL:
+
+   ```sh
+   mkdir -p ~/ecad-projects
+   target/release/ecad-mcp --write --create ~/ecad-projects/agent.ecad
+   ```
+
+   A missing folder is refused with `the folder … does not exist; create it first.`
 3. **Add it to Claude Code** (one line, from the folder where you run Claude Code). Native
    Windows:
 
@@ -559,11 +573,24 @@ is a later brief.
    `ecad_history` lists one transaction per wire and one for the cable, each by
    `agent <its name>` (Claude Code gives its own name), and nothing for the view switch.
 5. **Look at it in the trial.** Stop the agent's session (or quit Claude Code) so the file is
-   released, then open it: `cargo run --release -p ecad-trial -- ~/ecad-projects/agent.ecad`.
+   released, then open the same file. Native Windows:
+
+   ```powershell
+   cargo run --release -p ecad-trial -- C:\dev\ecad-projects\agent.ecad
+   ```
+
+   Linux or WSL:
+
+   ```sh
+   cargo run --release -p ecad-trial -- ~/ecad-projects/agent.ecad
+   ```
+
    Expected: the wires and the slash on page 1; the debugger (section 8) shows each transaction
-   with `agent <name>` as its author, and `u` undoes the cable in one step. The fan view is not
-   in the file (section 5B), so the cable opens traditional unless the agent's settings folder is
-   yours.
+   with `agent <name>` as its author, and `u` undoes the cable in one step. The cable opens **as a
+   fan**: the view is not in the file (section 5B), but `ecad-mcp` remembers views in your own
+   settings folder, the one the trial reads (`cable-views.json`). To keep the agent's views apart
+   from yours, start the server with `ECAD_SETTINGS_DIR` set to another folder (section 9); the
+   cable then opens traditional in your trial.
 
 What the agent can and cannot do:
 
@@ -573,13 +600,19 @@ What the agent can and cannot do:
   `list_commands` (every ECAD command with its parameters).
 - **Write** (only with `--write`, and only when the project did not open read-only): one command
   per `execute` call, with JSON parameters, through the same checks and refusals as yours; each
-  change is one transaction by the agent and one step of `u`. `save` writes the project to its
-  file.
+  change is one transaction by the agent and one step of `u`. A call is one request line, batches
+  included: a line may record at most one transaction, and a second one in the same batch is
+  refused and taken back. `undo`, `redo` and `mredo` go one step per call (no counts above 1,
+  no `undo` back, no `mredo` all). `save` writes the project to its file.
 - **Never:** Save As, open, new or close (you choose the file when you start it), other files
-  (export, import, plot, scripts), CADCraft's command line, or anything ECAD refuses for you (the
-  Block Editor, REFEDIT, LISP on ECAD pages). Without `--write` every change and `save` is
-  refused with `Refused: this ECAD MCP server is read-only (started without --write)...`.
-- `ecad-mcp --help` lists the options; `--agent <name>` records another author name.
+  (export, import, plot, scripts, AUDIT and its log), CADCraft's command line, or anything ECAD
+  refuses for you (the Block Editor, REFEDIT, LISP on ECAD pages). Without `--write` every
+  change and `save` is refused with
+  `Refused: this ECAD MCP server is read-only (started without --write)...`.
+- `ecad-mcp --help` lists the options; `--agent <name>` records another author name. The author
+  name is taken from the first `initialize` only.
+- Quitting the server cleanly (the client closes it) releases the writer lock; the
+  `agent.ecad.lock` file stays beside the project, empty, as the trial leaves it.
 
 ## 8. Diagnostics and the debugger
 

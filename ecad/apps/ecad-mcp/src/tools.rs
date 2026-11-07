@@ -168,7 +168,7 @@ fn listed(items: impl Iterator<Item = Value>, count: usize, limit: u64) -> Value
 
 fn project(st: &mut State, limit: u64) -> Result<Value, String> {
     let write = st.write;
-    let read_only = st.read_only();
+    let read_only = st.read_only()?;
     let agent = st.agent.clone();
     let p = st.project.clone();
     p.read(st.session(), |p, _| {

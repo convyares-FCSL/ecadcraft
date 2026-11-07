@@ -391,12 +391,18 @@ fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
         let typed = d.s.cmdline(cmd).expect_err("refused when typed").to_string();
         let m = c.refused("execute", json!({"command": cmd, "params": {}}));
         assert_eq!(m, ui, "{cmd}: the agent gets the person's refusal");
-        let reason = if matches!(*cmd, "lisp" | "appload") {
-            ecad_cadcraft::project::LISP_REFUSED.to_string()
-        } else {
-            format!("{} is not available on ECAD pages", cmd.to_ascii_uppercase())
+        assert_eq!(typed, ui, "{cmd}: typed and JSON refusals are the same for a person");
+        // Where ECAD's owner is the one refusing (the commands that start on a page), its reason
+        // is given; BSAVE, BSAVEAS, BCLOSE, REFSET and REFCLOSE are refused earlier by CADCraft
+        // ("The Block Editor is not open"), for a person and an agent alike.
+        let reason = match *cmd {
+            "lisp" | "appload" => Some(ecad_cadcraft::project::LISP_REFUSED.to_string()),
+            "bedit" | "refedit" => Some(format!("{} is not available on ECAD pages", cmd.to_ascii_uppercase())),
+            _ => None,
         };
-        assert!(m.contains(&reason) && typed.contains(&reason), "{cmd}: {m} / {typed}");
+        if let Some(reason) = reason {
+            assert!(m.contains(&reason), "{cmd}: {m}");
+        }
         assert_eq!(c.log(), before, "{cmd} recorded nothing");
     }
     // Upper case or not, the same command.
@@ -434,7 +440,7 @@ fn save_works_only_with_the_write_flag_and_reopening_shows_the_agents_edits() {
         assert!(!c.s.writes());
         let h = c.ok("ecad_history", json!({}));
         let last = h["transactions"].as_array().unwrap().last().unwrap().clone();
-        assert_eq!(last["label"], json!("WIRE"), "{h}");
+        assert_eq!(last["label"], json!("Wire"), "{h}");
         assert_eq!(last["author"], json!(format!("agent {AGENT}")));
         assert_eq!(c.ok("ecad_project", json!({}))["conductors"]["count"], json!(1));
         c.exec("ecadinspect", json!({}));
@@ -613,4 +619,103 @@ fn stdio_usage_errors_exit_with_a_message() {
     assert!(!out.status.success(), "a missing project is an error, not a new project");
     let out = Command::new(env!("CARGO_BIN_EXE_ecad-mcp")).arg("--help").output().unwrap();
     assert!(out.status.success() && String::from_utf8_lossy(&out.stdout).contains("--write"));
+}
+
+// ---------- fix round 1 (review of PR #27) ----------
+
+fn wire_call(id: u64, y: f64) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+        "params": {"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0.0, y], [60.0, y]]}}}})
+}
+
+fn batch(c: &mut Client, msgs: Vec<Value>) -> Vec<Value> {
+    let reply = c.s.handle_line(&Value::Array(msgs).to_string()).expect("a reply");
+    serde_json::from_str::<Value>(&reply).unwrap().as_array().unwrap().clone()
+}
+
+#[test]
+fn a_batch_is_one_call_for_the_transaction_cap() {
+    let mut c = writer();
+    let before = c.doc();
+    let replies = batch(&mut c, vec![wire_call(1, 0.0), wire_call(2, 5.0)]);
+    assert_ne!(replies[0]["result"]["isError"], json!(true), "the first edit of the line runs: {}", replies[0]);
+    assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
+    let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(m.contains("one request line, batches included") && m.contains("taken back"), "{m}");
+    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 1, "only the first wire stays");
+    // The next line is a new call.
+    c.exec("wire", json!({"points": [[0, 10], [60, 10]]}));
+    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 2);
+}
+
+#[test]
+fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
+    let mut c = writer();
+    for y in [0, 5, 10] {
+        c.exec("wire", json!({"points": [[0, y], [60, y]]}));
+    }
+    let undo = |id: u64| {
+        json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+        "params": {"name": "execute", "arguments": {"command": "u", "params": {}}}})
+    };
+    let replies = batch(&mut c, vec![undo(1), undo(2)]);
+    assert_ne!(replies[0]["result"]["isError"], json!(true), "{}", replies[0]);
+    assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
+    assert_eq!(c.doc().conductors.len(), 2, "exactly one wire undone; the others untouched");
+    let log = c.log();
+    let last = log.last().unwrap();
+    assert!(matches!(last.kind, ecad_model::TxKind::Redo { .. }), "the overflowing undo was redone: {:?}", last.kind);
+    // Several steps in one call are refused before anything runs.
+    let before = c.log();
+    for (cmd, params) in [
+        ("undo", json!({"count": 2})),
+        ("undo", json!({"mode": "back"})),
+        ("redo", json!({"count": 3})),
+        ("mredo", json!({"all": true})),
+    ] {
+        let m = c.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::one_step(cmd), "{cmd}");
+        assert_eq!(c.log(), before, "{cmd}");
+    }
+    for (cmd, params) in [("audit", json!({"fix": true})), ("setvar", json!({"name": "AUDITCTL", "value": 1}))] {
+        let m = c.refused("execute", json!({"command": cmd, "params": params}));
+        assert!(m.contains("not available to agents"), "{cmd}: {m}");
+    }
+}
+
+#[test]
+fn the_first_initialize_names_the_author_and_later_ones_do_not() {
+    let mut c = writer();
+    let again =
+        c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "someone else"}}));
+    assert!(again.get("result").is_some(), "{again}");
+    c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
+    assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
+    // Invisible characters never reach a recorded name.
+    assert_eq!(ecad_mcp::agent_name("ad\u{202E}min\u{200B}"), "admin");
+}
+
+#[test]
+fn create_in_a_missing_folder_says_so() {
+    let dir = TempDir::new("nofolder");
+    let path = dir.0.join("not-there").join("p.ecad");
+    let e = EcadMcp::create(&path.to_string_lossy(), Options { write: true, agent: None }).err().unwrap();
+    assert!(e.contains("does not exist") && e.contains("not-there"), "{e}");
+    assert!(!path.exists());
+}
+
+#[test]
+fn stdio_a_clean_exit_releases_the_writer_lock() {
+    let dir = TempDir::new("lock");
+    let path = dir.file("locked.ecad");
+    let (_, ok, stderr) = session(&["--write", "--create", &path], &[rpc(1, "ping", json!({}))]);
+    assert!(ok, "{stderr}");
+    let lock = format!("{path}.lock");
+    // The lock file is kept by design (ecad-store's WriterLock); a clean release empties it.
+    if let Ok(bytes) = std::fs::read(&lock) {
+        assert!(bytes.is_empty(), "the lock record was cleared on exit");
+    }
+    let (s, summary) = EcadMcp::open(&path, Options { write: true, agent: None }).unwrap();
+    assert!(!summary.contains("read-only") && !summary.contains("reclaimed"), "{summary}");
+    drop(s);
 }

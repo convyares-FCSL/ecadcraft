@@ -39,7 +39,7 @@ use std::rc::Rc;
 use cadcraft_engine::Session;
 use cadcraft_mcp::{Backend, Headless, Server};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
-use ecad_model::{Author, Transaction};
+use ecad_model::{Author, Transaction, TxKind};
 use serde_json::{Value, json};
 
 /// Longest request line, in bytes; a longer line is answered with an Invalid Request error and
@@ -84,10 +84,20 @@ pub struct Options {
     pub agent: Option<String>,
 }
 
-/// An author name as recorded: control characters dropped, spaces trimmed, at most
-/// [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
+/// Characters that change how text is shown without being visible: bidirectional overrides and
+/// isolates, zero-width spaces and joiners, and the byte-order mark. An author name never holds
+/// them, so a name cannot pose as another.
+fn invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
+    )
+}
+
+/// An author name as recorded: control, bidirectional and zero-width characters dropped, spaces
+/// trimmed, at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
 pub fn agent_name(given: &str) -> String {
-    let s: String = given.chars().filter(|c| !c.is_control()).take(MAX_AGENT_NAME).collect();
+    let s: String = given.chars().filter(|c| !c.is_control() && !invisible(*c)).take(MAX_AGENT_NAME).collect();
     let s = s.trim();
     if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
 }
@@ -100,12 +110,21 @@ pub fn author_text(a: &Author) -> String {
     }
 }
 
+/// Said when the project cannot be read to check a call; the call is refused (fail closed).
+pub const UNREADABLE: &str =
+    "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
+
 /// The session, the project and the gate, shared by the server and its backend.
 pub(crate) struct State {
     pub(crate) headless: Headless,
     pub(crate) project: ProjectHandle,
     pub(crate) write: bool,
     pub(crate) agent: String,
+    /// Whether the author name was taken from a client's `initialize` (later ones are ignored).
+    pub(crate) named: bool,
+    /// Transactions recorded so far by the request line being answered: a batch counts as one
+    /// call ([`MAX_TRANSACTIONS_PER_CALL`]).
+    pub(crate) line_transactions: usize,
 }
 
 impl State {
@@ -114,14 +133,17 @@ impl State {
     }
 
     /// Why the project cannot be written, if it cannot (damaged, or another session edits it).
-    pub(crate) fn read_only(&mut self) -> Option<String> {
+    ///
+    /// # Errors
+    /// [`UNREADABLE`] when the project cannot be read (callers refuse: fail closed).
+    pub(crate) fn read_only(&mut self) -> Result<Option<String>, String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.file_status().read_only).ok().flatten()
+        p.read(self.session(), |p, _| p.file_status().read_only).map_err(|_| UNREADABLE.to_string())
     }
 
-    /// Whether writes are on: `--write` and a writable project.
+    /// Whether writes are on: `--write` and a project known to be writable.
     pub(crate) fn writes(&mut self) -> bool {
-        self.write && self.read_only().is_none()
+        self.write && matches!(self.read_only(), Ok(None))
     }
 
     /// Refuse a write when writes are off.
@@ -129,21 +151,20 @@ impl State {
         if !self.write {
             return Err(policy::WRITES_OFF.into());
         }
-        match self.read_only() {
+        match self.read_only()? {
             Some(why) => Err(policy::project_read_only(&why)),
             None => Ok(()),
         }
     }
 
-    fn log_len(&mut self) -> Option<usize> {
+    fn log_len(&mut self) -> Result<usize, String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.ledger.log().len()).ok()
+        p.read(self.session(), |p, _| p.ledger.log().len()).map_err(|_| UNREADABLE.to_string())
     }
 
-    fn log_since(&mut self, from: usize) -> Vec<Transaction> {
+    fn log_since(&mut self, from: usize) -> Result<Vec<Transaction>, String> {
         let p = self.project.clone();
         p.read(self.session(), |p, _| p.ledger.log().get(from..).map(<[Transaction]>::to_vec).unwrap_or_default())
-            .unwrap_or_default()
     }
 
     /// Record the agent's name as the author of the project's next transactions.
@@ -166,28 +187,61 @@ impl State {
         s.execute("document.switch", &json!({ "index": i })).map(|_| ()).map_err(|e| e.to_string())
     }
 
+    /// Take back `txs` (oldest first), newest first: an undo is redone, an edit or a redo is
+    /// undone. Returns how many were taken back, or how many were before the first failure and
+    /// that failure.
+    fn roll_back(&mut self, txs: &[Transaction]) -> Result<usize, (usize, String)> {
+        for (done, t) in txs.iter().rev().enumerate() {
+            let step = match t.kind {
+                TxKind::Undo { .. } => "redo",
+                TxKind::Edit | TxKind::Redo { .. } => "u",
+            };
+            if let Err(e) = self.session().execute(step, &json!({})) {
+                return Err((done, format!("{} failed: {e}", step.to_ascii_uppercase())));
+            }
+        }
+        Ok(txs.len())
+    }
+
     /// `engine.execute` through the gate, with the caps and the transactions it recorded.
     fn execute(&mut self, p: &Value) -> Result<Value, String> {
         let given = p.get("command").and_then(Value::as_str).ok_or("missing `command`")?.to_string();
         let params = p.get("params").cloned().filter(|v| !v.is_null()).unwrap_or_else(|| json!({}));
         let id = cadcraft_engine::find_command(&given).map_or_else(|| given.to_ascii_lowercase(), |c| c.id.to_string());
-        let read_only = self.read_only();
+        let read_only = self.read_only()?;
         policy::check(&id, &params, self.write, read_only.as_deref())?;
-        let before = self.log_len();
+        // Fail closed: a call whose transactions cannot be counted does not run.
+        let before = self.log_len()?;
         let r = self.headless.call("engine.execute", json!({ "command": given, "params": params }));
-        let Some(before) = before else { return r };
-        let new = self.log_since(before);
-        if new.len() > MAX_TRANSACTIONS_PER_CALL {
-            for _ in 0..new.len() {
-                let _ = self.session().execute("u", &json!({}));
-            }
-            return Err(format!(
-                "Refused: {} recorded {} transactions; one call may record at most {MAX_TRANSACTIONS_PER_CALL}. \
-                 They were undone.",
-                id.to_ascii_uppercase(),
-                new.len()
-            ));
+        let name = id.to_ascii_uppercase();
+        let new = self.log_since(before).map_err(|e| {
+            format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history.")
+        })?;
+        let used = self.line_transactions;
+        if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
+            let what = if used > 0 {
+                format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
+            } else {
+                format!("{name} recorded {}", new.len())
+            };
+            let seqs: Vec<String> = new.iter().map(|t| format!("#{}", t.seq)).collect();
+            let seqs = seqs.join(", ");
+            return Err(match self.roll_back(&new) {
+                Ok(n) => format!(
+                    "Refused: one call (one request line, batches included) may record at most \
+                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). They were taken back by {n} \
+                     undo/redo transaction(s) recorded after them, so the design is as before {name}; the history \
+                     keeps both."
+                ),
+                Err((done, e)) => format!(
+                    "Refused: one call (one request line, batches included) may record at most \
+                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). Taking them back stopped after {done} \
+                     of {}: {e}. The project is NOT as before {name}; check ecad_history.",
+                    new.len()
+                ),
+            });
         }
+        self.line_transactions = used.saturating_add(new.len());
         let v = r?;
         if new.is_empty() {
             return Ok(v);
@@ -271,7 +325,14 @@ fn install() -> Result<(), String> {
 
 impl EcadMcp {
     fn with(headless: Headless, project: ProjectHandle, opts: Options) -> Result<Self, String> {
-        let state = Rc::new(RefCell::new(State { headless, project, write: opts.write, agent: String::new() }));
+        let state = Rc::new(RefCell::new(State {
+            headless,
+            project,
+            write: opts.write,
+            agent: String::new(),
+            named: false,
+            line_transactions: 0,
+        }));
         let inner = Server::new(Box::new(Gated(Rc::clone(&state))));
         let mut me = EcadMcp { inner, state, agent_override: opts.agent.clone() };
         // No agent edit is ever recorded as the person's, even before `initialize`.
@@ -304,6 +365,11 @@ impl EcadMcp {
         let path = ecad_cadcraft::normalize(path)?;
         if std::path::Path::new(&path).exists() {
             return Err(format!("{path} already exists; open it without --create"));
+        }
+        if let Some(dir) = std::path::Path::new(&path).parent().filter(|d| !d.as_os_str().is_empty())
+            && !dir.is_dir()
+        {
+            return Err(format!("the folder {} does not exist; create it first. Nothing was written.", dir.display()));
         }
         let mut headless = Headless { session: Session::empty() };
         let name =
@@ -397,31 +463,52 @@ impl EcadMcp {
                     .to_string(),
             );
         }
+        // One request line is one call for the transaction cap, batches included.
+        if let Ok(mut st) = self.state_mut() {
+            st.line_transactions = 0;
+        }
         let reply = match serde_json::from_str::<Value>(line) {
             Ok(Value::Array(batch)) if batch.is_empty() => Some(error(Value::Null, INVALID_REQUEST, "empty batch")),
             Ok(Value::Array(batch)) if batch.len() > MAX_BATCH => {
                 Some(error(Value::Null, INVALID_REQUEST, format!("batch too long (at most {MAX_BATCH} messages)")))
             }
             Ok(Value::Array(batch)) => {
-                let replies: Vec<Value> = batch.into_iter().filter_map(|m| self.handle(m)).collect();
+                let replies: Vec<Value> = batch.into_iter().filter_map(|m| self.handle_one(m)).collect();
                 (!replies.is_empty()).then_some(Value::Array(replies))
             }
-            Ok(msg) => self.handle(msg),
+            Ok(msg) => self.handle_one(msg),
             Err(e) => Some(error(Value::Null, PARSE_ERROR, format!("parse error: {e}"))),
         };
         reply.map(|r| r.to_string())
     }
 
-    /// Answer one JSON-RPC message.
+    /// Answer one JSON-RPC message, as one call (its own request line).
     pub fn handle(&mut self, msg: Value) -> Option<Value> {
+        if let Ok(mut st) = self.state_mut() {
+            st.line_transactions = 0;
+        }
+        self.handle_one(msg)
+    }
+
+    /// Answer one message of the request line being answered.
+    fn handle_one(&mut self, msg: Value) -> Option<Value> {
         let method = msg.get("method").and_then(Value::as_str).map(str::to_string);
         let (Some(method), Some(id)) = (method, msg.get("id").cloned()) else { return self.inner.handle(msg) };
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         match method.as_str() {
             "initialize" => {
+                // The first `initialize` names the author; later ones never rename it.
                 let client = params.pointer("/clientInfo/name").and_then(Value::as_str).unwrap_or(UNNAMED_AGENT);
                 let name = self.agent_override.clone().unwrap_or_else(|| client.to_string());
-                if let Err(e) = self.state_mut().and_then(|mut s| s.set_agent(&name)) {
+                let named = self.state_mut().and_then(|mut s| {
+                    if s.named {
+                        return Ok(());
+                    }
+                    s.set_agent(&name)?;
+                    s.named = true;
+                    Ok(())
+                });
+                if let Err(e) = named {
                     return Some(error(id, -32603, e));
                 }
                 let mut r = self.inner.handle(msg)?;
