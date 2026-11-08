@@ -53,7 +53,16 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   `CARGO_TARGET_DIR=C:/dev/ecad-target` for the ECAD workspace and `C:/dev/ecad-target-root` for
   CADCraft's root workspace, always with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0`. Only an
   agent that builds while another agent is building at the same time uses its own folder
-  (`C:/dev/ecad-target-<agent>`), and deletes it when done. Never delete the shared folders.
+  (`C:/dev/ecad-features/_tmp/target-<agent>`), and deletes it when done. Never delete the shared
+  folders.
+- **Folders (owner decision, 2026-11-08).** Nothing new goes directly in `C:\dev`:
+  - `C:\dev\ecadcraft` is the main checkout, on `dev`. The overseer works here.
+  - `C:\dev\ecad-features\<feature>` is the one worktree of a feature branch
+    (`feature/<feature>`). It is removed when the feature is merged into `dev`.
+  - `C:\dev\ecad-features\_tmp\<agent>-<what>` is for anything temporary: a tester's worktree, a
+    kept benchmark project, a private build folder, logs. Whoever makes it deletes it when done;
+    anything left in `_tmp` may be deleted at any time.
+  - `C:\dev\ecad-target` (shared build) and `C:\dev\ecad-projects` (the owner's projects) stay.
 
 ```sh
 # worker (from ecad/), with CARGO_TARGET_DIR=C:/dev/ecad-target
