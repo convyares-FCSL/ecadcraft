@@ -1858,7 +1858,8 @@ impl Trial {
         if let Ok(view) = view {
             let writable = !self.header().read_only;
             if let Ok(mut sh) = self.props.lock() {
-                if sh.view != view && !same {
+                // A refusal stays under its field until what the section shows changes.
+                if sh.view != view {
                     sh.errors.clear();
                 }
                 sh.view = view;
