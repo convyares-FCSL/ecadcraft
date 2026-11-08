@@ -59,9 +59,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1);
     assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1);
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1);
-    let pages = tab.groups.iter().find(|g| g.name == "Pages").expect("Pages group");
-    let ids: Vec<&str> = pages.tools.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, ["ecad.newpage", "ecad.openpage", "ecad.renamepage", "ecad.movepage"]);
+    assert!(tab.groups.iter().all(|g| g.name != "Pages"), "the Project panel has the page actions");
 
     let mut h = harness(trial());
     h.get_by_label(tools::TAB).click();
@@ -86,15 +84,15 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
 }
 
 #[test]
-fn the_page_buttons_fill_in_the_current_page() {
+fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     let mut h = harness(trial());
-    h.get_by_label(tools::TAB).click();
     h.run_steps(3);
-    let page = doc(h.state_mut()).page_order[0].hex();
     let before = head(h.state_mut());
-    // Rename Page asks the new title in a name box, prefilled with the current one (owner,
-    // 2026-11-08): OK renames, one transaction.
-    h.get_by_label("Rename Page").click();
+    // The row's right-click menu: Rename… asks the new title in a name box, prefilled with the
+    // current one (owner, 2026-11-08): OK renames, one transaction.
+    h.get_by_label("Page 1: 1").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Rename…").click();
     h.run_steps(4);
     let t = h.state_mut();
     assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
@@ -107,14 +105,17 @@ fn the_page_buttons_fill_in_the_current_page() {
     assert!(t.name_box.is_none());
     assert_eq!(head(t), before + 1);
     assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
-    // The note went away and moved the panel: lay out again before clicking by position.
+    // New page from the same menu: the name box with the next number; OK adds it.
+    h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
-    h.get_by_label("Move Page").click();
-    h.run_steps(4);
+    h.get_by_label("New page…").click();
+    h.run_steps(3);
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
+    h.get_by_label("OK").click();
+    h.run_steps(3);
     let t = h.state_mut();
-    assert_eq!(t.command, format!(r#"movepage {{"page":"{page}","index":<new position>}}"#));
-    let line = t.command.clone();
-    assert!(t.submit_command(&line).is_some_and(|e| e.contains("<new position>")), "the placeholder never runs");
+    assert_eq!(head(t), before + 2);
+    assert_eq!(doc(t).page_order.len(), 2);
 }
 
 /// The quick start's click-only path (design 010 §12): reference, continue on a new page, go back.

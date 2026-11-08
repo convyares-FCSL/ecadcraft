@@ -4,5 +4,6 @@
 //! dependencies once instead of once per file.
 
 mod cable_command_contracts;
+mod demo;
 mod mcp_contracts;
 mod mcp_tester_contracts;

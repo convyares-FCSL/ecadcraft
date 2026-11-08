@@ -32,11 +32,10 @@ use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, Ter
 pub const TAB: &str = "ECAD";
 
 /// The tab's groups, in order.
-pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit", "Pages", "Inspect"];
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit"];
 
-/// The developer tab beside ECAD (owner, 2026-11-08: the banner's developer tools moved here).
-pub const DEV_TAB: &str = "ECAD Dev";
-/// The developer tab's one group.
+/// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
+/// in Tool Sets (owner, 2026-11-08).
 pub const DEV_GROUP: &str = "Developer";
 
 /// What a button does.
@@ -208,36 +207,8 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Template,
     },
     Tool {
-        id: "ecad.newpage",
-        group: "Pages",
-        label: "New Page",
-        tooltip: "Add a page: asks its title (prefilled with its number) and shows it",
-        kind: Kind::Trial,
-    },
-    Tool {
-        id: "ecad.openpage",
-        group: "Pages",
-        label: "Open Page",
-        tooltip: "Open a closed page again (opens the ECAD command window)",
-        kind: Kind::Template,
-    },
-    Tool {
-        id: "ecad.renamepage",
-        group: "Pages",
-        label: "Rename Page",
-        tooltip: "Rename the page shown: asks the new title (prefilled with the current one)",
-        kind: Kind::Trial,
-    },
-    Tool {
-        id: "ecad.movepage",
-        group: "Pages",
-        label: "Move Page",
-        tooltip: "Move a page to another position (opens the ECAD command window)",
-        kind: Kind::Template,
-    },
-    Tool {
         id: "ecad.inspect",
-        group: "Inspect",
+        group: DEV_GROUP,
         label: "Inspect Project",
         tooltip: "Show the project's IDs and history at the command line (read-only; runs now)",
         kind: Kind::Run("ecadinspect"),
@@ -270,9 +241,10 @@ pub fn tab() -> ExtraToolTab {
     ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
 }
 
-/// The ECAD Dev tab; Export Inspector Snapshot only when `snapshots` is on (`--snapshots`).
-pub fn dev_tab(snapshots: bool) -> ExtraToolTab {
-    ExtraToolTab { name: DEV_TAB.into(), groups: vec![group(DEV_GROUP, snapshots)] }
+/// The tools of the Project panel's Developer section, in order; Export Inspector Snapshot only
+/// when `snapshots` is on (`--snapshots`).
+pub fn developer_tools(snapshots: bool) -> Vec<&'static Tool> {
+    TOOLS.iter().filter(|t| t.group == DEV_GROUP && (snapshots || t.id != "ecad.dev.snapshot")).collect()
 }
 
 fn group(name: &str, snapshots: bool) -> ExtraToolGroup {
@@ -423,29 +395,8 @@ to add to an existing one). Then press Enter.",
 press Enter.",
             )
         }
-        "ecad.newpage" => (
-            r#"newpage {"title":"<title>"}"#.to_string(),
-            "New Page: the new page's title. Replace the <placeholder>, then press Enter.",
-        ),
-        "ecad.openpage" => (
-            r#"openpage {"page":"<page id>"}"#.to_string(),
-            "Open Page: the page's ID, listed by Inspect Project (under \"pages\"). Then press Enter.",
-        ),
-        "ecad.renamepage" => (
-            format!(r#"renamepage {{"page":"{}","title":"<title>"}}"#, page_or_placeholder(picked)),
-            "Rename Page: the current page's ID is filled in; replace <title> with the new title (1 to 200 characters). Then press Enter.",
-        ),
-        "ecad.movepage" => (
-            format!(r#"movepage {{"page":"{}","index":<new position>}}"#, page_or_placeholder(picked)),
-            "Move Page: the current page's ID is filled in; replace <new position> with its new place (1 = first). Cable references follow at once. Then press Enter.",
-        ),
         _ => return None,
     })
-}
-
-/// The current page's ID, or a placeholder off an ECAD page.
-fn page_or_placeholder(picked: &Picked) -> String {
-    picked.page.map_or_else(|| "<page id>".to_string(), PageId::hex)
 }
 
 /// The `<placeholder>`s still in `line`: `<` and `>` around letters, digits, spaces, `_` or `-`,

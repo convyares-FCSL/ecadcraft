@@ -183,7 +183,7 @@ const INTRO: &[&str] = &[
 New, Open, Save and Save As.",
     "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Terminal, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
-    "JSON forms go in the ECAD command window (Tool Sets > ECAD Dev > JSON Command; the command line below takes \
+    "JSON forms go in the ECAD command window (PROJECT panel > Developer > JSON Command; the command line below takes \
 a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
     "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
@@ -285,7 +285,7 @@ pub struct Trial {
     command_hint: Option<&'static str>,
     /// Give the command field keyboard focus on the next frame.
     focus_command: bool,
-    /// The ECAD command window is open (ECAD Dev > JSON Command, or a template button).
+    /// The ECAD command window is open (Developer > JSON Command, or a template button).
     pub command_open: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
@@ -405,7 +405,7 @@ impl Trial {
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
-        cad.extra_tool_tabs = vec![tools::tab(), tools::dev_tab(snapshots.is_some())];
+        cad.extra_tool_tabs = vec![tools::tab()];
         Trial {
             cad,
             project: None,
@@ -911,14 +911,6 @@ impl Trial {
                 });
                 r.map(|_| ())
             }
-            "ecad.newpage" => {
-                self.open_new_page_box();
-                Ok(())
-            }
-            "ecad.renamepage" => {
-                self.open_rename_box(None);
-                Ok(())
-            }
             "ecad.dev.command" => {
                 self.command_open = true;
                 self.focus_command = true;
@@ -1344,6 +1336,7 @@ impl Trial {
                     warnings.push("Last save not confirmed durable: Save again.".to_string());
                 }
                 Header {
+                    snapshots: self.snapshots.is_some(),
                     name: Some(s.name.clone()),
                     status: status_line(&s),
                     read_only: s.file.read_only.is_some(),
@@ -1351,7 +1344,7 @@ impl Trial {
                     note: NOTE,
                 }
             }
-            None => Header { note: NOTE, ..Header::default() },
+            None => Header { note: NOTE, snapshots: self.snapshots.is_some(), ..Header::default() },
         }
     }
 
@@ -1425,6 +1418,11 @@ impl Trial {
             }
             A::SaveAs => self.request_save_as(),
             A::CloseProject => self.close_project(),
+            A::RenameInBox(page) => self.open_rename_box(Some(page)),
+            A::Tool(id) => {
+                // Refusals are echoed at the command line by the command path itself.
+                let _ = self.tool(id);
+            }
             A::GotoSymbol(rep) => {
                 let _ = self.goto_symbol(rep);
             }
@@ -1684,7 +1682,7 @@ impl Trial {
         }
     }
 
-    /// The ECAD command window (ECAD Dev > JSON Command, and the template buttons): one line run
+    /// The ECAD command window (Developer > JSON Command, and the template buttons): one line run
     /// as typed, `name {json}` included, with the template's note under it.
     fn command_window(&mut self, ctx: &egui::Context) {
         if !self.command_open {

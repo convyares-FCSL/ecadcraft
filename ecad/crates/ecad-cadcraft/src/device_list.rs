@@ -236,16 +236,16 @@ pub fn symbol_target(p: &Project, rep: RepresentationId) -> Option<(PageId, Opti
     Some((r.page, position(doc, r), handles))
 }
 
-/// The Devices tab's list kept up to date (owner, 2026-11-08): built whole once, then refreshed
-/// only for the devices each change touched ([`devices_touched`], through
+/// The Devices tab's list kept up to date (owner, 2026-11-08): every device, built whole once (on
+/// open, reload or first show), then refreshed only for the devices each change touched ([`devices_touched`], through
 /// [`Project::device_changes_since`]), and renumbered when pages moved. A change that touches no
 /// device does nothing.
 #[derive(Debug, Clone, Default)]
 pub struct DeviceList {
     pub entries: Vec<DeviceEntry>,
-    /// (project serial, change count, filter) the list is up to date with.
-    seen: Option<(u64, u64, String)>,
-    /// Full builds so far (on open, on reload, when shown again, on a filter change).
+    /// (project serial, change count) the list is up to date with.
+    seen: Option<(u64, u64)>,
+    /// Full builds so far (on open, on reload, when shown again).
     pub rebuilds: u64,
     /// Refreshes that changed the list, and the devices they refreshed.
     pub updates: u64,
@@ -253,25 +253,25 @@ pub struct DeviceList {
 }
 
 impl DeviceList {
-    /// Bring the list up to date with `p` (the project numbered `serial` by the caller) under
-    /// `filter`. Returns whether it changed.
-    pub fn sync(&mut self, serial: u64, p: &Project, filter: &str) -> bool {
+    /// Bring the list up to date with `p` (the project numbered `serial` by the caller). Returns
+    /// whether it changed. Filtering is the caller's ([`matches`]): it never rebuilds the list.
+    pub fn sync(&mut self, serial: u64, p: &Project) -> bool {
         let count = p.change_count();
         let doc = p.ledger.document();
-        let since = match &self.seen {
-            Some((s, n, f)) if *s == serial && f == filter => Some(*n),
+        let since = match self.seen {
+            Some((s, n)) if s == serial => Some(n),
             _ => None,
         };
         let changed = match since.and_then(|n| p.device_changes_since(n)) {
             Some(t) if t.is_empty() => false,
-            Some(t) => self.apply(doc, &t, filter),
+            Some(t) => self.apply(doc, &t),
             None => {
-                self.entries = device_entries(doc, filter);
+                self.entries = device_entries(doc, "");
                 self.rebuilds += 1;
                 true
             }
         };
-        self.seen = Some((serial, count, filter.to_string()));
+        self.seen = Some((serial, count));
         changed
     }
 
@@ -281,11 +281,11 @@ impl DeviceList {
     }
 
     /// Refresh the devices `t` names, and the page numbers when pages moved.
-    fn apply(&mut self, doc: &Document, t: &DeviceTouch, filter: &str) -> bool {
+    fn apply(&mut self, doc: &Document, t: &DeviceTouch) -> bool {
         let mut changed = false;
         let mut resort = false;
         for c in &t.components {
-            let now = device_entry(doc, *c).filter(|e| matches(e, filter));
+            let now = device_entry(doc, *c);
             let at = self.entries.iter().position(|e| e.id == *c);
             match (at, now) {
                 (Some(i), Some(e)) => {

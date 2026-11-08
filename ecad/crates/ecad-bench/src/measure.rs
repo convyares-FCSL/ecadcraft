@@ -458,7 +458,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         let (mut devices, mut goto, mut devupd) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
         // The Devices tab's list, built once as when the tab is shown.
         let mut list = ecad_cadcraft::device_list::DeviceList::default();
-        project.read(&mut s, |p, _| list.sync(1, p, ""))?;
+        project.read(&mut s, |p, _| list.sync(1, p))?;
         let (w, h) = (480, 320);
         for page in pages {
             let t = Instant::now();
@@ -508,7 +508,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
                 )
                 .map_err(|e| format!("setprop {c}: {e}"))?;
                 let t = Instant::now();
-                let changed = project.read(&mut s, |p, _| list.sync(1, p, ""))?;
+                let changed = project.read(&mut s, |p, _| list.sync(1, p))?;
                 devupd.push(ms(t));
                 if !changed || list.rebuilds != 1 {
                     return Err("the Devices list was not refreshed by device".into());
