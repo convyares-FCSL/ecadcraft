@@ -430,7 +430,8 @@ mod tests {
         assert_eq!(g.column_of(f64::NAN), None);
         assert_eq!(letters(27), "AA");
         // Counted from the bottom-right instead: the same point is in column F, row 3.
-        let br = Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
+        let br =
+            Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
         assert_eq!((br.column_of(130.0), br.row_of(120.0)), (Some(6), Some(3)));
     }
 }
