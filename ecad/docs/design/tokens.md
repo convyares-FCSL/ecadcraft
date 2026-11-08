@@ -45,6 +45,7 @@ same size at every zoom). They scale with the UI scale like CADCraft's own snap 
 | `ecad.ring-size` | 16 px diameter | Attach-preview ring; also the refuse-preview ring |
 | `ecad.crossing-size` | 5 px diameter, filled | Crossing dot of a cable slash on a member wire |
 | `ecad.ref-size` | 12 px diameter | Ring on a cable reference point (010), stroke `ecad.bold` |
+| `ecad.preview-ring` | 20 px diameter | Ring around the target reference in the read-only preview (016), stroke `ecad.bold`, colour `ecad.reference` |
 | `ecad.aperture` | CADCraft `APERTURE` setting (default 10 px) | How close the cursor must be for an ECAD capture |
 
 ## Drawing-unit sizes
@@ -65,6 +66,7 @@ work. Brief 010's values are millimetres: in an inch project they are divided by
 | `ecad.ref-text-height` | 2.5 mm | Derived text of a cable reference (010) |
 | `ecad.ref-stub-spacing` | 5 mm | Spacing between continued wire stubs, and the gap between a reference point and its text (010) |
 | `ecad.column-width` | 40 mm | Column width of the fixed column grid (from x = 0) used by reference texts until drawing frames define columns (010) |
+| `ecad.preview-span` | 160 mm (4 × `ecad.column-width`) | Width of drawing the read-only preview shows when opened on a reference (016) |
 
 ## Line weights of computed drawing
 
