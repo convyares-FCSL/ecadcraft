@@ -32,6 +32,7 @@ mod index;
 pub mod invariant;
 pub mod ledger;
 pub mod op;
+pub mod tag;
 
 pub use doc::{
     Cable, CableMember, Color, Component, Conductor, ContentHash, Definition, Document, End, Form, Item, ItemKind,

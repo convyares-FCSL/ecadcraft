@@ -91,6 +91,8 @@ pub(crate) struct Index {
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
     pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
+    /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
+    pub(crate) tags: Multi<String, ComponentId>,
 }
 
 impl Index {
@@ -130,6 +132,14 @@ impl Index {
         if let Some(d) = c.definition {
             bump(&mut self.definition_components, d, id, delta);
         }
+        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+            self.tag(id, t, delta);
+        }
+    }
+
+    /// A component's tag `tag` (its stored value) is added or removed.
+    pub(crate) fn tag(&mut self, id: ComponentId, tag: &str, delta: Delta) {
+        bump(&mut self.tags, crate::tag::key(tag), id, delta);
     }
 
     pub(crate) fn terminal(&mut self, id: TerminalId, t: &Terminal, delta: Delta) {

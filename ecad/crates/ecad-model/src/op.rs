@@ -402,10 +402,21 @@ impl Op {
                 if checked && props.get(key) != before.as_ref() {
                     return Err(pre(format!("property {key} of {object:?} differs from the recorded value")));
                 }
-                match after {
+                let old = match after {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
+                // A component's tag is indexed (brief 018).
+                if let ObjectRef::Component(id) = object
+                    && key == crate::tag::TAG_KEY
+                {
+                    if let Some(old) = old {
+                        doc.index.tag(*id, &old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.tag(*id, new, Delta::Add);
+                    }
+                }
             }
             Op::EmbedDefinition { id, definition } => {
                 absent(&doc.definitions, *id, "definition")?;
