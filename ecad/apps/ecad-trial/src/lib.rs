@@ -247,6 +247,9 @@ pub struct Trial {
     pub hover_delay: f64,
     /// The home folder that `~` in typed paths stands for ([`ecad_cadcraft::home`] by default).
     pub home: Option<PathBuf>,
+    /// The lineweight display the trial last set when it opened a project; `None` before the
+    /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
+    lwdisplay_set: Option<bool>,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -254,6 +257,8 @@ pub struct Trial {
 enum Hovered {
     /// A terminal within the capture aperture (drawn or symbol, free or connected).
     Terminal(ecad_model::TerminalId),
+    /// A cable reference end (its point or its text) within the pick box (brief 010).
+    Reference(ecad_model::RepresentationId),
     /// The object CADCraft's rollover highlights.
     Object(Handle),
 }
@@ -331,6 +336,7 @@ impl Trial {
             hover: None,
             hover_delay: HOVER_DELAY,
             home: ecad_cadcraft::home(),
+            lwdisplay_set: None,
         }
     }
 
@@ -376,6 +382,13 @@ impl Trial {
         self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
+        // Thick and thin cable lines only show with lineweights on (design 009 §9), unless the
+        // user has chosen Show/Hide Lineweight since the trial started (brief 009 review).
+        let shown = &mut self.cad.session.settings.lwdisplay;
+        if self.lwdisplay_set.is_none_or(|set| *shown == set) {
+            *shown = true;
+            self.lwdisplay_set = Some(true);
+        }
     }
 
     /// Save the project to its file (Save As when it has none yet).
@@ -849,6 +862,25 @@ impl Trial {
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the
     /// drawing area, with its hover description; none while a paper-space layout is shown. Only
     /// reads.
+    /// The cable reference end under the pointer (its point within the pick box, or its text),
+    /// with its hover lines; model space only, as for terminals.
+    fn reference_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::RepresentationId, Vec<String>)> {
+        if self.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
+            return None;
+        }
+        let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
+        if !rect.contains(at) {
+            return None;
+        }
+        let world = xf.to_world(at);
+        let radius = self.cad.session.pixel_size() * self.cad.session.settings.pickbox.max(1.0) * 1.5;
+        let uid = self.cad.session.state().ok()?.uid;
+        let p = self.project.as_ref()?;
+        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_reference(p, uid, world, radius))
+            .ok()
+            .flatten()
+    }
+
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
         // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
         // canvas shows the sheet, and nothing on it is a terminal.
@@ -884,9 +916,15 @@ impl Trial {
             Some(at) => self.terminal_under(at),
             None => None,
         };
-        let target = match terminal {
-            Some((t, lines)) => Some((Hovered::Terminal(t), Some(lines))),
-            None => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
+        // Then a cable reference end, which wins over the wire starting on its point (brief 010).
+        let reference = match (pointer.filter(|_| idle), &terminal) {
+            (Some(at), None) => self.reference_under(at),
+            _ => None,
+        };
+        let target = match (terminal, reference) {
+            (Some((t, lines)), _) => Some((Hovered::Terminal(t), Some(lines))),
+            (None, Some((r, lines))) => Some((Hovered::Reference(r), Some(lines))),
+            (None, None) => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
         };
         let (Some((h, terminal_lines)), Some(pointer)) = (target, pointer) else {
             self.hovered = None;
@@ -910,7 +948,7 @@ impl Trial {
         }
         if self.hover.is_none() {
             self.hover = match h {
-                Hovered::Terminal(_) => terminal_lines,
+                Hovered::Terminal(_) | Hovered::Reference(_) => terminal_lines,
                 Hovered::Object(h) => {
                     let uid = self.cad.session.state().map(|st| st.uid).ok();
                     match (self.project.as_ref(), uid) {
