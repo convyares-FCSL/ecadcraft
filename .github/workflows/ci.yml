@@ -6,7 +6,8 @@
 # - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
 #   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
 #   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
-# Green CI is required before review; it is not approval to merge.
+# Every action is pinned to a commit hash (the tag in the comment); Dependabot proposes updates
+# (owner decision, 2026-11-08). Green CI is required before review; it is not approval to merge.
 name: CI
 
 on:
@@ -38,11 +39,11 @@ jobs:
     if: github.event_name == 'pull_request' && github.base_ref == 'dev'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
       - name: Format
@@ -57,8 +58,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt
       - run: cargo fmt --all --check
@@ -68,7 +69,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # The packages CADCraft's own CI installs (upstream ci.yml, 0.15.1); mesa-vulkan-drivers gives
       # the UI tests a software GPU for their wgpu rendering.
       - name: Install windowing, font and GPU libraries for the desktop app and its tests
@@ -80,7 +81,7 @@ jobs:
       # and some need its CJK glyphs. Bump the pin with each upstream sync. ECAD jobs build
       # without craft-fonts, as ECAD code and tests must work without it.
       - name: Check out craft-fonts
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: storytold/craft-fonts
           ref: b076417b5880bd4154bd22f00695b1d28c6bea83
@@ -90,10 +91,10 @@ jobs:
         run: |
           echo "CRAFT_FONTS_DIR=$GITHUB_WORKSPACE/craft-fonts" >> "$GITHUB_ENV"
           echo "CRAFT_FONTS_REQUIRED=1" >> "$GITHUB_ENV"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
@@ -104,15 +105,15 @@ jobs:
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The upstream patch guard diffs against the incorporated CADCraft commit.
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
       - name: fmt, clippy, tests, layers, patch guard, wasm
@@ -130,15 +131,15 @@ jobs:
       # ECAD files are LF (ecad/CLAUDE.md); the runner's Git would otherwise check out CRLF.
       - name: Check out with LF line endings
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The upstream patch guard diffs against the incorporated CADCraft commit.
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
       - name: fmt, clippy, tests, layers, patch guard, wasm

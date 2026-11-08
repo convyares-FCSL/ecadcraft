@@ -1,38 +1,17 @@
 version: 2
+# ECAD (owner decision, 2026-11-08): only the GitHub Actions pins in our workflows are kept up to
+# date here, weekly, as pull requests into `dev`. CADCraft's root Cargo dependencies arrive through
+# the upstream sync instead (ecad/UPSTREAM-PATCHES.md); the ECAD workspace's own dependencies are a
+# separate decision. Upstream's version of this file also updated the root Cargo.lock daily.
 updates:
-  # Maintain Rust / Cargo dependencies
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "06:00"
-      timezone: "America/New_York"
-    # Consolidate updates into a single PR rather than one PR per crate
-    groups:
-      cargo-dependencies:
-        patterns:
-          - "*"
-    commit-message:
-      prefix: "chore(deps)"
-    # craft-ui is still on egui 0.36, and two eguis in the graph don't build (#1990). Remove this
-    # once craft-ui moves to egui 0.37 (storytold/craft-libs#199).
-    ignore:
-      - dependency-name: "egui"
-        versions: [">=0.37"]
-      - dependency-name: "eframe"
-        versions: [">=0.37"]
-      - dependency-name: "egui-wgpu"
-        versions: [">=0.37"]
-      - dependency-name: "egui_kittest"
-        versions: [">=0.37"]
-
-  # Maintain GitHub Actions workflows
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
       time: "06:00"
-      timezone: "America/New_York"
+      timezone: "Europe/London"
     groups:
       actions:
         patterns:
