@@ -11,7 +11,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | File | Why |
 | --- | --- |
 | `README.md` | ECAD repository front page |
-| `.github/workflows/ci.yml` | CI for `dev`: CADCraft workspace and ECAD workspace |
+| `.github/workflows/ci.yml` | CI: quick ECAD check on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
 | `docs/decisions.md` | ECAD decision log |
 | `docs/cadcraft-assessment.md` | Phase 0 assessment |

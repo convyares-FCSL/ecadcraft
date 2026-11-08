@@ -19,22 +19,35 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
 - The debugger is read-only: it reaches a project only through `ProjectHandle` reads under
   `try_lock`, copies what it shows and releases the lock before drawing, and runs replay, projection
   and file checks only on request, on copies. Keep it that way.
-- Branch from `dev`; every change arrives as a PR into `dev`. Never merge your own PR: green CI is
-  not approval.
-- **Checks are scoped to the change (owner decision, 2026-11-02).** This is Rust: what builds and
-  passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
+- **Branches and testing (owner decision, 2026-11-08).** ECAD is still being shaped, not at a
+  production baseline, so development is fast and tests are deliberate; the full suite runs once,
+  at the QA gate.
+  - `main` is the released baseline. `dev` is integration: features land there when they work.
+    `feature/<name>` is long-lived and holds one whole feature (cables, components, project
+    manager…); `docs/features.md` lists them and which briefs belong to each.
+  - A brief is a step inside a feature: it lands as commits on that feature's branch, not as a PR
+    of its own. A feature reaches `dev` by **one PR** when it works; the owner may take it in more
+    than one PR if it grows large.
+  - **QA gate:** the PR from `dev` into `main`. It runs the full suite (CI's full jobs, screenshots,
+    `cargo xtask bench`) and the owner's own click-through trial. Only the owner merges it.
+  - Never merge your own PR: green CI is not approval.
+- **Checks are scoped to the change (owner decisions, 2026-11-02 and 2026-11-08).** This is Rust:
+  what builds and passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
   - **Worker, before each commit:** it builds and is clean: `cargo fmt --all -- --check` and
     `cargo clippy --workspace --all-targets --all-features -- -D warnings` (which compiles every
-    target, tests included). Workers run no test suites, except to reproduce a failure they are
-    fixing. Documentation-only commits need no cargo at all.
-  - **Tester:** runs the tests that suit the scope of the change: its own new acceptance tests,
-    then the tests of the crates changed (`cargo test -p <crate>`) and their dependents. The whole
-    workspace only for a change that touches shared code (`ecad-model`, `ecad-file`, `ecad-store`)
-    or CADCraft. A re-test after a fix round runs only what failed plus the crate that changed.
-  - **Reviewer:** reads; runs cargo only for `cargo xtask patches` or to confirm a specific finding.
-  - **CI** runs everything (`cargo xtask ci` with wasm, plain `cargo test --workspace`, root
-    CADCraft, Linux and Windows) on every pull request. Run wasm locally only when a change could
-    affect it (dependencies, `cfg(target_arch)`, platform code in `ecad-model`/`ecad-store`/`ecad-file`).
+    target, tests included). It then runs, itself, the tests of what it changed: its new
+    acceptance tests and `cargo test -p <crate>` for the crates it touched. Never the whole
+    workspace. Documentation-only commits need no cargo at all.
+  - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
+    `translate.rs`, the store and locking, or anything the owner asks for. It runs only what the
+    change can break. A re-test after a fix runs only what failed.
+  - **Reviewer:** once per feature, on the PR into `dev`, and on any brief the tester would cover.
+    Reads; runs cargo only for `cargo xtask patches` or to confirm a specific finding.
+  - **CI:** pull requests into `dev` run the fast check (fmt, clippy and the ECAD workspace tests on
+    Linux). The full suite (`cargo xtask ci` with wasm, root CADCraft, Linux and Windows) runs on
+    pull requests into `main`, on pushes to `main`, and by hand (`workflow_dispatch`). Run wasm
+    locally only when a change could affect it (dependencies, `cfg(target_arch)`, platform code in
+    `ecad-model`/`ecad-store`/`ecad-file`).
 - **Builds (owner decision, 2026-11-01):** to stop every agent compiling from scratch, agents that
   run one after another share one build folder, even from their own git worktree:
   `CARGO_TARGET_DIR=C:/dev/ecad-target` for the ECAD workspace and `C:/dev/ecad-target-root` for
@@ -91,19 +104,20 @@ production code itself. Sub-agents are defined in `.claude/agents/`:
 | `tester` | Tests the branch against the brief in its own worktree; headless UI tests and screenshots | Change production code |
 | `reviewer` | Read-only review of the diff | Edit anything |
 
-Loop for each brief in `docs/briefs/`:
+Loop for each brief in `docs/briefs/` (owner decision, 2026-11-08: lighter, per feature):
 1. If the brief has UI, run `designer` first.
-2. Run `worker` with the brief (and design spec).
-3. Push the branch and open a **draft** PR into `dev` straight away, so CI (Linux and Windows) runs
-   while the branch is checked (owner decision, 2026-11-02: pushing a work branch to a draft PR
-   needs no further approval).
-4. Run `tester` (with only the brief, the design spec and the branch name, in a separate worktree;
-   never the worker's report) and `reviewer` **at the same time**.
-5. Send the tester's failures and the reviewer's serious findings back to `worker` in one round;
-   re-test only what failed. After three failed rounds, stop and report to the owner.
-6. When the tester passes, the review is clean and CI is green, ask the owner before marking the PR
-   ready, with the brief, the test report and the review summary in it. **Never merge.** The owner
-   merges.
+2. Run `worker` with the brief (and design spec) on the feature's branch. It commits, runs its own
+   scoped tests (above) and pushes; pushing a feature branch needs no further approval.
+3. Only for a brief in the tester's list above: run `tester` (with only the brief, the design spec
+   and the branch name, in a separate worktree; never the worker's report). One fix round; re-test
+   only what failed. After three failed rounds, stop and report to the owner.
+4. The owner tries the brief (click-only steps in the quick start) and shapes the next one. No PR
+   per brief.
+5. When the owner says the feature works, open one PR from `feature/<name>` into `dev` and run
+   `reviewer` on it. Send serious findings back to `worker` in one round. Ask the owner before
+   marking it ready. **Never merge.** The owner merges.
+6. At a milestone, the owner asks for the QA gate: a PR from `dev` into `main`, full suite,
+   screenshots, bench, and the owner's trial.
 
 Gates where the overseer stops and asks the owner: starting any brief not marked `Approved`; any
 change outside `ecad/` that the brief does not approve; any change to a fixed principle (proposal
