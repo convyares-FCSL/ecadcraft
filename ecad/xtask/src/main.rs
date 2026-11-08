@@ -6,6 +6,8 @@
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`.
 //! - `ci`: fmt, clippy `-D warnings`, tests, layers, patches, wasm.
+//! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
+//!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -30,6 +32,7 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-file", Class::Core),
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
+    ("ecad-bench", Class::Adapter),
     ("ecad-cli", Class::Ui),
     ("ecad-trial", Class::Ui),
     ("ecad-xtask", Class::Exempt),
@@ -171,14 +174,28 @@ fn ci() -> Result<(), String> {
     wasm()
 }
 
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench>
+  bench [--tier small|medium|large|all] [--keep <folder>] [--compare <earlier.json>]
+        project load benchmark (release build), run on demand only; not part of ci";
+
+/// The load benchmark in release, with `args` passed through. Never called by [`ci`].
+fn bench(args: &[String]) -> Result<(), String> {
+    run(Command::new(env!("CARGO"))
+        .args(["run", "--release", "--package", "ecad-bench", "--"])
+        .args(args)
+        .current_dir(ecad_root()))
+}
+
 fn main() -> ExitCode {
-    let arg = std::env::args().nth(1).unwrap_or_default();
-    let r = match arg.as_str() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let rest = args.get(1..).unwrap_or_default();
+    let r = match args.first().map(String::as_str).unwrap_or_default() {
         "layers" => layers(),
         "patches" => patches(),
         "wasm" => wasm(),
         "ci" => ci(),
-        _ => Err("usage: cargo xtask <layers|patches|wasm|ci>".into()),
+        "bench" => bench(rest),
+        _ => Err(USAGE.into()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,

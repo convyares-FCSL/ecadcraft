@@ -530,10 +530,13 @@ pub struct Check {
 
 /// Replay the history into a fresh document and compare it with the live one (copies of both),
 /// then check the document's invariants.
+///
+/// The replay runs in verify mode: every transaction is checked in full as well as by the scoped
+/// check, and any disagreement fails it.
 pub fn verify_replay(log: &[Transaction], live: &Document) -> Check {
     let at_seq = log.len() as u64;
     let mut lines = Vec::new();
-    let ok = match Ledger::replay(log.to_vec(), 0) {
+    let ok = match Ledger::replay_verified(log.to_vec(), 0) {
         Ok(l) if l.document() == live => {
             lines.push(format!("replaying {at_seq} transactions gives the live document"));
             true

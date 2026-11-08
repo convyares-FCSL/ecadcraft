@@ -8,9 +8,11 @@
 //! upstream CADCraft change cannot alter the document, its history or replay.
 //!
 //! Current focus (bounded integration experiment, proposal §17):
-//! - [`doc`]: the objects and their relationships, with invariant checks.
+//! - [`doc`]: the objects and their relationships, with reverse indexes for queries.
+//! - [`invariant`]: the invariants, checked in full or scoped to what a transaction touched.
 //! - [`op`]: self-inverting ops that record resolved intent.
-//! - [`ledger`]: transactions, linear project-wide undo/redo derived from the log, unsaved state.
+//! - [`ledger`]: transactions applied in place with rollback, linear project-wide undo/redo
+//!   derived from the log, unsaved state.
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 #![deny(
     clippy::unwrap_used,
@@ -26,6 +28,8 @@ pub mod doc;
 pub mod error;
 pub mod geom;
 pub mod id;
+mod index;
+pub mod invariant;
 pub mod ledger;
 pub mod op;
 
@@ -40,6 +44,7 @@ pub use id::{
     CableId, ComponentId, ConductorId, DefinitionId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId,
     RepresentationId, TerminalId, TxId,
 };
+pub use invariant::Touched;
 pub use ledger::{Author, Ledger, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 

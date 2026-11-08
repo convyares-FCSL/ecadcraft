@@ -1,0 +1,189 @@
+//! ecad-bench
+//!
+//! The project load benchmark (brief 012), run on demand with `cargo xtask bench` (release
+//! build). It generates synthetic projects ([`generate`]), writes them as `.ecad` files, times
+//! opening, deriving, the first page and saving one change ([`measure`]), prints a table and
+//! writes the results as JSON to `ecad/target/bench/` ([`report`]).
+//!
+//! It is **not** run by `cargo xtask ci`, `cargo test --workspace` or GitHub CI: only this
+//! crate's small unit tests of the generator's shape are. It sets no budgets and has no pass or
+//! fail beyond the projects opening cleanly.
+//!
+//! This crate intentionally contains no file format, op or document code of its own: projects
+//! are made of existing ops and opened, derived, projected and saved by the product crates. The
+//! generator does not use CADCraft; only the first-page timing does (through `ecad-cadcraft`).
+//! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unimplemented,
+    clippy::todo,
+    clippy::unreachable
+)]
+
+pub mod generate;
+pub mod measure;
+pub mod report;
+
+use std::path::{Path, PathBuf};
+
+pub use generate::{Generated, TIERS, Tier, Variant, generate, tier};
+
+/// What `cargo xtask bench` accepts.
+pub const USAGE: &str = "usage: cargo xtask bench [--tier small|medium|large|all|<list>] [--keep <folder>] \
+                         [--compare <earlier.json>] [--runs N]\n  --tier     tiers to measure, comma-separated \
+                         (default small,medium)\n  --keep     write the generated projects to <folder> and keep \
+                         them\n  --compare  print the change per row against an earlier results file\n  --runs     \
+                         runs per measurement, the median is reported (default 5)";
+
+/// Parsed options.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Options {
+    pub tiers: Vec<Tier>,
+    pub keep: Option<PathBuf>,
+    pub compare: Option<PathBuf>,
+    pub runs: usize,
+}
+
+/// Parse the command-line options.
+///
+/// # Errors
+/// An unknown option or tier, a missing or bad value.
+pub fn parse(args: &[String]) -> Result<Options, String> {
+    let mut o = Options { tiers: Vec::new(), keep: None, compare: None, runs: measure::RUNS };
+    let mut tiers = "small,medium".to_string();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut value = || it.next().cloned().ok_or_else(|| format!("{a} needs a value\n{USAGE}"));
+        match a.as_str() {
+            "--tier" | "--tiers" => tiers = value()?,
+            "--keep" => o.keep = Some(PathBuf::from(value()?)),
+            "--compare" => o.compare = Some(PathBuf::from(value()?)),
+            "--runs" => {
+                let v = value()?;
+                o.runs =
+                    v.trim().parse::<usize>().ok().filter(|n| (1..=measure::MAX_RUNS).contains(n)).ok_or_else(
+                        || format!("--runs must be a whole number from 1 to {}\n{USAGE}", measure::MAX_RUNS),
+                    )?;
+            }
+            "-h" | "--help" => return Err(USAGE.into()),
+            other => return Err(format!("unknown option {other}\n{USAGE}")),
+        }
+    }
+    for name in tiers.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        if name == "all" {
+            o.tiers = TIERS.to_vec();
+            break;
+        }
+        let t = tier(name).ok_or_else(|| format!("unknown tier {name}\n{USAGE}"))?;
+        if !o.tiers.contains(&t) {
+            o.tiers.push(t);
+        }
+    }
+    if o.tiers.is_empty() {
+        return Err(format!("no tier given\n{USAGE}"));
+    }
+    Ok(o)
+}
+
+/// The ECAD workspace root (`ecad/`).
+pub fn ecad_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Generate one tier, lean and churned, check that both histories end in the same document, write
+/// both files to `folder`, then measure each.
+///
+/// # Errors
+/// Generation fails, the two histories end differently (before anything is measured), a target
+/// file is open in another session, or a measurement fails.
+pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Result<Vec<report::Row>, String> {
+    let mut paths = Vec::new();
+    {
+        eprintln!("{}: generating the lean and churned projects…", tier.name);
+        let lean = generate(tier, Variant::Lean)?;
+        let churned = generate(tier, Variant::Churned)?;
+        if lean.ledger.document() != churned.ledger.document() {
+            return Err(format!("tier {}: the lean and churned histories end in different documents", tier.name));
+        }
+        for g in [&lean, &churned] {
+            let path = folder.join(format!("{}-{}.ecad", tier.name, g.variant.name()));
+            measure::claim(&path)?;
+            let bytes = g.file_bytes()?;
+            std::fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+            paths.push((g.variant, path));
+        }
+    }
+    let mut rows = Vec::new();
+    for (variant, path) in paths {
+        eprintln!("{} {}: measuring {} ({runs} runs of each)…", tier.name, variant.name(), path.display());
+        let measured = measure::measure(&path, runs, scratch);
+        // The opens leave an empty lock file beside a kept project: remove it once released.
+        measure::release_lock_file(&path);
+        let (measured, _) = measured?;
+        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured });
+    }
+    Ok(rows)
+}
+
+/// The whole benchmark: what `cargo xtask bench` runs.
+///
+/// # Errors
+/// Bad options, an unreadable `--compare` file, or any step failed.
+pub fn main_with(args: &[String]) -> Result<(), String> {
+    let o = parse(args)?;
+    // Read the earlier results first, so a bad path fails before a long run.
+    let earlier = match &o.compare {
+        Some(c) => {
+            let text = std::fs::read_to_string(c).map_err(|e| format!("{}: {e}", c.display()))?;
+            let v: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| format!("{}: not a results file: {e}", c.display()))?;
+            if v.get("rows").and_then(serde_json::Value::as_array).is_none() {
+                return Err(format!("{}: not a results file (no `rows`)", c.display()));
+            }
+            Some(v)
+        }
+        None => None,
+    };
+    let root = ecad_root();
+    let scratch = measure::scratch_dir("work")?;
+    let folder = match &o.keep {
+        Some(k) => {
+            std::fs::create_dir_all(k).map_err(|e| format!("{}: {e}", k.display()))?;
+            k.clone()
+        }
+        None => scratch.clone(),
+    };
+    let result = (|| {
+        let mut rows = Vec::new();
+        for t in &o.tiers {
+            rows.extend(run_tier(*t, &folder, &scratch, o.runs)?);
+        }
+        Ok::<_, String>(rows)
+    })();
+    let _ = std::fs::remove_dir_all(&scratch);
+    let rows = result?;
+    println!("{}", report::table(&rows, o.runs));
+    let commit = report::commit(&root);
+    let (stem, when) = report::stem_and_time(&commit);
+    let out_dir = root.join("target").join("bench");
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
+    // Never overwrite an earlier run, which may be the one being compared with.
+    let out = report::unused_path(&out_dir, &stem);
+    let value = report::json(&rows, o.runs, &commit, &when);
+    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    std::fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("Results written to {}", out.display());
+    if let Some(k) = &o.keep {
+        println!("Projects kept in {} (open them in the trial with Open project…).", k.display());
+    }
+    if let Some(earlier) = &earlier {
+        println!("{}", report::compare(&rows, earlier)?);
+    }
+    Ok(())
+}
