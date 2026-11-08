@@ -1,6 +1,6 @@
 # Brief 016: Project tab: see and switch pages
 
-Status: Approved (owner, 2026-11-08: "move onto project tab")
+Status: Approved (owner, 2026-11-08: "move onto project tab"); design 016 approved with all 9 recommendations, plus removing the top banner (owner, 2026-11-08)
 Branch: `feature/project-manager` (from `dev`, after the QA gate and the test restructure; owner
 decision 2026-11-08, see `docs/features.md`)
 Designer: **yes** (design spec first, in `docs/design/016.md`) · Size: M
