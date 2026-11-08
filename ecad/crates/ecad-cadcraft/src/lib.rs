@@ -60,7 +60,7 @@ pub use file::{
     FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
 };
 pub use project::{
-    Change, Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, View, project_page,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, View, project_page,
     project_page_with, session_seed,
 };
 

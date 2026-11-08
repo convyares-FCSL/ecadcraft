@@ -16,7 +16,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 11] = [
+const COLUMNS: [(&str, &str); 12] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -26,11 +26,12 @@ const COLUMNS: [(&str, &str); 11] = [
     ("draw_move_ms", "draw move ms"),
     ("draw_window_ms", "move+wires ms"),
     ("draw_wire_ms", "draw wire ms"),
-    ("switch_first_ms", "1st view ms"),
-    ("switch_back_ms", "back ms"),
+    ("switch_ms", "switch ms"),
+    ("preview_ms", "preview ms"),
+    ("panel_ms", "panel ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 11] {
+fn values(m: &Measured) -> [Option<f64>; 12] {
     [
         Some(m.open_ms),
         Some(m.derive_ms),
@@ -41,8 +42,9 @@ fn values(m: &Measured) -> [Option<f64>; 11] {
         Some(m.draw_move_ms),
         Some(m.draw_window_ms),
         Some(m.draw_wire_ms),
-        Some(m.switch_first_ms),
-        Some(m.switch_back_ms),
+        Some(m.switch_ms),
+        Some(m.preview_ms),
+        Some(m.panel_ms),
     ]
 }
 
@@ -61,7 +63,7 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>12} {:>8}\n",
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9}\n",
         "tier",
         "history",
         "file MB",
@@ -75,13 +77,14 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         "draw move ms",
         "move+wires ms",
         "draw wire ms",
-        "1st view ms",
-        "back ms"
+        "switch ms",
+        "preview ms",
+        "panel ms"
     );
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {}\n",
             r.tier,
             r.variant,
             mb(m.bytes),
@@ -95,16 +98,19 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             cell(Some(m.draw_move_ms), 13, 2),
             cell(Some(m.draw_window_ms), 14, 2),
             cell(Some(m.draw_wire_ms), 13, 2),
-            cell(Some(m.switch_first_ms), 12, 2),
-            cell(Some(m.switch_back_ms), 8, 2),
+            cell(Some(m.switch_ms), 10, 2),
+            cell(Some(m.preview_ms), 11, 2),
+            cell(Some(m.panel_ms), 9, 3),
         ));
     }
     out.push_str(&format!(
         "Median of {runs} runs each; generation not timed. xref is brief 010's cable reference derivation \
          on the opened document. draw move, move+wires and draw wire (the draw edit columns): one edit on \
-         page 1 made through the engine in a headless CADCraft session. 1st view and back (switch page): \
-         with page 1 shown, `openpage` of a page not viewed before, then back to page 1; median over up \
-         to 10 pages spread over the project. Peak memory is not measured.\n"
+         page 1 made through the engine in a headless CADCraft session. switch (brief 016): `openpage` \
+         making another page the one active page, and back to page 1; preview: project, build and \
+         rasterise a page at 480 x 320; panel: rebuild the Project panel's rows after one renamepage; \
+         each a median over up to 10 pages spread over the project. Targets (design 016): switch <= 5 ms \
+         and preview <= 15 ms on large. Peak memory is not measured.\n"
     ));
     out
 }
@@ -184,8 +190,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "draw_move_ms": m.draw_move_ms,
                 "draw_window_ms": m.draw_window_ms,
                 "draw_wire_ms": m.draw_wire_ms,
-                "switch_first_ms": m.switch_first_ms,
-                "switch_back_ms": m.switch_back_ms,
+                "switch_ms": m.switch_ms,
+                "preview_ms": m.preview_ms,
+                "panel_ms": m.panel_ms,
             })
         }).collect::<Vec<_>>(),
     })

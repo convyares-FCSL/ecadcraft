@@ -170,6 +170,17 @@ pub struct PageView {
     pub unavailable: bool,
 }
 
+/// One page as the Project panel lists it ([`Project::page_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageRow {
+    pub id: PageId,
+    /// The number the page is shown with ([`crate::references::page_number`]).
+    pub number: String,
+    pub title: String,
+    /// Its projection failed (PROJ-02).
+    pub unavailable: bool,
+}
+
 /// How many recent changes [`Project::changes_since`] can answer for.
 const CHANGE_LOG: usize = 64;
 
@@ -998,6 +1009,22 @@ impl Project {
     pub fn window(&self) -> Option<(PageId, u64)> {
         let page = self.active_page()?;
         Some((page, self.pages.get(&page)?.uid?))
+    }
+
+    /// The Project panel's rows (brief 016): every page in page order with the number it is shown
+    /// with and its title. Reads `page_order` and page titles only: O(pages), never O(items).
+    pub fn page_rows(&self) -> Vec<PageRow> {
+        let doc = self.ledger.document();
+        doc.page_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| PageRow {
+                id: *id,
+                number: (i + 1).to_string(),
+                title: doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                unavailable: self.pages.get(id).is_some_and(|v| v.unavailable),
+            })
+            .collect()
     }
 
     /// Number of the last change the project went through (a transaction, an undo or redo, a view

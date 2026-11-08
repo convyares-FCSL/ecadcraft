@@ -58,11 +58,16 @@ pub struct Measured {
     pub draw_window_ms: f64,
     /// Draw one wire between two terminals on page 1, in a headless CADCraft session (brief 014).
     pub draw_wire_ms: f64,
-    /// With the project open and page 1 shown, bring up a page not viewed before (`openpage`, the
-    /// path of Go to Reference): median over up to [`SWITCH_PAGES`] pages spread over the project.
-    pub switch_first_ms: f64,
-    /// Then switch back to page 1, already viewed (`openpage` again), median over the same pages.
-    pub switch_back_ms: f64,
+    /// Switch the active page (brief 016, design 016 section 6): `openpage` in a headless session
+    /// with one page active, until that page is the active page; median over up to
+    /// [`SWITCH_PAGES`] pages spread over the project and back to page 1 after each.
+    pub switch_ms: f64,
+    /// Draw the read-only preview of a page: project it, build and rasterise it at 480 x 320
+    /// (`ecad_cadcraft::preview`), median over the same pages.
+    pub preview_ms: f64,
+    /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`, brief 016
+    /// AC4), median over the same pages.
+    pub panel_ms: f64,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -149,7 +154,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
-    let (mut switch_first_ms, mut switch_back_ms) = switch_pages(path, &scratch.join("switch.ecad"))?;
+    let (mut switch_ms, mut preview_ms, mut panel_ms) = switch_pages(path, &scratch.join("switch.ecad"))?;
 
     let m = Measured {
         bytes,
@@ -163,8 +168,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         draw_move_ms: median(&mut draw_move_ms),
         draw_window_ms: median(&mut draw_window_ms),
         draw_wire_ms: median(&mut draw_wire_ms),
-        switch_first_ms: median(&mut switch_first_ms),
-        switch_back_ms: median(&mut switch_back_ms),
+        switch_ms: median(&mut switch_ms),
+        preview_ms: median(&mut preview_ms),
+        panel_ms: median(&mut panel_ms),
     };
     Ok((m, doc))
 }
@@ -178,7 +184,7 @@ fn first_page(path: &str) -> Result<f64, String> {
     let elapsed = ms(t);
     let (pages, read_only) = project.read(&mut s, |p, _| (p.open_pages(), p.file_status().read_only))?;
     if pages != 1 {
-        return Err(format!("{path}: expected page 1 open, found {pages} open pages"));
+        return Err(format!("{path}: expected page 1 shown, found {pages} page windows"));
     }
     if let Some(r) = read_only {
         return Err(format!("{path} opened read-only in the session: {r}"));
@@ -341,11 +347,12 @@ fn spread(order: &[ecad_model::PageId]) -> Vec<ecad_model::PageId> {
 }
 
 /// Copy `path` to `copy` and open it in a headless CADCraft session with page 1 shown (not timed).
-/// Then for each page of [`spread`]: bring it up for the first time with `openpage` (timed), and
-/// switch back to page 1, already viewed, with `openpage` (timed). Both go through the engine and
-/// `Project::open_page`, as the trial's `openpage` and Go to Reference do. Every switch must leave
-/// the asked page in front.
-fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>), String> {
+/// Then for each page of [`spread`]: make it the active page with `openpage` (timed as a switch),
+/// draw its preview at 480 x 320 (timed), rename it and rebuild the panel's rows (the rebuild
+/// timed), and switch back to page 1 (timed as a switch). Switches go through the engine and
+/// `Project::open_page`, as the Project panel, `openpage` and Go to Reference do; every switch
+/// must leave the asked page active in the one page window.
+fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>), String> {
     use serde_json::json;
 
     remove(copy);
@@ -367,27 +374,47 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>), String
         }
         let shown = |project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::Session| {
             let uid = s.state().map(|st| st.uid).ok();
-            project.read(s, |p, _| uid.and_then(|u| p.page_of(u)))
+            project.read(s, |p, _| (uid.and_then(|u| p.page_of(u)), p.open_pages()))
         };
-        let (mut first_view, mut back) = (Vec::with_capacity(pages.len()), Vec::with_capacity(pages.len()));
+        let n = pages.len();
+        let (mut switch, mut preview, mut panel) =
+            (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
+        let (w, h) = (480, 320);
         for page in pages {
             let t = Instant::now();
             s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
-            first_view.push(ms(t));
-            if shown(&project, &mut s)? != Some(page) {
-                return Err(format!("openpage {page} did not bring the page to the front"));
+            switch.push(ms(t));
+            if shown(&project, &mut s)? != (Some(page), 1) {
+                return Err(format!("openpage {page} did not make the page active in the one page window"));
+            }
+            // The preview of page 1 from this page: projected under the lock, drawn after it.
+            let t = Instant::now();
+            let drawing = project.read(&mut s, |p, _| ecad_cadcraft::preview::preview_drawing(p, first))??;
+            let view = ecad_cadcraft::preview::PreviewView::extents(&drawing, w, h);
+            let image = ecad_cadcraft::preview::rasterise(&drawing, view, w, h, [33, 40, 48], 0.0)?;
+            preview.push(ms(t));
+            if image.rgba.len() != (w * h * 4) as usize {
+                return Err("the preview image has the wrong size".into());
+            }
+            s.execute("renamepage", &json!({"page": page.hex(), "title": format!("renamed {page}")}))
+                .map_err(|e| format!("renamepage {page}: {e}"))?;
+            let t = Instant::now();
+            let rows = project.read(&mut s, |p, _| p.page_rows())?;
+            panel.push(ms(t));
+            if rows.len() != order.len() {
+                return Err("the panel's rows do not list every page".into());
             }
             let t = Instant::now();
             s.execute("openpage", &json!({"page": first.hex()})).map_err(|e| format!("openpage {first}: {e}"))?;
-            back.push(ms(t));
-            if shown(&project, &mut s)? != Some(first) {
-                return Err("switching back did not bring page 1 to the front".into());
+            switch.push(ms(t));
+            if shown(&project, &mut s)? != (Some(first), 1) {
+                return Err("switching back did not make page 1 active".into());
             }
         }
         // Dropping the session and the handle releases the project and its writer lock.
         drop(project);
         drop(s);
-        Ok((first_view, back))
+        Ok((switch, preview, panel))
     })();
     remove(copy);
     result

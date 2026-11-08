@@ -136,8 +136,11 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     .unwrap();
     for page in &g.pages {
         project.open_page(&mut s, *page).unwrap();
+        assert_eq!(project.read(&mut s, |p, _| p.active_page()).unwrap(), Some(*page));
     }
-    assert_eq!(project.read(&mut s, |p, _| p.open_pages()).unwrap(), TINY.pages);
+    // Brief 016: one page window, whatever was shown before.
+    assert_eq!(project.read(&mut s, |p, _| p.open_pages()).unwrap(), 1);
+    assert_eq!(s.docs.len(), 1);
     drop(project);
     drop(s);
     let _ = std::fs::remove_dir_all(&dir);
