@@ -28,11 +28,44 @@ use crate::project::{ClipSnapshot, HandleMap, Mapped};
 use crate::translate::Translation;
 
 static COMPARED: AtomicU64 = AtomicU64::new(0);
+static ACCEPTED: AtomicU64 = AtomicU64::new(0);
 
 /// How many translations this process has compared with the oracle (all of them agreed: a
 /// difference aborts the process).
 pub fn comparisons() -> u64 {
     COMPARED.load(Ordering::Relaxed)
+}
+
+/// How many of [`comparisons`] were accepted with at least one op (not refused, not empty).
+pub fn accepted() -> u64 {
+    ACCEPTED.load(Ordering::Relaxed)
+}
+
+fn fail(what: &str) -> ! {
+    eprintln!("translate-oracle: {what}");
+    std::process::abort();
+}
+
+/// After a preview: the live document, its indexes included, must be exactly as before it.
+pub(crate) fn unchanged(before: &Document, after: &Document) {
+    if format!("{before:?}") != format!("{after:?}") || after.check_index().is_err() {
+        fail(&format!("a preview left the document changed\n--- before\n{before:?}\n--- after\n{after:?}"));
+    }
+}
+
+/// `terminal_position` must give the first `terminal_positions` entry of every terminal shown on
+/// `page` (they share their per-representation code; this proves it on every translation).
+fn positions_agree(doc: &Document, page: PageId) {
+    let mut first: BTreeMap<TerminalId, Pt> = BTreeMap::new();
+    for (t, _, p) in terminal_positions(doc, page) {
+        first.entry(t).or_insert(p);
+    }
+    for (t, p) in &first {
+        let one = ecad_model::derive::terminal_position(doc, page, *t);
+        if one != Some(*p) {
+            fail(&format!("terminal_position({t:?}) = {one:?}, terminal_positions gives {p:?}"));
+        }
+    }
 }
 
 /// Inputs of one translation, as the old code reads them.
@@ -76,7 +109,11 @@ pub(crate) fn compare(
         );
         std::process::abort();
     }
+    positions_agree(inputs.doc, inputs.page);
     COMPARED.fetch_add(1, Ordering::Relaxed);
+    if new.as_ref().is_ok_and(|t| !t.ops.is_empty()) {
+        ACCEPTED.fetch_add(1, Ordering::Relaxed);
+    }
     log(new);
 }
 

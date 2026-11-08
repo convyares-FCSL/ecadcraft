@@ -5,7 +5,9 @@
 //! the dev-dependencies: every translation also runs the pre-014 code on the same inputs and
 //! aborts the process on any difference (ops, new handles, amended handles, summary or refusal,
 //! ID allocator state). This test makes the edits, the way a person makes them through the engine,
-//! and checks that enough translations were compared. The same oracle runs under every existing
+//! and checks that enough translations were compared, and enough of them accepted with ops. The
+//! sequence is fixed by [`SEED`]; `ECAD_DIFF_SEED=<n>` replays another, and the seed in use is
+//! printed first, even when the oracle aborts. The same oracle runs under every existing
 //! `ecad-cadcraft` test.
 
 use cadcraft_engine::Session;
@@ -13,11 +15,15 @@ use cadcraft_engine::doc::Handle;
 use ecad_bench::generate::{Variant, generate, tier};
 use ecad_cadcraft::{Mapped, ProjectHandle, translate_oracle};
 use ecad_model::derive::{route_on_page, terminal_positions};
-use ecad_model::{PageId, Pt, Subject};
+use ecad_model::{PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 /// Translations to compare at least (brief 014: 1,000 randomised edits).
 const EDITS: u64 = 1_200;
+/// Accepted translations (at least one op, not refused) to compare at least.
+const ACCEPTED: u64 = 800;
+/// The random sequence used unless `ECAD_DIFF_SEED` (decimal or `0x` hex) names another.
+const SEED: u64 = 0x0014_D1FF_E4E7_5EED;
 /// Most edits attempted, so a run that compares too little ends with a failure, not a hang.
 const MAX_ATTEMPTS: usize = 20_000;
 
@@ -58,6 +64,8 @@ struct Page {
     symbols: Vec<Handle>,
     /// Route handles of conductors with their path ends.
     routes: Vec<(Handle, Pt, Pt)>,
+    /// Polyline routes: handle and the grip index of their last vertex (vertex i is grip 2i).
+    polylines: Vec<(Handle, usize)>,
     /// Terminal positions.
     terminals: Vec<Pt>,
 }
@@ -70,6 +78,7 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
             let entities: Vec<Handle> = pg.entities_of(p, page).iter().map(|e| e.handle).collect();
             let mut symbols = Vec::new();
             let mut routes = Vec::new();
+            let mut polylines = Vec::new();
             for h in &entities {
                 let Some(Mapped::Item(item)) = map.get(*h) else { continue };
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
@@ -81,13 +90,18 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                             && let Some((a, b)) = prim.path_ends()
                         {
                             routes.push((*h, a, b));
+                            if let Primitive::Polyline { vertices, .. } = &prim
+                                && vertices.len() >= 2
+                            {
+                                polylines.push((*h, 2 * (vertices.len() - 1)));
+                            }
                         }
                     }
                     _ => {}
                 }
             }
             let terminals = terminal_positions(doc, page).into_iter().map(|(_, _, p)| p).collect();
-            Page { entities, symbols, routes, terminals }
+            Page { entities, symbols, routes, polylines, terminals }
         })
         .unwrap()
 }
@@ -114,26 +128,41 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
     let kind = rng.below(100);
     Some(match kind {
         // Move components (their wires follow, M2).
-        0..=21 => {
+        0..=19 => {
             ("move component", "move", json!({"handles": hexes(&some(rng, &st.symbols, 3)), "delta": rng.delta()}))
         }
         // Move a component together with some routes and other entities.
-        22..=29 => {
+        20..=27 => {
             let mut hs = some(rng, &st.symbols, 2);
             hs.extend(some(rng, &st.entities, 3));
             hs.dedup();
             ("move mixed", "move", json!({"handles": hexes(&hs), "delta": rng.delta()}))
         }
         // Move a route so that one end lands on a terminal (reconnection, M3), or anywhere.
-        30..=41 => {
+        28..=35 => {
             let (h, a, b) = rng.pick(&st.routes)?;
             let to = rng.pick(&st.terminals)?;
             let from = if rng.chance(50) { a } else { b };
             let delta = if rng.chance(75) { [to.x - from.x, to.y - from.y] } else { rng.delta() };
             ("move route", "move", json!({"handles": [h.hex()], "delta": delta}))
         }
+        // Drag one route end by its grip (STRETCH), onto a terminal or into free space (M3).
+        36..=45 => {
+            let (h, last) = rng.pick(&st.polylines)?;
+            let index = if rng.chance(50) { 0 } else { last };
+            let to = match rng.pick(&st.terminals) {
+                Some(t) if rng.chance(70) => [t.x, t.y],
+                _ => {
+                    let d = rng.delta();
+                    let (_, a, b) = st.routes.iter().find(|(r, ..)| *r == h).copied()?;
+                    let at = if index == 0 { a } else { b };
+                    [at.x + d[0] + 1.25, at.y + d[1]]
+                }
+            };
+            ("drag one end", "grip.stretch", json!({"handle": h.hex(), "index": index, "to": to}))
+        }
         // Rotate or mirror a component.
-        42..=47 => {
+        46..=51 => {
             let h = rng.pick(&st.symbols)?;
             let at = rng.pick(&st.terminals)?;
             if rng.chance(50) {
@@ -148,9 +177,9 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
             }
         }
         // Erase anything.
-        48..=59 => ("erase", "erase", json!({"handles": hexes(&some(rng, &st.entities, 2))})),
+        52..=61 => ("erase", "erase", json!({"handles": hexes(&some(rng, &st.entities, 2))})),
         // Copy a component with some of its neighbours' routes, or anything.
-        60..=73 => {
+        62..=73 => {
             let mut hs = some(rng, &st.symbols, 2);
             for _ in 0..rng.below(4) {
                 if let Some((h, ..)) = rng.pick(&st.routes) {
@@ -202,11 +231,22 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
         ProjectHandle::open_file_in(&mut s, path.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none())
             .unwrap();
     let page = g.pages[0];
-    let mut rng = Rng(0x0014_D1FF_E4E7_5EED);
+    let seed = seed();
+    // Straight to stderr, past the test harness's capture: the oracle aborts the process on a
+    // difference, and the seed must still be on screen to replay it.
+    {
+        use std::io::Write;
+        let _ =
+            writeln!(std::io::stderr(), "translate_differential: seed {seed:#x} (rerun with ECAD_DIFF_SEED={seed:#x})");
+    }
+    let mut rng = Rng(seed | 1);
     let start = translate_oracle::comparisons();
+    let accepted_start = translate_oracle::accepted();
     let mut per_kind: std::collections::BTreeMap<&str, (u64, u64)> = Default::default();
     let mut attempts = 0;
-    while translate_oracle::comparisons() - start < EDITS && attempts < MAX_ATTEMPTS {
+    while (translate_oracle::comparisons() - start < EDITS || translate_oracle::accepted() - accepted_start < ACCEPTED)
+        && attempts < MAX_ATTEMPTS
+    {
         attempts += 1;
         let st = page_state(&project, &mut s, page);
         let Some((name, cmd, params)) = edit(&mut rng, &st, &s) else { continue };
@@ -218,17 +258,35 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
         e.1 += translate_oracle::comparisons() - before;
     }
     let compared = translate_oracle::comparisons() - start;
-    eprintln!("{attempts} edits attempted, {compared} translations compared with the oracle");
+    let accepted = translate_oracle::accepted() - accepted_start;
+    eprintln!(
+        "seed {seed:#x}: {attempts} edits attempted, {compared} translations compared with the oracle, \
+         {accepted} of them accepted with ops"
+    );
     for (name, (tried, cmp)) in &per_kind {
         eprintln!("  {name:<16} {tried:>5} tried {cmp:>5} compared");
     }
-    assert!(compared >= EDITS, "only {compared} translations compared in {attempts} edits");
-    for kind in ["move component", "move route", "erase", "copy", "pasteclip", "line", "rotate", "mirror"] {
-        assert!(per_kind.get(kind).is_some_and(|(_, c)| *c > 0), "no {kind} was translated");
+    assert!(compared >= EDITS, "seed {seed:#x}: only {compared} translations compared in {attempts} edits");
+    assert!(accepted >= ACCEPTED, "seed {seed:#x}: only {accepted} translations accepted with ops");
+    for kind in
+        ["move component", "move route", "drag one end", "erase", "copy", "pasteclip", "line", "rotate", "mirror"]
+    {
+        assert!(per_kind.get(kind).is_some_and(|(_, c)| *c > 0), "seed {seed:#x}: no {kind} was translated");
     }
     // The project is still whole: the log replays to the live document.
     assert!(project.read(&mut s, |p, _| p.ledger.replay_matches().unwrap()).unwrap());
     drop(project);
     drop(s);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `ECAD_DIFF_SEED` if set (decimal or `0x` hex), else [`SEED`].
+fn seed() -> u64 {
+    let Ok(text) = std::env::var("ECAD_DIFF_SEED") else { return SEED };
+    let text = text.trim();
+    let parsed = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+        Some(hex) => u64::from_str_radix(&hex.replace('_', ""), 16),
+        None => text.replace('_', "").parse(),
+    };
+    parsed.unwrap_or_else(|_| panic!("ECAD_DIFF_SEED={text:?} is not a number"))
 }

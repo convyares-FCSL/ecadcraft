@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{route_on_page, terminal_positions};
+use ecad_model::derive::{route_on_page, terminal_position, terminal_positions};
 use ecad_model::{
     Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger,
     Op, PageId, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId,
@@ -94,45 +94,46 @@ fn entities(d: &Drawing) -> (Vec<Handle>, HashMap<Handle, &Arc<Entity>>) {
 
 /// Apply `ops` to the live document in place, check what they touched, run `read` on the result
 /// and roll back. Errors are those a commit of `ops` would report.
+///
+/// The check is scoped to what `ops` touch (plus the full check in verify mode). On an already
+/// invalid document the earlier full-check preview could refuse where this one accepts; a
+/// committed document is always valid, so that cannot happen here.
 fn preview<R>(ledger: &mut Ledger, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R, String> {
-    ledger.with_applied(ops, read).map_err(|e| e.to_string())
+    #[cfg(feature = "translate-oracle")]
+    let before = ledger.document().clone();
+    let result = ledger.with_applied(ops, read).map_err(|e| e.to_string());
+    #[cfg(feature = "translate-oracle")]
+    crate::translate_oracle::unchanged(&before, ledger.document());
+    result
 }
 
 /// The terminal shown at `at` on `page`, if any.
 pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Option<TerminalId> {
-    terminal_positions(doc, page).into_iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| t)
+    first_near(&terminal_positions(doc, page), at, tol)
 }
 
-/// Where `terminal` is shown on `page`: its first representation there, as
-/// [`terminal_positions`] lists them (representations in ID order), without going through the
-/// rest of the page.
-///
-/// # Semantics
-/// The same answer as the first entry for `terminal` in `terminal_positions(doc, page)` on any
-/// valid document: there a drawn representation's connection points are its own component's
-/// terminals (invariant I16), so only the terminal's component's representations can show it.
-fn position_of(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
-    let t = doc.terminals.get(&terminal)?;
-    for (_, r) in doc.representations_of(Subject::Component(t.component)).filter(|(_, r)| r.page == page) {
-        match r.form {
-            Form::Drawn => {
-                if let Some(p) = r.connection_points.get(&terminal) {
-                    return Some(*p);
-                }
-            }
-            Form::Symbol => {
-                let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind)
-                else {
-                    continue;
-                };
-                let Some(def) = doc.definitions.get(&inst.definition) else { continue };
-                if let Some(td) = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k)) {
-                    return Some(inst.placement.apply(td.at));
-                }
-            }
-        }
+/// The first terminal of `shown` (as [`terminal_positions`] lists them) within `tol` of `at`.
+fn first_near(shown: &[(TerminalId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<TerminalId> {
+    shown.iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| *t)
+}
+
+/// [`terminal_at`] for many points on one document: the terminal positions are worked out on
+/// first use and kept, so an edit that moves many route ends lists them once, not once per end.
+pub(crate) struct ShownOnce<'a> {
+    doc: &'a Document,
+    page: PageId,
+    shown: Option<Vec<(TerminalId, RepresentationId, Pt)>>,
+}
+
+impl<'a> ShownOnce<'a> {
+    pub(crate) fn new(doc: &'a Document, page: PageId) -> Self {
+        Self { doc, page, shown: None }
     }
-    None
+
+    pub(crate) fn terminal_at(&mut self, at: Pt, tol: f64) -> Option<TerminalId> {
+        let (doc, page) = (self.doc, self.page);
+        first_near(self.shown.get_or_insert_with(|| terminal_positions(doc, page)), at, tol)
+    }
 }
 
 /// What a set of proposed ops could move on a page, worked out on the document before them.
@@ -148,9 +149,11 @@ fn position_of(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt>
 ///   or its route item changed, or it is new).
 /// - `attached`: conductors whose ends the ops attach or detach.
 ///
-/// Ops a translation does not produce (pages, layers, cables, properties, definitions it does not
-/// newly embed, deletions of components or terminals…) make the scope the whole document, which
-/// is exactly the earlier behaviour.
+/// Op kinds a translation does not produce make the scope the whole document, which is exactly
+/// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteComponent`,
+/// `RemoveTerminal`, `DeleteConductor`, the cable ops, `SetProperty`, `RemoveDefinition`,
+/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateComponent`, `AddTerminal` or
+/// `EmbedDefinition` of an ID the document already has.
 #[derive(Debug, Default)]
 struct Scope {
     terminals: BTreeSet<TerminalId>,
@@ -566,14 +569,15 @@ fn copy_batch(
 /// conductors whose route the ops could change or whose ends they attach, and conductors with a
 /// fresh end. Any other conductor has the same route, ends and terminal positions before and
 /// after the ops, so the policy gives it nothing to do. Positions are worked out per terminal,
-/// only for the scope's terminals.
+/// only for the scope's terminals; the page's terminal positions, which a moved route end is
+/// matched against (M3), are listed at most once per edit.
 fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]) -> Result<(), String> {
     let (page, tol) = (cx.page, cx.tol);
     // Before the ops: what they could move, and where it is now.
     let doc = cx.ledger.document();
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
-        positions: scope.terminals.iter().map(|term| (*term, position_of(doc, page, *term))).collect(),
+        positions: scope.terminals.iter().map(|term| (*term, terminal_position(doc, page, *term))).collect(),
         routes: scope
             .routes
             .iter()
@@ -630,6 +634,7 @@ fn moved(
     for term in &scope.terminals {
         candidates.extend(proposed.ends_at(*term).into_iter().map(|(c, _)| c));
     }
+    let mut shown = ShownOnce::new(proposed, page);
     let mut amend: BTreeMap<ItemId, (Item, Item)> = BTreeMap::new();
     let mut attach: Vec<Op> = Vec::new();
     for cid in &candidates {
@@ -650,7 +655,7 @@ fn moved(
                 Some(term) => {
                     // A terminal outside the scope is where it was.
                     let (op, np) = match earlier.positions.get(&term) {
-                        Some(op) => (*op, position_of(proposed, page, term)),
+                        Some(op) => (*op, terminal_position(proposed, page, term)),
                         None => (None, None),
                     };
                     let terminal_moved = matches!((op, np), (Some(a), Some(b)) if !a.near(b, eps));
@@ -664,14 +669,25 @@ fn moved(
                         }
                     } else if end_moved {
                         // M3: a deliberate reconnection, resolved once.
-                        let found = terminal_at(proposed, page, new_end, tol);
+                        //
+                        // Rebase note for brief 010 (`ecad/cable-references`): 010 gates M3 on "the
+                        // terminal was shown on this page before", written there as
+                        // `old_pos.contains_key(&term)`. Do NOT port it as
+                        // `earlier.positions.contains_key(&term)`: that map holds only the scope's
+                        // terminals, so a wire end dragged off a stationary terminal on this page would
+                        // skip M3 and be reported as connected on another page. Terminals outside the
+                        // scope did not move, so use
+                        // `earlier.positions.get(&term).copied().unwrap_or_else(|| terminal_position(proposed, page, term)).is_some()`.
+                        // Briefs 009 and 010 both change this file: until the test oracle is retired,
+                        // every such change must be made in `translate_oracle.rs` too.
+                        let found = shown.terminal_at(new_end, tol);
                         if found != Some(term) {
                             attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
                         }
                     }
                 }
                 None if end_moved => {
-                    if let Some(found) = terminal_at(proposed, page, new_end, tol) {
+                    if let Some(found) = shown.terminal_at(new_end, tol) {
                         attach.push(Op::AttachEnd { conductor: *cid, end, before: None, after: Some(found) });
                     }
                 }

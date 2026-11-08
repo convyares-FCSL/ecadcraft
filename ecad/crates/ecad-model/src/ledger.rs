@@ -631,15 +631,21 @@ impl Ledger {
     ///
     /// # Errors
     /// Precondition or invariant failures, exactly as [`Ledger::commit`] would report them (then
-    /// `read` has not run); the ledger refuses, as it refuses commits, after a rollback it could
-    /// not repair.
+    /// `read` has not run). [`ModelError::CorruptLog`] when a revert failed and replaying the log
+    /// could not restore the document either, from this call on, as commits are refused then.
     pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
         if self.health.broken {
             return Err(ModelError::CorruptLog(
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
-        applied_then_reverted(&mut self.doc, ops, self.verify, Some(&self.log), &mut self.health, read).0
+        let (result, failure) =
+            applied_then_reverted(&mut self.doc, ops, self.verify, Some(&self.log), &mut self.health, read);
+        match failure {
+            // The revert failed and replaying the log could not restore the document either.
+            Some(f) if self.health.broken => Err(ModelError::CorruptLog(format!("{f}; reopen the project"))),
+            _ => result,
+        }
     }
 
     /// Validate and append an edit.
@@ -993,6 +999,25 @@ mod tests {
         d.check_index().unwrap();
         // The ledger carries on.
         l.commit(Author::User, "edit", three_ops()).unwrap();
+    }
+
+    #[test]
+    fn with_applied_reports_a_rollback_it_could_not_repair_at_once() {
+        // A log that no longer replays, so a failed revert cannot be repaired from it.
+        let mut l = ledger();
+        let mut unreplayable = l.log.first().cloned().unwrap();
+        unreplayable.seq = 2;
+        unreplayable.ops = vec![Op::RemoveLayer { id: LayerId(99), layer: Layer { name: "gone".into() } }];
+        l.log.push(unreplayable);
+        hooks::FAIL_REVERT.with(|c| c.set(true));
+        let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
+        hooks::FAIL_REVERT.with(|c| c.set(false));
+        match r {
+            Ok(r) => assert!(matches!(r, Err(ModelError::CorruptLog(_))), "{r:?}"),
+            Err(_) => assert!(std::hint::black_box(cfg!(debug_assertions)), "only the debug assertion may panic"),
+        }
+        assert!(l.health.broken);
+        assert!(matches!(l.with_applied(&three_ops(), |_| ()), Err(ModelError::CorruptLog(_))));
     }
 
     #[test]

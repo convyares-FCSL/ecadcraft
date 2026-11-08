@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Document, End, Form, ItemKind, Primitive, Subject};
+use crate::doc::{Document, End, Form, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
 use crate::id::{ConductorId, PageId, RepresentationId, TerminalId};
 
@@ -17,24 +17,46 @@ use crate::id::{ConductorId, PageId, RepresentationId, TerminalId};
 pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, RepresentationId, Pt)> {
     let mut out = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
-        let Subject::Component(component) = r.subject else { continue };
-        match r.form {
-            Form::Drawn => out.extend(r.connection_points.iter().map(|(t, p)| (*t, *rid, *p))),
-            Form::Symbol => {
-                let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind)
-                else {
-                    continue;
-                };
-                let Some(def) = doc.definitions.get(&inst.definition) else { continue };
-                for (tid, t) in doc.terminals_of(component) {
-                    if let Some(td) = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k)) {
-                        out.push((tid, *rid, inst.placement.apply(td.at)));
-                    }
-                }
-            }
-        }
+        out.extend(shown_by(doc, r).into_iter().map(|(t, p)| (t, *rid, p)));
     }
     out
+}
+
+/// Where `terminal` is shown on `page`: the first entry for it in [`terminal_positions`], found
+/// through its component's representations only, so the cost does not grow with the page or
+/// the project.
+///
+/// # Semantics
+/// The same answer as `terminal_positions(doc, page)`'s first entry for `terminal` on any valid
+/// document, where a representation shows only its own component's terminals (a drawn
+/// representation's connection points are its component's terminals). Both read a
+/// representation through the same helper, so they cannot drift apart.
+pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
+    let component = doc.terminals.get(&terminal)?.component;
+    doc.representations_of(Subject::Component(component))
+        .filter(|(_, r)| r.page == page)
+        .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
+}
+
+/// The terminals a component representation shows, with their positions, in the order
+/// [`terminal_positions`] lists them.
+fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
+    let Subject::Component(component) = r.subject else { return Vec::new() };
+    match r.form {
+        Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
+        Form::Symbol => {
+            let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
+                return Vec::new();
+            };
+            let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
+            doc.terminals_of(component)
+                .filter_map(|(tid, t)| {
+                    let td = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k))?;
+                    Some((tid, inst.placement.apply(td.at)))
+                })
+                .collect()
+        }
+    }
 }
 
 /// The route of a conductor on a page: its first route item's path.

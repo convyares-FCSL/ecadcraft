@@ -25,7 +25,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::{Mapped, Project};
 use crate::slash::{self, MAX_CABLE_MEMBERS};
-use crate::translate::terminal_at;
+use crate::translate::ShownOnce;
 use crate::views::{self, View};
 
 /// The commands this crate adds.
@@ -310,10 +310,11 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
             },
         ];
         // Ends that land on a terminal attach, resolved now and recorded (TX-01).
-        let doc = p.ledger.document();
+        // The page's terminal positions are listed once for both ends (brief 014).
+        let mut shown = ShownOnce::new(p.ledger.document(), page);
         let mut attached = Vec::new();
         for (end, at) in [(End::A, pts.first().copied()), (End::B, pts.last().copied())] {
-            if let Some(t) = at.and_then(|at| terminal_at(doc, page, at, p.tolerance)) {
+            if let Some(t) = at.and_then(|at| shown.terminal_at(at, p.tolerance)) {
                 ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(t) });
                 attached.push(json!({"end": format!("{end:?}"), "terminal": t.hex()}));
             }
