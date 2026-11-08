@@ -19,6 +19,11 @@ ecad-file = { path = "crates/ecad-file" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
+# Container v2 (brief 021, EEP-0005 §2.3): the redb version is pinned exactly; changing it is a
+# deliberate change with its own review and tests, never a routine update.
+redb = "=4.5.0"
+# Zstandard in pure Rust (overseer, 2026-11-08: ruzstd unless measured unfit; bench in ecad-bench).
+ruzstd = "=0.9.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
