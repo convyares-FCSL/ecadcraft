@@ -25,6 +25,10 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
 | `ecad.reference` | 6 (magenta) | `#FF00FF` | A linked cable reference: its ring and its derived `/page.column` text (010); same colour as `ecad.cable` |
 | `ecad.orphan` | 1 (red) | `#FF0000` | A cable reference with no other end: ring and `/?` text (010), the concept spec's red orphan marker |
+| `ecad.wire-label` | 7 (white), ByLayer on `ECAD-WIRE-LABELS` | `#FFFFFF` | Conductor labels: wire number, cross-section, colour (022) |
+| `ecad.check-error` | 1 (red) | `#FF0000` | Checks error glyph and go-to ring (022); same as `ecad.orphan` |
+| `ecad.check-warning` | 2 (yellow) | `#FFFF00` | Checks warning glyph and go-to ring (022) |
+| `ecad.continuation` | ByLayer | — | Continuation arrow (022), drawn on its symbol's layer |
 
 Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
 does not recolour stored objects. Computed drawing that is not stored (the fan view of a cable) is
@@ -72,6 +76,7 @@ work. Brief 010's values are millimetres: in an inch project they are divided by
 | `ecad.term-label-height` | 2.0 mm | Connection point labels of a symbol (018) |
 | `ecad.tag-gap` | 2.0 mm | Gap between a symbol's box and its tag (018) |
 | `ecad.symbol-grid` | 5 mm | Connection point grid of the starter symbols; snap and grid spacing of ECAD pages (018) |
+| `ecad.junction-size` | 0.5 mm radius, lineweight 0.50 mm | Junction dot (022) |
 
 ## Line weights of computed drawing
 
