@@ -67,13 +67,15 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     pull requests into `main`, on pushes to `main`, and by hand (`workflow_dispatch`). Run wasm
     locally only when a change could affect it (dependencies, `cfg(target_arch)`, platform code in
     `ecad-model`/`ecad-store`/`ecad-file`).
-- **Builds (owner decision, 2026-11-01):** to stop every agent compiling from scratch, agents that
-  run one after another share one build folder, even from their own git worktree:
-  `CARGO_TARGET_DIR=C:/dev/ecad-target` for the ECAD workspace and `C:/dev/ecad-target-root` for
-  CADCraft's root workspace, always with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0`. Only an
-  agent that builds while another agent is building at the same time uses its own folder
-  (`C:/dev/ecad-features/_tmp/target-<agent>`), and deletes it when done. Never delete the shared
-  folders.
+- **Builds (owner decision, 2026-11-08, replaces the shared folder of 2026-11-01):** each checkout
+  builds into **its own** folder, so builds running at the same time never mix: leave
+  `CARGO_TARGET_DIR` unset, and cargo uses that checkout's own `ecad/target` (git-ignored). The
+  CADCraft root workspace likewise uses its own `target`. Always set
+  `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0`. A worker and the owner trying the same feature
+  share that feature folder's build, so they never build it at the same time: the worker says when
+  it is done building. A tester's worktree under `_tmp` builds into its own `target` and is deleted
+  with it. The old shared `C:/dev/ecad-target` mixed a stale `ecad-model` into builds from two
+  worktrees (2026-11-08); it is no longer used.
 - **Folders (owner decision, 2026-11-08).** Nothing new goes directly in `C:\dev`:
   - `C:\dev\ecadcraft` is the main checkout, on `dev`. The overseer works here.
   - `C:\dev\ecad-features\<feature>` is the one worktree of a feature branch
@@ -81,10 +83,10 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   - `C:\dev\ecad-features\_tmp\<agent>-<what>` is for anything temporary: a tester's worktree, a
     kept benchmark project, a private build folder, logs. Whoever makes it deletes it when done;
     anything left in `_tmp` may be deleted at any time.
-  - `C:\dev\ecad-target` (shared build) and `C:\dev\ecad-projects` (the owner's projects) stay.
+  - `C:\dev\ecad-projects` (the owner's projects) stays.
 
 ```sh
-# worker (from ecad/), with CARGO_TARGET_DIR=C:/dev/ecad-target
+# worker (from ecad/ in its feature folder), CARGO_TARGET_DIR unset
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo xtask test-changed          # fast tests of the changed crates and their dependents
@@ -92,7 +94,7 @@ cargo xtask patches               # only when files outside ecad/ changed
 ```
 
   When a change touches files outside `ecad/`, the worker also builds and clippies CADCraft's
-  root workspace (`CARGO_TARGET_DIR=C:/dev/ecad-target-root`), and the tester runs the affected
+  root workspace (in its own `target`), and the tester runs the affected
   CADCraft crates' tests.
 - `ecad-model`, `ecad-store` and `ecad-file` must never depend on a `cadcraft-*` crate. Only
   `ecad-cadcraft` touches the engine.

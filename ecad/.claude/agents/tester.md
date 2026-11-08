@@ -20,9 +20,8 @@ Do:
    `--all-features` where features matter); add `-- --include-ignored` for the slow set of the
    crates the change can break (`#[ignore = "slow: …"]`); the whole workspace only when shared
    code (`ecad-model`, `ecad-file`, `ecad-store`) or CADCraft changed. On a re-test after a fix round, run only what failed plus the crate that
-   changed. The full suite runs at the QA gate (the PR from `dev` into `main`). Use the shared build folder
-   (`CARGO_TARGET_DIR=C:/dev/ecad-target`) even from your own worktree; use a folder of your own
-   only if another agent is building at the same time.
+   changed. The full suite runs at the QA gate (the PR from `dev` into `main`). Build in your own
+   worktree's `target` (leave `CARGO_TARGET_DIR` unset; see "Builds" in `ecad/CLAUDE.md`).
 3. Add tests that check the acceptance criteria from the outside: contract tests in
    `tests/<area>_contracts.rs`, and UI tests that drive the egui app by element names and compare
    screenshots against approved reference images where the brief has UI.
