@@ -21,9 +21,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::derive::{CableReference, cable_references, route_ends_by_page};
+use ecad_model::derive::{CableReference, cable_references, cable_references_of, route_ends_by_page};
 use ecad_model::{
-    CableId, ConductorId, Document, End, ItemId, LengthUnit, PageId, Pt, Representation, RepresentationId, Subject,
+    CableId, ConductorId, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, Subject,
+    TerminalId,
 };
 
 pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
@@ -152,8 +153,15 @@ pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(Strin
 
 /// [`marker_text`] with the direction away from the wires (design 010 §6.2's u), which brief
 /// 009's flag points along.
+///
+/// Derives only the references of that end's cable (all a reference's text depends on), so a page
+/// with reference ends costs in proportion to their cables, not to the document (brief 014).
 pub fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
-    cable_references(doc).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
+    let Some(Subject::Cable(cable)) = doc.representations.get(&reference).map(|r| r.subject) else { return None };
+    cable_references_of(doc, &BTreeSet::from([cable]))
+        .into_iter()
+        .find(|r| r.reference == reference)
+        .map(|r| (r.text, r.orphan, r.text_dir))
 }
 
 // The marker of a reference end (flag and text) is drawn by brief 009's `look.rs` only, with the
@@ -477,8 +485,16 @@ pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: Represen
 /// The line added when a transaction left linked references without their other end (design 010
 /// §4.3): `before` are the references that were linked before it.
 pub fn orphaned_line(doc: &Document, before: &BTreeSet<RepresentationId>) -> Option<String> {
-    let now: Vec<CableReference> =
-        cable_references(doc).into_iter().filter(|r| r.orphan && before.contains(&r.reference)).collect();
+    if before.is_empty() {
+        return None;
+    }
+    orphaned_line_in(doc, &cable_references(doc), before)
+}
+
+/// [`orphaned_line`] from references already derived on `doc` (`now`): those of every cable
+/// whose references `before` lists, at least.
+fn orphaned_line_in(doc: &Document, now: &[CableReference], before: &BTreeSet<RepresentationId>) -> Option<String> {
+    let now: Vec<&CableReference> = now.iter().filter(|r| r.orphan && before.contains(&r.reference)).collect();
     match now.as_slice() {
         [] => None,
         [one] => Some(format!(
@@ -493,6 +509,134 @@ pub fn orphaned_line(doc: &Document, before: &BTreeSet<RepresentationId>) -> Opt
 /// The references that are linked (have another end) in `doc`.
 pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
     cable_references(doc).into_iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
+}
+
+// ---------------------------------------------------------------- per commit (brief 014)
+
+/// The cables whose references, or whose drawing at a reference end on any page, `ops` could
+/// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
+/// page, layer, cable, property or settings ops), which means the whole document, as before
+/// brief 014. Worked out on the document before the ops.
+///
+/// # Semantics
+/// What a reference says, and how a cable is drawn at its reference ends, depends only on: the
+/// cable's reference representations and their points; its members' routes (direction of the
+/// text, which pages each member is routed on); its members' end attachments; the cable itself;
+/// and the page order and length unit. So a cable is touched when an op changes or removes an item
+/// of a representation of the cable or of one of its members, links, changes or unlinks such a
+/// representation, or attaches or detaches a member's end. New items, components, terminals,
+/// definitions and conductors are not shown or not members yet, so they touch nothing.
+pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
+    let mut out = BTreeSet::new();
+    let note = |r: &Representation, out: &mut BTreeSet<CableId>| match r.subject {
+        Subject::Cable(k) => {
+            out.insert(k);
+        }
+        Subject::Conductor(w) => out.extend(doc.cables_of(w)),
+        Subject::Component(_) => {}
+    };
+    for op in ops {
+        match op {
+            Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    note(r, &mut out);
+                }
+            }
+            Op::AddItem { .. } => {}
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => note(rep, &mut out),
+            Op::ModifyRepresentation { before, after, .. } => {
+                note(before, &mut out);
+                note(after, &mut out);
+            }
+            Op::AttachEnd { conductor, .. } => out.extend(doc.cables_of(*conductor)),
+            Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+            Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.
+type MemberState = Vec<(ConductorId, Vec<PageId>, [Option<TerminalId>; 2])>;
+
+/// The references of some cables at one moment, and what their reference ends are drawn from, so
+/// that one commit derives them once before and once after (brief 014).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot {
+    /// The cables covered; `None` for every cable.
+    scope: Option<BTreeSet<CableId>>,
+    /// Their references, as [`cable_references`] derives them.
+    refs: Vec<CableReference>,
+    /// Per covered cable with a reference, its members' state (what brief 009's drawing at a
+    /// reference end reads from other pages). Empty for a whole-document snapshot.
+    members: BTreeMap<CableId, MemberState>,
+}
+
+impl Snapshot {
+    /// The references of `scope` (every cable for `None`) in `doc`.
+    pub fn take(doc: &Document, scope: Option<&BTreeSet<CableId>>) -> Snapshot {
+        let refs = match scope {
+            Some(k) => cable_references_of(doc, k),
+            None => cable_references(doc),
+        };
+        let mut members = BTreeMap::new();
+        if scope.is_some() {
+            let with_refs: BTreeSet<CableId> = refs.iter().map(|r| r.cable).collect();
+            for k in with_refs {
+                let list = doc.cables.get(&k).map(|c| c.members.as_slice()).unwrap_or_default();
+                let state: MemberState = list
+                    .iter()
+                    .map(|m| {
+                        let ends = doc.conductors.get(&m.conductor).map(|c| c.ends).unwrap_or([None, None]);
+                        (m.conductor, route_pages(doc, m.conductor), ends)
+                    })
+                    .collect();
+                members.insert(k, state);
+            }
+        }
+        Snapshot { scope: scope.cloned(), refs, members }
+    }
+
+    /// The covered references that are linked (have another end), as [`linked`] lists them.
+    pub fn linked(&self) -> BTreeSet<RepresentationId> {
+        self.refs.iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
+    }
+
+    /// The line of design 010 §4.3 for references linked in `self` (before a transaction) that
+    /// have no other end in `after` (taken with the same scope on `doc`, after it), exactly as
+    /// [`orphaned_line`] gives it: references of cables outside the scope did not change.
+    pub fn orphaned_line(&self, doc: &Document, after: &Snapshot) -> Option<String> {
+        let before = self.linked();
+        if before.is_empty() {
+            return None;
+        }
+        orphaned_line_in(doc, &after.refs, &before)
+    }
+
+    /// The pages whose reference ends may be drawn differently in `after` than in `self`. `None`
+    /// means every page: a whole-document snapshot with any reference before or after (as before
+    /// brief 014). Otherwise, the pages of the references of each covered cable whose references
+    /// or member state changed.
+    pub fn pages_changed(&self, after: &Snapshot) -> Option<BTreeSet<PageId>> {
+        let Some(scope) = &self.scope else {
+            if self.refs.is_empty() && after.refs.is_empty() {
+                return Some(BTreeSet::new());
+            }
+            return None;
+        };
+        let mut pages = BTreeSet::new();
+        for k in scope {
+            let of = |s: &Snapshot| s.refs.iter().filter(|r| r.cable == *k).cloned().collect::<Vec<_>>();
+            let (old, new) = (of(self), of(after));
+            if old != new || self.members.get(k) != after.members.get(k) {
+                pages.extend(old.iter().chain(new.iter()).map(|r| r.page));
+            }
+        }
+        Some(pages)
+    }
 }
 
 /// Hover lines for a reference end (design 010 §8).

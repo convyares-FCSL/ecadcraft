@@ -1146,14 +1146,19 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        let linked = crate::references::linked(self.ledger.document());
+        // References are derived for the cables the ops could touch only (brief 014).
+        let scope = crate::references::cables_touched(self.ledger.document(), &ops);
+        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         self.refresh_pages(pg, Some(command));
-        self.say_orphaned(pg, &linked);
+        let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+            pg.echo(line);
+        }
         Ok(tx)
     }
 
@@ -1355,7 +1360,10 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
-        let linked = crate::references::linked(self.ledger.document());
+        // References are derived for the cables the ops could touch only, once before and once
+        // after the commit (brief 014): a move of a component outside any cable derives none.
+        let scope = crate::references::cables_touched(self.ledger.document(), &t.ops);
+        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
@@ -1373,20 +1381,26 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
-        // A reference text on another open page may name this page's objects (brief 010): those
-        // pages are redrawn from the document too.
-        if !linked.is_empty() || self.ledger.document().representations.values().any(crate::references::is_reference) {
+        // A reference end on another open page may be drawn from this page's objects (brief 010):
+        // those pages are redrawn from the document too, when what they show of the touched
+        // cables changed (every other page when the ops could touch any cable).
+        let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let changed = refs_before.pages_changed(&refs_after);
+        if changed.as_ref().is_none_or(|p| !p.is_empty()) {
             let others: Vec<PageId> = self
                 .pages
                 .iter()
                 .filter(|(p, v)| **p != page && v.uid.is_some() && !v.unavailable)
+                .filter(|(p, _)| changed.as_ref().is_none_or(|c| c.contains(*p)))
                 .map(|(p, _)| *p)
                 .collect();
             for other in others {
                 self.refresh_page(pg, other, Some(c.command), None, false);
             }
         }
-        self.say_orphaned(pg, &linked);
+        if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+            pg.echo(line);
+        }
         for note in &t.notes {
             pg.echo(note.clone());
         }
