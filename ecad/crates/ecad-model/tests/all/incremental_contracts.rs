@@ -226,7 +226,7 @@ fn applicable(b: &mut Base) -> Vec<Op> {
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
             before: ProjectSettings::default(),
-            after: ProjectSettings { length_unit: LengthUnit::Inch },
+            after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
         Op::NameVersion { name: "w".into(), at: 2 },
         Op::UnnameVersion { name: "v".into(), at: 1 },
@@ -270,7 +270,7 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
-            before: ProjectSettings { length_unit: LengthUnit::Inch },
+            before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
         Op::NameVersion { name: "v".into(), at: 1 },
@@ -588,6 +588,27 @@ impl Gen {
                 connection_points: Default::default(),
             };
         }
+        // Sometimes a symbol of any definition with connection points of the component's own
+        // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
+        if self.rng.chance(30)
+            && let Some((cid, _)) = doc.components.iter().nth(self.rng.below(doc.components.len()))
+            && let Some(t) = doc.terminals_of(*cid).map(|(t, _)| t).next()
+            && let Some((iid, it)) = doc
+                .items
+                .iter()
+                .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
+        {
+            let mut connection_points = std::collections::BTreeMap::new();
+            connection_points.insert(t, Pt::new(0.0, 10.0));
+            return Representation {
+                subject: Subject::Component(*cid),
+                page: it.page,
+                form: Form::Symbol,
+                role: "no".into(),
+                items: vec![*iid],
+                connection_points,
+            };
+        }
         let subject = match self.rng.below(3) {
             0 => Subject::Component(self.comp()),
             1 => Subject::Conductor(self.cond()),
@@ -826,7 +847,12 @@ impl Gen {
                 Some(id) => {
                     let current = doc.components.get(&id).and_then(|c| c.properties.get("tag").cloned());
                     let before = if spoil { Some("spoilt".into()) } else { current };
-                    let after = if self.rng.chance(50) { None } else { Some(format!("K{}", self.rng.below(9))) };
+                    // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
+                    let after = match self.rng.below(3) {
+                        0 => None,
+                        1 => Some(format!("K{}", self.rng.below(9))),
+                        _ => Some(format!("-K0{}", self.rng.below(9))),
+                    };
                     Op::SetProperty { object: ObjectRef::Component(id), key: "tag".into(), before, after }
                 }
                 None => Op::CreateComponent { id: fresh_in!(self, comps), component: Component::default() },
@@ -841,10 +867,16 @@ impl Gen {
             },
             _ => match self.rng.below(3) {
                 0 => {
-                    let before =
-                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch } } else { doc.settings.clone() };
+                    let before = if spoil {
+                        ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() }
+                    } else {
+                        doc.settings.clone()
+                    };
                     let after = ProjectSettings {
                         length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
+                        // Brief 018's tag settings change with it sometimes.
+                        tag_padding: if self.rng.chance(30) { 3 } else { ecad_model::DEFAULT_TAG_PADDING },
+                        ..ProjectSettings::default()
                     };
                     Op::SetProjectSettings { before, after }
                 }

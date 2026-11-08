@@ -18,8 +18,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op,
-    Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger,
+    LengthUnit, Op, Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
@@ -40,6 +40,10 @@ pub enum Mapped {
     /// The derived text of a cable reference (brief 010), by its reference representation:
     /// computed, not an item. Erasing it erases its reference; other edits are refused.
     RefText(RepresentationId),
+    /// A device's derived tag text or terminal label beside one of its symbols (brief 018), by
+    /// the symbol representation: computed, not an item. Erasing it erases its representation;
+    /// other edits of it alone are refused.
+    Tag(RepresentationId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -60,6 +64,8 @@ pub struct HandleMap {
     quiet: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
+    /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
+    tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
 }
 
 impl HandleMap {
@@ -134,6 +140,18 @@ impl HandleMap {
         self.refs.insert(reference, h);
         self.by_handle.insert(h, Mapped::RefText(reference));
     }
+    /// The handle of a derived tag text or terminal label.
+    pub fn tag_text(&self, rep: RepresentationId, of: crate::devices::TextOf) -> Option<Handle> {
+        self.tags.get(&(rep, of)).copied()
+    }
+    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
+        self.tags.insert((rep, of), h);
+        self.by_handle.insert(h, Mapped::Tag(rep));
+    }
+    /// Every handle of a tag text or terminal label.
+    pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.tags.values().copied()
+    }
     /// Every handle of a reference text.
     pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.refs.values().copied()
@@ -150,15 +168,18 @@ impl HandleMap {
     }
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
-        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len()
+        self.by_handle.len()
+            == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len() + self.tags.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
             && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
+            && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
     }
 }
 
-/// A page and, when it is open, the engine document showing it.
+/// A page and, when it is the active page, the engine document showing it (the project's one
+/// page window, brief 016: exactly one page is shown and editable at a time).
 #[derive(Debug, Clone, Default)]
 pub struct PageView {
     pub uid: Option<u64>,
@@ -167,10 +188,30 @@ pub struct PageView {
     pub last: Option<Arc<Drawing>>,
     /// Projection and rebuild both failed: the page must be closed and reopened (PROJ-02).
     pub unavailable: bool,
-    /// A commit on another page changed what this page shows (its reference texts, brief 010),
-    /// and the page was not redrawn then: only the page being shown is redrawn on a commit (owner,
-    /// 2026-11-08). It is redrawn when it comes to the front ([`ProjectHandle::refresh_shown`]).
-    pub stale: bool,
+}
+
+/// One page as the Project panel lists it ([`Project::page_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageRow {
+    pub id: PageId,
+    /// The number the page is shown with ([`crate::references::page_number`]).
+    pub number: String,
+    pub title: String,
+    /// Its projection failed (PROJ-02).
+    pub unavailable: bool,
+}
+
+/// How many recent changes [`Project::changes_since`] can answer for.
+const CHANGE_LOG: usize = 64;
+
+/// One change the project went through (a transaction, an undo or redo, a view switch): its
+/// number and the pages whose drawing it could change (`None`: any page). Session only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    pub n: u64,
+    pub pages: Option<BTreeSet<PageId>>,
+    /// What it could change in the Devices list ([`crate::device_list::devices_touched`]).
+    pub devices: crate::device_list::DeviceTouch,
 }
 
 /// Injected failures for the experiment (never set in normal use).
@@ -319,6 +360,25 @@ pub struct Project {
     /// default, `Author::Agent(<client name>)` when an agent drives the session (brief 011). A
     /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
     pub author: Author,
+    /// Closing the page window leaves the project open with no active page (design 016 §4.1)
+    /// instead of closing the project. Off by default (tests, MCP); the trial turns it on and off
+    /// again while it closes the project or quits, so unsaved work is always asked about.
+    pub keep_open: bool,
+    /// The page shown in the page window, if any.
+    active: Option<PageId>,
+    /// Each page's views as the user left them, for this session only (design 016 §4.1).
+    page_views: HashMap<PageId, Vec<(cadcraft_engine::doc::Space, cadcraft_engine::View)>>,
+    /// The last [`CHANGE_LOG`] changes, oldest first.
+    changes: std::collections::VecDeque<Change>,
+    /// Number of the last change (0: none yet).
+    change_count: u64,
+    /// The highest number each tag prefix has had (brief 018), read from the log as it grows.
+    pub(crate) tag_high: crate::devices::TagHigh,
+    /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
+    page_list_version: u64,
+    /// What the last placement in this session placed (symbol key, device), for the prompts'
+    /// defaults (design 018 §5.3).
+    pub(crate) last_placed: Option<(String, ComponentId)>,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -405,7 +465,7 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
     }
 }
 
-fn base_drawing() -> Drawing {
+pub(crate) fn base_drawing() -> Drawing {
     let mut d = Drawing::new_metric();
     if d.layer(MARKER_LAYER).is_none() {
         let mut l = CLayer::new(MARKER_LAYER);
@@ -413,6 +473,15 @@ fn base_drawing() -> Drawing {
         l.color = cadcraft_engine::doc::color::Color::Index(8);
         d.layers.push(l);
     }
+    // The starter symbols' terminals lie on a 5 mm grid (design 018 §4, `ecad.symbol-grid`): snap
+    // and grid spacing of an ECAD page follow it.
+    let grid = cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(
+        crate::symbols::SYMBOL_GRID_MM,
+        crate::symbols::SYMBOL_GRID_MM,
+        0.0,
+    ));
+    d.header.set("SNAPUNIT", grid.clone());
+    d.header.set("GRIDUNIT", grid);
     d
 }
 
@@ -490,6 +559,9 @@ pub fn project_page_with(
     }
     if d.layer(crate::views::LAYER).is_none() {
         d.layers.push(cables_layer());
+    }
+    if d.layer(crate::devices::TAG_LAYER).is_none() {
+        d.layers.push(CLayer::new(crate::devices::TAG_LAYER));
     }
     for h in prev.handles() {
         d.bump_handseed(h);
@@ -576,6 +648,12 @@ pub fn project_page_with(
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
+    // Device tags and terminal labels (brief 018): derived on every draw, never stored.
+    for t in crate::devices::texts_on_page(doc, page) {
+        let h = prev.tag_text(t.rep, t.of).unwrap_or_else(|| d.new_handle());
+        ents.push(crate::devices::text_entity(&t, h));
+        map.insert_tag_text(t.rep, t.of, h);
+    }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
     for e in ents {
@@ -619,7 +697,7 @@ impl Project {
                     // The length unit is recorded at creation (proposal §20.13).
                     Op::SetProjectSettings {
                         before: ProjectSettings::default(),
-                        after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                        after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
                     },
                 ],
                 now_ms(),
@@ -650,9 +728,19 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            keep_open: false,
+            active: None,
+            page_views: HashMap::new(),
+            changes: std::collections::VecDeque::new(),
+            change_count: 0,
+            tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         // Automated tests (the test store) never touch the user's settings unless they choose a
         // folder; a new project has no remembered views to read.
         if persistence != Persistence::TestStore {
@@ -707,9 +795,19 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            keep_open: false,
+            active: None,
+            page_views: HashMap::new(),
+            changes: std::collections::VecDeque::new(),
+            change_count: 0,
+            tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         if let Some(first) = pages.first() {
             p.open_page(&mut Pages(s), *first)?;
         }
@@ -794,9 +892,19 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            keep_open: false,
+            active: None,
+            page_views: HashMap::new(),
+            changes: std::collections::VecDeque::new(),
+            change_count: 0,
+            tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         p.views = views;
         p.settings = settings;
         let head = p.ledger.head();
@@ -905,9 +1013,10 @@ impl Project {
         // IDs no longer at the head are dropped from what is remembered.
         let doc = self.ledger.document();
         self.views.retain(|k| doc.cables.contains_key(k));
-        // A view is drawn on every page showing the cable: the page in front is redrawn, every
-        // other open page is redrawn when it comes to the front.
-        self.redraw_front(pg, Some("cableview"), None);
+        // A view is drawn on every page showing the cable: the active page is redrawn, every
+        // other page when it becomes active.
+        self.record_change(None, crate::device_list::DeviceTouch::default());
+        self.redraw_window(pg, Some("cableview"));
         (true, self.settings.store(self.id, &self.views))
     }
 
@@ -946,15 +1055,117 @@ impl Project {
         self.pages.values().filter(|v| v.uid.is_some()).count()
     }
 
+    /// The page window's title: `demo - page 2: Field`.
     fn page_title(&self, page: PageId) -> String {
-        let t = self.ledger.document().pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
-        format!("{} - page {t}", self.name)
+        let doc = self.ledger.document();
+        let t = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+        format!("{} - page {}: {t}", self.name, crate::references::page_number(doc, page))
     }
 
-    /// Open `page` as a CADCraft document (or switch to it), projecting it from the document.
+    /// The page shown in the page window (the active page), if the window is open.
+    pub fn active_page(&self) -> Option<PageId> {
+        self.active.filter(|p| self.pages.get(p).is_some_and(|v| v.uid.is_some()))
+    }
+
+    /// The page window: the active page and the engine document showing it.
+    pub fn window(&self) -> Option<(PageId, u64)> {
+        let page = self.active_page()?;
+        Some((page, self.pages.get(&page)?.uid?))
+    }
+
+    /// The Project panel's rows (brief 016): every page in page order with the number it is shown
+    /// with and its title. Reads `page_order` and page titles only: O(pages), never O(items).
+    pub fn page_rows(&self) -> Vec<PageRow> {
+        let doc = self.ledger.document();
+        doc.page_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| PageRow {
+                id: *id,
+                number: (i + 1).to_string(),
+                title: doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                unavailable: self.pages.get(id).is_some_and(|v| v.unavailable),
+            })
+            .collect()
+    }
+
+    /// A number that changes exactly when [`Project::page_rows`] could differ (update map of the
+    /// Project panel's rows, brief 016): a page added or removed (rename and move are a remove and
+    /// an add, [`crate::device_list::DeviceTouch::pages`]), or a page becoming available or
+    /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
+    /// switches) leaves it alone, so the panel keeps its rows.
+    pub fn page_list_version(&self) -> u64 {
+        self.page_list_version
+    }
+
+    /// Number of the last change the project went through (a transaction, an undo or redo, a view
+    /// switch); 0 before the first. Cheap: callers compare it every frame.
+    pub fn change_count(&self) -> u64 {
+        self.change_count
+    }
+
+    /// The pages whose drawing the changes after change `n` could have changed: `Some(empty)`
+    /// when none, `None` when any page could have changed or the changes are too old to tell.
+    pub fn changes_since(&self, n: u64) -> Option<BTreeSet<PageId>> {
+        if n >= self.change_count {
+            return Some(BTreeSet::new());
+        }
+        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+            return None;
+        }
+        let mut out = BTreeSet::new();
+        for c in self.changes.iter().filter(|c| c.n > n) {
+            out.extend(c.pages.as_ref()?.iter().copied());
+        }
+        Some(out)
+    }
+
+    /// What the changes after change `n` could change in the Devices list, together; `None` when
+    /// the changes are too old to tell (rebuild the list).
+    pub fn device_changes_since(&self, n: u64) -> Option<crate::device_list::DeviceTouch> {
+        let mut out = crate::device_list::DeviceTouch::default();
+        if n >= self.change_count {
+            return Some(out);
+        }
+        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+            return None;
+        }
+        for c in self.changes.iter().filter(|c| c.n > n) {
+            out.components.extend(c.devices.components.iter().copied());
+            out.pages |= c.devices.pages;
+            out.settings |= c.devices.settings;
+        }
+        Some(out)
+    }
+
+    /// Bring the tag numbering up to date with the log.
+    fn catch_up_tags(&mut self) {
+        self.tag_high.catch_up(&self.ledger);
+    }
+
+    /// Record one change and the pages it could change.
+    ///
+    /// The tag numbering ([`crate::devices::TagHigh`]) reads the transactions this change added,
+    /// so reads (prompts, previews, pick lists) never read the log.
+    fn record_change(&mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch) {
+        self.tag_high.catch_up(&self.ledger);
+        if devices.pages {
+            self.page_list_version += 1;
+        }
+        self.change_count += 1;
+        self.changes.push_back(Change { n: self.change_count, pages, devices });
+        while self.changes.len() > CHANGE_LOG {
+            self.changes.pop_front();
+        }
+    }
+
+    /// Make `page` the active page (brief 016): it is projected into the project's one page window,
+    /// which is opened if it is closed. The page shown before keeps its view for this session; a
+    /// page shown before gets its view back, one shown for the first time is zoomed to its
+    /// extents. A page already active is only brought to the front.
     ///
     /// # Errors
-    /// Unknown page or projection failure.
+    /// Unknown page or projection failure; the page shown before stays shown.
     pub(crate) fn open_page(&mut self, pg: &mut Pages<'_>, page: PageId) -> Result<u64, String> {
         if !self.ledger.document().pages.contains_key(&page) {
             return Err(format!("page {page} does not exist"));
@@ -962,16 +1173,58 @@ impl Project {
         if let Some(uid) = self.pages.get(&page).and_then(|v| v.uid)
             && pg.activate(uid)
         {
-            self.refresh_if_stale(pg, page);
             return Ok(uid);
         }
         let (d, map) = self.project(page, &base_drawing(), &HandleMap::default())?;
+        let empty = d.model.is_empty();
         let title = self.page_title(page);
-        let owner = self.owner_ref().ok_or("project is not shared")?;
-        let uid = pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?;
-        let last = pg.doc(uid).map(|st| st.doc.clone());
-        let view = self.pages.entry(page).or_default();
-        *view = PageView { uid: Some(uid), map, last, unavailable: false, stale: false };
+        let window = self.window().filter(|(_, uid)| pg.doc(*uid).is_some());
+        let uid = match window {
+            Some((old, uid)) => {
+                let Some(st) = pg.doc_mut(uid) else { return Err("no document".into()) };
+                let left = std::mem::take(&mut st.views);
+                st.doc = Arc::new(d);
+                st.title = title.clone();
+                st.selection.clear();
+                st.previous_selection.clear();
+                st.space = cadcraft_engine::doc::Space::Model;
+                st.mspace = None;
+                st.view_history.clear();
+                st.undo.clear();
+                st.redo.clear();
+                st.block_edit = None;
+                st.revision += 1;
+                self.page_views.insert(old, left);
+                if let Some(v) = self.pages.get_mut(&old) {
+                    *v = PageView::default();
+                }
+                pg.activate(uid);
+                uid
+            }
+            None => {
+                let owner = self.owner_ref().ok_or("project is not shared")?;
+                pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?
+            }
+        };
+        let remembered = self.page_views.get(&page).cloned();
+        let has_view = remembered.is_some();
+        let last = match pg.doc_mut(uid) {
+            Some(st) => {
+                if let Some(views) = remembered {
+                    st.views = views;
+                }
+                Some(st.doc.clone())
+            }
+            None => None,
+        };
+        if !has_view && !empty {
+            pg.zoom_extents();
+        }
+        let was = self.pages.insert(page, PageView { uid: Some(uid), map, last, unavailable: false });
+        if was.is_some_and(|v| v.unavailable) {
+            self.page_list_version += 1;
+        }
+        self.active = Some(page);
         self.events.record(EventKind::PageOpened, None, self.ledger.head(), Some(page), title);
         self.sync_saved(pg);
         Ok(uid)
@@ -1092,6 +1345,8 @@ impl Project {
                     // Reference texts are derived too (brief 010): moving a reference point or a
                     // member route moves or rewrites them.
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
+                    // Tag texts and terminal labels follow their symbols (brief 018).
+                    amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1117,8 +1372,10 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = map;
                     v.last = Some(st.doc.clone());
-                    v.unavailable = false;
-                    v.stale = false;
+                    if v.unavailable {
+                        v.unavailable = false;
+                        self.page_list_version += 1;
+                    }
                 }
             }
             Err(_) => {
@@ -1129,8 +1386,10 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = HandleMap::default();
                     v.last = Some(st.doc.clone());
-                    v.unavailable = true;
-                    v.stale = false;
+                    if !v.unavailable {
+                        v.unavailable = true;
+                        self.page_list_version += 1;
+                    }
                 }
                 pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
             }
@@ -1138,36 +1397,13 @@ impl Project {
     }
 
     /// After a transaction that is not a drawing commit (an ECAD command's JSON form, undo, redo)
-    /// or a view switch: redraw the page in front, and mark every other open page in `touched`
-    /// (every other open page for `None`) stale, to be redrawn when it comes to the front (owner,
-    /// 2026-11-08). With no page of this project in front, nothing is redrawn now.
-    pub(crate) fn redraw_front(
-        &mut self,
-        pg: &mut Pages<'_>,
-        command: Option<&str>,
-        touched: Option<&BTreeSet<PageId>>,
-    ) {
-        let front = pg.front_uid().and_then(|u| self.page_of(u));
-        let open: Vec<PageId> =
-            self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
-        for page in open {
-            if Some(page) == front {
-                self.refresh_page(pg, page, command, None, false);
-            } else if touched.is_none_or(|t| t.contains(&page))
-                && let Some(v) = self.pages.get_mut(&page)
-            {
-                v.stale = true;
-            }
+    /// or a view switch: redraw the active page, the only page drawn (brief 016). Other pages are
+    /// projected when they become active, so nothing else is marked or redrawn.
+    pub(crate) fn redraw_window(&mut self, pg: &mut Pages<'_>, command: Option<&str>) {
+        if let Some(page) = self.active_page().filter(|p| self.pages.get(p).is_some_and(|v| !v.unavailable)) {
+            self.refresh_page(pg, page, command, None, false);
         }
         self.sync_saved(pg);
-    }
-
-    /// Redraw `page` if a commit on another page left it stale ([`PageView::stale`]).
-    pub(crate) fn refresh_if_stale(&mut self, pg: &mut Pages<'_>, page: PageId) {
-        if self.pages.get(&page).is_some_and(|v| v.stale && v.uid.is_some() && !v.unavailable) {
-            self.refresh_page(pg, page, None, None, false);
-            self.sync_saved(pg);
-        }
     }
 
     /// Commit ECAD-made ops (Path A) and refresh the open pages.
@@ -1191,6 +1427,7 @@ impl Project {
         // References are derived for the cables the ops could touch only (brief 014).
         let scope = crate::references::cables_touched(self.ledger.document(), &ops);
         let pages = pages_touched(self.ledger.document(), &ops);
+        let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
@@ -1198,7 +1435,8 @@ impl Project {
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        self.redraw_front(pg, Some(command), touched(pages, refs_before.pages_changed(&refs_after)).as_ref());
+        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices);
+        self.redraw_window(pg, Some(command));
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
@@ -1364,7 +1602,9 @@ impl DocumentOwner for Project {
             self.restore(pg, c.uid, page);
             return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
+        self.tag_high.catch_up(&self.ledger);
         let t = translate::translate(&mut translate::Ctx {
+            tags: &mut self.tag_high,
             ledger: &mut self.ledger,
             page,
             map: &view.map,
@@ -1385,8 +1625,14 @@ impl DocumentOwner for Project {
         };
         if t.ops.is_empty() {
             // Only differences that are not recorded (header variables such as the current layer).
+            // A new draw order (TEXTTOFRONT, DRAWORDER) is not recorded either: the page is drawn
+            // in the projection's order again (brief 018 put derived texts on every page).
+            let reordered = !now.model.iter().map(|e| e.handle).eq(last.model.iter().map(|e| e.handle));
             if let Some(v) = self.pages.get_mut(&page) {
                 v.last = Some(now);
+            }
+            if reordered {
+                self.refresh_page(pg, page, Some(c.command), None, false);
             }
             self.events.record(EventKind::NoChange, Some(c.command), head, Some(page), "");
             return Verdict::Accept;
@@ -1395,6 +1641,7 @@ impl DocumentOwner for Project {
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
         let scope = crate::references::cables_touched(self.ledger.document(), &t.ops);
+        let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
@@ -1413,17 +1660,15 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
-        // A reference end on another open page may be drawn from this page's objects (brief 010).
-        // Only the page being shown is redrawn on a commit (owner, 2026-11-08): another open page
-        // whose reference ends the commit changed (every other page when the ops could touch any
-        // cable) is marked stale and redrawn when it comes to the front.
+        // A reference end on another page may be drawn from this page's objects (brief 010). Only
+        // the active page is drawn (brief 016); the change log says which other pages changed,
+        // for a preview of one of them.
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        let changed = refs_before.pages_changed(&refs_after);
-        for (p, v) in self.pages.iter_mut() {
-            if *p != page && v.uid.is_some() && !v.unavailable && changed.as_ref().is_none_or(|c| c.contains(p)) {
-                v.stale = true;
-            }
-        }
+        let changed = refs_before.pages_changed(&refs_after).map(|mut c| {
+            c.insert(page);
+            c
+        });
+        self.record_change(changed, devices);
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
@@ -1490,19 +1735,24 @@ impl DocumentOwner for Project {
     }
 
     fn close_needs_prompt(&self, _uid: u64) -> bool {
-        // Closing a page tab never prompts; closing the last open page closes the project
-        // (experiment choice, proposal §18.4), which prompts when unsaved.
-        self.unsaved() && self.open_pages() <= 1
+        // Closing the page window closes the project (experiment choice, proposal §18.4), which
+        // prompts when unsaved; with `keep_open` (the trial, design 016 §4.1) it only hides the
+        // page and the project stays open, so nothing is lost and nothing is asked.
+        self.unsaved() && self.open_pages() <= 1 && !self.keep_open
     }
 
-    fn closed(&mut self, _s: &mut Session, uid: u64) -> bool {
+    fn closed(&mut self, s: &mut Session, uid: u64) -> bool {
         if let Some(page) = self.page_of(uid) {
+            // The page's view is remembered for when it is shown again (design 016 §4.1).
+            if let Some(st) = s.docs.iter().find(|d| d.uid == uid) {
+                self.page_views.insert(page, st.views.clone());
+            }
             if let Some(v) = self.pages.get_mut(&page) {
                 *v = PageView::default();
             }
             self.events.record(EventKind::PageClosed, Some("close"), self.ledger.head(), Some(page), "");
         }
-        let done = self.open_pages() == 0;
+        let done = self.open_pages() == 0 && !self.keep_open;
         if done {
             // The project is closed: let go of its file and writer lock.
             self.file.release();
@@ -1598,6 +1848,9 @@ impl Project {
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let scope = crate::references::cables_touched(self.ledger.document(), &ops);
         let pages = pages_touched(self.ledger.document(), &ops);
+        let order_before = self.ledger.document().page_order.clone();
+        let drawn = pages_named(&ops);
+        let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let r = if undo {
             self.ledger.undo_at(self.author.clone(), now_ms())
@@ -1610,7 +1863,22 @@ impl Project {
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-                self.redraw_front(pg, Some(command), touched(pages, refs_before.pages_changed(&refs_after)).as_ref());
+                let target = front_after_history(
+                    &order_before,
+                    &self.ledger.document().page_order,
+                    Some(&drawn),
+                    self.active_page(),
+                );
+                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices);
+                match target {
+                    // The page the undo or redo changed comes to the front, so the change is seen
+                    // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
+                    Some(page) if self.open_page(pg, page).is_ok() => {
+                        let words = crate::references::page_words(self.ledger.document(), page);
+                        pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
+                    }
+                    _ => self.redraw_window(pg, Some(command)),
+                }
                 if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
                     pg.echo(line);
                 }
@@ -1651,10 +1919,69 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
             _ => return None,
         }
     }
     Some(out)
+}
+
+/// The pages whose drawn objects `ops` add, change or remove (items and representations): where
+/// an undo or redo of them shows. Other ops (subjects, attachments, cables, properties) are drawn
+/// through those objects or nowhere, so they name no page.
+pub(crate) fn pages_named(ops: &[Op]) -> BTreeSet<PageId> {
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
+                out.insert(item.page);
+            }
+            Op::ModifyItem { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                out.insert(rep.page);
+            }
+            Op::ModifyRepresentation { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The page an undo or redo brings to the front (design 016 §4.3), or `None` to stay: a page it
+/// adds; the page before the active page when it removes the active page (else the first page);
+/// otherwise, when it changed pages that do not include the active page, the first of them in
+/// page order. Rename and move (a page removed and added again) stay; so does a change that could
+/// be on any page (`touched` `None`), and reference texts changing elsewhere never switch.
+pub(crate) fn front_after_history(
+    before: &[PageId],
+    after: &[PageId],
+    touched: Option<&BTreeSet<PageId>>,
+    active: Option<PageId>,
+) -> Option<PageId> {
+    if let Some(added) = after.iter().find(|p| !before.contains(p)) {
+        return Some(*added);
+    }
+    if let Some(a) = active
+        && !after.contains(&a)
+    {
+        let at = before.iter().position(|p| *p == a).unwrap_or(0);
+        let earlier = before.get(..at).unwrap_or_default().iter().rev().find(|p| after.contains(p));
+        return earlier.or(after.first()).copied();
+    }
+    let touched = touched?;
+    if active.is_some_and(|a| touched.contains(&a)) {
+        return None;
+    }
+    after.iter().find(|p| touched.contains(p)).copied()
 }
 
 /// `pages` and `refs` together; `None` (every page) when either is.
@@ -1662,4 +1989,31 @@ fn touched(pages: Option<BTreeSet<PageId>>, refs: Option<BTreeSet<PageId>>) -> O
     let (mut a, b) = (pages?, refs?);
     a.extend(b);
     Some(a)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Design 016 section 4.3, table-driven: which page an undo or redo brings to the front.
+    #[test]
+    fn the_page_an_undo_or_redo_brings_to_the_front() {
+        let [a, b, c] = [PageId(1), PageId(2), PageId(3)];
+        let set = |p: &[PageId]| p.iter().copied().collect::<BTreeSet<_>>();
+        let cases: &[(&str, &[PageId], &[PageId], Option<BTreeSet<PageId>>, Option<PageId>, Option<PageId>)] = &[
+            ("edit on the active page stays", &[a, b], &[a, b], Some(set(&[a])), Some(a), None),
+            ("edit on another page switches", &[a, b], &[a, b], Some(set(&[b])), Some(a), Some(b)),
+            ("first touched in page order", &[a, b, c], &[a, b, c], Some(set(&[c, b])), Some(a), Some(b)),
+            ("nothing drawn changed stays", &[a, b], &[a, b], Some(set(&[])), Some(a), None),
+            ("unknown pages stay", &[a, b], &[a, b], None, Some(a), None),
+            ("a page added becomes active", &[a, b], &[a, b, c], Some(set(&[])), Some(a), Some(c)),
+            ("active removed: the page before", &[a, b, c], &[a, b], Some(set(&[])), Some(c), Some(b)),
+            ("active first removed: the first", &[a, b], &[b], Some(set(&[])), Some(a), Some(b)),
+            ("rename or move stays", &[a, b], &[b, a], Some(set(&[])), Some(a), None),
+            ("no window: touched page", &[a, b], &[a, b], Some(set(&[b])), None, Some(b)),
+        ];
+        for (what, before, after, touched, active, want) in cases {
+            assert_eq!(front_after_history(before, after, touched.as_ref(), *active), *want, "{what}");
+        }
+    }
 }

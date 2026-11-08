@@ -58,11 +58,31 @@ pub struct Measured {
     pub draw_window_ms: f64,
     /// Draw one wire between two terminals on page 1, in a headless CADCraft session (brief 014).
     pub draw_wire_ms: f64,
-    /// With the project open and page 1 shown, bring up a page not viewed before (`openpage`, the
-    /// path of Go to Reference): median over up to [`SWITCH_PAGES`] pages spread over the project.
-    pub switch_first_ms: f64,
-    /// Then switch back to page 1, already viewed (`openpage` again), median over the same pages.
-    pub switch_back_ms: f64,
+    /// Switch the active page (brief 016, design 016 section 6): `openpage` in a headless session
+    /// with one page active, until that page is the active page; median over up to
+    /// [`SWITCH_PAGES`] pages spread over the project and back to page 1 after each.
+    pub switch_ms: f64,
+    /// Draw the read-only preview of a page: project it, build and rasterise it at 480 x 320
+    /// (`ecad_cadcraft::preview`), median over the same pages.
+    pub preview_ms: f64,
+    /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`, brief 016
+    /// AC4), median over the same pages.
+    pub panel_ms: f64,
+    /// Rebuild the Devices tab's list (`device_list::device_entries`, unfiltered), median over the
+    /// same pages.
+    pub devices_ms: f64,
+    /// Go to a device symbol on another page from the Devices tab: `openpage` of its page, then its
+    /// handles selected (`device_list::symbol_target`), median over the same pages.
+    pub goto_ms: f64,
+    /// Bring the Devices tab's list up to date after one device property edit (`setprop`):
+    /// `device_list::DeviceList::sync` refreshing only that device, median over the same pages.
+    pub devupd_ms: f64,
+    /// Place a starter coil as a new device on page 1 (`place {symbol}`, brief 018).
+    pub place_ms: f64,
+    /// Add a NO contact to that device (`place {symbol, device}`, brief 018).
+    pub join_ms: f64,
+    /// Rename that device's tag (`setprop` tag, brief 018).
+    pub tag_ms: f64,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -149,7 +169,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
-    let (mut switch_first_ms, mut switch_back_ms) = switch_pages(path, &scratch.join("switch.ecad"))?;
+    let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms, mut devupd_ms) =
+        switch_pages(path, &scratch.join("switch.ecad"))?;
+    let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(path, &scratch.join("devices.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -163,8 +185,15 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         draw_move_ms: median(&mut draw_move_ms),
         draw_window_ms: median(&mut draw_window_ms),
         draw_wire_ms: median(&mut draw_wire_ms),
-        switch_first_ms: median(&mut switch_first_ms),
-        switch_back_ms: median(&mut switch_back_ms),
+        switch_ms: median(&mut switch_ms),
+        preview_ms: median(&mut preview_ms),
+        panel_ms: median(&mut panel_ms),
+        devices_ms: median(&mut devices_ms),
+        goto_ms: median(&mut goto_ms),
+        devupd_ms: median(&mut devupd_ms),
+        place_ms: median(&mut place_ms),
+        join_ms: median(&mut join_ms),
+        tag_ms: median(&mut tag_ms),
     };
     Ok((m, doc))
 }
@@ -178,7 +207,7 @@ fn first_page(path: &str) -> Result<f64, String> {
     let elapsed = ms(t);
     let (pages, read_only) = project.read(&mut s, |p, _| (p.open_pages(), p.file_status().read_only))?;
     if pages != 1 {
-        return Err(format!("{path}: expected page 1 open, found {pages} open pages"));
+        return Err(format!("{path}: expected page 1 shown, found {pages} page windows"));
     }
     if let Some(r) = read_only {
         return Err(format!("{path} opened read-only in the session: {r}"));
@@ -333,6 +362,56 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
     result
 }
 
+/// Copy `path` to `copy` and open it once in a headless CADCraft session (not timed). Then per run
+/// (brief 018): place a starter coil as a new device (timed), add a NO contact to it (timed) and
+/// rename its tag (timed). Every edit must be recorded as exactly one transaction.
+fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
+            &mut s,
+            path_text(copy)?,
+            OPEN_SEED,
+            ecad_cadcraft::views::Settings::none(),
+        )?;
+        let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
+        let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
+            let before = head(s)?;
+            let t = Instant::now();
+            let r = s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
+            let took = ms(t);
+            if head(s)? != before + 1 {
+                return Err(format!("the {cmd} was not recorded as one transaction"));
+            }
+            Ok((took, r))
+        };
+        let (mut places, mut joins, mut tags) =
+            (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
+        for run in 0..runs {
+            // Far from the generated drawing, so nothing else is touched.
+            let x = -1000.0 - 50.0 * run as f64;
+            let (t, r) = timed(&mut s, "place", json!({"symbol": "coil", "at": [x, -1000.0]}))?;
+            places.push(t);
+            let device = r["component"].clone();
+            let (t, _) = timed(&mut s, "place", json!({"symbol": "no", "at": [x, -1050.0], "device": device}))?;
+            joins.push(t);
+            let tag = format!("-KB{:02}", run + 1);
+            let (t, _) = timed(&mut s, "setprop", json!({"component": device, "key": "tag", "value": tag}))?;
+            tags.push(t);
+        }
+        drop(project);
+        drop(s);
+        Ok((places, joins, tags))
+    })();
+    remove(copy);
+    result
+}
+
 /// The pages after page 1 to visit: up to [`SWITCH_PAGES`] of them, spread evenly over the order.
 fn spread(order: &[ecad_model::PageId]) -> Vec<ecad_model::PageId> {
     let rest = order.get(1..).unwrap_or_default();
@@ -341,11 +420,15 @@ fn spread(order: &[ecad_model::PageId]) -> Vec<ecad_model::PageId> {
 }
 
 /// Copy `path` to `copy` and open it in a headless CADCraft session with page 1 shown (not timed).
-/// Then for each page of [`spread`]: bring it up for the first time with `openpage` (timed), and
-/// switch back to page 1, already viewed, with `openpage` (timed). Both go through the engine and
-/// `Project::open_page`, as the trial's `openpage` and Go to Reference do. Every switch must leave
-/// the asked page in front.
-fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>), String> {
+/// Then for each page of [`spread`]: make it the active page with `openpage` (timed as a switch),
+/// draw its preview at 480 x 320 (timed), rename it and rebuild the panel's rows (the rebuild
+/// timed), and switch back to page 1 (timed as a switch). Switches go through the engine and
+/// `Project::open_page`, as the Project panel, `openpage` and Go to Reference do; every switch
+/// must leave the asked page active in the one page window.
+/// Switch, preview, panel, devices and go-to timings.
+type Switches = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
+
+fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
     use serde_json::json;
 
     remove(copy);
@@ -367,27 +450,94 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>), String
         }
         let shown = |project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::Session| {
             let uid = s.state().map(|st| st.uid).ok();
-            project.read(s, |p, _| uid.and_then(|u| p.page_of(u)))
+            project.read(s, |p, _| (uid.and_then(|u| p.page_of(u)), p.open_pages()))
         };
-        let (mut first_view, mut back) = (Vec::with_capacity(pages.len()), Vec::with_capacity(pages.len()));
+        let n = pages.len();
+        let (mut switch, mut preview, mut panel) =
+            (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
+        let (mut devices, mut goto, mut devupd) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
+        // The Devices tab's list, built once as when the tab is shown.
+        let mut list = ecad_cadcraft::device_list::DeviceList::default();
+        project.read(&mut s, |p, _| list.sync(1, p))?;
+        let (w, h) = (480, 320);
         for page in pages {
             let t = Instant::now();
             s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
-            first_view.push(ms(t));
-            if shown(&project, &mut s)? != Some(page) {
-                return Err(format!("openpage {page} did not bring the page to the front"));
+            switch.push(ms(t));
+            if shown(&project, &mut s)? != (Some(page), 1) {
+                return Err(format!("openpage {page} did not make the page active in the one page window"));
+            }
+            // The preview of page 1 from this page: projected under the lock, drawn after it.
+            let t = Instant::now();
+            let drawing = project.read(&mut s, |p, _| ecad_cadcraft::preview::preview_drawing(p, first))??;
+            let view = ecad_cadcraft::preview::PreviewView::extents(&drawing, w, h);
+            let image = ecad_cadcraft::preview::rasterise(&drawing, view, w, h, [33, 40, 48], 0.0)?;
+            preview.push(ms(t));
+            if image.rgba.len() != (w * h * 4) as usize {
+                return Err("the preview image has the wrong size".into());
+            }
+            s.execute("renamepage", &json!({"page": page.hex(), "title": format!("renamed {page}")}))
+                .map_err(|e| format!("renamepage {page}: {e}"))?;
+            let t = Instant::now();
+            let rows = project.read(&mut s, |p, _| p.page_rows())?;
+            panel.push(ms(t));
+            if rows.len() != order.len() {
+                return Err("the panel's rows do not list every page".into());
+            }
+            // The Devices tab's list, rebuilt.
+            let t = Instant::now();
+            let listed = project
+                .read(&mut s, |p, _| ecad_cadcraft::device_list::device_entries(p.ledger.document(), "").len())?;
+            devices.push(ms(t));
+            if listed == 0 {
+                return Err("the Devices list is empty".into());
+            }
+            // A symbol of a device on this page, to go to from page 1.
+            let found = project.read(&mut s, |p, _| {
+                p.ledger.document().representations_on(page).find_map(|(id, r)| match r.subject {
+                    ecad_model::Subject::Component(c) => Some((id, c)),
+                    _ => None,
+                })
+            })?;
+            let rep = found.map(|(r, _)| r);
+            // One device property edit, then the list brought up to date (only that device).
+            if let Some((_, c)) = found {
+                s.execute(
+                    "setprop",
+                    &json!({"component": c.hex(), "key": "description", "value": format!("bench {page}")}),
+                )
+                .map_err(|e| format!("setprop {c}: {e}"))?;
+                let t = Instant::now();
+                let changed = project.read(&mut s, |p, _| list.sync(1, p))?;
+                devupd.push(ms(t));
+                if !changed || list.rebuilds != 1 {
+                    return Err("the Devices list was not refreshed by device".into());
+                }
             }
             let t = Instant::now();
             s.execute("openpage", &json!({"page": first.hex()})).map_err(|e| format!("openpage {first}: {e}"))?;
-            back.push(ms(t));
-            if shown(&project, &mut s)? != Some(first) {
-                return Err("switching back did not bring page 1 to the front".into());
+            switch.push(ms(t));
+            if shown(&project, &mut s)? != (Some(first), 1) {
+                return Err("switching back did not make page 1 active".into());
+            }
+            if let Some(rep) = rep {
+                let t = Instant::now();
+                s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
+                let handles = project
+                    .read(&mut s, |p, _| ecad_cadcraft::device_list::symbol_target(p, rep).map(|x| x.2))?
+                    .unwrap_or_default();
+                s.set_selection(handles.clone());
+                goto.push(ms(t));
+                if handles.is_empty() {
+                    return Err("the go to selected nothing".into());
+                }
+                s.execute("openpage", &json!({"page": first.hex()})).map_err(|e| format!("openpage {first}: {e}"))?;
             }
         }
         // Dropping the session and the handle releases the project and its writer lock.
         drop(project);
         drop(s);
-        Ok((first_view, back))
+        Ok((switch, preview, panel, devices, goto, devupd))
     })();
     remove(copy);
     result

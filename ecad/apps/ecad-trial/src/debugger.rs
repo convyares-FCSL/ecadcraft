@@ -1,5 +1,5 @@
 //! The developer debugger panel (persistence stage 2b, proposal §21): read-only, opened from the
-//! banner, never shown by default.
+//! ECAD Dev tool set (Tool Sets), never shown by default.
 //!
 //! It follows one trail: **selected drawing objects → ECAD IDs → model objects → the transactions
 //! that touched them, with before/after values → the saved record's offset and bytes**, and keeps
@@ -23,7 +23,7 @@ use ecad_cadcraft::debug::{
 use ecad_model::{Author, Document, Transaction};
 use eframe::egui::{self, Color32, RichText};
 
-/// The banner button's hover text.
+/// The ECAD Dev Debugger button's hover text.
 pub const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
 
 /// Rows per page in long lists.
@@ -894,7 +894,7 @@ pub fn saved_summary(snap: &DebugSnapshot) -> String {
     let pending = c.unconfirmed + c.pending;
     if pending != snap.unsaved {
         s.push_str(&format!(
-            " The banner counts {}: a new project's own setup is not counted as a change until the project has a file.",
+            " The Project panel counts {}: a new project's own setup is not counted as a change until the project has a file.",
             snap.unsaved
         ));
     }
@@ -916,7 +916,7 @@ fn describe(doc: &Document, r: &Resolved) -> String {
         parts.push(format!("item {}", i.short()));
     }
     if let Some(t) = r.terminal {
-        parts.push(format!("terminal {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
+        parts.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
     }
     if let Some(rep) = r.representation {
         parts.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));

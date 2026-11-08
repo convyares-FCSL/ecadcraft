@@ -1,8 +1,8 @@
 //! Brief 010 (cable references across pages), written from the brief and design 010.
 //!
-//! Fixture R (design §11): page 1 renamed `Supply` holds K1 with terminals at (0,0), (0,5),
+//! Fixture R (design §11): page 1 renamed `Supply` holds K1 with connection points at (0,0), (0,5),
 //! (0,10), wires W0, W5, W10 from there to x = 60, and cable C1 slashed across them; page 2
-//! `Field` holds K2 with terminals at (100,0), (100,5), (100,10).
+//! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
 //! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablerefs`,
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,
@@ -114,7 +114,9 @@ fn last_ops(h: &mut H) -> Vec<Op> {
     h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default())
 }
 
+/// The page window's document, with `page` made the active page (brief 016).
 fn uid(h: &mut H, page: PageId) -> u64 {
+    h.activate(page);
     h.p(|p| p.pages[&page].uid).expect("page open")
 }
 
@@ -346,9 +348,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let doc = r.h.doc();
     assert!(markers_on_page(&doc, r.supply)[0].orphan);
     // Red: the ring (`ecad.orphan`, #FF0000) and the text (ACI 1).
-    // Only the page shown is redrawn on a commit (owner, 2026-11-08): Supply is stale until it
-    // comes to the front.
-    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply's text changed, so it is stale");
+    // Only the active page is drawn (brief 016): Supply shows the new text once it is active.
     r.h.activate(r.supply);
     let su = uid(&mut r.h, r.supply);
     let ring = r.h.p(|p| overlay_marks(p, su)).into_iter().find(|m| m.at == Vec2::new(65.0, 5.0)).expect("ring");
@@ -423,7 +423,7 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     let lines = r.h.p(|p| hover_lines(p, u, text)).unwrap();
     assert_eq!(lines[0], "Cable reference  /2.1");
     assert!(lines.contains(&"Other end: page 2 \"Field\", column 1, 3 wires".to_string()), "{lines:?}");
-    assert_eq!(lines.iter().filter(|l| l.contains("-> K2:")).count(), 3, "{lines:?}");
+    assert_eq!(lines.iter().filter(|l| l.contains("-> -K02:")).count(), 3, "{lines:?}");
     let v = r.h.run("cablegoto", json!({"reference": rid.hex()})).unwrap();
     let fid = reference_on(&mut r.h, r.field);
     assert_eq!(v["reference"], json!(fid.hex()));
@@ -882,6 +882,7 @@ fn fan_view_keeps_the_reference_drawn() {
     let mut r = connected();
     r.h.run("cableview", json!({"cable": r.c1.hex(), "view": "fan"})).unwrap();
     for page in [r.supply, r.field] {
+        r.h.activate(page);
         let rid = reference_on(&mut r.h, page);
         let point = r.h.doc().representations[&rid].items[0];
         assert!(r.h.p(|p| p.pages[&page].map.item(point)).is_some(), "the point stays drawn");
@@ -1079,69 +1080,53 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
     })
 }
 
-/// Owner, 2026-11-08: a commit redraws only the page being shown. With both pages open, moving
-/// Field's reference point changes Supply's reference text: Supply is not redrawn during the
-/// commit, is marked stale, and shows the new text once its tab comes to the front.
+/// Brief 016: only the active page is drawn. A commit on Field that changes Supply's reference
+/// text draws nothing of Supply (it has no drawing); Supply shows the new text once it is made
+/// active. A commit that changes nothing Supply shows logs a change that leaves Supply out.
 #[test]
-fn a_commit_marks_other_pages_stale_and_they_are_redrawn_when_brought_to_the_front() {
+fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_active() {
     let mut r = connected();
     r.h.activate(r.supply);
     r.h.check();
-    assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
-    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
-    assert!(
-        drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")),
-        "{:?}",
-        drawn_texts(&mut r.h, r.supply)
-    );
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")));
 
     // A commit on Field that changes Supply's text (Field's point moves to column 3).
     r.h.activate(r.field);
+    assert!(r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).is_none(), "one page window: Supply is not drawn");
     let fid = reference_on(&mut r.h, r.field);
     let fpoint = r.h.doc().representations[&fid].items[0];
     let fh = r.h.handle_of(r.field, fpoint);
+    let n = r.h.p(|p| p.change_count());
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
     assert_eq!(text_of(&mut r.h, r.supply), "/2.3", "the document says the new text");
-
-    // Supply was not redrawn: same drawing, old text, marked stale. Field is not stale.
-    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
-    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the commit");
-    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
-    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page shown is never stale");
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")));
+    let changed = r.h.p(|p| p.changes_since(n)).expect("pages known");
+    assert!(changed.contains(&r.supply) && changed.contains(&r.field), "{changed:?}");
     r.h.check();
 
-    // Switching the tab alone redraws nothing; the trial's per-frame refresh does.
-    r.h.activate_tab_only(r.supply);
-    assert!(r.h.p(|p| p.pages[&r.supply].stale));
-    r.h.project.refresh_shown(&mut r.h.s).unwrap();
-    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply is still stale in front");
+    r.h.activate(r.supply);
     let texts = drawn_texts(&mut r.h, r.supply);
     assert!(texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
     assert!(!texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
     r.h.check();
 
     // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
-    // change what Supply shows leaves Supply alone: not redrawn and not stale.
+    // change what Supply shows: the change log leaves Supply out.
     let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].component;
     r.h.activate(r.field);
     let handles = r.h.rep_handles(r.field, k2);
-    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    let n = r.h.p(|p| p.change_count());
     let head = r.h.head();
     r.h.run("move", json!({"handles": handles, "delta": [0, 0.5]})).unwrap();
     assert_eq!(r.h.head(), head + 1, "K2 moved");
-    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
-    assert!(std::sync::Arc::ptr_eq(&before, &during));
-    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply's texts did not change");
+    let changed = r.h.p(|p| p.changes_since(n)).expect("pages known");
+    assert!(!changed.contains(&r.supply), "Supply's texts did not change: {changed:?}");
     r.h.check();
 }
 
-/// Owner, 2026-11-08: undo (like redo and the ECAD commands' JSON forms) redraws only the page in
-/// front. Undoing a move of Field's reference point (which changed Supply's text) from Field
-/// leaves Supply's drawing as it was, marks it stale, and Supply shows the reverted text once its
-/// tab comes to the front.
+/// Brief 016: undo on the active page of an edit made there stays on that page; another page
+/// shows the reverted reference text when it is made active.
 #[test]
-fn undo_marks_other_pages_stale_and_they_show_the_reverted_text_in_front() {
+fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_when_active() {
     let mut r = connected();
     r.h.activate(r.field);
     let fid = reference_on(&mut r.h, r.field);
@@ -1151,33 +1136,27 @@ fn undo_marks_other_pages_stale_and_they_show_the_reverted_text_in_front() {
     r.h.activate(r.supply);
     assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")));
 
-    // Undo from Field.
     r.h.activate(r.field);
-    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
     let head = r.h.head();
     r.h.run("u", Value::Null).unwrap();
     assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "the undo was on Field: Field stays");
     assert_eq!(text_of(&mut r.h, r.supply), "/2.1", "the document says the reverted text");
-    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
-    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the undo");
-    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
-    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page in front is never stale");
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")), "old text until in front");
     r.h.check();
 
     r.h.activate(r.supply);
-    assert!(!r.h.p(|p| p.pages[&r.supply].stale));
     let texts = drawn_texts(&mut r.h, r.supply);
     assert!(texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
     assert!(!texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
     r.h.check();
 }
 
-/// Owner's two-page trial (brief 014 fix round): page 2's cable end is erased (page 1 shows `/?`),
-/// then page 1 is brought to the front and the erase is undone from there. The undone edit was on
-/// page 2, but page 1's reference text changed, so page 1, in front, is redrawn at once.
+/// Owner's two-page trial (brief 014 fix round), with one page window (brief 016, AC8): page 2's
+/// cable end is erased (page 1 shows `/?`), then page 1 is made active and the erase is undone
+/// from there. The undone edit was on page 2, so page 2 comes to the front with its end back, and
+/// page 1 shows `/2.1` when it is active again.
 #[test]
-fn undo_from_the_front_page_redraws_it_when_its_reference_text_changed() {
+fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     let mut r = connected();
     r.h.activate(r.field);
     let doc = r.h.doc();
@@ -1197,25 +1176,28 @@ fn undo_from_the_front_page_redraws_it_when_its_reference_text_changed() {
             .filter(|h| !matches!(r.h.mapped(r.field, *h), Some(Mapped::Marker(..))) && !keep.contains(h))
             .map(|h| h.hex())
             .collect();
+    let field_before = r.h.pv(|p, pg| pg.entities_of(p, r.field)).len();
     r.h.run("erase", json!({ "handles": erase })).unwrap();
     r.h.activate(r.supply);
     let texts = drawn_texts(&mut r.h, r.supply);
     assert!(texts.iter().any(|t| t.contains("/?")), "{texts:?}");
 
-    // Undo from page 1 (in front): Field's end is back, and Supply shows `/2.1` straight away.
     let head = r.h.head();
     r.h.run("u", Value::Null).unwrap();
     assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "the page of the undone edit is in front");
+    assert_eq!(r.h.pv(|p, pg| pg.entities_of(p, r.field)).len(), field_before, "Field's end is back");
+    assert!(r.h.s.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."), "{:?}", r.h.s.log);
     assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
-    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "the page in front is never stale");
-    let texts = drawn_texts(&mut r.h, r.supply);
-    assert!(texts.iter().any(|t| t.contains("/2.1")), "page 1 in front was not redrawn: {texts:?}");
-    assert!(!texts.iter().any(|t| t.contains("/?")), "{texts:?}");
     r.h.check();
-    // And typed at the command line, as the owner did (`u` then Enter), for a second round.
-    r.h.run("redo", Value::Null).unwrap();
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/?")), "redo redraws the front too");
+    // Redo (typed, as the owner did) stays on Field, where the change is.
+    r.h.cmdline("redo");
+    assert_eq!(r.h.p(|p| p.active_page()), Some(r.field));
+    r.h.activate(r.supply);
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/?")), "redo erased the end again");
     r.h.cmdline("u");
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")), "typed u redraws the front");
+    assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "typed u brings Field to the front too");
+    r.h.activate(r.supply);
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")));
     r.h.check();
 }

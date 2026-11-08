@@ -90,15 +90,15 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     button(h, tools::TAB);
     button(h, "Convert to Component");
     assert_eq!(doc(h).components.len(), 1);
-    button(h, "Add Terminal");
-    assert_eq!(prompt(h), "Specify point for terminal 1 on a component or [Name]:");
+    button(h, "Add Connection Point");
+    assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
     type_enter(h, "40,10");
     type_enter(h, "0,10");
     type_enter(h, "");
-    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
+    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Connection Point");
     button(h, "Place Symbol");
     type_enter(h, "R");
-    assert_eq!(prompt(h), "Specify insertion point (rotation 90, not mirrored) or [Rotate/Mirror]:");
+    assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
     // The coil follows the cursor before the click.
     let at = screen(h, 100.0, 0.0);
     pointer_to(h, at);
@@ -202,16 +202,18 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     let coil_edge = screen(&h, 110.0, 3.0);
     pointer_to(&mut h, coil_edge);
     h.run_steps(2);
-    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some("Component (no tag)"));
-    assert!(h.query_by_label("Component (no tag)").is_some(), "{HOVER_ID} shows it");
-    assert!(h.query_by_label("Terminals: 2").is_some());
+    // The coil placed by Place Symbol is a device (brief 018): its lens names its tag.
+    let lens = "Device -K01   Contactor / relay coil";
+    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some(lens));
+    assert!(h.query_by_label(lens).is_some(), "{HOVER_ID} shows it");
+    assert!(h.query_by_label("This symbol: coil A1/A2, page 1 \"1\"").is_some());
     let on_wire = screen(&h, 55.0, 10.0);
     pointer_to(&mut h, on_wire);
     h.run_steps(2);
     assert!(h.query_by_label("Wire (no tag)").is_some());
-    assert!(h.query_by_label("End B: terminal A1 of ").is_none(), "lines are whole");
+    assert!(h.query_by_label("End B: connection point A1 of ").is_none(), "lines are whole");
     let lines = h.state().hover_lines().unwrap().to_vec();
-    assert!(lines.iter().any(|l| l.starts_with("End B: terminal A1 of ")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("End B: connection point A1 of ")), "{lines:?}");
     // Empty space: no tooltip.
     let empty = screen(&h, 60.0, 40.0);
     pointer_to(&mut h, empty);

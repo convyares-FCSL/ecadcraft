@@ -1,4 +1,4 @@
-//! Independent tester's round-2 contracts for brief 008: the Add Terminal prompt names the
+//! Independent tester's round-2 contracts for brief 008: the Add Connection Point prompt names the
 //! default name the next terminal will actually get, while moving between components in one run,
 //! back to the first one, for typed points, and after an undo.
 #![cfg(not(target_arch = "wasm32"))]
@@ -22,13 +22,13 @@ fn prompt(h: &H) -> String {
     h.s.current_prompt().map(|p| p.display()).unwrap_or_default()
 }
 
-/// The Add Terminal prompt that promises no number.
-const NUMBER_FREE: &str = "Specify point for a terminal on a component or [Name]:";
+/// The Add Connection Point prompt that promises no number.
+const NUMBER_FREE: &str = "Specify point for a connection point on a component or [Name]:";
 
 fn shown(h: &mut H, cursor: Vec2) -> String {
     h.s.cursor = cursor;
     let p = prompt(h);
-    p.strip_prefix("Specify point for terminal ")
+    p.strip_prefix("Specify point for connection point ")
         .and_then(|r| r.strip_suffix(" on a component or [Name]:"))
         .unwrap_or(&p)
         .to_string()
@@ -156,7 +156,7 @@ fn after_undo_the_prompt_offers_the_freed_name() {
     h.check();
 }
 
-/// Hostile cursors while the Add Terminal prompt is drawn (it now looks under the cursor): no
+/// Hostile cursors while the Add Connection Point prompt is drawn (it now looks under the cursor): no
 /// panic, the plain default.
 #[test]
 fn the_prompt_survives_hostile_cursors() {
@@ -204,11 +204,11 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     // The Name prompt's default follows the same rule.
     h.s.cursor = empty;
     h.s.cmdline("N").unwrap();
-    assert_eq!(prompt(&h), "Enter terminal name:", "no default promised in empty space");
+    assert_eq!(prompt(&h), "Enter connection point name:", "no default promised in empty space");
     h.s.input(Input::Enter).unwrap();
     h.s.cursor = over_a;
     h.s.cmdline("N").unwrap();
-    assert_eq!(prompt(&h), "Enter terminal name <2>:");
+    assert_eq!(prompt(&h), "Enter connection point name <2>:");
     h.s.cmdline("K7").unwrap();
     assert_eq!(shown(&mut h, empty), "K7", "a typed name is shown anywhere");
     assert_eq!(shown(&mut h, over_b), "K7");

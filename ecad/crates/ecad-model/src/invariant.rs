@@ -27,7 +27,7 @@
 //! | I11 | A representation's page exists | representation → page | touched representations; representations on a touched page |
 //! | I12 | A representation's items exist and lie on its page | representation → items | touched representations; representations listing a touched item |
 //! | I13 | An item is listed once, by at most one representation (DOC-05) | representation ↔ representation, through an item | touched representations (all listings of each of their items are counted); representations listing a touched item |
-//! | I14 | A symbol representation holds exactly one symbol instance, no connection points, depicts a component, and shows that component's own definition | representation → item, representation → component → definition | touched representations; representations listing a touched item; representations of a touched component |
+//! | I14 | A symbol representation holds exactly one symbol instance and depicts a component; without connection points it shows that component's own definition (with them, any embedded definition: decision 2026-11-08, brief 018) | representation → item, representation → component → definition | touched representations; representations listing a touched item; representations of a touched component |
 //! | I15 | A drawn representation holds no symbol instance | representation → items | touched representations; representations listing a touched item |
 //! | I16 | Connection points belong to a component representation, name that component's terminals and are finite | representation → terminals → component | touched representations; representations placing a touched terminal; representations of a touched component |
 //! | I17 | Conductor ends attach to existing terminals (DOC-03, DOC-07) | conductor → terminal | touched conductors; conductors attached to a touched terminal |
@@ -370,7 +370,7 @@ impl Document {
         match r.form {
             Form::Symbol => {
                 let instance = match r.items.as_slice() {
-                    [only] if r.connection_points.is_empty() => match self.items.get(only).map(|i| &i.kind) {
+                    [only] => match self.items.get(only).map(|i| &i.kind) {
                         Some(ItemKind::Symbol(inst)) => Some(inst),
                         _ => None,
                     },
@@ -379,11 +379,15 @@ impl Document {
                 let Some(inst) = instance else {
                     return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
                 };
-                // The symbol shown must be the component's own definition.
                 let Subject::Component(c) = r.subject else {
                     return bad(format!("symbol representation {id} must depict a component"));
                 };
-                if self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                // Without connection points its terminals are matched to the definition by key, so
+                // the symbol shown must be the component's own definition. With them (one device
+                // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
+                if r.connection_points.is_empty()
+                    && self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition)
+                {
                     return bad(format!("symbol representation {id} shows a definition its component does not use"));
                 }
             }

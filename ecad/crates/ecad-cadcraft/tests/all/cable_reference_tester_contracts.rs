@@ -117,13 +117,10 @@ fn ref_on(h: &mut H, page: PageId) -> Option<RepresentationId> {
 
 /// The text the page drawing actually shows for its reference (the Text entity mapped to it).
 fn drawn_text(h: &mut H, page: PageId) -> Option<String> {
-    // What `page` shows once its tab is in front: only the page shown is redrawn on a commit, a
-    // page left stale is redrawn when it comes to the front (owner, 2026-11-08; brief 014 fix
-    // round). The tab that was in front is put back afterwards (it is never stale).
-    let prev = h.s.active;
-    if h.p(|p| p.pages.get(&page).is_some_and(|v| v.uid.is_some())) {
-        h.activate(page);
-    }
+    // What `page` shows once it is the active page (brief 016: one page window). The page that
+    // was active is made active again afterwards.
+    let prev = h.p(|p| p.active_page());
+    h.activate(page);
     let rid = ref_on(h, page);
     let hd = rid.and_then(|rid| h.p(|p| p.pages.get(&page).and_then(|v| v.map.ref_text(rid))));
     let text = hd.and_then(|hd| {
@@ -132,7 +129,9 @@ fn drawn_text(h: &mut H, page: PageId) -> Option<String> {
             _ => None,
         })
     });
-    h.s.active = prev;
+    if let Some(prev) = prev {
+        h.activate(prev);
+    }
     text
 }
 
@@ -148,7 +147,9 @@ fn listed_text(h: &mut H, page: PageId) -> String {
         .unwrap_or_default()
 }
 
+/// The page window's document, with `page` made the active page (brief 016).
 fn uid(h: &mut H, page: PageId) -> u64 {
+    h.activate(page);
     h.p(|p| p.pages[&page].uid).expect("page open")
 }
 
@@ -389,11 +390,6 @@ fn ac2_moving_a_reference_point_changes_the_other_ends_column() {
 #[test]
 fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let mut r = connected(SEED + 6);
-    r.h.activate(r.field);
-    let fid = ref_on(&mut r.h, r.field).unwrap();
-    let point = r.h.doc().representations[&fid].items[0];
-    let hp = r.h.handle_of(r.field, point);
-    let linked = r.h.doc();
     let ring = |h: &mut H, page: PageId| {
         let u = uid(h, page);
         h.p(|p| overlay_marks(p, u))
@@ -402,6 +398,11 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
             .collect::<Vec<_>>()
     };
     let linked_colour = ring(&mut r.h, r.supply)[0].color;
+    r.h.activate(r.field);
+    let fid = ref_on(&mut r.h, r.field).unwrap();
+    let point = r.h.doc().representations[&fid].items[0];
+    let hp = r.h.handle_of(r.field, point);
+    let linked = r.h.doc();
     r.h.run("erase", json!({"handles": [hp.hex()]})).unwrap();
     let orphaned = r.h.doc();
     assert!(ref_on(&mut r.h, r.field).is_none(), "Field's reference is gone");

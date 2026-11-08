@@ -32,11 +32,12 @@ mod index;
 pub mod invariant;
 pub mod ledger;
 pub mod op;
+pub mod tag;
 
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, ContentHash, Definition, Document, End, Form, Item, ItemKind,
-    Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, Representation, Style, Subject,
-    SymbolInstance, Terminal, TerminalDef,
+    Cable, CableMember, Color, Component, Conductor, ContentHash, DEFAULT_TAG_PADDING, Definition, Document, End, Form,
+    Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, Representation, Style,
+    Subject, SymbolInstance, Terminal, TerminalDef,
 };
 pub use error::{ModelError, Result};
 pub use geom::{Placement, Pt};

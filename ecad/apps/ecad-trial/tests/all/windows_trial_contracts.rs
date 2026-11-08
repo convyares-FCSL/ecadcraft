@@ -196,8 +196,7 @@ fn a_case_variant_opens_the_same_project_on_windows() {
     let mut t = trial(None, None);
     let own = d.0.join("Plan.ecad").display().to_string();
     assert_eq!(save_as(&mut t, &own), None);
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     let upper = d.0.join("PLAN.ECAD").display().to_string();
     t.open_project(&upper).unwrap();
     assert!(t.status().unwrap().file.read_only.is_none());
@@ -386,8 +385,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
         }
     }
     assert!(d.0.join("over unc.ecad").is_file());
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     // After an unconfirmed save, closing asks first (the change is not known to be durable);
     // the file is already written, so Discard closes without writing again.
     if t.pending_close().is_some() {

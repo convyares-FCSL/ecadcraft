@@ -207,17 +207,24 @@ pub fn route_pages(doc: &Document, conductor: ConductorId) -> Vec<PageId> {
     doc.page_order.iter().copied().filter(|p| on.contains(p)).collect()
 }
 
+/// The number a page is shown with: its own page number once pages have one (F6, designer-chosen
+/// numbers such as 100 and 105), else its position in the page order (`1` first), else `?`. Pages
+/// have no number property yet, so today this is always the position; every place that shows a
+/// page's number (the Project panel, the page window's title, reference texts' words) asks here.
+pub fn page_number(doc: &Document, page: PageId) -> String {
+    doc.page_order.iter().position(|p| *p == page).map_or_else(|| "?".to_string(), |i| (i + 1).to_string())
+}
+
 /// `page 2 "Field"` (or `page ? "Field"` for a page in no order).
 pub fn page_words(doc: &Document, page: PageId) -> String {
-    let n = doc.page_order.iter().position(|p| *p == page).map_or_else(|| "?".to_string(), |i| (i + 1).to_string());
+    let n = page_number(doc, page);
     let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
     format!("page {n} \"{title}\"")
 }
 
 /// `page 2` (or `page ?`).
 pub fn page_number_words(doc: &Document, page: PageId) -> String {
-    let n = doc.page_order.iter().position(|p| *p == page).map_or_else(|| "?".to_string(), |i| (i + 1).to_string());
-    format!("page {n}")
+    format!("page {}", page_number(doc, page))
 }
 
 /// `Cable C1` in messages: its tag, else `8a3f19c0…`.
@@ -478,7 +485,7 @@ pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: Represen
             crate::slash::name_list(many)
         )),
     }
-    out.push("Connect each wire's free end to its terminal with Connect.".into());
+    out.push("Connect each wire's free end to its connection point with Connect.".into());
     out
 }
 
@@ -553,6 +560,9 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
+            // in a cable's drawing or reference texts.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), .. } => {}
             _ => return None,
         }
     }

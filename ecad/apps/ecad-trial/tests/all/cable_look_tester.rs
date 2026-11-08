@@ -399,7 +399,9 @@ fn the_core_label_entry_is_in_wiring_after_cable_view() {
     // Combined trial of briefs 009 and 010 (overseer decision): Core Label, Cable Join, then 010's
     // three buttons, then Add to Cable.
     assert_eq!(at("ecad.cablefan"), at("ecad.cablecore") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cableadd"), at("ecad.cablegoto") + 1, "{ids:?}");
+    // Brief 016 puts Preview Reference after Go to Reference.
+    assert_eq!(at("ecad.cablepreview"), at("ecad.cablegoto") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cableadd"), at("ecad.cablepreview") + 1, "{ids:?}");
 }
 
 /// Check A and the reference screenshots of design §10 for fixture H.
@@ -590,18 +592,16 @@ fn lineweight_display_keeps_the_users_choice_across_projects() {
     h.state_mut().cad.session.settings.lwdisplay = false;
     let path = work.0.join("lw.ecad").display().to_string();
     h.state_mut().save_as(&path).unwrap();
-    while !h.state().cad.session.docs.is_empty() {
-        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
-    }
+    // Closing the project (the Project panel's Close; nothing unsaved, so nothing is asked).
+    h.state_mut().close_project();
     h.run_steps(2);
     assert!(!h.state().project_open());
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(2);
     assert!(!h.state().cad.session.settings.lwdisplay, "the user's choice is kept on the next open");
     // And a new project after that keeps it too.
-    while !h.state().cad.session.docs.is_empty() {
-        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
-    }
+    // Closing the project (the Project panel's Close; nothing unsaved, so nothing is asked).
+    h.state_mut().close_project();
     h.state_mut().new_project().unwrap();
     assert!(!h.state().cad.session.settings.lwdisplay, "kept for a new project");
 }
