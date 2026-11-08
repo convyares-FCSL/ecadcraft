@@ -48,14 +48,16 @@ pub const WIRE_WEIGHT: u16 = 25;
 pub const MAX_CORE_CHARS: usize = 32;
 /// Wire numbers and label box lines longer than this are drawn shortened.
 pub const MAX_SHOWN_CHARS: usize = 24;
-/// The representation role of a cable's reference end (brief 010's model).
-pub const REFERENCE_ROLE: &str = "reference";
+/// The representation role of a cable's reference end: brief 010's, one definition for both briefs.
+pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
 /// The representation role of a stored fan join (owner request, 2026-11-07): one Point item per
 /// fanned cable end per page, where the trunk joins the spine. Without one the trunk joins the
 /// middle of the spine.
 pub const ANCHOR_ROLE: &str = "fan-anchor";
-/// The text a reference marker shows until brief 010 makes it a live reference.
-pub const REFERENCE_PLACEHOLDER: &str = "->";
+/// The text a reference end shows when brief 010 cannot derive one (a hostile file): an orphan.
+pub const REFERENCE_PLACEHOLDER: &str = "/?";
+/// `ecad.orphan`: a reference end with no other end shows its text in red.
+pub const ORPHAN_ACI: u8 = crate::references::ORPHAN_ACI;
 
 /// The width of `text` at [`LABEL_HEIGHT`] in the drafting font CADCraft draws text with (0 for
 /// anything that does not measure).
@@ -76,10 +78,107 @@ pub fn shorten(text: &str, max: usize) -> String {
     out
 }
 
-/// The text a reference end shows (design §7.4). Brief 010 makes it the live reference; here it is
-/// a placeholder for every reference end.
-pub fn reference_text(_doc: &Document, _reference: RepresentationId) -> String {
-    REFERENCE_PLACEHOLDER.to_string()
+/// The text a reference end shows (design 009 §7.4): brief 010's live reference (`/2.3`), or
+/// `/?` for an orphan. The one function both the marker and the hover take it from.
+pub fn reference_text(doc: &Document, reference: RepresentationId) -> String {
+    reference_marker(doc, reference).0
+}
+
+/// [`reference_text`] with whether the end is an orphan (drawn red).
+pub fn reference_marker(doc: &Document, reference: RepresentationId) -> (String, bool) {
+    let (text, orphan, _) = reference_marker_side(doc, reference);
+    (text, orphan)
+}
+
+/// [`reference_marker`] with the side its flag sits on (brief 010's direction away from the wires).
+fn reference_marker_side(doc: &Document, reference: RepresentationId) -> (String, bool, FlagSide) {
+    match crate::references::marker_text_dir(doc, reference) {
+        Some((text, orphan, dir)) => (text, orphan, FlagSide::away(dir)),
+        None => (REFERENCE_PLACEHOLDER.to_string(), true, FlagSide::Right),
+    }
+}
+
+/// The side of its reference point a reference end's flag sits on, pointing away from the cable's
+/// wires (design 009 §7.2, with design 010 §6.2's direction u: the opposite of the mean direction in
+/// which the member routes on the page run away from the point). The flat end faces the wires.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlagSide {
+    /// Wires come from the left: the flag reaches right of the point (fixture R's page 1).
+    Right,
+    /// Wires come from the right: the flag reaches left of the point (fixture R's page 2).
+    Left,
+    /// Wires come from below: the flag sits above the point, pointing up.
+    Up,
+    /// Wires come from above: the flag sits below the point, pointing down.
+    Down,
+}
+
+impl FlagSide {
+    /// The side for direction `u` (away from the wires), by its larger component; a tie, a zero or
+    /// a non-finite direction is horizontal, and `u.x = 0` horizontal is `Right` (design 010's
+    /// left-aligned text when `u.x ≥ 0`).
+    pub fn away(u: Pt) -> FlagSide {
+        if !u.is_finite() || u.x.abs() >= u.y.abs() {
+            if u.x < 0.0 { FlagSide::Left } else { FlagSide::Right }
+        } else if u.y > 0.0 {
+            FlagSide::Up
+        } else {
+            FlagSide::Down
+        }
+    }
+}
+
+/// A reference end's flag laid out at `at` around a text `w` wide, on `side`: the rectangle
+/// `(lo, hi)`, where the text starts (bottom left, height [`LABEL_HEIGHT`]), the closed outline
+/// (rectangle plus a point of depth h on `side`) and the attach point M (middle of the flat side).
+/// The reference point stays inside the rectangle, h/2 from the flat side.
+pub struct FlagShape {
+    pub lo: Pt,
+    pub hi: Pt,
+    pub text_at: Pt,
+    pub outline: Vec<Pt>,
+    pub attach: Pt,
+}
+
+/// Lay out a flag (see [`FlagShape`]). Midpoints are `lo + (hi - lo) / 2`, finite for any finite
+/// rectangle.
+pub fn flag_shape(at: Pt, w: f64, side: FlagSide) -> FlagShape {
+    let h = LABEL_HEIGHT;
+    let (lo, hi, text_at) = match side {
+        FlagSide::Right => (Pt::new(at.x - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + w + 0.5 * h, at.y + 1.5 * h), at),
+        FlagSide::Left => (
+            Pt::new(at.x - w - 0.5 * h, at.y - 0.5 * h),
+            Pt::new(at.x + 0.5 * h, at.y + 1.5 * h),
+            Pt::new(at.x - w, at.y),
+        ),
+        FlagSide::Up => (
+            Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 0.5 * h),
+            Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 1.5 * h),
+            Pt::new(at.x - 0.5 * w, at.y),
+        ),
+        FlagSide::Down => (
+            Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 1.5 * h),
+            Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 0.5 * h),
+            Pt::new(at.x - 0.5 * w, at.y - h),
+        ),
+    };
+    let xm = lo.x + 0.5 * (hi.x - lo.x);
+    let ym = lo.y + 0.5 * (hi.y - lo.y);
+    let (outline, attach) = match side {
+        FlagSide::Right => {
+            (vec![lo, Pt::new(hi.x, lo.y), Pt::new(hi.x + h, ym), hi, Pt::new(lo.x, hi.y)], Pt::new(lo.x, ym))
+        }
+        FlagSide::Left => {
+            (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y), Pt::new(lo.x - h, ym)], Pt::new(hi.x, ym))
+        }
+        FlagSide::Up => {
+            (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(xm, hi.y + h), Pt::new(lo.x, hi.y)], Pt::new(xm, lo.y))
+        }
+        FlagSide::Down => {
+            (vec![lo, Pt::new(xm, lo.y - h), Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], Pt::new(xm, hi.y))
+        }
+    };
+    FlagShape { lo, hi, text_at, outline, attach }
 }
 
 // ---------------------------------------------------------------- what is drawn
@@ -136,11 +235,13 @@ pub struct Part {
     pub core: Option<ConductorId>,
     /// The reference end the part belongs to (flag, reference text).
     pub reference: Option<RepresentationId>,
+    /// A colour of its own (ACI), else the layer's: an orphan reference's text is red.
+    pub color: Option<u8>,
 }
 
 impl Part {
     fn new(role: Role, shape: Shape, weight: Weight) -> Part {
-        Part { role, shape, weight, core: None, reference: None }
+        Part { role, shape, weight, core: None, reference: None, color: None }
     }
     fn of_core(mut self, c: ConductorId) -> Part {
         self.core = Some(c);
@@ -355,34 +456,34 @@ struct Marker {
     at: Pt,
     text: String,
     width: f64,
+    orphan: bool,
+    side: FlagSide,
+}
+
+/// The box a reference end's marker covers on the page (its flag, point included), for a
+/// reference end at `at` showing `text` with its flag on `side`: what a pick of the marker hits
+/// (brief 010's pick-first rule). It follows the flag to whichever side it is drawn.
+pub fn marker_box(at: Pt, text: &str, side: FlagSide) -> (Pt, Pt) {
+    let f = flag_shape(at, font_width(&shorten(text, 64)), side);
+    let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));
+    let hi = f.outline.iter().fold(f.hi, |a, p| Pt::new(a.x.max(p.x), a.y.max(p.y)));
+    (lo, hi)
 }
 
 impl Marker {
-    /// The flag's rectangle (design §7.2): `(lo, hi)`.
-    fn rect(&self) -> (Pt, Pt) {
-        let h = LABEL_HEIGHT;
-        (
-            Pt::new(self.at.x - 0.5 * h, self.at.y - 0.5 * h),
-            Pt::new(self.at.x + self.width + 0.5 * h, self.at.y + 1.5 * h),
-        )
+    fn shape(&self) -> FlagShape {
+        flag_shape(self.at, self.width, self.side)
     }
-    /// Midpoints as `lo + (hi - lo) / 2`, which stays finite for a point near ±f64::MAX.
+    /// The flag rectangle's centre, as `lo + (hi - lo) / 2`, which stays finite for a point near
+    /// ±f64::MAX.
     fn centre(&self) -> Pt {
-        let (lo, hi) = self.rect();
-        add(lo, mul(sub(hi, lo), 0.5))
+        let f = self.shape();
+        add(f.lo, mul(sub(f.hi, f.lo), 0.5))
     }
-    /// The flag (flat side towards `toward`) and its attach point M.
-    fn flag(&self, toward: Option<Pt>) -> (Vec<Pt>, Pt) {
-        let (lo, hi) = self.rect();
-        let ym = lo.y + 0.5 * (hi.y - lo.y);
-        let flat_left = toward.is_none_or(|q| self.centre().x > q.x);
-        if flat_left {
-            let tip = Pt::new(hi.x + LABEL_HEIGHT, ym);
-            (vec![lo, Pt::new(hi.x, lo.y), tip, hi, Pt::new(lo.x, hi.y)], Pt::new(lo.x, ym))
-        } else {
-            let tip = Pt::new(lo.x - LABEL_HEIGHT, ym);
-            (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y), tip], Pt::new(hi.x, ym))
-        }
+    /// The flag (pointing away from the wires, design 009 §7.2) and its attach point M.
+    fn flag(&self) -> (Vec<Pt>, Pt) {
+        let f = self.shape();
+        (f.outline, f.attach)
     }
 }
 
@@ -397,9 +498,10 @@ fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn
                 Some(ItemKind::Primitive(Primitive::Point { at } | Primitive::Text { at, .. })) => Some(*at),
                 _ => None,
             })?;
-            let text = shorten(&reference_text(doc, *id), 64);
+            let (text, orphan, side) = reference_marker_side(doc, *id);
+            let text = shorten(&text, 64);
             let width = measure(&text);
-            (at.is_finite() && width.is_finite()).then_some(Marker { id: *id, at, text, width })
+            (at.is_finite() && width.is_finite()).then_some(Marker { id: *id, at, text, width, orphan, side })
         })
         .collect()
 }
@@ -853,19 +955,9 @@ fn cable_unfiltered(
             }
         }
     }
-    // Each marker's flag and attach point: the flat side faces its side's centroid.
-    let all_ends: Vec<Pt> = side_ends.iter().flatten().copied().collect();
-    let flags: Vec<(Vec<Pt>, Pt)> = markers
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let toward = match stopped.iter().position(|s| *s == Some(i)) {
-                Some(s) => cents.get(s).copied().flatten(),
-                None => centroid(&all_ends),
-            };
-            m.flag(toward)
-        })
-        .collect();
+    // Each marker's flag and attach point: pointing away from the wires that leave its point, the
+    // flat side facing them (brief 010's direction, the same rule on every side).
+    let flags: Vec<(Vec<Pt>, Pt)> = markers.iter().map(Marker::flag).collect();
     let mut out = CableDrawing { markers: ends_of, ..CableDrawing::default() };
     let mut fanned: Option<(Vec<Part>, Vec<ItemId>, [Option<Pt>; 2])> = None;
     if fan {
@@ -916,14 +1008,29 @@ fn cable_unfiltered(
         out.parts.push(
             Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id),
         );
-        out.parts.push(
-            Part::new(
-                Role::ReferenceText,
-                Shape::Text { at: m.at, rotation: 0.0, value: m.text.clone() },
-                Weight::Text,
-            )
-            .of_reference(m.id),
-        );
+        let mut text = Part::new(
+            Role::ReferenceText,
+            Shape::Text { at: m.shape().text_at, rotation: 0.0, value: m.text.clone() },
+            Weight::Text,
+        )
+        .of_reference(m.id);
+        text.color = m.orphan.then_some(ORPHAN_ACI);
+        out.parts.push(text);
+    }
+    // Brief 010 §6.4, folded in: at each reference end (at most two per cable), the end of each
+    // member route here that leaves for another page (the end nearer the reference point) shows
+    // no loose-end square, in either view.
+    for m in markers.iter().take(MAX_REFERENCES_PER_CABLE) {
+        for mem in &members {
+            if crate::references::route_pages(doc, mem.conductor).len() < 2 {
+                continue;
+            }
+            let (Some(a), Some(b)) = (mem.path.first().copied(), mem.path.last().copied()) else { continue };
+            let near = if a.dist(m.at) <= b.dist(m.at) { a } else { b };
+            if near.is_finite() && !out.quiet.iter().any(|q| q.near(near, tol)) {
+                out.quiet.push(near);
+            }
+        }
     }
     out
 }

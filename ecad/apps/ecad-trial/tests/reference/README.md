@@ -19,6 +19,11 @@ changing how ECAD marks, previews or tooltips look; replace one only with the ow
 | `009-fan-small-zoom.png` | `009-fan.png` zoomed out to a quarter (`zoom s 0.25x`): how labels read at small zoom (brief 009, needs owner check) | pending owner approval |
 | `009-fan-moved-join.png` | `009-fan.png` with each end's join moved by **Cable Join** / `cablefan`: the left trunk leaves its spine at the top core (W4 straight), the right one at the bottom core (W1 straight) (owner request of 2026-11-07) | pending owner approval |
 | `009-core-prompt.png` | **Core Label** started and W3 clicked: the prompt `Core number or colour for W3 <none>:`, with W3 highlighted in green (design §5.1 step 2) | pending owner approval |
+| `010-ref-source.png` | Fixture R of design 010 (§11), page 1 "Supply" after the continuation and the connects: three wires from K1, the slash with magenta crossing dots, no end marks at x = 60, a magenta ring at (65,5) and the derived text `/2.1` to its right (brief 010) | pending owner approval |
+| `010-ref-target.png` | Page 2 "Field": the three continued wires from the reference to K2's terminals (green dots), the slash across them, a magenta ring at (20,5) and `/1.2` to its left, in a flag pointing left, away from the wires (brief 010; replaced 2026-11-08, fix round 1 of the 009 to 011 stack, when the flag still pointed into the wires) | pending owner approval |
+| `010-ref-orphan.png` | Page 1 after Field's reference was erased: red ring and red `/?` (brief 010) | pending owner approval |
+| `010-ref-hover.png` | Hover lens on page 1's reference: `Cable reference  /2.1`, this end and the other end (page 2 "Field", column 1, 3 wires) and one `-> K2:…` line per wire (brief 010) | pending owner approval |
+| `010-continue-preview.png` | Continue Cable on page 2 before the second click, cursor at (40,5): three stubs and the slash previewed, the ring with the live `/1.2`; CADCraft's dynamic-input box covers the `-> 3 wires continue` preview text (brief 010) | pending owner approval |
 
 Rendered at 1280×800, dark theme, by `ac6_reference_screenshots` in `../mouse_tester.rs`.
 Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test mouse_tester ac6`
@@ -35,3 +40,7 @@ The 005 images are rendered by `ac5_cable_view_by_label_and_reference_screenshot
 The 009 images are rendered by `check_a_core_label_by_label_and_reference_screenshots` and
 `one_sided_fan_reference_screenshot` in `../cable_look_tester.rs`; regenerate with
 `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_look_tester`.
+
+The 010 images are rendered by `fixture_r_by_label_and_canvas_clicks_with_reference_screenshots` in
+`../cable_references_tester.rs`; regenerate with
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_references_tester`.

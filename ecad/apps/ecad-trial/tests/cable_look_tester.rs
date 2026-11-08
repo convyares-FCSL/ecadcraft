@@ -328,6 +328,13 @@ fn reference_end(h: &mut Harness<'static, Trial>, cable: &str, at: (f64, f64)) {
         CableId, Color, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Style,
         Subject,
     };
+    // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
+    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // built with the ops.
+    if h.state_mut().cad.run("cableref", json!({"cable": cable, "at": [at.0, at.1]})).is_ok() {
+        h.run_steps(2);
+        return;
+    }
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     let (page, layer) =
@@ -389,7 +396,10 @@ fn the_core_label_entry_is_in_wiring_after_cable_view() {
     let ids: Vec<&str> = wiring.tools.iter().map(|t| t.id.as_str()).collect();
     let at = |id: &str| ids.iter().position(|x| *x == id).unwrap_or_else(|| panic!("{id} in {ids:?}"));
     assert_eq!(at("ecad.cablecore"), at("ecad.cableview") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cableadd"), at("ecad.cablecore") + 1, "{ids:?}");
+    // Combined trial of briefs 009 and 010 (overseer decision): Core Label, Cable Join, then 010's
+    // three buttons, then Add to Cable.
+    assert_eq!(at("ecad.cablefan"), at("ecad.cablecore") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cableadd"), at("ecad.cablegoto") + 1, "{ids:?}");
 }
 
 /// Check A and the reference screenshots of design §10 for fixture H.

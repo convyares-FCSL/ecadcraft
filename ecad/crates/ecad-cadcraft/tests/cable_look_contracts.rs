@@ -137,6 +137,13 @@ fn last_echo(h: &H) -> String {
 /// Add a reference end of `cable` at `at` on `page` with brief 010's ops: a Point item and a
 /// `reference` representation holding it (one transaction).
 fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (ItemId, RepresentationId) {
+    // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
+    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // built with the ops.
+    if let Ok(r) = h.run("cableref", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
+        h.check();
+        return (id(&r, "item"), id(&r, "reference"));
+    }
     let layer = h.p(|p| p.default_layer);
     let item = ItemId::from(0x0900_0000_0000_0000_0000_0000_0000_0000 + n);
     let rep = RepresentationId::from(0x0901_0000_0000_0000_0000_0000_0000_0000 + n);
@@ -515,7 +522,8 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     // Hover of the reference point.
     let h_point = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, h_point)).unwrap();
-    assert_eq!(lines, vec!["Reference \"->\"", "Cable C1", "At end: B side"]);
+    // Combined trial with 010: a reference end hovers with 010's lens (one source of hover text).
+    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  /?"), "{lines:?}");
     // ERASE the reference point: both ends fan again; `u` brings it back.
     f.h.run("erase", json!({"handles": [h_point.hex()]})).unwrap();
     assert!(!f.h.doc().representations.contains_key(&rep));
@@ -543,9 +551,11 @@ fn i_both_ends_at_reference_ends() {
     assert!(of_role(&fan, Role::Spine).is_empty() && of_role(&fan, Role::Tail).is_empty());
     assert!(of_role(&fan, Role::Bend).is_empty());
     let trunk: Vec<Pt> = of_role(&fan, Role::Trunk).into_iter().flat_map(path).collect();
-    let w = look::font_width(look::REFERENCE_PLACEHOLDER);
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))), "{trunk:?}");
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + w + 1.25, 22.5))), "{trunk:?}");
+    // Each flag points away from the wires (fix round 1 of the stack): the right one reaches right,
+    // the left one (wires to its right) reaches left, so both flat sides, where the trunk attaches,
+    // face the cable, h/2 from their points.
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(125.0 - 1.25, 22.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + 1.25, 22.5))), "{trunk:?}");
     assert_eq!(of_role(&fan, Role::Flag).len(), 2);
     f.h.check();
 }

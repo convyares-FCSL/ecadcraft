@@ -48,7 +48,14 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(g.continuations.len(), t.pages - 1, "one continued cable per page boundary");
     let references = doc.representations.values().filter(|r| r.role == REFERENCE_ROLE).count();
     assert_eq!(references, 2 * (t.pages - 1));
+    // Brief 010's derivation recognises them: two partnered ends per continued cable, no orphans.
+    let derived = ecad_model::derive::cable_references(doc);
+    assert_eq!(derived.len(), 2 * (t.pages - 1), "every generated reference is derived");
+    assert!(derived.iter().all(|r| !r.orphan && r.partner_count == 1), "each end has its partner");
     for c in &g.continuations {
+        let [a, b] = c.references;
+        let of = |rep| derived.iter().find(|r| r.reference == rep).expect("derived");
+        assert_eq!((of(a).partners.as_slice(), of(b).partners.as_slice()), ([b].as_slice(), [a].as_slice()));
         let pages: BTreeSet<_> = doc
             .representations_of(Subject::Cable(c.cable))
             .filter(|(_, r)| r.role == REFERENCE_ROLE)

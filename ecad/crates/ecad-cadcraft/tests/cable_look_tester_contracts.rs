@@ -181,6 +181,13 @@ fn style(h: &mut H) -> Style {
 /// A reference end of `cable` at `at` (brief 010's model: one Point item in a `reference`
 /// representation), one transaction.
 fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (ItemId, RepresentationId) {
+    // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
+    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // built with the ops.
+    if let Ok(r) = h.run("cableref", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
+        h.check();
+        return (id(&r, "item"), id(&r, "reference"));
+    }
     let item = ItemId::from(0x0977_0000_0000_0000_0000_0000_0000_0000 + n);
     let rep = RepresentationId::from(0x0978_0000_0000_0000_0000_0000_0000_0000 + n);
     let style = style(h);
@@ -677,10 +684,12 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     assert!(tails.iter().all(|t| t.iter().all(|p| p.x >= 100.0 - 1e-9)), "{tails:?}");
     assert!(of_role(&d, Role::CoreLabel).is_empty(), "no cores set");
     assert_eq!(of_role(&d, Role::WireNumber).len(), 4, "wire numbers on the right only");
-    // The flag's flat side faces the cable (right); the point is on the left.
-    let w = look::font_width(look::REFERENCE_PLACEHOLDER);
-    let m = Pt::new(-20.0 + w + 0.5 * look::LABEL_HEIGHT, 22.5);
+    // The flag's flat side faces the cable (right); the point is on the left. Fix round 1 of the
+    // stack: the whole flag reaches left of the reference point, away from the wires, so M is h/2
+    // right of the point.
+    let m = Pt::new(-20.0 + 0.5 * look::LABEL_HEIGHT, 22.5);
     let flag = path(&of_role(&d, Role::Flag)[0].shape);
+    assert!(flag.iter().all(|p| p.x <= m.x + 1e-9), "the flag stays left of M: {flag:?}");
     let min_x = flag.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
     assert!(min_x < -20.0 - 0.5 * look::LABEL_HEIGHT - 1e-9, "the point is on the left: {flag:?}");
     // The trunk runs from the junction, now the middle of the spine (97.5, 7.5; owner request of
@@ -695,7 +704,8 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let hp = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, hp)).unwrap();
-    assert_eq!(lines.last().map(String::as_str), Some("At end: A side"), "{lines:?}");
+    // Combined trial with 010: 010's lens; the A side is checked through `markers` above.
+    assert!(lines.first().is_some_and(|l| l.starts_with("Cable reference")), "{lines:?}");
     // Traditional view: the reference end is drawn (flag) and nothing else changes; the loose ends
     // at x = 0 show their squares again.
     view(&mut f.h, f.c1, "traditional");
@@ -736,7 +746,9 @@ fn ac2_moving_and_extra_references() {
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let h3 = f.h.handle_of(f.page, p3);
     let lines = f.h.p(|p| hover_lines(p, uid, h3)).unwrap();
-    assert!(lines.iter().any(|l| l == "Extra reference: not at an end of the cable on this page."), "{lines:?}");
+    // Combined trial with 010: a reference end hovers with 010's lens; that it stops no end is in
+    // `markers` above.
+    assert!(lines.first().is_some_and(|l| l.starts_with("Cable reference")), "{lines:?}");
     // Erase the third: nothing changes at the ends. Then erase the right one: the right end fans
     // again; undo: it stops again (design §7.1 "Editing and removing").
     let h3 = f.h.handle_of(f.page, p3);

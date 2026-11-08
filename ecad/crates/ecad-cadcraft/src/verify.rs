@@ -111,7 +111,7 @@ pub fn verify_page_with(
     for f in fans.values() {
         for part in &f.parts {
             let e = part_entity(part, Handle(0));
-            *fan_expected.entry(format!("{:?} {:?}", e.kind, e.common.lineweight)).or_default() += 1;
+            *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
     let mut problems: Vec<String> = Vec::new();
@@ -129,7 +129,16 @@ pub fn verify_page_with(
             if e.common.layer != crate::views::LAYER {
                 problems.push(format!("a fan line is not on layer {}", crate::views::LAYER));
             }
-            *fan_shown.entry(format!("{:?} {:?}", e.kind, e.common.lineweight)).or_default() += 1;
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        // A reference end's text (brief 010's live text in brief 009's marker): one of the computed
+        // parts, mapped to its reference.
+        if let Some(Mapped::RefText(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a reference text is drawn for {r}, which does not exist"));
+            }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
         match item_from(doc, page, e) {
@@ -293,4 +302,9 @@ pub fn verify_page_with(
     v.items = items;
     v.problems = problems;
     v
+}
+
+/// What a computed entity draws, for comparing multisets: its kind, lineweight and colour.
+fn computed_key(e: &Entity) -> String {
+    format!("{:?} {:?} {:?}", e.kind, e.common.lineweight, e.common.color)
 }
