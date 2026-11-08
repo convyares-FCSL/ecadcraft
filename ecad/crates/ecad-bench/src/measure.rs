@@ -74,6 +74,9 @@ pub struct Measured {
     /// Go to a device symbol on another page from the Devices tab: `openpage` of its page, then its
     /// handles selected (`device_list::symbol_target`), median over the same pages.
     pub goto_ms: f64,
+    /// Bring the Devices tab's list up to date after one device property edit (`setprop`):
+    /// `device_list::DeviceList::sync` refreshing only that device, median over the same pages.
+    pub devupd_ms: f64,
     /// Place a starter coil as a new device on page 1 (`place {symbol}`, brief 018).
     pub place_ms: f64,
     /// Add a NO contact to that device (`place {symbol, device}`, brief 018).
@@ -166,7 +169,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
-    let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms) =
+    let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms, mut devupd_ms) =
         switch_pages(path, &scratch.join("switch.ecad"))?;
     let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(path, &scratch.join("devices.ecad"), runs)?;
 
@@ -187,6 +190,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         panel_ms: median(&mut panel_ms),
         devices_ms: median(&mut devices_ms),
         goto_ms: median(&mut goto_ms),
+        devupd_ms: median(&mut devupd_ms),
         place_ms: median(&mut place_ms),
         join_ms: median(&mut join_ms),
         tag_ms: median(&mut tag_ms),
@@ -422,7 +426,7 @@ fn spread(order: &[ecad_model::PageId]) -> Vec<ecad_model::PageId> {
 /// `Project::open_page`, as the Project panel, `openpage` and Go to Reference do; every switch
 /// must leave the asked page active in the one page window.
 /// Switch, preview, panel, devices and go-to timings.
-type Switches = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
+type Switches = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
 
 fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
     use serde_json::json;
@@ -451,7 +455,10 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         let n = pages.len();
         let (mut switch, mut preview, mut panel) =
             (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
-        let (mut devices, mut goto) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        let (mut devices, mut goto, mut devupd) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
+        // The Devices tab's list, built once as when the tab is shown.
+        let mut list = ecad_cadcraft::device_list::DeviceList::default();
+        project.read(&mut s, |p, _| list.sync(1, p, ""))?;
         let (w, h) = (480, 320);
         for page in pages {
             let t = Instant::now();
@@ -486,13 +493,27 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
                 return Err("the Devices list is empty".into());
             }
             // A symbol of a device on this page, to go to from page 1.
-            let rep = project.read(&mut s, |p, _| {
-                p.ledger
-                    .document()
-                    .representations_on(page)
-                    .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(_)))
-                    .map(|(id, _)| id)
+            let found = project.read(&mut s, |p, _| {
+                p.ledger.document().representations_on(page).find_map(|(id, r)| match r.subject {
+                    ecad_model::Subject::Component(c) => Some((id, c)),
+                    _ => None,
+                })
             })?;
+            let rep = found.map(|(r, _)| r);
+            // One device property edit, then the list brought up to date (only that device).
+            if let Some((_, c)) = found {
+                s.execute(
+                    "setprop",
+                    &json!({"component": c.hex(), "key": "description", "value": format!("bench {page}")}),
+                )
+                .map_err(|e| format!("setprop {c}: {e}"))?;
+                let t = Instant::now();
+                let changed = project.read(&mut s, |p, _| list.sync(1, p, ""))?;
+                devupd.push(ms(t));
+                if !changed || list.rebuilds != 1 {
+                    return Err("the Devices list was not refreshed by device".into());
+                }
+            }
             let t = Instant::now();
             s.execute("openpage", &json!({"page": first.hex()})).map_err(|e| format!("openpage {first}: {e}"))?;
             switch.push(ms(t));
@@ -516,7 +537,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         // Dropping the session and the handle releases the project and its writer lock.
         drop(project);
         drop(s);
-        Ok((switch, preview, panel, devices, goto))
+        Ok((switch, preview, panel, devices, goto, devupd))
     })();
     remove(copy);
     result

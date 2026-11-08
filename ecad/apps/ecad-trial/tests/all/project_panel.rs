@@ -764,9 +764,9 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     h.run_steps(2);
     let tags: Vec<_> = h.state().panel.devices.entries().iter().map(|e| e.tag.clone().unwrap_or_default()).collect();
     assert_eq!(tags, ["-K01"]);
-    let rebuilds = h.state().panel.devices.rebuilds;
+    let rebuilds = h.state().panel.devices.list.rebuilds;
     h.run_steps(10);
-    assert_eq!(h.state().panel.devices.rebuilds, rebuilds, "no rebuild while nothing changes");
+    assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds, "no rebuild while nothing changes");
     if shots().is_some() {
         assert!(shot.is_some(), "016-devices.png needs a wgpu adapter");
     }
@@ -839,4 +839,57 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     assert_eq!(last_ops(&mut h).0, "Merge into -K01");
     ok(&mut h, "u");
     assert_eq!(head(&mut h), before + 2, "and one undo");
+}
+
+/// Owner, 2026-11-08: the Devices list acts only on the ops that matter. With the tab open, a wire
+/// (and its undo) leaves the list untouched; a tag rename refreshes only that device, regrouped;
+/// moving a page renumbers the `/page.column` texts; nothing is ever rebuilt whole after the tab
+/// is shown.
+#[test]
+fn devices_tab_refreshes_only_the_devices_a_change_touches() {
+    let mut h = build(trial(), None);
+    let (coil, page1, _page2) = devices_fixture(&mut h);
+    ok(&mut h, r#"place {"symbol":"mcb1","at":[100,0]}"#);
+    h.run_steps(2);
+    let count = |h: &Harness<'static, Trial>| {
+        let d = &h.state().panel.devices;
+        (d.list.rebuilds, d.list.updates, d.list.devices_refreshed)
+    };
+    let (rebuilds, updates, refreshed) = count(&h);
+    assert_eq!(h.state().panel.devices.entries().len(), 2);
+
+    // A wire, its undo and redo: nothing in the list can differ, so nothing is done.
+    ok(&mut h, r#"wire {"points":[[0,-40],[60,-40]]}"#);
+    ok(&mut h, "u");
+    ok(&mut h, "redo");
+    ok(&mut h, r#"line {"points":[[0,-60],[60,-60]]}"#);
+    h.run_steps(3);
+    assert_eq!(count(&h), (rebuilds, updates, refreshed), "wires and lines leave the list untouched");
+
+    // A tag rename: one update, one device refreshed, regrouped under its new prefix.
+    let before = h.state().panel.devices.entries().to_vec();
+    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"tag","value":"S7"}}"#, coil.hex()));
+    h.run_steps(2);
+    assert_eq!(count(&h), (rebuilds, updates + 1, refreshed + 1), "only that device");
+    let after = h.state().panel.devices.entries().to_vec();
+    let tags: Vec<_> = after.iter().map(|e| e.tag.clone().unwrap_or_default()).collect();
+    assert_eq!(tags, ["-Q01", "-S07"], "re-sorted: -Q before -S");
+    let other_before = before.iter().find(|e| e.id != coil).unwrap();
+    let other_after = after.iter().find(|e| e.id != coil).unwrap();
+    assert_eq!(other_before, other_after, "the other device is untouched");
+    assert!(h.query_by_label("Device -S07: Contactor / relay coil").is_some(), "the row shows it");
+
+    // A page move: the symbols' page numbers follow, without a rebuild.
+    ok(&mut h, &format!(r#"movepage {{"page":"{}","index":2}}"#, page1.hex()));
+    h.run_steps(2);
+    let e = h.state().panel.devices.entries().iter().find(|e| e.id == coil).unwrap().clone();
+    let numbers: Vec<_> = e.symbols.iter().map(|s| s.page_number.clone()).collect();
+    assert_eq!(numbers, ["1", "2"], "the contact (now page 1) first, the coil (now page 2) after");
+    assert_eq!(e.symbols[1].name, "Contactor / relay coil");
+    assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds, "never rebuilt whole while shown");
+
+    // Hidden, then shown again: rebuilt once.
+    click(&mut h, project_panel::PAGES_TAB);
+    click(&mut h, project_panel::DEVICES_TAB);
+    assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds + 1);
 }

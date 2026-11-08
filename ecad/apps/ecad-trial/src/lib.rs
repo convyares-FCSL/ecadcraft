@@ -1323,12 +1323,10 @@ impl Trial {
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
             panel.sync(serial, p.change_count(), || Some(p.page_rows()));
-            // The Devices tab's copy, only while it is shown (and then only when something changed).
+            // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
+            // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {
-                let doc = p.ledger.document();
-                panel
-                    .devices
-                    .sync(serial, p.change_count(), |f| Some(ecad_cadcraft::device_list::device_entries(doc, f)));
+                panel.devices.sync(serial, p);
             }
         });
         self.panel.previewed = self.preview.as_ref().map(|v| v.page);

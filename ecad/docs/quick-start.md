@@ -1057,6 +1057,7 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | panel ms | Rebuild the Project panel's rows after one `renamepage` (page order and titles only). |
 | devices ms | Rebuild the Devices tab's list (every device from the tag index, with its symbols). |
 | goto ms | From the Devices tab, show a device symbol's page and select it. |
+| devupd ms | Bring the Devices tab's list up to date after one device property edit (only that device is refreshed). |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
 file opened once; the three draw columns run on another copy, opened once in one drawing session

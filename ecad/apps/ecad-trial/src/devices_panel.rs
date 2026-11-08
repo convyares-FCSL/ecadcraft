@@ -50,18 +50,15 @@ type Editing = (ComponentId, &'static str, String);
 #[derive(Debug, Default)]
 pub struct DevicesPanel {
     pub filter: String,
-    entries: Vec<DeviceEntry>,
+    /// The list, kept up to date by `ecad-cadcraft`.
+    pub list: ecad_cadcraft::device_list::DeviceList,
     rows: Vec<Row>,
-    /// (project serial, change count, filter) the copy was built at.
-    seen: Option<(u64, u64, String)>,
     pub expanded: BTreeSet<ComponentId>,
     pub selected: Option<ComponentId>,
     editing: Option<Editing>,
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
     /// offer as a merge.
     pub error: Option<(String, Option<(ComponentId, String)>)>,
-    /// Rebuilds of the copy (tests: only on a change).
-    pub rebuilds: u64,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
 }
@@ -69,21 +66,20 @@ pub struct DevicesPanel {
 impl DevicesPanel {
     /// The devices listed now.
     pub fn entries(&self) -> &[DeviceEntry] {
-        &self.entries
+        &self.list.entries
     }
 
-    /// Bring the copy up to date (only when the project, its change count or the filter changed).
-    pub fn sync(&mut self, serial: u64, count: u64, build: impl FnOnce(&str) -> Option<Vec<DeviceEntry>>) {
-        let key = (serial, count, self.filter.clone());
-        if self.seen.as_ref() == Some(&key) {
-            return;
-        }
-        if let Some(e) = build(&self.filter) {
-            self.entries = e;
-            self.seen = Some(key);
-            self.rebuilds += 1;
+    /// Bring the list up to date ([`ecad_cadcraft::device_list::DeviceList::sync`]: built whole
+    /// once, then only the devices a change touched), and lay it out again when it changed.
+    pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
+        if self.list.sync(serial, p, &self.filter) {
             self.flatten();
         }
+    }
+
+    /// The tab is shown again: the next [`DevicesPanel::sync`] builds the list whole.
+    pub fn invalidate(&mut self) {
+        self.list.invalidate();
     }
 
     /// Lay the copy out as rows: a group header per prefix, its devices, and the symbols of the
@@ -91,9 +87,9 @@ impl DevicesPanel {
     fn flatten(&mut self) {
         let mut rows = Vec::new();
         let mut last: Option<&str> = None;
-        for (i, e) in self.entries.iter().enumerate() {
+        for (i, e) in self.list.entries.iter().enumerate() {
             if last != Some(e.group.as_str()) {
-                let n = self.entries.iter().skip(i).take_while(|x| x.group == e.group).count();
+                let n = self.list.entries.iter().skip(i).take_while(|x| x.group == e.group).count();
                 rows.push(Row::Group(e.group.clone(), n));
                 last = Some(e.group.as_str());
             }
@@ -122,7 +118,7 @@ impl DevicesPanel {
         )
         .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
-        let count = self.entries.len();
+        let count = self.list.entries.len();
         ui.label(
             RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim),
         );
@@ -155,7 +151,7 @@ impl DevicesPanel {
                             );
                         }
                         Row::Device(d) => {
-                            let Some(e) = self.entries.get(d) else { continue };
+                            let Some(e) = self.list.entries.get(d) else { continue };
                             let selected = self.selected == Some(e.id);
                             if selected {
                                 p.rect_filled(rect, 0.0, t.tab_active);
@@ -205,7 +201,7 @@ impl DevicesPanel {
                             }
                         }
                         Row::Symbol(d, s) => {
-                            let Some(e) = self.entries.get(d) else { continue };
+                            let Some(e) = self.list.entries.get(d) else { continue };
                             let Some(sym) = e.symbols.get(s) else { continue };
                             if resp.hovered() {
                                 p.rect_filled(rect, 0.0, t.chrome);
@@ -243,7 +239,7 @@ impl DevicesPanel {
     /// The selected device's six properties, each a field; Enter or leaving a changed field runs
     /// `setprop`, Esc puts it back.
     fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, out: &mut Vec<Action>) {
-        let Some(e) = self.entries.iter().find(|e| e.id == c).cloned() else {
+        let Some(e) = self.list.entries.iter().find(|e| e.id == c).cloned() else {
             self.selected = None;
             return;
         };

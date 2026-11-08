@@ -76,6 +76,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
             panel_ms: 0.05,
             devices_ms: 3.0,
             goto_ms: 2.0,
+            devupd_ms: 0.1,
             place_ms: 1.0,
             join_ms: 1.0,
             tag_ms: 0.5,

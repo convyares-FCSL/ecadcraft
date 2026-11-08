@@ -287,6 +287,10 @@ impl ProjectPanel {
         ui.horizontal(|ui| {
             for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB)] {
                 if ui.selectable_label(self.tab == tab, RichText::new(name).small()).clicked() {
+                    if tab == Tab::Devices && self.tab != Tab::Devices {
+                        // Shown again after being hidden: rebuilt once, then kept up to date.
+                        self.devices.invalidate();
+                    }
                     self.tab = tab;
                     self.armed = false;
                 }

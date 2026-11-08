@@ -7,10 +7,10 @@
 //!
 //! Excluded: cables, terminals and wires; editing.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use cadcraft_engine::doc::Handle;
-use ecad_model::{ComponentId, Document, ItemKind, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{ComponentId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 
 use crate::devices::{self, PROPERTIES};
 use crate::project::Project;
@@ -41,6 +41,92 @@ pub struct DeviceEntry {
     pub properties: Vec<Option<String>>,
     /// Its symbols, in page order, then column.
     pub symbols: Vec<SymbolEntry>,
+}
+
+/// What a change could change in the Devices list (owner, 2026-11-08: act only on the ops that
+/// matter): the devices whose row or symbol rows may differ, and whether page numbers moved.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeviceTouch {
+    pub components: BTreeSet<ComponentId>,
+    /// Pages were added, removed, moved or renamed: the `/page.column` texts may differ.
+    pub pages: bool,
+}
+
+impl DeviceTouch {
+    /// Nothing in the list can differ.
+    pub fn is_empty(&self) -> bool {
+        self.components.is_empty() && !self.pages
+    }
+}
+
+/// What `ops`, about to be applied to `doc`, could change in the Devices list: a component
+/// created, deleted or given a property; a representation of a component linked, unlinked or
+/// changed; an item of a component's representation changed (a symbol moved); pages added,
+/// removed or moved. Every other op (wires, cables, plain lines, terminals) changes nothing there.
+pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
+    let mut t = DeviceTouch::default();
+    let mut component = |s: &Subject| {
+        if let Subject::Component(c) = s {
+            t.components.insert(*c);
+        }
+    };
+    let mut pages = false;
+    for op in ops {
+        match op {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => component(&Subject::Component(*id)),
+            Op::SetProperty { object: ObjectRef::Component(c), .. } => component(&Subject::Component(*c)),
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => component(&rep.subject),
+            Op::ModifyRepresentation { before, after, .. } => {
+                component(&before.subject);
+                component(&after.subject);
+            }
+            Op::ModifyItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    component(&r.subject);
+                }
+            }
+            Op::AddPage { .. } | Op::RemovePage { .. } => pages = true,
+            _ => {}
+        }
+    }
+    t.pages = pages;
+    t
+}
+
+/// The list entry of component `c` as it is now (`None`: gone, or a component without a tag that
+/// is drawn nowhere).
+pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
+    let comp = doc.components.get(&c)?;
+    let prefix = match comp.properties.get(ecad_model::tag::TAG_KEY) {
+        Some(t) => Some(ecad_model::tag::parse(t).map_or_else(|| ecad_model::tag::key(t), |(p, _)| p)),
+        None if doc.representations_of(Subject::Component(c)).next().is_none() => return None,
+        None => None,
+    };
+    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    Some(entry(doc, c, prefix, ecad_model::derive::column_width(doc), &order))
+}
+
+/// The order of the list: tagged devices by prefix, number, tag; then those without a tag.
+pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, ComponentId) {
+    match e.tag.as_deref() {
+        Some(t) => {
+            let (p, n) = ecad_model::tag::parse(t).unwrap_or_else(|| (ecad_model::tag::key(t), 0));
+            (false, p, n, t.to_string(), e.id)
+        }
+        None => (true, String::new(), 0, String::new(), e.id),
+    }
+}
+
+/// Set the page numbers of every listed symbol again (pages were added, removed or moved): no
+/// other part of the list depends on the page order.
+pub fn renumber(doc: &Document, entries: &mut [DeviceEntry]) {
+    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    for e in entries {
+        for s in &mut e.symbols {
+            s.page_number = order.get(&s.page).map_or_else(|| "?".into(), usize::to_string);
+        }
+        e.symbols.sort_by_key(|s| (order.get(&s.page).copied().unwrap_or(usize::MAX), s.column, s.rep));
+    }
 }
 
 /// The group a component without a tag is listed under.
@@ -148,4 +234,94 @@ pub fn symbol_target(p: &Project, rep: RepresentationId) -> Option<(PageId, Opti
         handles.extend(r.connection_points.keys().filter_map(|t| view.map.marker(rep, *t)));
     }
     Some((r.page, position(doc, r), handles))
+}
+
+/// The Devices tab's list kept up to date (owner, 2026-11-08): built whole once, then refreshed
+/// only for the devices each change touched ([`devices_touched`], through
+/// [`Project::device_changes_since`]), and renumbered when pages moved. A change that touches no
+/// device does nothing.
+#[derive(Debug, Clone, Default)]
+pub struct DeviceList {
+    pub entries: Vec<DeviceEntry>,
+    /// (project serial, change count, filter) the list is up to date with.
+    seen: Option<(u64, u64, String)>,
+    /// Full builds so far (on open, on reload, when shown again, on a filter change).
+    pub rebuilds: u64,
+    /// Refreshes that changed the list, and the devices they refreshed.
+    pub updates: u64,
+    pub devices_refreshed: u64,
+}
+
+impl DeviceList {
+    /// Bring the list up to date with `p` (the project numbered `serial` by the caller) under
+    /// `filter`. Returns whether it changed.
+    pub fn sync(&mut self, serial: u64, p: &Project, filter: &str) -> bool {
+        let count = p.change_count();
+        let doc = p.ledger.document();
+        let since = match &self.seen {
+            Some((s, n, f)) if *s == serial && f == filter => Some(*n),
+            _ => None,
+        };
+        let changed = match since.and_then(|n| p.device_changes_since(n)) {
+            Some(t) if t.is_empty() => false,
+            Some(t) => self.apply(doc, &t, filter),
+            None => {
+                self.entries = device_entries(doc, filter);
+                self.rebuilds += 1;
+                true
+            }
+        };
+        self.seen = Some((serial, count, filter.to_string()));
+        changed
+    }
+
+    /// Forget how up to date the list is: the next [`DeviceList::sync`] builds it whole.
+    pub fn invalidate(&mut self) {
+        self.seen = None;
+    }
+
+    /// Refresh the devices `t` names, and the page numbers when pages moved.
+    fn apply(&mut self, doc: &Document, t: &DeviceTouch, filter: &str) -> bool {
+        let mut changed = false;
+        let mut resort = false;
+        for c in &t.components {
+            let now = device_entry(doc, *c).filter(|e| matches(e, filter));
+            let at = self.entries.iter().position(|e| e.id == *c);
+            match (at, now) {
+                (Some(i), Some(e)) => {
+                    if self.entries.get(i) != Some(&e) {
+                        resort |= self.entries.get(i).map(sort_key) != Some(sort_key(&e));
+                        if let Some(slot) = self.entries.get_mut(i) {
+                            *slot = e;
+                        }
+                        changed = true;
+                        self.devices_refreshed += 1;
+                    }
+                }
+                (Some(i), None) => {
+                    self.entries.remove(i);
+                    changed = true;
+                    self.devices_refreshed += 1;
+                }
+                (None, Some(e)) => {
+                    self.entries.push(e);
+                    resort = true;
+                    changed = true;
+                    self.devices_refreshed += 1;
+                }
+                (None, None) => {}
+            }
+        }
+        if t.pages {
+            renumber(doc, &mut self.entries);
+            changed = true;
+        }
+        if resort {
+            self.entries.sort_by_key(sort_key);
+        }
+        if changed {
+            self.updates += 1;
+        }
+        changed
+    }
 }
