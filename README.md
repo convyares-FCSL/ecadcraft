@@ -6,7 +6,18 @@ Electrical CAD has been painful for too long. Today's tools make you build datab
 
 It is not an AutoCAD clone, and it is not trying to replace EPLAN for large teams. It is built for the person most ECAD serves badly: the **lone electrical designer**, or a small team of two or three, with no CAD administrator and no time for setup.
 
-> **Status: pre-alpha.** Concept and architecture are defined; engineering starts with an assessment of the CADCraft engine (Phase 0, see [`docs/cadcraft-assessment.md`](docs/cadcraft-assessment.md)). Nothing here is usable for production drawings yet. The repository currently contains the CADCraft drawing engine unchanged; the ECAD crates are added beside it phase by phase.
+> **Status: pre-alpha, in a desktop trial.** The ECAD crates in [`ecad/`](ecad/) run on the CADCraft engine in a trial app, natively on Windows and Linux. Nothing here is usable for production drawings yet: the model and file format are still being shaped. What works today is listed below; how to try it is in [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md).
+
+## What works today
+
+- **Projects:** one `.ecad` file per project, with every page inside it, saved and reopened on Windows and Linux. The file is an append-only log, checked on every open, with safe saving and a lock against two writers.
+- **Drawing:** components drawn from lines and given terminals, wires between them, and multiple pages (new, rename, reorder). Undo and redo of everything, and connected wires follow when a component moves.
+- **Cables:** a slash across wires makes a cable, with traditional and fan views of the same cable, core designation, and the cable continued on another page with live `/page.column` references, Go to Reference, a hover lens and orphan (`/?`) markers.
+- **AI agents:** an MCP server (`ecad-mcp`, headless) that reads and edits projects through the same commands as the app.
+- **Tools:** a read-only debugger panel, a read-only HTML inspector, a load benchmark (`cargo xtask bench`) and start-up timing.
+- **Speed:** a drawing edit takes about 0.5 ms on a medium project and 1.5 ms on a 500-page one; showing another page about 1 ms (benchmark, 2026-11-08).
+
+Not yet: symbol libraries (`.ecadlib`), component cross-references, the project panel, reports and exports, DWG import.
 
 ---
 
@@ -45,6 +56,7 @@ It is not an AutoCAD clone, and it is not trying to replace EPLAN for large team
 ```
 
 - **Engine:** a Rust fork of [CADCraft](https://github.com/storytold/cadcraft) for geometry, snapping, commands and rendering.
+- **Planned layout (below).** The crates built so far are `ecad-model` (the model and its operations), `ecad-store` and `ecad-file` (the project file), `ecad-cadcraft` (the bridge to the engine), `ecad-inspect`, `ecad-bench`, and the apps `ecad-trial` and `ecad-mcp`; see [`ecad/`](ecad/).
 - **`ecad-ledger`:** the project file format: an append-only log of user operations (`AddWire`, `SetTag`, `SlashCable`, `PromotePart`, …), with checkpoints, named versions and compaction.
 - **`ecad-topology`:** builds the connectivity graph from geometry and pins, with strict junction rules (crossing lines never connect; T-junctions need a dot).
 - **`ecad-infer`:** tag identity, cables, off-page matching, orphan and open-end detection.
@@ -52,7 +64,7 @@ It is not an AutoCAD clone, and it is not trying to replace EPLAN for large team
 
 ### File formats
 
-- **`.ecad` project.** One file. An append-only operation log (CBOR/MessagePack). Current state is produced by replaying the log; checkpoints only speed up opening and can always be regenerated. Saving only appends, so a crash can't corrupt earlier work. Named versions (Rev A, pre-FAT) are bookmarks in the log.
+- **`.ecad` project.** One file. An append-only operation log (JSON lines today; a binary codec may follow). Current state is produced by replaying the log; checkpoints only speed up opening and can always be regenerated. Saving only appends, so a crash can't corrupt earlier work. Named versions (Rev A, pre-FAT) are bookmarks in the log.
 - **`.ecadlib` library.** Same format, holding symbols. Symbols are copied into projects but remember their origin, so projects always open on their own.
 - **Determinism.** Your decisions ("not a connection", "K1 is part X") are stored as explicit operations. Inference only fills what you never stated, so an engine update can't silently change an old project.
 
@@ -116,12 +128,12 @@ Run the inherited CADCraft drawing app with a sample drawing:
 cargo run --release -p cadcraft -- --sample
 ```
 
-On Linux the desktop app needs the usual windowing development packages (X11/Wayland, `libxkbcommon`). Build steps will be updated once Phase 0 settles the workspace layout.
+On Linux the desktop app needs the usual windowing development packages (X11/Wayland, `libxkbcommon`).
 
 ## Development workflow
 
-- `dev` is the integration branch. Each major feature is developed on its own branch cut from `dev` (`feature/<name>`, `docs/<name>`) and merged back into `dev` once its tests pass.
-- Every change runs the full test suite (`cargo test --workspace`) plus `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`. CADCraft's own gate, `cargo xtask ci`, also checks assets, crate layering and the WebAssembly build.
+- `main` is the released baseline and `dev` is integration. Each feature is developed on its own long-lived branch cut from `dev` (`feature/<name>`, listed in [`ecad/docs/features.md`](ecad/docs/features.md)) and reaches `dev` by one pull request when it works. `dev` reaches `main` through a QA gate: the full suite, screenshots, the benchmark and an owner trial.
+- Pull requests into `dev` run a quick check (`cargo fmt --check` and `cargo clippy --all-targets`); the full suite (`cargo xtask ci` with assets, crate layering and the WebAssembly build, plus `cargo test --workspace`, on Linux and Windows) runs on pull requests into `main`. Rules for contributors and agents: [`ecad/CLAUDE.md`](ecad/CLAUDE.md).
 - File-format and topology rules are written test-first; ECAD crates carry unit tests next to the code, integration tests under `tests/`, and golden schematics for topology.
 - Production code never panics: no `unwrap`, `expect`, `panic!` or `unsafe`; errors are `Result`s. See [`CLAUDE.md`](CLAUDE.md) for the full engine conventions inherited from CADCraft.
 

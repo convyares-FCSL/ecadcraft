@@ -256,6 +256,8 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
     assert_eq!((f.text.as_str(), f.text_at, f.right_aligned), ("/1.2", Pt::new(15.0, 5.0), true));
     // The drawn text: one Text on ECAD-CABLES, mapped to its reference.
     for page in [r.supply, r.field] {
+        // What the page shows once in front (only the page in front is redrawn on a change).
+        r.h.activate(page);
         let rid = reference_on(&mut r.h, page);
         let h = r.h.p(|p| p.pages[&page].map.ref_text(rid)).expect("text drawn");
         assert_eq!(r.h.mapped(page, h), Some(Mapped::RefText(rid)));
@@ -344,6 +346,10 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let doc = r.h.doc();
     assert!(markers_on_page(&doc, r.supply)[0].orphan);
     // Red: the ring (`ecad.orphan`, #FF0000) and the text (ACI 1).
+    // Only the page shown is redrawn on a commit (owner, 2026-11-08): Supply is stale until it
+    // comes to the front.
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply's text changed, so it is stale");
+    r.h.activate(r.supply);
     let su = uid(&mut r.h, r.supply);
     let ring = r.h.p(|p| overlay_marks(p, su)).into_iter().find(|m| m.at == Vec2::new(65.0, 5.0)).expect("ring");
     assert_eq!((ring.shape, ring.color), (MarkShape::Ring, Rgb(0xff, 0x00, 0x00)));
@@ -957,4 +963,258 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     assert_eq!(v["routes"].as_array().map(Vec::len), Some(n));
     assert_eq!(v["text"], "/1.2");
     assert!(took < std::time::Duration::from_secs(120), "continuing {n} wires took {took:?}");
+}
+
+// ---------------------------------------------------------------- the flag's side (fix round 1)
+
+/// The drawn flag outline and text anchor of `page`'s reference end of `cable` (traditional view).
+fn drawn_flag(h: &mut H, page: PageId, cable: CableId) -> (Vec<Pt>, Pt) {
+    use ecad_cadcraft::look::{Role, Shape};
+    let doc = h.doc();
+    let drawings = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    let d = drawings.get(&cable).expect("the cable is drawn");
+    let flag = d.parts.iter().find_map(|p| match (&p.role, &p.shape) {
+        (Role::Flag, Shape::Path { points, .. }) => Some(points.clone()),
+        _ => None,
+    });
+    let text = d.parts.iter().find_map(|p| match (&p.role, &p.shape) {
+        (Role::ReferenceText, Shape::Text { at, .. }) => Some(*at),
+        _ => None,
+    });
+    (flag.expect("a flag"), text.expect("a reference text"))
+}
+
+/// Design 009 §7.2 with design 010 §6.2: the flag of `page`'s reference end points along `u`, away
+/// from the wires; only its flat side's margin (h/2) is behind the point, the text is wholly on
+/// the far side, and the pick box follows the flag (its mirror image, among the wires, picks
+/// nothing).
+fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
+    let doc = h.doc();
+    let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
+    let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
+    // The wires leave the point the other way.
+    let ends = ecad_model::derive::route_ends_by_page(&doc);
+    let routes: Vec<Pt> = doc.cables[&cable]
+        .members
+        .iter()
+        .filter_map(|x| ends.get(&(x.conductor, page)).copied())
+        .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
+        .collect();
+    assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
+
+    let (flag, text_at) = drawn_flag(h, page, cable);
+    let hh = ecad_cadcraft::look::LABEL_HEIGHT;
+    let w = ecad_cadcraft::look::font_width(&m.text);
+    for p in &flag {
+        assert!(along(*p) >= -0.5 * hh - 1e-9, "flag point {p:?} reaches back into the wires ({u:?})");
+    }
+    let reach = flag.iter().map(|p| along(*p)).fold(f64::MIN, f64::max);
+    assert!(reach >= hh, "the flag points away from the wires ({u:?}): reach {reach}");
+    let corners = [text_at, Pt::new(text_at.x + w, text_at.y), Pt::new(text_at.x, text_at.y + hh)];
+    for c in corners.iter().chain([Pt::new(text_at.x + w, text_at.y + hh)].iter()) {
+        assert!(along(*c) >= -1e-9, "the text {:?} sits away from the wires ({u:?}): corner {c:?}", m.text);
+    }
+    let centre = Pt::new(text_at.x + 0.5 * w, text_at.y + 0.5 * hh);
+    // Among the wires, 1.5 h behind the point (beyond the flat side's h/2 margin).
+    let mirror = Pt::new(m.at.x - 1.5 * hh * u.x, m.at.y - 1.5 * hh * u.y);
+    assert_eq!(ecad_cadcraft::references::reference_at(&doc, page, centre, 0.1), Some(m.reference), "pick the text");
+    assert_eq!(ecad_cadcraft::references::reference_at(&doc, page, mirror, 0.1), None, "the box follows the flag");
+}
+
+/// Fixture R's page 1: the wires come from the left, the flag points right.
+#[test]
+fn the_flag_points_right_when_the_wires_come_from_the_left() {
+    let (mut r, _) = continued();
+    assert_flag_away(&mut r.h, r.supply, r.c1, Pt::new(1.0, 0.0));
+}
+
+/// Fixture R's page 2 (the continued end): the wires leave to the right, the flag points left and
+/// `/1.2` sits left of the point, clear of the wires.
+#[test]
+fn the_flag_points_left_when_the_wires_leave_to_the_right() {
+    let (mut r, _) = continued();
+    assert_flag_away(&mut r.h, r.field, r.c1, Pt::new(-1.0, 0.0));
+}
+
+/// Three vertical wires (x = 0, 5, 10, y = 0 to 60) slashed into cable C1, with a reference at `at`.
+fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    for x in [0.0, 5.0, 10.0] {
+        h.run("wire", json!({"points": [[x, 0.0], [x, 60.0]]})).unwrap();
+    }
+    let c1: CableId =
+        id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
+    h.run("cableref", json!({"cable": c1.hex(), "at": at})).unwrap();
+    (h, page, c1)
+}
+
+/// Wires coming from below: the flag sits above the point and points up.
+#[test]
+fn the_flag_points_up_when_the_wires_come_from_below() {
+    let (mut h, page, c1) = vertical_cable([5.0, 65.0]);
+    assert_flag_away(&mut h, page, c1, Pt::new(0.0, 1.0));
+}
+
+/// Wires coming from above: the flag sits below the point and points down.
+#[test]
+fn the_flag_points_down_when_the_wires_come_from_above() {
+    let (mut h, page, c1) = vertical_cable([5.0, -5.0]);
+    assert_flag_away(&mut h, page, c1, Pt::new(0.0, -1.0));
+}
+
+// ---------------------------------------------------------------- stale pages (brief 014 fix round)
+
+/// The reference texts drawn on `page` (the drawing as it is, not a fresh derivation).
+fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
+    h.pv(|p, pg| {
+        let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
+        let view = &p.pages[&page];
+        view.map
+            .ref_text_handles()
+            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
+            .map(|e| format!("{:?}", e.kind))
+            .collect()
+    })
+}
+
+/// Owner, 2026-11-08: a commit redraws only the page being shown. With both pages open, moving
+/// Field's reference point changes Supply's reference text: Supply is not redrawn during the
+/// commit, is marked stale, and shows the new text once its tab comes to the front.
+#[test]
+fn a_commit_marks_other_pages_stale_and_they_are_redrawn_when_brought_to_the_front() {
+    let mut r = connected();
+    r.h.activate(r.supply);
+    r.h.check();
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(
+        drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")),
+        "{:?}",
+        drawn_texts(&mut r.h, r.supply)
+    );
+
+    // A commit on Field that changes Supply's text (Field's point moves to column 3).
+    r.h.activate(r.field);
+    let fid = reference_on(&mut r.h, r.field);
+    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fh = r.h.handle_of(r.field, fpoint);
+    r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.3", "the document says the new text");
+
+    // Supply was not redrawn: same drawing, old text, marked stale. Field is not stale.
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the commit");
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
+    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page shown is never stale");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")));
+    r.h.check();
+
+    // Switching the tab alone redraws nothing; the trial's per-frame refresh does.
+    r.h.activate_tab_only(r.supply);
+    assert!(r.h.p(|p| p.pages[&r.supply].stale));
+    r.h.project.refresh_shown(&mut r.h.s).unwrap();
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply is still stale in front");
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
+    r.h.check();
+
+    // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
+    // change what Supply shows leaves Supply alone: not redrawn and not stale.
+    let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].component;
+    r.h.activate(r.field);
+    let handles = r.h.rep_handles(r.field, k2);
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    let head = r.h.head();
+    r.h.run("move", json!({"handles": handles, "delta": [0, 0.5]})).unwrap();
+    assert_eq!(r.h.head(), head + 1, "K2 moved");
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during));
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply's texts did not change");
+    r.h.check();
+}
+
+/// Owner, 2026-11-08: undo (like redo and the ECAD commands' JSON forms) redraws only the page in
+/// front. Undoing a move of Field's reference point (which changed Supply's text) from Field
+/// leaves Supply's drawing as it was, marks it stale, and Supply shows the reverted text once its
+/// tab comes to the front.
+#[test]
+fn undo_marks_other_pages_stale_and_they_show_the_reverted_text_in_front() {
+    let mut r = connected();
+    r.h.activate(r.field);
+    let fid = reference_on(&mut r.h, r.field);
+    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fh = r.h.handle_of(r.field, fpoint);
+    r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
+    r.h.activate(r.supply);
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")));
+
+    // Undo from Field.
+    r.h.activate(r.field);
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    let head = r.h.head();
+    r.h.run("u", Value::Null).unwrap();
+    assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1", "the document says the reverted text");
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the undo");
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
+    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page in front is never stale");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")), "old text until in front");
+    r.h.check();
+
+    r.h.activate(r.supply);
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale));
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
+    r.h.check();
+}
+
+/// Owner's two-page trial (brief 014 fix round): page 2's cable end is erased (page 1 shows `/?`),
+/// then page 1 is brought to the front and the erase is undone from there. The undone edit was on
+/// page 2, but page 1's reference text changed, so page 1, in front, is redrawn at once.
+#[test]
+fn undo_from_the_front_page_redraws_it_when_its_reference_text_changed() {
+    let mut r = connected();
+    r.h.activate(r.field);
+    let doc = r.h.doc();
+    let keep: Vec<cadcraft_engine::doc::Handle> = doc
+        .representations
+        .values()
+        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Component(_)))
+        .flat_map(|x| x.items.iter())
+        .map(|i| r.h.handle_of(r.field, *i))
+        .collect();
+    let erase: Vec<String> =
+        r.h.pv(|p, pg| pg.entities_of(p, r.field))
+            .iter()
+            .map(|e| e.handle)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|h| !matches!(r.h.mapped(r.field, *h), Some(Mapped::Marker(..))) && !keep.contains(h))
+            .map(|h| h.hex())
+            .collect();
+    r.h.run("erase", json!({ "handles": erase })).unwrap();
+    r.h.activate(r.supply);
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/?")), "{texts:?}");
+
+    // Undo from page 1 (in front): Field's end is back, and Supply shows `/2.1` straight away.
+    let head = r.h.head();
+    r.h.run("u", Value::Null).unwrap();
+    assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "the page in front is never stale");
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.1")), "page 1 in front was not redrawn: {texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/?")), "{texts:?}");
+    r.h.check();
+    // And typed at the command line, as the owner did (`u` then Enter), for a second round.
+    r.h.run("redo", Value::Null).unwrap();
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/?")), "redo redraws the front too");
+    r.h.cmdline("u");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")), "typed u redraws the front");
+    r.h.check();
 }

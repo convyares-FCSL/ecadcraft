@@ -5,24 +5,33 @@
 //! policy (§10: M1 reroute, M2 connected equipment, M3 deliberate reconnection) and the copy
 //! policy (§11: whole components are copied independently), and returns ops. Anything it cannot
 //! classify is refused, never dropped (DOC-08).
+//!
+//! # Cost (brief 014)
+//! Previews of the proposed ops run in place on the live document ([`Ledger::with_applied`]:
+//! applied, checked where they touched it, read, rolled back), never on a copy, and the movement
+//! policy goes only through the conductors the ops could have moved ([`Scope`]). Apart from the
+//! per-page drawing comparison, a translation costs in proportion to what the edit touched.
+//! The ops are exactly those of the earlier whole-document code, which the `translate-oracle`
+//! feature keeps as a test oracle (`translate_oracle.rs`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{route_on_page, terminal_positions};
+use ecad_model::derive::{route_on_page, terminal_position, terminal_positions};
 use ecad_model::{
-    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op,
-    PageId, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId,
+    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger,
+    Op, PageId, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
 
-/// Everything the translation reads.
+/// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
+/// ops in place ([`Ledger::with_applied`]); the translation never changes it.
 pub(crate) struct Ctx<'a> {
-    pub doc: &'a Document,
+    pub ledger: &'a mut Ledger,
     pub page: PageId,
     pub map: &'a HandleMap,
     pub last: &'a Drawing,
@@ -85,31 +94,168 @@ fn entities(d: &Drawing) -> (Vec<Handle>, HashMap<Handle, &Arc<Entity>>) {
     (order, d.model.iter().map(|e| (e.handle, e)).collect())
 }
 
-/// Apply `ops` to a copy of `doc` and check invariants.
-fn preview(doc: &Document, ops: &[Op]) -> Result<Document, String> {
-    let mut d = doc.clone();
-    for op in ops {
-        op.apply(&mut d).map_err(|e| e.to_string())?;
-    }
-    d.check().map_err(|e| e.to_string())?;
-    Ok(d)
+/// Apply `ops` to the live document in place, check what they touched, run `read` on the result
+/// and roll back. Errors are those a commit of `ops` would report.
+///
+/// The check is scoped to what `ops` touch (plus the full check in verify mode). On an already
+/// invalid document the earlier full-check preview could refuse where this one accepts; a
+/// committed document is always valid, so that cannot happen here.
+fn preview<R>(ledger: &mut Ledger, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R, String> {
+    #[cfg(feature = "translate-oracle")]
+    let before = ledger.document().clone();
+    let result = ledger.with_applied(ops, read).map_err(|e| e.to_string());
+    #[cfg(feature = "translate-oracle")]
+    crate::translate_oracle::unchanged(&before, ledger.document());
+    result
 }
 
 /// The terminal shown at `at` on `page`, if any.
 pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Option<TerminalId> {
-    terminal_positions(doc, page).into_iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| t)
+    first_near(&terminal_positions(doc, page), at, tol)
 }
 
-/// Where each terminal is shown on `page` (first representation).
-fn positions(doc: &Document, page: PageId) -> BTreeMap<TerminalId, Pt> {
-    let mut out = BTreeMap::new();
-    for (t, _, p) in terminal_positions(doc, page) {
-        out.entry(t).or_insert(p);
+/// The first terminal of `shown` (as [`terminal_positions`] lists them) within `tol` of `at`.
+fn first_near(shown: &[(TerminalId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<TerminalId> {
+    shown.iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| *t)
+}
+
+/// [`terminal_at`] for many points on one document: the terminal positions are worked out on
+/// first use and kept, so an edit that moves many route ends lists them once, not once per end.
+pub(crate) struct ShownOnce<'a> {
+    doc: &'a Document,
+    page: PageId,
+    shown: Option<Vec<(TerminalId, RepresentationId, Pt)>>,
+}
+
+impl<'a> ShownOnce<'a> {
+    pub(crate) fn new(doc: &'a Document, page: PageId) -> Self {
+        Self { doc, page, shown: None }
     }
-    out
+
+    pub(crate) fn terminal_at(&mut self, at: Pt, tol: f64) -> Option<TerminalId> {
+        let (doc, page) = (self.doc, self.page);
+        first_near(self.shown.get_or_insert_with(|| terminal_positions(doc, page)), at, tol)
+    }
+}
+
+/// What a set of proposed ops could move on a page, worked out on the document before them.
+///
+/// # Semantics
+/// A conductor can get a movement op (§10) only if one of its ends is attached to a terminal
+/// whose shown position changed (M2), or one of its route ends moved (M3) or is fresh. So:
+/// - `terminals`: every terminal whose position on the page the ops could change: those of every
+///   component whose representation on the page the ops link, unlink or change (as recorded in
+///   the ops, before and after), or whose page item they change or remove. Terminals the ops
+///   create have no earlier position, so never count as moved.
+/// - `routes`: every conductor whose route on the page the ops could change (its representation
+///   or its route item changed, or it is new).
+/// - `attached`: conductors whose ends the ops attach or detach.
+///
+/// Op kinds a translation does not produce make the scope the whole document, which is exactly
+/// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteComponent`,
+/// `RemoveTerminal`, `DeleteConductor`, the cable ops, `SetProperty`, `RemoveDefinition`,
+/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateComponent`, `AddTerminal` or
+/// `EmbedDefinition` of an ID the document already has.
+#[derive(Debug, Default)]
+struct Scope {
+    terminals: BTreeSet<TerminalId>,
+    routes: BTreeSet<ConductorId>,
+    attached: BTreeSet<ConductorId>,
+}
+
+impl Scope {
+    fn of(doc: &Document, page: PageId, ops: &[Op]) -> Scope {
+        let mut s = Scope::default();
+        let mut components: BTreeSet<ComponentId> = BTreeSet::new();
+        let mut note = |r: &Representation, s: &mut Scope| {
+            if r.page != page {
+                return;
+            }
+            match r.subject {
+                Subject::Component(c) => {
+                    components.insert(c);
+                    s.terminals.extend(r.connection_points.keys().copied());
+                }
+                Subject::Conductor(c) => {
+                    s.routes.insert(c);
+                }
+                Subject::Cable(_) => {}
+            }
+        };
+        for op in ops {
+            match op {
+                Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
+                    if let Some((_, r)) = doc.representation_of_item(*id) {
+                        note(r, &mut s);
+                    }
+                }
+                // A new item is shown only through a representation op, noted below.
+                Op::AddItem { .. } => {}
+                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => note(rep, &mut s),
+                Op::ModifyRepresentation { before, after, .. } => {
+                    note(before, &mut s);
+                    note(after, &mut s);
+                }
+                Op::CreateConductor { id, .. } => {
+                    s.routes.insert(*id);
+                }
+                Op::AttachEnd { conductor, .. } => {
+                    s.attached.insert(*conductor);
+                }
+                // New objects; a definition the document lacks cannot be shown by anything in it.
+                Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+                Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+                Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+                _ => return Scope::everything(doc),
+            }
+        }
+        for c in components {
+            s.terminals.extend(doc.terminals_of(c).map(|(t, _)| t));
+        }
+        s
+    }
+
+    fn everything(doc: &Document) -> Scope {
+        Scope {
+            terminals: doc.terminals.keys().copied().collect(),
+            routes: doc.conductors.keys().copied().collect(),
+            attached: BTreeSet::new(),
+        }
+    }
+}
+
+/// What [`movement`] needs from the document before the ops: positions of the scope's terminals
+/// and routes of the scope's conductors.
+struct Earlier {
+    positions: BTreeMap<TerminalId, Option<Pt>>,
+    /// Route item and its path ends, `None` when the conductor has no route on the page.
+    routes: BTreeMap<ConductorId, Option<(ItemId, Option<(Pt, Pt)>)>>,
 }
 
 pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
+    #[cfg(feature = "translate-oracle")]
+    let ids_before = cx.ids.clone();
+    let result = translate_scoped(cx);
+    #[cfg(feature = "translate-oracle")]
+    crate::translate_oracle::compare(
+        crate::translate_oracle::Inputs {
+            doc: cx.ledger.document(),
+            page: cx.page,
+            map: cx.map,
+            last: cx.last,
+            now: cx.now,
+            provenance: cx.provenance,
+            clips: cx.clips,
+            tol: cx.tol,
+        },
+        ids_before,
+        cx.ids,
+        &result,
+    );
+    result
+}
+
+fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let changed_tables = table_changes(cx.last, cx.now);
     if !changed_tables.is_empty() {
         return Err(format!("changes to {} are not recorded on ECAD pages yet", changed_tables.join(", ")));
@@ -169,10 +315,10 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
-                let item = cx.doc.items.get(&id).cloned().ok_or("mapped item missing")?;
-                if let Some((rid, _)) = cx.doc.representation_of_item(id) {
+                let item = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
+                if let Some((rid, _)) = cx.ledger.document().representation_of_item(id) {
                     linked_removed = true;
-                    rep(&mut reps, rid, cx.doc)?;
+                    rep(&mut reps, rid, cx.ledger.document())?;
                     if let Some(r) = reps.get_mut(&rid) {
                         r.items.retain(|i| *i != id);
                     }
@@ -187,7 +333,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
-                rep(&mut reps, rid, cx.doc)?;
+                rep(&mut reps, rid, cx.ledger.document())?;
                 if let Some(r) = reps.get_mut(&rid) {
                     r.connection_points.remove(&term);
                 }
@@ -199,10 +345,10 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // it was erased with it, and the emptied representation is removed below.
     for rid in erased_refs {
         linked_removed = true;
-        rep(&mut reps, rid, cx.doc)?;
+        rep(&mut reps, rid, cx.ledger.document())?;
         let items: Vec<ItemId> = reps.get(&rid).map(|r| r.items.clone()).unwrap_or_default();
         for id in items {
-            let item = cx.doc.items.get(&id).cloned().ok_or("mapped item missing")?;
+            let item = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
             t.ops.push(Op::RemoveItem { id, item });
             counts[2] += 1;
             if let Some(h) = cx.map.item(id) {
@@ -223,8 +369,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     for (h, new) in &changed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
-                let item = item_from(cx.doc, cx.page, new)?;
-                let old = cx.doc.items.get(&id).cloned().ok_or("mapped item missing")?;
+                let item = item_from(cx.ledger.document(), cx.page, new)?;
+                let old = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
                 if std::mem::discriminant(&item.kind) != std::mem::discriminant(&old.kind) {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
@@ -241,7 +387,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 if marker_entity(at, *h) != ***new {
                     return Err("terminal markers can only be moved".into());
                 }
-                rep(&mut reps, rid, cx.doc)?;
+                rep(&mut reps, rid, cx.ledger.document())?;
                 if let Some(r) = reps.get_mut(&rid) {
                     r.connection_points.insert(term, at);
                 }
@@ -271,7 +417,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 if e.common.layer == MARKER_LAYER {
                     return Err(format!("the {MARKER_LAYER} layer is reserved for terminal markers"));
                 }
-                let item = item_from(cx.doc, cx.page, e)?;
+                let item = item_from(cx.ledger.document(), cx.page, e)?;
                 if matches!(item.kind, ItemKind::Symbol(_)) {
                     return Err("symbols are placed with PLACE, not inserted as blocks".into());
                 }
@@ -288,7 +434,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     // Representation edits: an emptied representation is removed (its subject stays, DOC-06).
     for (id, r) in reps {
-        let old = cx.doc.representations.get(&id).cloned().ok_or("representation missing")?;
+        let old = cx.ledger.document().representations.get(&id).cloned().ok_or("representation missing")?;
         if r.items.is_empty() && r.connection_points.is_empty() {
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {
@@ -302,7 +448,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     }
 
     movement(cx, &mut t, &fresh_conductor_ends)?;
-    preview(cx.doc, &t.ops)?;
+    preview(cx.ledger, &t.ops, |_| ())?;
     t.summary =
         format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
     Ok(t)
@@ -323,7 +469,7 @@ fn copy_batch(
     let mut by_source: HashMap<Handle, Handle> = HashMap::new();
     for (new, src) in batch {
         let (doc, map, h) = match src {
-            Source::Entity(h) => (cx.doc, cx.map, *h),
+            Source::Entity(h) => (cx.ledger.document(), cx.map, *h),
             Source::Clipboard { serial, handle } => {
                 let snap = cx
                     .clips
@@ -362,7 +508,7 @@ fn copy_batch(
         }
         let comp = sdoc.components.get(&src_comp).cloned().ok_or("source component missing")?;
         if let Some(def) = comp.definition
-            && !cx.doc.definitions.contains_key(&def)
+            && !cx.ledger.document().definitions.contains_key(&def)
         {
             let d = sdoc.definitions.get(&def).cloned().ok_or("source definition missing")?;
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
@@ -380,7 +526,7 @@ fn copy_batch(
             let _ = src_item;
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied entity missing")?;
-            let item = item_from(cx.doc, cx.page, e)?;
+            let item = item_from(cx.ledger.document(), cx.page, e)?;
             let id: ItemId = cx.ids.fresh();
             t.ops.push(Op::AddItem { id, item });
             t.new_items.push((id, nh));
@@ -429,7 +575,7 @@ fn copy_batch(
         for sh in &handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied entity missing")?;
-            let item = item_from(cx.doc, cx.page, e)?;
+            let item = item_from(cx.ledger.document(), cx.page, e)?;
             let id: ItemId = cx.ids.fresh();
             t.ops.push(Op::AddItem { id, item });
             t.new_items.push((id, nh));
@@ -467,7 +613,7 @@ fn copy_batch(
             return Err("copying terminal markers without their whole component is not supported yet".into());
         }
         let e = after.get(new).ok_or("copied entity missing")?;
-        let item = item_from(cx.doc, cx.page, e)?;
+        let item = item_from(cx.ledger.document(), cx.page, e)?;
         if matches!(item.kind, ItemKind::Symbol(_)) {
             return Err("a symbol copied without its component; this is not supported yet".into());
         }
@@ -479,70 +625,32 @@ fn copy_batch(
 }
 
 /// Movement policy (§10). Adds attachment ops and route-end amendments to `t`.
-fn movement(cx: &Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]) -> Result<(), String> {
-    let eps = 1e-9;
-    let proposed = preview(cx.doc, &t.ops)?;
-    let old_pos = positions(cx.doc, cx.page);
-    let new_pos = positions(&proposed, cx.page);
-    let mut amend: BTreeMap<ItemId, Item> = BTreeMap::new();
-    let mut attach: Vec<Op> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
-    for (cid, c) in &proposed.conductors {
-        let Some((route_id, prim)) = route_on_page(&proposed, *cid, cx.page) else { continue };
-        let Some((new_a, new_b)) = prim.path_ends() else { continue };
-        let old_ends =
-            route_on_page(cx.doc, *cid, cx.page).and_then(|(id, p)| (id == route_id).then(|| p.path_ends()).flatten());
-        let mut route = prim.clone();
-        for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
-            let fresh = fresh_ends.contains(&(*cid, end));
-            let end_moved =
-                fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
-            match c.end(end) {
-                Some(term) => {
-                    let (op, np) = (old_pos.get(&term), new_pos.get(&term));
-                    let terminal_moved = matches!((op, np), (Some(a), Some(b)) if !a.near(*b, eps));
-                    if terminal_moved {
-                        // M2: the end follows its terminal.
-                        if let Some(np) = np
-                            && !new_end.near(*np, eps)
-                            && let Some(r) = route.with_path_end(end, *np)
-                        {
-                            route = r;
-                        }
-                    } else if end_moved && old_pos.contains_key(&term) {
-                        // M3: a deliberate reconnection, resolved once. Only for a terminal shown
-                        // on this page: an end attached on another page (a wire continued across
-                        // pages, brief 010) is the end that leaves toward the reference here,
-                        // and moving it never detaches it.
-                        let found = terminal_at(&proposed, cx.page, new_end, cx.tol);
-                        if found != Some(term) {
-                            attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
-                        }
-                    } else if end_moved && terminal_at(&proposed, cx.page, new_end, cx.tol).is_some() {
-                        // The end leaving toward a reference was dropped on a terminal here: it
-                        // stays connected on the other page, and the user is told so.
-                        notes.push(format!(
-                            "End {end:?} of {} is connected on another page, so it was not connected here; \
-disconnect it there first.",
-                            crate::slash::wire_name(&proposed, *cid)
-                        ));
-                    }
-                }
-                None if end_moved => {
-                    if let Some(found) = terminal_at(&proposed, cx.page, new_end, cx.tol) {
-                        attach.push(Op::AttachEnd { conductor: *cid, end, before: None, after: Some(found) });
-                    }
-                }
-                None => {}
-            }
-        }
-        if route != prim
-            && let Some(item) = proposed.items.get(&route_id)
-        {
-            amend.insert(route_id, Item { kind: ItemKind::Primitive(route), ..item.clone() });
-        }
-    }
-    for (id, after) in amend {
+///
+/// # Semantics
+/// Goes through the conductors of the proposed document in ID order, but only those [`Scope`]
+/// says could have moved: conductors attached to a terminal whose position the ops could change,
+/// conductors whose route the ops could change or whose ends they attach, and conductors with a
+/// fresh end. Any other conductor has the same route, ends and terminal positions before and
+/// after the ops, so the policy gives it nothing to do. Positions are worked out per terminal,
+/// only for the scope's terminals; the page's terminal positions, which a moved route end is
+/// matched against (M3), are listed at most once per edit.
+fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]) -> Result<(), String> {
+    let (page, tol) = (cx.page, cx.tol);
+    // Before the ops: what they could move, and where it is now.
+    let doc = cx.ledger.document();
+    let scope = Scope::of(doc, page, &t.ops);
+    let earlier = Earlier {
+        positions: scope.terminals.iter().map(|term| (*term, terminal_position(doc, page, *term))).collect(),
+        routes: scope
+            .routes
+            .iter()
+            .map(|cid| (*cid, route_on_page(doc, *cid, page).map(|(id, p)| (id, p.path_ends()))))
+            .collect(),
+    };
+    // After the ops, on the live document, rolled back afterwards.
+    let (amend, attach, notes) =
+        preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
+    for (id, (before, after)) in amend {
         let handle = cx.map.item(id).or_else(|| t.new_items.iter().find(|(i, _)| *i == id).map(|(_, h)| *h));
         // Fold into the op that already touches the item, else add a modification.
         let mut folded = false;
@@ -560,7 +668,6 @@ disconnect it there first.",
             }
         }
         if !folded {
-            let before = proposed.items.get(&id).cloned().ok_or("route item missing")?;
             t.ops.push(Op::ModifyItem { id, before, after });
         }
         if let Some(h) = handle {
@@ -570,4 +677,104 @@ disconnect it there first.",
     t.ops.extend(attach);
     t.notes.extend(notes);
     Ok(())
+}
+
+/// Route items to amend (their item in `proposed`, and the amended item), attachment ops, in the
+/// order the policy produces them, and notes to echo after the commit.
+type Moves = (BTreeMap<ItemId, (Item, Item)>, Vec<Op>, Vec<String>);
+
+/// The movement policy on the proposed document, for the conductors `scope` names.
+fn moved(
+    proposed: &Document,
+    page: PageId,
+    tol: f64,
+    scope: &Scope,
+    earlier: &Earlier,
+    fresh_ends: &[(ConductorId, End)],
+) -> Moves {
+    let eps = 1e-9;
+    let mut candidates: BTreeSet<ConductorId> = scope.routes.union(&scope.attached).copied().collect();
+    candidates.extend(fresh_ends.iter().map(|(c, _)| *c));
+    for term in &scope.terminals {
+        candidates.extend(proposed.ends_at(*term).into_iter().map(|(c, _)| c));
+    }
+    let mut shown = ShownOnce::new(proposed, page);
+    let mut amend: BTreeMap<ItemId, (Item, Item)> = BTreeMap::new();
+    let mut attach: Vec<Op> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for cid in &candidates {
+        let Some(c) = proposed.conductors.get(cid) else { continue };
+        let Some((route_id, prim)) = route_on_page(proposed, *cid, page) else { continue };
+        let Some((new_a, new_b)) = prim.path_ends() else { continue };
+        // A conductor outside the scope's routes kept its route item and path.
+        let old_ends = match earlier.routes.get(cid) {
+            Some(old) => (*old).and_then(|(id, ends)| (id == route_id).then_some(ends).flatten()),
+            None => Some((new_a, new_b)),
+        };
+        let mut route = prim.clone();
+        for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
+            let fresh = fresh_ends.contains(&(*cid, end));
+            let end_moved =
+                fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
+            match c.end(end) {
+                Some(term) => {
+                    // A terminal outside the scope is where it was.
+                    let (op, np) = match earlier.positions.get(&term) {
+                        Some(op) => (*op, terminal_position(proposed, page, term)),
+                        None => (None, None),
+                    };
+                    let terminal_moved = matches!((op, np), (Some(a), Some(b)) if !a.near(b, eps));
+                    if terminal_moved {
+                        // M2: the end follows its terminal.
+                        if let Some(np) = np
+                            && !new_end.near(np, eps)
+                            && let Some(r) = route.with_path_end(end, np)
+                        {
+                            route = r;
+                        }
+                    } else if end_moved
+                        && earlier
+                            .positions
+                            .get(&term)
+                            .copied()
+                            .unwrap_or_else(|| terminal_position(proposed, page, term))
+                            .is_some()
+                    {
+                        // M3: a deliberate reconnection, resolved once. Only for a terminal shown
+                        // on this page before the ops (brief 010): an end attached on another page
+                        // (a wire continued across pages) is the end that leaves toward the
+                        // reference here, and moving it never detaches it. `earlier` holds only the
+                        // scope's terminals; one outside the scope did not move, so where it is
+                        // shown now is where it was shown before.
+                        //
+                        // Until the test oracle is retired, every change here must be made in
+                        // `translate_oracle.rs` too.
+                        let found = shown.terminal_at(new_end, tol);
+                        if found != Some(term) {
+                            attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
+                        }
+                    } else if end_moved && shown.terminal_at(new_end, tol).is_some() {
+                        // The end leaving toward a reference was dropped on a terminal here: it
+                        // stays connected on the other page, and the user is told so.
+                        notes.push(format!(
+                            "End {end:?} of {} is connected on another page, so it was not connected here; disconnect it there first.",
+                            crate::slash::wire_name(proposed, *cid)
+                        ));
+                    }
+                }
+                None if end_moved => {
+                    if let Some(found) = shown.terminal_at(new_end, tol) {
+                        attach.push(Op::AttachEnd { conductor: *cid, end, before: None, after: Some(found) });
+                    }
+                }
+                None => {}
+            }
+        }
+        if route != prim
+            && let Some(item) = proposed.items.get(&route_id)
+        {
+            amend.insert(route_id, (item.clone(), Item { kind: ItemKind::Primitive(route), ..item.clone() }));
+        }
+    }
+    (amend, attach, notes)
 }

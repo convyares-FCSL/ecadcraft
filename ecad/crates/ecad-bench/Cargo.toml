@@ -18,3 +18,9 @@ ecad-file = { workspace = true }
 ecad-cadcraft = { path = "../ecad-cadcraft" }
 cadcraft-engine = { path = "../../../crates/engine" }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+# The differential test: every drawing-edit translation is compared with the pre-014 code (brief 014).
+ecad-cadcraft = { path = "../ecad-cadcraft", features = ["translate-oracle"] }

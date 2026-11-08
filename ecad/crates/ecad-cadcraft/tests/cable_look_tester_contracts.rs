@@ -684,10 +684,12 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     assert!(tails.iter().all(|t| t.iter().all(|p| p.x >= 100.0 - 1e-9)), "{tails:?}");
     assert!(of_role(&d, Role::CoreLabel).is_empty(), "no cores set");
     assert_eq!(of_role(&d, Role::WireNumber).len(), 4, "wire numbers on the right only");
-    // The flag's flat side faces the cable (right); the point is on the left.
-    let w = look::font_width(look::REFERENCE_PLACEHOLDER);
-    let m = Pt::new(-20.0 + w + 0.5 * look::LABEL_HEIGHT, 22.5);
+    // The flag's flat side faces the cable (right); the point is on the left. Fix round 1 of the
+    // stack: the whole flag reaches left of the reference point, away from the wires, so M is h/2
+    // right of the point.
+    let m = Pt::new(-20.0 + 0.5 * look::LABEL_HEIGHT, 22.5);
     let flag = path(&of_role(&d, Role::Flag)[0].shape);
+    assert!(flag.iter().all(|p| p.x <= m.x + 1e-9), "the flag stays left of M: {flag:?}");
     let min_x = flag.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
     assert!(min_x < -20.0 - 0.5 * look::LABEL_HEIGHT - 1e-9, "the point is on the left: {flag:?}");
     // The trunk runs from the junction, now the middle of the spine (97.5, 7.5; owner request of

@@ -46,6 +46,7 @@
 )]
 
 pub mod debugger;
+pub mod startup;
 pub mod tools;
 
 use std::ffi::OsString;
@@ -294,9 +295,7 @@ impl Trial {
     /// # Errors
     /// The project could not be created.
     pub fn new(snapshots: Option<PathBuf>) -> Result<Self, String> {
-        let mut t = Self::empty(snapshots);
-        t.new_project()?;
-        Ok(t)
+        Self::start(snapshots, None, None)
     }
 
     /// A harness opening the project file at `path`. If it cannot be opened, a new project is
@@ -305,10 +304,35 @@ impl Trial {
     /// # Errors
     /// Neither the file nor a new project could be opened.
     pub fn with_file(snapshots: Option<PathBuf>, path: &str) -> Result<Self, String> {
+        Self::start(snapshots, Some(path), None)
+    }
+
+    /// [`Trial::with_file`] when `project` is given, otherwise [`Trial::new`], marking
+    /// [`startup::Step::Shell`] after CADCraft's app is built and [`startup::Step::Project`] after
+    /// the project is open when `timing` is given.
+    ///
+    /// # Errors
+    /// Neither the file (if any) nor a new project could be opened.
+    pub fn start(
+        snapshots: Option<PathBuf>,
+        project: Option<&str>,
+        mut timing: Option<&mut startup::StartupTiming>,
+    ) -> Result<Self, String> {
         let mut t = Self::empty(snapshots);
-        if let Err(e) = t.open_project(path) {
-            t.new_project()?;
-            t.notice = Some(format!("The project file could not be opened: {e}"));
+        if let Some(timing) = timing.as_deref_mut() {
+            timing.mark(startup::Step::Shell);
+        }
+        match project {
+            Some(path) => {
+                if let Err(e) = t.open_project(path) {
+                    t.new_project()?;
+                    t.notice = Some(format!("The project file could not be opened: {e}"));
+                }
+            }
+            None => t.new_project()?,
+        }
+        if let Some(timing) = timing {
+            timing.mark(startup::Step::Project);
         }
         Ok(t)
     }
@@ -565,6 +589,12 @@ impl Trial {
     /// trial's dialog, open the Save As dialog when CADCraft asked for a file name, and report
     /// saves.
     pub fn after_logic(&mut self) {
+        // Only the page being shown is redrawn on a commit (owner, 2026-11-08): a page a commit
+        // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
+        // again next frame (a failed projection is reported by the redraw itself).
+        if let Some(p) = self.project.as_ref() {
+            let _ = p.refresh_shown(&mut self.cad.session);
+        }
         self.handle_tools();
         self.hold_close();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {

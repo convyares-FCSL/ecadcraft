@@ -525,7 +525,10 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     park(&mut h);
     let orphan = take(&h, &deltas, "010-ref-orphan.png");
     let orphan_ring = screen(&h, 65.0, 5.0);
-    let orphan_text = screen(&h, 71.0, 5.0);
+    // On the `?`, half a text height up: in brief 009's marker the text starts at the point and
+    // `/?` ends near x = 70, so (71, 5) sampled just past it, and only the `?` dot reaches the
+    // baseline.
+    let orphan_text = screen(&h, 68.0, 6.25);
     ok(&mut h, "u");
     assert_eq!(shown_text(&mut h), "/2.1", "undo restores the link");
     // Pixel checks when frames were rendered.

@@ -102,7 +102,15 @@ impl H {
         self.pv(|p, pg| pg.index_of(p.pages.get(&page)?.uid?))
     }
 
+    /// Bring `page`'s tab to the front, as a click on it does in the trial: the tab switches, then
+    /// the trial's per-frame `refresh_shown` redraws it if a commit elsewhere left it stale.
     pub fn activate(&mut self, page: PageId) {
+        self.activate_tab_only(page);
+        self.project.refresh_shown(&mut self.s).expect("project not busy");
+    }
+
+    /// Switch the active tab without the per-frame redraw that follows in the trial.
+    pub fn activate_tab_only(&mut self, page: PageId) {
         let i = self.page_index(page).expect("page open");
         self.s.active = i;
     }
@@ -193,7 +201,9 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
         for (page, view) in &p.pages {
             let Some(uid) = view.uid else { continue };
             let Some(st) = pg.doc(uid) else { panic!("open page without a document") };
-            if view.unavailable {
+            // A stale page (a commit elsewhere changed its reference texts) is redrawn when it
+            // comes to the front, not before (owner, 2026-11-08); `activate` redraws it.
+            if view.unavailable || view.stale {
                 continue;
             }
             // 1. projecting the document equals the engine drawing.

@@ -94,6 +94,12 @@ generator_contracts.rs`), written with the branch and run by the tester and CI; 
 `cargo xtask bench --tier small` on native Windows 11 Pro, 2026-11-07, which printed the table and
 wrote the JSON. You have not run it yet.
 
+**Branch `ecad/startup-timing` (brief 015)**, cut from `dev` at `bb86e05`, adds start-up timing
+to the trial, switched on by `ECAD_STARTUP_TIMING=1` (section 8, "Measuring start-up"). With the
+switch off nothing changes. Evidence: `ecad/apps/ecad-trial/tests/startup_contracts.rs`, written
+with the branch; three agent launches of the release trial on native Windows 11 Pro, 2026-11-08
+(section 8). You have not run it yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -512,8 +518,8 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
 4. **Hover.** Rest the pointer on a tail: `Cable C1`, then `Core: 1 (W1)`, its ID, its type and
    its wires with their cores (`  W1  core 1`). On a wire in traditional view: `In cable C1, core 1`.
 5. **A reference end.** Place one with **Cable Reference** (section 5D). The fan stops at that
-   end: no spine, bends or tails there; the trunk runs to a magenta flag beside the point, and
-   the flag shows the other end's page and column (such as `/3.1`; a red `/?` while there is no
+   end: no spine, bends or tails there; the trunk runs to a magenta flag beside the point,
+   pointing away from the wires, and the flag shows the other end's page and column (such as `/3.1`; a red `/?` while there is no
    other end). The loose-end squares at that end are not drawn. Erasing the point fans that end
    again; `u` brings it back.
 
@@ -556,7 +562,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
    now shows /3.1.` and `Connect each wire's free end to its terminal with Connect.`; three short
    wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
-   `20,5` and a flag with `/2.2` beside it. On page 2 the `/?` is now a magenta `/3.1`, and the
+   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. Switch to page 2: its `/?` is now a magenta `/3.1` (only the page in front is redrawn by a change; another open page it affected is redrawn when you bring it to the front), and the
    wire ends next to the reference lost their grey squares (the wires continue). One change.
 4. **Connect.** Click **Connect**, click each short wire near its right end, then the terminal
    at the same height. Expected: each wire stretches to its terminal; green dots there. In the
@@ -571,13 +577,14 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    again: back on page 2. Without a selection the button asks `Select a cable reference:`.
 7. **Move a page.** Click **Move Page** (Pages group). It fills in
    `movepage {"page":"<this page's id>","index":<new position>}`; replace `<new position>` with
-   `1` and press Enter. Expected: the page is now first; both references show the new numbers at
-   once; the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
+   `1` and press Enter. Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
    rename changes the hover lens, not the marker text (it shows numbers, not titles).
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
    wires themselves stay, still connected to the component on that page); the other page's
-   marker turns red `/?`; the reply adds `Cable …'s reference on page … now has no other end.`;
+   marker turns red `/?` (click its tab to see it: an edit in the drawing redraws only the page
+   in front, and another page whose references it changed is redrawn when you bring it to the
+   front); the reply adds `Cable …'s reference on page … now has no other end.`;
    the debugger's Diagnostics lists it under **Cable references**. Type `u`: everything is back
    with the same IDs.
 
@@ -877,9 +884,15 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
 | edit ms | Record one new wire in the open project (one transaction, checked as any edit is). |
 | save ms | Save that wire (append one transaction and flush). |
+| draw move ms | In a headless drawing session with page 1 open, move a component that has wires attached, as MOVE does it on its symbol: the drawing change is turned into ECAD ops (the wires follow), recorded, and page 1 is drawn again (brief 014). |
+| move+wires ms | In the same session, move that component together with every wire attached to it, as a window around them selects them: each wire's far end leaves its terminal, so the ends are matched against the page's terminals (brief 014). |
+| draw wire ms | In the same session, draw one wire between two terminals on page 1 with the `wire` command, as the mouse wire tool does (brief 014). |
+| 1st view ms | In a headless session with page 1 shown, bring up a page not viewed before with `openpage` (the path of Go to Reference): median over up to 10 pages spread over the project (brief 014 fix round, for the 016 decision). |
+| back ms | After each of those, switch back to page 1, already viewed, with `openpage`: median over the same pages. |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
-file opened once. Every open reads from a warm file cache (the file was just written), so a cold
+file opened once; the three draw columns run on another copy, opened once in one drawing session
+(the moves go alternately down and back up). Every open reads from a warm file cache (the file was just written), so a cold
 open after a restart can be slower.
 
 **How long it takes** (one run on native Windows 11, 2026-11-07, which is also the first result
@@ -894,6 +907,38 @@ with the number of transactions times the size of the project, so the large tier
 | medium | lean | 8.69 | 6 798 | 27 772 | 1.98 | 27 975 | 9.6 | 40 |
 | medium | churned | 32.62 | 33 986 | 138 928 | 1.96 | 140 887 | 15.8 | 62 |
 
+The draw columns were added by brief 014 (branch `ecad/drawing-edit-speed`), which made an edit
+in the drawing cost in proportion to what it touches. Native Windows 11, release, 2026-11-08,
+median of 3 runs. **Before** is `f095edf` (brief 013 with its fix round merged, before 014
+changed the translation; the bench columns were applied on top to measure it), **after** is
+`4ca788c` (014 with its fix round). Large was measured after only.
+
+| tier | history | draw move ms before | after | move+wires ms before | after | draw wire ms before | after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| small | lean | 3.74 | 0.22 | 4.09 | 0.25 | 0.13 | 0.13 |
+| small | churned | 2.74 | 0.19 | 2.81 | 0.20 | 0.12 | 0.10 |
+| medium | lean | 78.04 | 0.36 | 66.76 | 0.38 | 0.49 | 0.25 |
+| medium | churned | 54.61 | 0.43 | 52.02 | 0.43 | 0.44 | 0.26 |
+| large | lean | — | 1.17 | — | 1.52 | — | 1.21 |
+| large | churned | — | 1.19 | — | 1.39 | — | 1.32 |
+
+The before run was on a busier machine than the after run (its open times are about 1.5 times
+higher), so compare the draw columns by their growth with the tier rather than to the
+millisecond. What still grows from medium to large is redrawing the page, which goes through the
+whole document to find what is on it (`docs/deferred-work.md`), not the translation.
+
+After briefs 009 to 011 were merged into the branch (`c5dfb21`), every commit derived all cable
+references twice and the cable look went through every representation, so medium draw edits rose
+to about 7.5 ms. The 014 fix round derives references only for the cables an edit touches, finds a
+page's objects through the page index, and redraws only the page in front (another open page whose
+references changed is redrawn when it comes to the front). Medium after it, same machine, median
+of 5: lean 0.53 / 0.59 / 0.38 ms and churned 0.54 / 0.66 / 0.39 ms (draw move / move+wires /
+draw wire), against 0.25 / 0.27 / 0.21 and 1.49 / 1.68 / 1.03 before the merge (`9045d27`) and
+7.61 / 7.57 / 7.20 and 7.43 / 7.26 / 7.19 at `c5dfb21`.
+
+The other columns were not changed by brief 014. Not yet tried by you: open the medium project
+(`--keep`) in the trial and say whether moving a component feels instant.
+
 The table is printed and also written as JSON to
 `ecad/target/bench/load-<date>-<time>-<commit>.json` (UTC; an existing file is never
 overwritten), with the machine, OS, commit and build. `--compare` reads the earlier file before
@@ -903,6 +948,77 @@ in another session. Results depend on the machine and what else it is doing; com
 the same machine. There are no pass or fail limits yet, and peak memory is not measured. The
 generated cable references (each page's first cable continued on the next page) are recorded as
 brief 010 records them; on a revision without brief 010 they open as ordinary points and lines.
+
+### Measuring start-up (brief 015)
+
+To see where the time goes between launching the trial and its first frame, set
+`ECAD_STARTUP_TIMING=1` before starting it. Each step is printed on stderr as it is reached, then
+one line with the GPU adapter eframe picked and the total, and the same marks are written to a new
+file `ecad-startup-<time>.json` (the time is `main`'s, in milliseconds since 1970; `-1`, `-2`, ...
+is added rather than replace a file). It goes in the folder given to `--snapshots` (created if
+missing, `~` meaning your home folder), or else, or if that fails, in your temp folder; the last
+stderr line says where. If you close the window before its first frame, the marks reached so far
+are still written, marked `"complete": false`. Unset, `0` or `off`: no output, no file.
+
+A release build on Windows has no console, so its stderr is lost unless you redirect it; the JSON
+file is always written. From Git Bash, in `ecad/`:
+
+```sh
+ECAD_STARTUP_TIMING=1 target/release/ecad-trial.exe 2> startup-1.txt
+```
+
+In PowerShell (stderr is not captured; read the JSON file):
+
+```powershell
+$env:ECAD_STARTUP_TIMING = "1"; .\target\release\ecad-trial.exe; Remove-Item Env:ECAD_STARTUP_TIMING
+# then open the newest ecad-startup-*.json in $env:TEMP
+```
+
+Close the window after it has drawn, and repeat for three runs. Each mark shows the time since the
+start and, in brackets, the step: the time since the previous mark. The steps add up to the total.
+
+| Mark | Reached when (the step before it covers) |
+| --- | --- |
+| 1 main entered | The program's own code starts. Before it: the OS loader, DLLs and any virus scan. |
+| 2 install() done | ECAD's commands are registered with CADCraft. |
+| 3 run_native called | The window options are built and eframe takes over. |
+| 4 creator entered | eframe has made the event loop, the window (still hidden), the wgpu instance, adapter, device and surface, and egui's context. Not the fonts: egui builds its font atlas in the first frame (step 7). |
+| 5a shell built | CADCraft's app and shell exist. |
+| 5b project opened | ECAD's new project is created (or the file is opened). |
+| 6 set_wgpu done | CADCraft's GPU canvas is set up (pipelines and shaders). |
+| 7 first update built | The first frame's user interface has been built, including egui's font atlas (font loading and glyphs). |
+| 8 first frame presented | The next frame starts after the first full one, so that one was painted and presented (eframe has no call-back after presenting). An upper bound: it includes tessellation, the font texture upload, painting, presenting (which can wait for vsync), showing the window and the wait until the next frame. |
+
+**Where the start is.** On Linux the marks count from the process's creation (from `/proc`), so
+mark 1 includes the loader; the kernel gives the creation time in clock ticks, so mark 1 there is
+accurate to about ±10 to 20 ms. On Windows they count from mark 1, `main`: the creation time would
+need `GetProcessTimes`, which needs `unsafe` (forbidden in this workspace) or a new dependency.
+To measure the time before `main` on Windows, while the trial is still open run, in PowerShell:
+
+```powershell
+([DateTimeOffset](Get-Process ecad-trial).StartTime).ToUnixTimeMilliseconds()
+```
+
+and subtract that number from `main_unix_ms` in the run's JSON file: the difference is the
+milliseconds between Windows creating the process and `main`.
+
+**Agent runs (not yours),** native Windows 11 Pro, 2026-11-08, release build after the review
+fixes, no project, launched from Git Bash and closed after 8 s. "Before main" is `main_unix_ms`
+minus the process start time from PowerShell, as above. Columns 4 to 8 are steps (time since the
+previous mark):
+
+| run | before main | 4 creator | 5a + 5b | 6 set_wgpu | 7 first update | 8 presented | total from main |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 244 ms | 757 ms | 0.6 ms | 2.5 ms | 40 ms | 63 ms | 863 ms |
+| 2 | 56 ms | 723 ms | 0.4 ms | 2.9 ms | 39 ms | 56 ms | 821 ms |
+| 3 | 75 ms | 736 ms | 0.4 ms | 2.7 ms | 39 ms | 62 ms | 841 ms |
+
+Marks 2 and 3 took under 0.5 ms. Adapter: Vulkan, "NVIDIA RTX 3500 Ada Generation Laptop GPU",
+discrete. Run 1 was the first launch of a freshly built exe. An earlier agent run of the first
+version of this branch, on a freshly built exe, spent about 2.6 s before `main` on its first
+launch and about 0.15 s on the next two (measured from Git Bash's clock, so approximate).
+
+Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 

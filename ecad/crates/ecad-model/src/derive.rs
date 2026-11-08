@@ -1,6 +1,6 @@
 //! Derived results: recomputed from the document, never stored (principle P5).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,24 +17,46 @@ use crate::id::{CableId, ConductorId, ItemId, PageId, RepresentationId, Terminal
 pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, RepresentationId, Pt)> {
     let mut out = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
-        let Subject::Component(component) = r.subject else { continue };
-        match r.form {
-            Form::Drawn => out.extend(r.connection_points.iter().map(|(t, p)| (*t, *rid, *p))),
-            Form::Symbol => {
-                let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind)
-                else {
-                    continue;
-                };
-                let Some(def) = doc.definitions.get(&inst.definition) else { continue };
-                for (tid, t) in doc.terminals_of(component) {
-                    if let Some(td) = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k)) {
-                        out.push((tid, *rid, inst.placement.apply(td.at)));
-                    }
-                }
-            }
-        }
+        out.extend(shown_by(doc, r).into_iter().map(|(t, p)| (t, *rid, p)));
     }
     out
+}
+
+/// Where `terminal` is shown on `page`: the first entry for it in [`terminal_positions`], found
+/// through its component's representations only, so the cost does not grow with the page or
+/// the project.
+///
+/// # Semantics
+/// The same answer as `terminal_positions(doc, page)`'s first entry for `terminal` on any valid
+/// document, where a representation shows only its own component's terminals (a drawn
+/// representation's connection points are its component's terminals). Both read a
+/// representation through the same helper, so they cannot drift apart.
+pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
+    let component = doc.terminals.get(&terminal)?.component;
+    doc.representations_of(Subject::Component(component))
+        .filter(|(_, r)| r.page == page)
+        .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
+}
+
+/// The terminals a component representation shows, with their positions, in the order
+/// [`terminal_positions`] lists them.
+fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
+    let Subject::Component(component) = r.subject else { return Vec::new() };
+    match r.form {
+        Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
+        Form::Symbol => {
+            let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
+                return Vec::new();
+            };
+            let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
+            doc.terminals_of(component)
+                .filter_map(|(tid, t)| {
+                    let td = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k))?;
+                    Some((tid, inst.placement.apply(td.at)))
+                })
+                .collect()
+        }
+    }
 }
 
 /// The route of a conductor on a page: its first route item's path.
@@ -281,9 +303,21 @@ pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(ConductorId, PageId), (Pt
     out
 }
 
+/// The end points of `conductor`'s route on `page` (its first route item, as [`route_on_page`]
+/// and [`route_ends_by_page`] pick it), found through the subject index.
+pub fn route_ends_on(doc: &Document, conductor: ConductorId, page: PageId) -> Option<(Pt, Pt)> {
+    doc.representations_of(Subject::Conductor(conductor)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
+        r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+            ItemKind::Primitive(p) => p.path_ends(),
+            ItemKind::Symbol(_) => None,
+        })
+    })
+}
+
 /// Every cable reference in the document, in page order, then column, then ID (design 010 §6.2,
-/// §7.4). Cost is linear in the document plus the referenced cables' members; never panics on
-/// hostile values (they read `/?`).
+/// §7.4). Cost is one pass over the representations plus the referenced cables' members (their
+/// routes are found through the subject index, brief 014); never panics on hostile values (they
+/// read `/?`).
 pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     let refs: Vec<(RepresentationId, &Representation)> = doc
         .representations
@@ -291,20 +325,46 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
         .filter(|(_, r)| r.role == REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)))
         .map(|(id, r)| (*id, r))
         .collect();
+    references_from(doc, refs)
+}
+
+/// The references of `cables` only, exactly as [`cable_references`] derives them (same values,
+/// same order): everything a reference says depends only on its own cable (its other references,
+/// its members' routes) and on the page order and length unit. Cost is in proportion to those
+/// cables' references and members, not to the document (brief 014).
+pub fn cable_references_of(doc: &Document, cables: &BTreeSet<CableId>) -> Vec<CableReference> {
+    let refs: Vec<(RepresentationId, &Representation)> = cables
+        .iter()
+        .flat_map(|k| doc.representations_of(Subject::Cable(*k)))
+        .filter(|(_, r)| r.role == REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)))
+        .collect();
+    references_from(doc, refs)
+}
+
+/// [`cable_references`] of the reference representations `refs` (each listed once).
+fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)>) -> Vec<CableReference> {
     if refs.is_empty() {
         return Vec::new();
     }
     let width = column_width(doc);
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
-    let routes = route_ends_by_page(doc);
+    // Route ends per (conductor, page), looked up once each (a cable may list a conductor twice).
+    let mut routes: BTreeMap<(ConductorId, PageId), Option<(Pt, Pt)>> = BTreeMap::new();
     // The member routes of each (cable, page) with a reference, built once per pair.
     let mut here: BTreeMap<(CableId, PageId), Vec<(Pt, Pt)>> = BTreeMap::new();
     for (_, r) in &refs {
         let Subject::Cable(cable) = r.subject else { continue };
-        here.entry((cable, r.page)).or_insert_with(|| {
-            let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
-            members.iter().filter_map(|m| routes.get(&(m.conductor, r.page)).copied()).collect()
-        });
+        if here.contains_key(&(cable, r.page)) {
+            continue;
+        }
+        let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
+        let ends: Vec<(Pt, Pt)> = members
+            .iter()
+            .filter_map(|m| {
+                *routes.entry((m.conductor, r.page)).or_insert_with(|| route_ends_on(doc, m.conductor, r.page))
+            })
+            .collect();
+        here.insert((cable, r.page), ends);
     }
     let mut out: Vec<CableReference> = Vec::with_capacity(refs.len());
     for (rid, r) in &refs {
