@@ -1,6 +1,6 @@
 # Brief 017: Tests built for rapid development
 
-Status: Draft (overseer, 2026-11-08; the owner approves before work starts)
+Status: Approved (owner, 2026-11-08: "Approve 017")
 Branch: `feature/fast-tests` (worktree `C:\dev\ecad-features\fast-tests`)
 Designer: no · Size: M
 Depends on: nothing; runs before any new feature (owner decision, 2026-11-08, `docs/features.md`).
