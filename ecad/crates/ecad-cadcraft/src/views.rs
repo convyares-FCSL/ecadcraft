@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use ecad_model::{CableId, Document, ItemId, PageId, Primitive, ProjectId, Pt, Subject};
+use ecad_model::{CableId, Document, PageId, ProjectId};
 use serde_json::{Map, Value, json};
 
 /// The reserved layer the fan is drawn on (colour `ecad.cable`, plots).
@@ -83,24 +83,16 @@ impl View {
     }
 }
 
-// ---------------------------------------------------------------- geometry (design §5)
+// ---------------------------------------------------------------- geometry (design 009 §4)
 
-/// A cable's fan on one page.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Fan {
-    /// Items not drawn while the fan is shown: the member routes used and the cable's slashes.
-    pub hidden: Vec<ItemId>,
-    /// The trunk (empty when it has no length), following the reference route's bends.
-    pub trunk: Vec<Pt>,
-    /// The fan lines, each a path of two or more points, in member order (r₀ side, then r₁).
-    pub lines: Vec<Vec<Pt>>,
-}
+/// Refusal of an edit or a pick on a computed part of a traditional-view cable: a core label at
+/// the slash, or a reference end's flag (design 009 §8).
+pub const DRAWN_REFUSED: &str =
+    "This is drawn from the cable; use Core Label to change it, or move the reference point.";
 
-impl Fan {
-    /// Every path drawn: the trunk first (when it has one), then the fan lines.
-    pub fn paths(&self) -> impl Iterator<Item = &Vec<Pt>> {
-        std::iter::once(&self.trunk).filter(|t| t.len() >= 2).chain(self.lines.iter())
-    }
+/// The refusal for an edit of computed drawing of `cable` on a page mapped by `map`.
+pub fn refusal(map: &crate::project::HandleMap, cable: CableId) -> &'static str {
+    if map.is_fan(cable) { FAN_REFUSED } else { DRAWN_REFUSED }
 }
 
 /// What a fan-view cable shows on one page.
@@ -108,155 +100,45 @@ impl Fan {
 pub enum FanOnPage {
     /// No member has a route here: the page is unchanged (a slash stays drawn).
     Nothing,
+    /// One of its wires is on this page: the cable is drawn traditional here (design 009 §4.1).
+    TooFew,
     /// The fan cannot be drawn here (a reference route of no length, or values that are not
     /// finite): the cable is drawn traditional on this page.
     Failed,
+    /// The fan (design 009 §4), with the items it hides.
     Drawn(Fan),
 }
 
-/// The vertices of an open path route.
-fn path_of(prim: &Primitive) -> Option<Vec<Pt>> {
-    match prim {
-        Primitive::Line { a, b } => Some(vec![*a, *b]),
-        Primitive::Polyline { vertices, closed: false } if vertices.len() >= 2 => Some(vertices.clone()),
-        _ => None,
-    }
-}
+/// A cable's fan on one page (brief 009's look).
+pub type Fan = crate::look::CableDrawing;
 
-fn length(path: &[Pt]) -> f64 {
-    path.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.dist(*b))).sum()
-}
-
-/// The point at path length `d` along `path` (clamped to the path).
-fn point_at(path: &[Pt], d: f64) -> Option<Pt> {
-    let mut walked = 0.0;
-    for w in path.windows(2) {
-        let (a, b) = (*w.first()?, *w.get(1)?);
-        let seg = a.dist(b);
-        if walked + seg >= d && seg > 0.0 {
-            let t = ((d - walked) / seg).clamp(0.0, 1.0);
-            return Some(Pt::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
-        }
-        walked += seg;
-    }
-    path.last().copied()
-}
-
-/// The part of `path` between path lengths `from` and `to` (`from` ≤ `to`), with its bends.
-fn sub_path(path: &[Pt], from: f64, to: f64) -> Vec<Pt> {
-    let mut out: Vec<Pt> = point_at(path, from).into_iter().collect();
-    let mut walked = 0.0;
-    for w in path.windows(2) {
-        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
-        walked += a.dist(*b);
-        if walked > from && walked < to {
-            out.push(*b);
-        }
-    }
-    out.extend(point_at(path, to));
-    out
-}
-
-/// Whether a path has a length above `tol`.
-fn has_length(path: &[Pt], tol: f64) -> bool {
-    path.len() >= 2 && length(path) > tol
-}
-
-/// The fan of `cable` on `page` (design §5): computed from the members (in member order) whose
-/// route on the page is an open path. Bounded by the members and their route points; never panics.
+/// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
+/// members and their route points; never panics.
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
-    let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
-    let Some(c) = doc.cables.get(&cable) else { return FanOnPage::Nothing };
-    // Each member once, in member order, with its route on this page.
-    let mut seen = BTreeSet::new();
-    let mut routes: Vec<(ecad_model::ConductorId, Vec<Pt>)> = Vec::new();
-    for m in &c.members {
-        if !seen.insert(m.conductor) {
-            continue;
-        }
-        if let Some(path) = ecad_model::derive::route_on_page(doc, m.conductor, page).and_then(|(_, p)| path_of(&p)) {
-            routes.push((m.conductor, path));
-        }
-    }
-    let k = routes.len();
-    if k == 0 {
+    let routed = doc
+        .cables
+        .get(&cable)
+        .is_some_and(|c| c.members.iter().any(|m| ecad_model::derive::route_on_page(doc, m.conductor, page).is_some()));
+    if !routed {
         return FanOnPage::Nothing;
     }
-    let reference = (k - 1) / 2;
-    let Some((_, r)) = routes.get(reference) else { return FanOnPage::Nothing };
-    let l = length(r);
-    let (Some(r0), Some(r1)) = (r.first().copied(), r.last().copied()) else { return FanOnPage::Failed };
-    if !(l.is_finite() && l > tol && r0.is_finite() && r1.is_finite()) {
-        return FanOnPage::Failed;
+    let d = crate::look::cable_on_page(doc, page, cable, true, tol, &crate::look::font_width);
+    match d.state {
+        crate::look::FanState::Drawn => FanOnPage::Drawn(d),
+        crate::look::FanState::TooFew => FanOnPage::TooFew,
+        _ => FanOnPage::Failed,
     }
-    // Which end of each other member is on the r₀ side.
-    // Per member in order: `None` for the reference, else its (r₀-side, r₁-side) ends.
-    let mut sides: Vec<Option<(Pt, Pt)>> = Vec::with_capacity(k);
-    let (mut s0, mut s1) = (0.0_f64, 0.0_f64);
-    for (i, (_, path)) in routes.iter().enumerate() {
-        if i == reference {
-            sides.push(None);
-            continue;
-        }
-        let (Some(p), Some(q)) = (path.first().copied(), path.last().copied()) else { return FanOnPage::Failed };
-        let (a, b) = if p.dist(r0) + q.dist(r1) <= q.dist(r0) + p.dist(r1) { (p, q) } else { (q, p) };
-        s0 = s0.max(a.dist(r0));
-        s1 = s1.max(b.dist(r1));
-        sides.push(Some((a, b)));
-    }
-    let (d0, d1) = (s0.min(0.4 * l), s1.min(0.4 * l));
-    if !(d0.is_finite() && d1.is_finite()) {
-        return FanOnPage::Failed;
-    }
-    let (Some(f0), Some(f1)) = (point_at(r, d0), point_at(r, l - d1)) else { return FanOnPage::Failed };
-    if !(f0.is_finite() && f1.is_finite()) {
-        return FanOnPage::Failed;
-    }
-    let trunk = sub_path(r, d0, l - d1);
-    let trunk = if has_length(&trunk, tol) { trunk } else { Vec::new() };
-    let mut lines: Vec<Vec<Pt>> = Vec::with_capacity(2 * k);
-    for side in &sides {
-        match side {
-            // The reference keeps its own route up to the fan-out points.
-            None => {
-                lines.push(sub_path(r, 0.0, d0));
-                lines.push(sub_path(r, l - d1, l));
-            }
-            Some((a, b)) => {
-                lines.push(vec![*a, f0]);
-                lines.push(vec![*b, f1]);
-            }
-        }
-    }
-    lines.retain(|p| has_length(p, tol) && p.iter().all(|q| q.is_finite()));
-    if trunk.iter().any(|q| !q.is_finite()) {
-        return FanOnPage::Failed;
-    }
-    // What the fan replaces: the members' route representations here, and the slashes.
-    let members: BTreeSet<ecad_model::ConductorId> = routes.iter().map(|(c, _)| *c).collect();
-    let mut hidden = Vec::new();
-    for r in doc.representations.values().filter(|r| r.page == page) {
-        let hide = match r.subject {
-            Subject::Conductor(w) => members.contains(&w),
-            Subject::Cable(x) => x == cable,
-            Subject::Component(_) => false,
-        };
-        if hide {
-            hidden.extend(r.items.iter().copied());
-        }
-    }
-    FanOnPage::Drawn(Fan { hidden, trunk, lines })
 }
 
-/// The fans drawn on `page` for the cables in `fan` (only those whose fan can be drawn there), by
-/// cable.
-pub fn fans_on_page(doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64) -> BTreeMap<CableId, Fan> {
-    fan.iter()
-        .filter_map(|k| match fan_on_page(doc, page, *k, tol) {
-            FanOnPage::Drawn(f) => Some((*k, f)),
-            _ => None,
-        })
-        .collect()
+/// Every cable's computed drawing on `page` (design 009): fans for the cables in `fan` where they
+/// can be drawn, and core labels and reference ends for every cable, by cable.
+pub fn drawings_on_page(
+    doc: &Document,
+    page: PageId,
+    fan: &BTreeSet<CableId>,
+    tol: f64,
+) -> BTreeMap<CableId, crate::look::CableDrawing> {
+    crate::look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
 }
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
@@ -528,17 +410,4 @@ fn process_id() -> u32 {
 fn next_serial() -> u64 {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sub_paths_follow_bends() {
-        let path = vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 10.0)];
-        assert_eq!(length(&path), 20.0);
-        assert_eq!(sub_path(&path, 5.0, 15.0), vec![Pt::new(5.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 5.0)]);
-        assert_eq!(point_at(&path, 25.0), Some(Pt::new(10.0, 10.0)));
-    }
 }

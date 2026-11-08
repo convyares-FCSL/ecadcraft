@@ -25,5 +25,7 @@ serde_json = { workspace = true }
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 ecad-store = { workspace = true }
+# The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature).
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"

@@ -21,7 +21,7 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.loose` | 9 (light grey) | `#C0C0C0` | A wire end attached to nothing: a neutral colour, not red, because a dangling end is not necessarily an error (owner answer Q3 to design 008, 2026-11-01) |
 | `ecad.attach-preview` | 3 (green) | `#00FF00` | "Will attach" ring and name while a command runs |
 | `ecad.preview` | — | CADCraft's rubber-band colour | Rubber band, symbol preview (as CADCraft draws previews) |
-| `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the fan trunk and fan lines and the reserved layer `ECAD-CABLES` (005) |
+| `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the reserved layer `ECAD-CABLES` (005) and everything computed on it: label box, trunk, spine, bends, tails, core labels, wire numbers and reference flags (009) |
 | `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
 
 Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
@@ -43,6 +43,32 @@ same size at every zoom). They scale with the UI scale like CADCraft's own snap 
 | `ecad.ring-size` | 16 px diameter | Attach-preview ring; also the refuse-preview ring |
 | `ecad.crossing-size` | 5 px diameter, filled | Crossing dot of a cable slash on a member wire |
 | `ecad.aperture` | CADCraft `APERTURE` setting (default 10 px) | How close the cursor must be for an ECAD capture |
+
+## Drawing-unit sizes
+
+Sizes of computed drawing (009): in **drawing units**, so they scale with zoom and plot as drawn,
+unlike the screen-pixel glyphs above. Fixed values for now; per-project drawing standards are later
+work.
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.label-height` | 2.5 drawing units | Core labels, wire numbers, label box lines, reference text |
+| `ecad.label-gap` | 1.0 drawing unit (0.4 × label height) | Gap between a bend and the first label, between labels, after the last |
+| `ecad.tail-min` | 20 drawing units | Shortest tail of a core in fan view |
+| `ecad.bend-radius` | 2.5 drawing units, capped at half the core pitch | Bend where a core leaves the spine |
+| `ecad.spine-lead` | 5 drawing units | Spine beyond the first core, before the trunk joins |
+| `ecad.box-line-pitch` | 1.5 × label height | Line spacing in the cable label box |
+| `ecad.box-pad` | 0.5 × label height | Padding in the label box and the reference flag |
+
+## Line weights of computed drawing
+
+Entity lineweights (shown on screen when CADCraft's `LWDISPLAY` is on, which the trial turns on;
+always carried to plots and exports). Thick is the cable section, thin the wire section (009).
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.cable-weight` | 0.70 mm (lineweight code 70) | Trunk and spine |
+| `ecad.wire-weight` | 0.25 mm (lineweight code 25) | Bends, tails, label box frame, reference flag |
 
 ## Panels and text
 

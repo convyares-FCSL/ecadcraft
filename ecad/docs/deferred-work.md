@@ -30,3 +30,6 @@ started.
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
   rewriting of older files (E4); "Save a Copy As" with a new project ID (E9). See
   `docs/document-architecture-proposal.md` §22-§23.
+- Delete `ProjectHandle::apply_ops` and the `test-ops` feature of `ecad-cadcraft` once brief
+  010's `cableref` is merged: brief 009's tests build cable reference ends with it only because no
+  command makes them on that branch (brief 009 review S3).

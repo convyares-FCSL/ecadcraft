@@ -562,9 +562,12 @@ fn wire_end(s: &Session, p: Vec2) -> Result<(ConductorId, End, Pt, bool), String
     let h = pick(s, p).ok_or(NOT_WIRE)?;
     read(s, |proj, page| {
         let doc = proj.ledger.document();
-        let i = match proj.pages.get(&page).and_then(|v| v.map.get(h)) {
+        let map = proj.pages.get(&page).map(|v| &v.map);
+        let i = match map.and_then(|m| m.get(h)) {
             Some(Mapped::Item(i)) => i,
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::Fan(k)) => {
+                return Err(map.map_or(crate::views::FAN_REFUSED, |m| crate::views::refusal(m, k)).into());
+            }
             _ => return Err(NOT_WIRE.into()),
         };
         let Some((_, rep)) = doc.representation_of_item(i) else { return Err(NOT_WIRE.into()) };
@@ -1095,6 +1098,255 @@ impl CableView {
             Input::Text(t) => Err(not_a_point(&t)),
             _ => Ok(Step::Continue),
         }
+    }
+}
+
+// ---------------------------------------------------------------- Core Label (design 009 §5.1)
+
+/// `cablecore`: click a wire in a cable, type its core number or colour; repeat until Enter.
+pub(crate) fn cablecore(s: &Session) -> R<Box<dyn Interactive>> {
+    can_start(s)?;
+    Ok(Box::new(Safe(CableCore::default())))
+}
+
+/// The wire picked and its current label, while the text prompt is shown.
+#[derive(Default)]
+struct CableCore {
+    picked: Option<(ConductorId, String, Option<String>)>,
+}
+
+const CORE_NOTHING: &str = "Nothing there. Click a wire in a cable.";
+const CORE_IS_CABLE: &str = "That is the cable; click one of its wires.";
+const CORE_NOT_WIRE: &str = "That is not a wire in a cable.";
+
+impl CableCore {
+    /// The member a pick names (design 009 §5.1 step 2): a route, a fan tail or bend, or a core
+    /// label; anything else is refused in words.
+    fn member(s: &Session, h: Handle) -> R<(ConductorId, String, Option<String>)> {
+        read(s, |p, page| {
+            let map = &p.pages.get(&page).ok_or(CORE_NOT_WIRE)?.map;
+            let doc = p.ledger.document();
+            let w = match map.get(h) {
+                Some(Mapped::Fan(_)) => map.core_of(h).ok_or(CORE_IS_CABLE)?,
+                Some(Mapped::Item(i)) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
+                    Some(Subject::Conductor(w)) => w,
+                    Some(Subject::Cable(_)) => return Err(CORE_IS_CABLE.into()),
+                    _ => return Err(CORE_NOT_WIRE.into()),
+                },
+                _ => return Err(CORE_NOT_WIRE.into()),
+            };
+            let k = doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)?;
+            let core = doc
+                .cables
+                .get(&k)
+                .and_then(|c| c.members.iter().find(|m| m.conductor == w))
+                .and_then(|m| m.core.clone());
+            Ok((w, slash::wire_name(doc, w), core))
+        })
+        .map_err(other)
+    }
+
+    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        match (self.picked.take(), i) {
+            (None, Input::Point(p)) => {
+                if !in_range(p) {
+                    return Err(other(OUT_OF_RANGE));
+                }
+                let h = pick(s, p).ok_or_else(|| other(CORE_NOTHING))?;
+                self.picked = Some(Self::member(s, h)?);
+                Ok(Step::Continue)
+            }
+            (None, Input::Enter | Input::Cancel) => Ok(Step::Done),
+            (None, Input::Text(t)) => Err(not_a_point(&t)),
+            (None, _) => Ok(Step::Continue),
+            (Some((_, name, _)), Input::Enter) => {
+                s.echo(format!("Core of {name} unchanged."));
+                Ok(Step::Continue)
+            }
+            (Some((w, name, old)), Input::Text(t)) => {
+                // `.` clears, and so does a blank label, as in the JSON form (design 009 §5.4).
+                let clear = t.trim() == "." || t.trim().is_empty();
+                if clear && old.is_none() {
+                    s.echo(format!("{name} has no core label."));
+                    return Ok(Step::Continue);
+                }
+                let core = if clear { Value::Null } else { Value::String(t.clone()) };
+                // Refused: the message, and the same wire's prompt again.
+                let r = match commit(s, "cablecore", &json!({"conductor": w.hex(), "core": core})) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        self.picked = Some((w, name, old));
+                        return Err(e);
+                    }
+                };
+                let cable = read(s, |p, _| {
+                    let doc = p.ledger.document();
+                    Ok(doc.cables_of(w).first().map(|k| crate::views::cable_title(doc, *k)).unwrap_or_default())
+                })
+                .unwrap_or_default();
+                match r.get("core").and_then(Value::as_str) {
+                    Some(c) => s.echo(format!("Wire {name} is now core {c} of cable {cable}.")),
+                    None => s.echo(format!("Core label of {name} cleared.")),
+                }
+                let dups: Vec<String> = r
+                    .get("duplicates")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_str().and_then(ConductorId::parse))
+                    .filter_map(|d| read(s, |p, _| Ok(slash::wire_name(p.ledger.document(), d))).ok())
+                    .collect();
+                if let (false, Some(c)) = (dups.is_empty(), r.get("core").and_then(Value::as_str)) {
+                    s.echo(format!("Note: core {c} is also used by {} in this cable.", slash::name_list(&dups)));
+                }
+                Ok(Step::Continue)
+            }
+            (Some(_), Input::Cancel) => Ok(Step::Done),
+            (Some(picked), _) => {
+                self.picked = Some(picked);
+                Ok(Step::Continue)
+            }
+        }
+    }
+}
+
+impl Interactive for CableCore {
+    fn name(&self) -> &'static str {
+        "CABLECORE"
+    }
+    /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
+    fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
+        let Some((w, _, _)) = &self.picked else { return Vec::new() };
+        let route = read(s, |p, page| {
+            Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim))
+        });
+        match route {
+            Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
+            _ => Vec::new(),
+        }
+    }
+    fn prompt(&self, _s: &Session) -> Prompt {
+        match &self.picked {
+            None => Prompt::new("Select a wire in a cable", Accept::POINT),
+            Some((_, name, core)) => {
+                let mut p = Prompt::new(format!("Core number or colour for {name}"), Accept::TEXT);
+                p.default = Some(core.clone().unwrap_or_else(|| "none".into()));
+                p
+            }
+        }
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
+        safely(s, "cablecore", |s| self.step(s, i))
+    }
+}
+
+// ---------------------------------------------------------------- Cable Join (owner request)
+
+/// `cablefan`: click a fanned cable end, then where its trunk should join the spine; `Middle`
+/// puts it back in the middle.
+pub(crate) fn cablefan(s: &Session) -> R<Box<dyn Interactive>> {
+    can_start(s)?;
+    Ok(Box::new(Safe(CableFan::default())))
+}
+
+/// The cable end picked (cable, end name, its spine) while the join point is asked for.
+#[derive(Default)]
+struct CableFan {
+    picked: Option<(CableId, &'static str, crate::look::Spine)>,
+}
+
+const JOIN_NOTHING: &str = "Nothing there. Click a cable shown as a fan.";
+const JOIN_NOT_FAN: &str = "That is not a cable shown as a fan.";
+
+impl CableFan {
+    /// The fanned end a click names: a computed part of a fan-view cable, the end whose spine is
+    /// nearest the click.
+    fn end_at(s: &Session, h: Handle, at: Pt) -> R<(CableId, &'static str, crate::look::Spine)> {
+        read(s, |p, page| {
+            let map = &p.pages.get(&page).ok_or(JOIN_NOT_FAN)?.map;
+            let k = match map.get(h) {
+                Some(Mapped::Fan(k)) if map.is_fan(k) => k,
+                _ => return Err(JOIN_NOT_FAN.into()),
+            };
+            let ends = crate::look::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::look::font_width);
+            let d = |f: &crate::look::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
+            let fe = ends.iter().min_by(|a, b| d(a).total_cmp(&d(b))).ok_or(JOIN_NOT_FAN)?;
+            Ok((k, if fe.end == crate::look::MarkerEnd::A { "A" } else { "B" }, fe.spine))
+        })
+        .map_err(other)
+    }
+
+    fn commit_join(s: &mut Session, cable: CableId, end: &str, at: Value) -> R<Step> {
+        let r = commit(s, "cablefan", &json!({"cable": cable.hex(), "end": end, "at": at}))?;
+        let title = read(s, |p, _| Ok(crate::views::cable_title(p.ledger.document(), cable))).unwrap_or_default();
+        match r.get("at").and_then(Value::as_array) {
+            Some(a) => s.echo(format!(
+                "Cable {title} now joins end {end} at {}, {}.",
+                fmt_num(a.first().and_then(Value::as_f64).unwrap_or(0.0)),
+                fmt_num(a.get(1).and_then(Value::as_f64).unwrap_or(0.0))
+            )),
+            None => s.echo(format!("Cable {title} now joins end {end} in the middle.")),
+        }
+        Ok(Step::Done)
+    }
+
+    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        match (self.picked, i) {
+            (None, Input::Point(q)) => {
+                if !in_range(q) {
+                    return Err(other(OUT_OF_RANGE));
+                }
+                let h = pick(s, q).ok_or_else(|| other(JOIN_NOTHING))?;
+                self.picked = Some(Self::end_at(s, h, pt(q))?);
+                Ok(Step::Continue)
+            }
+            (None, Input::Enter | Input::Cancel) => Ok(Step::Done),
+            (None, Input::Text(t)) => Err(not_a_point(&t)),
+            (Some((k, end, _)), Input::Point(q)) => {
+                if !in_range(q) {
+                    return Err(other(OUT_OF_RANGE));
+                }
+                Self::commit_join(s, k, end, json!([q.x, q.y]))
+            }
+            (Some((k, end, _)), Input::Keyword(w)) if w == "Middle" => Self::commit_join(s, k, end, Value::Null),
+            (Some(_), Input::Enter | Input::Cancel) => Ok(Step::Done),
+            (Some(_), Input::Text(t)) => Err(not_a_point(&t)),
+            _ => Ok(Step::Continue),
+        }
+    }
+}
+
+fn fmt_num(x: f64) -> String {
+    let r = (x * 1e4).round() / 1e4;
+    if r == r.trunc() { format!("{r:.0}") } else { format!("{r}") }
+}
+
+impl Interactive for CableFan {
+    fn name(&self) -> &'static str {
+        "CABLEFAN"
+    }
+    fn prompt(&self, _s: &Session) -> Prompt {
+        match self.picked {
+            None => Prompt::new("Select a cable shown as a fan, near the end to change", Accept::POINT),
+            Some(_) => {
+                let mut p = Prompt::new("Specify where the cable joins", Accept::POINT);
+                p.keywords = vec!["Middle".into()];
+                p
+            }
+        }
+    }
+    /// The join follows the cursor along the spine.
+    fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
+        let (Some((_, _, spine)), Some(px)) = (self.picked, pixel(s)) else { return Vec::new() };
+        match spine.join_for(pt(cursor)) {
+            Some(j) => vec![preview_entity(s, ring_kind(j, TERMINAL_PX, px), ATTACHED_ACI)],
+            None => Vec::new(),
+        }
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
+        safely(s, "cablefan", |s| self.step(s, i))
     }
 }
 

@@ -133,6 +133,35 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let mut removed: Vec<(Handle, &Arc<Entity>)> =
         before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
     removed.sort_by_key(|(h, _)| *h);
+
+    // Computed parts of a traditional-view cable (core labels at the slash, reference flags;
+    // design 009 §8) are left out of an edit that also touches other objects: a window selection
+    // round a labelled cable moves, copies or erases the rest, and the parts are drawn again from
+    // the document. An edit of nothing but such parts is refused (brief 009 review S2).
+    let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
+    let drawn = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k));
+    let copied_drawn = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
+        Some(Source::Entity(s)) => drawn(cx.map, *s),
+        Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).is_some_and(|c| drawn(&c.map, *handle)),
+        None => false,
+    };
+    let changed_handles: Vec<Handle> = before
+        .iter()
+        .filter(|(h, old)| after.get(h).is_some_and(|new| !Arc::ptr_eq(old, new) && ****old != ***new))
+        .map(|(h, _)| *h)
+        .collect();
+    let added_handles: Vec<Handle> = now_order.iter().copied().filter(|h| !before.contains_key(h)).collect();
+    let skipped: BTreeSet<Handle> = removed
+        .iter()
+        .map(|(h, _)| *h)
+        .chain(changed_handles.iter().copied())
+        .filter(|h| drawn(cx.map, *h))
+        .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
+        .collect();
+    let touched = removed.len() + changed_handles.len() + added_handles.len();
+    if !skipped.is_empty() && skipped.len() == touched {
+        return Err(crate::views::DRAWN_REFUSED.into());
+    }
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -147,8 +176,10 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 t.ops.push(Op::RemoveItem { id, item });
                 counts[2] += 1;
             }
-            // Brief 005: a fan line is a view, not an object; it cannot be erased.
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            // Left out (above); drawn again from the document.
+            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
+            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
                 rep(&mut reps, rid, cx.doc)?;
@@ -179,7 +210,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_)) => return Err(crate::views::FAN_REFUSED.into()),
+            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::Marker(rid, term)) => {
                 let at = marker_position(new).ok_or("terminal markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
@@ -194,9 +226,9 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         }
     }
 
-    // Added entities: with provenance (copies, pastes) or new drawing.
-    let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
-    let added: Vec<Handle> = now_order.iter().copied().filter(|h| !before.contains_key(h)).collect();
+    // Added entities: with provenance (copies, pastes) or new drawing; copies of left-out parts
+    // are dropped.
+    let added: Vec<Handle> = added_handles.into_iter().filter(|h| !skipped.contains(h)).collect();
     let mut batches: BTreeMap<u32, Vec<(Handle, Source)>> = BTreeMap::new();
     let mut fresh_conductor_ends: Vec<(ConductorId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
@@ -240,6 +272,11 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         }
     }
 
+    // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
+    if !skipped.is_empty() && t.ops.is_empty() {
+        return Err(crate::views::DRAWN_REFUSED.into());
+    }
+
     movement(cx, &mut t, &fresh_conductor_ends)?;
     preview(cx.doc, &t.ops)?;
     t.summary =
@@ -274,8 +311,8 @@ fn copy_batch(
                 (&snap.doc, &snap.map, *handle)
             }
         };
-        if matches!(map.get(h), Some(Mapped::Fan(_))) {
-            return Err(crate::views::FAN_REFUSED.into());
+        if let Some(Mapped::Fan(k)) = map.get(h) {
+            return Err(crate::views::refusal(map, k).into());
         }
         src_doc = Some(doc);
         src_map = Some(map);

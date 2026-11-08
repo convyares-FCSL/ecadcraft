@@ -993,16 +993,34 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             ItemKind::Symbol(_) => "symbol".into(),
         }),
         ObjectId::Component(c) => subject_label(doc, Subject::Component(c)),
-        ObjectId::Conductor(c) => subject_label(doc, Subject::Conductor(c)),
+        // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
+        ObjectId::Conductor(c) => {
+            let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
+                k.members.iter().find(|m| m.conductor == c).and_then(|m| {
+                    m.core
+                        .as_deref()
+                        .filter(|x| !x.trim().is_empty())
+                        .map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS))
+                })
+            });
+            match core {
+                Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),
+                None => subject_label(doc, Subject::Conductor(c)),
+            }
+        }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Component(t.component)))
         }),
-        ObjectId::Representation(i) => doc
-            .representations
-            .get(&i)
-            .map_or_else(String::new, |r| format!("{} of {}", r.role, subject_label(doc, r.subject))),
+        ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
+            // A cable's reference end shows the text it draws (design 009 §8).
+            if r.role == crate::look::REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)) {
+                format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), crate::look::reference_text(doc, i))
+            } else {
+                format!("{} of {}", r.role, subject_label(doc, r.subject))
+            }
+        }),
         ObjectId::Definition(i) => doc.definitions.get(&i).map_or_else(String::new, |d| d.name.clone()),
         ObjectId::Settings => format!("length unit {:?}", doc.settings.length_unit),
     }
