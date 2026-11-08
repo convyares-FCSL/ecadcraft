@@ -71,6 +71,8 @@ fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
             Kind::Template => tools::template(t.id, &tools::Picked::default()).unwrap().0,
             // Trial tools (Preview Reference, the ECAD Dev tab) run no command.
             Kind::Trial => continue,
+            // The symbol search window starts `place` with the row chosen (brief 018).
+            Kind::Search => "place".to_string(),
         };
         let command = line.split_whitespace().next().unwrap();
         assert!(ids.contains(&command), "{} runs the existing command {command}", t.id);
@@ -134,7 +136,7 @@ fn the_interactive_buttons_start_their_prompts() {
         ("Convert to Component", "convertcomponent", "Select objects to convert to a component:"),
         // No component on the page: no number is promised (fix round 2, N3).
         ("Add Terminal", "addterminal", "Specify point for a terminal on a component or [Name]:"),
-        ("Place Symbol", "place", "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:"),
+        ("Place Symbol", "place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
         ("Wire", "wire", "Specify first point of wire:"),
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),

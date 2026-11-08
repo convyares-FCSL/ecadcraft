@@ -320,6 +320,8 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     let out = std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from);
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
+    // The slash is clicked between grid points: 5 mm snap (brief 018) off, as F9 does.
+    h.state_mut().cad.session.settings.snapmode = false;
     fixture(&mut h);
     let before = head(&mut h);
     // Leave text in the Command field to check the click clears it (design §3.1).

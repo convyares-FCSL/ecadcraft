@@ -206,10 +206,25 @@ pub enum LengthUnit {
     Inch,
 }
 
+/// Project settings. `tag_padding` and `tag_prefixes` (brief 018, owner decision 2026-11-08) are
+/// left out while they hold their defaults, so a project that never changes them is written
+/// exactly as before; a file that sets them is refused by older builds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
+    #[serde(default = "default_padding", skip_serializing_if = "is_default_padding")]
+    pub tag_padding: u8,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tag_prefixes: BTreeMap<String, String>,
+}
+
+fn default_padding() -> u8 {
+    m::DEFAULT_TAG_PADDING
+}
+
+fn is_default_padding(p: &u8) -> bool {
+    *p == m::DEFAULT_TAG_PADDING
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -413,6 +428,8 @@ impl From<&m::ProjectSettings> for ProjectSettings {
                 m::LengthUnit::Millimetre => LengthUnit::Millimetre,
                 m::LengthUnit::Inch => LengthUnit::Inch,
             },
+            tag_padding: s.tag_padding,
+            tag_prefixes: s.tag_prefixes.clone(),
         }
     }
 }
@@ -650,6 +667,8 @@ impl From<ProjectSettings> for m::ProjectSettings {
                 LengthUnit::Millimetre => m::LengthUnit::Millimetre,
                 LengthUnit::Inch => m::LengthUnit::Inch,
             },
+            tag_padding: s.tag_padding,
+            tag_prefixes: s.tag_prefixes,
         }
     }
 }

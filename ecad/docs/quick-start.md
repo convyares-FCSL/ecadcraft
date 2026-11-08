@@ -121,12 +121,26 @@ about 2 s are marked slow: plain `cargo test` and `cargo xtask test-changed` ski
 `cargo xtask ci` (the QA gate, Linux and Windows CI) runs them with `--include-ignored`. To run
 the whole set by hand: `cargo test --workspace --all-features -- --include-ignored`.
 
+**Branch `feature/components` (brief 018, design `ecad/docs/design/018.md` with your answers of
+2026-11-08)** makes placed symbols real devices with tags (section 5E). **Place Symbol** now asks
+which symbol first (18 built-in IEC-style starter symbols: coil, contacts, MCBs, fuse, PSU, push
+buttons, lamp, motors, transformer, terminal, PLC channels); each new device gets the next tag
+of its prefix (`-K01`, `-Q01`…, highest + 1, two digits by default), and a contact can be added to
+an existing device (`-K01`'s coil on one page, its contacts on another). Tags and terminal labels
+are drawn beside every symbol. **Find Symbol**, **Device Properties** and **Delete Device** are
+new in the Components group. Nothing outside `ecad/` changes. Existing files are written as before, but
+one model rule is relaxed (I14, your decision of 2026-11-08): a project with a contact added to a
+device is refused by older builds, and so is one whose tag settings were changed (two optional
+project settings, your decision of 2026-11-08). For this branch there are automated checks only (below),
+written and run by the worker; nobody has run it on a display yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
 | **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/all/disk_contracts.rs`, `disk_edge_contracts.rs`). The model outcomes of sections 5 to 7 (what the project holds, not how it looks), across the trial, tools, mouse and files tests together: `the_quick_start_trial_runs_headless` (`ecad/apps/ecad-trial/tests/all/trial.rs`) follows the typed version of sections 5 to 7, saving through the dialog as `~/ecad-projects/demo` under a temporary home folder and checking the banner line and tab title quoted in section 7; the click-based steps are in `mouse.rs` and `tools.rs` (next row and below); plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/all/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/all/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/all/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
 | **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/all/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/all/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 018 (devices and tags)** | written with the branch and run by the worker on native Windows 11 (Rust 1.99.1), 2026-11-08: `cargo xtask test-changed` and the medium bench | Section 5E without a display (`ecad/crates/ecad-cadcraft/tests/all/device_contracts.rs`): all 18 starter symbols get their prefix and the next number and their definitions' terminal names, each definition embedded once with its origin; a coil and two contacts on two pages are one `-K01` with `13`/`14` and `21`/`22`; renaming the tag is one `Set tag` transaction that `u` undoes; a duplicate tag names the device and the ways forward; placing with an existing tag adds to that device; merging a renamed device moves its symbols, terminals and wires in one undoable transaction; deleted tags are not reused; save, close and reopen keep it all; the interactive Place Symbol (search, Device, Tag, the Yes/Choose another question), Device Properties and Delete Device; refusals and hostile input; erasing one symbol, then the last one; a moved contact's wire follows; a copy gets the next tag; the hover lens. MCP: `place`, the join and `setprop` tag record the JSON forms' transactions as the agent, a duplicate is refused, writes off refuse device writes (`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`). The model rule (`ecad/crates/ecad-model/tests/all/device_contracts.rs`). Not checked: anything on a display, and the Find Symbol window by clicks |
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/all/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/all/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/apps/ecad-trial/tests/all/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/all/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
 | **Automated checks, brief 010 (cable references)** | written with the branch (the worker ran only the new tests once); run by the tester and by CI on Linux and Windows | Section 5D: **Cable Reference**, **Continue Cable** and **Go to Reference** clicked by their labels, their first prompts, the click-only path (reference, continue with Enter and two clicks, jump back), and the **Rename Page** and **Move Page** templates filling in the current page (`ecad/apps/ecad-trial/tests/all/cable_references.rs`). One cable on two pages keeps its ID, members and nets; continuing is one transaction with the design's ops and geometry; the texts `/2.1` and `/1.2` and where they sit; no end mark where a wire leaves toward a reference; moving or renaming a page is one transaction and the texts follow with none of their own; erasing one drawing makes the other end a red orphan with a diagnostic and a message, and `u` restores it; save, reopen and replay; the hover lens; `cablegoto` there and back; the interactive and JSON forms record the same transactions; refusals R1 to R6; hostile input; the debugger trail; fan view keeps the reference (`ecad/crates/ecad-cadcraft/tests/all/cable_reference_contracts.rs`, whose JSON-form table is written to move to the MCP harness of brief 011). Not checked: how it looks (reference screenshots are taken by the tester) |
@@ -359,8 +373,18 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
     asks you to select objects (click or window), and Enter converts them.
   - **Add Terminal**: click on a component's outline to add a terminal there; repeat; Enter to
     finish.
-  - **Place Symbol**: the coil follows the cursor; `R` then Enter rotates it by 90°, `M` then
-    Enter mirrors it; click to place; repeat; Enter to finish.
+  - **Find Symbol** (brief 018) opens a small window with one search field: type a few letters
+    (`coil`, `cont`, `fuse`, `-Q`, or a device's tag such as `-K01`) and click a row. A symbol row
+    starts Place Symbol with it; a device row asks which symbol to add to that device.
+  - **Place Symbol** asks `Enter symbol or [List/Rotate/Mirror] <coil>:`. Type a symbol (`no`,
+    `mcb1`…; `L` lists them) or press Enter for the one shown. The symbol then follows the cursor
+    with its tag and terminal labels; the prompt says what the click makes (`new device -K02` or
+    `joins -K01 as 13/14`). `R` then Enter rotates by 90°, `M` then Enter mirrors, `D` then Enter
+    adds the next symbol to an existing device, `T` then Enter types the new device's tag. Click
+    to place; repeat; Enter to finish. Clicks snap to the 5 mm grid (F9 turns snap off).
+  - **Device Properties**: click a device (any of its symbols, its tag or a terminal label), then
+    choose Tag, Description, Maker, Part, Location or Function and type the new value.
+  - **Delete Device**: click a device; it asks before deleting it with every symbol on every page.
   - **Wire**: click points; an end on a terminal attaches (a green ring shows before you click);
     a click on a terminal after the first point, or Enter, finishes the wire.
   - **Connect**: click a wire near its end, then a terminal. **Disconnect**: click a wire near
@@ -414,11 +438,12 @@ of the drawing area; type there (or in the ECAD command window) only where a ste
    `Terminal 2 …`. Clicking on an edge works too: the terminal goes onto the outline where you
    click (use Midpoint snap, Shift+right-click > Midpoint, to hit the middle exactly). `N` then
    Enter lets you type a name for the next terminal; Enter alone keeps the number shown.
-4. **Place a coil.** Click **Place Symbol**. The coil follows the cursor, with cyan rings at its
-   two terminals. Type `R` and Enter: it turns by 90° and the prompt says `rotation 90`. Type
-   `100,0` and Enter (or click there), then Enter to finish.
-   Expected: `Coil placed: component <id>, terminals A1, A2.`; a rotated coil with rings at 90,0
-   and 110,0.
+4. **Place a coil.** Click **Place Symbol**. Type `R` and Enter: the coil follows the cursor,
+   turned by 90°, with cyan rings at its two terminals, and the prompt says
+   `(new device -K01, rotation 90)`. Type `100,0` and Enter (or click there), then Enter to
+   finish.
+   Expected: `Placed -K01 (Contactor / relay coil) with terminals A1, A2.`; a rotated coil with
+   rings at 90,0 and 110,0, `-K01` above it and `A1`, `A2` beside its terminals.
 5. **Draw the wire.** Click **Wire**. Move onto the rectangle's terminal at 40,10: a green ring
    and `-> 1` appear before you click. Click. Then click at about 70,10 and at about 70,0 (bend
    points; F8 for Ortho helps). Move onto the coil's left terminal at 90,0 until the green ring
@@ -428,7 +453,8 @@ of the drawing area; type there (or in the ECAD command window) only where a ste
    that end shows a grey square instead.
 6. **Look before you type IDs.** With no command running, rest the pointer on the coil, on the
    ring at 40,10 (or the coil's ring at 90,0) or on the wire. Expected: a tooltip with
-   `Component (no tag)` and its terminals, `Terminal 1` (or `Terminal A1`) and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
+   `Component (no tag)` and its terminals (on the rectangle; the coil shows
+   `Device -K01   Contactor / relay coil`), `Terminal 1` (or `Terminal A1`) and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
    `End B: terminal A1 of …`. Nothing changes in the Project panel's change count.
 
 Typing instead of clicking still works, in the ECAD command window:
@@ -659,6 +685,53 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
 10. **Collapse.** The `<` at the right of the panel's header folds it to a thin strip; click the
     strip to open it again.
 
+## 5F. Devices and tags (by clicking)
+
+A device is a real electrical part with a tag (`-K01`). It can be drawn by several symbols on
+several pages: a contactor's coil on one page and its contacts on others are the same `-K01`.
+Tags are numbered with two digits by default (`-K01`, `-Q03`); `-K1` and `-K01` are the same tag.
+Any letters are accepted (`-SR01`, `-TB01`, `-N01`): IEC 81346 is the default, never the law.
+Open the **ECAD** tab first.
+
+1. **A coil.** Click **Find Symbol**, type `coil` and click the **Contactor / relay coil** row.
+   Click on the page.
+   Expected: `Placed -K01 (Contactor / relay coil) with terminals A1, A2.`; `-K01` left of the
+   coil and `A1`, `A2` beside its terminals. Press Enter.
+2. **A contact of the same device.** In the Find Symbol window, type `cont` and click the
+   **NO contact** row. Type `D` and Enter; the prompt offers `<-K01>`: press Enter. The prompt
+   now says `joins -K01 as 13/14`. Click to the right of the coil, then press Enter.
+   Expected: `Added NO contact 13/14 to -K01 (now on page 1).`; the contact shows `-K01` and
+   `13`/`14`.
+3. **Another page.** Make page 2 (**+** in the PROJECT panel, or **New Page**). In
+   Find Symbol type `-K01` and click the `-K01` row; at `Enter symbol to add to -K01` type `nc`
+   and Enter, then click on page 2 and press Enter.
+   Expected: `21`/`22` on page 2, still `-K01`.
+4. **Hover** the contact on page 2. Expected: `Device -K01   Contactor / relay coil`, then
+   `This symbol: NC contact 21/22, page 2 …` and an `Also:` line naming the coil and the NO
+   contact on page 1.
+5. **Rename.** Click **Device Properties**, click the contact, type `Tag` and Enter (or `T`),
+   then `K5` and Enter. Expected: `-K01 is now -K05 (3 symbols on pages 1, 2).` All three show
+   `-K05` (page 1 when you go back to it). Press Enter to finish, then type `u` and Enter: back to
+   `-K01` everywhere.
+6. **A tag that exists is never a dead end.** Place another coil (`-K02`). With **Device
+   Properties** set its tag to `K01`: the prompt says
+   `-K01 exists: -K01 (Contactor / relay coil, page 1 …). Make this the same device?
+   [Yes/Choose another] <Choose another>:`. Enter keeps `-K02` and asks for another tag; `Y`
+   makes it part of `-K01` (refused with a reason when `-K01` already has a coil). The same
+   question comes while placing: at Place Symbol type `T`, Enter, `K01`: `Add this … to it?`.
+7. **Erase and delete.** Erase the NC contact on page 2: `Removed -K01's NC contact 21/22
+   (page 2); -K01 is still shown on page 1.` Erasing a device's last symbol deletes the device
+   (`U` brings it back). **Delete Device** asks first: `Delete -K01 and its 2 symbols on page 1?
+   [Yes/No] <No>:`.
+8. **Save, close and reopen** (section 7): tags, properties and the device's symbols are all
+   still there.
+
+Typed instead, in the ECAD command window: `place {"symbol":"coil","at":[0,0]}`,
+`place {"symbol":"no","at":[40,0],"device":"<the coil's component id>"}`,
+`setprop {"component":"<id>","key":"tag","value":"K5"}`, `symbols {"query":"-Q"}`,
+`devices {}`, `tagsettings {"padding":3}` (three-digit numbers from then on). A tag that exists is refused by `setprop` with the ways forward; add
+`"merge":true` to make the device part of that one. `place` with a `tag` that exists adds the
+symbol to that device.
 
 ## 6. Check connected movement, undo/redo and pages
 
@@ -1127,6 +1200,21 @@ Your table of three clean runs goes here once you have run it.
     are hard to see.
   - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, Open Page and Move
     Page still open the ECAD command window with a template.
+- **Devices and tags** (brief 018):
+  - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
+    boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
+  - Tag texts and terminal labels are placed automatically (left of a symbol, or above it when
+    rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
+  - Tag padding and each symbol's prefix are project settings, changed by typing
+    `tagsettings {"padding":3,"prefixes":{"coil":"KA"}}` in the ECAD command window (`null` for a
+    symbol goes back to the built-in prefix; `tagsettings {}` lists them). There is no dialog for
+    them yet. A project that changes them is refused by older builds.
+  - Find Symbol is a small window of the trial's own (Tool Sets holds buttons only); typing at the
+    `place` prompt finds the same symbols.
+  - Copying a device's symbol makes a new device with the next tag and every terminal of the
+    original.
+  - Components converted from lines, and coils placed by older builds, have no tag and keep
+    today's behaviour (erasing their drawing leaves the component).
 - **Cable Slash** (brief 004, owner answers of 2026-11-06):
   - A wire counts when the slash crosses it, passes through one of its bends, or ends on it. A
     slash that meets a wire only at the wire's own end, or runs along it, does not take it; the

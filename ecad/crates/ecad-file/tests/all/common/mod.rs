@@ -129,7 +129,7 @@ pub fn fixture() -> Fixture {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
-                after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
             },
         ],
     );

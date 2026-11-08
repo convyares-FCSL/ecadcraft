@@ -560,6 +560,9 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
+            // in a cable's drawing or reference texts.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), .. } => {}
             _ => return None,
         }
     }

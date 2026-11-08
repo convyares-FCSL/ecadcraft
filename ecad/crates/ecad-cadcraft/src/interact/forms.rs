@@ -8,7 +8,7 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, ComponentId, ConductorId, Definition, End, Placement, Primitive, Pt, Subject};
+use ecad_model::{CableId, ComponentId, ConductorId, End, Placement, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 use super::{
@@ -16,7 +16,7 @@ use super::{
     capture_at, capture_preview, drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name,
     pick, pixel, preview_entity, preview_text, pt, read, ring_kind, terminal_for, terminal_name, v2, valid_name,
 };
-use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, builtin_coil, with_project};
+use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, with_project};
 use crate::project::Mapped;
 use crate::slash;
 use crate::views::View;
@@ -281,73 +281,10 @@ impl Interactive for AddTerminal {
 
 // ---------------------------------------------------------------- Place Symbol (§6)
 
-/// `place`: the built-in coil follows the cursor; Rotate and Mirror before the click; repeat
-/// until Enter.
-pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
-    can_start(s)?;
-    Ok(Box::new(Safe(Place::default())))
-}
-
-#[derive(Default)]
-struct Place {
-    /// Degrees counter-clockwise: 0, 90, 180 or 270.
-    rotation: u16,
-    mirror: bool,
-}
-
-impl Place {
-    /// The definition the JSON form places without `definition`: the project's coil, else the
-    /// built-in one it would embed.
-    fn definition(s: &Session) -> Definition {
-        let name = builtin_coil().name;
-        read(s, |p, _| Ok(p.ledger.document().definitions.values().find(|d| d.name == name).cloned()))
-            .ok()
-            .flatten()
-            .unwrap_or_else(builtin_coil)
-    }
-
-    fn placement(&self, at: Vec2) -> Placement {
-        Placement { origin: pt(at), rotation: f64::from(self.rotation).to_radians(), mirror: self.mirror, scale: 1.0 }
-    }
-
-    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        match i {
-            Input::Keyword(k) if k == "Rotate" => {
-                self.rotation = (self.rotation + 90) % 360;
-                Ok(Step::Continue)
-            }
-            Input::Keyword(k) if k == "Mirror" => {
-                self.mirror = !self.mirror;
-                Ok(Step::Continue)
-            }
-            Input::Point(p) => {
-                if !in_range(p) {
-                    return Err(other(OUT_OF_RANGE));
-                }
-                let r = commit(
-                    s,
-                    "place",
-                    &json!({"at": [p.x, p.y], "rotation": f64::from(self.rotation), "mirror": self.mirror}),
-                )?;
-                let keys: Vec<&str> = r
-                    .get("terminals")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|t| t.get("key").and_then(Value::as_str))
-                    .collect();
-                s.echo(format!("Coil placed: component {}, terminals {}.", hex_of(&r, "component"), keys.join(", ")));
-                Ok(Step::Continue)
-            }
-            Input::Enter => Ok(Step::Done),
-            Input::Text(t) => Err(not_a_point(&t)),
-            _ => Ok(Step::Continue),
-        }
-    }
-}
+// Brief 018 replaced the experiment's coil-only form with `super::devices::place`.
 
 /// A primitive moved by a placement (the shapes the coil and its kind use).
-fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
+pub(super) fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
     Some(match prim {
         Primitive::Line { a, b } => Primitive::Line { a: pl.apply(*a), b: pl.apply(*b) },
         Primitive::Polyline { vertices, closed } => {
@@ -357,47 +294,6 @@ fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
         Primitive::Point { at } => Primitive::Point { at: pl.apply(*at) },
         _ => return None,
     })
-}
-
-impl Interactive for Place {
-    fn name(&self) -> &'static str {
-        "PLACE"
-    }
-    fn prompt(&self, _s: &Session) -> Prompt {
-        let mirrored = if self.mirror { "mirrored" } else { "not mirrored" };
-        Prompt::new(format!("Specify insertion point (rotation {}, {mirrored})", self.rotation), Accept::POINT)
-            .kw(&["Rotate", "Mirror"])
-    }
-    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        paper_guard(s, &i)?;
-        safely(s, "place", |s| self.step(s, i))
-    }
-    /// The coil at the cursor, as it would be placed.
-    fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !super::model_space(s) {
-            return Vec::new();
-        }
-        if !in_range(cursor) {
-            return Vec::new();
-        }
-        let pl = self.placement(cursor);
-        Self::definition(s)
-            .graphics
-            .iter()
-            .filter_map(|g| placed(g, &pl))
-            .map(|g| crate::convert::kind_for_primitive(&g))
-            .collect()
-    }
-    /// Its terminal rings at their would-be positions.
-    fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
-        let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
-        let pl = self.placement(cursor);
-        Self::definition(s)
-            .terminals
-            .iter()
-            .map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI))
-            .collect()
-    }
 }
 
 // ---------------------------------------------------------------- Wire (§7)
@@ -998,7 +894,7 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             Some(Subject::Conductor(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
             _ => Err(NOT_A_CABLE),
         },
-        Mapped::Marker(..) => Err(NOT_A_CABLE),
+        Mapped::Marker(..) | Mapped::Tag(_) => Err(NOT_A_CABLE),
     }
 }
 

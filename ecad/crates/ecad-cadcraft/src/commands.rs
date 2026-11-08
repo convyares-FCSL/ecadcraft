@@ -93,14 +93,37 @@ end's spine; null: the middle)",
             .params("{conductor: id} | {component: id} | {cable: id}")
             .noundo(),
         CommandSpec::new("setprop", "Set Property", run_setprop)
-            .params("{component|conductor|cable: id, key, value: string|null}")
+            .params(
+                "{component|conductor|cable: id, key, value: string|null, merge?: bool} (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
+            )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
             .params("{cable?: id, conductors: [id], tag?}")
             .noundo(),
         CommandSpec::new("place", "Place Symbol", run_place)
-            .params("{at: [x,y], rotation?: degrees, mirror?: bool, definition?: id}")
+            .params(
+                "{at: [x,y], rotation?: degrees, mirror?: bool, symbol?: key, definition?: id, device?: id, tag?} (`symbol`: a starter symbol, see `symbols`; `device` adds it to that device; `tag` names a new one, or adds it to the device that has that tag)",
+            )
             .interactive(interact::place)
+            .noundo(),
+        CommandSpec::new("symbols", "Find Symbol", crate::device_cmds::run_symbols)
+            .params("{query?} (starter symbols and devices matching it; read only)")
+            .noundo(),
+        CommandSpec::new("devices", "List Devices", crate::device_cmds::run_devices)
+            .params("{tag?} (devices whose tag starts with it; read only)")
+            .noundo(),
+        CommandSpec::new("tagsettings", "Tag Settings", crate::device_cmds::run_tagsettings)
+            .params(
+                "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)",
+            )
+            .noundo(),
+        CommandSpec::new("deviceprops", "Device Properties", crate::device_cmds::run_deviceprops)
+            .params("{component: id} (a device's properties; read only; interactive: change them)")
+            .interactive(interact::deviceprops)
+            .noundo(),
+        CommandSpec::new("devicedelete", "Delete Device", crate::device_cmds::run_devicedelete)
+            .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
+            .interactive(interact::devicedelete)
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage).params("{title}").noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
@@ -136,7 +159,7 @@ pub(crate) fn with_project<R>(
 }
 
 /// Like [`with_project`] for commands that also work on an unavailable page (open, inspect).
-fn with_any_page<R>(
+pub(crate) fn with_any_page<R>(
     s: &mut Session,
     f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, String>,
 ) -> cadcraft_engine::Result<R> {
@@ -431,7 +454,7 @@ fn remove_representations(doc: &ecad_model::Document, subject: Subject) -> Vec<O
     ops
 }
 
-fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+pub(crate) fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
@@ -511,6 +534,12 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     } else {
         return Err(err("`component`, `conductor` or `cable` (hex id) is required"));
     };
+    // Brief 018: device properties follow design 018 §6.1 (tags are identities).
+    if let ObjectRef::Component(c) = object
+        && crate::device_cmds::is_device_property(object, &key)
+    {
+        return crate::device_cmds::run_setprop(s, params, c, key);
+    }
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let props = match object {
@@ -961,6 +990,10 @@ pub fn builtin_coil() -> Definition {
 }
 
 fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    // Brief 018: a starter symbol, as a new device or another symbol of one.
+    if crate::device_cmds::is_symbol_place(params) {
+        return crate::device_cmds::run_place(s, params);
+    }
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     let degrees = opt_typed(params, "rotation", "a finite number of degrees", |v| v.as_f64().filter(|d| d.is_finite()))
         .map_err(err)?

@@ -875,6 +875,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Fan(_) => {}
         // A reference's derived text (brief 010) stands for its reference representation.
         Mapped::RefText(rep) => r.representation = Some(rep),
+        // A device's tag text or terminal label (brief 018) stands for its symbol representation.
+        Mapped::Tag(rep) => r.representation = Some(rep),
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),

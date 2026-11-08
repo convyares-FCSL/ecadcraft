@@ -12,7 +12,8 @@ use crate::id::{CableId, ConductorId, ItemId, PageId, RepresentationId, Terminal
 ///
 /// # Semantics
 /// Symbol terminal positions are computed from the stored placement and the embedded
-/// definition's local terminal position (proposal §4.3). A terminal shown by several
+/// definition's local terminal position (proposal §4.3), or the representation's connection
+/// points in the definition's local frame when it has them (brief 018). A terminal shown by several
 /// representations on the same page appears once per representation.
 pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, RepresentationId, Pt)> {
     let mut out = Vec::new();
@@ -48,6 +49,11 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
             let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
                 return Vec::new();
             };
+            // Connection points of a symbol representation are in the definition's local frame
+            // (brief 018): the terminals follow the instance.
+            if !r.connection_points.is_empty() {
+                return r.connection_points.iter().map(|(t, p)| (*t, inst.placement.apply(*p))).collect();
+            }
             let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
             doc.terminals_of(component)
                 .filter_map(|(tid, t)| {

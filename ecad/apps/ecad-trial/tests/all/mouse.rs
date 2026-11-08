@@ -98,7 +98,7 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
     button(h, "Place Symbol");
     type_enter(h, "R");
-    assert_eq!(prompt(h), "Specify insertion point (rotation 90, not mirrored) or [Rotate/Mirror]:");
+    assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
     // The coil follows the cursor before the click.
     let at = screen(h, 100.0, 0.0);
     pointer_to(h, at);
@@ -202,9 +202,11 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     let coil_edge = screen(&h, 110.0, 3.0);
     pointer_to(&mut h, coil_edge);
     h.run_steps(2);
-    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some("Component (no tag)"));
-    assert!(h.query_by_label("Component (no tag)").is_some(), "{HOVER_ID} shows it");
-    assert!(h.query_by_label("Terminals: 2").is_some());
+    // The coil placed by Place Symbol is a device (brief 018): its lens names its tag.
+    let lens = "Device -K01   Contactor / relay coil";
+    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some(lens));
+    assert!(h.query_by_label(lens).is_some(), "{HOVER_ID} shows it");
+    assert!(h.query_by_label("This symbol: coil A1/A2, page 1 \"1\"").is_some());
     let on_wire = screen(&h, 55.0, 10.0);
     pointer_to(&mut h, on_wire);
     h.run_steps(2);

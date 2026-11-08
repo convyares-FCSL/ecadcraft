@@ -74,6 +74,9 @@ fn row(variant: &str, open_ms: f64) -> Row {
             switch_ms: 2.5,
             preview_ms: 6.0,
             panel_ms: 0.05,
+            place_ms: 1.0,
+            join_ms: 1.0,
+            tag_ms: 0.5,
         },
     }
 }

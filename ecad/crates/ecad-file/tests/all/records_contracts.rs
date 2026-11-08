@@ -189,3 +189,30 @@ fn mutated_files_never_panic_and_are_always_classified() {
         }
     }
 }
+
+/// Brief 018 (owner decision 2026-11-08): the tag settings are left out of a record while they
+/// hold their defaults, so files that never set them are unchanged; set, they round-trip.
+#[test]
+fn tag_settings_are_written_only_when_set_and_round_trip() {
+    let defaults = ProjectSettings::default();
+    let plain =
+        ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() })
+            .unwrap()
+            .to_string();
+    assert!(!plain.contains("tag_padding") && !plain.contains("tag_prefixes"), "{plain}");
+
+    let mut f = fixture();
+    let before = f.ledger.document().settings.clone();
+    let mut after = before.clone();
+    after.tag_padding = 3;
+    after.tag_prefixes.insert("coil".into(), "KA".into());
+    let op = Op::SetProjectSettings { before, after: after.clone() };
+    let line = ecad_file::record::op_value(&op).unwrap().to_string();
+    assert!(line.contains("\"tag_padding\":3") && line.contains("\"coil\":\"KA\""), "{line}");
+    f.ledger.commit(Author::User, "Tag settings", vec![op]).unwrap();
+    let bytes = written(&mut f.ledger);
+    let opened = open_project(&bytes, SEED).unwrap();
+    assert_eq!(opened.report.outcome, Outcome::Clean);
+    assert_eq!(opened.ledger.document().settings, after);
+    assert_eq!(opened.ledger.log(), f.ledger.log());
+}

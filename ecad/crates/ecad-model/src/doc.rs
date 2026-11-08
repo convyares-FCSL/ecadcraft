@@ -194,7 +194,10 @@ pub struct Representation {
     /// Free text such as `main` or `route`.
     pub role: String,
     pub items: Vec<ItemId>,
-    /// Drawn form only: where each terminal sits on the page.
+    /// Drawn form: where each terminal sits on the page. Symbol form (brief 018, decision on
+    /// I14): empty for a symbol of the component's own definition, whose terminals are matched to
+    /// the definition by key; otherwise where each terminal sits in the **definition's local
+    /// frame**, so the terminals follow the instance's placement.
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
@@ -307,9 +310,26 @@ pub enum LengthUnit {
 }
 
 /// Project-wide settings (proposal §3.2, §20.13). Set at creation; changed only by a recorded op.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
+    /// How many digits automatic tag numbers are padded to (brief 018, owner decision
+    /// 2026-11-08): [`DEFAULT_TAG_PADDING`] unless the project says otherwise. Values above
+    /// [`crate::tag::MAX_PADDING`] count as that maximum.
+    pub tag_padding: u8,
+    /// The project's own tag prefix per starter symbol key (`"coil" → "KA"`), overriding the
+    /// built-in IEC 81346 default. Empty by default.
+    pub tag_prefixes: BTreeMap<String, String>,
+}
+
+/// The tag padding of a project that sets none (owner decision 2026-11-08).
+pub const DEFAULT_TAG_PADDING: u8 = 2;
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self { length_unit: LengthUnit::default(), tag_padding: DEFAULT_TAG_PADDING, tag_prefixes: BTreeMap::new() }
+    }
 }
 
 /// A terminal of a definition, in the symbol's local frame.
@@ -494,6 +514,12 @@ impl Document {
     /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
     pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
         referrers(&self.index.terminal_ends, &terminal).collect()
+    }
+
+    /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
+    /// through the tag index: the cost does not grow with the project.
+    pub fn components_tagged(&self, tag: &str) -> Vec<ComponentId> {
+        referrers(&self.index.tags, &crate::tag::key(tag)).collect()
     }
 
     /// Cables `conductor` is a member of, in ID order.

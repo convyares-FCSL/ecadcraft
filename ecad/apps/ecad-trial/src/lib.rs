@@ -56,6 +56,7 @@
 pub mod debugger;
 pub mod preview;
 pub mod project_panel;
+pub mod search;
 pub mod startup;
 pub mod tools;
 
@@ -307,6 +308,8 @@ pub struct Trial {
     /// The lineweight display the trial last set when it opened a project; `None` before the
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
     lwdisplay_set: Option<bool>,
+    /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
+    pub search: search::SymbolSearch,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -424,6 +427,7 @@ impl Trial {
             hover_delay: HOVER_DELAY,
             home: ecad_cadcraft::home(),
             lwdisplay_set: None,
+            search: search::SymbolSearch::default(),
         }
     }
 
@@ -481,6 +485,9 @@ impl Trial {
             *shown = true;
             self.lwdisplay_set = Some(true);
         }
+        // Symbols snap to the 5 mm terminal grid of ECAD pages (design 018 §5.3, owner answer
+        // Q8); F9 turns it off as in CADCraft.
+        self.cad.session.settings.snapmode = true;
     }
 
     /// Save the project to its file (Save As when it has none yet).
@@ -865,6 +872,10 @@ impl Trial {
                 None => Ok(()),
                 Some(e) => Err(e),
             },
+            tools::Kind::Search => {
+                self.search.toggle();
+                Ok(())
+            }
             tools::Kind::Template => {
                 let picked = self.picked();
                 let (line, hint) = tools::template(id, &picked).ok_or_else(|| format!("no template for {id}"))?;
@@ -926,6 +937,50 @@ impl Trial {
             // Refusals are echoed at the command line by the command path itself.
             let _ = self.tool(&id);
         }
+    }
+
+    /// The symbol search window (brief 018): its rows are read from the project only when the
+    /// query or the head changed; a chosen row starts Place Symbol with it.
+    fn symbol_search(&mut self, ctx: &egui::Context) {
+        if !self.search.open {
+            return;
+        }
+        let (project, session) = (&self.project, &mut self.cad.session);
+        let head = project.as_ref().and_then(|p| p.read(session, |p, _| p.ledger.head()).ok()).unwrap_or(0);
+        let q = self.search.query.clone();
+        let rows = self.search.rows_for(head, || {
+            project.as_ref().and_then(|p| p.read(session, |p, _| search::rows(Some(p.ledger.document()), &q)).ok())
+        });
+        if let Some(pick) = self.search.show(ctx, &rows) {
+            let _ = self.start_pick(pick);
+        }
+    }
+
+    /// Start Place Symbol for a search row: a symbol goes to the insertion point, a device asks
+    /// which symbol to add to it (design 018 §5.2). Refusals are echoed at the command line.
+    ///
+    /// # Errors
+    /// The command's refusal.
+    pub fn start_pick(&mut self, pick: search::Pick) -> Result<(), String> {
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        let text = match pick {
+            search::Pick::Symbol(k) => k.to_string(),
+            search::Pick::Device(tag) => tag,
+        };
+        let r = self
+            .cad
+            .session
+            .start("place")
+            .and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text)))
+            .map_err(|e| e.to_string());
+        if let Err(e) = &r {
+            self.cad.session.echo(e.clone());
+        }
+        self.focus_drawing = true;
+        self.after_logic();
+        r
     }
 
     /// Write a live inspector snapshot to the snapshot folder. Returns the file written.
@@ -1073,6 +1128,7 @@ impl Trial {
         self.handle_tools();
         self.command_window(ui.ctx());
         self.preview_window(ui.ctx());
+        self.symbol_search(ui.ctx());
         if std::mem::take(&mut self.focus_drawing) {
             // Keys go to CADCraft's command line when no text field has the keyboard.
             ui.ctx().memory_mut(|m| {

@@ -41,6 +41,8 @@ mod access;
 pub mod commands;
 pub mod convert;
 pub mod debug;
+mod device_cmds;
+pub mod devices;
 pub mod file;
 pub mod interact;
 pub mod look;
@@ -48,6 +50,7 @@ pub mod preview;
 pub mod project;
 pub mod references;
 pub mod slash;
+pub mod symbols;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]

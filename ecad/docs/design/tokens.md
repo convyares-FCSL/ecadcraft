@@ -67,6 +67,11 @@ work. Brief 010's values are millimetres: in an inch project they are divided by
 | `ecad.ref-stub-spacing` | 5 mm | Spacing between continued wire stubs, and the gap between a reference point and its text (010) |
 | `ecad.column-width` | 40 mm | Column width of the fixed column grid (from x = 0) used by reference texts until drawing frames define columns (010) |
 | `ecad.preview-span` | 160 mm (4 × `ecad.column-width`) | Width of drawing the read-only preview shows when opened on a reference (016) |
+| `ecad.tag` | ACI 7 (ByLayer on `ECAD-TAGS`) | Device tag texts and terminal labels (018) |
+| `ecad.tag-height` | 3.5 mm | Device tag text beside each symbol (018) |
+| `ecad.term-label-height` | 2.0 mm | Terminal labels of a symbol (018) |
+| `ecad.tag-gap` | 2.0 mm | Gap between a symbol's box and its tag (018) |
+| `ecad.symbol-grid` | 5 mm | Terminal grid of the starter symbols; snap and grid spacing of ECAD pages (018) |
 
 ## Line weights of computed drawing
 

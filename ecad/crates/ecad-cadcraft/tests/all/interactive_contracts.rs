@@ -142,18 +142,24 @@ fn scene(h: &mut H, by_prompts: bool) {
     // Place Symbol: rotated once, then a mirrored one.
     if by_prompts {
         start(h, "place");
-        assert_eq!(prompt(h), "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:");
+        // Brief 018: the symbol first (Enter takes the default), then where.
+        assert_eq!(prompt(h), "Enter symbol or [List/Rotate/Mirror] <coil>:");
+        typed(h, "");
+        assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 0) or [Rotate/Mirror/Device/Tag]:");
         typed(h, "R");
-        assert_eq!(prompt(h), "Specify insertion point (rotation 90, not mirrored) or [Rotate/Mirror]:");
+        assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
         typed(h, "100,0");
         typed(h, "M");
         typed(h, "R");
-        assert_eq!(prompt(h), "Specify insertion point (rotation 180, mirrored) or [Rotate/Mirror]:");
+        assert_eq!(
+            prompt(h),
+            "Specify insertion point (new device -K02, rotation 180, mirrored) or [Rotate/Mirror/Device/Tag]:"
+        );
         typed(h, "100,60");
         typed(h, "");
     } else {
-        h.run("place", json!({"at": [100.0, 0.0], "rotation": 90.0, "mirror": false})).unwrap();
-        h.run("place", json!({"at": [100.0, 60.0], "rotation": 180.0, "mirror": true})).unwrap();
+        h.run("place", json!({"symbol": "coil", "at": [100.0, 0.0], "rotation": 90.0, "mirror": false})).unwrap();
+        h.run("place", json!({"symbol": "coil", "at": [100.0, 60.0], "rotation": 180.0, "mirror": true})).unwrap();
     }
     // Wire: captured first point, two bends typed, a click 3 pixels from the coil's A1 finishes.
     if by_prompts {
@@ -269,7 +275,7 @@ fn every_tool_names_its_first_prompt_and_refuses_off_an_ecad_page() {
         ("convertcomponent", "Select objects to convert to a component:"),
         // No component on the page yet: the prompt promises no number (fix round 2, N3).
         ("addterminal", "Specify point for a terminal on a component or [Name]:"),
-        ("place", "Specify insertion point (rotation 0, not mirrored) or [Rotate/Mirror]:"),
+        ("place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
         ("wire", "Specify first point of wire:"),
         ("connect", "Select wire near the end to connect:"),
         ("disconnect", "Select wire near the end to disconnect:"),

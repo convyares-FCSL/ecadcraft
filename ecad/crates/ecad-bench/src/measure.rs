@@ -68,6 +68,12 @@ pub struct Measured {
     /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`, brief 016
     /// AC4), median over the same pages.
     pub panel_ms: f64,
+    /// Place a starter coil as a new device on page 1 (`place {symbol}`, brief 018).
+    pub place_ms: f64,
+    /// Add a NO contact to that device (`place {symbol, device}`, brief 018).
+    pub join_ms: f64,
+    /// Rename that device's tag (`setprop` tag, brief 018).
+    pub tag_ms: f64,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -155,6 +161,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
     let (mut switch_ms, mut preview_ms, mut panel_ms) = switch_pages(path, &scratch.join("switch.ecad"))?;
+    let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(path, &scratch.join("devices.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -171,6 +178,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         switch_ms: median(&mut switch_ms),
         preview_ms: median(&mut preview_ms),
         panel_ms: median(&mut panel_ms),
+        place_ms: median(&mut place_ms),
+        join_ms: median(&mut join_ms),
+        tag_ms: median(&mut tag_ms),
     };
     Ok((m, doc))
 }
@@ -334,6 +344,56 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
         drop(project);
         drop(s);
         Ok((moves, windows, wires))
+    })();
+    remove(copy);
+    result
+}
+
+/// Copy `path` to `copy` and open it once in a headless CADCraft session (not timed). Then per run
+/// (brief 018): place a starter coil as a new device (timed), add a NO contact to it (timed) and
+/// rename its tag (timed). Every edit must be recorded as exactly one transaction.
+fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
+            &mut s,
+            path_text(copy)?,
+            OPEN_SEED,
+            ecad_cadcraft::views::Settings::none(),
+        )?;
+        let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
+        let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
+            let before = head(s)?;
+            let t = Instant::now();
+            let r = s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
+            let took = ms(t);
+            if head(s)? != before + 1 {
+                return Err(format!("the {cmd} was not recorded as one transaction"));
+            }
+            Ok((took, r))
+        };
+        let (mut places, mut joins, mut tags) =
+            (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
+        for run in 0..runs {
+            // Far from the generated drawing, so nothing else is touched.
+            let x = -1000.0 - 50.0 * run as f64;
+            let (t, r) = timed(&mut s, "place", json!({"symbol": "coil", "at": [x, -1000.0]}))?;
+            places.push(t);
+            let device = r["component"].clone();
+            let (t, _) = timed(&mut s, "place", json!({"symbol": "no", "at": [x, -1050.0], "device": device}))?;
+            joins.push(t);
+            let tag = format!("-KB{:02}", run + 1);
+            let (t, _) = timed(&mut s, "setprop", json!({"component": device, "key": "tag", "value": tag}))?;
+            tags.push(t);
+        }
+        drop(project);
+        drop(s);
+        Ok((places, joins, tags))
     })();
     remove(copy);
     result
