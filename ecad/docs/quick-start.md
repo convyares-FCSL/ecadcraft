@@ -654,15 +654,24 @@ with the number of transactions times the size of the project, so the large tier
 | medium | churned | 32.62 | 33 986 | 138 928 | 1.96 | 140 887 | 15.8 | 62 |
 
 The draw columns were added by brief 014 (branch `ecad/drawing-edit-speed`), which made an edit
-in the drawing cost in proportion to what it touches. Native Windows 11, release, 2026-11-07/08,
-median of 5 runs (small) and 3 runs (medium), before (`63788b1`) and after (`3567a15`):
+in the drawing cost in proportion to what it touches. Native Windows 11, release, 2026-11-08,
+median of 3 runs. **Before** is `f095edf` (brief 013 with its fix round merged, before 014
+changed the translation; the bench columns were applied on top to measure it), **after** is
+`4ca788c` (014 with its fix round). Large was measured after only.
 
-| tier | history | draw move ms before | after | draw wire ms before | after |
-| --- | --- | --- | --- | --- | --- |
-| small | lean | 2.69 | 0.19 | 0.12 | 0.11 |
-| small | churned | 2.48 | 0.16 | 0.10 | 0.10 |
-| medium | lean | 39.98 | 0.37 | 0.31 | 0.30 |
-| medium | churned | 36.91 | 0.40 | 0.38 | 0.27 |
+| tier | history | draw move ms before | after | move+wires ms before | after | draw wire ms before | after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| small | lean | 3.74 | 0.22 | 4.09 | 0.25 | 0.13 | 0.13 |
+| small | churned | 2.74 | 0.19 | 2.81 | 0.20 | 0.12 | 0.10 |
+| medium | lean | 78.04 | 0.36 | 66.76 | 0.38 | 0.49 | 0.25 |
+| medium | churned | 54.61 | 0.43 | 52.02 | 0.43 | 0.44 | 0.26 |
+| large | lean | — | 1.17 | — | 1.52 | — | 1.21 |
+| large | churned | — | 1.19 | — | 1.39 | — | 1.32 |
+
+The before run was on a busier machine than the after run (its open times are about 1.5 times
+higher), so compare the draw columns by their growth with the tier rather than to the
+millisecond. What still grows from medium to large is redrawing the page, which goes through the
+whole document to find what is on it (`docs/deferred-work.md`), not the translation.
 
 The other columns were not changed by brief 014. Not yet tried by you: open the medium project
 (`--keep`) in the trial and say whether moving a component feels instant.

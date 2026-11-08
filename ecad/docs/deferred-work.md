@@ -30,25 +30,36 @@ started.
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
   rewriting of older files (E4); "Save a Copy As" with a new project ID (E9). See
   `docs/document-architecture-proposal.md` §22-§23.
+- **Stage 4 (checkpoints) is on hold** until stage 3 (libraries) and the core domain features
+  are settled (owner, 2026-11-08). On the benchmark's large tier, about 13 s to open 170,000
+  transactions is acceptable for now.
 
 ## Small performance follow-ups (found by briefs 012-014, owner 2026-11-08)
 
-- **Matching moved wire ends to terminals lists the whole document once per edit.** Since brief
-  014's fix round, an edit that moves route ends (a component moved with its wires, a dragged wire
-  end) lists the page's terminal positions once and reuses them for every end
-  (`ecad-cadcraft/src/translate.rs`, `ShownOnce`). That one listing, `derive::terminal_positions`,
-  still goes through every `Representation` in the document to find those on the page, because
-  there is no page-indexed lookup; so does the `wire` command's `terminal_at`. Add a
-  `representations_on_page(page)` index in `ecad-model` (kept by `Op::apply`, checked in verify
-  mode, like brief 013's indexes) and use it in `terminal_positions`. Small; edits that move no
-  wire end do not pay it.
-- **Saves after the first are slowed by a reopen check that grows with file size on Windows.**
-  `DiskProject::save` reopens the file by path before each save, to check that it has not been replaced
-  (`ecad-file/src/disk.rs:370`). Just after a write, the virus scanner very likely rescans the
-  changed file on that reopen; this isn't proven. It can't be noticed on Ctrl+S; it only showed in
-  the benchmark's tight loop. The cost grows with file size (large tier, 2026-11-08: 72 ms for
-  43.5 MB and 240 ms for 163 MB), which fits a scanner reading the whole file, so it is worth
-  doing before projects get that big. To remove it: check identity from metadata (file ID
-  or last-write time through `std::fs::metadata`, which doesn't trigger a content scan), or keep the
-  handle open with shared-read, exclusive-write access. Either change must keep brief 002's
-  replaced-file and deleted-and-recreated refusals.
+- **Every edit still goes through the whole document to find what is on a page.** After brief
+  014, a move costs about 0.2 ms on small, 0.4 ms on medium and 1.2 ms on large (2026-11-08):
+  pages are the same size, so the growth is whole-document scans, none of them in the
+  translation. Redrawing the page after every edit (`ecad-cadcraft/src/project.rs`,
+  `project_page_with`) goes through every item twice and every representation once to find
+  those on the page: measured on large, projecting page 1 takes about 1 to 3 ms, of which those
+  scans are 0.5 to 1.5 ms. `derive::terminal_positions` does the same, once per edit that moves a
+  wire end (brief 014 lists it at most once per edit, `translate.rs` `ShownOnce`) and once per
+  `wire` command. The index already exists inside `ecad-model` (brief 013's `page_items` and
+  `page_reps`): expose read-only `items_on(page)` and `representations_on(page)` on `Document` and
+  use them in projection and `terminal_positions`. Small, but it touches projection, so it needs
+  its own brief.
+- **Saves after the first grow with file size.** Measured on the large tier (2026-11-08): a
+  save takes 68 ms at 43.5 MB and 224 ms at 163 MB. Two costs:
+  - (a) **The whole verified prefix is re-read and hashed on every save**
+    (`ecad-file/src/write.rs` save step 1, `prefix_hash`), so a change anywhere in the saved
+    history refuses the save. Reading and hashing the file the same way takes 38 to 54 ms for
+    43.5 MB and 140 ms for 163 MB: most of the save.
+  - (b) **The identity reopen** (`ecad-file/src/disk.rs:370`): the file is reopened by path to
+    check it has not been replaced, which a virus scanner may slow just after a write (not
+    proven).
+
+  Options, not implemented (changing a save-integrity check needs the owner): keep a metadata
+  identity check (file ID, size, last-write time through `std::fs::metadata`); verify only the
+  tail written since the last save, plus a sampled or chunked digest of the rest; or keep running
+  chunk digests so only changed chunks are re-read. Any change must keep brief 002's replaced-file
+  and deleted-and-recreated refusals.
