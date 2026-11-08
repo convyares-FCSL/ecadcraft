@@ -30,6 +30,7 @@ changing how ECAD marks, previews or tooltips look; replace one only with the ow
 | `016-collapsed.png` | The panel collapsed to its 22 px strip with the expand chevron | pending owner approval |
 | `016-preview-ref.png` | On `Supply`, after **Preview Reference** with its reference point selected: the floating read-only preview of `Field` around the other end, the magenta ring on it and `/1.2`, `PREVIEW page 2: Field read-only`, **Open page** and ×; the ECAD tab shows Preview Reference after Go to Reference | pending owner approval |
 | `016-devices.png` | The Devices tab (design 016 §16): `-K01` selected and unfolded to its coil on page 1 and its NO contact on page 2, after a click on the contact's row showed page 2 with the contact selected; the property editor below | pending owner approval |
+| `016-developer.png` | The Developer section unfolded (design 016 §18): the command field with a `wire` line's reply under it, and the read-only debugger drawn inline below | pending owner approval |
 | `016-large.png` | 500 pages, page 250 active and its row scrolled into view (500 empty pages made in the test: the large bench project opens too slowly in test builds, which check every invariant) | pending owner approval |
 
 Rendered at 1280×800, dark theme, by `ac6_reference_screenshots` in `../mouse_tester.rs`.

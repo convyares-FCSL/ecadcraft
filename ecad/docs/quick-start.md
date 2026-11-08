@@ -10,8 +10,9 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > the project's pages, shows one of them at a time and holds New, Open, Save, Save As and Close
 > (brief 016; there is no top banner any more). An **ECAD** tab in Tool Sets has buttons for the
 > ECAD commands; most work by clicking, with prompts at CADCraft's command line. A **Developer** section at the bottom of the
-> panel (folded) holds the read-only debugger panel (stage 2b), snapshot export, Inspect Project
-> and the ECAD command window for JSON forms; none of them is shown unless you open it.
+> panel (folded) holds the ECAD command field for JSON forms, the read-only debugger (stage 2b)
+> drawn inline, Inspect Project's summary and snapshot export; none of them is shown unless you
+> unfold it.
 
 ## Which revision this describes, and what has been tried
 
@@ -363,7 +364,8 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
   file, unsaved changes, and any read-only or unconfirmed-save warning), the buttons **New**,
   **Open…**, **Save**, **Save As…** and **Close**, and one small line saying this is an
   experiment. Below it, the project's pages: click one to show it (section 5E).
-- **The ECAD command window** (PROJECT panel > **Developer** > **JSON Command**). Use it for ECAD
+- **The ECAD command field** (PROJECT panel > unfold **Developer**: the field and **Run** are at
+  the top of the section, the reply under them). Use it for ECAD
   commands with JSON parameters, for example `wire {"points":[[0,0],[40,0]]}`. It takes a whole
   line, spaces included, so it also accepts CADCraft command lines such as `line 0,0 40,0`. Press
   Enter or **Run**; close it with its ×. Copy and paste (Ctrl+C, Ctrl+V) work with other
@@ -397,23 +399,23 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
   - **Connect**: click a wire near its end, then a terminal. **Disconnect**: click a wire near
     an attached end.
   - These six put their prompts at CADCraft's command line (bottom of the drawing area) and leave
-    the ECAD command window alone. Answer by clicking, or type a point (`40,10`) or an option letter and
+    the ECAD command field alone. Answer by clicking, or type a point (`40,10`) or an option letter and
     press Enter. Enter (or Space, or a right-click) finishes; Esc cancels what is not done yet
     (objects already added stay); `u` afterwards undoes the last object.
   - Pages are made, opened, renamed and moved in the PROJECT panel (**+**, a click, double-click
     or the row's right-click menu, drag or the arrows; section 5E), not in Tool Sets. **New page…**
     and **Rename…** in the row's menu open a small name box; OK or Enter acts in one step.
-  - **Inspect Project** is in the panel's **Developer** section; it shows the project's IDs at
-    the command line.
+  - **Inspect Project** is in the panel's **Developer** section; it shows a readable, copyable
+    summary there (file and transaction, pages, devices, cables, counts).
   - **Set Property, Add to Cable, Delete Electrical Object** only open the
-    ECAD command window with an editable line, and a note under the
+    ECAD command field with an editable line, and a note under the
     field says what to fill in.
     Replace each `<placeholder>`, then press Enter or **Run**. A line that still holds a
     placeholder is refused, never run. IDs come from the current selection where it names them:
     select a wire before **Set Property** or **Delete Electrical Object**, and its ID is filled
     in. The selection is left as it is.
 - **Typing a command name** (`wire`, `addterminal` …) in either place starts the same
-  click-based form as its button. `name {json}` in the ECAD command window runs the JSON form with
+  click-based form as its button. `name {json}` in the ECAD command field runs the JSON form with
   no prompts, as scripts do.
 
 **What the drawing shows.** Every terminal has a small cyan ring; a wire end attached to a
@@ -429,9 +431,9 @@ you want to check later.
 ## 5. Example: two components connected by a wire (by clicking)
 
 Open the **ECAD** tab in Tool Sets first. Prompts appear at CADCraft's command line at the bottom
-of the drawing area; type there (or in the ECAD command window) only where a step says so.
+of the drawing area; type there (or in the ECAD command field) only where a step says so.
 
-1. **Draw a rectangle.** In the ECAD command window: `line 0,0 40,0 40,20 0,20 c`. Then type `zoom e`
+1. **Draw a rectangle.** In the ECAD command field: `line 0,0 40,0 40,20 0,20 c`. Then type `zoom e`
    (or zoom with the mouse wheel) so it fills the view; leave room on the right for the coil.
    Expected: four lines; the Project panel's status line shows 1 change not saved.
 2. **Make it a component.** Select the four lines with a window selection (click above left of
@@ -465,7 +467,7 @@ of the drawing area; type there (or in the ECAD command window) only where a ste
    `Device -K01   Contactor / relay coil`), `Terminal 1` (or `Terminal A1`) and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
    `End B: terminal A1 of …`. Nothing changes in the Project panel's change count.
 
-Typing instead of clicking still works, in the ECAD command window:
+Typing instead of clicking still works, in the ECAD command field:
 `convertcomponent` (with the lines selected), `addterminal {"handle":"<handle of the right-hand
 edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
 `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`. The headless test
@@ -477,10 +479,10 @@ A cable groups existing wires; the wires themselves do not change. You draw it a
 (the *slash*) across the wires. This example uses a page of its own so the coordinates are easy
 to read.
 
-1. **A page with three wires and a plain line.** In the ECAD command window:
+1. **A page with three wires and a plain line.** In the ECAD command field:
    `newpage {"title":"cables"}`. Then click **Wire**, click at `0,0` and `60,0` and press Enter;
    do the same at `0,5` → `60,5` and `0,10` → `60,10` (typing the points at the command line, or
-   `wire {"points":[[0,0],[60,0]]}` in the ECAD command window, works too). Draw a plain line with
+   `wire {"points":[[0,0],[60,0]]}` in the ECAD command field, works too). Draw a plain line with
    `line 0,15 60,15` and press Enter, then `zoom e`.
    Expected: three wires with grey squares at their loose ends, and a line without marks.
 2. **Draw the slash.** Click **Cable Slash** (Wiring group). The prompt says
@@ -508,7 +510,7 @@ to read.
    **Delete Electrical Object**: it fills in `ecaddelete {"cable":"<id>"}`; press Enter.
    Expected: `Cable <id> deleted; its 3 wires are kept.` in the reply; the wires stay.
 
-`cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command window does the same as steps 2 and 3
+`cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command field does the same as steps 2 and 3
 (add `"tag":"-W1"` to name the cable). In the debugger, selecting the slash shows its trail:
 item → representation `slash` → cable → its wires in order.
 
@@ -602,7 +604,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 
 0. **Make the cable again.** Section 5A step 7 deleted the cable (its wires stayed). Slash them
    again: click **Cable Slash**, click at about `28,-3` and then `32,18` (or type
-   `cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command window). Expected: `Cable <id>
+   `cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command field). Expected: `Cable <id>
    created with 3 wires: …`. If you skipped step 7 and the cable is still there, skip this step.
 
 1. **Mark where it leaves.** Click **Cable Reference** (Wiring group, after Cable View). The
@@ -737,7 +739,7 @@ Open the **ECAD** tab first.
 8. **Save, close and reopen** (section 7): tags, properties and the device's symbols are all
    still there.
 
-Typed instead, in the ECAD command window: `place {"symbol":"coil","at":[0,0]}`,
+Typed instead, in the ECAD command field: `place {"symbol":"coil","at":[0,0]}`,
 `place {"symbol":"no","at":[40,0],"device":"<the coil's component id>"}`,
 `setprop {"component":"<id>","key":"tag","value":"K5"}`, `symbols {"query":"-Q"}`,
 `devices {}`, `tagsettings {"padding":3}` (three-digit numbers from then on). A tag that exists is refused by `setprop` with the ways forward; add
@@ -772,7 +774,7 @@ After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §
    Expected: the drawing steps back and forward exactly, and the IDs stay the same.
    `undo {"mode":"mark"}` is refused as not supported on ECAD pages.
 3. **Multiple pages.** Click **+** in the PROJECT panel and press Enter in the name box (or
-   `newpage {"title":"2"}` in the ECAD command window). Expected: page 2 replaces page 1 in the one drawing tab, "… - page 2: 2".
+   `newpage {"title":"2"}` in the ECAD command field). Expected: page 2 replaces page 1 in the one drawing tab, "… - page 2: 2".
    Draw or wire something on it, then click page 1 in the panel, then page 2 again: its content
    is there. Closing the drawing tab asks nothing; the panel still lists both pages and one click
    shows a page again (section 5E).
@@ -940,9 +942,11 @@ What the agent can and cannot do:
 
 ### The debugger panel
 
-Click **Debugger** in the PROJECT panel's **Developer** section (unfold it first); click it again (or **Close** in the panel) to
+Unfold the PROJECT panel's **Developer** section and click **Debugger** there; click it again (or **Close** in the debugger) to
 hide it. It is a
-read-only developer view on the right of the window. It follows one trail: **selected drawing
+read-only developer view drawn inside the Developer section, which takes the lower part of the
+panel (drag its top edge to make it taller, and the panel's right edge to make it wider, up to
+720 px). It follows one trail: **selected drawing
 objects → ECAD IDs → model objects → the transactions that touched them, with the values each
 change replaced (before) and set (after) → where each transaction's record is in the saved file,
 and its bytes.**
@@ -975,7 +979,7 @@ and its bytes.**
 ### Worked example: what to inspect when placing, wiring, moving, undoing and saving
 
 Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger** (PROJECT panel >
-Developer). Type commands in the ECAD command window (Developer > JSON Command). IDs and offsets will differ from any shown here.
+Developer). Type commands in the ECAD command field at the top of the Developer section. IDs and offsets will differ from any shown here.
 
 1. **At the start.** Expected: `live at seq 1`; **History** shows `#1 [pending] New project`.
    The PROJECT panel says no unsaved changes: a new project's own setup is not counted as a change until
@@ -1202,7 +1206,7 @@ Your table of three clean runs goes here once you have run it.
   The preview shows no terminal or wire-end marks and cannot be edited. Page views, the panel's
   width and whether it is collapsed are remembered for the session only. The page number shown is
   the page's position; designer-chosen page numbers come later (F6). The JSON form of ECAD
-  commands needs the ECAD command window: CADCraft's own command line takes a space as Enter.
+  commands needs the ECAD command field: CADCraft's own command line takes a space as Enter.
 
 - It is an experiment. No native file dialogs (the trial has its own path dialog) and no ECAD
   menu (CADCraft shows no top-level menu supplied by an embedder; use the ECAD tab or type the
@@ -1231,14 +1235,14 @@ Your table of three clean runs goes here once you have run it.
     model-space views (VPORTS), and only on the Model tab.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
-  - Set Property, Add to Cable and Delete still open the ECAD command window with a template.
+  - Set Property, Add to Cable and Delete still open the ECAD command field with a template.
 - **Devices and tags** (brief 018):
   - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
     boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
   - Tag texts and terminal labels are placed automatically (left of a symbol, or above it when
     rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
   - Tag padding and each symbol's prefix are project settings, changed by typing
-    `tagsettings {"padding":3,"prefixes":{"coil":"KA"}}` in the ECAD command window (`null` for a
+    `tagsettings {"padding":3,"prefixes":{"coil":"KA"}}` in the ECAD command field (`null` for a
     symbol goes back to the built-in prefix; `tagsettings {}` lists them). There is no dialog for
     them yet. A project that changes them is refused by older builds.
   - Find Symbol is a small window of the trial's own (Tool Sets holds buttons only); typing at the
@@ -1346,7 +1350,7 @@ Your table of three clean runs goes here once you have run it.
   are started; `--help`, `--version` and usage errors print only when the output is redirected to
   a file or pipe. Use a debug build (`cargo run -p ecad-trial -- --help`) to see them.
 - Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
-  in the ECAD command window saves only into a folder that already exists.
+  in the ECAD command field saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
 - No library files (`.ecadlib`) and no checkpoints.
