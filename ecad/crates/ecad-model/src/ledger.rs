@@ -723,6 +723,17 @@ impl Ledger {
         self.append(author, label, TxKind::Undo { of }, ops, time_ms)
     }
 
+    /// The ops [`Ledger::undo_at`] would apply now (the inverse of the transaction it undoes), or
+    /// `None` when there is nothing to undo. Reads only.
+    pub fn undo_ops(&self) -> Option<Vec<Op>> {
+        self.stacks.undo.last().and_then(|i| self.log.get(*i)).map(|t| inverse_ops(&t.ops))
+    }
+
+    /// The ops [`Ledger::redo_at`] would apply now, or `None` when there is nothing to redo.
+    pub fn redo_ops(&self) -> Option<Vec<Op>> {
+        self.stacks.redo.last().and_then(|i| self.log.get(*i)).map(|t| inverse_ops(&t.ops))
+    }
+
     /// Append the inverse of the latest undo.
     ///
     /// # Errors

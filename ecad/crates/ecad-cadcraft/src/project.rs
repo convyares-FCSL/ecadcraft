@@ -905,7 +905,9 @@ impl Project {
         // IDs no longer at the head are dropped from what is remembered.
         let doc = self.ledger.document();
         self.views.retain(|k| doc.cables.contains_key(k));
-        self.refresh_pages(pg, Some("cableview"));
+        // A view is drawn on every page showing the cable: the page in front is redrawn, every
+        // other open page is redrawn when it comes to the front.
+        self.redraw_front(pg, Some("cableview"), None);
         (true, self.settings.store(self.id, &self.views))
     }
 
@@ -1135,6 +1137,31 @@ impl Project {
         }
     }
 
+    /// After a transaction that is not a drawing commit (an ECAD command's JSON form, undo, redo)
+    /// or a view switch: redraw the page in front, and mark every other open page in `touched`
+    /// (every other open page for `None`) stale, to be redrawn when it comes to the front (owner,
+    /// 2026-11-08). With no page of this project in front, nothing is redrawn now.
+    pub(crate) fn redraw_front(
+        &mut self,
+        pg: &mut Pages<'_>,
+        command: Option<&str>,
+        touched: Option<&BTreeSet<PageId>>,
+    ) {
+        let front = pg.front_uid().and_then(|u| self.page_of(u));
+        let open: Vec<PageId> =
+            self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
+        for page in open {
+            if Some(page) == front {
+                self.refresh_page(pg, page, command, None, false);
+            } else if touched.is_none_or(|t| t.contains(&page))
+                && let Some(v) = self.pages.get_mut(&page)
+            {
+                v.stale = true;
+            }
+        }
+        self.sync_saved(pg);
+    }
+
     /// Redraw `page` if a commit on another page left it stale ([`PageView::stale`]).
     pub(crate) fn refresh_if_stale(&mut self, pg: &mut Pages<'_>, page: PageId) {
         if self.pages.get(&page).is_some_and(|v| v.stale && v.uid.is_some() && !v.unavailable) {
@@ -1163,29 +1190,19 @@ impl Project {
         }
         // References are derived for the cables the ops could touch only (brief 014).
         let scope = crate::references::cables_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
-        self.refresh_pages(pg, Some(command));
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        self.redraw_front(pg, Some(command), touched(pages, refs_before.pages_changed(&refs_after)).as_ref());
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
         Ok(tx)
-    }
-
-    /// Echo the line of design 010 §4.3 when references linked before a change (`before`) have
-    /// lost their other end.
-    pub(crate) fn say_orphaned(&self, pg: &mut Pages<'_>, before: &BTreeSet<RepresentationId>) {
-        if before.is_empty() {
-            return;
-        }
-        if let Some(line) = crate::references::orphaned_line(self.ledger.document(), before) {
-            pg.echo(line);
-        }
     }
 
     /// Restore the last projection of `page` after a refusal.
@@ -1577,7 +1594,11 @@ impl Project {
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }
-        let linked = crate::references::linked(self.ledger.document());
+        // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
+        let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
+        let scope = crate::references::cables_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops);
+        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let r = if undo {
             self.ledger.undo_at(self.author.clone(), now_ms())
         } else {
@@ -1588,12 +1609,57 @@ impl Project {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
-                self.refresh_pages(pg, Some(command));
-                self.say_orphaned(pg, &linked);
+                let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+                self.redraw_front(pg, Some(command), touched(pages, refs_before.pages_changed(&refs_after)).as_ref());
+                if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+                    pg.echo(line);
+                }
                 Ok(Some(label))
             }
             Err(ecad_model::ModelError::NothingTo(_)) => Ok(None),
             Err(e) => Err(EngineError::Other(e.to_string())),
         }
     }
+}
+
+/// The pages whose drawing `ops` could change directly (their items and representations, and the
+/// pages a conductor whose ends they attach is routed on), worked out on the document before them;
+/// `None` when that could be any page (op kinds other than item, representation, attachment and
+/// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
+pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<PageId>> {
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
+                out.insert(item.page);
+            }
+            Op::ModifyItem { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                out.insert(rep.page);
+            }
+            Op::ModifyRepresentation { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            Op::AttachEnd { conductor, .. } => {
+                out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
+            }
+            Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+            Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// `pages` and `refs` together; `None` (every page) when either is.
+fn touched(pages: Option<BTreeSet<PageId>>, refs: Option<BTreeSet<PageId>>) -> Option<BTreeSet<PageId>> {
+    let (mut a, b) = (pages?, refs?);
+    a.extend(b);
+    Some(a)
 }

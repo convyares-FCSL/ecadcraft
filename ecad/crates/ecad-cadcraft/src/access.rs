@@ -240,6 +240,11 @@ impl Pages<'_> {
         self.0.docs.iter_mut().find(|d| d.uid == uid)
     }
 
+    /// The document in front, if any.
+    pub(crate) fn front_uid(&self) -> Option<u64> {
+        self.0.state().ok().map(|st| st.uid)
+    }
+
     /// Make document `uid` the active one; `false` when it is not open.
     pub(crate) fn activate(&mut self, uid: u64) -> bool {
         match self.0.docs.iter().position(|d| d.uid == uid) {

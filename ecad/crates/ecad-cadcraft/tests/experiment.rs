@@ -169,10 +169,16 @@ fn scenario_s1_to_s16() {
     assert!(!doc.components[&c1b].properties.contains_key("tag"), "SETPROP undone");
     assert!(doc.cables.is_empty(), "cable undone");
     assert!(!doc.conductors.contains_key(&w4), "WIRE on page 2 undone");
+    // Only the page in front is redrawn by undo (owner, 2026-11-08): page 2 is marked stale and
+    // still shows the wire until it comes to the front.
+    assert!(h.p(|p| p.pages[&p2].stale), "page 2 is marked stale by the undo on page 1");
+    assert!(h.pv(|p, pg| pg.entities_of(p, p2)).iter().any(|e| e.handle == w4_route), "page 2 not redrawn yet");
+    h.activate(p2);
     assert!(
         h.pv(|p, pg| pg.entities_of(p, p2)).iter().all(|e| e.handle != w4_route),
-        "page 2's drawing was updated while page 1 was active"
+        "page 2's drawing was updated when it came to the front"
     );
+    h.activate(p1);
     for _ in 0..3 {
         h.run("redo", Value::Null).unwrap();
     }

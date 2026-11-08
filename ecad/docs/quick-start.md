@@ -562,7 +562,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
    now shows /3.1.` and `Connect each wire's free end to its terminal with Connect.`; three short
    wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
-   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. On page 2 the `/?` is now a magenta `/3.1`, and the
+   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. Switch to page 2: its `/?` is now a magenta `/3.1` (only the page in front is redrawn by a change; another open page it affected is redrawn when you bring it to the front), and the
    wire ends next to the reference lost their grey squares (the wires continue). One change.
 4. **Connect.** Click **Connect**, click each short wire near its right end, then the terminal
    at the same height. Expected: each wire stretches to its terminal; green dots there. In the
@@ -577,8 +577,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    again: back on page 2. Without a selection the button asks `Select a cable reference:`.
 7. **Move a page.** Click **Move Page** (Pages group). It fills in
    `movepage {"page":"<this page's id>","index":<new position>}`; replace `<new position>` with
-   `1` and press Enter. Expected: the page is now first; both references show the new numbers at
-   once; the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
+   `1` and press Enter. Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
    rename changes the hover lens, not the marker text (it shows numbers, not titles).
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the

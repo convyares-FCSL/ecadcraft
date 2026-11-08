@@ -256,6 +256,8 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
     assert_eq!((f.text.as_str(), f.text_at, f.right_aligned), ("/1.2", Pt::new(15.0, 5.0), true));
     // The drawn text: one Text on ECAD-CABLES, mapped to its reference.
     for page in [r.supply, r.field] {
+        // What the page shows once in front (only the page in front is redrawn on a change).
+        r.h.activate(page);
         let rid = reference_on(&mut r.h, page);
         let h = r.h.p(|p| p.pages[&page].map.ref_text(rid)).expect("text drawn");
         assert_eq!(r.h.mapped(page, h), Some(Mapped::RefText(rid)));
@@ -1130,5 +1132,42 @@ fn a_commit_marks_other_pages_stale_and_they_are_redrawn_when_brought_to_the_fro
     let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
     assert!(std::sync::Arc::ptr_eq(&before, &during));
     assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply's texts did not change");
+    r.h.check();
+}
+
+/// Owner, 2026-11-08: undo (like redo and the ECAD commands' JSON forms) redraws only the page in
+/// front. Undoing a move of Field's reference point (which changed Supply's text) from Field
+/// leaves Supply's drawing as it was, marks it stale, and Supply shows the reverted text once its
+/// tab comes to the front.
+#[test]
+fn undo_marks_other_pages_stale_and_they_show_the_reverted_text_in_front() {
+    let mut r = connected();
+    r.h.activate(r.field);
+    let fid = reference_on(&mut r.h, r.field);
+    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fh = r.h.handle_of(r.field, fpoint);
+    r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
+    r.h.activate(r.supply);
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")));
+
+    // Undo from Field.
+    r.h.activate(r.field);
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    let head = r.h.head();
+    r.h.run("u", Value::Null).unwrap();
+    assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1", "the document says the reverted text");
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the undo");
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
+    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page in front is never stale");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.3")), "old text until in front");
+    r.h.check();
+
+    r.h.activate(r.supply);
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale));
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
     r.h.check();
 }
