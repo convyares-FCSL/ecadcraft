@@ -9,6 +9,7 @@ You are the ECAD worker. You implement exactly one brief, nothing more.
 Before starting, read `ecad/CLAUDE.md`, the brief you were given, and every document the brief names.
 
 Rules:
+- Work in the feature's worktree, `C:\dev\ecad-features\<name>` (see "Folders" in `ecad/CLAUDE.md`).
 - Work on the feature branch named in the brief (`feature/<name>`, see `docs/features.md`), created
   from `dev` if it does not exist yet. Push it when you finish. Never commit to `dev` or `main`.
 - Stay inside the brief's scope. If the brief is unclear, wrong, or would need a change it does not
