@@ -165,9 +165,60 @@ fn move_components_with_wires_on_the_kept_small_project() {
             assert_eq!(doc_of(&project, &mut s), before, "undo after moving {comp:?} by {delta:?}");
         }
     }
+    // MOVE with nothing selected first: at "Select objects" type W (window) or C (crossing), click
+    // two corners around the first chosen component's terminals, Enter, then base and second
+    // point. The crossing box also picks the wires that run into it, so they move with it.
+    let first = chosen_first(&picks);
+    let terms: Vec<[f64; 2]> = project
+        .read(&mut s, |p, _| {
+            let doc = p.ledger.document();
+            terminal_positions(doc, page)
+                .into_iter()
+                .filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component == first))
+                .map(|(_, _, p)| [p.x, p.y])
+                .collect()
+        })
+        .unwrap();
+    let (x0, x1) = terms.iter().fold((f64::MAX, f64::MIN), |(a, b), t| (a.min(t[0]), b.max(t[0])));
+    let (y0, y1) = terms.iter().fold((f64::MAX, f64::MIN), |(a, b), t| (a.min(t[1]), b.max(t[1])));
+    for (mode, margin) in [("W", 9.0), ("C", 4.0)] {
+        for delta in [[12.5, -7.5], [-40.0, 25.0]] {
+            let before = doc_of(&project, &mut s);
+            let head = project.read(&mut s, |p, _| p.ledger.head()).unwrap();
+            s.set_selection(Vec::new());
+            s.start("move").unwrap();
+            let mut prompts = vec![s.current_prompt().map(|p| p.display()).unwrap_or_default()];
+            s.cmdline(mode).unwrap();
+            for corner in [Vec2::new(x0 - margin, y0 - margin), Vec2::new(x1 + margin, y1 + margin)] {
+                s.cursor = corner;
+                s.input(Input::Point(corner)).unwrap();
+            }
+            prompts.push(s.current_prompt().map(|p| p.display()).unwrap_or_default());
+            let picked = s.selection().len();
+            s.input(Input::Enter).unwrap();
+            prompts.push(s.current_prompt().map(|p| p.display()).unwrap_or_default());
+            let base = Vec2::new(terms[0][0], terms[0][1]);
+            s.cursor = base;
+            s.input(Input::Point(base)).unwrap();
+            let to = Vec2::new(base.x + delta[0], base.y + delta[1]);
+            s.cursor = to;
+            s.input(Input::Point(to)).unwrap();
+            let after = doc_of(&project, &mut s);
+            let (ops, head_after) = project
+                .read(&mut s, |p, _| (p.ledger.log().last().map(|t| format!("{:#?}", t.ops)), p.ledger.head()))
+                .unwrap();
+            writeln!(text, "=== {mode}-window move of {first:?} by {delta:?} (selection {picked})").unwrap();
+            writeln!(text, "prompts: {prompts:?}").unwrap();
+            writeln!(text, "head {head} -> {head_after}").unwrap();
+            diff(&mut text, &before, &after, page);
+            assert!(head_after > head, "{mode}-window move recorded nothing");
+            writeln!(text, "ops:\n{}", ops.unwrap_or_default()).unwrap();
+            s.execute("undo", &serde_json::json!({"count": 1})).unwrap();
+            assert_eq!(doc_of(&project, &mut s), before, "undo after the {mode}-window move");
+        }
+    }
     // M1 (reroute by a vertex grip) and M3 (an end grip onto another terminal, then into free
     // space), on routes attached to the first chosen component, the way a grip drag reaches them.
-    let first = chosen_first(&picks);
     let routes = project
         .read(&mut s, |p, pg| {
             let doc = p.ledger.document();
