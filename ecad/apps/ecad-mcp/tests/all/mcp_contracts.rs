@@ -719,3 +719,76 @@ fn stdio_a_clean_exit_releases_the_writer_lock() {
     assert!(!summary.contains("read-only") && !summary.contains("reclaimed"), "{summary}");
     drop(s);
 }
+
+// ---------- brief 018: devices, tags and starter symbols ----------
+
+/// Brief 018 (design 018 §8): `place` (a new device and a join) and `setprop` on a tag record the
+/// JSON forms' transactions as the agent; a duplicate tag is refused with the way forward;
+/// `symbols` and `devices` read; with writes off every device write is refused.
+#[test]
+fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
+    let steps = |coil: &str| -> Vec<(&'static str, Value)> {
+        vec![
+            ("place", json!({"symbol": "coil", "at": [0, 0]})),
+            ("place", json!({"symbol": "no", "at": [40, 0], "device": coil})),
+            ("setprop", json!({"component": coil, "key": "tag", "value": "k5"})),
+        ]
+    };
+    // Directly, as a person's JSON forms.
+    let mut d = Direct::new();
+    let coil = d.s.execute("place", &json!({"symbol": "coil", "at": [0, 0]})).unwrap()["component"].clone();
+    let coil = coil.as_str().unwrap().to_string();
+    for (cmd, params) in steps(&coil).into_iter().skip(1) {
+        d.s.execute(cmd, &params).unwrap_or_else(|e| panic!("{cmd}: {e}"));
+    }
+    let direct = d.log();
+
+    // Through MCP.
+    let mut c = writer();
+    for (cmd, params) in steps(&coil) {
+        let before = c.log().len();
+        let r = c.exec(cmd, params.clone());
+        assert_eq!(c.log().len(), before + 1, "{cmd} records one transaction: {r}");
+        let txs = r["ecadTransactions"].as_array().unwrap_or_else(|| panic!("{cmd}: {r}"));
+        assert_eq!(txs[0]["author"], json!(format!("agent {AGENT}")));
+    }
+    let agent = c.log();
+    assert_eq!(agent.len(), direct.len());
+    for (a, b) in agent.iter().zip(&direct).skip(1) {
+        assert_eq!((&a.label, &a.ops), (&b.label, &b.ops), "seq {}", a.seq);
+        assert_eq!(a.author, Author::Agent(AGENT.into()));
+    }
+    assert_eq!(agent.last().unwrap().label, "Set tag");
+
+    // A duplicate tag is refused, naming the device and the ways forward; nothing is written.
+    let other = c.exec("place", json!({"symbol": "coil", "at": [0, 60]}));
+    let before = c.log();
+    let m = c.refused(
+        "execute",
+        json!({"command": "setprop", "params": {"component": other["component"], "key": "tag", "value": "-K05"}}),
+    );
+    assert!(m.contains("Tag -K05 is already used by -K05") && m.contains("`merge`"), "{m}");
+    assert_eq!(c.log(), before);
+
+    // Reading.
+    let s = c.exec("symbols", json!({"query": "-Q"}));
+    let keys: Vec<&str> = s["symbols"].as_array().unwrap().iter().map(|x| x["key"].as_str().unwrap()).collect();
+    assert_eq!(keys, ["mcb1", "mcb2"]);
+    let devices = c.exec("devices", json!({"tag": "-K05"}));
+    assert_eq!(devices["devices"][0]["representations"].as_array().unwrap().len(), 2);
+
+    // Writes off: every device write is refused, reading works.
+    let mut r = reader();
+    let before = r.log();
+    for (cmd, params) in [
+        ("place", json!({"symbol": "coil", "at": [0, 0]})),
+        ("setprop", json!({"component": "1", "key": "tag", "value": "-K01"})),
+        ("devicedelete", json!({"component": "1"})),
+    ] {
+        let m = r.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+    }
+    assert_eq!(r.log(), before);
+    r.exec("symbols", json!({}));
+    r.exec("devices", json!({}));
+}

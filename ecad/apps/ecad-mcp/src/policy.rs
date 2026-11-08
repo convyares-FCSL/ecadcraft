@@ -29,6 +29,11 @@ pub const READ_COMMANDS: &[&str] = &[
     // or shows its page and selects it, and records nothing.
     "cablerefs",
     "cablegoto",
+    // Devices and starter symbols (brief 018): finding and listing them, and one device's
+    // properties, read the project only.
+    "symbols",
+    "devices",
+    "deviceprops",
 ];
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the

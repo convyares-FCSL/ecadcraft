@@ -202,9 +202,11 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     let coil_edge = screen(&h, 110.0, 3.0);
     pointer_to(&mut h, coil_edge);
     h.run_steps(2);
-    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some("Component (no tag)"));
-    assert!(h.query_by_label("Component (no tag)").is_some(), "{HOVER_ID} shows it");
-    assert!(h.query_by_label("Terminals: 2").is_some());
+    // The coil placed by Place Symbol is a device (brief 018): its lens names its tag.
+    let lens = "Device -K01   Contactor / relay coil";
+    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some(lens));
+    assert!(h.query_by_label(lens).is_some(), "{HOVER_ID} shows it");
+    assert!(h.query_by_label("This symbol: coil A1/A2, page 1 \"1\"").is_some());
     let on_wire = screen(&h, 55.0, 10.0);
     pointer_to(&mut h, on_wire);
     h.run_steps(2);
