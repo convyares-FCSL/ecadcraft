@@ -652,6 +652,20 @@ with the number of transactions times the size of the project, so the large tier
 | medium | lean | 8.69 | 6 798 | 27 772 | 1.98 | 27 975 | 9.6 | 40 |
 | medium | churned | 32.62 | 33 986 | 138 928 | 1.96 | 140 887 | 15.8 | 62 |
 
+The draw columns were added by brief 014 (branch `ecad/drawing-edit-speed`), which made an edit
+in the drawing cost in proportion to what it touches. Native Windows 11, release, 2026-11-07/08,
+median of 5 runs (small) and 3 runs (medium), before (`63788b1`) and after (`3567a15`):
+
+| tier | history | draw move ms before | after | draw wire ms before | after |
+| --- | --- | --- | --- | --- | --- |
+| small | lean | 2.69 | 0.19 | 0.12 | 0.11 |
+| small | churned | 2.48 | 0.16 | 0.10 | 0.10 |
+| medium | lean | 39.98 | 0.37 | 0.31 | 0.30 |
+| medium | churned | 36.91 | 0.40 | 0.38 | 0.27 |
+
+The other columns were not changed by brief 014. Not yet tried by you: open the medium project
+(`--keep`) in the trial and say whether moving a component feels instant.
+
 The table is printed and also written as JSON to
 `ecad/target/bench/load-<date>-<time>-<commit>.json` (UTC; an existing file is never
 overwritten), with the machine, OS, commit and build. `--compare` reads the earlier file before
