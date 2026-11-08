@@ -25,6 +25,10 @@ pub const READ_COMMANDS: &[&str] = &[
     // Navigation between the project's pages: opens or shows a page, records nothing.
     "openpage",
     "document.switch",
+    // Cable references (brief 010): listing them reads the project; going to the other end opens
+    // or shows its page and selects it, and records nothing.
+    "cablerefs",
+    "cablegoto",
 ];
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
@@ -179,6 +183,13 @@ mod tests {
     fn the_rules() {
         let none = json!({});
         assert!(check("ecadinspect", &none, false, None).is_ok());
+        for id in ["cablerefs", "cablegoto", "openpage"] {
+            assert!(check(id, &json!({"reference": "1"}), false, None).is_ok(), "{id} reads");
+            assert!(check(id, &json!({}), false, Some("locked")).is_ok(), "{id} reads a read-only project");
+        }
+        for id in ["cableref", "cablecontinue", "cablecore", "cablefan", "renamepage", "movepage"] {
+            assert_eq!(check(id, &none, false, None), Err(WRITES_OFF.into()), "{id} writes");
+        }
         for (id, p) in [
             ("undo", json!({"count": 3})),
             ("undo", json!({"count": "2"})),
