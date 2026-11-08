@@ -318,19 +318,26 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     key(&mut h, Key::ArrowDown, Modifiers::NONE);
     let panel = take(&h, &deltas, "016-panel.png");
 
-    // B: New page records exactly `newpage`'s transaction, titled with its number, and opens
-    // its rename; Enter keeps the title (one transaction in total).
+    // B: New page (the panel's +, as Tool Sets' New Page) opens the name box prefilled with the
+    // next number; Cancel writes nothing; Enter records exactly `newpage`'s transaction and shows
+    // the page at once.
     let before = head(&mut h);
     click(&mut h, project_panel::NEW_PAGE);
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "prefilled");
+    click(&mut h, "Cancel");
+    assert!(h.state().name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
+    click(&mut h, tools::TAB);
+    click(&mut h, "New Page");
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "Tool Sets' New Page too");
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    assert!(h.state().name_box.is_none());
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "New page");
     assert!(matches!(ops.as_slice(), [Op::AddPage { page, index: 3, .. }] if page.title == "4"), "{ops:?}");
-    assert!(h.state().panel.rename.is_some(), "the new page's title opens for renaming");
     let new = active(&mut h).unwrap();
-    key(&mut h, Key::Enter, Modifiers::NONE);
-    assert!(h.state().panel.rename.is_none());
-    assert_eq!(head(&mut h), before + 1, "Enter on the unchanged title writes nothing");
+    assert_eq!(new, doc(&mut h).page_order[3], "the new page is shown at once");
+    assert!(h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(), "Enter stayed in the box");
     // `u` removes it (the panel follows), redo brings it back.
     ok(&mut h, "u");
     h.run_steps(2);

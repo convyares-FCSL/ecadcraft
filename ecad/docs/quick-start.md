@@ -370,8 +370,11 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
     press Enter. Enter (or Space, or a right-click) finishes; Esc cancels what is not done yet
     (objects already added stay); `u` afterwards undoes the last object.
   - **Inspect Project** runs at once and shows the project's IDs at the command line.
-  - **Set Property, Add to Cable, Delete Electrical Object, New Page, Open Page, Rename Page,
-    Move Page** only open the ECAD command window with an editable line, and a note under the
+  - **New Page** and **Rename Page** open a small name box (prefilled with the next number, or
+    with the page's title); OK or Enter creates or renames the page in one step, Cancel does
+    nothing.
+  - **Set Property, Add to Cable, Delete Electrical Object, Open Page, Move Page** only open the
+    ECAD command window with an editable line, and a note under the
     field says what to fill in.
     Replace each `<placeholder>`, then press Enter or **Run**. A line that still holds a
     placeholder is refused, never run. IDs come from the current selection where it names them:
@@ -630,8 +633,10 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
    `demo - page 1: Supply`.
 2. **Switch.** Click `Field`: it replaces `Supply` in the same tab, at the view you left it. Click
    `Supply` again.
-3. **New page.** Click **+** in the panel's header: page 3 appears, shown, with its title `3`
-   selected for renaming. Type `Spare`, press Enter. (Esc, or Enter on `3`, keeps `3`.)
+3. **New page.** Click **+** in the panel's header (or **New Page** in Tool Sets > ECAD > Pages):
+   a small name box opens with `3` selected. Type `Spare`, press Enter (or **OK**): page 3 is
+   added and shown at once, one `u`. **Cancel** (or Esc) does nothing. **Rename Page** in Tool
+   Sets opens the same box for the page shown, prefilled with its title.
 4. **Rename.** Double-click `Spare`, type `Spare 2`, press Enter. Type `u` at the command line:
    back to `Spare`. An empty title, or one over 200 characters, is refused under the field and
    nothing is recorded.
@@ -663,8 +668,8 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
 2. **Undo/redo.** Type `u` three times, then `redo` three times.
    Expected: the drawing steps back and forward exactly, and the IDs stay the same.
    `undo {"mode":"mark"}` is refused as not supported on ECAD pages.
-3. **Multiple pages.** Click **+** in the PROJECT panel (or `newpage {"title":"2"}` in the ECAD
-   command window). Expected: page 2 replaces page 1 in the one drawing tab, "… - page 2: 2".
+3. **Multiple pages.** Click **+** in the PROJECT panel and press Enter in the name box (or
+   `newpage {"title":"2"}` in the ECAD command window). Expected: page 2 replaces page 1 in the one drawing tab, "… - page 2: 2".
    Draw or wire something on it, then click page 1 in the panel, then page 2 again: its content
    is there. Closing the drawing tab asks nothing; the panel still lists both pages and one click
    shows a page again (section 5E).
@@ -1120,8 +1125,8 @@ Your table of three clean runs goes here once you have run it.
     model-space views (VPORTS), and only on the Model tab.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
-  - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page, Open
-    Page, Rename Page and Move Page still open the ECAD command window with a template.
+  - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, Open Page and Move
+    Page still open the ECAD command window with a template.
 - **Cable Slash** (brief 004, owner answers of 2026-11-06):
   - A wire counts when the slash crosses it, passes through one of its bends, or ends on it. A
     slash that meets a wire only at the wire's own end, or runs along it, does not take it; the

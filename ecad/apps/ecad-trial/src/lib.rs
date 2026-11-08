@@ -187,6 +187,30 @@ a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
 ];
 
+/// What the page name box does on OK.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameBoxKind {
+    /// `newpage` with the typed title; the new page is shown.
+    New,
+    /// `renamepage` of this page with the typed title.
+    Rename(PageId),
+}
+
+/// The small page name box opened by Tool Sets' New Page and Rename Page and the Project
+/// panel's **+** (owner, 2026-11-08): prefilled, OK or Enter runs one command (one transaction,
+/// one `u`), Cancel or Esc does nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameBox {
+    pub kind: NameBoxKind,
+    pub text: String,
+    /// The command's refusal, shown in the box (which stays open).
+    pub error: Option<String>,
+    focused: bool,
+}
+
+/// Accessible label of the name box's field.
+pub const NAME_BOX_FIELD: &str = "Page title";
+
 /// The user's answer to the close dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
@@ -266,6 +290,8 @@ pub struct Trial {
     project_serial: u64,
     /// The `keep_open` the trial last gave the project: on, except while a close or quit asks.
     keep_open: Option<bool>,
+    /// The page name box (New Page and Rename Page), when open.
+    pub name_box: Option<NameBox>,
     /// A Save As that a close waits for is being confirmed (the close goes on after it).
     confirming_close: bool,
     /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
@@ -391,6 +417,7 @@ impl Trial {
             project_serial: 0,
             keep_open: None,
             confirming_close: false,
+            name_box: None,
             focus_drawing: false,
             hovered: None,
             hover: None,
@@ -867,6 +894,14 @@ impl Trial {
                 });
                 r.map(|_| ())
             }
+            "ecad.newpage" => {
+                self.open_new_page_box();
+                Ok(())
+            }
+            "ecad.renamepage" => {
+                self.open_rename_box(None);
+                Ok(())
+            }
             "ecad.dev.command" => {
                 self.command_open = true;
                 self.focus_command = true;
@@ -1260,7 +1295,7 @@ impl Trial {
             A::Open(page) => {
                 let _ = self.show_page(page);
             }
-            A::New => self.new_page_from_panel(),
+            A::New => self.open_new_page_box(),
             A::Rename(page, title) => {
                 let line = format!("renamepage {}", json!({"page": page.hex(), "title": title}));
                 match self.run_line(&line) {
@@ -1318,19 +1353,117 @@ impl Trial {
         r
     }
 
-    /// **New page** in the panel: `newpage` titled with its number (design 016 Q8), then the new
-    /// page's title opens for renaming. One transaction in total when the title is kept.
-    fn new_page_from_panel(&mut self) {
-        let n = self.panel.rows().len() + 1;
+    /// Open the page name box for a new page, prefilled with its number (the panel's **+** and
+    /// Tool Sets' New Page).
+    pub fn open_new_page_box(&mut self) {
+        let n = self.project_page_count() + 1;
+        self.name_box = Some(NameBox { kind: NameBoxKind::New, text: n.to_string(), error: None, focused: false });
+    }
+
+    /// Open the page name box to rename `page` (the active page when `None`), prefilled with its
+    /// title (Tool Sets' Rename Page). Nothing opens when there is no such page.
+    pub fn open_rename_box(&mut self, page: Option<PageId>) {
+        let Some(p) = self.project.clone() else { return };
+        let found = p.read(&mut self.cad.session, |p, _| {
+            let page = page.or_else(|| p.active_page())?;
+            Some((page, p.ledger.document().pages.get(&page)?.title.clone()))
+        });
+        match found {
+            Ok(Some((page, title))) => {
+                self.name_box =
+                    Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false })
+            }
+            _ => self.cad.session.echo("Rename Page: show the page to rename first."),
+        }
+    }
+
+    fn project_page_count(&mut self) -> usize {
+        let Some(p) = self.project.clone() else { return 0 };
+        p.read(&mut self.cad.session, |p, _| p.ledger.document().page_order.len()).unwrap_or(0)
+    }
+
+    /// OK in the page name box: one `newpage` (the new page is shown at once) or `renamepage`. A
+    /// refusal keeps the box open with the message.
+    pub fn confirm_name_box(&mut self) {
+        let Some(b) = self.name_box.clone() else { return };
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
-        if self.run_line(&format!("newpage {}", json!({ "title": n.to_string() }))).is_some() {
-            return;
+        let line = match b.kind {
+            NameBoxKind::New => format!("newpage {}", json!({ "title": b.text })),
+            NameBoxKind::Rename(page) => format!("renamepage {}", json!({"page": page.hex(), "title": b.text})),
+        };
+        match self.run_line(&line) {
+            None => {
+                self.name_box = None;
+                self.refresh_panel();
+                if let Some(page) = self.panel.active {
+                    self.panel.reveal(page);
+                }
+            }
+            Some(e) => {
+                if let Some(nb) = &mut self.name_box {
+                    nb.error = Some(e);
+                    nb.focused = false;
+                }
+            }
         }
-        self.refresh_panel();
-        if let Some(page) = self.panel.active {
-            self.panel.start_rename(page);
+    }
+
+    /// Cancel in the page name box: nothing is written.
+    pub fn cancel_name_box(&mut self) {
+        self.name_box = None;
+    }
+
+    fn name_box_dialog(&mut self, ctx: &egui::Context) {
+        let Some(b) = &mut self.name_box else { return };
+        let heading = match b.kind {
+            NameBoxKind::New => "New page",
+            NameBoxKind::Rename(_) => "Rename page",
+        };
+        let (mut ok, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::unique("ecad.page_name_box")).show(ctx, |ui| {
+            ui.set_width(320.0);
+            ui.label(RichText::new(heading).strong());
+            ui.add_space(4.0);
+            let id = egui::Id::unique("ecad.page_name_box.field");
+            let field = ui
+                .add(egui::TextEdit::singleline(&mut b.text).id(id).desired_width(f32::INFINITY))
+                .accessible_name(NAME_BOX_FIELD);
+            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                ok = true;
+            } else if !b.focused {
+                field.request_focus();
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                    let all = egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(b.text.chars().count()),
+                    );
+                    state.cursor.set_char_range(Some(all));
+                    state.store(ui.ctx(), id);
+                    b.focused = true;
+                }
+            }
+            if let Some(e) = &b.error {
+                ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ok |= ui.button("OK").clicked();
+                cancel = ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        });
+        // The key that closed the box is the box's: CADCraft's command line must not take it too.
+        if ok || cancel {
+            ctx.input_mut(|i| {
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+            });
+        }
+        if cancel {
+            self.cancel_name_box();
+        } else if ok {
+            self.confirm_name_box();
         }
     }
 
@@ -1472,6 +1605,8 @@ impl Trial {
             self.close_dialog(ctx, h.title.clone(), h.changes);
         } else if self.dialog.is_some() {
             self.file_dialog(ctx);
+        } else if self.name_box.is_some() {
+            self.name_box_dialog(ctx);
         } else if let Some(msg) = self.notice.clone() {
             let mut ok = false;
             egui::Modal::new(egui::Id::unique("ecad_trial_notice")).show(ctx, |ui| {

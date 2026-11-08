@@ -188,8 +188,8 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.newpage",
         group: "Pages",
         label: "New Page",
-        tooltip: "Add a page to the project (opens the ECAD command window)",
-        kind: Kind::Template,
+        tooltip: "Add a page: asks its title (prefilled with its number) and shows it",
+        kind: Kind::Trial,
     },
     Tool {
         id: "ecad.openpage",
@@ -202,8 +202,8 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.renamepage",
         group: "Pages",
         label: "Rename Page",
-        tooltip: "Rename a page (opens the ECAD command window)",
-        kind: Kind::Template,
+        tooltip: "Rename the page shown: asks the new title (prefilled with the current one)",
+        kind: Kind::Trial,
     },
     Tool {
         id: "ecad.movepage",

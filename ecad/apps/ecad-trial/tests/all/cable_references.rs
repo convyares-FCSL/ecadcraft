@@ -92,14 +92,21 @@ fn the_page_buttons_fill_in_the_current_page() {
     h.run_steps(3);
     let page = doc(h.state_mut()).page_order[0].hex();
     let before = head(h.state_mut());
+    // Rename Page asks the new title in a name box, prefilled with the current one (owner,
+    // 2026-11-08): OK renames, one transaction.
     h.get_by_label("Rename Page").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.command, format!(r#"renamepage {{"page":"{page}","title":"<title>"}}"#));
-    assert!(t.command_hint().unwrap().starts_with("Rename Page:"));
-    assert_eq!(head(t), before, "nothing ran");
-    assert!(t.submit_command(&format!(r#"renamepage {{"page":"{page}","title":"Supply"}}"#)).is_none());
+    assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
+    assert_eq!(head(t), before, "nothing ran yet");
+    t.name_box.as_mut().unwrap().text = "Supply".into();
+    h.run_steps(1);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    let t = h.state_mut();
+    assert!(t.name_box.is_none());
     assert_eq!(head(t), before + 1);
+    assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
     // The note went away and moved the panel: lay out again before clicking by position.
     h.run_steps(3);
     h.get_by_label("Move Page").click();

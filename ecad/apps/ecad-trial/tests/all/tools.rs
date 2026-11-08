@@ -142,7 +142,7 @@ fn the_interactive_buttons_start_their_prompts() {
         ("Cable View", "cableview", "Select a cable to switch its view:"),
     ];
     for (label, id, first) in firsts {
-        h.state_mut().tool("ecad.newpage").unwrap();
+        h.state_mut().tool("ecad.setprop").unwrap();
         assert!(h.state().command_hint().is_some(), "a template waits in the field");
         // Its note moves the panel below it: lay out once before clicking by position.
         h.run_steps(2);
@@ -166,17 +166,17 @@ fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
     let before = head(h.state_mut());
     let selection = vec![Handle(0x7777)];
     h.state_mut().cad.session.set_selection(selection.clone());
-    h.get_by_label("New Page").click();
+    h.get_by_label("Set Property").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.command, r#"newpage {"title":"<title>"}"#);
-    assert!(t.command_hint().unwrap().starts_with("New Page:"));
+    assert_eq!(t.command, r#"setprop {"component":"<component id>","key":"tag","value":"<value>"}"#);
+    assert!(t.command_hint().unwrap().starts_with("Set Property:"));
     assert_eq!(head(t), before, "nothing ran");
     assert_eq!(t.cad.session.selection(), selection, "the selection is left as it was");
     // Pressing Enter on the unedited template is refused.
     let line = t.command.clone();
     let e = t.submit_command(&line).unwrap();
-    assert!(e.contains("Replace the placeholders first") && e.contains("<title>"), "{e}");
+    assert!(e.contains("Replace the placeholders first") && e.contains("<value>"), "{e}");
     assert_eq!(head(t), before);
     // Edited, it runs through the ordinary path and the note goes away.
     assert!(t.submit_command(r#"newpage {"title":"2"}"#).is_none());
@@ -240,15 +240,15 @@ fn placeholders_are_found_and_ordinary_text_is_not() {
 #[test]
 fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
     let mut t = trial();
-    t.tool("ecad.newpage").unwrap();
+    t.tool("ecad.setprop").unwrap();
     let template = t.command.clone();
     let before = head(&mut t);
     t.tool("ecad.inspect").unwrap();
     assert_eq!(t.command, template);
     assert!(t.command_hint().is_some());
     let e = t.submit_command(&template).unwrap();
-    assert!(e.contains("<title>"), "{e}");
-    assert_eq!(head(&mut t), before, "the quoted placeholder was not run as a page title");
+    assert!(e.contains("<value>"), "{e}");
+    assert_eq!(head(&mut t), before, "the quoted placeholder was not run");
 }
 
 #[test]
