@@ -61,7 +61,15 @@ mod tests {
     #[test]
     fn small_or_incompressible_bodies_stay_raw_and_everything_round_trips() {
         let text = br#"{"type":"tx","ops":[{"op":"AddPage"},{"op":"AddPage"},{"op":"AddPage"},{"op":"AddPage"}]}"#;
-        let noise: Vec<u8> = (0..1000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect();
+        let mut x = 0x9E37_79B9_7F4A_7C15u64;
+        let noise: Vec<u8> = (0..1000)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect();
         for (bytes, flag) in [(&b"tiny"[..], RAW), (&text[..], ZSTD), (&noise[..], RAW)] {
             let (f, body) = pack(bytes);
             assert_eq!(f, flag, "{}", bytes.len());
