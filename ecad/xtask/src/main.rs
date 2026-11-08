@@ -173,10 +173,8 @@ fn ci() -> Result<(), String> {
         .current_dir(&root))?;
     // All features: the fault-injection containment tests run in CI, never in normal builds.
     // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
-    // Child-process helpers (`child_*`, also ignored) are skipped: they only work when the test
-    // that owns them starts them, and it still does.
     run(Command::new(cargo)
-        .args(["test", "--workspace", "--all-features", "--", "--include-ignored", "--skip", "::child_"])
+        .args(["test", "--workspace", "--all-features", "--", "--include-ignored"])
         .current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
@@ -200,11 +198,15 @@ fn bench(args: &[String]) -> Result<(), String> {
 }
 
 /// Files that change every crate's build: the workspace manifest and lock file, cargo's
-/// configuration and the toolchain file. `path` is lower case, relative to the repository root;
-/// `workspace` is the workspace folder the same way, with a trailing `/` (empty at the root).
+/// configuration and the toolchain file; and at the repository root, the manifest (CADCraft's
+/// crates take their version, lints and dependencies from it), cargo's configuration (merged into
+/// every build below it) and the toolchain file, but not its lock file (the workspace has its
+/// own). `path` is lower case, relative to the repository root; `workspace` is the workspace
+/// folder the same way, with a trailing `/` (empty at the root).
 fn affects_everything(path: &str, workspace: &str) -> bool {
-    let Some(p) = path.strip_prefix(workspace) else { return false };
-    matches!(p, "cargo.toml" | "cargo.lock" | "rust-toolchain.toml" | "rust-toolchain") || p.starts_with(".cargo/")
+    let build =
+        |p: &str| matches!(p, "cargo.toml" | "rust-toolchain.toml" | "rust-toolchain") || p.starts_with(".cargo/");
+    path.strip_prefix(workspace).is_some_and(|p| build(p) || p == "cargo.lock") || build(path)
 }
 
 /// The workspace members whose tests to run after `changed` (paths relative to the repository
@@ -215,8 +217,9 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
 /// A changed file selects the innermost local package whose folder holds it; then every workspace
 /// member that depends on a selected package, directly or not, through any kind of dependency (dev
 /// included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
-/// upstream change selects the ECAD crates that use it. The workspace manifest, lock file, cargo
-/// configuration and toolchain file select every member. Markdown files and files in no package
+/// upstream change selects the ECAD crates that use it. The files [`affects_everything`] names
+/// (the workspace manifest and lock file, the repository root manifest, cargo configuration and
+/// toolchain files) select every member. Markdown files and files in no package
 /// (docs, tools, CI) select nothing. `meta` is `cargo metadata --format-version 1` output with
 /// its resolve graph. The result is sorted by name.
 ///
@@ -287,9 +290,15 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
     Ok(out)
 }
 
-/// `git <args>` in `dir`, its output split into lines.
+/// `git <args>` in `dir`, its output split into lines. Paths are printed as they are, not quoted
+/// (`core.quotepath=off`), so a non-ASCII file name still matches its package.
 fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
-    let out = Command::new("git").args(args).current_dir(dir).output().map_err(|e| format!("git {args:?}: {e}"))?;
+    let out = Command::new("git")
+        .args(["-c", "core.quotepath=off"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("git {args:?}: {e}"))?;
     if !out.status.success() {
         return Err(format!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
@@ -325,8 +334,8 @@ fn test_changed(args: &[String]) -> Result<(), String> {
             .to_string(),
     };
     let mut changed: BTreeSet<String> = BTreeSet::new();
-    changed.extend(git_lines(repo, &["diff", "--name-only", &format!("{base}...HEAD")])?);
-    changed.extend(git_lines(repo, &["diff", "--name-only", "HEAD"])?);
+    changed.extend(git_lines(repo, &["diff", "--no-renames", "--name-only", &format!("{base}...HEAD")])?);
+    changed.extend(git_lines(repo, &["diff", "--no-renames", "--name-only", "HEAD"])?);
     changed.extend(git_lines(repo, &["ls-files", "--others", "--exclude-standard"])?);
     let out = Command::new(env!("CARGO"))
         .args(["metadata", "--format-version", "1"])
@@ -424,7 +433,13 @@ mod tests {
             (&["crates/up/src/lib.rs"], &["app", "bench", "mid"]),
             (&["ws/Cargo.lock"], &["app", "bench", "core", "lone", "mid"]),
             (&["ws/.cargo/config.toml"], &["app", "bench", "core", "lone", "mid"]),
-            (&["Cargo.toml", "Cargo.lock"], &[]),
+            // The repository root: CADCraft's manifest and cargo configuration reach every build; its
+            // lock file does not (the workspace has its own).
+            (&["Cargo.toml"], &["app", "bench", "core", "lone", "mid"]),
+            (&[".cargo/config.toml"], &["app", "bench", "core", "lone", "mid"]),
+            (&["Cargo.lock"], &[]),
+            // A file moved between crates: with `--no-renames` git lists both paths, and both count.
+            (&["ws/apps/lone/src/moved.rs", "ws/crates/core/src/moved.rs"], &["app", "bench", "core", "lone", "mid"]),
             (&["ws/crates/core/README.md", "ws/docs/x.rs", ".github/workflows/ci.yml"], &[]),
             (&["WS\\Apps\\Lone\\src\\main.rs"], &["lone"]),
         ];
@@ -458,6 +473,7 @@ mod tests {
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
+        assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 
     #[test]

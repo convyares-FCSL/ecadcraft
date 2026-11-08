@@ -451,6 +451,7 @@ fn ac2_trial_reopens_each_cable_in_its_view() {
     let work = Tmp::new("reopen-work");
     let decoy = Tmp::new("reopen-decoy");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args(["--exact", "cable_view_tester::child_trial_reopen", "--ignored", "--nocapture", "--test-threads=1"])
         .env("ECAD_SETTINGS_DIR", &settings.0)
         .env("APPDATA", &decoy.0)
@@ -467,6 +468,10 @@ fn ac2_trial_reopens_each_cable_in_its_view() {
 #[test]
 #[ignore = "run by ac2_trial_reopens_each_cable_in_its_view in a child process"]
 fn child_trial_reopen() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let Some(work) = std::env::var_os("ECAD_TESTER_WORK").map(PathBuf::from) else {
         panic!("run only as a child of ac2_trial_reopens_each_cable_in_its_view");
     };

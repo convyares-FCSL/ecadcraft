@@ -115,6 +115,10 @@ fn hostile_paths_never_panic() {
 #[test]
 #[ignore = "run as a child process"]
 fn child_saves_odd_paths() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     for typed in ["\0", "~/\0x", ":", "~~", "C:", "C:drive-relative", r"\\", ".", r"..\up"] {
         let mut t = trial(None, None);
         let e = save_as(&mut t, typed);
@@ -132,6 +136,7 @@ fn odd_paths_through_the_dialog_save_where_the_banner_says() {
     let cwd = TempDir::new("odd-cwd");
     std::fs::create_dir_all(cwd.0.join("inner")).unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args([
             "--exact",
             "windows_trial_contracts::child_saves_odd_paths",
@@ -229,6 +234,10 @@ fn a_second_opener_through_another_spelling_is_read_only() {
 #[test]
 #[ignore = "run as a child process"]
 fn child_reports_home() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let home = ecad_cadcraft::home().map(|h| h.display().to_string()).unwrap_or_default();
     println!("HOME-FOLDER<{home}>");
 }
@@ -236,6 +245,7 @@ fn child_reports_home() {
 fn child_home(env: &[(&str, Option<&str>)]) -> String {
     let mut c = std::process::Command::new(std::env::current_exe().unwrap());
     c.args(["--exact", "windows_trial_contracts::child_reports_home", "--ignored", "--nocapture", "--test-threads=1"]);
+    c.env("ECAD_TEST_CHILD", "1");
     for (k, v) in env {
         match v {
             Some(v) => c.env(k, v),
@@ -269,6 +279,10 @@ fn the_home_folder_ignores_a_git_bash_home() {
 #[test]
 #[ignore = "run as a child process"]
 fn child_exports_a_snapshot_to_tilde() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let mut t = trial(None, Some(PathBuf::from("~/snaps")));
     let r = t.export_snapshot("t003");
     println!("EXPORT<{r:?}>");
@@ -280,6 +294,7 @@ fn child_exports_a_snapshot_to_tilde() {
 fn snapshots_with_a_tilde_never_make_a_tilde_folder() {
     let cwd = TempDir::new("snap-cwd");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args([
             "--exact",
             "windows_trial_contracts::child_exports_a_snapshot_to_tilde",

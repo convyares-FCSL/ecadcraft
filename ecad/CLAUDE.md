@@ -38,7 +38,9 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     target, tests included). It then runs, itself, the tests of what it changed:
     `cargo xtask test-changed`, which runs the fast tests of every crate changed since `dev` and
     of every crate that depends on them (`--dry-run` names them; arguments after `--` go to the
-    test executables, e.g. `-- cable_view` to filter). Never the whole workspace.
+    test executables, e.g. `-- cable_view` to filter). Once a branch has changed `Cargo.lock` or a
+    manifest, every crate counts as changed since `dev`; `--base HEAD` then tests only what is not
+    committed yet, i.e. what you just touched. Never the whole workspace.
     Documentation-only commits need no cargo at all.
   - **Test layout (brief 017).** Each crate has one integration test executable,
     `tests/all/main.rs`, whose modules are the former `tests/<name>.rs` files (shared helpers in
@@ -49,10 +51,11 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     executable. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
   - **Slow set.** A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
     Everyday runs (`cargo test`, `cargo xtask test-changed`) skip it; the QA gate's full suite
-    (`cargo xtask ci`) runs it with `--include-ignored --skip ::child_`. Run one slow test by hand
-    with `cargo test -p <crate> <name> -- --include-ignored`. Child-process helpers are named
-    `child_*`, keep their own `#[ignore = "run by … in a child process"]` reasons, and are skipped
-    in direct runs: the test that owns them starts them.
+    (`cargo xtask ci`) runs it with `--include-ignored`. Run one slow test by hand with
+    `cargo test -p <crate> <name> -- --include-ignored`. Child-process helpers are named `child_*`,
+    keep their own `#[ignore = "run by … in a child process"]` reasons, and do nothing unless the
+    test that starts them set `ECAD_TEST_CHILD`, so an `--include-ignored` run is always safe. A
+    new one follows the same pattern.
   - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
     `translate.rs`, the store and locking, or anything the owner asks for. It runs only what the
     change can break. A re-test after a fix runs only what failed.

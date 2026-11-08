@@ -385,6 +385,7 @@ fn ac2_views_survive_reopen_through_ecad_settings_dir() {
     let decoy = Tmp::new("env-decoy");
     let work = Tmp::new("env-work");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args([
             "--exact",
             "cable_view_tester_contracts::child_reopen_through_env",
@@ -410,6 +411,10 @@ fn ac2_views_survive_reopen_through_ecad_settings_dir() {
 #[test]
 #[ignore = "run by ac2_views_survive_reopen_through_ecad_settings_dir in a child process"]
 fn child_reopen_through_env() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let Some(work) = std::env::var_os("ECAD_TESTER_WORK").map(PathBuf::from) else {
         panic!("run only as a child of ac2_views_survive_reopen_through_ecad_settings_dir");
     };
@@ -478,6 +483,7 @@ fn child_reopen_through_env() {
 #[test]
 fn ac2_no_settings_folder_switches_and_says_so_once() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args([
             "--exact",
             "cable_view_tester_contracts::child_no_settings_folder",
@@ -499,6 +505,10 @@ fn ac2_no_settings_folder_switches_and_says_so_once() {
 #[test]
 #[ignore = "run by ac2_no_settings_folder_switches_and_says_so_once in a child process"]
 fn child_no_settings_folder() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     assert!(std::env::var_os("ECAD_TESTER_CHILD").is_some(), "run only as a child");
     assert!(std::env::var_os("APPDATA").is_none());
     ecad_cadcraft::install();

@@ -105,8 +105,7 @@ nothing you run or see changes. Each crate's integration tests are one executabl
 (`tests/all/`), so the test paths below are `…/tests/all/<file>.rs`. Tests that take more than
 about 2 s are marked slow: plain `cargo test` and `cargo xtask test-changed` skip them, and
 `cargo xtask ci` (the QA gate, Linux and Windows CI) runs them with `--include-ignored`. To run
-the whole set by hand: `cargo test --workspace --all-features -- --include-ignored --skip ::child_`
-(the `child_*` helpers are started by their own tests).
+the whole set by hand: `cargo test --workspace --all-features -- --include-ignored`.
 
 Three kinds of evidence exist, and they are kept apart:
 

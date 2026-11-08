@@ -12,7 +12,7 @@ that new briefs know which branch they belong to. The owner corrects it when a g
 | --- | --- | --- | --- |
 | Platform: Windows and Linux | `feature/platform` | 000, 001, 002, 003 | In `dev` |
 | Upstream sync: policy, then sync to the latest CADCraft | `feature/upstream-sync` | 007; next: PR #5's policy | 007 in `dev`; policy deferred, next after fast tests |
-| Fast tests | `feature/fast-tests` | 017 | Approved, in progress |
+| Fast tests | `feature/fast-tests` | 017 | PR #40 into `dev` (review fixes pushed); not merged |
 | Cables: slash, views, look, cores, references | `feature/cables` | 004, 005, 009, 010 | In `dev` |
 | Usability: ECAD tools by mouse | `feature/usability` | 008 | In `dev` |
 | Agent access (MCP) | `feature/agent-access` | 011 | In `dev` |

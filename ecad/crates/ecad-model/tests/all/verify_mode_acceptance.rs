@@ -31,6 +31,10 @@ fn invalid_checkpoint() -> Document {
 #[test]
 #[ignore = "run by full_check_runs_with_the_switch_in_release"]
 fn child_probe() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let doc = invalid_checkpoint();
     assert!(doc.check().is_err(), "the checkpoint is invalid");
     let mut ledger = Ledger::from_checkpoint(doc, 0, Vec::new(), 1).unwrap();
@@ -53,6 +57,7 @@ fn run_child(switch: Option<&str>) -> String {
     let exe = std::env::current_exe().unwrap();
     let mut cmd = Command::new(exe);
     cmd.args(["--ignored", "--exact", "verify_mode_acceptance::child_probe", "--nocapture", "--test-threads=1"]);
+    cmd.env("ECAD_TEST_CHILD", "1");
     cmd.env_remove("ECAD_VERIFY_INVARIANTS");
     if let Some(v) = switch {
         cmd.env("ECAD_VERIFY_INVARIANTS", v);

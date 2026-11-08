@@ -124,6 +124,10 @@ fn typed_paths_are_expanded_completed_or_refused() {
 #[test]
 #[ignore = "run as a child process"]
 fn child_prints_its_home_folder() {
+    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
+    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
+        return;
+    }
     let home = ecad_cadcraft::home().map(|h| h.display().to_string()).unwrap_or_default();
     let p = ecad_cadcraft::normalize("~/p").unwrap_or_default();
     println!("HOME-FOLDER<{home}>\nNORMALIZED<{p}>");
@@ -132,6 +136,7 @@ fn child_prints_its_home_folder() {
 #[test]
 fn the_home_folder_is_known_without_the_home_variable() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .env("ECAD_TEST_CHILD", "1")
         .args([
             "--exact",
             "paths_contracts::child_prints_its_home_folder",
