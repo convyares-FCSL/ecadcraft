@@ -1,6 +1,6 @@
 # Brief 019: Sheets, title block, project and page properties, revisions
 
-Status: Approved (owner, 2026-11-08: "a page border will have to be one of the next things and will
+Status: Approved; design 019 approved 2026-11-08 with owner answers (see the worker brief) (owner, 2026-11-08: "a page border will have to be one of the next things and will
 naturally lead to what project and page properties we want, including revision control")
 Branch: `feature/sheets` (worktree `C:\dev\ecad-features\sheets`), from `feature/project-manager`
 (016 + 018); rebased onto `dev` once that merges.
