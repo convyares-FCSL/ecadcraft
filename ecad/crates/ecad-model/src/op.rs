@@ -25,6 +25,13 @@ pub enum ObjectRef {
     Cable(CableId),
 }
 
+/// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
+pub(crate) fn settle(doc: &mut Document) {
+    let mut conn = std::mem::take(&mut doc.conn);
+    conn.settle(doc);
+    doc.conn = conn;
+}
+
 /// One recorded change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Op {
@@ -232,7 +239,23 @@ impl Op {
     /// # Errors
     /// [`ModelError::Precondition`] when the document does not hold the recorded `before` state.
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
-        self.apply_with(doc, true)
+        let r = self.apply_unsettled(doc, true);
+        settle(doc);
+        r
+    }
+
+    /// [`Op::apply`] without settling the nets (brief 022): the ledger settles them once after a
+    /// whole transaction ([`settle`]).
+    pub(crate) fn apply_unsettled(&self, doc: &mut Document, checked: bool) -> Result<()> {
+        let mut conn = std::mem::take(&mut doc.conn);
+        conn.before_op(doc, self);
+        let r = self.apply_with(doc, checked);
+        match &r {
+            Ok(()) => conn.after_op(doc, self),
+            Err(_) => conn.repair(doc, self),
+        }
+        doc.conn = conn;
+        r
     }
 
     /// Undo this op, which was the last change applied to `doc`, by applying its inverse without
@@ -251,7 +274,7 @@ impl Op {
     /// # Errors
     /// [`ModelError::Precondition`] only when `doc` is not the state this op produced.
     pub(crate) fn revert(&self, doc: &mut Document) -> Result<()> {
-        self.inverse().apply_with(doc, false)
+        self.inverse().apply_unsettled(doc, false)
     }
 
     fn apply_with(&self, doc: &mut Document, checked: bool) -> Result<()> {
@@ -406,6 +429,26 @@ impl Op {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
+                // A continuation's name is indexed (brief 022).
+                if let ObjectRef::Component(id) = object
+                    && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
+                {
+                    let mut before_props = props.clone();
+                    match &old {
+                        Some(v) => before_props.insert(key.clone(), v.clone()),
+                        None => before_props.remove(key),
+                    };
+                    let was = crate::connectivity::continuation_key(&before_props);
+                    let now = crate::connectivity::continuation_key(props);
+                    if was != now {
+                        if let Some(k) = was {
+                            doc.index.continuation(*id, k, Delta::Remove);
+                        }
+                        if let Some(k) = now {
+                            doc.index.continuation(*id, k, Delta::Add);
+                        }
+                    }
+                }
                 // A component's tag is indexed (brief 018).
                 if let ObjectRef::Component(id) = object
                     && key == crate::tag::TAG_KEY

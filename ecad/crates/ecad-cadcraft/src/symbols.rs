@@ -54,6 +54,7 @@ impl Starter {
     /// The definition with its origin.
     pub fn definition(&self) -> Definition {
         let mut d = Definition {
+            bridges: Vec::new(),
             name: self.name.into(),
             origin: None,
             graphics: graphics(self.key),

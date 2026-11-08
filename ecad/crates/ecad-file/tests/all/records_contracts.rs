@@ -216,3 +216,47 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     assert_eq!(opened.ledger.document().settings, after);
     assert_eq!(opened.ledger.log(), f.ledger.log());
 }
+
+/// Brief 022 (FP1, FP5): the wiring settings and a definition's bridges are left out while they
+/// hold their defaults, so files and content hashes are unchanged; set, they round-trip.
+#[test]
+fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
+    let defaults = ProjectSettings::default();
+    let plain =
+        ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() })
+            .unwrap()
+            .to_string();
+    assert!(!plain.contains("wiring"), "{plain}");
+
+    let mut f = fixture();
+    let before = f.ledger.document().settings.clone();
+    let mut after = before.clone();
+    after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
+    after.wiring.digits = 3;
+    after.wiring.potentials.retain(|p| p.name != "PE");
+    let op = Op::SetProjectSettings { before, after: after.clone() };
+    let line = ecad_file::record::op_value(&op).unwrap().to_string();
+    assert!(line.contains("\"page-column\""), "{line}");
+    f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
+
+    let bare = ecad_model::Definition {
+        name: "t".into(),
+        origin: None,
+        graphics: vec![],
+        terminals: vec![],
+        bridges: vec![],
+    };
+    let bridged = ecad_model::Definition { bridges: vec![vec!["1".into(), "2".into()]], ..bare.clone() };
+    let bare_line = serde_json::to_string(&ecad_file::v1::Definition::from(&bare)).unwrap();
+    assert!(!bare_line.contains("bridges"), "{bare_line}");
+    assert_ne!(ecad_file::definition_hash(&bare).unwrap(), ecad_file::definition_hash(&bridged).unwrap());
+    let id: ecad_model::DefinitionId = ecad_model::DefinitionId(0xb1d9e);
+    f.ledger.commit(Author::User, "Bridge", vec![Op::EmbedDefinition { id, definition: bridged.clone() }]).unwrap();
+
+    let bytes = written(&mut f.ledger);
+    let opened = open_project(&bytes, SEED).unwrap();
+    assert_eq!(opened.report.outcome, Outcome::Clean);
+    assert_eq!(opened.ledger.document().settings, after);
+    assert_eq!(opened.ledger.document().definitions.get(&id), Some(&bridged));
+    assert_eq!(opened.ledger.log(), f.ledger.log());
+}

@@ -31,6 +31,7 @@ pub fn style(layer: LayerId) -> Style {
 
 pub fn coil(graphics_scale: f64) -> Definition {
     Definition {
+        bridges: Vec::new(),
         name: "Coil".into(),
         origin: None,
         graphics: vec![

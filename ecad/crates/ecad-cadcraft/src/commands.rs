@@ -976,6 +976,7 @@ fn run_cableview(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
 pub fn builtin_coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {
+        bridges: Vec::new(),
         name: "Coil (experiment)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline {
