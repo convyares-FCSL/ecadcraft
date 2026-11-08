@@ -305,6 +305,7 @@ pub fn join_labels(
             let n = highest.map_or(0, |h| h + 1);
             Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
         }
+        Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
         Kind::Fixed { exclusive } => {
             if exclusive {
                 let has = doc
@@ -723,6 +724,10 @@ pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Component) -> Option<Str
 pub enum TextOf {
     Tag,
     Terminal(TerminalId),
+    /// A continuation's name (brief 022).
+    Name,
+    /// A continuation's other places (brief 022).
+    Places,
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -735,6 +740,8 @@ pub struct DerivedText {
     pub height: f64,
     pub halign: HAlign,
     pub valign: VAlign,
+    /// A colour of its own (ACI), else ByLayer.
+    pub aci: Option<u8>,
 }
 
 /// The page box of a placed definition.
@@ -812,8 +819,13 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
             continue;
         }
         let labels = by_rep.remove(&rid).unwrap_or_default();
+        // A continuation shows its name and its other places instead (brief 022).
+        if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
+            out.extend(texts);
+            continue;
+        }
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag_of(doc, c), &labels) {
-            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign });
+            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None });
         }
     }
     out
@@ -821,7 +833,11 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
 
 /// A derived text as an entity on [`TAG_LAYER`].
 pub fn text_entity(t: &DerivedText, handle: Handle) -> Entity {
-    text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER)
+    let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
+    if let Some(aci) = t.aci {
+        e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
+    }
+    e
 }
 
 /// A justified text entity.

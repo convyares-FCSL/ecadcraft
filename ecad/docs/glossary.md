@@ -33,7 +33,11 @@ are.
 | --- | --- |
 | **conductor** | One electrical connection with two ends, A and B, each attached to a connection point or loose. The model object behind a wire. |
 | **wire** | A conductor as drawn: its route on a page. Continued on another page, the same conductor has a route there too. |
-| **net** | Everything electrically joined: connection points linked by conductors. Derived from the attachments, never stored. |
+| **net** | Everything electrically joined: connection points linked by conductors, continuations with the same name, and bridges inside a device. Derived from the attachments, never stored; crossings never join, and a T joins only at a junction. |
+| **junction** | The dot where three or more wires meet away from a device: a connection point of its own. A T without a junction is not connected. |
+| **continuation** | An arrow with a name (`24V`) where a net leaves a page. All continuations with one name are one net. |
+| **potential** | What a wire carries for numbering and defaults: `L`, `L1`…`L3`, `N`, `PE`, `24V`, `0V`. It sets the number prefix, colour and cross-section. Several nets share one potential (`24V-01`, `24V-02`). |
+| **wire number** | The number a net carries and every one of its conductors shows (`24V-07`). Automatic, or **fixed** by hand. Stored on the conductors once issued, so adding a wire never renumbers others. |
 | **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. |
 | **core** | One conductor of a cable, with its core number or colour (`1`, `BK`). |
 | **cable reference** | Where a cable leaves one page and continues on another, shown `/<page>.<column>` of the other end (`/3.1`). An end with no other end is an **orphan** (`/?`). |

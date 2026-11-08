@@ -114,7 +114,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     let mut h = harness();
     component_and_coil(&mut h);
     button(&mut h, "Wire");
-    assert_eq!(prompt(&h), "Specify first point of wire:");
+    assert_eq!(prompt(&h), "Specify first point of wire or [Potential] <auto>:");
     let first = screen(&h, 40.0, 10.0) + egui::vec2(2.0, -2.0);
     click(&mut h, first);
     assert_eq!(prompt(&h), "Specify next point or [Undo]:");

@@ -239,13 +239,8 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     assert!(line.contains("\"page-column\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
-    let bare = ecad_model::Definition {
-        name: "t".into(),
-        origin: None,
-        graphics: vec![],
-        terminals: vec![],
-        bridges: vec![],
-    };
+    let bare =
+        ecad_model::Definition { name: "t".into(), origin: None, graphics: vec![], terminals: vec![], bridges: vec![] };
     let bridged = ecad_model::Definition { bridges: vec![vec!["1".into(), "2".into()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::v1::Definition::from(&bare)).unwrap();
     assert!(!bare_line.contains("bridges"), "{bare_line}");

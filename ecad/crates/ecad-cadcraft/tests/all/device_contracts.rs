@@ -113,7 +113,8 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         ("di", "-A01"),
         ("do", "-A02"),
     ];
-    assert_eq!(want.len(), STARTERS.len());
+    // Every starter but the tagless junction and continuation (brief 022).
+    assert_eq!(want.len(), STARTERS.iter().filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless).count());
     for (i, (key, t)) in want.iter().enumerate() {
         let x = 60.0 * (i % 6) as f64;
         let y = -60.0 * (i / 6) as f64;
@@ -127,8 +128,9 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     let r = place(&mut h, "coil", [400.0, 0.0]);
     assert_eq!(r["tag"], json!("-K05"));
     let doc = h.doc();
-    assert_eq!(doc.definitions.len(), STARTERS.len());
-    for s in STARTERS {
+    let devices: Vec<_> = STARTERS.iter().filter(|s| s.kind != symbols::Kind::Tagless).collect();
+    assert_eq!(doc.definitions.len(), devices.len());
+    for s in devices.iter().copied() {
         let d = symbols::embedded(&doc, s).unwrap();
         let o = doc.definitions[&d].origin.clone().unwrap();
         assert_eq!((o.library, o.definition, o.library_seq), (symbols::STARTER_LIBRARY, s.id, 1));
@@ -136,7 +138,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     assert!(!last_ops(&mut h).iter().any(|o| matches!(o, Op::EmbedDefinition { .. })));
     // Every symbol shows its tag beside it.
     let page = h.first_page();
-    assert_eq!(tag_texts(&mut h, page).len(), STARTERS.len() + 1);
+    assert_eq!(tag_texts(&mut h, page).len(), devices.len() + 1);
 }
 
 // ---------------------------------------------------------------- B, C

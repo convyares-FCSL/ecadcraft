@@ -167,7 +167,10 @@ fn count_down(map: &mut BTreeMap<String, u32>, key: &str) {
 }
 
 /// The nets of a document, kept incrementally (see the module docs).
-#[derive(Debug, Clone, Default)]
+///
+/// Its `Debug` form is canonical (the nets as sorted members with their counts, the sequence
+/// index), so two kept states holding the same nets print alike whatever their net IDs.
+#[derive(Clone, Default)]
 pub struct Connectivity {
     node_net: HashMap<Node, NetId>,
     nets: HashMap<NetId, NetData>,
@@ -178,6 +181,22 @@ pub struct Connectivity {
     seqs: BTreeMap<String, BTreeMap<u64, u32>>,
     /// Nets a cut may have split, to be walked by [`Connectivity::settle`].
     suspect: BTreeSet<NetId>,
+}
+
+impl std::fmt::Debug for Connectivity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut nets: Vec<_> = self
+            .nets
+            .values()
+            .map(|n| (n.members(), n.numbers.clone(), n.fixed.clone(), n.potentials.clone()))
+            .collect();
+        nets.sort();
+        f.debug_struct("Connectivity")
+            .field("nets", &nets)
+            .field("seqs", &self.seqs)
+            .field("unsettled", &self.suspect.len())
+            .finish()
+    }
 }
 
 /// Whether `node` exists in `doc`.

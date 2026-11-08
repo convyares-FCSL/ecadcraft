@@ -310,12 +310,23 @@ struct Wire {
     points: Vec<Pt>,
     /// The first point is on a terminal.
     first_on_terminal: bool,
+    /// Asking for the potential of new wires (design 022 §6).
+    asking_potential: bool,
+}
+
+/// The Wire tool's potential for this session (`None`: auto).
+fn wire_potential(s: &Session) -> Option<String> {
+    read(s, |p, _| Ok(p.wire_potential.clone())).ok().flatten()
 }
 
 impl Wire {
     fn finish(&mut self, s: &mut Session) -> R<Step> {
         let points: Vec<[f64; 2]> = self.points.iter().map(|p| [p.x, p.y]).collect();
-        let r = commit(s, "wire", &json!({ "points": points }))?;
+        let mut params = json!({ "points": points });
+        if let Some(pot) = wire_potential(s) {
+            params["potential"] = json!(pot);
+        }
+        let r = commit(s, "wire", &params)?;
         let attached: Vec<(String, String)> = r
             .get("attached")
             .and_then(Value::as_array)
@@ -341,12 +352,51 @@ impl Wire {
                 None => format!("end {e} not attached"),
             })
             .collect();
-        s.echo(format!("Wire {} drawn; {}.", hex_of(&r, "conductor"), outcome.join(", ")));
+        let number = r.get("number").and_then(Value::as_str).unwrap_or("?");
+        let joined = if r.get("junctions").is_some() { "; a junction joins it to the wire it ends on" } else { "" };
+        s.echo(format!("Wire {number} drawn; {}{joined}.", outcome.join(", ")));
         Ok(Step::Done)
     }
 
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        if self.asking_potential {
+            let choice = match &i {
+                Input::Enter => {
+                    return {
+                        self.asking_potential = false;
+                        Ok(Step::Continue)
+                    };
+                }
+                Input::Cancel => {
+                    return {
+                        self.asking_potential = false;
+                        Ok(Step::Continue)
+                    };
+                }
+                Input::Keyword(k) | Input::Text(k) => k.trim().to_string(),
+                _ => return Ok(Step::Continue),
+            };
+            let value = if choice.eq_ignore_ascii_case("auto") || choice.is_empty() {
+                None
+            } else {
+                Some(ecad_model::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
+            };
+            with_project(s, |p, _, _| {
+                // A table name is written as the table spells it.
+                let v = value.map(|v| p.ledger.document().settings.wiring.potential(&v).map_or(v, |r| r.name.clone()));
+                p.wire_potential = v;
+                Ok(())
+            })?;
+            self.asking_potential = false;
+            let shown = wire_potential(s).unwrap_or_else(|| "auto".into());
+            s.echo(format!("New wires: potential {shown}."));
+            return Ok(Step::Continue);
+        }
         match i {
+            Input::Keyword(k) if k == "Potential" && self.points.is_empty() => {
+                self.asking_potential = true;
+                Ok(Step::Continue)
+            }
             Input::Point(p) => {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
@@ -395,9 +445,19 @@ impl Interactive for Wire {
     fn name(&self) -> &'static str {
         "WIRE"
     }
-    fn prompt(&self, _s: &Session) -> Prompt {
+    fn prompt(&self, s: &Session) -> Prompt {
+        if self.asking_potential {
+            let names = read(s, |p, _| Ok(crate::wire_cmds::potential_choices(p))).unwrap_or_default();
+            let mut p = Prompt::new(format!("Potential for new wires [{}]", names.join("/")), Accept::TEXT);
+            p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
+            return p;
+        }
         match self.points.last() {
-            None => Prompt::new("Specify first point of wire", Accept::POINT),
+            None => {
+                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential"]);
+                p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
+                p
+            }
             Some(last) => Prompt::new("Specify next point", Accept::POINT).kw(&["Undo"]).base(v2(*last)),
         }
     }
@@ -422,7 +482,20 @@ impl Interactive for Wire {
     }
     /// The attach ring and name of a captured terminal; a dot on a first point that attaches.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
-        let mut out = capture_at(s, cursor).map(|c| capture_preview(s, &c, ATTACHED_ACI)).unwrap_or_default();
+        let captured = capture_at(s, cursor);
+        let mut out = captured.as_ref().map(|c| capture_preview(s, c, ATTACHED_ACI)).unwrap_or_default();
+        // An end on another wire's interior gets a junction (design 022 §3.1): the ring says so.
+        if captured.is_none()
+            && in_range(cursor)
+            && let Some(px) = pixel(s)
+        {
+            let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE);
+            let on = read(s, |p, page| Ok(crate::wires::wire_at(p.ledger.document(), page, pt(cursor), tol, None)));
+            if let Ok(Some(on)) = on {
+                out.push(preview_entity(s, ring_kind(on.at, RING_PX, px), ATTACHED_ACI));
+                out.push(preview_text(s, on.at, px, "junction".into(), ATTACHED_ACI));
+            }
+        }
         if let (true, Some(first), Some(px)) = (self.first_on_terminal, self.points.first(), pixel(s)) {
             out.extend([4.0, 2.0].map(|d| preview_entity(s, ring_kind(*first, d, px), ATTACHED_ACI)));
         }
@@ -894,6 +967,7 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             Some(Subject::Conductor(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
             _ => Err(NOT_A_CABLE),
         },
+        Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
         Mapped::Marker(..) | Mapped::Tag(_) => Err(NOT_A_CABLE),
     }
 }

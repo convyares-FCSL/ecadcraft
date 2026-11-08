@@ -139,7 +139,7 @@ fn the_interactive_buttons_start_their_prompts() {
         // No component on the page: no number is promised (fix round 2, N3).
         ("Add Connection Point", "addterminal", "Specify point for a connection point on a component or [Name]:"),
         ("Place Symbol", "place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
-        ("Wire", "wire", "Specify first point of wire:"),
+        ("Wire", "wire", "Specify first point of wire or [Potential] <auto>:"),
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
         ("Cable Slash", "cableslash", "Specify first point of cable slash:"),

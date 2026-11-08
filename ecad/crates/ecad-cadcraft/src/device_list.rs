@@ -97,6 +97,10 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
 /// is drawn nowhere).
 pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
     let comp = doc.components.get(&c)?;
+    // Junctions and continuations are not devices (design 022 §3.1).
+    if comp.properties.contains_key(ecad_model::connectivity::KIND) {
+        return None;
+    }
     let prefix = match comp.properties.get(ecad_model::tag::TAG_KEY) {
         Some(t) => Some(ecad_model::tag::parse(t).map_or_else(|| ecad_model::tag::key(t), |(p, _)| p)),
         None if doc.representations_of(Subject::Component(c)).next().is_none() => return None,
@@ -165,6 +169,8 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .components
         .iter()
         .filter(|(_, c)| !c.properties.contains_key(ecad_model::tag::TAG_KEY))
+        // Junctions and continuations are not devices (design 022 §3.1).
+        .filter(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::KIND))
         .map(|(id, _)| *id)
         .filter(|id| doc.representations_of(Subject::Component(*id)).next().is_some());
     tagged

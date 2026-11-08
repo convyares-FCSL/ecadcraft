@@ -465,7 +465,8 @@ fn the_quick_start_trial_runs_headless() {
     assert!(t.pending_close().is_none() && t.cad.session.docs.is_empty() && t.project_open());
     t.show_page(p2).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1);
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), 1, "page 2's wire is drawn again");
+    // The wire and its label (brief 022).
+    assert_eq!(t.cad.session.doc().unwrap().model.len(), 2, "page 2's wire is drawn again");
     t.show_page(page).unwrap();
     // 7. Save, close and reopen: connectivity, IDs and history survive. The guide's `~/` path,
     // under a temporary home folder (on Linux the default folder is created by this save; on

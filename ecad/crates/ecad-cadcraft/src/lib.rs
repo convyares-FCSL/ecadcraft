@@ -38,6 +38,7 @@
 )]
 
 mod access;
+pub mod checks;
 pub mod commands;
 pub mod convert;
 pub mod debug;
@@ -58,6 +59,8 @@ mod translate;
 pub mod translate_oracle;
 pub mod verify;
 pub mod views;
+mod wire_cmds;
+pub mod wires;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use file::{

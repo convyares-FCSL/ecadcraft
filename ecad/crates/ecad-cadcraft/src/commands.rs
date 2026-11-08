@@ -42,7 +42,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .interactive(interact::addterminal)
             .noundo(),
         CommandSpec::new("wire", "Wire", run_wire)
-            .params("{points: [[x,y], …]} (ends on connection points attach)")
+            .params(
+                "{points: [[x,y], …], potential?: string, junction?: bool (true)} (ends on connection points attach; an end on another wire adds a junction there)",
+            )
             .interactive(interact::wire)
             .noundo(),
         CommandSpec::new("connect", "Connect", run_connect)
@@ -125,6 +127,37 @@ end's spine; null: the middle)",
             .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
             .interactive(interact::devicedelete)
             .noundo(),
+        CommandSpec::new("nets", "List Nets", crate::wire_cmds::run_nets)
+            .params("{page?: id, number?, conductor?: id, terminal?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
+            .noundo(),
+        CommandSpec::new("net", "Show Net", crate::wire_cmds::run_net)
+            .params("{conductor: id} | {terminal: id} | {number} (read only)")
+            .noundo(),
+        CommandSpec::new("wirenumber", "Fix Wire Number", crate::wire_cmds::run_wirenumber)
+            .params(
+                "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} (fixes the net's number; null releases it; a number another net uses needs `conflict`)",
+            )
+            .interactive(interact::wirenumber)
+            .noundo(),
+        CommandSpec::new("potential", "Set Potential", crate::wire_cmds::run_potential)
+            .params("{conductor: id, value: string|null} (the potential of the whole net)")
+            .noundo(),
+        CommandSpec::new("wiresettings", "Wire Settings", crate::wire_cmds::run_wiresettings)
+            .params(
+                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered, colour, cross_section}]} (no parameters reads)",
+            )
+            .noundo(),
+        CommandSpec::new("renumberwires", "Renumber Wires", crate::wire_cmds::run_renumberwires)
+            .params("{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)")
+            .interactive(interact::renumberwires)
+            .noundo(),
+        CommandSpec::new("junction", "Junction", crate::wire_cmds::run_junction)
+            .params("{at: [x,y]} (a junction on the wire there, which is split at it)")
+            .interactive(interact::junction)
+            .noundo(),
+        CommandSpec::new("checks", "Checks", crate::wire_cmds::run_checks)
+            .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
+            .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage).params("{title}").noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
         CommandSpec::new("renamepage", "Rename Page", run_renamepage).params("{page: id, title}").noundo(),
@@ -135,7 +168,7 @@ end's spine; null: the middle)",
     ]
 }
 
-fn err(m: impl Into<String>) -> EngineError {
+pub(crate) fn err(m: impl Into<String>) -> EngineError {
     EngineError::Other(m.into())
 }
 
@@ -173,7 +206,7 @@ pub(crate) fn with_any_page<R>(
 /// Refusal for edits on a page whose drawing could not be rebuilt (PROJ-02).
 pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";
 
-fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
+pub(crate) fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
     p.get(key)
         .and_then(Value::as_str)
         .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
@@ -183,7 +216,7 @@ fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
 
 /// An optional ID parameter: absent or `null` is `None`; anything else must be a valid hex ID, so a
 /// typo is an error rather than "not given".
-fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, String> {
+pub(crate) fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, String> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(_) => id(p, key).map(Some),
@@ -208,7 +241,7 @@ fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, St
 }
 
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
-fn opt_typed<'a, T>(
+pub(crate) fn opt_typed<'a, T>(
     p: &'a Value,
     key: &str,
     what: &str,
@@ -223,7 +256,7 @@ fn opt_typed<'a, T>(
 /// Most points one WIRE accepts.
 pub(crate) const MAX_WIRE_POINTS: usize = 10_000;
 
-fn point(v: &Value) -> Option<Pt> {
+pub(crate) fn point(v: &Value) -> Option<Pt> {
     let a = v.as_array()?;
     let (x, y) = (a.first()?.as_f64()?, a.get(1)?.as_f64()?);
     (x.is_finite() && y.is_finite()).then_some(Pt::new(x, y))
@@ -253,7 +286,7 @@ fn handles(s: &Session, p: &Value) -> Result<Vec<Handle>, String> {
         .collect()
 }
 
-fn plain_style(p: &Project) -> Style {
+pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
 }
 
@@ -349,15 +382,60 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     if pts.len() < 2 {
         return Err(err("`points` needs at least two [x,y] points"));
     }
+    // Brief 022: the wire's potential, and junctions where an end lands on another wire.
+    let potential = match params.get("potential") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.trim().eq_ignore_ascii_case("auto") => None,
+        Some(Value::String(v)) => ecad_model::wiring::valid_text("potential", Some(v)).map_err(err)?,
+        Some(_) => return Err(err("`potential` must be a string")),
+    };
+    let junction = match params.get("junction") {
+        None | Some(Value::Null) => true,
+        Some(v) => v.as_bool().ok_or_else(|| err("`junction` must be true or false"))?,
+    };
+    let mut pts = pts;
     with_project(s, |p, pg, page| {
         let (w, i, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+        let mut conductor = Conductor::default();
+        if let Some(v) = &potential {
+            conductor.properties.insert(ecad_model::wiring::POTENTIAL_KEY.into(), v.clone());
+        }
+        // Ends on the interior of another wire get a junction (design 022 §3.1, Q3).
+        let mut junction_ops = Vec::new();
+        let mut junctions = Vec::new();
+        let mut split: Vec<ConductorId> = Vec::new();
+        if junction {
+            let style = plain_style(p);
+            let doc = p.ledger.document();
+            let mut shown = ShownOnce::new(doc, page);
+            for (end, idx) in [(End::A, 0usize), (End::B, pts.len() - 1)] {
+                let Some(at) = pts.get(idx).copied() else { continue };
+                if shown.terminal_at(at, p.tolerance).is_some() {
+                    continue;
+                }
+                let Some(on) = crate::wires::wire_at(doc, page, at, crate::wires::ON_WIRE, None) else { continue };
+                if split.contains(&on.conductor) {
+                    continue;
+                }
+                let Ok(j) = crate::wires::plan_junction(doc, &mut p.ids, page, style.clone(), on) else { continue };
+                split.push(on.conductor);
+                if let Some(slot) = pts.get_mut(idx) {
+                    *slot = j.at;
+                }
+                junction_ops.extend(j.tagless.ops);
+                junction_ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(j.tagless.terminal) });
+                junctions.push(
+                    json!({"end": format!("{end:?}"), "junction": j.tagless.component.hex(), "at": [j.at.x, j.at.y]}),
+                );
+            }
+        }
         let item = Item {
             page,
             style: plain_style(p),
             kind: ItemKind::Primitive(Primitive::Polyline { vertices: pts.clone(), closed: false }),
         };
         let mut ops = vec![
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
+            Op::CreateConductor { id: w, conductor },
             Op::AddItem { id: i, item },
             Op::LinkRepresentation {
                 id: r,
@@ -381,8 +459,17 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
                 attached.push(json!({"end": format!("{end:?}"), "terminal": t.hex()}));
             }
         }
+        ops.extend(junction_ops);
         p.apply_edit(pg, "wire", "Wire", ops)?;
-        Ok(json!({"conductor": w.hex(), "item": i.hex(), "attached": attached}))
+        let doc = p.ledger.document();
+        let conn = doc.connectivity();
+        let number =
+            conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n));
+        let mut r = json!({"conductor": w.hex(), "item": i.hex(), "attached": attached, "potential": potential, "number": number});
+        if !junctions.is_empty() {
+            r["junctions"] = json!(junctions);
+        }
+        Ok(r)
     })
 }
 
@@ -542,6 +629,11 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     }
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
+        // Brief 022: numbering keys go through their commands; label values are checked.
+        let value = match crate::wire_cmds::setprop_rule(doc, object, &key, value.as_deref())? {
+            Some(v) => v,
+            None => value,
+        };
         let props = match object {
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
             ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),

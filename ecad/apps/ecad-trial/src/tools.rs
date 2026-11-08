@@ -322,6 +322,10 @@ impl Picked {
                         subjects.insert(r.subject);
                     }
                 }
+                // A conductor's label names its wire (brief 022).
+                Some(Mapped::Label(w)) => {
+                    subjects.insert(Subject::Conductor(w));
+                }
                 None => {}
             }
         }

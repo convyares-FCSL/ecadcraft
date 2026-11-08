@@ -34,6 +34,10 @@ pub const READ_COMMANDS: &[&str] = &[
     "symbols",
     "devices",
     "deviceprops",
+    // Nets, wire numbers and checks (brief 022): listing them reads the project.
+    "nets",
+    "net",
+    "checks",
 ];
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the

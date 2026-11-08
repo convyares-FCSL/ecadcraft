@@ -64,6 +64,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         None | Some(Value::Null) => false,
         Some(v) => v.as_bool().ok_or_else(|| err("`mirror` must be true or false"))?,
     };
+    // Brief 022: a junction or continuation is a tagless component of its own.
+    if starter.kind == crate::symbols::Kind::Tagless {
+        return crate::wire_cmds::place_tagless(s, params, starter, at, degrees, mirror);
+    }
     let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
     let tag = match params.get("tag") {
         None | Some(Value::Null) => None,
