@@ -65,13 +65,28 @@ work. Brief 010's values are millimetres: in an inch project they are divided by
 | `ecad.box-pad` | 0.5 × label height | Padding in the label box and the reference flag |
 | `ecad.ref-text-height` | 2.5 mm | Derived text of a cable reference (010) |
 | `ecad.ref-stub-spacing` | 5 mm | Spacing between continued wire stubs, and the gap between a reference point and its text (010) |
-| `ecad.column-width` | 40 mm | Column width of the fixed column grid (from x = 0) used by reference texts until drawing frames define columns (010) |
-| `ecad.preview-span` | 160 mm (4 × `ecad.column-width`) | Width of drawing the read-only preview shows when opened on a reference (016) |
+| `ecad.column-width` | 40 mm | **Retired by 019**: was the fixed column grid (from x = 0) of reference texts; columns now come from the page's sheet frame (019 §3.3) |
+| `ecad.preview-span` | 160 mm | Width of drawing the read-only preview shows when opened on a reference (016) |
 | `ecad.tag` | ACI 7 (ByLayer on `ECAD-TAGS`) | Device tag texts and terminal labels (018) |
 | `ecad.tag-height` | 3.5 mm | Device tag text beside each symbol (018) |
 | `ecad.term-label-height` | 2.0 mm | Terminal labels of a symbol (018) |
 | `ecad.tag-gap` | 2.0 mm | Gap between a symbol's box and its tag (018) |
 | `ecad.symbol-grid` | 5 mm | Terminal grid of the starter symbols; snap and grid spacing of ECAD pages (018) |
+
+## Sheet frame and title block (019)
+
+Drawn on the reserved layer `ECAD-FRAME`; sizes in millimetres (divided by 25.4 in an inch project).
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.frame` | ACI 7 (ByLayer on `ECAD-FRAME`) | Frame, grid labels, ticks, title-block lines and values |
+| `ecad.frame-label` | ACI 8 | Title-block box labels |
+| `ecad.sheet-edge` | ACI 8 | Paper edge line |
+| `ecad.frame-weight` | 0.50 mm (lineweight code 50) | Frame rectangle and the title block's top line |
+| `ecad.grid-label-height` | 3.0 mm (column labels), 3.5 mm (row labels) | Grid labels |
+| `ecad.tb-label-height` | 1.8 mm | Title-block box labels |
+| `ecad.tb-value-height` | 2.5 mm (3.5 project and page title, 5.0 rev, 7.0 page number) | Title-block values |
+| `ecad.revision-bar` | `cad.chrome_dark` fill, 3 px `cad.accent` left bar | Read-only revision bar in the Project panel |
 
 ## Line weights of computed drawing
 
