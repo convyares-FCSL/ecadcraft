@@ -3,7 +3,9 @@
 //! Stored intent (components, terminals, conductors, cables, definitions) and drawing content
 //! (pages, layers, items, representations) live here. Derived results do not (see [`crate::derive`]).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+
+use crate::index::{Index, referrers};
 
 use serde::{Deserialize, Serialize};
 
@@ -111,7 +113,7 @@ impl Primitive {
         }
     }
 
-    fn is_finite(&self) -> bool {
+    pub(crate) fn is_finite(&self) -> bool {
         match self {
             Primitive::Line { a, b } => a.is_finite() && b.is_finite(),
             Primitive::Polyline { vertices, .. } => vertices.iter().all(|p| p.is_finite()),
@@ -331,9 +333,16 @@ pub struct Definition {
 ///
 /// # Semantics
 /// Maps are ordered by ID so iteration, serialisation and comparison are deterministic.
-/// [`Document::check`] verifies every invariant; [`crate::ledger::Ledger`] runs it after each
-/// transaction so an invalid state is never committed.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// [`Document::check`] verifies every invariant and [`Document::check_touched`] those a change
+/// could have affected; [`crate::ledger::Ledger`] runs the scoped check after each transaction so
+/// an invalid state is never committed (see [`crate::invariant`]).
+///
+/// The document also keeps reverse indexes (the private `index` module) for queries such as
+/// [`Document::cables_of`]. They are derived: not serialised, not compared by `==`, and kept up
+/// to date by [`crate::Op::apply`]. Code that edits the public maps directly must call
+/// [`Document::rebuild_index`] before querying.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "DocumentData")]
 pub struct Document {
     pub pages: BTreeMap<PageId, Page>,
     pub page_order: Vec<PageId>,
@@ -348,180 +357,141 @@ pub struct Document {
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
     pub versions: BTreeMap<String, u64>,
+    /// Derived reverse indexes; never serialised.
+    #[serde(skip)]
+    pub(crate) index: Index,
+}
+
+/// The serialised form of [`Document`]: its stored fields, without the derived index.
+#[derive(Deserialize)]
+struct DocumentData {
+    pages: BTreeMap<PageId, Page>,
+    page_order: Vec<PageId>,
+    layers: BTreeMap<LayerId, Layer>,
+    items: BTreeMap<ItemId, Item>,
+    components: BTreeMap<ComponentId, Component>,
+    terminals: BTreeMap<TerminalId, Terminal>,
+    representations: BTreeMap<RepresentationId, Representation>,
+    conductors: BTreeMap<ConductorId, Conductor>,
+    cables: BTreeMap<CableId, Cable>,
+    definitions: BTreeMap<DefinitionId, Definition>,
+    settings: ProjectSettings,
+    versions: BTreeMap<String, u64>,
+}
+
+impl From<DocumentData> for Document {
+    fn from(d: DocumentData) -> Self {
+        let DocumentData {
+            pages,
+            page_order,
+            layers,
+            items,
+            components,
+            terminals,
+            representations,
+            conductors,
+            cables,
+            definitions,
+            settings,
+            versions,
+        } = d;
+        let mut doc = Document {
+            pages,
+            page_order,
+            layers,
+            items,
+            components,
+            terminals,
+            representations,
+            conductors,
+            cables,
+            definitions,
+            settings,
+            versions,
+            index: Index::default(),
+        };
+        doc.rebuild_index();
+        doc
+    }
+}
+
+/// Documents are equal when their stored objects are equal; the derived index is not compared.
+impl PartialEq for Document {
+    fn eq(&self, other: &Self) -> bool {
+        let Document {
+            pages,
+            page_order,
+            layers,
+            items,
+            components,
+            terminals,
+            representations,
+            conductors,
+            cables,
+            definitions,
+            settings,
+            versions,
+            index: _,
+        } = self;
+        *pages == other.pages
+            && *page_order == other.page_order
+            && *layers == other.layers
+            && *items == other.items
+            && *components == other.components
+            && *terminals == other.terminals
+            && *representations == other.representations
+            && *conductors == other.conductors
+            && *cables == other.cables
+            && *definitions == other.definitions
+            && *settings == other.settings
+            && *versions == other.versions
+    }
 }
 
 impl Document {
-    /// The representation an item belongs to, if any (DOC-05 allows at most one).
-    pub fn representation_of_item(&self, item: ItemId) -> Option<(RepresentationId, &Representation)> {
-        self.representations.iter().find(|(_, r)| r.items.contains(&item)).map(|(id, r)| (*id, r))
+    /// Recompute the reverse indexes from the stored objects.
+    ///
+    /// # Semantics
+    /// Needed only after changing the public maps directly; [`crate::Op::apply`] keeps the index
+    /// current on its own.
+    pub fn rebuild_index(&mut self) {
+        self.index = Index::build(self);
     }
 
-    /// Representations of `subject`.
+    /// Whether the kept index equals one rebuilt from the stored objects.
+    ///
+    /// # Errors
+    /// [`ModelError::Invariant`] when the index is stale.
+    pub fn check_index(&self) -> Result<()> {
+        if self.index == Index::build(self) {
+            Ok(())
+        } else {
+            Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()))
+        }
+    }
+
+    /// The representation an item belongs to, if any (DOC-05 allows at most one).
+    pub fn representation_of_item(&self, item: ItemId) -> Option<(RepresentationId, &Representation)> {
+        referrers(&self.index.item_reps, &item).find_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// Representations of `subject`, in ID order.
     pub fn representations_of(&self, subject: Subject) -> impl Iterator<Item = (RepresentationId, &Representation)> {
-        self.representations.iter().filter(move |(_, r)| r.subject == subject).map(|(id, r)| (*id, r))
+        referrers(&self.index.subject_reps, &subject).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
 
     /// Terminals of `component`, in ID order.
     pub fn terminals_of(&self, component: ComponentId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
-        self.terminals.iter().filter(move |(_, t)| t.component == component).map(|(id, t)| (*id, t))
+        referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
-    /// Conductor ends attached to `terminal`.
+    /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
     pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
-        let mut out = Vec::new();
-        for (id, c) in &self.conductors {
-            for end in End::BOTH {
-                if c.end(end) == Some(terminal) {
-                    out.push((*id, end));
-                }
-            }
-        }
-        out
+        referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
-    /// Cables `conductor` is a member of.
+    /// Cables `conductor` is a member of, in ID order.
     pub fn cables_of(&self, conductor: ConductorId) -> Vec<CableId> {
-        self.cables
-            .iter()
-            .filter(|(_, c)| c.members.iter().any(|m| m.conductor == conductor))
-            .map(|(id, _)| *id)
-            .collect()
-    }
-
-    /// Verify every invariant.
-    ///
-    /// # Errors
-    /// [`ModelError::Invariant`] naming the first violation found.
-    pub fn check(&self) -> Result<()> {
-        let bad = |m: String| Err(ModelError::Invariant(m));
-        let order: BTreeSet<_> = self.page_order.iter().collect();
-        if order.len() != self.page_order.len()
-            || order.len() != self.pages.len()
-            || !self.pages.keys().all(|p| order.contains(p))
-        {
-            return bad("page order does not list each page exactly once".into());
-        }
-        for (id, item) in &self.items {
-            if !self.pages.contains_key(&item.page) {
-                return bad(format!("item {id} is on a missing page"));
-            }
-            if !self.layers.contains_key(&item.style.layer) {
-                return bad(format!("item {id} uses a missing layer"));
-            }
-            match &item.kind {
-                ItemKind::Primitive(p) if !p.is_finite() => return bad(format!("item {id} has non-finite geometry")),
-                ItemKind::Symbol(s) if !self.definitions.contains_key(&s.definition) => {
-                    return bad(format!("item {id} places a missing definition"));
-                }
-                ItemKind::Symbol(s) if !s.placement.is_valid() => {
-                    return bad(format!("item {id} has an invalid placement"));
-                }
-                _ => {}
-            }
-        }
-        for (id, d) in &self.definitions {
-            if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
-                return bad(format!("definition {id} has non-finite geometry"));
-            }
-            let keys: BTreeSet<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
-            if keys.len() != d.terminals.len() {
-                return bad(format!("definition {id} repeats a terminal key"));
-            }
-        }
-        for (id, t) in &self.terminals {
-            if !self.components.contains_key(&t.component) {
-                return bad(format!("terminal {id} belongs to a missing component"));
-            }
-        }
-        for (id, c) in &self.components {
-            if let Some(d) = c.definition
-                && !self.definitions.contains_key(&d)
-            {
-                return bad(format!("component {id} uses a missing definition"));
-            }
-        }
-        let mut owner: BTreeMap<ItemId, RepresentationId> = BTreeMap::new();
-        for (id, r) in &self.representations {
-            let subject_exists = match r.subject {
-                Subject::Component(c) => self.components.contains_key(&c),
-                Subject::Conductor(c) => self.conductors.contains_key(&c),
-                Subject::Cable(c) => self.cables.contains_key(&c),
-            };
-            if !subject_exists {
-                return bad(format!("representation {id} depicts a missing subject"));
-            }
-            if !self.pages.contains_key(&r.page) {
-                return bad(format!("representation {id} is on a missing page"));
-            }
-            for item in &r.items {
-                let Some(it) = self.items.get(item) else {
-                    return bad(format!("representation {id} lists missing item {item}"));
-                };
-                if it.page != r.page {
-                    return bad(format!("representation {id} lists item {item} from another page"));
-                }
-                if let Some(other) = owner.insert(*item, *id) {
-                    return bad(format!("item {item} belongs to representations {other} and {id} (DOC-05)"));
-                }
-            }
-            match r.form {
-                Form::Symbol => {
-                    let instance = match r.items.as_slice() {
-                        [only] if r.connection_points.is_empty() => match self.items.get(only).map(|i| &i.kind) {
-                            Some(ItemKind::Symbol(inst)) => Some(inst),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    let Some(inst) = instance else {
-                        return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
-                    };
-                    // The symbol shown must be the component's own definition.
-                    let Subject::Component(c) = r.subject else {
-                        return bad(format!("symbol representation {id} must depict a component"));
-                    };
-                    if self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
-                        return bad(format!(
-                            "symbol representation {id} shows a definition its component does not use"
-                        ));
-                    }
-                }
-                Form::Drawn => {
-                    if r.items.iter().filter_map(|i| self.items.get(i)).any(|i| matches!(i.kind, ItemKind::Symbol(_))) {
-                        return bad(format!("drawn representation {id} holds a symbol instance"));
-                    }
-                }
-            }
-            for (t, p) in &r.connection_points {
-                let Subject::Component(c) = r.subject else {
-                    return bad(format!("representation {id} of a non-component has connection points"));
-                };
-                if self.terminals.get(t).map(|t| t.component) != Some(c) {
-                    return bad(format!("representation {id} places terminal {t} of another component"));
-                }
-                if !p.is_finite() {
-                    return bad(format!("representation {id} has a non-finite connection point"));
-                }
-            }
-        }
-        for (id, c) in &self.conductors {
-            for t in c.ends.iter().flatten() {
-                if !self.terminals.contains_key(t) {
-                    return bad(format!("conductor {id} is attached to missing terminal {t}"));
-                }
-            }
-        }
-        for (id, c) in &self.cables {
-            let mut seen = BTreeSet::new();
-            for m in &c.members {
-                if !self.conductors.contains_key(&m.conductor) {
-                    return bad(format!("cable {id} lists missing conductor {}", m.conductor));
-                }
-                if !seen.insert(m.conductor) {
-                    return bad(format!("cable {id} lists conductor {} twice", m.conductor));
-                }
-            }
-        }
-        Ok(())
+        referrers(&self.index.conductor_cables, &conductor).collect()
     }
 }
