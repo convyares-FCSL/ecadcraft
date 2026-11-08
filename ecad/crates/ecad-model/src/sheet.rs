@@ -4,11 +4,12 @@
 //! # Semantics
 //! - A [`SheetSpec`] is stored in whole millimetres whatever the project's length unit; drawing
 //!   geometry divides by 25.4 in an inch project ([`unit_scale`]).
-//! - The model origin is the lower-left corner of the drawing area (owner, 2026-11-08). The sheet
-//!   edge runs from (−10, −50) to (W − 10, H − 50); the drawing area (the grid) from (0, 0) to
-//!   (W − 20, H − 57); the title block fills (0, −40) to (W − 20, 0) (design 019 §3.1).
-//! - Columns run left to right; **row 1 is the top row**. A point outside the area is clamped to
-//!   the nearest column and row, so a point in the title block is in the last row.
+//! - The model origin is the **page's bottom-left corner**, the paper edge (owner, 2026-11-08, fix
+//!   round): the paper runs from (0, 0) to (W, H); the frame from (10, 10) to (W − 10, H − 7).
+//!   Nothing assumes a title block or a bottom margin of any width.
+//! - The grid's zones span the **whole frame**, title-block area included: columns run left to
+//!   right from the frame's left edge, **row 1 is the top row**, counted down from the frame's top
+//!   edge. A point outside the frame is clamped to the nearest column and row.
 //! - The project's sheet is [`crate::ProjectSettings::sheet`]; a page may override it with its
 //!   `sheet` property ([`SHEET_KEY`]), a text spec ([`SheetSpec::parse`]).
 //!
@@ -261,14 +262,29 @@ impl Grid {
         Grid::new(sheet_of(doc, page), doc.settings.length_unit)
     }
 
-    /// Width of the drawing area (the frame), in drawing units.
+    /// The frame's left edge (the grid's first column starts here), in drawing units.
+    pub fn frame_left(&self) -> f64 {
+        MARGIN_MM * self.k
+    }
+
+    /// The frame's bottom edge, in drawing units.
+    pub fn frame_bottom(&self) -> f64 {
+        MARGIN_MM * self.k
+    }
+
+    /// The frame's top edge (row 1 starts here), in drawing units.
+    pub fn frame_top(&self) -> f64 {
+        (f64::from(self.spec.height) - TOP_MARGIN_MM) * self.k
+    }
+
+    /// Width of the frame (all columns), in drawing units.
     pub fn area_width(&self) -> f64 {
         (f64::from(self.spec.width) - 2.0 * MARGIN_MM) * self.k
     }
 
-    /// Height of the drawing area above the title block, in drawing units.
+    /// Height of the frame (all rows, title-block area included), in drawing units.
     pub fn area_height(&self) -> f64 {
-        (f64::from(self.spec.height) - MARGIN_MM - TOP_MARGIN_MM - TITLE_BLOCK_MM) * self.k
+        (f64::from(self.spec.height) - MARGIN_MM - TOP_MARGIN_MM) * self.k
     }
 
     /// Width of one column.
@@ -283,13 +299,13 @@ impl Grid {
 
     /// The 1-based column of `x`, clamped to the grid; `None` when `x` is not finite.
     pub fn column_of(&self, x: f64) -> Option<u32> {
-        index_of(x, self.column_width(), self.spec.columns)
+        index_of(x - self.frame_left(), self.column_width(), self.spec.columns)
     }
 
     /// The 1-based row of `y` (row 1 at the top), clamped to the grid; `None` when `y` is not
     /// finite.
     pub fn row_of(&self, y: f64) -> Option<u32> {
-        index_of(self.area_height() - y, self.row_height(), self.spec.rows)
+        index_of(self.frame_top() - y, self.row_height(), self.spec.rows)
     }
 
     /// The label of column `n`.
@@ -340,13 +356,15 @@ mod tests {
     #[test]
     fn the_a3_grid_places_points() {
         let g = Grid::new(SheetSpec::default(), LengthUnit::Millimetre);
-        assert_eq!((g.area_width(), g.area_height(), g.column_width(), g.row_height()), (400.0, 240.0, 50.0, 40.0));
-        assert_eq!(g.column_of(120.0), Some(3));
+        assert_eq!((g.area_width(), g.area_height(), g.column_width()), (400.0, 280.0, 50.0));
+        // Column C is x 110..160; row 1 is y 290 down to 243.3, row 6 reaches the frame's bottom.
+        assert_eq!(g.column_of(130.0), Some(3));
         assert_eq!(g.column_label(3), "C");
-        assert_eq!(g.column_of(-5.0), Some(1));
+        assert_eq!(g.column_of(5.0), Some(1));
         assert_eq!(g.column_of(1e9), Some(8));
-        assert_eq!(g.row_of(239.0), Some(1));
-        assert_eq!(g.row_of(85.0), Some(4));
+        assert_eq!(g.row_of(289.0), Some(1));
+        assert_eq!(g.row_of(120.0), Some(4));
+        assert_eq!(g.row_of(15.0), Some(6), "the title-block area is in the last row");
         assert_eq!(g.row_of(-20.0), Some(6));
         assert_eq!(g.row_label(4), "4");
         assert_eq!(g.column_of(f64::NAN), None);

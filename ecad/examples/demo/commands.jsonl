@@ -1,22 +1,23 @@
 // The ECAD demo project: a small, generic motor control panel (owner request, 2026-11-08).
 // Built by `cargo xtask demo` through the MCP `execute` tool, one command per line; see
 // ecad/apps/ecad-mcp/src/demo.rs for the format (`as` keeps a result, `$name.path` uses it).
-// Coordinates are millimetres on the 5 mm grid; terminal positions follow the starter symbols.
+// Coordinates are millimetres on the 5 mm grid from the paper's bottom-left corner (brief 019);
+// terminal positions follow the starter symbols.
 
 // ---------------------------------------------------------------- page 1: Supply
 {"command":"renamepage","params":{"page":"$page1","title":"Supply"}}
-{"command":"place","params":{"symbol":"terminal","at":[20,100],"tag":"X01"},"as":"x1"}
-{"command":"place","params":{"symbol":"terminal","at":[40,100],"tag":"X01"}}
-{"command":"place","params":{"symbol":"terminal","at":[60,100],"tag":"X01"}}
-{"command":"place","params":{"symbol":"mcb2","at":[20,70],"tag":"Q01"},"as":"q1"}
-{"command":"place","params":{"symbol":"psu","at":[30,35],"tag":"G01"},"as":"g1"}
-{"command":"wire","params":{"points":[[20,100],[20,80]]}}
-{"command":"wire","params":{"points":[[40,100],[40,90],[30,90],[30,80]]}}
-{"command":"wire","params":{"points":[[20,60],[20,50]]}}
-{"command":"wire","params":{"points":[[30,60],[30,50]]}}
-{"command":"wire","params":{"points":[[60,100],[60,55],[40,55],[40,50]]}}
-{"command":"wire","params":{"points":[[25,20],[25,5]]}}
-{"command":"wire","params":{"points":[[35,20],[35,5]]}}
+{"command":"place","params":{"symbol":"terminal","at":[30,150],"tag":"X01"},"as":"x1"}
+{"command":"place","params":{"symbol":"terminal","at":[50,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"terminal","at":[70,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"mcb2","at":[30,120],"tag":"Q01"},"as":"q1"}
+{"command":"place","params":{"symbol":"psu","at":[40,85],"tag":"G01"},"as":"g1"}
+{"command":"wire","params":{"points":[[30,150],[30,130]]}}
+{"command":"wire","params":{"points":[[50,150],[50,140],[40,140],[40,130]]}}
+{"command":"wire","params":{"points":[[30,110],[30,100]]}}
+{"command":"wire","params":{"points":[[40,110],[40,100]]}}
+{"command":"wire","params":{"points":[[70,150],[70,105],[50,105],[50,100]]}}
+{"command":"wire","params":{"points":[[35,70],[35,55]]}}
+{"command":"wire","params":{"points":[[45,70],[45,55]]}}
 {"command":"setprop","params":{"component":"$x1.component","key":"description","value":"Incoming supply L / N / PE"}}
 {"command":"setprop","params":{"component":"$q1.component","key":"description","value":"Main breaker"}}
 {"command":"setprop","params":{"component":"$q1.component","key":"maker","value":"Generic"}}
@@ -29,31 +30,31 @@
 // ---------------------------------------------------------------- page 2: Motor control
 {"command":"newpage","params":{"title":"Motor control"}}
 // Control circuit, top to bottom.
-{"command":"place","params":{"symbol":"mcb1","at":[20,110],"tag":"Q02"},"as":"q2"}
-{"command":"place","params":{"symbol":"pbnc","at":[20,80],"tag":"S01"},"as":"s1"}
-{"command":"place","params":{"symbol":"pbno","at":[20,50],"tag":"S02"},"as":"s2"}
-{"command":"place","params":{"symbol":"coil","at":[20,15],"tag":"K01"},"as":"k1"}
-{"command":"place","params":{"symbol":"no","at":[55,50],"tag":"K01"}}
-{"command":"place","params":{"symbol":"lamp","at":[75,15],"tag":"H01"},"as":"h1"}
-{"command":"wire","params":{"points":[[20,135],[20,120]]}}
-{"command":"wire","params":{"points":[[20,100],[20,90]]}}
-{"command":"wire","params":{"points":[[20,70],[20,60]]}}
-{"command":"wire","params":{"points":[[20,60],[55,60]]}}
-{"command":"wire","params":{"points":[[20,40],[55,40]]}}
-{"command":"wire","params":{"points":[[20,40],[20,25]]}}
-{"command":"wire","params":{"points":[[20,25],[75,25]]}}
-{"command":"wire","params":{"points":[[20,5],[75,5]]}}
-{"command":"wire","params":{"points":[[20,5],[20,-10]]}}
+{"command":"place","params":{"symbol":"mcb1","at":[30,160],"tag":"Q02"},"as":"q2"}
+{"command":"place","params":{"symbol":"pbnc","at":[30,130],"tag":"S01"},"as":"s1"}
+{"command":"place","params":{"symbol":"pbno","at":[30,100],"tag":"S02"},"as":"s2"}
+{"command":"place","params":{"symbol":"coil","at":[30,65],"tag":"K01"},"as":"k1"}
+{"command":"place","params":{"symbol":"no","at":[65,100],"tag":"K01"}}
+{"command":"place","params":{"symbol":"lamp","at":[85,65],"tag":"H01"},"as":"h1"}
+{"command":"wire","params":{"points":[[30,185],[30,170]]}}
+{"command":"wire","params":{"points":[[30,150],[30,140]]}}
+{"command":"wire","params":{"points":[[30,120],[30,110]]}}
+{"command":"wire","params":{"points":[[30,110],[65,110]]}}
+{"command":"wire","params":{"points":[[30,90],[65,90]]}}
+{"command":"wire","params":{"points":[[30,90],[30,75]]}}
+{"command":"wire","params":{"points":[[30,75],[85,75]]}}
+{"command":"wire","params":{"points":[[30,55],[85,55]]}}
+{"command":"wire","params":{"points":[[30,55],[30,40]]}}
 // Power circuit: the contactor's main contacts feed the motor on page 3 through cable -W01.
-{"command":"place","params":{"symbol":"power3","at":[120,60],"tag":"K01"}}
-{"command":"wire","params":{"points":[[110,100],[110,70]]}}
+{"command":"place","params":{"symbol":"power3","at":[130,110],"tag":"K01"}}
+{"command":"wire","params":{"points":[[120,150],[120,120]]}}
+{"command":"wire","params":{"points":[[130,150],[130,120]]}}
+{"command":"wire","params":{"points":[[140,150],[140,120]]}}
 {"command":"wire","params":{"points":[[120,100],[120,70]]}}
 {"command":"wire","params":{"points":[[130,100],[130,70]]}}
-{"command":"wire","params":{"points":[[110,50],[110,20]]}}
-{"command":"wire","params":{"points":[[120,50],[120,20]]}}
-{"command":"wire","params":{"points":[[130,50],[130,20]]}}
-{"command":"cableslash","params":{"from":[105,32],"to":[135,38],"tag":"-W01"},"as":"w1"}
-{"command":"cableref","params":{"cable":"$w1.cable","at":[120,15]}}
+{"command":"wire","params":{"points":[[140,100],[140,70]]}}
+{"command":"cableslash","params":{"from":[115,82],"to":[145,88],"tag":"-W01"},"as":"w1"}
+{"command":"cableref","params":{"cable":"$w1.cable","at":[130,65]}}
 {"command":"setprop","params":{"component":"$q2.component","key":"description","value":"Control circuit breaker"}}
 {"command":"setprop","params":{"component":"$s1.component","key":"description","value":"Stop"}}
 {"command":"setprop","params":{"component":"$s2.component","key":"description","value":"Start"}}
@@ -65,23 +66,23 @@
 
 // ---------------------------------------------------------------- page 3: Field
 {"command":"newpage","params":{"title":"Field"}}
-{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[120,100],"toward":[120,80]},"as":"cont"}
-{"command":"place","params":{"symbol":"terminal","at":[100,60],"tag":"X02"},"as":"x2a"}
-{"command":"place","params":{"symbol":"terminal","at":[120,60],"tag":"X02"},"as":"x2b"}
-{"command":"place","params":{"symbol":"terminal","at":[140,60],"tag":"X02"},"as":"x2c"}
+{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]},"as":"cont"}
+{"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
+{"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}
+{"command":"place","params":{"symbol":"terminal","at":[150,110],"tag":"X02"},"as":"x2c"}
 {"command":"connect","params":{"conductor":"$cont.routes.0.conductor","end":"$cont.routes.0.free_end","terminal":"$x2a.terminals.0.terminal"}}
 {"command":"connect","params":{"conductor":"$cont.routes.1.conductor","end":"$cont.routes.1.free_end","terminal":"$x2b.terminals.0.terminal"}}
 {"command":"connect","params":{"conductor":"$cont.routes.2.conductor","end":"$cont.routes.2.free_end","terminal":"$x2c.terminals.0.terminal"}}
-{"command":"place","params":{"symbol":"motor3","at":[120,25],"tag":"M01"},"as":"m1"}
-{"command":"wire","params":{"points":[[100,60],[100,50],[110,50],[110,40]]}}
-{"command":"wire","params":{"points":[[120,60],[120,40]]}}
-{"command":"wire","params":{"points":[[140,60],[140,50],[130,50],[130,40]]}}
+{"command":"place","params":{"symbol":"motor3","at":[130,75],"tag":"M01"},"as":"m1"}
+{"command":"wire","params":{"points":[[110,110],[110,100],[120,100],[120,90]]}}
+{"command":"wire","params":{"points":[[130,110],[130,90]]}}
+{"command":"wire","params":{"points":[[150,110],[150,100],[140,100],[140,90]]}}
 // The contactor's NC contact, on this page, shows "pump stopped".
-{"command":"place","params":{"symbol":"nc","at":[40,60],"tag":"K01"}}
-{"command":"place","params":{"symbol":"lamp","at":[40,25],"tag":"H02"},"as":"h2"}
-{"command":"wire","params":{"points":[[40,85],[40,70]]}}
-{"command":"wire","params":{"points":[[40,50],[40,35]]}}
-{"command":"wire","params":{"points":[[40,15],[40,0]]}}
+{"command":"place","params":{"symbol":"nc","at":[50,110],"tag":"K01"}}
+{"command":"place","params":{"symbol":"lamp","at":[50,75],"tag":"H02"},"as":"h2"}
+{"command":"wire","params":{"points":[[50,135],[50,120]]}}
+{"command":"wire","params":{"points":[[50,100],[50,85]]}}
+{"command":"wire","params":{"points":[[50,65],[50,50]]}}
 {"command":"setprop","params":{"component":"$x2a.component","key":"description","value":"Motor terminals"}}
 {"command":"setprop","params":{"component":"$x2a.component","key":"location","value":"FIELD"}}
 {"command":"setprop","params":{"component":"$m1.component","key":"description","value":"Pump motor 0.75 kW"}}

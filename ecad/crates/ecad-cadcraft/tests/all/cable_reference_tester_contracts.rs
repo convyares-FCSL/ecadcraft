@@ -375,7 +375,7 @@ fn ac2_moving_a_reference_point_changes_the_other_ends_column() {
     let point = r.h.doc().representations[&rid].items[0];
     let hp = r.h.handle_of(r.supply, point);
     // (delta, expected Field text after it)
-    for (dx, want) in [(40.0, "1-C-6"), (-200.0, "1-A-6"), (1e6, "1-H-6")] {
+    for (dx, want) in [(40.0, "1-B-6"), (-200.0, "1-A-6"), (1e6, "1-H-6")] {
         let head = r.h.head();
         r.h.run("move", json!({"handles": [hp.hex()], "delta": [dx, 0]})).unwrap();
         assert_eq!(r.h.head(), head + 1);

@@ -77,8 +77,9 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
             _ => None,
         })
         .collect();
-    assert!(rects.iter().any(|r| r.first() == Some(&(-10.0, -50.0)) && r.get(2) == Some(&(410.0, 247.0))), "{rects:?}");
-    assert!(rects.iter().any(|r| r.first() == Some(&(0.0, -40.0)) && r.get(2) == Some(&(400.0, 240.0))), "{rects:?}");
+    // The paper's bottom-left corner is the model origin (owner, fix round of 2026-11-08).
+    assert!(rects.iter().any(|r| r.first() == Some(&(0.0, 0.0)) && r.get(2) == Some(&(420.0, 297.0))), "{rects:?}");
+    assert!(rects.iter().any(|r| r.first() == Some(&(10.0, 10.0)) && r.get(2) == Some(&(410.0, 290.0))), "{rects:?}");
     // Zoom extents fits the sheet edge.
     let _ = h.s.zoom_extents();
     let v = h.s.state().unwrap().view();
@@ -98,8 +99,8 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     h.check();
 }
 
-/// Check B: a reference's column and row are the frame's, on both ends; moving the point moves
-/// the other end's text.
+/// Check B: a reference's column and row are the frame's (zones over the whole frame, counted
+/// from the top-left), on both ends; moving the point moves the other end's text.
 #[test]
 fn references_name_the_frames_column_and_row() {
     let mut s = fixture();

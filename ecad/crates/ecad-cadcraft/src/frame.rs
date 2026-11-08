@@ -184,14 +184,19 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
     }
 }
 
+/// Draws in the frame's own coordinates (origin at the top-left corner of the title block, the
+/// layout of design 019 §4), placed so the paper's bottom-left corner is the model origin.
 struct Draw {
     k: f64,
     out: Vec<Part>,
 }
 
+/// Where the frame's own origin sits on the paper, in millimetres.
+const OFFSET: (f64, f64) = (MARGIN_MM, MARGIN_MM + TITLE_BLOCK_MM);
+
 impl Draw {
     fn p(&self, x: f64, y: f64) -> Pt {
-        Pt::new(x * self.k, y * self.k)
+        Pt::new((x + OFFSET.0) * self.k, (y + OFFSET.1) * self.k)
     }
     fn line(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
@@ -266,7 +271,9 @@ pub fn parts(input: &FrameInput) -> Vec<Part> {
     let grid = Grid::new(s, LengthUnit::Millimetre);
     let (w, h) = (f64::from(s.width), f64::from(s.height));
     let a = grid.area_width();
-    let top = grid.area_height();
+    // The frame's top edge and bottom edge in the frame's own coordinates.
+    let top = h - MARGIN_MM - TOP_MARGIN_MM - TITLE_BLOCK_MM;
+    let bottom = -TITLE_BLOCK_MM;
     let mut d = Draw { k, out: Vec::new() };
     let ml = (HAlign::Middle, VAlign::Middle);
     let left = (HAlign::Left, VAlign::Baseline);
@@ -280,14 +287,18 @@ pub fn parts(input: &FrameInput) -> Vec<Part> {
     );
     d.rect((0.0, -TITLE_BLOCK_MM), (a, top), FRAME_WEIGHT, None);
     d.line((0.0, 0.0), (a, 0.0), FRAME_WEIGHT, None);
-    // Grid: ticks and labels.
+    // Grid: zones over the whole frame (title-block area included), counted from the top-left;
+    // ticks and labels on all four sides.
     let (cw, rh) = (grid.column_width(), grid.row_height());
     for c in 1..=s.columns {
         let x0 = f64::from(c - 1) * cw;
         if c > 1 {
             d.line((x0, top), (x0, top + 3.0), THIN_WEIGHT, None);
+            d.line((x0, bottom), (x0, bottom - 3.0), THIN_WEIGHT, None);
         }
-        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &grid.column_label(c), ml, None, None);
+        let label = grid.column_label(c);
+        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
+        d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
     }
     for r in 1..=s.rows {
         let y1 = top - f64::from(r - 1) * rh;

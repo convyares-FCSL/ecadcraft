@@ -722,7 +722,7 @@ fn hostile_documents_derive_without_panicking() {
     }
     let refs = cable_references(&doc);
     assert_eq!(refs.len(), 5);
-    assert_eq!(refs[0].text, "1-B-6 1-C-6 1-D-6 +1");
+    assert_eq!(refs[0].text, "1-A-6 1-B-6 1-C-6 +1");
     let lost = refs.iter().find(|r| r.at.is_none()).unwrap();
     assert_eq!(lost.locator(), "?");
     assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
