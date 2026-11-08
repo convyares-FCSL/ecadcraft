@@ -34,10 +34,9 @@ use ecad_model::{
 };
 use ecad_store::{Medium, MemoryMedium};
 
-/// The role brief 010 gives a cable reference end (`ecad_model::derive::REFERENCE_ROLE` once that
-/// brief is merged).
-// TODO(brief 010, PR #28): use `ecad_model::derive::REFERENCE_ROLE` once that PR is merged.
-pub const REFERENCE_ROLE: &str = "reference";
+/// The role brief 010 gives a cable reference end: its own constant, so the generated references
+/// are the ones `ecad_model::derive::cable_references` derives.
+pub use ecad_model::derive::REFERENCE_ROLE;
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
 /// What the file header names as its writer.

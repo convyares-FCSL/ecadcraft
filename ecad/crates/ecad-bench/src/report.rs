@@ -64,8 +64,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         ));
     }
     out.push_str(&format!(
-        "Median of {runs} runs each; generation not timed. xref (cable references) is measured once brief \
-         010 is merged. Peak memory is not measured.\n"
+        "Median of {runs} runs each; generation not timed. xref is brief 010's cable reference derivation \
+         on the opened document. Peak memory is not measured.\n"
     ));
     out
 }

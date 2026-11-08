@@ -762,7 +762,7 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | file MB, txs | The file's size and its number of transactions. |
 | open ms | Open the file as the app does: take the writer lock, read it, check every record and replay the history (no drawing). |
 | derive ms | Work out the **nets** of the opened project (cable references are the next column). |
-| xref ms | Work out the cable references. Shown as `—` (`null` in the JSON) until brief 010 is merged. |
+| xref ms | Work out the cable references (brief 010's derivation, `ecad_model::derive::cable_references`) on the opened project. |
 | 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
 | edit ms | Record one new wire in the open project (one transaction, checked as any edit is). |
 | save ms | Save that wire (append one transaction and flush). |
