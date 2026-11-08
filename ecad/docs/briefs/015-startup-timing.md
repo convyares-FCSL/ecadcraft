@@ -1,6 +1,6 @@
 # Brief 015: Where the trial's start-up time goes
 
-Status: **Draft** (for owner approval; drafted at the owner's request, 2026-11-08)
+Status: Approved (owner, 2026-11-08)
 Branch: `ecad/startup-timing`
 Designer: no (no visible change unless switched on) · Size: S
 Depends on: nothing (branched from `dev` at `bb86e05`).
