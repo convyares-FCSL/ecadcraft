@@ -694,17 +694,21 @@ Any letters are accepted (`-SR01`, `-TB01`, `-N01`): IEC 81346 is the default, n
 Open the **ECAD** tab first.
 
 1. **A coil.** Click **Find Symbol**, type `coil` and click the **Contactor / relay coil** row.
-   Click on the page.
+   The window asks `Place Contactor / relay coil as:`; click **New device (-K01)**. Click on the
+   page (move the window aside if it covers the spot).
    Expected: `Placed -K01 (Contactor / relay coil) with terminals A1, A2.`; `-K01` left of the
-   coil and `A1`, `A2` beside its terminals. Press Enter.
-2. **A contact of the same device.** In the Find Symbol window, type `cont` and click the
-   **NO contact** row. Type `D` and Enter; the prompt offers `<-K01>`: press Enter. The prompt
-   now says `joins -K01 as 13/14`. Click to the right of the coil, then press Enter.
+   coil and `A1`, `A2` beside its terminals. Each further click places another coil; press Enter
+   or Esc when done.
+2. **A contact of the same device, by mouse only.** In the Find Symbol window type `cont` and
+   click the **NO contact** row. The window lists **New device (-K02)** first, then the devices
+   the contact can join, those with a coil first: click the `-K01` line (it shows `13/14`). The
+   prompt now says `joins -K01 as 13/14`. Click to the right of the coil.
    Expected: `Added NO contact 13/14 to -K01 (now on page 1).`; the contact shows `-K01` and
-   `13`/`14`.
+   `13`/`14`. (Typing `D` at the prompt still works: the default device is shown as an option you
+   can click, `[-K01/New]`.)
 3. **Another page.** Make page 2 (**+** in the PROJECT panel, or **New Page**). In
-   Find Symbol type `-K01` and click the `-K01` row; at `Enter symbol to add to -K01` type `nc`
-   and Enter, then click on page 2 and press Enter.
+   Find Symbol type `-K01` and click the `-K01` row: the window lists what `-K01` can take, with
+   the next labels. Click **NC contact … 21/22**, then click on page 2.
    Expected: `21`/`22` on page 2, still `-K01`.
 4. **Hover** the contact on page 2. Expected: `Device -K01   Contactor / relay coil`, then
    `This symbol: NC contact 21/22, page 2 …` and an `Also:` line naming the coil and the NO

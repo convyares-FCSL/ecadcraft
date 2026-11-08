@@ -957,9 +957,38 @@ impl Trial {
         let rows = self.search.rows_for(head, || {
             project.as_ref().and_then(|p| p.read(session, |p, _| search::rows(Some(p.ledger.document()), &q)).ok())
         });
-        if let Some(pick) = self.search.show(ctx, &rows) {
-            let _ = self.start_pick(pick);
+        let choices = match &self.search.picked {
+            Some(pick) => {
+                project.as_ref().and_then(|p| p.read(session, |p, _| search::choices(p, pick)).ok()).unwrap_or_default()
+            }
+            None => Vec::new(),
+        };
+        if let Some(choice) = self.search.show(ctx, &rows, &choices) {
+            let _ = self.start_choice(&choice);
         }
+    }
+
+    /// Start Place Symbol for a choice of the search window's second step: the symbol, and the
+    /// device it joins (as `D` and its tag would), so the next click on the page places it.
+    ///
+    /// # Errors
+    /// The command's refusal.
+    pub fn start_choice(&mut self, choice: &search::Choice) -> Result<(), String> {
+        self.start_pick(search::Pick::Symbol(choice.symbol))?;
+        let r = match &choice.device {
+            Some(tag) => self
+                .cad
+                .session
+                .input(cadcraft_engine::Input::Keyword("Device".into()))
+                .and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(tag.clone())))
+                .map_err(|e| e.to_string()),
+            None => Ok(()),
+        };
+        if let Err(e) = &r {
+            self.cad.session.echo(e.clone());
+        }
+        self.after_logic();
+        r
     }
 
     /// Start Place Symbol for a search row: a symbol goes to the insertion point, a device asks

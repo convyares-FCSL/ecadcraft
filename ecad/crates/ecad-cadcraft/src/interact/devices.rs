@@ -325,6 +325,8 @@ impl Place {
                     self.stage = Stage::Point;
                     Ok(Step::Continue)
                 }
+                // The default device's keyword, clicked or typed: the same as typing its tag.
+                Input::Keyword(k) => self.step(s, Input::Text(k)),
                 Input::Enter => {
                     self.join = self.default_device(s);
                     self.stage = Stage::Point;
@@ -443,7 +445,10 @@ impl Interactive for Place {
                     .default_device(s)
                     .and_then(|c| read(s, |p, _| Ok(devices::tag_words(p.ledger.document(), c))).ok())
                     .unwrap_or_else(|| "New".into());
-                prompt("Enter device to join", Accept::TEXT, &["New"], Some(default))
+                // The default device is a keyword too, so a click on it answers (owner's trial,
+                // 2026-11-08: no Enter needed after a click).
+                let keywords: Vec<&str> = if default == "New" { vec!["New"] } else { vec![default.as_str(), "New"] };
+                prompt("Enter device to join", Accept::TEXT, &keywords, Some(default.clone()))
             }
             Stage::Tag => {
                 let auto = self.outcome(s).map(|(_, t, _)| t).filter(|_| self.join.is_none());

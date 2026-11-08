@@ -75,6 +75,12 @@ F4. It is about M in size, and 473 commits have built up so far.
   copy and paste between projects.
 - A separate parts catalogue (v0.1 keeps part data as component properties).
 - DWG import and `.wdp` adoption.
+- **PDF adoption with AI (owner idea, 2026-11-08).** Load an old project's PDF and, with the
+  user's own AI key, rebuild it as an ECAD project. The AI reads each page and proposes ops
+  through the same MCP commands agents use today (pages, devices and tags, wires, cables,
+  references). The result arrives as a proposal with a confidence review ("142 nets, 6
+  uncertain") that the user accepts, like DWG adoption. No key, no feature; nothing leaves the
+  machine except what the user's AI provider receives.
 - AI changes as proposals, and AI-assisted drafting beyond today's MCP.
 - Named versions beyond one revision, and compaction and checkpoints (stage 4).
 - The 010 look pass and the owner's QA notes from 2026-11-08 (fitted into F1 or F6 where they touch).

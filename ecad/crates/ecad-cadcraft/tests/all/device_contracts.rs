@@ -295,7 +295,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     typed(&mut h, "no");
     assert_eq!(prompt(&h), "Specify insertion point (new device -K02, rotation 0) or [Rotate/Mirror/Device/Tag]:");
     typed(&mut h, "D");
-    assert_eq!(prompt(&h), "Enter device to join or [New] <-K01>:");
+    assert_eq!(prompt(&h), "Enter device to join or [-K01/New] <-K01>:");
     typed(&mut h, "");
     assert_eq!(prompt(&h), "Specify insertion point (joins -K01 as 13/14, rotation 0) or [Rotate/Mirror/Device/Tag]:");
     typed(&mut h, "R");

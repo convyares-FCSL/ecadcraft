@@ -135,3 +135,62 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     h.run_steps(3);
     save(&h, &deltas, "018-duplicate.png");
 }
+
+/// Owner's trial of 2026-11-08: picking a symbol in Find Symbol lists "New device" and the devices
+/// it can join; one click picks, the next click on the page places. No Enter.
+#[test]
+fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
+    let deltas: Deltas = Arc::default();
+    let mut h = harness_with(Some(deltas.clone()));
+    ok(&mut h, r#"place {"symbol":"coil","at":[0,0]}"#);
+    ok(&mut h, r#"place {"symbol":"fuse","at":[40,0]}"#);
+    zoom(&mut h);
+    let k1 = device(&mut h, "-K01");
+    let choices = |h: &mut H, pick: search::Pick| {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| search::choices(p, &pick)).unwrap()
+    };
+    let c = choices(&mut h, search::Pick::Symbol("no"));
+    assert_eq!(c[0].text, "New device (-K02)");
+    assert_eq!(c[0].device, None);
+    assert_eq!(c[1].device.as_deref(), Some("-K01"), "the coil's device comes next: {c:?}");
+    assert!(c[1].text.ends_with("13/14"), "{c:?}");
+    assert_eq!(c.iter().filter(|x| x.device.is_some()).count(), 2, "the fuse can take a contact too, after: {c:?}");
+    // A second coil cannot join -K01: it is not offered.
+    let coil = choices(&mut h, search::Pick::Symbol("coil"));
+    assert!(coil.iter().all(|x| x.device.as_deref() != Some("-K01")), "{coil:?}");
+    // A device row lists what it can take, its own prefix's symbols first.
+    let d = choices(&mut h, search::Pick::Device("-K01".into()));
+    assert!(d.iter().all(|x| x.symbol != "coil") && d.first().is_some_and(|x| x.symbol == "no"), "{d:?}");
+
+    // The window: a row click shows the second step; one click on a choice starts placing.
+    button(&mut h, tools::TAB);
+    button(&mut h, "Find Symbol");
+    h.state_mut().search.picked = Some(search::Pick::Symbol("no"));
+    h.run_steps(3);
+    let label = c[1].text.clone();
+    h.get_by_label(&label).click();
+    h.run_steps(3);
+    assert!(prompt(&h).starts_with("Specify insertion point (joins -K01 as 13/14"), "{}", prompt(&h));
+    assert!(h.state().search.picked.is_none(), "back to the search after a choice");
+    // The window may sit over the page; here it is closed so the click reaches the drawing.
+    h.state_mut().search.open = false;
+    h.run_steps(2);
+    let at = screen(&h, 20.0, 0.0);
+    crate::mouse_tester::click(&mut h, at);
+    let log: Vec<String> = h.state().cad.session.log.iter().rev().take(4).cloned().collect();
+    assert_eq!(
+        doc(&mut h).representations_of(Subject::Component(k1)).count(),
+        2,
+        "the click placed it: {} {log:?}",
+        prompt(&h)
+    );
+    save(&h, &deltas, "018-choices.png");
+    // The prompt's default device is a keyword: a click on it (sent as the keyword) answers.
+    type_enter(&mut h, "D");
+    assert_eq!(prompt(&h), "Enter device to join or [-K01/New] <-K01>:");
+    h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("-K01".into())).unwrap();
+    h.run_steps(2);
+    assert!(prompt(&h).starts_with("Specify insertion point (joins -K01 as 23/24"), "{}", prompt(&h));
+}

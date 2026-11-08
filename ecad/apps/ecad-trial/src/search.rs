@@ -11,13 +11,15 @@
 
 use ecad_cadcraft::devices;
 use ecad_cadcraft::symbols;
-use ecad_model::{Document, Subject};
+use ecad_model::{ComponentId, Document, Subject};
 use eframe::egui;
 
 /// The text field's element name (design 018 §5.1).
 pub const FIELD_ID: &str = "ecad.symbolsearch";
 /// The results list's element name.
 pub const RESULTS_ID: &str = "ecad.symbolresults";
+/// The second step's list (design 018 §5.1, owner's trial of 2026-11-08).
+pub const CHOICES_ID: &str = "ecad.symbolchoices";
 /// The field's visible label (headless tests find it by this).
 pub const FIELD_LABEL: &str = "Find symbol or device";
 /// The window's title.
@@ -84,6 +86,71 @@ fn clip(t: &str, n: usize) -> String {
     }
 }
 
+/// What a click in the second step places (owner's trial of 2026-11-08: no Enter needed): a
+/// symbol, as a new device (`device: None`) or as another symbol of the device with that tag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Choice {
+    pub text: String,
+    pub symbol: &'static str,
+    pub device: Option<String>,
+}
+
+/// Most choices the second step lists.
+pub const MAX_CHOICES: usize = 10;
+
+/// The second step for `pick` (owner's trial, 2026-11-08). A symbol: "New device (-K02)" first,
+/// then the devices it can join (those of its own prefix first, and among them those with a main
+/// symbol such as a coil first). A device: the symbols it can take, its own prefix's first. Only
+/// what joining would accept is listed.
+pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
+    let doc = p.ledger.document();
+    let none = std::collections::BTreeSet::new();
+    match pick {
+        Pick::Symbol(key) => {
+            let Some(s) = symbols::by_key(key) else { return Vec::new() };
+            let next = devices::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
+            let mut out = vec![Choice { text: format!("New device ({next})"), symbol: s.key, device: None }];
+            let prefix = devices::prefix_for(doc, s);
+            let mut found: Vec<(u8, u8, ComponentId, String)> = devices::devices(doc, None)
+                .into_iter()
+                .filter_map(|c| {
+                    let labels = devices::join_labels(doc, c, s, &none).ok()?;
+                    let tag = devices::tag_words(doc, c);
+                    let own = ecad_model::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
+                    let main = doc
+                        .representations_of(Subject::Component(c))
+                        .filter_map(|(_, r)| devices::rep_starter(doc, r))
+                        .any(|x| matches!(x.kind, symbols::Kind::Fixed { exclusive: true }));
+                    let text = format!("{tag:<6} {:<26} {}", clip(&devices::description(doc, c), 26), labels.join("/"));
+                    Some((u8::from(!own), u8::from(!main), c, text))
+                })
+                .collect();
+            found.sort_by_key(|(a, b, _, _)| (*a, *b));
+            out.extend(found.into_iter().take(MAX_CHOICES - 1).map(|(_, _, c, text)| Choice {
+                text,
+                symbol: s.key,
+                device: Some(devices::tag_words(doc, c)),
+            }));
+            out
+        }
+        Pick::Device(tag) => {
+            let Some(c) = devices::holder_of(doc, tag, None) else { return Vec::new() };
+            let own = ecad_model::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
+            let mut found: Vec<(u8, Choice)> = symbols::STARTERS
+                .iter()
+                .filter_map(|s| {
+                    let labels = devices::join_labels(doc, c, s, &none).ok()?;
+                    let text = format!("{:<28} {}", s.name, labels.join("/"));
+                    let rank = u8::from(devices::prefix_for(doc, s) != own);
+                    Some((rank, Choice { text, symbol: s.key, device: Some(tag.clone()) }))
+                })
+                .collect();
+            found.sort_by_key(|(rank, _)| *rank);
+            found.into_iter().take(MAX_CHOICES).map(|(_, c)| c).collect()
+        }
+    }
+}
+
 /// The search window's state.
 #[derive(Debug, Default)]
 pub struct SymbolSearch {
@@ -95,6 +162,8 @@ pub struct SymbolSearch {
     pub focus: bool,
     /// The rows for (query, project head), recomputed only when either changes.
     cache: Option<((String, u64), (Vec<Row>, usize, Option<String>))>,
+    /// The row picked: the window then shows its second step ([`choices`]).
+    pub picked: Option<Pick>,
 }
 
 impl SymbolSearch {
@@ -122,12 +191,20 @@ impl SymbolSearch {
         v
     }
 
-    /// Draw the window; returns the row the user chose.
-    pub fn show(&mut self, ctx: &egui::Context, rows: &(Vec<Row>, usize, Option<String>)) -> Option<Pick> {
+    /// Draw the window: the search and its rows, or, once a row is picked, its second step
+    /// ([`choices`]). Returns the choice clicked.
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        rows: &(Vec<Row>, usize, Option<String>),
+        choices: &[Choice],
+    ) -> Option<Choice> {
         if !self.open {
             return None;
         }
         let mut chosen = None;
+        let mut picked = None;
+        let mut back = false;
         let mut open = self.open;
         egui::Window::new(TITLE)
             .id(egui::Id::unique("ecad.symbolsearch.window"))
@@ -136,6 +213,27 @@ impl SymbolSearch {
             .resizable(false)
             .default_pos(egui::pos2(260.0, 120.0))
             .show(ctx, |ui| {
+                if let Some(p) = &self.picked {
+                    let what = match p {
+                        Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
+                        Pick::Device(t) => format!("Add to {t}:"),
+                    };
+                    ui.label(what);
+                    ui.push_id(CHOICES_ID, |ui| {
+                        for c in choices {
+                            if ui.button(egui::RichText::new(&c.text).monospace()).clicked() {
+                                chosen = Some(c.clone());
+                            }
+                        }
+                        if choices.is_empty() {
+                            ui.weak("Nothing can be added to that device.");
+                        }
+                    });
+                    if ui.button("Back").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        back = true;
+                    }
+                    return;
+                }
                 let label = ui.label(FIELD_LABEL);
                 let field = egui::TextEdit::singleline(&mut self.query)
                     .id_salt(FIELD_ID)
@@ -169,14 +267,14 @@ impl SymbolSearch {
                         self.query.clear();
                     }
                     if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        chosen = list.get(self.selected).map(|row| row.pick.clone());
+                        picked = list.get(self.selected).map(|row| row.pick.clone());
                     }
                 }
                 ui.push_id(RESULTS_ID, |ui| {
                     for (i, row) in list.iter().enumerate() {
                         let text = egui::RichText::new(&row.text).monospace();
                         if ui.selectable_label(i == self.selected, text).clicked() {
-                            chosen = Some(row.pick.clone());
+                            picked = Some(row.pick.clone());
                         }
                     }
                     if *more > 0 {
@@ -188,6 +286,12 @@ impl SymbolSearch {
                 });
             });
         self.open = open;
+        if picked.is_some() {
+            self.picked = picked;
+        }
+        if back || chosen.is_some() {
+            self.picked = None;
+        }
         chosen
     }
 }
