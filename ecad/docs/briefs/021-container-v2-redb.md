@@ -1,6 +1,6 @@
 # Brief 021: Container v2 on redb
 
-Status: **Draft for the owner's quick look** (overseer, 2026-11-08; approved in principle: "Yes,
+Status: **Approved** (owner, 2026-11-08: "Yes go ahead"; earlier "Yes,
 then brief 021")
 Branch: `feature/container-v2` (worktree `C:\dev\ecad-features\container-v2`), from `feature/sheets`
 (016 + 018 + 019), so it stores the full current model. It is rebased as those merge into `dev`.
