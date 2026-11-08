@@ -5,10 +5,13 @@
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`.
-//! - `ci`: fmt, clippy `-D warnings`, tests, layers, patches, wasm.
+//! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches, wasm.
 //! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
+//! - `test-changed`: the fast tests of the crates changed since `dev` and of every crate that
+//!   depends on them (brief 017). The worker's default check.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -169,14 +172,22 @@ fn ci() -> Result<(), String> {
         .args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"])
         .current_dir(&root))?;
     // All features: the fault-injection containment tests run in CI, never in normal builds.
-    run(Command::new(cargo).args(["test", "--workspace", "--all-features"]).current_dir(&root))?;
+    // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
+    // Child-process helpers (`child_*`, also ignored) are skipped: they only work when the test
+    // that owns them starts them, and it still does.
+    run(Command::new(cargo)
+        .args(["test", "--workspace", "--all-features", "--", "--include-ignored", "--skip", "::child_"])
+        .current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
     patches()?;
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench>
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|test-changed>
+  test-changed [--base <ref>] [--dry-run] [-- <test arguments>]
+        fast tests of the crates changed since <ref> (default dev, committed or not) and of
+        every crate that depends on them; --dry-run only names the crates
   bench [--tier small|medium|large|all] [--keep <folder>] [--compare <earlier.json>]
         project load benchmark (release build), run on demand only; not part of ci";
 
@@ -188,6 +199,165 @@ fn bench(args: &[String]) -> Result<(), String> {
         .current_dir(ecad_root()))
 }
 
+/// Files that change every crate's build: the workspace manifest and lock file, cargo's
+/// configuration and the toolchain file. `path` is lower case, relative to the repository root;
+/// `workspace` is the workspace folder the same way, with a trailing `/` (empty at the root).
+fn affects_everything(path: &str, workspace: &str) -> bool {
+    let Some(p) = path.strip_prefix(workspace) else { return false };
+    matches!(p, "cargo.toml" | "cargo.lock" | "rust-toolchain.toml" | "rust-toolchain") || p.starts_with(".cargo/")
+}
+
+/// The workspace members whose tests to run after `changed` (paths relative to the repository
+/// root `repo`).
+///
+/// # Semantics
+///
+/// A changed file selects the innermost local package whose folder holds it; then every workspace
+/// member that depends on a selected package, directly or not, through any kind of dependency (dev
+/// included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
+/// upstream change selects the ECAD crates that use it. The workspace manifest, lock file, cargo
+/// configuration and toolchain file select every member. Markdown files and files in no package
+/// (docs, tools, CI) select nothing. `meta` is `cargo metadata --format-version 1` output with
+/// its resolve graph. The result is sorted by name.
+///
+/// # Errors
+///
+/// `meta` has no package list or no resolve graph.
+fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<String>, String> {
+    let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let repo = norm(repo);
+    let relative = |dir: &str| dir.strip_prefix(&repo).map(|r| format!("{}/", r.trim_start_matches('/')));
+    let workspace_root = norm(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let workspace = relative(&workspace_root).map(|w| if w == "/" { String::new() } else { w }).unwrap_or_default();
+    let pkgs = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
+    let members: BTreeSet<&str> =
+        meta["workspace_members"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    // (id, name, folder relative to the repository root with a trailing `/`) of each local package.
+    let mut local: Vec<(&str, &str, String)> = Vec::new();
+    for p in pkgs.iter().filter(|p| p["source"].is_null()) {
+        let (Some(id), Some(name), Some(manifest)) =
+            (p["id"].as_str(), p["name"].as_str(), p["manifest_path"].as_str())
+        else {
+            continue;
+        };
+        let manifest = norm(manifest);
+        let dir = manifest.strip_suffix("/cargo.toml").unwrap_or(&manifest);
+        if let Some(rel) = relative(dir) {
+            local.push((id, name, rel));
+        }
+    }
+    let mut hit: BTreeSet<&str> = BTreeSet::new();
+    for path in changed.iter().map(|p| norm(p)) {
+        if path.ends_with(".md") {
+            continue;
+        }
+        if affects_everything(&path, &workspace) {
+            hit.extend(members.iter().copied());
+            continue;
+        }
+        let owner =
+            local.iter().filter(|(_, _, dir)| path.starts_with(dir.as_str())).max_by_key(|(_, _, dir)| dir.len());
+        if let Some((id, _, _)) = owner {
+            hit.insert(id);
+        }
+    }
+    // Everything that depends on a selected package, to a fixed point (the graph is finite and
+    // each pass adds at least one package, so this ends).
+    let nodes = meta["resolve"]["nodes"].as_array().ok_or("cargo metadata: no resolve graph")?;
+    loop {
+        let before = hit.len();
+        for n in nodes {
+            let Some(id) = n["id"].as_str() else { continue };
+            let deps = n["deps"].as_array().into_iter().flatten().filter_map(|d| d["pkg"].as_str());
+            if !hit.contains(id) && deps.clone().any(|d| hit.contains(d)) {
+                hit.insert(id);
+            }
+        }
+        if hit.len() == before {
+            break;
+        }
+    }
+    let mut out: Vec<String> = local
+        .iter()
+        .filter(|(id, _, _)| hit.contains(id) && members.contains(id))
+        .map(|(_, name, _)| name.to_string())
+        .collect();
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// `git <args>` in `dir`, its output split into lines.
+fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
+    let out = Command::new("git").args(args).current_dir(dir).output().map_err(|e| format!("git {args:?}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+}
+
+/// `cargo xtask test-changed [--base <ref>] [--dry-run] [-- <test arguments>]`: runs
+/// `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge base
+/// with `<ref>` (default `dev`, else `origin/dev`), committed, staged, unstaged or untracked.
+fn test_changed(args: &[String]) -> Result<(), String> {
+    let (ours, passed) = match args.iter().position(|a| a == "--") {
+        Some(i) => (args.get(..i).unwrap_or_default(), args.get(i + 1..).unwrap_or_default()),
+        None => (args, &[][..]),
+    };
+    let mut base: Option<&str> = None;
+    let mut dry_run = false;
+    let mut it = ours.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--base" => base = Some(it.next().ok_or("--base needs a git ref")?),
+            "--dry-run" => dry_run = true,
+            other => return Err(format!("test-changed: unknown argument {other:?}\n{USAGE}")),
+        }
+    }
+    let root = ecad_root();
+    let repo = root.parent().ok_or("no repository root")?;
+    let base = match base {
+        Some(b) => b.to_string(),
+        None => ["dev", "origin/dev"]
+            .into_iter()
+            .find(|b| git_lines(repo, &["rev-parse", "--verify", "--quiet", b]).is_ok())
+            .ok_or("test-changed: no `dev` or `origin/dev` branch; pass --base <ref>")?
+            .to_string(),
+    };
+    let mut changed: BTreeSet<String> = BTreeSet::new();
+    changed.extend(git_lines(repo, &["diff", "--name-only", &format!("{base}...HEAD")])?);
+    changed.extend(git_lines(repo, &["diff", "--name-only", "HEAD"])?);
+    changed.extend(git_lines(repo, &["ls-files", "--others", "--exclude-standard"])?);
+    let out = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(&root)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("cargo metadata failed: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+    let changed: Vec<String> = changed.into_iter().collect();
+    let crates = crates_to_test(&meta, &repo.to_string_lossy(), &changed)?;
+    println!("test-changed: {} files changed since {base}; crates: {}", changed.len(), crates.join(" "));
+    if crates.is_empty() {
+        println!("test-changed: nothing to test");
+        return Ok(());
+    }
+    if dry_run {
+        return Ok(());
+    }
+    let mut cmd = Command::new(env!("CARGO"));
+    cmd.args(["test", "--all-features"]).current_dir(&root);
+    for c in &crates {
+        cmd.args(["-p", c]);
+    }
+    if !passed.is_empty() {
+        cmd.arg("--").args(passed);
+    }
+    run(&mut cmd)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rest = args.get(1..).unwrap_or_default();
@@ -197,6 +367,7 @@ fn main() -> ExitCode {
         "wasm" => wasm(),
         "ci" => ci(),
         "bench" => bench(rest),
+        "test-changed" => test_changed(rest),
         _ => Err(USAGE.into()),
     };
     match r {
@@ -222,6 +393,71 @@ mod tests {
         ]});
         let v = layer_violations(&meta).unwrap();
         assert_eq!(v.len(), 3, "{v:?}");
+    }
+
+    /// A small graph: `core` ← `mid` ← `app`, `mid` ← `bench` (dev only), `lone`, and an upstream
+    /// crate `up` ← `mid`, with the workspace in `ws/`.
+    fn graph() -> Value {
+        let pkg = |name: &str, dir: &str| serde_json::json!({"id": name, "name": name, "source": null, "manifest_path": format!("C:\\r\\{dir}\\Cargo.toml")});
+        let node = |id: &str, deps: &[&str]| serde_json::json!({"id": id, "deps": deps.iter().map(|d| serde_json::json!({"pkg": d})).collect::<Vec<_>>()});
+        serde_json::json!({
+            "packages": [
+                pkg("core", "ws\\crates\\core"), pkg("mid", "ws\\crates\\mid"), pkg("app", "ws\\apps\\app"),
+                pkg("bench", "ws\\crates\\bench"), pkg("lone", "ws\\apps\\lone"), pkg("up", "crates\\up"),
+                {"id": "serde", "name": "serde", "source": "registry", "manifest_path": "C:\\cargo\\serde\\Cargo.toml"}
+            ],
+            "workspace_root": "C:\\r\\ws",
+            "workspace_members": ["core", "mid", "app", "bench", "lone"],
+            "resolve": {"nodes": [
+                node("core", &["serde"]), node("mid", &["core", "up"]), node("app", &["mid"]),
+                node("bench", &["mid"]), node("lone", &["serde"]), node("up", &[]), node("serde", &[])
+            ]}
+        })
+    }
+
+    #[test]
+    fn test_changed_picks_changed_crates_and_their_dependents() {
+        let rows: &[(&[&str], &[&str])] = &[
+            (&["ws/crates/core/src/lib.rs"], &["app", "bench", "core", "mid"]),
+            (&["ws/apps/lone/src/main.rs"], &["lone"]),
+            (&["ws/apps/app/tests/all/x.rs"], &["app"]),
+            (&["crates/up/src/lib.rs"], &["app", "bench", "mid"]),
+            (&["ws/Cargo.lock"], &["app", "bench", "core", "lone", "mid"]),
+            (&["ws/.cargo/config.toml"], &["app", "bench", "core", "lone", "mid"]),
+            (&["Cargo.toml", "Cargo.lock"], &[]),
+            (&["ws/crates/core/README.md", "ws/docs/x.rs", ".github/workflows/ci.yml"], &[]),
+            (&["WS\\Apps\\Lone\\src\\main.rs"], &["lone"]),
+        ];
+        for (changed, want) in rows {
+            let changed: Vec<String> = changed.iter().map(|s| s.to_string()).collect();
+            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed).unwrap(), *want, "{changed:?}");
+        }
+    }
+
+    /// Brief 017 criterion 4 on the real workspace graph.
+    #[test]
+    fn test_changed_on_this_workspace() {
+        let root = ecad_root();
+        let out = Command::new(env!("CARGO"))
+            .args(["metadata", "--format-version", "1"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let repo = root.parent().unwrap().to_string_lossy().to_string();
+        let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
+        assert_eq!(
+            pick("ecad/crates/ecad-model/src/lib.rs"),
+            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
+        );
+        assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
+        assert_eq!(
+            pick("ecad/crates/ecad-store/src/lib.rs"),
+            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
+        );
+        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
+        assert!(pick("ecad/docs/quick-start.md").is_empty());
     }
 
     #[test]
