@@ -30,12 +30,13 @@ CADCraft crates are used by path; upstream files change only through the patches
 | `ecad-inspect` | read-only snapshots and the runtime event log for developers | no |
 | `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands, debugger snapshots and checks (provisional) | yes |
 | `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, with Open, Save and Save As, and the debugger panel | yes (UI) |
-| `xtask` | `cargo xtask ci`: fmt, clippy, tests, layering, upstream patch guard, wasm | — |
+| `xtask` | `cargo xtask ci`: fmt, clippy, tests (slow set included), layering, upstream patch guard, wasm; `cargo xtask test-changed`: tests of the changed crates | — |
 
 ```sh
 cd ecad
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
-cargo xtask ci                                         # all gates
+cargo xtask ci                                         # all gates, slow tests included
+cargo xtask test-changed                               # fast tests of what this branch changed
 cargo test -p ecad-cadcraft --all-features                            # the integration experiment
 cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
 # then open tools/inspector/index.html and load the snapshots

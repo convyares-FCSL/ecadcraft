@@ -35,16 +35,32 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   what builds and passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
   - **Worker, before each commit:** it builds and is clean: `cargo fmt --all -- --check` and
     `cargo clippy --workspace --all-targets --all-features -- -D warnings` (which compiles every
-    target, tests included). It then runs, itself, the tests of what it changed: its new
-    acceptance tests and `cargo test -p <crate>` for the crates it touched. Never the whole
-    workspace. Documentation-only commits need no cargo at all.
+    target, tests included). It then runs, itself, the tests of what it changed:
+    `cargo xtask test-changed`, which runs the fast tests of every crate changed since `dev` and
+    of every crate that depends on them (`--dry-run` names them; arguments after `--` go to the
+    test executables, e.g. `-- cable_view` to filter). Never the whole workspace.
+    Documentation-only commits need no cargo at all.
+  - **Test layout (brief 017).** Each crate has one integration test executable,
+    `tests/all/main.rs`, whose modules are the former `tests/<name>.rs` files (shared helpers in
+    `tests/all/common`), so tests are named `<name>::<test>` and `cargo test -p <crate> <name>`
+    runs one file. A new test file is a new module there, never a new `tests/*.rs`, which would
+    link egui and wgpu once more. The exception is `ecad-bench`'s `translate_differential.rs`: it
+    reads process-wide oracle counters and the oracle aborts the process, so it keeps its own
+    executable. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
+  - **Slow set.** A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
+    Everyday runs (`cargo test`, `cargo xtask test-changed`) skip it; the QA gate's full suite
+    (`cargo xtask ci`) runs it with `--include-ignored --skip ::child_`. Run one slow test by hand
+    with `cargo test -p <crate> <name> -- --include-ignored`. Child-process helpers are named
+    `child_*`, keep their own `#[ignore = "run by … in a child process"]` reasons, and are skipped
+    in direct runs: the test that owns them starts them.
   - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
     `translate.rs`, the store and locking, or anything the owner asks for. It runs only what the
     change can break. A re-test after a fix runs only what failed.
   - **Reviewer:** once per feature, on the PR into `dev`, and on any brief the tester would cover.
     Reads; runs cargo only for `cargo xtask patches` or to confirm a specific finding.
   - **CI:** pull requests into `dev` run the quick check: fmt and clippy with all targets on Linux,
-    so every test must still compile; tests themselves run in the worker's scoped checks. The full suite (`cargo xtask ci` with wasm, root CADCraft, Linux and Windows) runs on
+    so every test must still compile; tests themselves run in the worker's scoped checks. The
+    full suite (`cargo xtask ci` with the slow set and wasm, root CADCraft, Linux and Windows) runs on
     pull requests into `main`, on pushes to `main`, and by hand (`workflow_dispatch`). Run wasm
     locally only when a change could affect it (dependencies, `cfg(target_arch)`, platform code in
     `ecad-model`/`ecad-store`/`ecad-file`).
@@ -68,6 +84,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
 # worker (from ecad/), with CARGO_TARGET_DIR=C:/dev/ecad-target
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo xtask test-changed          # fast tests of the changed crates and their dependents
 cargo xtask patches               # only when files outside ecad/ changed
 ```
 
@@ -92,7 +109,7 @@ cargo xtask patches               # only when files outside ecad/ changed
   through each crate's error type.
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
-  `tests/<area>_contracts.rs`.
+  `tests/all/<area>_contracts.rs`.
 - Versions: product `0.1.0-dev`, release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format
   versions independent of the product version.
 
@@ -136,7 +153,7 @@ Loop for each brief in `docs/briefs/` (owner decision, 2026-11-08: lighter, per 
 
 **Agent access is built in (owner decision, 2026-11-07, brief 011).** Every brief that adds or
 changes an ECAD command includes, in its acceptance criteria, an MCP contract test: it drives the
-command through `ecad-mcp`'s `execute` tool (as `ecad/apps/ecad-mcp/tests/mcp_contracts.rs` does)
+command through `ecad-mcp`'s `execute` tool (as `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs` does)
 and checks the transaction it records and its author (`Author::Agent(<client name>)`), and that
 the command is refused with writes off. The worker writes it with the command; the tester covers
 it like any other criterion. A brief without one is not ready for approval.
