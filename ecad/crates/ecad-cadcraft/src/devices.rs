@@ -1071,3 +1071,9 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
     lines.push(format!("id {}", c.hex()));
     lines
 }
+
+/// The tag the next new device of symbol `s` would get in project `p`, without using it up (for
+/// prompts and pick lists).
+pub fn next_tag_preview(p: &crate::project::Project, s: &Starter) -> Option<String> {
+    p.tag_high.clone().next(&p.ledger, &prefix_for(p.ledger.document(), s)).ok()
+}
