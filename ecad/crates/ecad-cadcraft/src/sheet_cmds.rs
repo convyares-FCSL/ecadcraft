@@ -71,7 +71,7 @@ everything, read only)",
 Description and Drawn; names the log point \"Rev <rev>\")",
             )
             .noundo(),
-        CommandSpec::new("openrevision", "Open Revision", run_openrevision)
+        CommandSpec::new("openrevision", "Reopen Revision", run_openrevision)
             .params("{rev} (the project as issued, read only; records nothing)")
             .noundo(),
         CommandSpec::new("closerevision", "Back to Current", run_closerevision).params("{}").noundo(),

@@ -818,7 +818,7 @@ write is one transaction: one `u` takes it back.
    your initials, pressing Tab or clicking away after each. Click **Issue Rev A…**, then
    **Issue**. Expected: the title block's Rev box says `A` and the table lists it with today's
    date. Save.
-6. **Look back.** Draw a wire on page `100`. In Revisions click **Open** on Rev A, then close the
+6. **Look back.** Draw a wire on page `100`. In Revisions click **Reopen** on Rev A, then close the
    Revisions window. Expected: the PROJECT panel shows a bar `Rev A, <date>: read-only` with
    **Back to current**; click page `100` in the panel: a preview titled `Rev A · page 100: …`
    shows the page without the wire. Click **Back to current**.

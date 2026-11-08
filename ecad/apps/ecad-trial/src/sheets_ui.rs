@@ -421,7 +421,7 @@ impl Revisions {
                             ui.label(v);
                         }
                         let rev = r.fields[0].clone();
-                        if ui.button("Open").accessible_name(format!("ecad.revisions.open.{rev}")).clicked() {
+                        if ui.button("Reopen").on_hover_text("Reopen this revision, read-only").accessible_name(format!("ecad.revisions.open.{rev}")).clicked() {
                             out = Some(Out::Open(rev));
                         }
                         ui.end_row();
