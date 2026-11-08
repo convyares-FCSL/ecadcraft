@@ -226,7 +226,7 @@ fn applicable(b: &mut Base) -> Vec<Op> {
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
             before: ProjectSettings::default(),
-            after: ProjectSettings { length_unit: LengthUnit::Inch },
+            after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
         Op::NameVersion { name: "w".into(), at: 2 },
         Op::UnnameVersion { name: "v".into(), at: 1 },
@@ -270,7 +270,7 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
-            before: ProjectSettings { length_unit: LengthUnit::Inch },
+            before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
         Op::NameVersion { name: "v".into(), at: 1 },
@@ -867,10 +867,16 @@ impl Gen {
             },
             _ => match self.rng.below(3) {
                 0 => {
-                    let before =
-                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch } } else { doc.settings.clone() };
+                    let before = if spoil {
+                        ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() }
+                    } else {
+                        doc.settings.clone()
+                    };
                     let after = ProjectSettings {
                         length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
+                        // Brief 018's tag settings change with it sometimes.
+                        tag_padding: if self.rng.chance(30) { 3 } else { ecad_model::DEFAULT_TAG_PADDING },
+                        ..ProjectSettings::default()
                     };
                     Op::SetProjectSettings { before, after }
                 }

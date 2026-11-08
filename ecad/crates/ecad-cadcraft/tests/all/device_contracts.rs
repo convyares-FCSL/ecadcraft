@@ -523,3 +523,44 @@ fn hover_lens_names_the_device_its_symbols_and_wires() {
     assert_eq!(lines[4], "  13 (not connected)        14 (not connected)");
     let _ = Vec2::ZERO;
 }
+
+// ---------------------------------------------------------------- project settings (owner, 2026-11-08)
+
+#[test]
+fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
+    let mut h = new_h();
+    let r = h.run("tagsettings", json!({})).unwrap();
+    assert_eq!(
+        (r["changed"].clone(), r["padding"].clone(), r["prefixes"]["coil"].clone()),
+        (json!(false), json!(2), json!("-K"))
+    );
+    let head = h.head();
+    let r = h.run("tagsettings", json!({"padding": 3, "prefixes": {"coil": "-ka", "mcb1": "F"}})).unwrap();
+    assert_eq!(r["changed"], json!(true));
+    assert_eq!(h.head(), head + 1, "one transaction");
+    assert!(matches!(last_ops(&mut h).as_slice(), [Op::SetProjectSettings { .. }]));
+    assert_eq!(place(&mut h, "coil", [0.0, 0.0])["tag"], json!("-KA001"));
+    assert_eq!(place(&mut h, "mcb1", [40.0, 0.0])["tag"], json!("-F001"));
+    assert_eq!(place(&mut h, "no", [80.0, 0.0])["tag"], json!("-K001"), "other symbols keep the built-in prefix");
+    // Typed tags are padded the same way.
+    let c: ComponentId = id(&place(&mut h, "lamp", [120.0, 0.0]), "component");
+    h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": "h7"})).unwrap();
+    assert_eq!(tag(&mut h, c), "-H007");
+    // null goes back to the built-in prefix; refusals.
+    h.run("tagsettings", json!({"prefixes": {"coil": null}})).unwrap();
+    assert_eq!(place(&mut h, "coil", [0.0, 40.0])["tag"], json!("-K002"));
+    for (params, want) in [
+        (json!({"padding": 0}), "`padding` must be a whole number from 1 to 6"),
+        (json!({"padding": 7}), "`padding` must be a whole number from 1 to 6"),
+        (json!({"prefixes": {"coil": "K1"}}), "A prefix is 1 to 10 letters"),
+        (json!({"prefixes": {"xyz": "K"}}), "No symbol \"xyz\""),
+    ] {
+        let e = h.run("tagsettings", params.clone()).unwrap_err();
+        assert!(e.contains(want), "{params}: {e}");
+    }
+    // Undo takes the settings back with everything else.
+    h.run("u", Value::Null).unwrap();
+    h.run("u", Value::Null).unwrap();
+    assert_eq!(h.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("KA"));
+    h.check();
+}

@@ -213,3 +213,68 @@ pub(crate) fn run_devicedelete(s: &mut Session, params: &Value) -> cadcraft_engi
     let r = crate::commands::run_delete(s, &json!({"component": c.hex()}))?;
     Ok(json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}))
 }
+
+/// `tagsettings {padding?, prefixes?}` (brief 018, owner decision 2026-11-08): how many digits
+/// automatic tag numbers have, and the project's own prefix per starter symbol (`{"coil": "KA"}`;
+/// `null` goes back to the built-in one). One `SetProjectSettings` transaction; with nothing to
+/// change, or no parameters, it records nothing and reports the settings.
+pub(crate) fn run_tagsettings(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let padding = match params.get("padding") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(
+            v.as_u64()
+                .filter(|n| (1..=u64::from(ecad_model::tag::MAX_PADDING)).contains(n))
+                .and_then(|n| u8::try_from(n).ok())
+                .ok_or_else(|| {
+                    err(format!("`padding` must be a whole number from 1 to {}", ecad_model::tag::MAX_PADDING))
+                })?,
+        ),
+    };
+    let mut changes: Vec<(String, Option<String>)> = Vec::new();
+    match params.get("prefixes") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(m)) => {
+            for (k, v) in m {
+                let symbol = devices::starter(k).map_err(err)?;
+                let prefix = match v {
+                    Value::Null => None,
+                    Value::String(t) => Some(devices::valid_prefix(t).ok_or_else(|| {
+                        err(format!("A prefix is 1 to {} letters, for example K or SR.", devices::MAX_PREFIX_LETTERS))
+                    })?),
+                    _ => return Err(err("each prefix must be a string, or null for the built-in one")),
+                };
+                changes.push((symbol.key.to_string(), prefix));
+            }
+        }
+        Some(_) => return Err(err("`prefixes` must be an object: {\"<symbol>\": \"<prefix>\" | null}")),
+    }
+    with_project(s, |p, pg, _| {
+        let before = p.ledger.document().settings.clone();
+        let mut after = before.clone();
+        if let Some(n) = padding {
+            after.tag_padding = n;
+        }
+        for (k, v) in changes {
+            match v {
+                Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix == px) => after.tag_prefixes.remove(&k),
+                Some(px) => after.tag_prefixes.insert(k, px),
+                None => after.tag_prefixes.remove(&k),
+            };
+        }
+        let changed = after != before;
+        if changed {
+            p.apply_edit(
+                pg,
+                "tagsettings",
+                "Tag settings",
+                vec![Op::SetProjectSettings { before, after: after.clone() }],
+            )?;
+        }
+        let doc = p.ledger.document();
+        let prefixes: serde_json::Map<String, Value> = crate::symbols::STARTERS
+            .iter()
+            .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
+            .collect();
+        Ok(json!({"changed": changed, "padding": devices::padding(doc), "prefixes": prefixes}))
+    })
+}

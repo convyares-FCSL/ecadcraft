@@ -112,6 +112,11 @@ end's spine; null: the middle)",
         CommandSpec::new("devices", "List Devices", crate::device_cmds::run_devices)
             .params("{tag?} (devices whose tag starts with it; read only)")
             .noundo(),
+        CommandSpec::new("tagsettings", "Tag Settings", crate::device_cmds::run_tagsettings)
+            .params(
+                "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)",
+            )
+            .noundo(),
         CommandSpec::new("deviceprops", "Device Properties", crate::device_cmds::run_deviceprops)
             .params("{component: id} (a device's properties; read only; interactive: change them)")
             .interactive(interact::deviceprops)

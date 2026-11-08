@@ -662,7 +662,7 @@ impl Project {
                     // The length unit is recorded at creation (proposal §20.13).
                     Op::SetProjectSettings {
                         before: ProjectSettings::default(),
-                        after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                        after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
                     },
                 ],
                 now_ms(),

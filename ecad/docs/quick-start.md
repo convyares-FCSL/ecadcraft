@@ -114,9 +114,10 @@ buttons, lamp, motors, transformer, terminal, PLC channels); each new device get
 of its prefix (`-K01`, `-Q01`…, highest + 1, two digits by default), and a contact can be added to
 an existing device (`-K01`'s coil on one page, its contacts on another). Tags and terminal labels
 are drawn beside every symbol. **Find Symbol**, **Device Properties** and **Delete Device** are
-new in the Components group. Nothing outside `ecad/` changes. The file layout is unchanged, but
+new in the Components group. Nothing outside `ecad/` changes. Existing files are written as before, but
 one model rule is relaxed (I14, your decision of 2026-11-08): a project with a contact added to a
-device is refused by older builds. For this branch there are automated checks only (below),
+device is refused by older builds, and so is one whose tag settings were changed (two optional
+project settings, your decision of 2026-11-08). For this branch there are automated checks only (below),
 written and run by the worker; nobody has run it on a display yet.
 
 Three kinds of evidence exist, and they are kept apart:
@@ -669,7 +670,7 @@ Open the **ECAD** tab first.
 Typed instead, in the banner's Command field: `place {"symbol":"coil","at":[0,0]}`,
 `place {"symbol":"no","at":[40,0],"device":"<the coil's component id>"}`,
 `setprop {"component":"<id>","key":"tag","value":"K5"}`, `symbols {"query":"-Q"}`,
-`devices {}`. A tag that exists is refused by `setprop` with the ways forward; add
+`devices {}`, `tagsettings {"padding":3}` (three-digit numbers from then on). A tag that exists is refused by `setprop` with the ways forward; add
 `"merge":true` to make the device part of that one. `place` with a `tag` that exists adds the
 symbol to that device.
 
@@ -1136,8 +1137,10 @@ Your table of three clean runs goes here once you have run it.
     boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
   - Tag texts and terminal labels are placed automatically (left of a symbol, or above it when
     rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
-  - The tag padding (two digits) and each symbol's default prefix are fixed for now; making them
-    project settings waits for an answer on the file format.
+  - Tag padding and each symbol's prefix are project settings, changed by typing
+    `tagsettings {"padding":3,"prefixes":{"coil":"KA"}}` in the Command field (`null` for a
+    symbol goes back to the built-in prefix; `tagsettings {}` lists them). There is no dialog for
+    them yet. A project that changes them is refused by older builds.
   - Find Symbol is a small window of the trial's own (Tool Sets holds buttons only); typing at the
     `place` prompt finds the same symbols.
   - Copying a device's symbol makes a new device with the next tag and every terminal of the

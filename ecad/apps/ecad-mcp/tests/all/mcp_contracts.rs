@@ -777,6 +777,14 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     let devices = c.exec("devices", json!({"tag": "-K05"}));
     assert_eq!(devices["devices"][0]["representations"].as_array().unwrap().len(), 2);
 
+    // The tag settings are a recorded transaction of the agent too.
+    let before = c.log().len();
+    c.exec("tagsettings", json!({"padding": 3}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
+    assert_eq!(c.exec("place", json!({"symbol": "coil", "at": [0, 120]}))["tag"], json!("-K007"));
+
     // Writes off: every device write is refused, reading works.
     let mut r = reader();
     let before = r.log();
@@ -784,6 +792,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
         ("place", json!({"symbol": "coil", "at": [0, 0]})),
         ("setprop", json!({"component": "1", "key": "tag", "value": "-K01"})),
         ("devicedelete", json!({"component": "1"})),
+        ("tagsettings", json!({"padding": 3})),
     ] {
         let m = r.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");

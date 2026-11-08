@@ -40,7 +40,9 @@ pub const LABEL_HEIGHT: f64 = 2.0;
 /// `ecad.tag-gap`, millimetres.
 pub const TAG_GAP: f64 = 2.0;
 /// Tag numbers are padded to this many digits unless the project says otherwise (owner, 2026-11-08).
-pub const DEFAULT_PADDING: u8 = 2;
+pub const DEFAULT_PADDING: u8 = ecad_model::DEFAULT_TAG_PADDING;
+/// Most letters in a tag prefix a project may set.
+pub const MAX_PREFIX_LETTERS: usize = 10;
 /// Refusal of an edit of a derived tag text or terminal label.
 pub const TAG_DERIVED: &str = "The tag text is derived; change the tag with Device Properties.";
 /// Most characters in a property value (design 018 §6.1).
@@ -58,14 +60,26 @@ pub const PROPERTIES: [(&str, &str); 6] = [
     ("function", "Function"),
 ];
 
-/// How many digits this project pads tag numbers to.
-pub fn padding(_doc: &Document) -> u8 {
-    DEFAULT_PADDING
+/// How many digits this project pads tag numbers to (its `tag_padding` setting, at most
+/// [`ecad_model::tag::MAX_PADDING`]).
+pub fn padding(doc: &Document) -> u8 {
+    doc.settings.tag_padding.min(tag::MAX_PADDING)
 }
 
-/// The tag prefix a new device of symbol `s` gets in this project (letters, without `-`).
-pub fn prefix_for(_doc: &Document, s: &Starter) -> String {
-    s.prefix.to_string()
+/// A prefix as a project may set it: 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, with or without a
+/// leading `-`; stored in upper case without the `-`.
+pub fn valid_prefix(text: &str) -> Option<String> {
+    let t = text.trim();
+    let t = t.strip_prefix('-').unwrap_or(t);
+    ((1..=MAX_PREFIX_LETTERS).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphabetic()))
+        .then(|| t.to_ascii_uppercase())
+}
+
+/// The tag prefix a new device of symbol `s` gets in this project (letters, without `-`): the
+/// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
+/// stored that is not a valid prefix is ignored.
+pub fn prefix_for(doc: &Document, s: &Starter) -> String {
+    doc.settings.tag_prefixes.get(s.key).and_then(|p| valid_prefix(p)).unwrap_or_else(|| s.prefix.to_string())
 }
 
 // ---------------------------------------------------------------- numbering
