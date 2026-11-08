@@ -24,4 +24,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
