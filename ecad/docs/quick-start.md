@@ -733,6 +733,25 @@ Typed instead, in the ECAD command window: `place {"symbol":"coil","at":[0,0]}`,
 `"merge":true` to make the device part of that one. `place` with a `tag` that exists adds the
 symbol to that device.
 
+## 5G. Devices tab (by clicking)
+
+After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §16.
+
+1. **Open the tab.** In the PROJECT panel click **Devices** (beside **Pages**). Expected: `-K (1)`
+   and `▸ -K01  Contactor / relay coil`.
+2. **Unfold and select.** Click `-K01`. Expected: its symbols appear under it as `/1.1 Contactor /
+   relay coil`, `/1.2 NO contact`, `/2.1 NC contact` (page.column), and its properties show at the
+   bottom of the panel.
+3. **Go to.** Click the `/2.…` row. Expected: page 2 is shown in the drawing tab, centred on that
+   contact, which is selected. Nothing is recorded.
+4. **Edit.** Click the **Description** field, select all, type `Main contactor`, press Enter.
+   Expected: the row reads `-K01  Main contactor`. Type `u` at the command line: it is back.
+   **Location** `A1` is stored as `+A1`.
+5. **Filter.** Type `q` in the filter: only `-Q` devices remain. Clear it.
+6. **A tag that exists.** Select another device and set its **Tag** to `K01`. Expected: a red line
+   says the tag is used by `-K01`, with **Make it the same device**; clicking it merges (one `u`), or
+   explains why it cannot.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1032,6 +1051,8 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | switch ms | In a headless session with one page active, make another page the active page with `openpage` (the path of the Project panel and Go to Reference), and back to page 1 after each: median over up to 10 pages spread over the project. Target (design 016): at most 5 ms on large, 2 ms on medium. |
 | preview ms | Draw the read-only preview of a page: project it, build its display list and rasterise it at 480 × 320. Target: at most 15 ms on large, 8 ms on medium. |
 | panel ms | Rebuild the Project panel's rows after one `renamepage` (page order and titles only). |
+| devices ms | Rebuild the Devices tab's list (every device from the tag index, with its symbols). |
+| goto ms | From the Devices tab, show a device symbol's page and select it. |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
 file opened once; the three draw columns run on another copy, opened once in one drawing session
