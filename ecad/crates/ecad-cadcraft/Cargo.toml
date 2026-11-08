@@ -18,6 +18,10 @@ fault-injection = []
 # tests (and ecad-bench's differential test) through dev-dependencies, and by `--all-features`;
 # never in app builds.
 translate-oracle = []
+# `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
+# cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
+# release or the trial (brief 009 review S3). Delete once brief 010's `cableref` is merged.
+test-ops = []
 
 [dependencies]
 ecad-model = { workspace = true }
@@ -32,5 +36,6 @@ serde_json = { workspace = true }
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
-# Every test run compares each drawing-edit translation with the pre-014 code (brief 014).
-ecad-cadcraft = { path = ".", features = ["translate-oracle"] }
+# Every test run compares each drawing-edit translation with the pre-014 code (brief 014), and
+# this crate's own tests see `apply_ops`.
+ecad-cadcraft = { path = ".", features = ["translate-oracle", "test-ops"] }

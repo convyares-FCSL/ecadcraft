@@ -131,6 +131,8 @@ fn path_of(e: &Entity) -> Vec<Pt> {
     match &e.kind {
         EntityKind::Line(l) => vec![Pt::new(l.a.x, l.a.y), Pt::new(l.b.x, l.b.y)],
         EntityKind::LwPolyline(p) => p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(),
+        // Brief 009: bends (arcs) and labels (texts) are drawn on the cable layer too.
+        EntityKind::Arc(_) | EntityKind::Text(_) => Vec::new(),
         other => panic!("unexpected entity on the cable layer: {other:?}"),
     }
 }
@@ -139,7 +141,7 @@ fn path_of(e: &Entity) -> Vec<Pt> {
 fn fan_paths(h: &mut H, page: PageId) -> Vec<Vec<Pt>> {
     let mut out: Vec<Vec<Pt>> = entities(h, page)
         .iter()
-        .filter(|e| e.common.layer == views::LAYER)
+        .filter(|e| e.common.layer == views::LAYER && !path_of(e).is_empty())
         .map(|e| {
             let p = path_of(e);
             let (a, b) = (p[0], p[p.len() - 1]);
@@ -150,25 +152,31 @@ fn fan_paths(h: &mut H, page: PageId) -> Vec<Vec<Pt>> {
     out
 }
 
-fn norm(v: &[(f64, f64)]) -> Vec<Pt> {
-    let p: Vec<Pt> = v.iter().map(|(x, y)| Pt::new(*x, *y)).collect();
-    let (a, b) = (p[0], p[p.len() - 1]);
-    if (b.x, b.y) < (a.x, a.y) { p.into_iter().rev().collect() } else { p }
-}
-
-fn assert_paths(got: &[Vec<Pt>], want: &[Vec<(f64, f64)>]) {
-    assert_eq!(got.len(), want.len(), "fan paths: {got:?}");
-    for w in want {
-        let w = norm(w);
-        assert!(
-            got.iter().any(|g| g.len() == w.len() && g.iter().zip(&w).all(|(p, q)| p.near(*q, 1e-9))),
-            "{w:?} not in {got:?}"
-        );
-    }
-}
-
 fn fan_handles(h: &mut H, page: PageId) -> Vec<Handle> {
     h.p(|p| p.pages[&page].map.fan_handles().collect())
+}
+
+/// The tails of `k`'s fan on `page` (brief 009: one per member and fanned end, ending at the
+/// wire's own end), each from its start at the bend to the wire end.
+fn tails(h: &mut H, page: PageId, k: CableId) -> Vec<Vec<Pt>> {
+    let doc = h.doc();
+    let views::FanOnPage::Drawn(f) = views::fan_on_page(&doc, page, k, 1e-6) else { return Vec::new() };
+    f.parts
+        .iter()
+        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter_map(|p| match &p.shape {
+            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every point in `ends` is the wire end of one of `tails`.
+fn assert_tails_end_at(tails: &[Vec<Pt>], ends: &[(f64, f64)]) {
+    for (x, y) in ends {
+        let e = Pt::new(*x, *y);
+        assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(e, 1e-9))), "{e:?} in {tails:?}");
+    }
 }
 
 fn prompt(h: &H) -> String {
@@ -454,7 +462,7 @@ fn child_reopen_through_env() {
     let v = views_of(&mut h);
     assert_eq!(v[g.c1.hex()], "fan");
     assert_eq!(v[c2.hex()], "traditional");
-    assert_eq!(fan_paths(&mut h, g.page).len(), 7, "C1 drawn as its fan at once");
+    assert!(!fan_paths(&mut h, g.page).is_empty(), "C1 drawn as its fan at once");
     assert!(!h.p(|p| p.unsaved()));
     h.check();
 }
@@ -787,41 +795,25 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
 
     let two = parallel_cable(&mut h, 10.0, 2, 4.0);
     set(&mut h, two, "fan");
-    // k = 2: reference is the first (y = 10); spread 4 → d = 4. Trunk (4,10)-(56,10).
-    assert_paths(
-        &fan_paths(&mut h, page),
-        &[
-            vec![(4.0, 10.0), (56.0, 10.0)],
-            vec![(0.0, 10.0), (4.0, 10.0)],
-            vec![(56.0, 10.0), (60.0, 10.0)],
-            vec![(0.0, 14.0), (4.0, 10.0)],
-            vec![(56.0, 10.0), (60.0, 14.0)],
-        ],
-    );
+    // Brief 009 (design 009 §4, replacing 005 §5): one tail per member and end, each ending at the
+    // wire's own end.
+    let t = tails(&mut h, page, two);
+    assert_eq!(t.len(), 4, "{t:?}");
+    assert_tails_end_at(&t, &[(0.0, 10.0), (60.0, 10.0), (0.0, 14.0), (60.0, 14.0)]);
     let twenty = parallel_cable(&mut h, 30.0, 20, 1.0);
     set(&mut h, twenty, "fan");
     h.check();
-    let paths = fan_paths(&mut h, page);
-    // 5 for `two`, 1 trunk + 2 × 20 for `twenty` (the reference's own pieces included).
-    assert_eq!(paths.len(), 5 + 41, "{}", paths.len());
-    // Reference = member 9 (y = 39), s = 10 → F₀ = (10,39), F₁ = (50,39).
-    assert!(
-        paths
-            .iter()
-            .any(|p| p.len() == 2 && p[0].near(Pt::new(10.0, 39.0), 1e-9) && p[1].near(Pt::new(50.0, 39.0), 1e-9))
-    );
-    // A fan cable left with one wire: the whole route as the trunk, no panic.
+    assert_eq!(tails(&mut h, page, twenty).len(), 40);
+    // A fan cable left with one wire is drawn traditional on the page (design 009 §4.1): its
+    // route is drawn, no panic.
     let members: Vec<ConductorId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
     h.run("ecaddelete", json!({"conductor": members[1].hex()})).unwrap();
     h.check();
     assert_eq!(view_of(&mut h, two), "fan");
-    let paths = fan_paths(&mut h, page);
-    assert!(
-        paths
-            .iter()
-            .any(|p| p.len() == 2 && p[0].near(Pt::new(0.0, 10.0), 1e-9) && p[1].near(Pt::new(60.0, 10.0), 1e-9)),
-        "{paths:?}"
-    );
+    let doc = h.doc();
+    assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), views::FanOnPage::TooFew);
+    let (route, _) = ecad_model::derive::route_on_page(&doc, members[0], page).unwrap();
+    assert!(h.p(|p| p.pages[&page].map.item(route)).is_some(), "the remaining wire is drawn");
     h.run("u", Value::Null).unwrap();
     h.check();
     // An emptied cable in fan view (owner Q4 of 004: it stays): nothing drawn, no panic.
@@ -833,26 +825,25 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     h.check();
 }
 
-/// AC3 / design §5 rule 3: the fan is capped at 0.4·L when the ends are spread wider.
+/// AC3, restated for brief 009: design 005 §5 rule 3 (the fan capped at 0.4·L) is replaced by
+/// design 009 §4.2. Widely spread ends still fan: every tail is horizontal, `ecad.tail-min` long,
+/// and ends at its wire's end.
 #[test]
 fn ac3_fan_lengths_are_capped_at_forty_percent() {
     let mut h = H::new(SEED + 2);
     let page = h.first_page();
     let k = parallel_cable(&mut h, 0.0, 3, 50.0);
     set(&mut h, k, "fan");
-    // Reference y = 50, L = 60, s = 50 → d = 24.
-    assert_paths(
-        &fan_paths(&mut h, page),
-        &[
-            vec![(24.0, 50.0), (36.0, 50.0)],
-            vec![(0.0, 0.0), (24.0, 50.0)],
-            vec![(0.0, 50.0), (24.0, 50.0)],
-            vec![(0.0, 100.0), (24.0, 50.0)],
-            vec![(36.0, 50.0), (60.0, 0.0)],
-            vec![(36.0, 50.0), (60.0, 50.0)],
-            vec![(36.0, 50.0), (60.0, 100.0)],
-        ],
-    );
+    let t = tails(&mut h, page, k);
+    assert_eq!(t.len(), 6, "{t:?}");
+    assert_tails_end_at(&t, &[(0.0, 0.0), (0.0, 50.0), (0.0, 100.0), (60.0, 0.0), (60.0, 50.0), (60.0, 100.0)]);
+    for tail in &t {
+        assert!((tail[0].y - tail[1].y).abs() < 1e-9, "horizontal: {tail:?}");
+        // At least tail-min; the core level with the join leaves the spine straight, so its tail
+        // also runs the bend radius (owner request of 2026-11-07).
+        assert!(tail[0].dist(tail[1]) >= ecad_cadcraft::look::TAIL_MIN - 1e-9, "{tail:?}");
+    }
+    h.check();
 }
 
 /// AC3 / design check H: a right-to-left reference fans to the correct sides; a bent reference's
@@ -868,18 +859,10 @@ fn ac3_right_to_left_and_bent_references_and_loose_ends() {
     let before = marks(&mut h, page);
     assert!(before.iter().filter(|m| m.0 == "Square").count() >= 6, "loose-end squares: {before:?}");
     set(&mut h, k, "fan");
-    assert_paths(
-        &fan_paths(&mut h, page),
-        &[
-            vec![(5.0, 5.0), (55.0, 5.0)],
-            vec![(0.0, 0.0), (5.0, 5.0)],
-            vec![(0.0, 5.0), (5.0, 5.0)],
-            vec![(0.0, 10.0), (5.0, 5.0)],
-            vec![(55.0, 5.0), (60.0, 0.0)],
-            vec![(55.0, 5.0), (60.0, 5.0)],
-            vec![(55.0, 5.0), (60.0, 10.0)],
-        ],
-    );
+    // Brief 009: a tail ends at every wire end, on the correct side, whatever the route direction.
+    let t = tails(&mut h, page, k);
+    assert_eq!(t.len(), 6, "{t:?}");
+    assert_tails_end_at(&t, &[(0.0, 0.0), (0.0, 5.0), (0.0, 10.0), (60.0, 0.0), (60.0, 5.0), (60.0, 10.0)]);
     assert_eq!(marks(&mut h, page), before, "loose-end squares stay where they were");
     assert_eq!(magenta_marks(&mut h, page), 0, "no crossing dots in fan view");
     h.check();
@@ -894,25 +877,11 @@ fn ac3_right_to_left_and_bent_references_and_loose_ends() {
     let k: CableId = id(&h.run("cableslash", json!({"from": [10, 17], "to": [10, 33]})).unwrap(), "cable");
     set(&mut h, k, "fan");
     h.check();
-    // s₀ = 5 → F₀ = (5,25); s₁ = max(|(60,20)-(60,40)|, |(60,30)-(60,40)|) = 20 → F₁ at 55 = (40,40).
-    let paths = fan_paths(&mut h, page);
-    let trunk = norm(&[(5.0, 25.0), (30.0, 25.0), (30.0, 40.0), (40.0, 40.0)]);
-    assert!(
-        paths.iter().any(|p| p.len() == 4 && p.iter().zip(&trunk).all(|(a, b)| a.near(*b, 1e-9))),
-        "the trunk follows the bends: {paths:?}"
-    );
-    for (a, b) in [
-        ((0.0, 20.0), (5.0, 25.0)),
-        ((0.0, 30.0), (5.0, 25.0)),
-        ((40.0, 40.0), (60.0, 20.0)),
-        ((40.0, 40.0), (60.0, 30.0)),
-    ] {
-        let w = norm(&[a, b]);
-        assert!(
-            paths.iter().any(|p| p.len() == 2 && p[0].near(w[0], 1e-9) && p[1].near(w[1], 1e-9)),
-            "{w:?} in {paths:?}"
-        );
-    }
+    // Brief 009 (design 009 §4.2): the bent reference sets each end's direction from its first
+    // segment there; every wire end, including the reference's (0,25) and (60,40), ends a tail.
+    let t = tails(&mut h, page, k);
+    assert_eq!(t.len(), 6, "{t:?}");
+    assert_tails_end_at(&t, &[(0.0, 20.0), (0.0, 25.0), (0.0, 30.0), (60.0, 20.0), (60.0, 40.0), (60.0, 30.0)]);
 }
 
 /// AC3 / design check I: hostile coordinates never panic; a fan that cannot be drawn stays
@@ -999,13 +968,15 @@ fn ac3_degenerate_reference_routes_fall_back_without_panic() {
         ("zero length", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(0.0, 5.0) }, true),
         ("NaN", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(f64::NAN, 5.0) }, true),
         ("infinite", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(f64::INFINITY, 5.0) }, true),
+        // Brief 009: the fan uses the route's ends and its first segments only, all finite here,
+        // so this route now draws (design 009 §4.2; 005 §5's total length L is gone).
         (
             "overflowing sum",
             ecad_model::Primitive::Polyline {
                 vertices: vec![Pt::new(0.0, 5.0), Pt::new(1.7e308, 5.0), Pt::new(-1.7e308, 5.0), Pt::new(60.0, 5.0)],
                 closed: false,
             },
-            true,
+            false,
         ),
         ("huge finite", ecad_model::Primitive::Line { a: Pt::new(-1e15, 5.0), b: Pt::new(1e15, 5.0) }, false),
     ];
@@ -1051,7 +1022,7 @@ fn ac4_undo_and_redo_act_on_the_last_real_edit() {
     g.h.cmdline("redo");
     assert_eq!(g.h.doc(), after_slash);
     assert_eq!(view_of(&mut g.h, g.c1), "fan", "still fan after redo");
-    assert_eq!(fan_paths(&mut g.h, g.page).len(), 7);
+    assert_eq!(tails(&mut g.h, g.page, g.c1).len(), 6, "the fan is drawn again");
     // A real edit in fan view (owner O3: moving equipment is allowed): a new wire.
     g.h.run("wire", json!({"points": [[0, 30], [60, 30]]})).unwrap();
     let with_wire = g.h.doc();
@@ -1108,20 +1079,25 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
     let mut g = fixture();
     set(&mut g.h, g.c1, "fan");
     let fans = fan_handles(&mut g.h, g.page);
-    assert_eq!(fans.len(), 7);
-    // The trunk is the fan line through (30,5).
+    assert!(!fans.is_empty());
+    // Brief 009: a trunk piece (thick, not a member's) and a tail (a member's).
+    let es = entities(&mut g.h, g.page);
+    let map = g.h.p(|p| p.pages[&g.page].map.clone());
     let trunk = *fans
         .iter()
         .find(|h| {
-            let es = entities(&mut g.h, g.page);
-            es.iter().any(|e| {
-                e.handle == **h
-                    && path_of(e).iter().any(|p| p.near(Pt::new(5.0, 5.0), 1e-9))
-                    && path_of(e).iter().any(|p| p.near(Pt::new(55.0, 5.0), 1e-9))
-            })
+            map.core_of(**h).is_none()
+                && es.iter().any(|e| {
+                    e.handle == **h
+                        && e.common.lineweight == cadcraft_engine::doc::Lineweight::Mm100(70)
+                        && path_of(e).windows(2).all(|w| (w[0].y - w[1].y).abs() < 1e-9)
+                })
         })
         .expect("trunk");
-    let fan_line = *fans.iter().find(|h| **h != trunk).unwrap();
+    let fan_line = *fans
+        .iter()
+        .find(|h| map.core_of(**h).is_some() && es.iter().any(|e| e.handle == **h && path_of(e).len() == 2))
+        .expect("a tail");
     let before_plain = g.h.lines_on(g.page);
     g.h.s.cmdline("line 0,40 60,40").unwrap();
     g.h.s.input(Input::Enter).unwrap();
@@ -1141,8 +1117,8 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
         ("scale", json!({"handles": [f], "base": [0, 0], "factor": 2})),
         ("mirror", json!({"handles": [t], "p1": [0, 20], "p2": [60, 20], "erase": true})),
         ("stretch", json!({"window": [[25, 3], [35, 7]], "delta": [0, 10]})),
-        // A window round the fan-out point F0 (5,5): the trunk's and three fan lines' ends.
-        ("stretch", json!({"window": [[3, 3], [7, 7]], "delta": [0, 10]})),
+        // A window round a tail start and its bend (brief 009: (20,0) on the left).
+        ("stretch", json!({"window": [[18, -2], [23, 3]], "delta": [0, 10]})),
         ("grip.stretch", json!({"handle": t, "index": 0, "to": [5, 20]})),
         ("grip.move", json!({"handles": [t], "index": 0, "to": [5, 20], "mode": "move"})),
         ("properties.set", json!({"handles": [t], "color": 1})),
@@ -1193,7 +1169,8 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
     for cmd in ["disconnect", "connect"] {
         g.h.s.start(cmd).unwrap();
         let p0 = prompt(&g.h);
-        click(&mut g.h, 2.5, 2.5);
+        // A tail (brief 009: the tails run along the wires near their ends).
+        click(&mut g.h, 10.0, 0.0);
         assert_eq!(g.h.s.log.last().map(String::as_str), Some(FAN_REFUSED), "{cmd}");
         assert_eq!(prompt(&g.h), p0, "{cmd}: the prompt repeats");
         let _ = g.h.s.input(Input::Cancel);

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
 
 use cadcraft_engine::doc::{
-    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Text,
+    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Lineweight, Text,
 };
 use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
@@ -18,8 +18,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
-    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op,
+    Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
@@ -37,6 +37,9 @@ pub enum Mapped {
     Marker(RepresentationId, TerminalId),
     /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
     Fan(CableId),
+    /// The derived text of a cable reference (brief 010), by its reference representation:
+    /// computed, not an item. Erasing it erases its reference; other edits are refused.
+    RefText(RepresentationId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -45,8 +48,18 @@ pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
     markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
-    /// Fan view lines: (cable, index of the line in the fan) → handle.
+    /// Computed cable drawing (fans, core labels, reference flags; briefs 005, 009): (cable,
+    /// index of the part) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
+    /// The cables drawn as fans on this page.
+    fan_cables: BTreeSet<CableId>,
+    /// The member and the reference end each computed part belongs to, where it has one.
+    parts: HashMap<Handle, (Option<ConductorId>, Option<RepresentationId>)>,
+    /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
+    /// square is shown there.
+    quiet: Vec<Pt>,
+    /// Reference texts (brief 010): reference representation → handle.
+    refs: BTreeMap<RepresentationId, Handle>,
 }
 
 impl HandleMap {
@@ -74,9 +87,56 @@ impl HandleMap {
         self.fans.insert((cable, index), h);
         self.by_handle.insert(h, Mapped::Fan(cable));
     }
+    /// A computed part of `cable`'s drawing (brief 009): `fan` when the cable is drawn as a fan on
+    /// this page; the member (`core`) and the reference end it belongs to.
+    pub fn insert_part(
+        &mut self,
+        cable: CableId,
+        index: u32,
+        h: Handle,
+        fan: bool,
+        core: Option<ConductorId>,
+        reference: Option<RepresentationId>,
+    ) {
+        self.insert_fan(cable, index, h);
+        if fan {
+            self.fan_cables.insert(cable);
+        }
+        if core.is_some() || reference.is_some() {
+            self.parts.insert(h, (core, reference));
+        }
+    }
+    /// Loose wire ends that show no loose-end square (design 009 §7.3).
+    pub fn quiet_ends(&self) -> &[Pt] {
+        &self.quiet
+    }
+    /// Whether `cable` is drawn as a fan on this page.
+    pub fn is_fan(&self, cable: CableId) -> bool {
+        self.fan_cables.contains(&cable)
+    }
+    /// The member a computed part belongs to (a bend, a tail, a core label, a wire number).
+    pub fn core_of(&self, h: Handle) -> Option<ConductorId> {
+        self.parts.get(&h).and_then(|(c, _)| *c)
+    }
+    /// The reference end a computed part belongs to (its flag or text).
+    pub fn reference_of(&self, h: Handle) -> Option<RepresentationId> {
+        self.parts.get(&h).and_then(|(_, r)| *r)
+    }
     /// Every handle of a fan view line.
     pub fn fan_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.fans.values().copied()
+    }
+    /// The handle of a reference's derived text.
+    pub fn ref_text(&self, reference: RepresentationId) -> Option<Handle> {
+        self.refs.get(&reference).copied()
+    }
+    pub fn insert_ref_text(&mut self, reference: RepresentationId, h: Handle) {
+        self.refs.insert(reference, h);
+        self.by_handle.insert(h, Mapped::RefText(reference));
+    }
+    /// Every handle of a reference text.
+    pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.refs.values().copied()
     }
     pub fn len(&self) -> usize {
         self.by_handle.len()
@@ -90,10 +150,11 @@ impl HandleMap {
     }
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
-        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len()
+        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
+            && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
     }
 }
 
@@ -250,6 +311,10 @@ pub struct Project {
     pub settings: crate::views::Settings,
     /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
     pub(crate) said_not_remembered: bool,
+    /// Who the project's edits, undos and redos are recorded as (FILE-07): [`Author::User`] by
+    /// default, `Author::Agent(<client name>)` when an agent drives the session (brief 011). A
+    /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
+    pub author: Author,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -298,14 +363,42 @@ fn cables_layer() -> CLayer {
     l
 }
 
-/// One line of a fan view: a line for two points, else an open polyline, ByLayer on the reserved
-/// layer.
-pub(crate) fn fan_entity(path: &[Pt], handle: Handle) -> Entity {
-    let kind = match path {
-        [a, b] => kind_for_primitive(&ecad_model::Primitive::Line { a: *a, b: *b }),
-        _ => kind_for_primitive(&ecad_model::Primitive::Polyline { vertices: path.to_vec(), closed: false }),
+/// One computed part of a cable's drawing (briefs 005, 009) as an entity on the reserved layer:
+/// a line for two points, else a polyline; an arc; a text. Trunk and spine carry the cable
+/// lineweight, bends, tails and frames the wire lineweight, text the layer's.
+pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
+    use crate::look::{LABEL_HEIGHT, Shape, Weight};
+    use ecad_model::Primitive;
+    let kind = match &part.shape {
+        Shape::Path { points, closed: false } if points.len() == 2 => match points.as_slice() {
+            [a, b] => kind_for_primitive(&Primitive::Line { a: *a, b: *b }),
+            _ => kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: false }),
+        },
+        Shape::Path { points, closed } => {
+            kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: *closed })
+        }
+        Shape::Arc { center, radius, start, end } => {
+            kind_for_primitive(&Primitive::Arc { center: *center, radius: *radius, start: *start, end: *end })
+        }
+        Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
+            at: *at,
+            height: LABEL_HEIGHT,
+            rotation: *rotation,
+            value: value.clone(),
+        }),
     };
-    Entity { handle, common: Common { layer: crate::views::LAYER.into(), ..Common::default() }, kind }
+    let lineweight = match part.weight {
+        Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
+        Weight::Wire => Lineweight::Mm100(crate::look::WIRE_WEIGHT),
+        Weight::Text => Lineweight::ByLayer,
+    };
+    let color =
+        part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
+    Entity {
+        handle,
+        common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() },
+        kind,
+    }
 }
 
 fn base_drawing() -> Drawing {
@@ -367,7 +460,8 @@ pub fn project_page(
 /// [`project_page`] with cable views (brief 005): each cable in `fan` whose fan can be drawn on
 /// the page is shown as its fan ([`crate::views::fan_on_page`], with tolerance `tol`) on layer
 /// [`crate::views::LAYER`] instead of its member routes and slashes. Everything else is projected
-/// exactly as by [`project_page`].
+/// exactly as by [`project_page`]. Both draw each cable reference's derived text on that layer
+/// too ([`crate::references::markers_on_page`], brief 010).
 ///
 /// # Errors
 /// As [`project_page`].
@@ -431,7 +525,7 @@ pub fn project_page_with(
         }
         d.blocks.insert(name, Arc::new(b));
     }
-    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ecad_model::ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut map = HandleMap::default();
     let mut ents: Vec<Entity> = Vec::new();
@@ -460,11 +554,22 @@ pub fn project_page_with(
         }
     }
     for (k, f) in &fans {
-        for (i, path) in f.paths().enumerate() {
-            let index = u32::try_from(i).map_err(|_| "a fan has too many lines")?;
+        map.quiet.extend(f.quiet.iter().copied());
+        for (i, part) in f.parts.iter().enumerate() {
+            // A reference end's text (brief 009's look, brief 010's live text) is mapped to its
+            // reference, so hover, Go to Reference and erasing it act on the reference.
+            if part.role == crate::look::Role::ReferenceText
+                && let Some(r) = part.reference
+            {
+                let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());
+                ents.push(part_entity(part, h));
+                map.insert_ref_text(r, h);
+                continue;
+            }
+            let index = u32::try_from(i).map_err(|_| "a cable drawing has too many parts")?;
             let h = prev.fan(*k, index).unwrap_or_else(|| d.new_handle());
-            ents.push(fan_entity(path, h));
-            map.insert_fan(*k, index, h);
+            ents.push(part_entity(part, h));
+            map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
     ents.sort_by_key(|e| e.handle);
@@ -540,6 +645,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -596,6 +702,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -682,6 +789,7 @@ impl Project {
             views: BTreeSet::new(),
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
+            author: Author::User,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -974,6 +1082,9 @@ impl Project {
                     // them), so they are not compared with what the engine committed.
                     let mut amended = amended.clone();
                     amended.extend(prev.fan_handles().chain(map.fan_handles()));
+                    // Reference texts are derived too (brief 010): moving a reference point or a
+                    // member route moves or rewrites them.
+                    amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1035,13 +1146,26 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        let tx = self.ledger.commit_at(Author::User, label, ops, now_ms()).map_err(|e| {
+        let linked = crate::references::linked(self.ledger.document());
+        let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         self.refresh_pages(pg, Some(command));
+        self.say_orphaned(pg, &linked);
         Ok(tx)
+    }
+
+    /// Echo the line of design 010 §4.3 when references linked before a change (`before`) have
+    /// lost their other end.
+    pub(crate) fn say_orphaned(&self, pg: &mut Pages<'_>, before: &BTreeSet<RepresentationId>) {
+        if before.is_empty() {
+            return;
+        }
+        if let Some(line) = crate::references::orphaned_line(self.ledger.document(), before) {
+            pg.echo(line);
+        }
     }
 
     /// Restore the last projection of `page` after a refusal.
@@ -1231,7 +1355,8 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
-        if let Err(e) = self.ledger.commit_at(Author::User, &label, t.ops, now_ms()) {
+        let linked = crate::references::linked(self.ledger.document());
+        if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -1248,6 +1373,23 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
+        // A reference text on another open page may name this page's objects (brief 010): those
+        // pages are redrawn from the document too.
+        if !linked.is_empty() || self.ledger.document().representations.values().any(crate::references::is_reference) {
+            let others: Vec<PageId> = self
+                .pages
+                .iter()
+                .filter(|(p, v)| **p != page && v.uid.is_some() && !v.unavailable)
+                .map(|(p, _)| *p)
+                .collect();
+            for other in others {
+                self.refresh_page(pg, other, Some(c.command), None, false);
+            }
+        }
+        self.say_orphaned(pg, &linked);
+        for note in &t.notes {
+            pg.echo(note.clone());
+        }
         self.sync_saved(pg);
         Verdict::Accept
     }
@@ -1412,10 +1554,11 @@ impl Project {
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }
+        let linked = crate::references::linked(self.ledger.document());
         let r = if undo {
-            self.ledger.undo_at(Author::User, now_ms())
+            self.ledger.undo_at(self.author.clone(), now_ms())
         } else {
-            self.ledger.redo_at(Author::User, now_ms())
+            self.ledger.redo_at(self.author.clone(), now_ms())
         };
         match r {
             Ok(_) => {
@@ -1423,6 +1566,7 @@ impl Project {
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 self.refresh_pages(pg, Some(command));
+                self.say_orphaned(pg, &linked);
                 Ok(Some(label))
             }
             Err(ecad_model::ModelError::NothingTo(_)) => Ok(None),

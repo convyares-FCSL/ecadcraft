@@ -1,0 +1,18 @@
+[package]
+name = "ecad-mcp"
+description = "ECAD over MCP: CADCraft's MCP server composed with an ECAD project, headless (brief 011)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-model = { workspace = true }
+cadcraft-engine = { path = "../../../crates/engine" }
+cadcraft-mcp = { path = "../../../crates/mcp" }
+serde_json = { workspace = true }

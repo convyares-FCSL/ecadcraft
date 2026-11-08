@@ -19,7 +19,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_engine::doc::Handle;
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_cadcraft::{Mapped, Project};
-use ecad_model::{CableId, ComponentId, ConductorId, ItemId, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, TerminalId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";
@@ -108,10 +108,45 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cableview"),
     },
     Tool {
+        id: "ecad.cablecore",
+        group: "Wiring",
+        label: "Core Label",
+        tooltip: "Click a wire in a cable and type its core number or colour",
+        kind: Kind::Start("cablecore"),
+    },
+    Tool {
+        id: "ecad.cablefan",
+        group: "Wiring",
+        label: "Cable Join",
+        tooltip: "Click a cable shown as a fan near one end, then where its trunk should join the spine",
+        kind: Kind::Start("cablefan"),
+    },
+    Tool {
+        id: "ecad.cableref",
+        group: "Wiring",
+        label: "Cable Reference",
+        tooltip: "Click a cable, then where it leaves this page: places a reference to its other end",
+        kind: Kind::Start("cableref"),
+    },
+    Tool {
+        id: "ecad.cablecontinue",
+        group: "Wiring",
+        label: "Continue Cable",
+        tooltip: "Continue a cable from its reference on another page: click where it arrives and which way its wires run",
+        kind: Kind::Start("cablecontinue"),
+    },
+    Tool {
+        id: "ecad.cablegoto",
+        group: "Wiring",
+        label: "Go to Reference",
+        tooltip: "Click a cable reference to open the page of its other end",
+        kind: Kind::Start("cablegoto"),
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
-        tooltip: "Set a property such as the tag (fills in the Command field)",
+        tooltip: "Set a property such as the tag, or a cable's designation or type (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
@@ -140,6 +175,20 @@ pub const TOOLS: &[Tool] = &[
         group: "Pages",
         label: "Open Page",
         tooltip: "Open a closed page again (fills in the Command field)",
+        kind: Kind::Template,
+    },
+    Tool {
+        id: "ecad.renamepage",
+        group: "Pages",
+        label: "Rename Page",
+        tooltip: "Rename a page (fills in the Command field)",
+        kind: Kind::Template,
+    },
+    Tool {
+        id: "ecad.movepage",
+        group: "Pages",
+        label: "Move Page",
+        tooltip: "Move a page to another position (fills in the Command field)",
         kind: Kind::Template,
     },
     Tool {
@@ -190,6 +239,9 @@ pub struct Picked {
     pub terminals: Vec<TerminalId>,
     /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
     pub truncated: bool,
+    /// The page shown in the active drawing, when it is an ECAD page (brief 010: the page
+    /// templates fill it in).
+    pub page: Option<PageId>,
 }
 
 impl Picked {
@@ -223,10 +275,17 @@ impl Picked {
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
+                // A cable reference's text names its cable (brief 010).
+                Some(Mapped::RefText(r)) => {
+                    if let Some(r) = doc.representations.get(&r) {
+                        subjects.insert(r.subject);
+                    }
+                }
                 None => {}
             }
         }
         Picked {
+            page: p.page_of(uid),
             truncated: handles.len() > MAX_PICKED,
             handles,
             components: subjects
@@ -303,8 +362,21 @@ press Enter.",
             r#"openpage {"page":"<page id>"}"#.to_string(),
             "Open Page: the page's ID, listed by Inspect Project (under \"pages\"). Then press Enter.",
         ),
+        "ecad.renamepage" => (
+            format!(r#"renamepage {{"page":"{}","title":"<title>"}}"#, page_or_placeholder(picked)),
+            "Rename Page: the current page's ID is filled in; replace <title> with the new title (1 to 200 characters). Then press Enter.",
+        ),
+        "ecad.movepage" => (
+            format!(r#"movepage {{"page":"{}","index":<new position>}}"#, page_or_placeholder(picked)),
+            "Move Page: the current page's ID is filled in; replace <new position> with its new place (1 = first). Cable references follow at once. Then press Enter.",
+        ),
         _ => return None,
     })
+}
+
+/// The current page's ID, or a placeholder off an ECAD page.
+fn page_or_placeholder(picked: &Picked) -> String {
+    picked.page.map_or_else(|| "<page id>".to_string(), PageId::hex)
 }
 
 /// The `<placeholder>`s still in `line`: `<` and `>` around letters, digits, spaces, `_` or `-`,

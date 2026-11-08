@@ -25,11 +25,26 @@ started.
   (the debugger, the Tool Sets seam X8 and later work have changed files outside `ecad/` since the
   proposal was written against `baee1b8`), then get the owner's approval for implementation.
 
+## Bridged agent access (brief 011, owner answer 2026-11-07)
+
+- **What:** an agent driving the running trial through an opt-in, localhost-only control channel
+  (`--control PORT` with CADCraft's control token), with a banner showing when an agent is
+  connected and when it last wrote (brief 011, scope item 2).
+- **Status:** deferred; brief 011 ships the headless `ecad-mcp` only.
+- **Before resuming:** the trial is shared by the person and the agent, so the author must be
+  recorded **per call**, not per session: every agent call sets `Author::Agent(<name>)` for its
+  own transactions and restores `Author::User` afterwards, including when the call fails or
+  panics, so no person's edit is ever recorded as the agent's (and none of the agent's as the
+  person's). The headless server sets the author once because only the agent edits there.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
   rewriting of older files (E4); "Save a Copy As" with a new project ID (E9). See
   `docs/document-architecture-proposal.md` §22-§23.
+- Delete `ProjectHandle::apply_ops` and the `test-ops` feature of `ecad-cadcraft` once brief
+  010's `cableref` is merged: brief 009's tests build cable reference ends with it only because no
+  command makes them on that branch (brief 009 review S3).
 - **Stage 4 (checkpoints) is on hold** until stage 3 (libraries) and the core domain features
   are settled (owner, 2026-11-08). On the benchmark's large tier, about 13 s to open 170,000
   transactions is acceptable for now.
