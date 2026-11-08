@@ -1,8 +1,8 @@
 //! Brief 010 (cable references across pages), written from the brief and design 010.
 //!
-//! Fixture R (design §11): page 1 renamed `Supply` holds K1 with terminals at (0,0), (0,5),
+//! Fixture R (design §11): page 1 renamed `Supply` holds K1 with connection points at (0,0), (0,5),
 //! (0,10), wires W0, W5, W10 from there to x = 60, and cable C1 slashed across them; page 2
-//! `Field` holds K2 with terminals at (100,0), (100,5), (100,10).
+//! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
 //! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablerefs`,
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,

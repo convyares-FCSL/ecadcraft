@@ -103,7 +103,7 @@ mod hover_and_marks {
         out
     }
 
-    /// Rectangle with terminals "1" (40,10, wired) and "2" (0,10, free); a coil rotated 90 at 100,0
+    /// Rectangle with connection points "1" (40,10, wired) and "2" (0,10, free); a coil rotated 90 at 100,0
     /// (A1 90,0 wired; A2 110,0 free); a mirrored coil at 100,60; a wire from 1 to A1.
     fn scene(h: &mut Harness<'static, Trial>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
@@ -155,8 +155,11 @@ mod hover_and_marks {
                     pointer_to(&mut h, at + off);
                     let got = first_hover_line(&h).unwrap_or_default();
                     // Far out, several terminals fall inside one aperture: any terminal is right.
-                    let good =
-                        if zoom == "far" { got.starts_with("Terminal ") } else { got == format!("Terminal {label}") };
+                    let good = if zoom == "far" {
+                        got.starts_with("Connection point ")
+                    } else {
+                        got == format!("Connection point {label}")
+                    };
                     if !good {
                         wrong.push(format!("{zoom}: {label} at {x},{y} +{off:?}: {got:?}"));
                     }
@@ -244,7 +247,7 @@ mod hover_and_marks {
         for (button, setup) in [
             ("Wire", Some("0,40")),
             ("Place Symbol", Some("R")),
-            ("Add Terminal", None),
+            ("Add Connection Point", None),
             ("Connect", None),
             ("Disconnect", None),
             ("Convert to Component", None),
@@ -437,7 +440,7 @@ mod layout_refusals {
 
     const TOOLS: [(&str, &str); 6] = [
         ("Convert to Component", "convertcomponent"),
-        ("Add Terminal", "addterminal"),
+        ("Add Connection Point", "addterminal"),
         ("Place Symbol", "place"),
         ("Wire", "wire"),
         ("Connect", "connect"),
@@ -622,7 +625,10 @@ mod layout_refusals {
             let p = screen(&h, x, y);
             pointer_to(&mut h, p);
             let first = h.state().hover_lines().and_then(|l| l.first().cloned()).unwrap_or_default();
-            assert!(!first.starts_with("Terminal"), "a terminal tooltip inside the viewport at {x},{y}: {first}");
+            assert!(
+                !first.starts_with("Connection point"),
+                "a terminal tooltip inside the viewport at {x},{y}: {first}"
+            );
         }
         assert!((head(&mut h), doc(&mut h)) == before, "something was recorded in the viewport");
     }

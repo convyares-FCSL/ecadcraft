@@ -234,7 +234,7 @@ impl AddTerminal {
                 };
                 commit(s, "addterminal", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;
-                s.echo(format!("Terminal {label} added to component {}.", c.hex()));
+                s.echo(format!("Connection point {label} added to component {}.", c.hex()));
                 Ok(Step::Continue)
             }
             Input::Enter => Ok(Step::Done),
@@ -251,17 +251,17 @@ impl Interactive for AddTerminal {
     fn prompt(&self, s: &Session) -> Prompt {
         let shown = self.shown_name(s);
         if self.naming {
-            let p = Prompt::new("Enter terminal name", Accept::TEXT);
+            let p = Prompt::new("Enter connection point name", Accept::TEXT);
             return match shown {
                 Some(n) => p.default(n),
                 None => p,
             };
         }
         let message = match shown {
-            Some(n) => format!("Specify point for terminal {n} on a component"),
+            Some(n) => format!("Specify point for connection point {n} on a component"),
             // Off any component the number is not known yet: it is the smallest unused one of the
             // component the point lands on.
-            None => "Specify point for a terminal on a component".to_string(),
+            None => "Specify point for a connection point on a component".to_string(),
         };
         Prompt::new(message, Accept::POINT).kw(&["Name"])
     }
@@ -445,7 +445,7 @@ pub(crate) fn disconnect(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 const NOT_WIRE: &str = "That is not a wire.";
-const NO_TERMINAL: &str = "No terminal there. Move onto a terminal until the green ring shows.";
+const NO_TERMINAL: &str = "No connection point there. Move onto a connection point until the green ring shows.";
 
 struct Link {
     connect: bool,
@@ -518,7 +518,7 @@ impl Interactive for Link {
             (None, true) => Prompt::new("Select wire near the end to connect", Accept::POINT),
             (None, false) => Prompt::new("Select wire near the end to disconnect", Accept::POINT),
             (Some((_, end, at)), _) => {
-                Prompt::new(format!("Select terminal for end {}", end_name(end)), Accept::POINT).base(v2(at))
+                Prompt::new(format!("Select connection point for end {}", end_name(end)), Accept::POINT).base(v2(at))
             }
         }
     }

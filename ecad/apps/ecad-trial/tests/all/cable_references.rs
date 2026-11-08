@@ -156,7 +156,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
         ),
         "{said}"
     );
-    assert!(said.contains("Connect each wire's free end to its terminal with Connect."));
+    assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
     let field_uid = t.cad.session.state().unwrap().uid;

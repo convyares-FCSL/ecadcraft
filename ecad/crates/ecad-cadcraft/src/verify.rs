@@ -44,7 +44,7 @@ impl Verification {
     /// One line for the event log.
     pub fn summary(&self) -> String {
         let counts = format!(
-            "{} items, {} terminal positions, {} groups, {} attached ends",
+            "{} items, {} connection points, {} groups, {} attached ends",
             self.items, self.terminals, self.groups, self.attached_ends
         );
         match self.problems.first() {
@@ -197,9 +197,9 @@ pub fn verify_page_with(
                     v.terminals += 1;
                     match map.marker(*rid, *t).and_then(|h| entities.get(&h)).and_then(|e| marker_position(e)) {
                         Some(p) if near(p, *at) => {}
-                        _ => {
-                            problems.push(format!("terminal {t} of representation {rid} is not marked at its position"))
-                        }
+                        _ => problems.push(format!(
+                            "connection point {t} of representation {rid} is not marked at its position"
+                        )),
                     }
                 }
             }
@@ -221,14 +221,14 @@ pub fn verify_page_with(
                 // The block shows every terminal of the definition; the component may use a subset.
                 if !want.iter().all(|w| got.iter().any(|g| near(*g, *w))) {
                     problems.push(format!(
-                        "symbol of representation {rid} does not show its terminals where the document puts them"
+                        "symbol of representation {rid} does not show its connection points where the document puts them"
                     ));
                 }
             }
         }
     }
     if !same_points(markers_shown, expected_markers) {
-        problems.push("terminal markers in the drawing differ from the document's connection points".into());
+        problems.push("connection point markers in the drawing differ from the document's connection points".into());
     }
 
     // 4. Blocks: one per definition used on the page, with the definition's graphics.
@@ -245,7 +245,7 @@ pub fn verify_page_with(
         }
         let terms: Vec<Pt> = b.entities.iter().filter_map(|e| marker_position(e)).collect();
         if !same_points(terms, def.terminals.iter().map(|t| t.at).collect()) {
-            problems.push(format!("block {name} does not mark its definition's terminals"));
+            problems.push(format!("block {name} does not mark its definition's connection points"));
         }
     }
 
@@ -306,7 +306,7 @@ pub fn verify_page_with(
             v.attached_ends += 1;
             let at = if end == End::A { path.0 } else { path.1 };
             if !drawn_terminals.iter().any(|p| near(*p, at)) {
-                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a terminal"));
+                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a connection point"));
             }
         }
     }

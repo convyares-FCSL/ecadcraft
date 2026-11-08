@@ -83,8 +83,8 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.addterminal",
         group: "Components",
-        label: "Add Terminal",
-        tooltip: "Click on a component's outline to add terminals; Enter to finish",
+        label: "Add Connection Point",
+        tooltip: "Click on a component's outline to add connection points; Enter to finish",
         kind: Kind::Start("addterminal"),
     },
     Tool {
@@ -112,14 +112,14 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.wire",
         group: "Wiring",
         label: "Wire",
-        tooltip: "Click points to draw a wire; ends on terminals attach; Enter to finish",
+        tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
     },
     Tool {
         id: "ecad.connect",
         group: "Wiring",
         label: "Connect",
-        tooltip: "Click a wire near its end, then a terminal",
+        tooltip: "Click a wire near its end, then a connection point",
         kind: Kind::Start("connect"),
     },
     Tool {

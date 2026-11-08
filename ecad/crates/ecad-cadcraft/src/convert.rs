@@ -195,7 +195,7 @@ pub fn kind_name(kind: &EntityKind) -> &'static str {
 /// A message naming what ECAD pages do not support yet.
 pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, String> {
     if e.common.layer == MARKER_LAYER {
-        return Err(format!("the {MARKER_LAYER} layer is reserved for terminal markers"));
+        return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
     }
     if e.common.layer == crate::views::LAYER {
         return Err(crate::views::LAYER_RESERVED.into());

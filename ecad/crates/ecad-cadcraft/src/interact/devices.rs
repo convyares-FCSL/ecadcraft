@@ -219,7 +219,7 @@ impl Place {
             s.echo(format!("Added {} {} to {tag} (now on {pages}).", sym.name, labels.join("/")));
             self.join = component;
         } else {
-            s.echo(format!("Placed {tag} ({}) with terminals {}.", sym.name, labels.join(", ")));
+            s.echo(format!("Placed {tag} ({}) with connection points {}.", sym.name, labels.join(", ")));
         }
         // A typed tag names one device; the next click makes a new one with the next number.
         self.tag = None;

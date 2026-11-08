@@ -9,6 +9,11 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   libraries (stage 3), checkpoints and migration rewriting must not be implemented before their
   stage is approved) and `../docs/decisions.md` first. Postponed work is listed in
   `docs/deferred-work.md`; do not start it without the owner's approval.
+- **Words (owner decision, 2026-11-08):** `docs/glossary.md` defines the words used in everything a
+  person sees. A device's landing point for a conductor is a **connection point** (`-K01:A1`);
+  "terminal" is only the DIN-rail terminal device (`-X01:1`), "terminal strip" a group of them.
+  Code, op and command names (`Terminal`, `AddTerminal`, `addterminal`) stay until the next major
+  format version.
 - **`docs/quick-start.md` is the single maintained guide** for running and manually testing the
   app. Update it in the same PR as any change that affects its instructions, examples, expected
   results, limitations or the revision and environment it records. Keep automated checks,

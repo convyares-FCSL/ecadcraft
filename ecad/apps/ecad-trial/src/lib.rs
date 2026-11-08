@@ -182,7 +182,7 @@ pub fn status_line(s: &Status) -> String {
 const INTRO: &[&str] = &[
     "ECAD trial (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
 New, Open, Save and Save As.",
-    "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Terminal, Place Symbol, Wire, Connect and \
+    "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Connection Point, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
     "JSON forms go in the ECAD command field (PROJECT panel > Developer, at the top; the command line below takes \
 a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
@@ -1168,7 +1168,7 @@ impl Trial {
             }
             out.push(String::new());
             out.push(format!(
-                "Counts: {} components, {} terminals, {} conductors, {} items, {} representations, {} definitions.",
+                "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
                 doc.components.len(),
                 doc.terminals.len(),
                 doc.conductors.len(),

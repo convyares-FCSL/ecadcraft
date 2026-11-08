@@ -119,18 +119,18 @@ fn scene(h: &mut H, by_prompts: bool) {
     }
     let right = line_at(h, 40.0, 0.0, 40.0, 20.0);
     let left = line_at(h, 0.0, 20.0, 0.0, 0.0);
-    // Add Terminal: a click 2 pixels off the right edge lands on it; a typed point is literal.
+    // Add Connection Point: a click 2 pixels off the right edge lands on it; a typed point is literal.
     if by_prompts {
         start(h, "addterminal");
-        assert_eq!(prompt(h), "Specify point for terminal 1 on a component or [Name]:");
+        assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
         let p = px(h);
         click(h, Vec2::new(40.0 + 2.0 * p, 10.0));
-        assert_eq!(prompt(h), "Specify point for terminal 2 on a component or [Name]:");
+        assert_eq!(prompt(h), "Specify point for connection point 2 on a component or [Name]:");
         typed(h, "0,10");
         typed(h, "N");
-        assert_eq!(prompt(h), "Enter terminal name <3>:");
+        assert_eq!(prompt(h), "Enter connection point name <3>:");
         h.s.cmdline("X1").unwrap();
-        assert_eq!(prompt(h), "Specify point for terminal X1 on a component or [Name]:");
+        assert_eq!(prompt(h), "Specify point for connection point X1 on a component or [Name]:");
         typed(h, "0,5");
         typed(h, "");
         assert!(h.s.running.is_none());
@@ -193,7 +193,7 @@ fn scene(h: &mut H, by_prompts: bool) {
         start(h, "connect");
         assert_eq!(prompt(h), "Select wire near the end to connect:");
         click(h, Vec2::new(2.0, 30.0));
-        assert_eq!(prompt(h), "Select terminal for end A:");
+        assert_eq!(prompt(h), "Select connection point for end A:");
         let p = px(h);
         click(h, Vec2::new(-2.0 * p, 10.0 + 2.0 * p));
         assert_eq!(prompt(h), "Select wire near the end to connect:");
@@ -274,7 +274,7 @@ fn every_tool_names_its_first_prompt_and_refuses_off_an_ecad_page() {
     let firsts = [
         ("convertcomponent", "Select objects to convert to a component:"),
         // No component on the page yet: the prompt promises no number (fix round 2, N3).
-        ("addterminal", "Specify point for a terminal on a component or [Name]:"),
+        ("addterminal", "Specify point for a connection point on a component or [Name]:"),
         ("place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
         ("wire", "Specify first point of wire:"),
         ("connect", "Select wire near the end to connect:"),
@@ -464,14 +464,14 @@ fn errors_are_shown_and_the_prompt_repeats() {
             Vec2::new(15.0, 60.0),
             "That object is not part of a component. Convert it to a component first.",
         ),
-        ("addterminal", Vec2::new(105.0, 5.0), "terminals of placed symbols come from their definition"),
+        ("addterminal", Vec2::new(105.0, 5.0), "connection points of placed symbols come from their definition"),
         ("addterminal", Vec2::new(15.0, 80.0), "That is not a component outline."),
         ("connect", Vec2::new(15.0, 60.0), "That is not a wire."),
         ("disconnect", Vec2::new(200.0, 200.0), "That is not a wire."),
     ];
     for (cmd, at, msg) in cases {
         start(&mut h, cmd);
-        // The Add Terminal prompt names the default of the component under the cursor: compare
+        // The Add Connection Point prompt names the default of the component under the cursor: compare
         // it with the cursor already where the click goes.
         h.s.cursor = *at;
         let first = prompt(&h);
@@ -484,8 +484,11 @@ fn errors_are_shown_and_the_prompt_repeats() {
     start(&mut h, "connect");
     click(&mut h, Vec2::new(2.0, 80.0));
     click(&mut h, Vec2::new(200.0, 200.0));
-    assert_eq!(h.s.log.last().unwrap(), "No terminal there. Move onto a terminal until the green ring shows.");
-    assert_eq!(prompt(&h), "Select terminal for end A:");
+    assert_eq!(
+        h.s.log.last().unwrap(),
+        "No connection point there. Move onto a connection point until the green ring shows."
+    );
+    assert_eq!(prompt(&h), "Select connection point for end A:");
     h.s.cancel();
     // Wire: Enter with one point; Convert: Enter with nothing.
     start(&mut h, "wire");
@@ -571,20 +574,20 @@ fn the_overlay_marks_terminals_and_wire_ends_and_hover_names_them() {
     let lines = h.p(|p| interact::hover_lines(p, uid, coil_handle)).unwrap();
     assert_eq!(lines[0], "Component (no tag)");
     assert_eq!(lines[1], format!("id {}", coil.hex()));
-    assert_eq!(lines[2], "Terminals: 2");
+    assert_eq!(lines[2], "Connection points: 2");
     assert!(lines.iter().any(|l| l == "  A1 — 1 wire end"), "{lines:?}");
     let w = d.conductors.iter().find(|(_, c)| c.ends.iter().all(Option::is_some)).map(|(w, _)| *w).unwrap();
     let wh = h.route_handle(pg, w);
     let lines = h.p(|p| interact::hover_lines(p, uid, wh)).unwrap();
     assert_eq!(lines[0], "Wire (no tag)");
-    assert!(lines[2].starts_with("End A: terminal 1 of "), "{lines:?}");
-    assert!(lines[3].starts_with("End B: terminal A1 of "), "{lines:?}");
+    assert!(lines[2].starts_with("End A: connection point 1 of "), "{lines:?}");
+    assert!(lines[3].starts_with("End B: connection point A1 of "), "{lines:?}");
     let drawn = only_component_drawn(&d);
     let (rid, rep) = d.representations_of(ecad_model::Subject::Component(drawn)).next().unwrap();
     let t = *rep.connection_points.keys().next().unwrap();
     let marker = h.p(|p| p.pages[&pg].map.marker(rid, t)).unwrap();
     let lines = h.p(|p| interact::hover_lines(p, uid, marker)).unwrap();
-    assert_eq!(lines[0], "Terminal 1");
+    assert_eq!(lines[0], "Connection point 1");
     assert_eq!(lines[1], format!("of component {}", drawn.hex()));
     assert!(lines[4].starts_with("  wire ") && lines[4].ends_with("end A"), "{lines:?}");
     // Plain geometry: nothing.

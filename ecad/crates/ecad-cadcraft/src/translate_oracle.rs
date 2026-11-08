@@ -349,9 +349,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
             Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
-                let at = marker_position(new).ok_or("terminal markers can only be moved")?;
+                let at = marker_position(new).ok_or("connection point markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
-                    return Err("terminal markers can only be moved".into());
+                    return Err("connection point markers can only be moved".into());
                 }
                 rep(&mut reps, rid, cx.doc)?;
                 if let Some(r) = reps.get_mut(&rid) {
@@ -381,7 +381,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             None => {
                 let e = after.get(h).ok_or("added entity missing")?;
                 if e.common.layer == MARKER_LAYER {
-                    return Err(format!("the {MARKER_LAYER} layer is reserved for terminal markers"));
+                    return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
                 }
                 let item = item_from(cx.doc, cx.page, e)?;
                 if matches!(item.kind, ItemKind::Symbol(_)) {
@@ -521,14 +521,14 @@ fn copy_batch(
         let mut cps = BTreeMap::new();
         if r.form == Form::Symbol {
             for (src_t, at) in &r.connection_points {
-                cps.insert(term_map.get(src_t).copied().ok_or("terminal not copied")?, *at);
+                cps.insert(term_map.get(src_t).copied().ok_or("connection point not copied")?, *at);
             }
         }
         for (src_t, sh) in &marker_handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied marker missing")?;
             let at = marker_position(e).ok_or("copied marker is not a marker")?;
-            let nt = term_map.get(src_t).copied().ok_or("terminal not copied")?;
+            let nt = term_map.get(src_t).copied().ok_or("connection point not copied")?;
             cps.insert(nt, at);
             t.new_markers.push(((new_rep, nt), nh));
             consumed.insert(nh);
@@ -600,7 +600,7 @@ fn copy_batch(
             Source::Entity(h) | Source::Clipboard { handle: h, .. } => *h,
         };
         if matches!(smap.get(sh), Some(Mapped::Marker(..))) {
-            return Err("copying terminal markers without their whole component is not supported yet".into());
+            return Err("copying connection point markers without their whole component is not supported yet".into());
         }
         let e = after.get(new).ok_or("copied entity missing")?;
         let item = item_from(cx.doc, cx.page, e)?;
