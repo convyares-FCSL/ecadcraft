@@ -583,7 +583,9 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
    wires themselves stay, still connected to the component on that page); the other page's
-   marker turns red `/?`; the reply adds `Cable …'s reference on page … now has no other end.`;
+   marker turns red `/?` (click its tab to see it: an edit in the drawing redraws only the page
+   in front, and another page whose references it changed is redrawn when you bring it to the
+   front); the reply adds `Cable …'s reference on page … now has no other end.`;
    the debugger's Diagnostics lists it under **Cable references**. Type `u`: everything is back
    with the same IDs.
 
@@ -923,6 +925,15 @@ The before run was on a busier machine than the after run (its open times are ab
 higher), so compare the draw columns by their growth with the tier rather than to the
 millisecond. What still grows from medium to large is redrawing the page, which goes through the
 whole document to find what is on it (`docs/deferred-work.md`), not the translation.
+
+After briefs 009 to 011 were merged into the branch (`c5dfb21`), every commit derived all cable
+references twice and the cable look went through every representation, so medium draw edits rose
+to about 7.5 ms. The 014 fix round derives references only for the cables an edit touches, finds a
+page's objects through the page index, and redraws only the page in front (another open page whose
+references changed is redrawn when it comes to the front). Medium after it, same machine, median
+of 5: lean 0.53 / 0.59 / 0.38 ms and churned 0.54 / 0.66 / 0.39 ms (draw move / move+wires /
+draw wire), against 0.25 / 0.27 / 0.21 and 1.49 / 1.68 / 1.03 before the merge (`9045d27`) and
+7.61 / 7.57 / 7.20 and 7.43 / 7.26 / 7.19 at `c5dfb21`.
 
 The other columns were not changed by brief 014. Not yet tried by you: open the medium project
 (`--keep`) in the trial and say whether moving a component feels instant.

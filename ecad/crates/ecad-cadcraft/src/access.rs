@@ -122,6 +122,23 @@ impl ProjectHandle {
         self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops)
     }
 
+    /// Redraw the page in front if a commit on another page left it stale (only the page being
+    /// shown is redrawn on a commit; owner, 2026-11-08). The trial calls it every frame, after
+    /// CADCraft's logic, so a page is redrawn when its tab comes to the front; anything else that
+    /// brings a page to the front calls it too. Does nothing when the page in front is no page of
+    /// this project or is not stale.
+    ///
+    /// # Errors
+    /// [`BUSY`] or [`NOT_ATTACHED`], as for [`ProjectHandle::read`].
+    pub fn refresh_shown(&self, s: &mut Session) -> Result<(), String> {
+        let Ok(uid) = s.state().map(|st| st.uid) else { return Ok(()) };
+        let mut p = self.lock(s)?;
+        if let Some(page) = p.page_of(uid) {
+            p.refresh_if_stale(&mut Pages(s), page);
+        }
+        Ok(())
+    }
+
     /// Open `page` as a document (or switch to it).
     ///
     /// # Errors

@@ -629,10 +629,25 @@ impl Snapshot {
         };
         let mut pages = BTreeSet::new();
         for k in scope {
-            let of = |s: &Snapshot| s.refs.iter().filter(|r| r.cable == *k).cloned().collect::<Vec<_>>();
-            let (old, new) = (of(self), of(after));
-            if old != new || self.members.get(k) != after.members.get(k) {
+            fn of(s: &Snapshot, k: CableId) -> Vec<&CableReference> {
+                s.refs.iter().filter(|r| r.cable == k).collect()
+            }
+            let (old, new) = (of(self, *k), of(after, *k));
+            if self.members.get(k) != after.members.get(k) {
+                // What every reference end of the cable is drawn from changed.
                 pages.extend(old.iter().chain(new.iter()).map(|r| r.page));
+                continue;
+            }
+            // Otherwise only the pages of references that say something else, appeared or went.
+            for r in &old {
+                if !new.iter().any(|n| n == r) {
+                    pages.insert(r.page);
+                }
+            }
+            for n in &new {
+                if !old.iter().any(|r| r == n) {
+                    pages.insert(n.page);
+                }
             }
         }
         Some(pages)

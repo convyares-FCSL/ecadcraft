@@ -589,6 +589,12 @@ impl Trial {
     /// trial's dialog, open the Save As dialog when CADCraft asked for a file name, and report
     /// saves.
     pub fn after_logic(&mut self) {
+        // Only the page being shown is redrawn on a commit (owner, 2026-11-08): a page a commit
+        // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
+        // again next frame (a failed projection is reported by the redraw itself).
+        if let Some(p) = self.project.as_ref() {
+            let _ = p.refresh_shown(&mut self.cad.session);
+        }
         self.handle_tools();
         self.hold_close();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {

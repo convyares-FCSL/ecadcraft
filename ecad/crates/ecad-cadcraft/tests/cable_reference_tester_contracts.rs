@@ -117,12 +117,23 @@ fn ref_on(h: &mut H, page: PageId) -> Option<RepresentationId> {
 
 /// The text the page drawing actually shows for its reference (the Text entity mapped to it).
 fn drawn_text(h: &mut H, page: PageId) -> Option<String> {
-    let rid = ref_on(h, page)?;
-    let hd = h.p(|p| p.pages.get(&page).and_then(|v| v.map.ref_text(rid)))?;
-    h.pv(|p, pg| pg.entities_of(p, page)).into_iter().find(|e| e.handle == hd).and_then(|e| match &e.kind {
-        EntityKind::Text(t) => Some(t.value.clone()),
-        _ => None,
-    })
+    // What `page` shows once its tab is in front: only the page shown is redrawn on a commit, a
+    // page left stale is redrawn when it comes to the front (owner, 2026-11-08; brief 014 fix
+    // round). The tab that was in front is put back afterwards (it is never stale).
+    let prev = h.s.active;
+    if h.p(|p| p.pages.get(&page).is_some_and(|v| v.uid.is_some())) {
+        h.activate(page);
+    }
+    let rid = ref_on(h, page);
+    let hd = rid.and_then(|rid| h.p(|p| p.pages.get(&page).and_then(|v| v.map.ref_text(rid))));
+    let text = hd.and_then(|hd| {
+        h.pv(|p, pg| pg.entities_of(p, page)).into_iter().find(|e| e.handle == hd).and_then(|e| match &e.kind {
+            EntityKind::Text(t) => Some(t.value.clone()),
+            _ => None,
+        })
+    });
+    h.s.active = prev;
+    text
 }
 
 /// The derived text of `page`'s reference, from `cablerefs` (the agent's view).

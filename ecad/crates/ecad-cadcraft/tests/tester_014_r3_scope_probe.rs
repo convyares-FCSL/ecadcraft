@@ -247,6 +247,24 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
             }
         }
         assert!(r.h.p(|p| p.ledger.replay_matches().unwrap()), "step {step}: replay");
+        // Worker, 014 fix round 3: both pages are open; a commit redraws only the page shown and
+        // marks the other stale when its reference ends changed. The page shown must equal a fresh
+        // projection now, and each page must once it is brought to the front.
+        r.h.check_with(true);
+        for p in [r.supply, r.field] {
+            r.h.activate(p);
+            assert!(!r.h.p(|x| x.pages[&p].stale), "step {step}: page stale in front");
+            r.h.check_with(true);
+        }
+        // And the per-cable derivation is the whole-document one, cable by cable.
+        let all = ecad_model::derive::cable_references(&doc);
+        for k in doc.cables.keys() {
+            let one = ecad_model::derive::cable_references_of(&doc, &std::collections::BTreeSet::from([*k]));
+            let want: Vec<_> = all.iter().filter(|x| x.cable == *k).cloned().collect();
+            assert_eq!(one, want, "step {step}: references of cable {k:?}");
+        }
+        let every: std::collections::BTreeSet<_> = doc.cables.keys().copied().collect();
+        assert_eq!(ecad_model::derive::cable_references_of(&doc, &every), all, "step {step}: all cables");
     }
     let _ = r.c1;
     eprintln!("r3 probe seed {seed:#x}: {counts:?}, 010 notes {notes}, texts {texts_seen:?}");

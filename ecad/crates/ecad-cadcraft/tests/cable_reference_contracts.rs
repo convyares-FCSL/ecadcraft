@@ -344,6 +344,10 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let doc = r.h.doc();
     assert!(markers_on_page(&doc, r.supply)[0].orphan);
     // Red: the ring (`ecad.orphan`, #FF0000) and the text (ACI 1).
+    // Only the page shown is redrawn on a commit (owner, 2026-11-08): Supply is stale until it
+    // comes to the front.
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply's text changed, so it is stale");
+    r.h.activate(r.supply);
     let su = uid(&mut r.h, r.supply);
     let ring = r.h.p(|p| overlay_marks(p, su)).into_iter().find(|m| m.at == Vec2::new(65.0, 5.0)).expect("ring");
     assert_eq!((ring.shape, ring.color), (MarkShape::Ring, Rgb(0xff, 0x00, 0x00)));
@@ -1055,4 +1059,76 @@ fn the_flag_points_up_when_the_wires_come_from_below() {
 fn the_flag_points_down_when_the_wires_come_from_above() {
     let (mut h, page, c1) = vertical_cable([5.0, -5.0]);
     assert_flag_away(&mut h, page, c1, Pt::new(0.0, -1.0));
+}
+
+// ---------------------------------------------------------------- stale pages (brief 014 fix round)
+
+/// The reference texts drawn on `page` (the drawing as it is, not a fresh derivation).
+fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
+    h.pv(|p, pg| {
+        let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
+        let view = &p.pages[&page];
+        view.map
+            .ref_text_handles()
+            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
+            .map(|e| format!("{:?}", e.kind))
+            .collect()
+    })
+}
+
+/// Owner, 2026-11-08: a commit redraws only the page being shown. With both pages open, moving
+/// Field's reference point changes Supply's reference text: Supply is not redrawn during the
+/// commit, is marked stale, and shows the new text once its tab comes to the front.
+#[test]
+fn a_commit_marks_other_pages_stale_and_they_are_redrawn_when_brought_to_the_front() {
+    let mut r = connected();
+    r.h.activate(r.supply);
+    r.h.check();
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(
+        drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")),
+        "{:?}",
+        drawn_texts(&mut r.h, r.supply)
+    );
+
+    // A commit on Field that changes Supply's text (Field's point moves to column 3).
+    r.h.activate(r.field);
+    let fid = reference_on(&mut r.h, r.field);
+    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fh = r.h.handle_of(r.field, fpoint);
+    r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.3", "the document says the new text");
+
+    // Supply was not redrawn: same drawing, old text, marked stale. Field is not stale.
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during), "Supply was redrawn during the commit");
+    assert!(r.h.p(|p| p.pages[&r.supply].stale), "Supply is not marked stale");
+    assert!(!r.h.p(|p| p.pages[&r.field].stale), "the page shown is never stale");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")));
+    r.h.check();
+
+    // Switching the tab alone redraws nothing; the trial's per-frame refresh does.
+    r.h.activate_tab_only(r.supply);
+    assert!(r.h.p(|p| p.pages[&r.supply].stale));
+    r.h.project.refresh_shown(&mut r.h.s).unwrap();
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply is still stale in front");
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/2.1")), "{texts:?}");
+    r.h.check();
+
+    // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
+    // change what Supply shows leaves Supply alone: not redrawn and not stale.
+    let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].component;
+    r.h.activate(r.field);
+    let handles = r.h.rep_handles(r.field, k2);
+    let before = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    let head = r.h.head();
+    r.h.run("move", json!({"handles": handles, "delta": [0, 0.5]})).unwrap();
+    assert_eq!(r.h.head(), head + 1, "K2 moved");
+    let during = r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).expect("Supply open");
+    assert!(std::sync::Arc::ptr_eq(&before, &during));
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "Supply's texts did not change");
+    r.h.check();
 }

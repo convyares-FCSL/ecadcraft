@@ -92,8 +92,9 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         ));
     }
     out.push_str(&format!(
-        "Median of {runs} runs each; generation not timed. xref is brief 010's cable reference derivation \n         on the opened document. draw move, move+wires and draw wire (the draw edit columns): one edit on \n         page 1 made through the engine in a headless CADCraft session. Peak memory is not measured.
-"
+        "Median of {runs} runs each; generation not timed. xref is brief 010's cable reference derivation \
+         on the opened document. draw move, move+wires and draw wire (the draw edit columns): one edit on \
+         page 1 made through the engine in a headless CADCraft session. Peak memory is not measured.\n"
     ));
     out
 }

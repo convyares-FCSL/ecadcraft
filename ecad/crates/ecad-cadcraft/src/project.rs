@@ -167,6 +167,10 @@ pub struct PageView {
     pub last: Option<Arc<Drawing>>,
     /// Projection and rebuild both failed: the page must be closed and reopened (PROJ-02).
     pub unavailable: bool,
+    /// A commit on another page changed what this page shows (its reference texts, brief 010),
+    /// and the page was not redrawn then: only the page being shown is redrawn on a commit (owner,
+    /// 2026-11-08). It is redrawn when it comes to the front ([`ProjectHandle::refresh_shown`]).
+    pub stale: bool,
 }
 
 /// Injected failures for the experiment (never set in normal use).
@@ -956,6 +960,7 @@ impl Project {
         if let Some(uid) = self.pages.get(&page).and_then(|v| v.uid)
             && pg.activate(uid)
         {
+            self.refresh_if_stale(pg, page);
             return Ok(uid);
         }
         let (d, map) = self.project(page, &base_drawing(), &HandleMap::default())?;
@@ -964,7 +969,7 @@ impl Project {
         let uid = pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?;
         let last = pg.doc(uid).map(|st| st.doc.clone());
         let view = self.pages.entry(page).or_default();
-        *view = PageView { uid: Some(uid), map, last, unavailable: false };
+        *view = PageView { uid: Some(uid), map, last, unavailable: false, stale: false };
         self.events.record(EventKind::PageOpened, None, self.ledger.head(), Some(page), title);
         self.sync_saved(pg);
         Ok(uid)
@@ -1111,6 +1116,7 @@ impl Project {
                     v.map = map;
                     v.last = Some(st.doc.clone());
                     v.unavailable = false;
+                    v.stale = false;
                 }
             }
             Err(_) => {
@@ -1122,9 +1128,18 @@ impl Project {
                     v.map = HandleMap::default();
                     v.last = Some(st.doc.clone());
                     v.unavailable = true;
+                    v.stale = false;
                 }
                 pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
             }
+        }
+    }
+
+    /// Redraw `page` if a commit on another page left it stale ([`PageView::stale`]).
+    pub(crate) fn refresh_if_stale(&mut self, pg: &mut Pages<'_>, page: PageId) {
+        if self.pages.get(&page).is_some_and(|v| v.stale && v.uid.is_some() && !v.unavailable) {
+            self.refresh_page(pg, page, None, None, false);
+            self.sync_saved(pg);
         }
     }
 
@@ -1381,21 +1396,15 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
-        // A reference end on another open page may be drawn from this page's objects (brief 010):
-        // those pages are redrawn from the document too, when what they show of the touched
-        // cables changed (every other page when the ops could touch any cable).
+        // A reference end on another open page may be drawn from this page's objects (brief 010).
+        // Only the page being shown is redrawn on a commit (owner, 2026-11-08): another open page
+        // whose reference ends the commit changed (every other page when the ops could touch any
+        // cable) is marked stale and redrawn when it comes to the front.
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let changed = refs_before.pages_changed(&refs_after);
-        if changed.as_ref().is_none_or(|p| !p.is_empty()) {
-            let others: Vec<PageId> = self
-                .pages
-                .iter()
-                .filter(|(p, v)| **p != page && v.uid.is_some() && !v.unavailable)
-                .filter(|(p, _)| changed.as_ref().is_none_or(|c| c.contains(*p)))
-                .map(|(p, _)| *p)
-                .collect();
-            for other in others {
-                self.refresh_page(pg, other, Some(c.command), None, false);
+        for (p, v) in self.pages.iter_mut() {
+            if *p != page && v.uid.is_some() && !v.unavailable && changed.as_ref().is_none_or(|c| c.contains(p)) {
+                v.stale = true;
             }
         }
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
