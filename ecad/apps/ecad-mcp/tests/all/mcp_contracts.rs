@@ -857,6 +857,11 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     let steps: Vec<(&str, Value)> = vec![
         ("pageprops", json!({"number": "100", "title": "Supply"})),
         ("projectprops", json!({"title": "Panel 7", "customer": "ACME", "props": {"site": "Leeds"}})),
+        // Project settings (fix round): sheet, reference style, page-number step and tag settings.
+        (
+            "projectprops",
+            json!({"sheet": "A2", "reference_style": "page-column", "page_number_step": 5, "tag_padding": 3}),
+        ),
         ("newfolder", json!({"name": "Schematic layouts"})),
     ];
     for (cmd, params) in steps {

@@ -34,7 +34,7 @@ pub const FRAME_WEIGHT: u16 = 50;
 /// `ecad.wire-weight`.
 pub const THIN_WEIGHT: u16 = 25;
 /// Refusal of an edit of the frame (design 019 §3.2).
-pub const DERIVED: &str = "The sheet frame is derived; change it in Project Properties or the page's Sheet.";
+pub const DERIVED: &str = "The sheet frame is derived; change it in Project settings or the page's Sheet.";
 /// Most issued revisions the title block lists (owner answer Q12).
 pub const TABLE_ROWS: usize = 7;
 /// Project property keys the title block shows.

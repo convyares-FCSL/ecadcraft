@@ -1684,7 +1684,9 @@ impl Trial {
                     }
                 }
             }
-            A::ProjectProps => self.open_project_props(),
+            A::ProjectInfo => self.open_project_popout(sheets_ui::Popout::Info),
+            A::ProjectSettings => self.open_project_popout(sheets_ui::Popout::Settings),
+            A::Revisions => self.open_revisions(),
             A::BackToCurrent => {
                 let _ = self.run_line("closerevision {}");
                 self.preview = None;
@@ -1819,11 +1821,11 @@ impl Trial {
         r
     }
 
-    /// Open the Project Properties dialog, filled from `projectprops {}` (reads only).
-    pub fn open_project_props(&mut self) {
+    /// Open the Project info or Project settings popout, filled from `projectprops {}` (reads only).
+    pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only)),
+            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
             Err(e) => self.cad.session.echo(e),
         }
     }
@@ -1921,7 +1923,7 @@ impl Trial {
         for b in buttons {
             match b.as_str() {
                 "revisions" => self.open_revisions(),
-                "more" => self.open_project_props(),
+                "more" => self.open_project_popout(sheets_ui::Popout::Info),
                 g => {
                     if let Some(r) = g.strip_prefix("goto:") {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));

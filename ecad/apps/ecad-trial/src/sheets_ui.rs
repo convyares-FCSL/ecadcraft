@@ -40,10 +40,26 @@ pub const FIELDS: [(&str, &str); 6] = [
 /// The sizes the Size combo offers.
 pub const SIZES: [&str; 5] = ["A3", "A2", "A1", "A0", "Custom…"];
 
-/// The Project Properties dialog (design 019 §7.1): a copy of the project's properties taken when
-/// it opens; OK writes the changed fields as one `projectprops`, Cancel or Esc writes nothing.
+/// Which project popout a [`ProjectProps`] is (owner, fix round of 2026-11-08: project-level
+/// things are popouts of the Project panel, not part of Properties).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Popout {
+    /// Title, drawing number, customer, status, `=`/`+` defaults, free properties.
+    Info,
+    /// Sheet size and grid, reference style, page-number step, tag padding and prefixes.
+    Settings,
+}
+
+/// Element names of the two popouts.
+pub const PROJECT_INFO_ID: &str = "ecad.projectinfo";
+pub const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
+
+/// The Project info or Project settings popout (design 019 §7.1, split by the owner): a copy of
+/// the project's properties and settings taken when it opens; OK writes the changed fields as one
+/// `projectprops` (one transaction), Cancel or Esc writes nothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectProps {
+    pub popout: Popout,
     orig: BTreeMap<String, String>,
     pub fields: BTreeMap<String, String>,
     sheet_orig: SheetSpec,
@@ -59,6 +75,14 @@ pub struct ProjectProps {
     others_orig: Vec<(String, String)>,
     pub others: Vec<(String, String)>,
     pub revision: String,
+    style_orig: String,
+    /// `page-column-row` or `page-column`.
+    pub style: String,
+    padding_orig: String,
+    pub padding: String,
+    prefixes_orig: Vec<(String, String)>,
+    /// Starter symbol key → its prefix as the project uses it (`-K`).
+    pub prefixes: Vec<(String, String)>,
     pub read_only: bool,
     /// The command's refusal of the last OK.
     pub error: Option<String>,
@@ -77,7 +101,7 @@ pub enum Out {
 
 impl ProjectProps {
     /// The dialog filled from `projectprops {}`'s result.
-    pub fn from_json(v: &Value, read_only: bool) -> Self {
+    pub fn from_json(v: &Value, read_only: bool, popout: Popout) -> Self {
         let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
         let fields: BTreeMap<String, String> = FIELDS.iter().map(|(k, _)| (k.to_string(), text(k))).collect();
         let sheet = SheetSpec::parse(&text("sheet")).unwrap_or_default();
@@ -103,7 +127,21 @@ impl ProjectProps {
             ),
             None => "Current: none issued".into(),
         };
+        let style = v.get("reference_style").and_then(Value::as_str).unwrap_or("page-column-row").to_string();
+        let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
+        let prefixes: Vec<(String, String)> = v
+            .get("tag_prefixes")
+            .and_then(Value::as_object)
+            .map(|m| m.iter().map(|(k, x)| (k.clone(), x.as_str().unwrap_or_default().to_string())).collect())
+            .unwrap_or_default();
         ProjectProps {
+            popout,
+            style_orig: style.clone(),
+            style,
+            padding_orig: padding.clone(),
+            padding,
+            prefixes_orig: prefixes.clone(),
+            prefixes,
             orig: fields.clone(),
             fields,
             sheet_orig: sheet,
@@ -148,13 +186,33 @@ impl ProjectProps {
         })
     }
 
-    /// The `projectprops` line writing what changed; `None` when nothing did.
+    /// The `projectprops` line writing what changed in this popout; `None` when nothing did.
     pub fn line(&self) -> Result<Option<String>, String> {
         let mut m = Map::new();
-        for (k, v) in &self.fields {
-            if self.orig.get(k) != Some(v) {
-                m.insert(k.clone(), if v.trim().is_empty() { Value::Null } else { Value::String(v.clone()) });
+        if self.popout == Popout::Info {
+            self.info_fields(&mut m);
+        } else {
+            self.settings_fields(&mut m)?;
+        }
+        Ok((!m.is_empty()).then(|| format!("projectprops {}", Value::Object(m))))
+    }
+
+    fn settings_fields(&self, m: &mut Map<String, Value>) -> Result<(), String> {
+        if self.style != self.style_orig {
+            m.insert("reference_style".into(), Value::String(self.style.clone()));
+        }
+        if self.padding.trim() != self.padding_orig {
+            let n: u64 = self.padding.trim().parse().map_err(|_| "Tag digits is a whole number.".to_string())?;
+            m.insert("tag_padding".into(), json!(n));
+        }
+        let mut px = Map::new();
+        for (k, v) in &self.prefixes {
+            if !self.prefixes_orig.contains(&(k.clone(), v.clone())) {
+                px.insert(k.clone(), Value::String(v.trim().trim_start_matches('-').to_string()));
             }
+        }
+        if !px.is_empty() {
+            m.insert("tag_prefixes".into(), Value::Object(px));
         }
         let sheet = self.sheet()?;
         if sheet != self.sheet_orig {
@@ -163,6 +221,15 @@ impl ProjectProps {
         let step: u32 = self.step.trim().parse().map_err(|_| "The page number step is a whole number.".to_string())?;
         if step != self.step_orig {
             m.insert("page_number_step".into(), json!(step));
+        }
+        Ok(())
+    }
+
+    fn info_fields(&self, m: &mut Map<String, Value>) {
+        for (k, v) in &self.fields {
+            if self.orig.get(k) != Some(v) {
+                m.insert(k.clone(), if v.trim().is_empty() { Value::Null } else { Value::String(v.clone()) });
+            }
         }
         let mut props = Map::new();
         for (k, v) in &self.others {
@@ -178,7 +245,6 @@ impl ProjectProps {
         if !props.is_empty() {
             m.insert("props".into(), Value::Object(props));
         }
-        Ok((!m.is_empty()).then(|| format!("projectprops {}", Value::Object(m))))
     }
 
     /// The window. Returns what was asked this frame.
@@ -186,117 +252,147 @@ impl ProjectProps {
         let mut out = None;
         let ro = self.read_only;
         let mut open = true;
-        egui::Window::new("PROJECT PROPERTIES")
-            .id(egui::Id::unique(PROJECT_PROPS_ID))
+        let (title, id) = match self.popout {
+            Popout::Info => ("PROJECT INFO", PROJECT_INFO_ID),
+            Popout::Settings => ("PROJECT SETTINGS", PROJECT_SETTINGS_ID),
+        };
+        let info = self.popout == Popout::Info;
+        egui::Window::new(title)
+            .id(egui::Id::unique(id))
             .collapsible(false)
             .resizable(false)
             .default_width(420.0)
             .open(&mut open)
             .show(ctx, |ui| {
-                egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
-                    for (k, label) in FIELDS {
-                        ui.label(label);
-                        let v = self.fields.entry(k.to_string()).or_default();
-                        if k == "status" {
-                            ui.horizontal(|ui| {
-                                ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(220.0))
-                                    .on_hover_text("Any text; or pick one")
-                                    .accessible_name("ecad.projectprops.status");
-                                ui.add_enabled_ui(!ro, |ui| {
-                                    ui.menu_button("v", |ui| {
-                                        for s in ecad_cadcraft::sheet_cmds::STATUS_SUGGESTIONS {
-                                            if ui.button(s).clicked() {
-                                                *v = s.to_string();
-                                                ui.close();
+                if info {
+                    egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
+                        for (k, label) in FIELDS {
+                            ui.label(label);
+                            let v = self.fields.entry(k.to_string()).or_default();
+                            if k == "status" {
+                                ui.horizontal(|ui| {
+                                    ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(220.0))
+                                        .on_hover_text("Any text; or pick one")
+                                        .accessible_name("ecad.projectprops.status");
+                                    ui.add_enabled_ui(!ro, |ui| {
+                                        ui.menu_button("v", |ui| {
+                                            for s in ecad_cadcraft::sheet_cmds::STATUS_SUGGESTIONS {
+                                                if ui.button(s).clicked() {
+                                                    *v = s.to_string();
+                                                    ui.close();
+                                                }
                                             }
-                                        }
+                                        });
                                     });
                                 });
-                            });
-                        } else {
-                            ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(260.0))
-                                .accessible_name(format!("ecad.projectprops.{k}"));
+                            } else {
+                                ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(260.0))
+                                    .accessible_name(format!("ecad.projectprops.{k}"));
+                            }
+                            ui.end_row();
                         }
-                        ui.end_row();
+                    });
+                    ui.separator();
+                    ui.label(RichText::new("Other properties").small().strong());
+                    let mut remove = None;
+                    for (i, (k, v)) in self.others.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.add_enabled(!ro, egui::TextEdit::singleline(k).desired_width(120.0));
+                            ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(200.0));
+                            if !ro && ui.small_button("x").clicked() {
+                                remove = Some(i);
+                            }
+                        });
                     }
-                });
-                ui.separator();
-                ui.label(RichText::new("Sheet").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Size");
-                        egui::ComboBox::from_id_salt("ecad.projectprops.size").selected_text(&self.size).show_ui(
-                            ui,
-                            |ui| {
-                                for s in SIZES {
-                                    if ui.selectable_label(self.size == s, s).clicked() {
-                                        self.size = s.to_string();
-                                        if let Some(p) = SheetSpec::preset(s) {
-                                            self.columns = p.columns.to_string();
-                                            self.rows = p.rows.to_string();
-                                            self.width = p.width.to_string();
-                                            self.height = p.height.to_string();
+                    if let Some(i) = remove {
+                        self.others.remove(i);
+                    }
+                    if !ro && ui.button("Add property").clicked() {
+                        self.others.push((String::new(), String::new()));
+                    }
+                    ui.label(RichText::new(&self.revision).small());
+                } else {
+                    ui.label(RichText::new("Sheet").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Size");
+                            egui::ComboBox::from_id_salt("ecad.projectprops.size").selected_text(&self.size).show_ui(
+                                ui,
+                                |ui| {
+                                    for s in SIZES {
+                                        if ui.selectable_label(self.size == s, s).clicked() {
+                                            self.size = s.to_string();
+                                            if let Some(p) = SheetSpec::preset(s) {
+                                                self.columns = p.columns.to_string();
+                                                self.rows = p.rows.to_string();
+                                                self.width = p.width.to_string();
+                                                self.height = p.height.to_string();
+                                            }
                                         }
                                     }
-                                }
-                            },
-                        );
-                        if self.size.starts_with("Custom") {
-                            ui.add(egui::TextEdit::singleline(&mut self.width).desired_width(44.0))
-                                .accessible_name("ecad.projectprops.width");
-                            ui.label("×");
-                            ui.add(egui::TextEdit::singleline(&mut self.height).desired_width(44.0))
-                                .accessible_name("ecad.projectprops.height");
-                        }
+                                },
+                            );
+                            if self.size.starts_with("Custom") {
+                                ui.add(egui::TextEdit::singleline(&mut self.width).desired_width(44.0))
+                                    .accessible_name("ecad.projectprops.width");
+                                ui.label("×");
+                                ui.add(egui::TextEdit::singleline(&mut self.height).desired_width(44.0))
+                                    .accessible_name("ecad.projectprops.height");
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Columns");
+                            ui.add(egui::TextEdit::singleline(&mut self.columns).desired_width(30.0))
+                                .accessible_name("ecad.projectprops.columns");
+                            ui.checkbox(&mut self.column_letters, "Letters");
+                            ui.label("Rows");
+                            ui.add(egui::TextEdit::singleline(&mut self.rows).desired_width(30.0))
+                                .accessible_name("ecad.projectprops.rows");
+                            ui.checkbox(&mut self.row_letters, "Letters");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Page number step");
+                            ui.add(egui::TextEdit::singleline(&mut self.step).desired_width(40.0))
+                                .accessible_name("ecad.projectprops.step");
+                        });
                     });
-                    ui.horizontal(|ui| {
-                        ui.label("Columns");
-                        ui.add(egui::TextEdit::singleline(&mut self.columns).desired_width(30.0))
-                            .accessible_name("ecad.projectprops.columns");
-                        ui.checkbox(&mut self.column_letters, "Letters");
-                        ui.label("Rows");
-                        ui.add(egui::TextEdit::singleline(&mut self.rows).desired_width(30.0))
-                            .accessible_name("ecad.projectprops.rows");
-                        ui.checkbox(&mut self.row_letters, "Letters");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Page number step");
-                        ui.add(egui::TextEdit::singleline(&mut self.step).desired_width(40.0))
-                            .accessible_name("ecad.projectprops.step");
-                    });
-                });
-                let sheet = self.sheet();
-                if let Err(e) = &sheet {
-                    ui.label(RichText::new(e).small().color(RED));
-                } else if sheet.as_ref().ok() != Some(&self.sheet_orig) {
-                    ui.label(RichText::new("Changing the grid changes reference texts on every page.").small());
-                }
-                ui.separator();
-                ui.label(RichText::new("Other properties").small().strong());
-                let mut remove = None;
-                for (i, (k, v)) in self.others.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.add_enabled(!ro, egui::TextEdit::singleline(k).desired_width(120.0));
-                        ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(200.0));
-                        if !ro && ui.small_button("x").clicked() {
-                            remove = Some(i);
-                        }
-                    });
-                }
-                if let Some(i) = remove {
-                    self.others.remove(i);
-                }
-                if !ro && ui.button("Add property").clicked() {
-                    self.others.push((String::new(), String::new()));
-                }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Revisions").small().strong());
-                    if ui.button("Revisions…").clicked() {
-                        out = Some(Out::OpenRevisions);
+                    let sheet = self.sheet();
+                    if let Err(e) = &sheet {
+                        ui.label(RichText::new(e).small().color(RED));
+                    } else if sheet.as_ref().ok() != Some(&self.sheet_orig) {
+                        ui.label(RichText::new("Changing the grid changes reference texts on every page.").small());
                     }
-                });
-                ui.label(RichText::new(&self.revision).small());
+                    ui.separator();
+                    ui.label(RichText::new("References").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            for (word, shown) in [("page-column-row", "105-C-4"), ("page-column", "/105.C")] {
+                                if ui.radio(self.style == word, shown).clicked() {
+                                    self.style = word.to_string();
+                                }
+                            }
+                        });
+                    });
+                    ui.separator();
+                    ui.label(RichText::new("Tags").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Digits");
+                            ui.add(egui::TextEdit::singleline(&mut self.padding).desired_width(30.0))
+                                .accessible_name("ecad.projectsettings.padding");
+                        });
+                        egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
+                            for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
+                                ui.label(RichText::new(k.as_str()).small());
+                                ui.add(egui::TextEdit::singleline(v).desired_width(40.0))
+                                    .accessible_name(format!("ecad.projectsettings.prefix.{k}"));
+                                if i % 2 == 1 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                    });
+                }
                 if let Some(e) = &self.error {
                     ui.label(RichText::new(e).small().color(RED));
                 }
