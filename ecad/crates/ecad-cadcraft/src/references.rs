@@ -207,12 +207,11 @@ pub fn route_pages(doc: &Document, conductor: ConductorId) -> Vec<PageId> {
     doc.page_order.iter().copied().filter(|p| on.contains(p)).collect()
 }
 
-/// The number a page is shown with: its own page number once pages have one (F6, designer-chosen
-/// numbers such as 100 and 105), else its position in the page order (`1` first), else `?`. Pages
-/// have no number property yet, so today this is always the position; every place that shows a
-/// page's number (the Project panel, the page window's title, reference texts' words) asks here.
+/// The number a page is shown with (brief 019): its `number` property, else its position in book
+/// order (`1` first), else `?`. Every place that shows a page's number (the Project panel, the
+/// page window's title, reference texts' words) asks here.
 pub fn page_number(doc: &Document, page: PageId) -> String {
-    doc.page_order.iter().position(|p| *p == page).map_or_else(|| "?".to_string(), |i| (i + 1).to_string())
+    ecad_model::book::page_number(doc, page)
 }
 
 /// `page 2 "Field"` (or `page ? "Field"` for a page in no order).
@@ -563,10 +562,53 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
             // in a cable's drawing or reference texts.
             Op::SetProperty { object: ecad_model::ObjectRef::Component(_), .. } => {}
+            // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
+            // say about themselves, so their cables (whose other ends show it).
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. }
+                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+            {
+                out.extend(cables_on(doc, *p));
+            }
+            // A page moved between folders, a page added, removed or moved, a folder op: the book
+            // order changes, so only pages shown by their position (no stored number) may read
+            // differently.
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
+                if key == ecad_model::book::FOLDER_KEY =>
+            {
+                out.extend(cables_on_unnumbered(doc));
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(_) | ecad_model::ObjectRef::Project, .. } => {}
+            Op::AddPage { .. }
+            | Op::RemovePage { .. }
+            | Op::AddFolder { .. }
+            | Op::RemoveFolder { .. }
+            | Op::ModifyFolder { .. } => out.extend(cables_on_unnumbered(doc)),
+            Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+            Op::SetProjectSettings { before, after }
+                if before.length_unit == after.length_unit
+                    && before.sheet == after.sheet
+                    && before.reference_style == after.reference_style => {}
             _ => return None,
         }
     }
     Some(out)
+}
+
+/// The cables with a reference on `page` (through the page index).
+fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = CableId> + '_ {
+    doc.representations_on(page).filter(|(_, r)| is_reference(r)).filter_map(|(_, r)| match r.subject {
+        Subject::Cable(k) => Some(k),
+        _ => None,
+    })
+}
+
+/// The cables with a reference on a page shown by its position (no stored number).
+fn cables_on_unnumbered(doc: &Document) -> BTreeSet<CableId> {
+    doc.page_order
+        .iter()
+        .filter(|p| ecad_model::book::stored_number(doc, **p).is_none())
+        .flat_map(|p| cables_on(doc, *p))
+        .collect()
 }
 
 /// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.
@@ -669,9 +711,11 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
     let refs = cable_references(doc);
     let r = refs.iter().find(|r| r.reference == reference)?;
     let title = crate::views::cable_title(doc, r.cable);
-    let place = |x: &CableReference| match x.column {
-        Some(c) => format!("{}, column {c}, {}", page_words(doc, x.page), crate::slash::wires(x.wires_here)),
-        None => format!("{}, cannot be located, {}", page_words(doc, x.page), crate::slash::wires(x.wires_here)),
+    let place = |x: &CableReference| match (&x.column_label, &x.row_label) {
+        (Some(c), Some(row)) => {
+            format!("{}, column {c}, row {row}, {}", page_words(doc, x.page), crate::slash::wires(x.wires_here))
+        }
+        _ => format!("{}, cannot be located, {}", page_words(doc, x.page), crate::slash::wires(x.wires_here)),
     };
     let mut lines = vec![
         format!("Cable reference  {}", r.text),

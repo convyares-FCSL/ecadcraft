@@ -44,6 +44,9 @@ pub enum Mapped {
     /// the symbol representation: computed, not an item. Erasing it erases its representation;
     /// other edits of it alone are refused.
     Tag(RepresentationId),
+    /// A line or text of the page's sheet frame or title block (brief 019), by its index among
+    /// the frame's parts: computed, not an item. Every edit of it is refused.
+    Frame(u32),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -66,6 +69,8 @@ pub struct HandleMap {
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
     tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
+    /// The sheet frame's parts (brief 019): index → handle.
+    frame: BTreeMap<u32, Handle>,
 }
 
 impl HandleMap {
@@ -152,6 +157,18 @@ impl HandleMap {
     pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.tags.values().copied()
     }
+    /// The handle of frame part `index`.
+    pub fn frame_part(&self, index: u32) -> Option<Handle> {
+        self.frame.get(&index).copied()
+    }
+    pub fn insert_frame(&mut self, index: u32, h: Handle) {
+        self.frame.insert(index, h);
+        self.by_handle.insert(h, Mapped::Frame(index));
+    }
+    /// Every handle of the sheet frame.
+    pub fn frame_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.frame.values().copied()
+    }
     /// Every handle of a reference text.
     pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.refs.values().copied()
@@ -169,12 +186,18 @@ impl HandleMap {
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
         self.by_handle.len()
-            == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len() + self.tags.len()
+            == self.items.len()
+                + self.markers.len()
+                + self.fans.len()
+                + self.refs.len()
+                + self.tags.len()
+                + self.frame.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
             && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
             && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
+            && self.frame.iter().all(|(i, h)| self.by_handle.get(h) == Some(&Mapped::Frame(*i)))
     }
 }
 
@@ -199,6 +222,76 @@ pub struct PageRow {
     pub title: String,
     /// Its projection failed (PROJ-02).
     pub unavailable: bool,
+    /// Its folder depth (0 at the top level) and folder (brief 019).
+    pub depth: usize,
+    pub folder: Option<ecad_model::FolderId>,
+    /// Another page is shown with the same number (only from old data).
+    pub duplicate: bool,
+}
+
+/// One row of the Pages tree (design 019 §5.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeRow {
+    Folder {
+        id: ecad_model::FolderId,
+        name: String,
+        /// 1 at the top level.
+        depth: usize,
+        /// Pages inside, all levels.
+        pages: usize,
+        parent: Option<ecad_model::FolderId>,
+    },
+    Page(PageRow),
+}
+
+/// The Pages tree of `doc` (see [`Project::tree_rows`]); `unavailable` says which pages failed.
+pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<TreeRow> {
+    use ecad_model::book::{Book, Node};
+    let book = Book::of(doc);
+    let numbers: Vec<(PageId, String)> = book.order.iter().map(|p| (*p, book.number(doc, *p))).collect();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for (_, n) in &numbers {
+        *seen.entry(n.to_ascii_lowercase()).or_default() += 1;
+    }
+    // Pages per folder, all levels: count each page up its folder chain.
+    let mut counts: HashMap<ecad_model::FolderId, usize> = HashMap::new();
+    for p in &book.order {
+        let mut at = ecad_model::book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
+        let mut steps = 0;
+        while let Some(f) = at {
+            *counts.entry(f).or_default() += 1;
+            at = doc.folders.get(&f).and_then(|x| x.parent);
+            steps += 1;
+            if steps > ecad_model::book::MAX_FOLDER_DEPTH {
+                break;
+            }
+        }
+    }
+    let number: HashMap<PageId, &String> = numbers.iter().map(|(p, n)| (*p, n)).collect();
+    book.nodes
+        .iter()
+        .map(|n| match n {
+            Node::Folder { id, depth } => TreeRow::Folder {
+                id: *id,
+                name: doc.folders.get(id).map(|f| f.name.clone()).unwrap_or_default(),
+                depth: *depth,
+                pages: counts.get(id).copied().unwrap_or(0),
+                parent: doc.folders.get(id).and_then(|f| f.parent),
+            },
+            Node::Page { id, depth, position } => {
+                let num = number.get(id).map(|s| s.to_string()).unwrap_or_else(|| position.to_string());
+                TreeRow::Page(PageRow {
+                    id: *id,
+                    duplicate: seen.get(&num.to_ascii_lowercase()).is_some_and(|c| *c > 1),
+                    number: num,
+                    title: doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                    unavailable: unavailable(*id),
+                    depth: *depth,
+                    folder: ecad_model::book::folder_of(doc, *id).filter(|f| doc.folders.contains_key(f)),
+                })
+            }
+        })
+        .collect()
 }
 
 /// How many recent changes [`Project::changes_since`] can answer for.
@@ -377,6 +470,27 @@ pub struct Project {
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
     pub(crate) last_placed: Option<(String, ComponentId)>,
+    /// The active page's frame as last drawn (brief 019): page, what it showed, its parts. Kept
+    /// until an op of the frame's update map ([`crate::frame::touches`]) or another page.
+    frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
+    /// An op of the update map was committed since the frame was drawn.
+    frame_stale: bool,
+    /// How many times a frame was worked out again (tests and bench: only when it can differ).
+    pub frame_builds: u64,
+    /// The revision opened read-only (design 019 §7.3): session only, never recorded.
+    pub revision_view: Option<crate::sheet_cmds::RevisionView>,
+    /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the trial's
+    /// confirmation, used by the next undo only.
+    pub confirm_issue_undo: bool,
+    /// The question an undo across an issue is waiting on, for the trial's popup.
+    pub issue_undo_question: Option<String>,
+}
+
+/// A new project's first page: titled and numbered `1`.
+fn first_page() -> Page {
+    let mut p = Page::new("1");
+    p.properties.insert(ecad_model::book::NUMBER_KEY.into(), "1".into());
+    p
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -544,6 +658,24 @@ pub fn project_page_with(
     fan: &BTreeSet<CableId>,
     tol: f64,
 ) -> Result<(Drawing, HandleMap), String> {
+    let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
+    project_page_framed(doc, page, base, prev, fan, tol, &crate::frame::parts(&input))
+}
+
+/// [`project_page_with`] with the sheet frame's parts already worked out (the project keeps them
+/// between edits that do not change them, design 019 §9).
+///
+/// # Errors
+/// As [`project_page`].
+pub fn project_page_framed(
+    doc: &Document,
+    page: PageId,
+    base: &Drawing,
+    prev: &HandleMap,
+    fan: &BTreeSet<CableId>,
+    tol: f64,
+    frame: &[crate::frame::Part],
+) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
         if d.layer(&l.name).is_none() {
@@ -560,6 +692,9 @@ pub fn project_page_with(
     }
     if d.layer(crate::devices::TAG_LAYER).is_none() {
         d.layers.push(CLayer::new(crate::devices::TAG_LAYER));
+    }
+    if d.layer(crate::frame::LAYER).is_none() {
+        d.layers.push(crate::frame::layer());
     }
     for h in prev.handles() {
         d.bump_handseed(h);
@@ -654,6 +789,14 @@ pub fn project_page_with(
     }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
+    // The sheet frame and title block (brief 019): derived, never stored, and drawn first so
+    // everything else lies on top of it (picks find the drawing, not the frame).
+    for (i, part) in frame.iter().enumerate() {
+        let index = u32::try_from(i).map_err(|_| "the frame has too many parts")?;
+        let h = prev.frame_part(index).unwrap_or_else(|| d.new_handle());
+        store.push(crate::frame::entity(part, h));
+        map.insert_frame(index, h);
+    }
     for e in ents {
         store.push(e);
     }
@@ -690,7 +833,9 @@ impl Project {
                 Author::User,
                 "New project",
                 vec![
-                    Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
+                    // The first page is numbered 1 (brief 019): stored, so moving pages never
+                    // renumbers it.
+                    Op::AddPage { id: page, page: first_page(), index: 0 },
                     Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
                     // The length unit is recorded at creation (proposal §20.13).
                     Op::SetProjectSettings {
@@ -733,6 +878,12 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
             last_placed: None,
+            frame: None,
+            frame_stale: false,
+            frame_builds: 0,
+            revision_view: None,
+            confirm_issue_undo: false,
+            issue_undo_question: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -797,6 +948,12 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
             last_placed: None,
+            frame: None,
+            frame_stale: false,
+            frame_builds: 0,
+            revision_view: None,
+            confirm_issue_undo: false,
+            issue_undo_question: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -891,6 +1048,12 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
             last_placed: None,
+            frame: None,
+            frame_stale: false,
+            frame_builds: 0,
+            revision_view: None,
+            confirm_issue_undo: false,
+            issue_undo_question: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -977,9 +1140,43 @@ impl Project {
         result
     }
 
-    /// Project `page` with this project's cable views.
-    fn project(&self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
-        project_page_with(self.ledger.document(), page, base, prev, &self.views, self.tolerance)
+    /// Project `page` with this project's cable views and its frame (worked out again only when
+    /// the frame's update map says it may differ, or for another page).
+    fn project(&mut self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
+        let parts = self.frame_parts(page);
+        project_page_framed(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts)
+    }
+
+    /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
+    fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::frame::Part>> {
+        if let Some((p, _, parts)) = &self.frame
+            && *p == page
+            && !self.frame_stale
+        {
+            return parts.clone();
+        }
+        let doc = self.ledger.document();
+        let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
+        self.frame_stale = false;
+        if let Some((p, old, parts)) = &self.frame
+            && *p == page
+            && *old == input
+        {
+            return parts.clone();
+        }
+        self.frame_builds += 1;
+        let parts = Arc::new(crate::frame::parts(&input));
+        self.frame = Some((page, input, parts.clone()));
+        parts
+    }
+
+    /// Mark the kept frame stale when `ops` (about to be committed) can change it.
+    pub(crate) fn note_frame_ops(&mut self, ops: &[Op]) {
+        if let Some((p, input, _)) = &self.frame
+            && crate::frame::touches(ops, *p, input)
+        {
+            self.frame_stale = true;
+        }
     }
 
     /// The view `cable` is shown in.
@@ -1062,20 +1259,23 @@ impl Project {
         Some((page, self.pages.get(&page)?.uid?))
     }
 
-    /// The Project panel's rows (brief 016): every page in page order with the number it is shown
-    /// with and its title. Reads `page_order` and page titles only: O(pages), never O(items).
+    /// The Project panel's page rows (brief 016): every page in book order (brief 019) with the
+    /// number it is shown with and its title. Reads pages and folders only: O(pages + folders),
+    /// never O(items).
     pub fn page_rows(&self) -> Vec<PageRow> {
-        let doc = self.ledger.document();
-        doc.page_order
-            .iter()
-            .enumerate()
-            .map(|(i, id)| PageRow {
-                id: *id,
-                number: (i + 1).to_string(),
-                title: doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
-                unavailable: self.pages.get(id).is_some_and(|v| v.unavailable),
+        self.tree_rows()
+            .into_iter()
+            .filter_map(|r| match r {
+                TreeRow::Page(p) => Some(p),
+                TreeRow::Folder { .. } => None,
             })
             .collect()
+    }
+
+    /// The Pages tree (design 019 §5): folders and pages in book order, each with its depth.
+    /// Reads pages and folders only: O(pages + folders).
+    pub fn tree_rows(&self) -> Vec<TreeRow> {
+        tree_rows(self.ledger.document(), |id| self.pages.get(&id).is_some_and(|v| v.unavailable))
     }
 
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
@@ -1387,7 +1587,10 @@ impl Project {
         let pages = pages_touched(self.ledger.document(), &ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let frame_before = self.frame_stale;
+        self.note_frame_ops(&ops);
         let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
+            self.frame_stale = frame_before;
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
@@ -1797,6 +2000,11 @@ impl DocumentOwner for Project {
 }
 
 impl Project {
+    /// One undo, as `u` does (used by `undoissue` after its confirmation).
+    pub(crate) fn undo_step(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
+        self.history(pg, true).map(|_| ()).map_err(|e| e.to_string())
+    }
+
     fn history(&mut self, pg: &mut Pages<'_>, undo: bool) -> cadcraft_engine::Result<Option<String>> {
         let command = if undo { "undo" } else { "redo" };
         if self.pages.values().any(|v| v.unavailable) {
@@ -1810,6 +2018,18 @@ impl Project {
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        // Undoing an issued revision stops and asks first (owner answer Q7).
+        if undo
+            && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
+            && !std::mem::take(&mut self.confirm_issue_undo)
+        {
+            let date = self.ledger.document().properties.get(&crate::revisions::key(n, "date")).cloned();
+            let q = crate::sheet_cmds::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            self.issue_undo_question = Some(q.clone());
+            return Err(EngineError::Other(format!("{q} Use Undo Issue (`undoissue`) to confirm.")));
+        }
+        self.issue_undo_question = None;
+        self.note_frame_ops(&ops);
         let r = if undo {
             self.ledger.undo_at(self.author.clone(), now_ms())
         } else {
@@ -1821,6 +2041,7 @@ impl Project {
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+                let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(
                     &order_before,
                     &self.ledger.document().page_order,
@@ -1832,6 +2053,10 @@ impl Project {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
                     Some(page) if self.open_page(pg, page).is_ok() => {
+                        // A page already in the window was only brought to the front: draw it.
+                        if was_active == Some(page) {
+                            self.redraw_window(pg, Some(command));
+                        }
                         let words = crate::references::page_words(self.ledger.document(), page);
                         pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
                     }
@@ -1877,6 +2102,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A page's own properties show in its frame only (brief 019); the references they
+            // change on other pages are the reference snapshot's part.
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
+                out.insert(*p);
+            }
             // A device's tag is drawn beside each of its symbols (brief 018): their pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));

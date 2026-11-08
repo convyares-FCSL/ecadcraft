@@ -80,7 +80,13 @@ fn line_at(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) -> Handle {
 
 fn rectangle(h: &mut H) -> Vec<Handle> {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    h.s.doc().unwrap().model.iter().map(|e| e.handle).collect()
+    h.s.doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect()
 }
 
 fn page(h: &mut H) -> PageId {
@@ -313,7 +319,14 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
     let cases: Vec<(&str, Steps)> = vec![
         ("convert after picks", |h, _| {
             start(h, "convertcomponent");
-            let all: Vec<Handle> = h.s.doc().unwrap().model.iter().map(|e| e.handle).collect();
+            let all: Vec<Handle> =
+                h.s.doc()
+                    .unwrap()
+                    .model
+                    .iter()
+                    .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+                    .map(|e| e.handle)
+                    .collect();
             h.s.input(Input::Pick(all)).unwrap();
         }),
         ("terminal name pending", |h, _| {
@@ -456,6 +469,9 @@ fn errors_are_shown_and_the_prompt_repeats() {
     quick(&mut h);
     h.run("line", json!({"points": [[0, 60], [30, 60]]})).unwrap();
     h.run("wire", json!({"points": [[0, 80], [30, 80]]})).unwrap();
+    // Zoomed in on the objects (the first view fits the whole A3 sheet, brief 019, where the
+    // pick box would reach the coil's tag text).
+    h.cmdline("zoom w -20,-20 220,120");
     let head = h.head();
     let cases: &[(&str, Vec2, &str)] = &[
         ("addterminal", Vec2::new(200.0, 200.0), "No component outline there. Click on a component's outline."),

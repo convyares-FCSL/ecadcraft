@@ -5,7 +5,7 @@
 //! `016-rename.png`, `016-drag.png`, `016-collapsed.png`, `016-preview-ref.png`, `016-large.png`).
 //!
 //! Fixture P (design §10): 010's fixture R (pages `Supply` and `Field`, cable C1 with linked
-//! references `/2.1` and `/1.2`) plus a third page `Spare`.
+//! references `2-A-6` and `1-B-6`) plus a third page `Spare`.
 
 use std::sync::{Arc, Mutex};
 
@@ -246,7 +246,7 @@ fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
     h.get_by_label(label).rect()
 }
 
-/// Fixture P: Supply (C1 leaving at (65,5), `/2.1`), Field (C1 arriving at (20,5), `/1.2`), Spare.
+/// Fixture P: Supply (C1 leaving at (65,5), `2-A-6`), Field (C1 arriving at (20,5), `1-B-6`), Spare.
 fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let supply = doc(h).page_order[0];
@@ -297,7 +297,16 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     }
     assert_eq!(h.state().cad.session.docs.len(), 1, "exactly one ECAD file tab after clicking every row");
     click(&mut h, "Page 1: Supply");
-    let shown = h.state().cad.session.doc().unwrap().model.len();
+    let shown = h
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .count();
     assert!(shown > 3, "the page window shows Supply's items ({shown})");
 
     // J: after a row click, Down, Down, Enter makes row 3 active; typing then reaches the
@@ -423,12 +432,12 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
         "{ops:?}"
     );
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
-    // The reference texts follow the move at once (010): Supply's now says /3.1.
+    // Page numbers are stored (brief 019): the move changes no reference text.
     let texts: Vec<String> =
         ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
-    assert_eq!(texts, ["/3.1"]);
+    assert_eq!(texts, ["2-A-6"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
-    click(&mut h, "Page 1: Spare");
+    click(&mut h, "Page 3: Spare");
     let before = head(&mut h);
     key(&mut h, Key::ArrowDown, Modifiers::ALT);
     assert_eq!(head(&mut h), before + 1);
@@ -539,17 +548,21 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(h.state().preview.as_ref().unwrap().projections, n, "an edit on Supply does not touch Field");
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field", "the title follows the move");
+    assert_eq!(
+        h.state().preview.as_ref().unwrap().title,
+        "page 2: Field",
+        "the number stays with the page (brief 019)"
+    );
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field X"}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field X");
+    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field X");
     ok(&mut h, "u");
     ok(&mut h, "u");
     h.run_steps(2);
     assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "undo");
     ok(&mut h, "redo");
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field", "redo");
+    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "redo");
     assert!(h.state().preview.as_ref().unwrap().projections > n, "page changes redraw it");
 
     // Clicks, drags, wheel and keys inside it record nothing and keep the selection.
@@ -573,7 +586,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert!(h.state().preview.is_none());
     // The panel's Preview on a row, and Space on it again closes; the active page says so.
     click(&mut h, "Page 3: Spare");
-    click(&mut h, "Page 2: Supply");
+    click(&mut h, "Page 1: Supply");
     key(&mut h, Key::Space, Modifiers::NONE);
     assert!(h.state().preview.is_none(), "the cursor row is active: no preview");
     click(&mut h, "Page 3: Spare");
@@ -697,7 +710,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
-/// A coil `-K01` on page 1 and its NO contact on page 2 (column 2), page 1 shown, Devices tab open.
+/// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
 fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
@@ -730,9 +743,9 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
     click(&mut h, "Device -K01: Contactor / relay coil");
     assert_eq!(h.state().panel.devices.selected, Some(coil));
-    let row = "-K01 NO contact, page 2, column 2";
+    let row = "-K01 NO contact, 2-A-6";
     assert!(
-        h.query_by_label("-K01 Contactor / relay coil, page 1, column 1").is_some(),
+        h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(),
         "unfolded: {:?}",
         h.state().panel.devices.entries()
     );
@@ -880,12 +893,13 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
     assert_eq!(other_before, other_after, "the other device is untouched");
     assert!(h.query_by_label("Device -S07: Contactor / relay coil").is_some(), "the row shows it");
 
-    // A page move: the symbols' page numbers follow, without a rebuild.
+    // A page move: the symbols are re-sorted in book order, without a rebuild; their page numbers
+    // are stored (brief 019), so they stay.
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":2}}"#, page1.hex()));
     h.run_steps(2);
     let e = h.state().panel.devices.entries().iter().find(|e| e.id == coil).unwrap().clone();
     let numbers: Vec<_> = e.symbols.iter().map(|s| s.page_number.clone()).collect();
-    assert_eq!(numbers, ["1", "2"], "the contact (now page 1) first, the coil (now page 2) after");
+    assert_eq!(numbers, ["2", "1"], "the contact (page 2, now first in book order) first, the coil after");
     assert_eq!(e.symbols[1].name, "Contactor / relay coil");
     assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds, "never rebuilt whole while shown");
 

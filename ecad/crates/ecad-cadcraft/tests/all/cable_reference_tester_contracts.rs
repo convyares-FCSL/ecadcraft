@@ -315,17 +315,18 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
     let spare: PageId = id(&r.h.run("newpage", json!({"title": "Spare"})).unwrap(), "page");
     r.h.activate(r.supply);
     let (s, f, x) = (r.supply.hex(), r.field.hex(), spare.hex());
-    // (step, how: JSON command | typed line, expected Supply text, expected Field text)
+    // (step, how: JSON command | typed line, expected Supply text, expected Field text). Page
+    // numbers are stored (brief 019), so moving or renaming pages changes no text.
     let rows: Vec<(&str, Result<(&str, Value), String>, &str, &str)> = vec![
-        ("start", Ok(("cablerefs", json!({}))), "/2.1", "/1.2"),
-        ("Spare first", Ok(("movepage", json!({"page": x, "index": 1}))), "/3.1", "/2.2"),
-        ("Field first", Ok(("movepage", json!({"page": f, "index": 1}))), "/1.1", "/3.2"),
-        ("rename Supply (unicode)", Ok(("renamepage", json!({"page": s, "title": "Fält ⚡ 電源"}))), "/1.1", "/3.2"),
-        ("rename Field", Err(format!("renamepage {{\"page\":\"{f}\",\"title\":\"Field 2\"}}")), "/1.1", "/3.2"),
-        ("Supply first, typed", Err(format!("movepage {{\"page\":\"{s}\",\"index\":1}}")), "/2.1", "/1.2"),
-        ("undo the move", Err("u".to_string()), "/1.1", "/3.2"),
-        ("redo the move", Err("redo".to_string()), "/2.1", "/1.2"),
-        ("Field last", Ok(("movepage", json!({"page": f, "index": 3}))), "/3.1", "/1.2"),
+        ("start", Ok(("cablerefs", json!({}))), "2-A-6", "1-B-6"),
+        ("Spare first", Ok(("movepage", json!({"page": x, "index": 1}))), "2-A-6", "1-B-6"),
+        ("Field first", Ok(("movepage", json!({"page": f, "index": 1}))), "2-A-6", "1-B-6"),
+        ("rename Supply (unicode)", Ok(("renamepage", json!({"page": s, "title": "Fält ⚡ 電源"}))), "2-A-6", "1-B-6"),
+        ("rename Field", Err(format!("renamepage {{\"page\":\"{f}\",\"title\":\"Field 2\"}}")), "2-A-6", "1-B-6"),
+        ("Supply first, typed", Err(format!("movepage {{\"page\":\"{s}\",\"index\":1}}")), "2-A-6", "1-B-6"),
+        ("undo the move", Err("u".to_string()), "2-A-6", "1-B-6"),
+        ("redo the move", Err("redo".to_string()), "2-A-6", "1-B-6"),
+        ("Field last", Ok(("movepage", json!({"page": f, "index": 3}))), "2-A-6", "1-B-6"),
     ];
     for (step, how, want_s, want_f) in rows {
         let head = r.h.head();
@@ -374,19 +375,19 @@ fn ac2_moving_a_reference_point_changes_the_other_ends_column() {
     let point = r.h.doc().representations[&rid].items[0];
     let hp = r.h.handle_of(r.supply, point);
     // (delta, expected Field text after it)
-    for (dx, want) in [(40.0, "/1.3"), (-200.0, "/1.1"), (1e6, "/1.999")] {
+    for (dx, want) in [(40.0, "1-C-6"), (-200.0, "1-A-6"), (1e6, "1-H-6")] {
         let head = r.h.head();
         r.h.run("move", json!({"handles": [hp.hex()], "delta": [dx, 0]})).unwrap();
         assert_eq!(r.h.head(), head + 1);
         assert_eq!(drawn_text(&mut r.h, r.field).as_deref(), Some(want), "after moving by {dx}");
-        assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("/2.1"));
+        assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2-A-6"));
     }
 }
 
 // ---------------------------------------------------------------- AC3
 
 /// AC3: erasing only the other end's reference point makes this end an orphan (red ring, red
-/// `/?`, diagnostic); undo restores the link with the same IDs; redo orphans it again.
+/// `?`, diagnostic); undo restores the link with the same IDs; redo orphans it again.
 #[test]
 fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let mut r = connected(SEED + 6);
@@ -406,7 +407,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     r.h.run("erase", json!({"handles": [hp.hex()]})).unwrap();
     let orphaned = r.h.doc();
     assert!(ref_on(&mut r.h, r.field).is_none(), "Field's reference is gone");
-    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("/?"));
+    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("?"));
     let rings = ring(&mut r.h, r.supply);
     assert_eq!(rings.len(), 1);
     assert_ne!(rings[0].color, linked_colour, "the orphan ring is not the linked colour");
@@ -418,13 +419,13 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
         format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)),
         "red text"
     );
-    assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable C1 on page 1 (/?)".to_string()]);
+    assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable C1 on page 1 (?)".to_string()]);
     // The Field stubs, slash and attachments stay: only the reference went.
     assert_eq!(orphaned.conductors, linked.conductors);
     assert_eq!(nets(&orphaned), nets(&linked));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked, "undo restores the link, same IDs");
-    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("/2.1"));
+    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2-A-6"));
     assert_eq!(ring(&mut r.h, r.supply)[0].color, linked_colour);
     assert_eq!(diagnostics(&r.h.doc()), vec!["No orphan references.".to_string()]);
     r.h.cmdline("redo");
@@ -444,7 +445,7 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     let doc = r.h.doc();
     assert_eq!(doc.conductors, linked.conductors, "attachments made on Field stay");
     assert_eq!(doc.cables, linked.cables);
-    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("/?"));
+    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("?"));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked);
     // ecaddelete {cable}: both references and slashes go; routes on both pages stay.
@@ -460,7 +461,7 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     r.h.run("ecaddelete", json!({"conductor": r.w[1].hex()})).unwrap();
     let doc = r.h.doc();
     assert!(ecad_cadcraft::references::route_pages(&doc, r.w[1]).is_empty());
-    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("/2.1"));
+    assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2-A-6"));
     let v = r.h.run("cablerefs", json!({})).unwrap();
     assert!(v["references"].as_array().unwrap().iter().all(|x| x["wires_here"] == 2), "{v}");
 }
@@ -482,7 +483,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
     let doc = r.h.doc();
     let refs = r.h.run("cablerefs", json!({})).unwrap();
     let texts = [drawn_text(&mut r.h, r.supply), drawn_text(&mut r.h, r.field)];
-    assert_eq!(texts, [Some("/1.1".to_string()), Some("/2.2".to_string())]);
+    assert_eq!(texts, [Some("2-A-6".to_string()), Some("1-B-6".to_string())]);
     let head = r.h.head();
     for seq in 0..=head {
         let snap = r.h.project.snapshot(&mut r.h.s, Some(seq));
@@ -588,7 +589,7 @@ fn ac5_hover_on_member_wires_names_the_other_drawing() {
     let u = uid(&mut r.h, r.field);
     let lines = r.h.p(|p| hover_lines(p, u, hs)).unwrap();
     assert!(lines.iter().any(|l| l.contains("Drawn on: page 1, page 2")), "{lines:?}");
-    assert!(lines.iter().any(|l| l.contains("/1.2") && l.contains("/2.1")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("1-B-6") && l.contains("2-A-6")), "{lines:?}");
 }
 
 // ---------------------------------------------------------------- one route per conductor per page
@@ -825,7 +826,7 @@ fn ac6_hostile_documents_never_panic() {
             "page in no order",
             Box::new(move |d| {
                 let lost = PageId::from(99);
-                d.pages.insert(lost, Page { title: "lost".into() });
+                d.pages.insert(lost, Page::new("lost"));
                 add_ref(d, 9, Pt::new(0.0, 0.0), lost, Subject::Cable(cable));
             }),
         ),

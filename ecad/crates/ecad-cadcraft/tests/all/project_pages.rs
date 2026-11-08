@@ -89,10 +89,10 @@ fn switching_pages_uses_one_window_and_remembers_each_pages_view() {
     h.activate(p1);
     let back = h.s.state().unwrap().view();
     assert_eq!((back.center.x, back.center.y, back.height), (123.0, 45.0, 77.0), "page 1's view came back");
-    // Renaming and moving follow in the window's title.
+    // Renaming follows in the window's title; moving keeps the stored number (brief 019).
     h.run("renamepage", json!({"page": p1.hex(), "title": "Supply"})).unwrap();
     h.run("movepage", json!({"page": p1.hex(), "index": 2})).unwrap();
-    assert!(h.s.docs[0].title.ends_with(" - page 2: Supply"), "{}", h.s.docs[0].title);
+    assert!(h.s.docs[0].title.ends_with(" - page 1: Supply"), "{}", h.s.docs[0].title);
     h.check();
 }
 

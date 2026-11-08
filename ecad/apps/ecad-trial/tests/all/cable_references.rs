@@ -152,7 +152,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let said = t.cad.session.log.join("\n");
     assert!(
         said.contains(
-            "Cable C1 continued on page 2 with 3 wires; this end shows /1.2 and the end on page 1 now shows /2.1."
+            "Cable C1 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."
         ),
         "{said}"
     );
@@ -180,7 +180,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
     assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
-    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (/1.2)."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (1-B-6)."));
 }
 
 /// The reference texts the active page draws now (the drawing as it is, not a fresh derivation),
@@ -193,7 +193,9 @@ fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
         let texts = p.pages[&page]
             .map
             .ref_text_handles()
-            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
+            .filter_map(|hd| {
+                d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).find(|e| e.handle == hd)
+            })
             .filter_map(|e| match &e.kind {
                 cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
                 _ => None,
@@ -205,9 +207,9 @@ fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
 }
 
 /// Owner's two-page trial (brief 014 fix round) with one page window (brief 016): page 2's cable
-/// end is erased (page 1's marker becomes `/?`), the owner clicks page 1 in the Project panel and
+/// end is erased (page 1's marker becomes `?`), the owner clicks page 1 in the Project panel and
 /// types `u`: page 2, where the erase was, comes to the front with its end back (AC8), and page 1
-/// shows `/2.1` when it is clicked again. Through undo and redo, the page shown always draws what
+/// shows `2-A-6` when it is clicked again. Through undo and redo, the page shown always draws what
 /// the document says.
 #[test]
 fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
@@ -239,6 +241,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
                 .unwrap()
                 .model
                 .iter()
+                .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
                 .map(|e| e.handle)
                 .filter(|hd| !matches!(map.get(*hd), Some(ecad_cadcraft::Mapped::Marker(..))))
                 .map(|hd| hd.hex())
@@ -255,7 +258,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     let t = h.state_mut();
     let (shown, texts) = drawn_ref_texts(t);
     assert_eq!(shown, Some(page1), "the row click made page 1 active");
-    assert!(texts.iter().any(|x| x == "/?"), "{texts:?}");
+    assert!(texts.iter().any(|x| x == "?"), "{texts:?}");
     // Typed `u`: page 2 comes to the front with its end back.
     assert!(t.submit_command("u").is_none());
     h.run_steps(3);
@@ -263,12 +266,12 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     assert_eq!(head(t), before + 2);
     let (shown, texts) = drawn_ref_texts(t);
     assert_eq!(shown, Some(page2), "the undo brought page 2 to the front");
-    assert!(texts.iter().any(|x| x == "/1.2"), "{texts:?}");
+    assert!(texts.iter().any(|x| x == "1-B-6"), "{texts:?}");
     assert!(t.cad.session.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."));
     h.get_by_label("Page 1: 1").click();
     h.run_steps(3);
     let (_, texts) = drawn_ref_texts(h.state_mut());
-    assert!(texts.iter().any(|x| x == "/2.1"), "page 1 shows {texts:?}");
+    assert!(texts.iter().any(|x| x == "2-A-6"), "page 1 shows {texts:?}");
     // Pressing `u` again and again, then redoing: the page shown always draws what the document
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut Trial, page: ecad_model::PageId| {

@@ -108,7 +108,8 @@ mod hover_and_marks {
     fn scene(h: &mut Harness<'static, Trial>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> =
+            model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let edge = |x: f64| {
             model
@@ -419,7 +420,8 @@ mod layout_refusals {
     fn scene(h: &mut Harness<'static, Trial>) {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> =
+            model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
@@ -466,7 +468,17 @@ mod layout_refusals {
             }
             esc(&mut h);
         }
-        let all: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+        let all: Vec<_> = h
+            .state()
+            .cad
+            .session
+            .doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle)
+            .collect();
         h.state_mut().cad.session.set_selection(all);
         button(&mut h, "Convert to Component");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));

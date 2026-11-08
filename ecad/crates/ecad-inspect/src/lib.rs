@@ -345,6 +345,11 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
                     "page_title": doc.pages.get(&r.page).map(|p| p.title.clone()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
+                    // Brief 019: the frame's row and labels, and this end's own place.
+                    "row": r.row,
+                    "column_label": r.column_label,
+                    "row_label": r.row_label,
+                    "place": r.locator(),
                     "text": r.text,
                     "partner": r.partner().map(|p| p.hex()),
                     "orphan": r.orphan,

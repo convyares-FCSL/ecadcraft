@@ -367,7 +367,8 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let mut t = trial(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
-    let model = t.cad.session.doc().unwrap().model.len();
+    let model =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
     let p = t.project().unwrap().clone();
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap();
     match save_as(&mut t, &typed) {
@@ -397,7 +398,11 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let s = t.status().unwrap();
     assert!(s.file.read_only.is_none(), "{:?}", s.file);
     assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()));
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), model, "the same drawing");
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        model,
+        "the same drawing"
+    );
     let p = t.project().unwrap().clone();
     assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap(), history, "the same history");
 }

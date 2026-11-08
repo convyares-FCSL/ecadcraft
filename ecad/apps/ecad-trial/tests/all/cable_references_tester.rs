@@ -3,7 +3,7 @@
 //! pointer events on the canvas) in a 1280×800 window.
 //!
 //! - Design §11 fixture R built with the buttons **Cable Reference** and **Continue Cable** and
-//!   canvas clicks; the derived texts `/2.1` and `/1.2` (AC2), the hover lens (AC5), **Go to
+//!   canvas clicks; the derived texts `2-A-6` and `1-B-6` (AC2), the hover lens (AC5), **Go to
 //!   Reference** by label and back (AC5), the orphan after ERASE and `u` (AC3).
 //! - Reference screenshots (design §11) written to `$ECAD_TESTER_SHOTS` when set and a wgpu
 //!   adapter exists, with pixel checks on the rendered frames: `010-ref-source.png`,
@@ -117,7 +117,16 @@ fn ok(h: &mut Harness<'static, Trial>, line: &str) {
 /// A drawn component: a closed rectangle typed, selected, converted (JSON form), three terminals.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let before: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -126,6 +135,7 @@ fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -333,7 +343,7 @@ fn zoom_e(h: &mut Harness<'static, Trial>) {
     let field = d.page_order.get(1) == Some(&page);
     let window = if field { r#"line {"points":[[5,-15],[115,25]]}"# } else { r#"line {"points":[[-15,-15],[85,25]]}"# };
     ok(h, window);
-    ok(h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     ok(h, "u");
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(3);
@@ -409,7 +419,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     assert!(h.state().cad.session.running.is_none(), "the command ends: {}", said(&h));
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert!(said(&h).contains("Reference for cable C1 placed on page 1."), "{}", said(&h));
-    assert_eq!(shown_text(&mut h), "/?", "an orphan until continued");
+    assert_eq!(shown_text(&mut h), "?", "an orphan until continued");
     // Field: K2 with three terminals, then Continue Cable: Enter, two clicks.
     ok(&mut h, r#"newpage {"title":"Field"}"#);
     let field = current_page(&mut h);
@@ -449,7 +459,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
         ok(&mut h, &format!(r#"connect {{"conductor":"{}","end":"B","terminal":"{}"}}"#, w.hex(), t.hex()));
     }
     zoom_e(&mut h);
-    assert_eq!(shown_text(&mut h), "/1.2");
+    assert_eq!(shown_text(&mut h), "1-B-6");
     park(&mut h);
     let target = take(&h, &deltas, "010-ref-target.png");
     let target_ring = screen(&h, 20.0, 5.0);
@@ -472,8 +482,8 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     assert_eq!(current_page(&mut h), supply, "Supply is current: {}", said(&h));
     let sp = reference_point(&mut h, supply);
     assert_eq!(h.state().cad.session.selection(), vec![sp], "the other end's point is selected");
-    assert!(said(&h).contains(r#"Page 1 "Supply", at the other end of cable C1 (/1.2)."#), "{}", said(&h));
-    assert_eq!(shown_text(&mut h), "/2.1");
+    assert!(said(&h).contains(r#"Page 1 "Supply", at the other end of cable C1 (1-B-6)."#), "{}", said(&h));
+    assert_eq!(shown_text(&mut h), "2-A-6");
     zoom_e(&mut h);
     park(&mut h);
     let source = take(&h, &deltas, "010-ref-source.png");
@@ -484,8 +494,8 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     pointer_to(&mut h, r);
     h.run_steps(6);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
-    assert!(lines.first().is_some_and(|l| l == "Cable reference  /2.1"), "hover: {lines:?}");
-    assert!(lines.iter().any(|l| l == r#"Other end: page 2 "Field", column 1, 3 wires"#), "hover: {lines:?}");
+    assert!(lines.first().is_some_and(|l| l == "Cable reference  2-A-6"), "hover: {lines:?}");
+    assert!(lines.iter().any(|l| l == r#"Other end: page 2 "Field", column A, row 6, 3 wires"#), "hover: {lines:?}");
     assert_eq!(lines.iter().filter(|l| l.contains(" -> -K02:")).count(), 3, "hover: {lines:?}");
     let hover = take(&h, &deltas, "010-ref-hover.png");
     // Go back by pickfirst: Supply's point selected, the button jumps at once.
@@ -508,33 +518,34 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
         soft.push(format!("hover on Field's reference point shows {lines:?}, not the reference lens"));
     }
     park(&mut h);
-    // AC2 in the UI: Move Page puts Field first; the text changes with one change recorded.
+    // AC2 in the UI: Move Page puts Field first, one change recorded; page numbers are stored
+    // (brief 019), so the text stays.
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, field.hex()));
     assert_eq!(head(&mut h), before + 1);
-    assert_eq!(shown_text(&mut h), "/2.2");
+    assert_eq!(shown_text(&mut h), "1-B-6");
     ok(&mut h, "u");
-    assert_eq!(shown_text(&mut h), "/1.2");
+    assert_eq!(shown_text(&mut h), "1-B-6");
     // AC3 in the UI: erase Field's reference point; Supply turns red; `u` restores.
     let fp = reference_point(&mut h, field);
     ok(&mut h, &format!(r#"erase {{"handles":["{}"]}}"#, fp.hex()));
     assert!(said(&h).contains("Cable C1's reference on page 1 now has no other end."), "{}", said(&h));
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, supply.hex()));
     assert_eq!(current_page(&mut h), supply);
-    assert_eq!(shown_text(&mut h), "/?");
+    assert_eq!(shown_text(&mut h), "?");
     zoom_e(&mut h);
     park(&mut h);
     let orphan = take(&h, &deltas, "010-ref-orphan.png");
     let orphan_ring = screen(&h, 65.0, 5.0);
     // On the `?`, half a text height up: in brief 009's marker the text starts at the point and
-    // `/?` ends near x = 70, so (71, 5) sampled just past it, and only the `?` dot reaches the
+    // `?` ends near x = 70, so (71, 5) sampled just past it, and only the `?` dot reaches the
     // baseline.
     let orphan_text = screen(&h, 68.0, 6.25);
     ok(&mut h, "u");
     // Brief 016 (AC8): the undo brings Field, where the erase was, to the front.
     assert_eq!(current_page(&mut h), field, "the undo shows the page it changed");
-    assert_eq!(shown_text(&mut h), "/1.2");
+    assert_eq!(shown_text(&mut h), "1-B-6");
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, supply.hex()));
-    assert_eq!(shown_text(&mut h), "/2.1", "undo restores the link");
+    assert_eq!(shown_text(&mut h), "2-A-6", "undo restores the link");
     // Pixel checks when frames were rendered.
     let (Some(source), Some(target), Some(orphan), Some(_), Some(preview)) = (source, target, orphan, hover, preview)
     else {
@@ -546,11 +557,11 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
         assert!(drawn_near(&preview, at, 2), "a previewed stub at {at:?} in 010-continue-preview.png");
     }
     assert!(magenta_near(&source, source_ring, 8), "magenta ring at Supply's reference");
-    assert!(magenta_near(&source, source_text, 6), "magenta /2.1 right of Supply's reference");
+    assert!(magenta_near(&source, source_text, 6), "magenta 2-A-6 right of Supply's reference");
     assert!(magenta_near(&target, target_ring, 8), "magenta ring at Field's reference");
-    assert!(magenta_near(&target, target_text, 6), "magenta /1.2 left of Field's reference");
+    assert!(magenta_near(&target, target_text, 6), "magenta 1-B-6 left of Field's reference");
     assert!(red_near(&orphan, orphan_ring, 8), "red ring on the orphan");
-    assert!(red_near(&orphan, orphan_text, 6), "red /? on the orphan");
+    assert!(red_near(&orphan, orphan_text, 6), "red ? on the orphan");
     assert!(!magenta_near(&orphan, orphan_ring, 3), "no magenta ring on the orphan");
     assert!(soft.is_empty(), "{soft:#?}");
 }

@@ -697,6 +697,7 @@ impl Trial {
         // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
         // again next frame (a failed projection is reported by the redraw itself).
         self.handle_tools();
+        self.drop_frame_selection();
         self.hold_close();
         self.sync_keep_open();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {
@@ -710,6 +711,30 @@ impl Trial {
             }
         }
         self.report_saves();
+    }
+
+    /// Zoom the page window to its drawing without the sheet frame (brief 019: Zoom Extents fits
+    /// the whole sheet). Returns `false` when there is no drawing to zoom to.
+    pub fn zoom_to_drawing(&mut self) -> bool {
+        let Ok(d) = self.cad.session.doc() else { return false };
+        let mut b = cadcraft_engine::geom::Bounds2::default();
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER) {
+            b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
+        }
+        if b.is_empty() {
+            return false;
+        }
+        let m = ((b.max.x - b.min.x).max(b.max.y - b.min.y) * 0.1).max(5.0);
+        let (p1, p2) = ([b.min.x - m, b.min.y - m], [b.max.x + m, b.max.y + m]);
+        self.cad.run("zoom", json!({"mode": "window", "p1": p1, "p2": p2})).is_ok()
+    }
+
+    /// The sheet frame is never selected (design 019 §3.2): a selection that held only the frame
+    /// says why it is empty.
+    fn drop_frame_selection(&mut self) {
+        if ecad_cadcraft::frame::drop_from_selection(&mut self.cad.session) {
+            self.cad.session.echo(ecad_cadcraft::frame::DERIVED);
+        }
     }
 
     fn hold_close(&mut self) {
@@ -1152,6 +1177,7 @@ impl Trial {
         }
         self.project_panel(ui);
         self.cad.ui(ui);
+        self.drop_frame_selection();
         self.handle_tools();
         self.command_window(ui.ctx());
         self.preview_window(ui.ctx());

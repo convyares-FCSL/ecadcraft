@@ -32,8 +32,12 @@
 //! | I16 | Connection points belong to a component representation, name that component's terminals and are finite | representation → terminals → component | touched representations; representations placing a touched terminal; representations of a touched component |
 //! | I17 | Conductor ends attach to existing terminals (DOC-03, DOC-07) | conductor → terminal | touched conductors; conductors attached to a touched terminal |
 //! | I18 | Cable members exist and are listed once (DOC-04, DOC-07) | cable → conductors | touched cables; cables listing a touched conductor |
+//! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
+//! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
+//! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //!
-//! Not invariants of the document: properties, layer names, project settings. Named versions are
+//! Not invariants of the document: properties (other than a page's `folder`), layer names, project
+//! settings. Named versions are
 //! checked by the ledger against the transaction's position (it needs the log, not the document).
 //!
 //! # Safety net
@@ -52,7 +56,7 @@ use crate::doc::{
 };
 use crate::error::{ModelError, Result};
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
 };
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
@@ -75,6 +79,11 @@ pub struct Touched {
     pub conductors: BTreeSet<ConductorId>,
     pub cables: BTreeSet<CableId>,
     pub definitions: BTreeSet<DefinitionId>,
+    /// A folder was added or removed, so the folder order changed.
+    pub folder_order: bool,
+    pub folders: BTreeSet<FolderId>,
+    /// Pages whose properties changed (only I21 depends on them).
+    pub page_properties: BTreeSet<PageId>,
 }
 
 impl Touched {
@@ -133,11 +142,22 @@ impl Touched {
                 ObjectRef::Cable(id) => {
                     self.cables.insert(*id);
                 }
+                ObjectRef::Page(id) => {
+                    self.page_properties.insert(*id);
+                }
+                ObjectRef::Project => {}
             },
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 self.definitions.insert(*id);
             }
             Op::SetProjectSettings { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+            Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } => {
+                self.folder_order = true;
+                self.folders.insert(*id);
+            }
+            Op::ModifyFolder { id, .. } => {
+                self.folders.insert(*id);
+            }
         }
     }
 }
@@ -178,6 +198,13 @@ impl Document {
         }
         for (id, c) in &self.cables {
             self.check_cable(*id, c)?;
+        }
+        self.check_folder_order()?;
+        for id in self.folders.keys() {
+            self.check_folder(*id)?;
+        }
+        for id in self.pages.keys() {
+            self.check_page_folder(*id)?;
         }
         Ok(())
     }
@@ -289,7 +316,71 @@ impl Document {
                 self.check_cable(*id, c)?;
             }
         }
+
+        if touched.folder_order {
+            self.check_folder_order()?;
+        }
+        // A folder's depth depends on its parents, so its sub-folders (all levels) are checked too.
+        let mut folders: BTreeSet<FolderId> = BTreeSet::new();
+        let mut todo: Vec<FolderId> = touched.folders.iter().copied().collect();
+        while let Some(f) = todo.pop() {
+            if folders.insert(f) {
+                todo.extend(referrers(&ix.folder_children, &f));
+            }
+            // The index is kept for any state, so a folder count bounds the walk even for a cycle.
+            if folders.len() > self.folders.len() + touched.folders.len() {
+                break;
+            }
+        }
+        for id in &folders {
+            if self.folders.contains_key(id) {
+                self.check_folder(*id)?;
+            }
+        }
+        let mut pages: BTreeSet<PageId> = touched.pages.union(&touched.page_properties).copied().collect();
+        for f in &touched.folders {
+            pages.extend(referrers(&ix.folder_pages, f));
+        }
+        for id in &pages {
+            if self.pages.contains_key(id) {
+                self.check_page_folder(*id)?;
+            }
+        }
         Ok(())
+    }
+
+    /// I19.
+    fn check_folder_order(&self) -> Result<()> {
+        let order: BTreeSet<_> = self.folder_order.iter().collect();
+        if order.len() != self.folder_order.len()
+            || order.len() != self.folders.len()
+            || !self.folders.keys().all(|f| order.contains(f))
+        {
+            return bad("folder order does not list each folder exactly once".into());
+        }
+        Ok(())
+    }
+
+    /// I20.
+    fn check_folder(&self, id: FolderId) -> Result<()> {
+        if crate::book::folder_depth(self, id).is_none() {
+            return bad(format!(
+                "folder {id} has a missing parent, is inside itself or nests more than {} deep",
+                crate::book::MAX_FOLDER_DEPTH
+            ));
+        }
+        Ok(())
+    }
+
+    /// I21.
+    fn check_page_folder(&self, id: PageId) -> Result<()> {
+        let Some(text) = self.pages.get(&id).and_then(|p| p.properties.get(crate::book::FOLDER_KEY)) else {
+            return Ok(());
+        };
+        match FolderId::parse(text) {
+            Some(f) if self.folders.contains_key(&f) => Ok(()),
+            _ => bad(format!("page {id} names a missing folder")),
+        }
     }
 
     /// I1.

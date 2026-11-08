@@ -29,7 +29,14 @@ fn main() -> Result<(), String> {
         }
     };
     s.cmdline("line 0,0 40,0 40,20 0,20 c").map_err(|e| e.to_string())?;
-    let lines: Vec<String> = s.doc().map_err(|e| e.to_string())?.model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> = s
+        .doc()
+        .map_err(|e| e.to_string())?
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle.hex())
+        .collect();
     let c = run(&mut s, "convertcomponent", json!({"handles": lines}));
     run(&mut s, "setprop", json!({"component": c["component"], "key": "tag", "value": "-K1"}));
     let t1 = run(&mut s, "addterminal", json!({"handle": lines[1], "at": [40, 15], "label": "13"}));
