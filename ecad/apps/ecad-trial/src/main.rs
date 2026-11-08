@@ -7,6 +7,9 @@
 //! discarded, and at exit). Snapshots are diagnostic files, not saved projects.
 //! See `ecad/docs/quick-start.md` for building, running and the manual trial.
 //!
+//! `ECAD_STARTUP_TIMING=1` prints start-up timing marks on stderr and writes them to
+//! `ecad-startup-<time>.json` in the snapshots folder (or the temp folder); see [`ecad_trial::startup`].
+//!
 //! Release builds on Windows open no console window beside the trial, as CADCraft's desktop app;
 //! their `--help`, `--version` and usage errors are then not shown (use a debug build).
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
@@ -20,21 +23,48 @@
 )]
 
 use cadcraft_ui_egui::switch::Switch;
+use ecad_trial::startup::{Adapter, StartupTiming, Step};
 use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
-struct App(Trial);
+struct App(Trial, Option<Timing>);
+
+/// Start-up timing still running (only with `ECAD_STARTUP_TIMING` on).
+struct Timing {
+    marks: StartupTiming,
+    /// Where the JSON goes.
+    dir: std::path::PathBuf,
+    /// Frames started so far.
+    frames: u32,
+    /// Whether the first `ui` pass has been marked.
+    built: bool,
+}
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // Called once at the start of every frame, so the second call follows the first present.
+        if let Some(t) = &mut self.1 {
+            t.frames = t.frames.saturating_add(1);
+            if t.frames >= 2 {
+                t.marks.mark(Step::FirstPresent);
+                t.marks.finish(&t.dir);
+                self.1 = None;
+            }
+        }
         self.0.cad.raw_input_hook(ctx, raw);
         cadcraft_ui_egui::cmdline::capture_tab(ctx, raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.0.ui(ui);
+        if let Some(t) = &mut self.1
+            && !t.built
+        {
+            t.built = true;
+            t.marks.mark(Step::FirstUpdate);
+        }
     }
     fn on_exit(&mut self) {
         self.0.on_exit();
@@ -48,6 +78,7 @@ impl eframe::App for App {
 const STENCIL_BITS: u8 = 8;
 
 fn main() -> eframe::Result {
+    let mut timing = StartupTiming::from_env();
     let (snapshots, project) = match parse_args(std::env::args_os().skip(1)) {
         Ok(Invocation::Run { snapshots, project }) => (snapshots, project),
         Ok(Invocation::Help) => {
@@ -65,6 +96,9 @@ fn main() -> eframe::Result {
     };
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
+    if let Some(t) = &mut timing {
+        t.mark(Step::Install);
+    }
     let surface = cadcraft_ui_egui::gpu::surface_config(
         Switch::parse("CADCRAFT_VSYNC", std::env::var("CADCRAFT_VSYNC").ok().as_deref()),
         cfg!(all(unix, not(target_os = "macos"))),
@@ -88,18 +122,35 @@ fn main() -> eframe::Result {
             d
         });
     }
+    if let Some(t) = &mut timing {
+        t.mark(Step::RunNative);
+    }
     eframe::run_native(
         TITLE,
         options,
         Box::new(move |cc| {
-            let mut trial = match &project {
-                Some(p) => Trial::with_file(snapshots, p)?,
-                None => Trial::new(snapshots)?,
-            };
+            // Beside the snapshots, or in the temp folder (only looked up when timing).
+            let dir = timing.as_ref().map(|_| snapshots.clone().unwrap_or_else(std::env::temp_dir));
+            if let Some(t) = &mut timing {
+                t.mark(Step::Creator);
+                if let Some(rs) = &cc.wgpu_render_state {
+                    let info = rs.adapter.get_info();
+                    t.set_adapter(Adapter {
+                        backend: format!("{:?}", info.backend),
+                        name: info.name,
+                        device_type: format!("{:?}", info.device_type),
+                    });
+                }
+            }
+            let mut trial = Trial::start(snapshots, project.as_deref(), timing.as_mut())?;
             if let Some(rs) = &cc.wgpu_render_state {
                 trial.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }
-            Ok(Box::new(App(trial)))
+            if let Some(t) = &mut timing {
+                t.mark(Step::SetWgpu);
+            }
+            let timing = timing.zip(dir).map(|(marks, dir)| Timing { marks, dir, frames: 0, built: false });
+            Ok(Box::new(App(trial, timing)))
         }),
     )
 }
