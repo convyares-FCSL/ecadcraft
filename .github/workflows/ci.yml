@@ -1,14 +1,19 @@
-# Continuous integration on every push to dev and every pull request into dev: the CADCraft
-# workspace (formatting, lints, tests) and the ECAD workspace in ecad/ (`cargo xtask ci` and plain
-# `cargo test --workspace`) on Linux and natively on Windows.
+# Continuous integration in two levels (owner decision, 2026-11-08; ecad/CLAUDE.md, "Branches and
+# testing"):
+# - Quick check, on every pull request into dev: fmt and clippy (all targets, so tests must still
+#   compile) for the ECAD workspace on Linux. Tests run in the worker's scoped checks and at the
+#   QA gate; compiling ~50 test binaries took ~8 min of a ~12 min run (2026-11-08).
+# - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
+#   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
+#   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
 # Green CI is required before review; it is not approval to merge.
 name: CI
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -28,8 +33,28 @@ env:
   CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
+  quick:
+    name: ECAD quick check
+    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ecad
+      - name: Format
+        working-directory: ecad
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        working-directory: ecad
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
   fmt:
     name: Format
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +65,7 @@ jobs:
 
   test:
     name: Clippy and tests
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +101,7 @@ jobs:
 
   ecad:
     name: ECAD workspace
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,6 +124,7 @@ jobs:
 
   ecad-windows:
     name: ECAD workspace (Windows)
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: windows-latest
     steps:
       # ECAD files are LF (ecad/CLAUDE.md); the runner's Git would otherwise check out CRLF.
