@@ -209,17 +209,20 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     app.session.active = 0;
     app.run("saveas", json!({"path": "demo.ecad"})).unwrap();
     app.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K9"})).unwrap();
-    assert!(
-        app.session.docs.iter().all(|d| d.path.as_deref() == Some("demo.ecad")),
-        "page documents carry the project path"
-    );
-    assert_eq!(app.session.docs.len(), 2);
-    // Closing one page tab: no prompt, the project stays open and unsaved.
-    app.request_close(Some(1));
-    assert!(app.close_prompt().is_none(), "a page tab closes without a prompt");
+    assert_eq!(app.session.docs.len(), 1, "one page window (brief 016)");
+    assert_eq!(app.session.docs[0].path.as_deref(), Some("demo.ecad"), "the page window carries the project path");
+    // The trial's `keep_open` (design 016 section 4.1): closing the page window asks nothing and
+    // the project stays open, unsaved, with no page shown; showing a page opens the window again.
+    h.project.configure(&mut app.session, |p| p.keep_open = true).unwrap();
+    app.request_close(Some(0));
+    assert!(app.close_prompt().is_none(), "the page window closes without a prompt");
+    assert!(app.session.docs.is_empty());
+    assert!(h.project.is_attached(&app.session) && app.session.has_unsaved_work());
+    let first = h.project.read(&mut app.session, |p, _| p.ledger.document().page_order[0]).unwrap();
+    h.project.open_page(&mut app.session, first).unwrap();
     assert_eq!(app.session.docs.len(), 1);
-    assert!(app.session.has_unsaved_work());
-    // Closing the last page closes the project: prompt; a failed save keeps it open.
+    // Without it, closing the page window closes the project: prompt; a failed save keeps it open.
+    h.project.configure(&mut app.session, |p| p.keep_open = false).unwrap();
     app.request_close(Some(0));
     assert!(app.close_prompt().is_some(), "closing the project prompts");
     h.project.configure(&mut app.session, |p| p.store.medium_mut().fail_next_append = true).unwrap();

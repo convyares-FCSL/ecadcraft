@@ -357,7 +357,7 @@ pub fn record_state(file: &FileFacts, persisted: u64, seq: u64) -> RecordState {
 }
 
 impl Project {
-    fn active_page(&self, pg: &PagesRef<'_>) -> (Option<u64>, Option<PageId>, Vec<Handle>) {
+    fn front_page(&self, pg: &PagesRef<'_>) -> (Option<u64>, Option<PageId>, Vec<Handle>) {
         match pg.active() {
             Some((uid, sel)) => match self.page_of(uid) {
                 Some(page) => (Some(uid), Some(page), sel),
@@ -369,7 +369,7 @@ impl Project {
 
     /// The key of the snapshot that would be built now.
     pub(crate) fn debug_key(&self, pg: &PagesRef<'_>) -> SnapshotKey {
-        let (active, _, selection) = self.active_page(pg);
+        let (active, _, selection) = self.front_page(pg);
         SnapshotKey {
             project: Some(self.id),
             head: self.ledger.head(),
@@ -416,7 +416,7 @@ impl Project {
 
     /// Build a snapshot (under the caller's lock; copies only).
     pub(crate) fn debug_snapshot(&self, pg: &PagesRef<'_>, key: SnapshotKey, have: TxCursor) -> DebugSnapshot {
-        let (_, active_page, selection) = self.active_page(pg);
+        let (_, active_page, selection) = self.front_page(pg);
         let log = self.ledger.log();
         // Continue the caller's copy only when its last transaction is ours.
         let continues = match (have.len, have.last) {

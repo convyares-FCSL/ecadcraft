@@ -219,18 +219,15 @@ fn an_unavailable_page_is_a_labelled_read_only_placeholder() {
         assert!(Arc::ptr_eq(&h.s.docs[i1].doc, &shown) || h.s.docs[i1].doc.model == shown.model, "{cmd}");
     }
     assert_eq!(h.head(), head);
-    // Edits on another page do not revive or touch the placeholder.
-    h.activate(p2);
-    h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
-    assert!(h.p(|p| p.pages[&p1].unavailable));
-    assert!(h.s.docs[i1].doc.model == shown.model);
     // The project still saves, from the placeholder page too.
     h.s.active = i1;
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
-    // Close and reopen: the page is drawn from the document again.
-    h.run("close", json!({"index": i1})).unwrap();
-    h.run("openpage", json!({"page": p1.hex()})).unwrap();
+    // Edits on another page work (one page window: switching leaves the placeholder) ...
+    h.activate(p2);
+    h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
+    // ... and showing page 1 again draws it from the document.
+    h.activate(p1);
     assert!(!h.p(|p| p.pages[&p1].unavailable));
     let i1 = h.page_index(p1).unwrap();
     assert!(!h.s.docs[i1].title.ends_with(ecad_cadcraft::project::UNAVAILABLE_SUFFIX));
