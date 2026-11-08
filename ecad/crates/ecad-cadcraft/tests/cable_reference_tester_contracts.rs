@@ -872,7 +872,8 @@ fn ac6_hostile_documents_never_panic() {
             let pages: Vec<PageId> = doc.pages.keys().copied().collect();
             for p in &pages {
                 let _ = markers_on_page(&doc, *p);
-                let _ = ecad_cadcraft::references::leaving_ends(&doc, *p);
+                // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing.
+                let _ = ecad_cadcraft::views::drawings_on_page(&doc, *p, &Default::default(), 1e-6);
                 let _ = project_page(&doc, *p, &Drawing::new_metric(), &HandleMap::default());
                 let _ = plan_continue(&doc, *p, cable, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6);
                 let _ = ecad_cadcraft::references::check_reference(&doc, *p, cable);

@@ -54,7 +54,9 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     let wiring = tab.groups.iter().find(|g| g.name == "Wiring").expect("Wiring group");
     let ids: Vec<&str> = wiring.tools.iter().map(|t| t.id.as_str()).collect();
     let at = |id: &str| ids.iter().position(|x| *x == id).unwrap_or_else(|| panic!("{id} in {ids:?}"));
-    assert_eq!(at("ecad.cableref"), at("ecad.cableview") + 1);
+    // Combined trial of briefs 009 and 010 (overseer decision): 009's Core Label and Cable Join come
+    // first, after Cable View.
+    assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1);
     assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1);
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1);
     let pages = tab.groups.iter().find(|g| g.name == "Pages").expect("Pages group");

@@ -811,7 +811,8 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     assert!(refs[0].text.ends_with(&format!("+{}", n - 1 - 3)), "{}", refs[0].text);
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
     let _ = ecad_cadcraft::references::diagnostics(&doc);
-    let _ = ecad_cadcraft::references::leaving_ends(&doc, page);
+    // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
+    let _ = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
 }
 
 /// The per-page movement rule (design 010 §0, translate M3): on the continuation page, moving a

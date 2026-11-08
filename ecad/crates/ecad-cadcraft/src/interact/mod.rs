@@ -37,9 +37,11 @@ use ecad_model::{
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
-use crate::views::{FAN_REFUSED, FanOnPage, View, fan_on_page};
+use crate::views::{FanOnPage, View, fan_on_page};
 
-pub(crate) use forms::{addterminal, cableslash, cableview, connect, convert, disconnect, place, wire};
+pub(crate) use forms::{
+    addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, place, wire,
+};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
@@ -370,13 +372,15 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             color: TERMINAL_RGB,
         })
         .collect();
-    // The references are derived once for this frame (brief 010).
+    // Rings at the reference ends (brief 010); loose-end squares are left out where a cable stops
+    // at a reference or a wire leaves for another page (brief 009 `quiet`, with brief 010 §6.4
+    // folded in).
     let markers = crate::references::markers_on_page(doc, page);
-    let leaving = crate::references::leaving_ends_for(doc, page, &markers);
+    let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
     for (c, a, b) in route_ends(doc, page) {
         let Some(conductor) = doc.conductors.get(&c) else { continue };
         for (end, at) in [(End::A, a), (End::B, b)] {
-            if leaving.contains(&(c, end)) {
+            if conductor.end(end).is_none() && quiet.iter().any(|q| q.near(at, p.tolerance)) {
                 continue;
             }
             match conductor.end(end) {
@@ -437,7 +441,11 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
     let view = p.pages.get(&page)?;
     let doc = p.ledger.document();
     let mut lines = match view.map.get(h)? {
+        // A reference end, by its text, its point or 009's flag: brief 010's hover (one source).
         Mapped::RefText(r) => crate::references::hover_lines(doc, r)?,
+        Mapped::Fan(_) if view.map.reference_of(h).is_some() => {
+            crate::references::hover_lines(doc, view.map.reference_of(h)?)?
+        }
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (_, r) => match r.subject {
@@ -449,15 +457,33 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                         View::Traditional => "View: traditional",
                         View::Fan => match fan_on_page(doc, page, k, p.tolerance) {
                             FanOnPage::Failed => "View: fan (cannot be drawn on this page)",
+                            FanOnPage::TooFew => "View: fan (needs two wires on this page)",
                             _ => "View: fan",
                         },
                     };
-                    with_drawings(doc, k, with_view(cable_lines(doc, k), shown))
+                    with_drawings(doc, k, with_view(cable_lines(doc, page, k), shown))
                 }
             },
         },
         Mapped::Marker(_, t) => terminal_lines(doc, t),
-        Mapped::Fan(k) => with_drawings(doc, k, with_view(cable_lines(doc, k), "View: fan")),
+        Mapped::Fan(k) => {
+            let fan = view.map.is_fan(k);
+            let mut lines = with_view(cable_lines(doc, page, k), if fan { "View: fan" } else { "View: traditional" });
+            if fan {
+                let d = crate::look::cable_on_page(doc, page, k, true, p.tolerance, &crate::look::font_width);
+                lines.extend(
+                    d.at_reference
+                        .iter()
+                        .map(|w| format!("{} is attached at the reference end.", crate::slash::wire_name(doc, *w))),
+                );
+            }
+            // A tail, bend or label names its core second (design 009 §8).
+            if let Some(w) = view.map.core_of(h) {
+                let core = core_of(doc, k, w).unwrap_or_else(|| "none".into());
+                lines.insert(1.min(lines.len()), format!("Core: {core} ({})", crate::slash::wire_name(doc, w)));
+            }
+            with_drawings(doc, k, lines)
+        }
     };
     capped(&mut lines);
     Some(lines)
@@ -579,20 +605,44 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     lines
 }
 
-/// A cable slash (design 004 §7.3): its tag, ID and members in stored order.
-fn cable_lines(doc: &Document, k: CableId) -> Vec<String> {
+/// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
+fn core_of(doc: &Document, k: CableId, w: ConductorId) -> Option<String> {
+    let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
+    (!core.trim().is_empty()).then(|| crate::look::shorten(core, crate::look::MAX_CORE_CHARS))
+}
+
+/// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
+/// ends on `page`, and its members in stored order with their cores.
+fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let cable = doc.cables.get(&k);
     let mut lines = vec![
         format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")),
         format!("id {}", k.hex()),
     ];
+    for (key, label) in [("designation", "Designation"), ("type", "Type")] {
+        if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
+            lines.push(format!("{label}: {}", crate::look::shorten(v, 64)));
+        }
+    }
+    let refs: Vec<String> = doc
+        .representations
+        .iter()
+        .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == crate::look::REFERENCE_ROLE)
+        .map(|(id, _)| format!("\"{}\"", crate::look::reference_text(doc, *id)))
+        .collect();
+    if !refs.is_empty() {
+        lines.push(format!("References here: {}", refs.join(", ")));
+    }
     let members = cable.map(|x| x.members.as_slice()).unwrap_or_default();
     if members.is_empty() {
         lines.push("Wires: none".into());
     } else {
         // The stored member order, nothing more (owner answer Q2).
         lines.push(format!("Wires: {}", members.len()));
-        lines.extend(members.iter().map(|m| format!("  {}", crate::slash::wire_name(doc, m.conductor))));
+        lines.extend(members.iter().map(|m| match core_of(doc, k, m.conductor) {
+            Some(c) => format!("  {}  core {c}", crate::slash::wire_name(doc, m.conductor)),
+            None => format!("  {}", crate::slash::wire_name(doc, m.conductor)),
+        }));
     }
     lines
 }
@@ -608,7 +658,10 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
             Some(t) => t.to_string(),
             None => format!("{}…", short(&k.hex())),
         };
-        lines.push(format!("In cable {name}"));
+        match core_of(doc, *k, w) {
+            Some(c) => lines.push(format!("In cable {name}, core {c}")),
+            None => lines.push(format!("In cable {name}")),
+        }
     }
     for end in End::BOTH {
         lines.push(match conductor.and_then(|x| x.end(end)) {
@@ -647,7 +700,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
         Some(Mapped::Marker(..)) => return Err(NOT_OUTLINE.into()),
-        Some(Mapped::Fan(_)) => return Err(FAN_REFUSED.into()),
+        Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

@@ -21,9 +21,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::color::Color as CColor;
-use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAlign};
-use cadcraft_engine::geom::Vec3;
 use ecad_model::derive::{CableReference, cable_references, route_ends_by_page};
 use ecad_model::{
     CableId, ConductorId, Document, End, ItemId, LengthUnit, PageId, Pt, Representation, RepresentationId, Subject,
@@ -149,88 +146,10 @@ pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(Strin
     cable_references(doc).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan))
 }
 
-// ---------------------------------------------------------------- the minimal marker drawing
-//
-// BRIEF-009 MERGE: this is the only code of brief 010 that draws a reference end on the page (the
-// overlay ring aside, `interact::overlay_marks`). At the merge with brief 009, its `look.rs`
-// becomes the only code that draws reference ends: `draw_reference_ends` and `text_entity` are
-// replaced there (keeping the `Mapped::RefText` mapping so hover, Go to Reference and erasing the
-// text keep working), and `look::reference_text` takes its text from [`marker_text`].
-
-/// The entities brief 010 draws for the reference ends on a page (one Text each), from markers
-/// already derived; each with the reference it is mapped to (`Mapped::RefText`). `handle_for`
-/// gives the handle to use (the previous one where the reference was already drawn).
-pub fn draw_reference_ends(
-    markers: &[Marker],
-    mut handle_for: impl FnMut(RepresentationId) -> Handle,
-) -> Vec<(RepresentationId, Entity)> {
-    markers.iter().map(|m| (m.reference, text_entity(m, handle_for(m.reference)))).collect()
-}
-
-/// The projected text entity of a marker: on `ECAD-CABLES`, middle vertical alignment, ByLayer
-/// when linked, ACI 1 for an orphan (design 010 §6.1).
-pub fn text_entity(m: &Marker, handle: Handle) -> Entity {
-    let p = Vec3::new(m.text_at.x, m.text_at.y, 0.0);
-    let text = Text {
-        insert: p,
-        align_pt: Some(p),
-        height: m.height,
-        value: m.text.clone(),
-        rotation: 0.0,
-        width_factor: 1.0,
-        oblique: 0.0,
-        style: "Standard".into(),
-        halign: if m.right_aligned { HAlign::Right } else { HAlign::Left },
-        valign: VAlign::Middle,
-    };
-    let color = if m.orphan { CColor::Index(ORPHAN_ACI) } else { CColor::ByLayer };
-    Entity {
-        handle,
-        common: Common { layer: crate::views::LAYER.into(), color, ..Common::default() },
-        kind: EntityKind::Text(text),
-    }
-}
-
-/// On `page`, the member route ends that leave toward a reference (design 010 §6.4): for each
-/// reference on the page, each member route there whose conductor also has a route on another
-/// page, the end nearer to the reference point. The overlay draws no end mark there.
-pub fn leaving_ends(doc: &Document, page: PageId) -> BTreeSet<(ConductorId, End)> {
-    leaving_ends_for(doc, page, &markers_on_page(doc, page))
-}
-
-/// [`leaving_ends`] for markers already derived. At most [`MAX_REFERENCES_PER_CABLE`] markers of
-/// one cable are considered (more come only from a hostile file), so the work stays bounded.
-pub fn leaving_ends_for(doc: &Document, page: PageId, markers: &[Marker]) -> BTreeSet<(ConductorId, End)> {
-    if markers.is_empty() {
-        return BTreeSet::new();
-    }
-    let mut per_cable: BTreeMap<CableId, usize> = BTreeMap::new();
-    let markers: Vec<&Marker> = markers
-        .iter()
-        .filter(|m| {
-            let n = per_cable.entry(m.cable).or_default();
-            *n += 1;
-            *n <= MAX_REFERENCES_PER_CABLE
-        })
-        .collect();
-    let routes = route_ends_by_page(doc);
-    let mut pages_of: BTreeMap<ConductorId, usize> = BTreeMap::new();
-    for (c, _) in routes.keys() {
-        *pages_of.entry(*c).or_default() += 1;
-    }
-    let mut out = BTreeSet::new();
-    for m in markers {
-        let Some(cable) = doc.cables.get(&m.cable) else { continue };
-        for member in &cable.members {
-            let Some((a, b)) = routes.get(&(member.conductor, page)) else { continue };
-            if pages_of.get(&member.conductor).copied().unwrap_or(0) < 2 {
-                continue;
-            }
-            out.insert((member.conductor, if a.dist(m.at) <= b.dist(m.at) { End::A } else { End::B }));
-        }
-    }
-    out
-}
+// The marker of a reference end (flag and text) is drawn by brief 009's `look.rs` only, with the
+// text from [`marker_text`]; its text is mapped `Mapped::RefText`, so hover, Go to Reference and
+// erasing it act on the reference. The ends of member routes that leave for another page (design
+// 010 §6.4) show no loose-end square: `look.rs` folds that rule into its `quiet` ends.
 
 /// The reference end on `page` under `p`: the nearest reference point within `radius`, else a
 /// reference whose drawn text (its box, grown by `radius`) holds `p`. Used before the generic pick
@@ -252,14 +171,11 @@ pub fn reference_at(doc: &Document, page: PageId, p: Pt, radius: f64) -> Option<
     markers.iter().find(|m| text_box_holds(m, p, radius)).map(|m| m.reference)
 }
 
-/// Whether `p` lies in a marker's text box grown by `pad`. The width is estimated from the
-/// characters (the drafting font's glyphs are at most about one text height wide).
+/// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
 fn text_box_holds(m: &Marker, p: Pt, pad: f64) -> bool {
-    let width = m.height * m.text.chars().count() as f64;
-    let (x0, x1) =
-        if m.right_aligned { (m.text_at.x - width, m.text_at.x) } else { (m.text_at.x, m.text_at.x + width) };
-    let half = m.height / 2.0;
-    p.x >= x0 - pad && p.x <= x1 + pad && p.y >= m.text_at.y - half - pad && p.y <= m.text_at.y + half + pad
+    // Brief 009 draws the marker: its flag around the text, at the reference point.
+    let (lo, hi) = crate::look::marker_box(m.at, &m.text);
+    p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
 /// The pages (in page order) where `conductor` has a route.

@@ -295,9 +295,12 @@ fn the_cable_slash_entry_sits_in_wiring_between_disconnect_and_add_to_cable() {
     assert_eq!(at("ecad.cableslash"), at("ecad.disconnect") + 1, "{ids:?}");
     // Design 005 §3.1 puts Cable View right after Cable Slash, before Add to Cable.
     assert_eq!(at("ecad.cableview"), at("ecad.cableslash") + 1, "{ids:?}");
-    // Design 010 §3.1 puts Cable Reference, Continue Cable and Go to Reference between Cable View
-    // and Add to Cable.
-    assert_eq!(at("ecad.cableref"), at("ecad.cableview") + 1, "{ids:?}");
+    // Brief 009 puts Core Label and Cable Join after Cable View (design 009 §3, owner request), then
+    // design 010 §3.1 puts Cable Reference, Continue Cable and Go to Reference, then Add to Cable
+    // (combined order, overseer decision for the trial of 009 + 010).
+    assert_eq!(at("ecad.cablecore"), at("ecad.cableview") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cablefan"), at("ecad.cablecore") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1, "{ids:?}");
     assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1, "{ids:?}");
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1, "{ids:?}");
     assert_eq!(at("ecad.cableadd"), at("ecad.cablegoto") + 1, "{ids:?}");

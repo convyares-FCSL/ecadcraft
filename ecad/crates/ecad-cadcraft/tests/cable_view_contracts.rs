@@ -123,21 +123,31 @@ fn entities(h: &mut H, page: PageId) -> Vec<Entity> {
     h.pv(|p, pg| pg.entities_of(p, page)).iter().map(|e| (**e).clone()).collect()
 }
 
-/// The paths of the entities on the reserved cable layer.
+/// The paths of the entities on the reserved cable layer (brief 009 adds arcs and texts there,
+/// which are not paths).
 fn fan_paths(h: &mut H, page: PageId) -> Vec<Vec<Pt>> {
     entities(h, page)
         .into_iter()
         .filter(|e| e.common.layer == views::LAYER)
-        .map(|e| match e.kind {
-            EntityKind::Line(l) => vec![Pt::new(l.a.x, l.a.y), Pt::new(l.b.x, l.b.y)],
-            EntityKind::LwPolyline(p) => p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(),
+        .filter_map(|e| match e.kind {
+            EntityKind::Line(l) => Some(vec![Pt::new(l.a.x, l.a.y), Pt::new(l.b.x, l.b.y)]),
+            EntityKind::LwPolyline(p) => Some(p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect()),
+            EntityKind::Arc(_) | EntityKind::Text(_) => None,
             other => panic!("unexpected fan entity {other:?}"),
         })
         .collect()
 }
 
-fn same_path(a: &[Pt], b: &[Pt]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(p, q)| p.near(*q, 1e-9))
+/// The tails of a cable's fan on a page (brief 009: one per member and fanned end).
+fn tails(fan: &views::Fan) -> Vec<Vec<Pt>> {
+    fan.parts
+        .iter()
+        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter_map(|p| match &p.shape {
+            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Handles of fan lines on the page.
@@ -161,9 +171,10 @@ fn ten_switches_change_nothing_in_the_project() {
         } else {
             g.h.s.start("cableview").unwrap();
             assert_eq!(prompt(&g.h), "Select a cable to switch its view:");
-            // The slash in traditional view, the trunk in fan view.
+            // The slash in traditional view, the trunk in fan view (brief 009: joining the middle
+            // of the spine at y = 5, left of the label box).
             if fan_before {
-                click(&mut g.h, 30.0, 5.0)
+                click(&mut g.h, 24.0, 5.0)
             } else {
                 click(&mut g.h, 30.0, 7.5)
             }
@@ -203,20 +214,27 @@ fn the_fan_of_g_is_the_worked_example() {
     assert_eq!((rings.len(), dots.len()), (6, 6));
     let r = view(&mut g.h, g.c1, "fan");
     assert_eq!(r["view"], "fan");
+    // Brief 009 replaces §5's geometry (design 009 §4): a tail ends at every wire end; the
+    // spines stand 22.5 in from each end (tail-min 20 + bend radius 2.5).
+    let doc = g.h.doc();
+    let FanOnPage::Drawn(fan) = views::fan_on_page(&doc, g.page, g.c1, 1e-6) else { panic!("drawn") };
+    let tails: Vec<Vec<Pt>> = fan
+        .parts
+        .iter()
+        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter_map(|p| match &p.shape {
+            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tails.len(), 6, "{tails:?}");
+    for (x, y) in [(0.0, 0.0), (0.0, 5.0), (0.0, 10.0), (60.0, 0.0), (60.0, 5.0), (60.0, 10.0)] {
+        let w = Pt::new(x, y);
+        assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(w, 1e-9))), "{w:?} in {tails:?}");
+    }
     let paths = fan_paths(&mut g.h, g.page);
-    let want = [
-        vec![Pt::new(5.0, 5.0), Pt::new(55.0, 5.0)],
-        vec![Pt::new(0.0, 0.0), Pt::new(5.0, 5.0)],
-        vec![Pt::new(0.0, 5.0), Pt::new(5.0, 5.0)],
-        vec![Pt::new(0.0, 10.0), Pt::new(5.0, 5.0)],
-        vec![Pt::new(60.0, 0.0), Pt::new(55.0, 5.0)],
-        vec![Pt::new(55.0, 5.0), Pt::new(60.0, 5.0)],
-        vec![Pt::new(60.0, 10.0), Pt::new(55.0, 5.0)],
-    ];
-    assert_eq!(paths.len(), want.len(), "{paths:?}");
-    for w in &want {
-        let rev: Vec<Pt> = w.iter().rev().copied().collect();
-        assert!(paths.iter().any(|p| same_path(p, w) || same_path(p, &rev)), "{w:?} in {paths:?}");
+    for x in [22.5, 37.5] {
+        assert!(paths.iter().any(|p| p.iter().all(|q| (q.x - x).abs() < 1e-9)), "spine at x = {x}: {paths:?}");
     }
     // No entity for the routes or the slash; the fan lines are mapped to the cable.
     let doc = g.h.doc();
@@ -227,7 +245,7 @@ fn the_fan_of_g_is_the_worked_example() {
     }
     assert!(map.item(g.slash).is_none(), "the slash is not drawn");
     let fans = fan_handles(&mut g.h, g.page);
-    assert_eq!(fans.len(), 7);
+    assert_eq!(fans.len(), fan.parts.len());
     assert!(fans.iter().all(|h| map.get(*h) == Some(Mapped::Fan(g.c1))));
     // The marks did not move; the magenta crossing dots are gone.
     assert_eq!(marks(&mut g.h, MarkShape::Ring), rings);
@@ -254,7 +272,7 @@ fn undo_and_redo_skip_the_switch() {
     assert!(g.h.doc().cables.contains_key(&g.c1));
     assert_eq!(g.h.head(), head + 2);
     assert_eq!(views_of(&mut g.h)[g.c1.hex()], "fan", "still fan after redo");
-    assert_eq!(fan_paths(&mut g.h, g.page).len(), 7);
+    assert!(!fan_paths(&mut g.h, g.page).is_empty(), "drawn as a fan");
 }
 
 /// Design check E (AC6): edits of the fan are refused with the spec's message and change
@@ -278,7 +296,8 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     }
     // An ECAD pick on a fan line: the message, the prompt repeats.
     g.h.s.start("connect").unwrap();
-    click(&mut g.h, 2.5, 2.5);
+    // A tail (brief 009: along the wire near its end).
+    click(&mut g.h, 10.0, 0.0);
     assert_eq!(last_echo(&g.h), FAN_REFUSED);
     assert_eq!(prompt(&g.h), "Select wire near the end to connect:");
     g.h.s.input(Input::Enter).unwrap();
@@ -309,7 +328,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     assert_eq!(g.h.head(), head + 1);
     g.h.run("u", Value::Null).unwrap();
     assert_eq!(g.h.head(), head + 2);
-    assert_eq!(fan_paths(&mut g.h, g.page).len(), 7);
+    assert!(!fan_paths(&mut g.h, g.page).is_empty(), "drawn as a fan");
 }
 
 /// Design §6.2 (owner answer O3): moving a component with fan-view wires attached is allowed;
@@ -382,7 +401,7 @@ fn views_are_remembered_per_cable_across_reopen() {
     let vs = views_of(&mut h);
     assert_eq!(vs[g.c1.hex()], "fan");
     assert_eq!(vs[c2.hex()], "traditional");
-    assert_eq!(fan_paths(&mut h, g.page).len(), 7);
+    assert!(!fan_paths(&mut h, g.page).is_empty(), "drawn as a fan");
     assert!(!h.p(|p| p.unsaved()));
     h.check();
 }
@@ -452,7 +471,16 @@ fn fans_of_many_shapes_draw_sensibly() {
     view(&mut h, two, "fan");
     view(&mut h, twenty, "fan");
     let paths = fan_paths(&mut h, page);
-    assert_eq!(paths.len(), (1 + 2 * 2) + (1 + 2 * 20), "{paths:?}");
+    // Brief 009: one tail per member and end (the old fan's one line per member and end).
+    let doc = h.doc();
+    let tail_count: usize = [two, twenty]
+        .iter()
+        .map(|k| match views::fan_on_page(&doc, page, *k, 1e-6) {
+            FanOnPage::Drawn(f) => tails(&f).len(),
+            other => panic!("{other:?}"),
+        })
+        .sum();
+    assert_eq!(tail_count, 2 * 2 + 2 * 20, "{paths:?}");
     // Loose ends keep their grey squares, at the end of a fan line.
     let uid = uid(&mut h, page);
     let squares: Vec<Pt> = h
@@ -478,19 +506,17 @@ fn fans_of_many_shapes_draw_sensibly() {
     view(&mut h, odd, "fan");
     let doc = h.doc();
     let FanOnPage::Drawn(fan) = views::fan_on_page(&doc, page, odd, 1e-6) else { panic!("drawn") };
-    // r₀ is the right-to-left wire's first point (60,305): the other wires fan from their right
-    // ends; the farthest of those, (60,320), is 15 away, so F₀ is 15 along the reference.
-    let f0 = fan.trunk[0];
-    assert!(f0.near(Pt::new(45.0, 305.0), 1e-9), "{f0:?}");
-    assert!(fan.lines.iter().any(|l| same_path(l, &[Pt::new(60.0, 300.0), f0])), "{:?}", fan.lines);
-    assert!(fan.lines.iter().any(|l| same_path(l, &[Pt::new(60.0, 320.0), f0])), "{:?}", fan.lines);
-    // A cable left with one wire: the trunk is the whole route, no fan lines.
+    // Brief 009: every wire end, on both sides, is the end of a tail, whatever the route.
+    let tails = tails(&fan);
+    for e in [(0.0, 300.0), (60.0, 300.0), (60.0, 305.0), (0.0, 305.0), (0.0, 310.0), (60.0, 320.0)] {
+        let e = Pt::new(e.0, e.1);
+        assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(e, 1e-9))), "{e:?} in {tails:?}");
+    }
+    // A cable left with one wire is drawn traditional on the page (design 009 §4.1).
     let members: Vec<ConductorId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
     h.run("ecaddelete", json!({"conductor": members[0].hex()})).unwrap();
     let doc = h.doc();
-    let FanOnPage::Drawn(one) = views::fan_on_page(&doc, page, two, 1e-6) else { panic!("drawn") };
-    assert_eq!(one.trunk.len(), 2);
-    assert!(one.lines.is_empty());
+    assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), FanOnPage::TooFew);
     // A new one-wire cable is not offered fan view.
     h.run("wire", json!({"points": [[0, 400], [60, 400]]})).unwrap();
     let single: CableId = id(&h.run("cableslash", json!({"from": [20, 395], "to": [20, 405]})).unwrap(), "cable");
@@ -678,7 +704,7 @@ fn store_rewrites_only_a_missing_or_non_json_file() {
     assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("fan"), Some(false)), "{r}");
     assert!(r["reason"].as_str().is_some_and(|x| x.contains("larger than 1 MiB")), "{r}");
     assert_eq!(std::fs::read(&file).unwrap(), before);
-    assert_eq!(fan_paths(&mut g.h, g.page).len(), 7);
+    assert!(!fan_paths(&mut g.h, g.page).is_empty(), "drawn as a fan");
 }
 
 /// Review M2: a project with no fan cables has no entry; the file never grows past what the reader

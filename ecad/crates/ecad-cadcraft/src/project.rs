@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
 
 use cadcraft_engine::doc::{
-    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Text,
+    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Lineweight, Text,
 };
 use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
@@ -18,8 +18,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
-    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op,
+    Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
@@ -48,8 +48,16 @@ pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
     markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
-    /// Fan view lines: (cable, index of the line in the fan) → handle.
+    /// Computed cable drawing (fans, core labels, reference flags; briefs 005, 009): (cable,
+    /// index of the part) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
+    /// The cables drawn as fans on this page.
+    fan_cables: BTreeSet<CableId>,
+    /// The member and the reference end each computed part belongs to, where it has one.
+    parts: HashMap<Handle, (Option<ConductorId>, Option<RepresentationId>)>,
+    /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
+    /// square is shown there.
+    quiet: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
 }
@@ -78,6 +86,41 @@ impl HandleMap {
     pub fn insert_fan(&mut self, cable: CableId, index: u32, h: Handle) {
         self.fans.insert((cable, index), h);
         self.by_handle.insert(h, Mapped::Fan(cable));
+    }
+    /// A computed part of `cable`'s drawing (brief 009): `fan` when the cable is drawn as a fan on
+    /// this page; the member (`core`) and the reference end it belongs to.
+    pub fn insert_part(
+        &mut self,
+        cable: CableId,
+        index: u32,
+        h: Handle,
+        fan: bool,
+        core: Option<ConductorId>,
+        reference: Option<RepresentationId>,
+    ) {
+        self.insert_fan(cable, index, h);
+        if fan {
+            self.fan_cables.insert(cable);
+        }
+        if core.is_some() || reference.is_some() {
+            self.parts.insert(h, (core, reference));
+        }
+    }
+    /// Loose wire ends that show no loose-end square (design 009 §7.3).
+    pub fn quiet_ends(&self) -> &[Pt] {
+        &self.quiet
+    }
+    /// Whether `cable` is drawn as a fan on this page.
+    pub fn is_fan(&self, cable: CableId) -> bool {
+        self.fan_cables.contains(&cable)
+    }
+    /// The member a computed part belongs to (a bend, a tail, a core label, a wire number).
+    pub fn core_of(&self, h: Handle) -> Option<ConductorId> {
+        self.parts.get(&h).and_then(|(c, _)| *c)
+    }
+    /// The reference end a computed part belongs to (its flag or text).
+    pub fn reference_of(&self, h: Handle) -> Option<RepresentationId> {
+        self.parts.get(&h).and_then(|(_, r)| *r)
     }
     /// Every handle of a fan view line.
     pub fn fan_handles(&self) -> impl Iterator<Item = Handle> + '_ {
@@ -316,14 +359,42 @@ fn cables_layer() -> CLayer {
     l
 }
 
-/// One line of a fan view: a line for two points, else an open polyline, ByLayer on the reserved
-/// layer.
-pub(crate) fn fan_entity(path: &[Pt], handle: Handle) -> Entity {
-    let kind = match path {
-        [a, b] => kind_for_primitive(&ecad_model::Primitive::Line { a: *a, b: *b }),
-        _ => kind_for_primitive(&ecad_model::Primitive::Polyline { vertices: path.to_vec(), closed: false }),
+/// One computed part of a cable's drawing (briefs 005, 009) as an entity on the reserved layer:
+/// a line for two points, else a polyline; an arc; a text. Trunk and spine carry the cable
+/// lineweight, bends, tails and frames the wire lineweight, text the layer's.
+pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
+    use crate::look::{LABEL_HEIGHT, Shape, Weight};
+    use ecad_model::Primitive;
+    let kind = match &part.shape {
+        Shape::Path { points, closed: false } if points.len() == 2 => match points.as_slice() {
+            [a, b] => kind_for_primitive(&Primitive::Line { a: *a, b: *b }),
+            _ => kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: false }),
+        },
+        Shape::Path { points, closed } => {
+            kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: *closed })
+        }
+        Shape::Arc { center, radius, start, end } => {
+            kind_for_primitive(&Primitive::Arc { center: *center, radius: *radius, start: *start, end: *end })
+        }
+        Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
+            at: *at,
+            height: LABEL_HEIGHT,
+            rotation: *rotation,
+            value: value.clone(),
+        }),
     };
-    Entity { handle, common: Common { layer: crate::views::LAYER.into(), ..Common::default() }, kind }
+    let lineweight = match part.weight {
+        Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
+        Weight::Wire => Lineweight::Mm100(crate::look::WIRE_WEIGHT),
+        Weight::Text => Lineweight::ByLayer,
+    };
+    let color =
+        part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
+    Entity {
+        handle,
+        common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() },
+        kind,
+    }
 }
 
 fn base_drawing() -> Drawing {
@@ -450,7 +521,7 @@ pub fn project_page_with(
         }
         d.blocks.insert(name, Arc::new(b));
     }
-    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ecad_model::ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut map = HandleMap::default();
     let mut ents: Vec<Entity> = Vec::new();
@@ -479,21 +550,23 @@ pub fn project_page_with(
         }
     }
     for (k, f) in &fans {
-        for (i, path) in f.paths().enumerate() {
-            let index = u32::try_from(i).map_err(|_| "a fan has too many lines")?;
+        map.quiet.extend(f.quiet.iter().copied());
+        for (i, part) in f.parts.iter().enumerate() {
+            // A reference end's text (brief 009's look, brief 010's live text) is mapped to its
+            // reference, so hover, Go to Reference and erasing it act on the reference.
+            if part.role == crate::look::Role::ReferenceText
+                && let Some(r) = part.reference
+            {
+                let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());
+                ents.push(part_entity(part, h));
+                map.insert_ref_text(r, h);
+                continue;
+            }
+            let index = u32::try_from(i).map_err(|_| "a cable drawing has too many parts")?;
             let h = prev.fan(*k, index).unwrap_or_else(|| d.new_handle());
-            ents.push(fan_entity(path, h));
-            map.insert_fan(*k, index, h);
+            ents.push(part_entity(part, h));
+            map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
-    }
-    // Brief 010: each reference end's derived text, on the reserved layer (it plots and exports).
-    // The references are derived once for this draw.
-    let markers = crate::references::markers_on_page(doc, page);
-    for (r, e) in
-        crate::references::draw_reference_ends(&markers, |r| prev.ref_text(r).unwrap_or_else(|| d.new_handle()))
-    {
-        map.insert_ref_text(r, e.handle);
-        ents.push(e);
     }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();

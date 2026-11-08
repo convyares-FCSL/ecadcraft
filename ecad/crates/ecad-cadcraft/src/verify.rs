@@ -23,7 +23,7 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use crate::project::{HandleMap, Mapped, fan_entity};
+use crate::project::{HandleMap, Mapped, part_entity};
 
 /// What [`verify_page`] compared and what disagreed.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -104,22 +104,16 @@ pub fn verify_page_with(
     tol: f64,
 ) -> Verification {
     let mut v = Verification::default();
-    let fans = crate::views::fans_on_page(doc, page, fan, tol);
+    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
     for f in fans.values() {
-        for path in f.paths() {
-            *fan_expected.entry(format!("{:?}", fan_entity(path, Handle(0)).kind)).or_default() += 1;
+        for part in &f.parts {
+            let e = part_entity(part, Handle(0));
+            *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
-    // Reference texts (brief 010): exactly the derived markers' texts, each mapped to its reference.
-    let markers = crate::references::markers_on_page(doc, page);
-    let mut ref_expected: BTreeMap<String, usize> = BTreeMap::new();
-    for m in &markers {
-        *ref_expected.entry(format!("{:?}", crate::references::text_entity(m, Handle(0)))).or_default() += 1;
-    }
-    let mut ref_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
 
@@ -135,20 +129,16 @@ pub fn verify_page_with(
             if e.common.layer != crate::views::LAYER {
                 problems.push(format!("a fan line is not on layer {}", crate::views::LAYER));
             }
-            *fan_shown.entry(format!("{:?}", e.kind)).or_default() += 1;
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
+        // A reference end's text (brief 010's live text in brief 009's marker): one of the computed
+        // parts, mapped to its reference.
         if let Some(Mapped::RefText(r)) = map.get(e.handle) {
-            let Some(m) = markers.iter().find(|m| m.reference == r) else {
-                problems.push(format!("a reference text is drawn for {r}, which shows none"));
-                continue;
-            };
-            let mut probe = (*e).clone();
-            probe.handle = Handle(0);
-            if probe != crate::references::text_entity(m, Handle(0)) {
-                problems.push(format!("the text of reference {r} differs from the one derived from the document"));
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a reference text is drawn for {r}, which does not exist"));
             }
-            *ref_shown.entry(format!("{probe:?}")).or_default() += 1;
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
         match item_from(doc, page, e) {
@@ -167,9 +157,6 @@ pub fn verify_page_with(
     }
     if fan_shown != fan_expected {
         problems.push("the cable fans drawn differ from the fans computed from the document".into());
-    }
-    if ref_shown != ref_expected {
-        problems.push("the cable reference texts drawn differ from those derived from the document".into());
     }
 
     // 2. Identity: each mapped handle shows the item (or marker) it is mapped to, and the map
@@ -315,4 +302,9 @@ pub fn verify_page_with(
     v.items = items;
     v.problems = problems;
     v
+}
+
+/// What a computed entity draws, for comparing multisets: its kind, lineweight and colour.
+fn computed_key(e: &Entity) -> String {
+    format!("{:?} {:?} {:?}", e.kind, e.common.lineweight, e.common.color)
 }
