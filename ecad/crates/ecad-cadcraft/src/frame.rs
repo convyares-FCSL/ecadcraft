@@ -264,8 +264,31 @@ fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     (s, MIN_WIDTH_FACTOR)
 }
 
-/// Every line and text of the frame `input` describes.
+/// How a page's frame and title block are drawn from what they show (owner note of 2026-11-08:
+/// users will define their own borders and title blocks). [`BuiltIn`] is the one layout today; a
+/// user-defined template becomes another implementation, chosen per project or page.
+pub trait FrameLayout: Send + Sync {
+    /// Every line and text of the frame `input` describes, in model coordinates (the paper's
+    /// bottom-left corner at the origin).
+    fn parts(&self, input: &FrameInput) -> Vec<Part>;
+}
+
+/// The built-in frame and title block (design 019 §3, §4).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BuiltIn;
+
+impl FrameLayout for BuiltIn {
+    fn parts(&self, input: &FrameInput) -> Vec<Part> {
+        built_in(input)
+    }
+}
+
+/// Every line and text of the frame `input` describes, with the built-in layout.
 pub fn parts(input: &FrameInput) -> Vec<Part> {
+    BuiltIn.parts(input)
+}
+
+fn built_in(input: &FrameInput) -> Vec<Part> {
     let s = input.sheet;
     let k = unit_scale(input.unit);
     let grid = Grid::new(s, LengthUnit::Millimetre);
@@ -290,9 +313,10 @@ pub fn parts(input: &FrameInput) -> Vec<Part> {
     // Grid: zones over the whole frame (title-block area included), counted from the top-left;
     // ticks and labels on all four sides.
     let (cw, rh) = (grid.column_width(), grid.row_height());
-    for c in 1..=s.columns {
-        let x0 = f64::from(c - 1) * cw;
-        if c > 1 {
+    for ci in 0..s.columns {
+        let x0 = f64::from(ci) * cw;
+        let c = grid.column_number(ci);
+        if ci > 0 {
             d.line((x0, top), (x0, top + 3.0), THIN_WEIGHT, None);
             d.line((x0, bottom), (x0, bottom - 3.0), THIN_WEIGHT, None);
         }
@@ -300,9 +324,10 @@ pub fn parts(input: &FrameInput) -> Vec<Part> {
         d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
         d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
     }
-    for r in 1..=s.rows {
-        let y1 = top - f64::from(r - 1) * rh;
-        if r > 1 {
+    for ri in 0..s.rows {
+        let y1 = top - f64::from(ri) * rh;
+        let r = grid.row_number(ri);
+        if ri > 0 {
             d.line((0.0, y1), (-3.0, y1), THIN_WEIGHT, None);
             d.line((a, y1), (a + 3.0, y1), THIN_WEIGHT, None);
         }
