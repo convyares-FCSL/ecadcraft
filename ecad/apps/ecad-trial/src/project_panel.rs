@@ -62,7 +62,29 @@ pub enum Action {
     Save,
     SaveAs,
     CloseProject,
+    /// Devices tab: show this symbol's page and select it.
+    GotoSymbol(ecad_model::RepresentationId),
+    /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
+    /// device's tag by making this device part of it).
+    SetDeviceProperty {
+        component: ecad_model::ComponentId,
+        key: &'static str,
+        value: String,
+        merge: bool,
+    },
 }
+
+/// The panel's two tabs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Tab {
+    #[default]
+    Pages,
+    Devices,
+}
+
+/// Accessible labels of the tabs.
+pub const PAGES_TAB: &str = "Pages";
+pub const DEVICES_TAB: &str = "Devices";
 
 /// A rename in place.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +124,10 @@ pub struct Header {
 #[derive(Debug, Default)]
 pub struct ProjectPanel {
     pub collapsed: bool,
+    /// Pages or Devices.
+    pub tab: Tab,
+    /// The Devices tab.
+    pub devices: crate::devices_panel::DevicesPanel,
     /// The copy of the project's pages.
     rows: Vec<PageRow>,
     /// The project change count the copy was taken at, and which project (its pointer value).
@@ -155,7 +181,7 @@ impl ProjectPanel {
 
     /// Forget the project (it was closed).
     pub fn clear(&mut self) {
-        *self = ProjectPanel { collapsed: self.collapsed, ..ProjectPanel::default() };
+        *self = ProjectPanel { collapsed: self.collapsed, tab: self.tab, ..ProjectPanel::default() };
     }
 
     /// The row being dragged and the gap it would land in (0 = before the first row), if any.
@@ -253,6 +279,21 @@ impl ProjectPanel {
 
         if header.name.is_none() {
             ui.label(RichText::new("No project open.").color(t.text_dim));
+            self.rows_drawn = 0;
+            return out;
+        }
+
+        // Pages | Devices.
+        ui.horizontal(|ui| {
+            for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB)] {
+                if ui.selectable_label(self.tab == tab, RichText::new(name).small()).clicked() {
+                    self.tab = tab;
+                    self.armed = false;
+                }
+            }
+        });
+        if self.tab == Tab::Devices {
+            out.extend(self.devices.show(ui, writable));
             self.rows_drawn = 0;
             return out;
         }

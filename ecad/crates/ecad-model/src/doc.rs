@@ -522,6 +522,12 @@ impl Document {
         referrers(&self.index.tags, &crate::tag::key(tag)).collect()
     }
 
+    /// Every tagged component through the tag index (brief 018), by tag key ([`crate::tag::key`]),
+    /// then ID: no scan of the components.
+    pub fn tagged(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+        self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
     /// Cables `conductor` is a member of, in ID order.
     pub fn cables_of(&self, conductor: ConductorId) -> Vec<CableId> {
         referrers(&self.index.conductor_cables, &conductor).collect()

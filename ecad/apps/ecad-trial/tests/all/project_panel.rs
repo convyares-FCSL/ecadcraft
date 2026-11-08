@@ -693,3 +693,150 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     drop(first);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------- Devices tab (after brief 018)
+
+/// A coil `-K01` on page 1 and its NO contact on page 2 (column 2), page 1 shown, Devices tab open.
+fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
+    h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
+    let t = h.state_mut();
+    let page1 = {
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order[0]).unwrap()
+    };
+    let coil = t.cad.run("place", serde_json::json!({"symbol": "coil", "at": [0, 0]})).unwrap();
+    let coil = coil["component"].as_str().unwrap().to_string();
+    t.cad.run("newpage", serde_json::json!({"title": "Field"})).unwrap();
+    t.cad.run("place", serde_json::json!({"symbol": "no", "at": [45, 0], "device": coil})).unwrap();
+    let page2 = {
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order[1]).unwrap()
+    };
+    t.show_page(page1).unwrap();
+    h.run_steps(2);
+    click(h, project_panel::DEVICES_TAB);
+    let c = ecad_model::ComponentId(u128::from_str_radix(&coil, 16).unwrap());
+    (c, page1, page2)
+}
+
+/// The Devices tab: grouped by prefix, a click selects and unfolds a device, a click on a symbol
+/// shows its page and selects it (the one page window), and the filter narrows the list.
+#[test]
+fn devices_tab_goes_to_a_symbol_and_filters() {
+    let deltas: Deltas = Arc::default();
+    let mut h = build(trial(), Some(deltas.clone()));
+    let (coil, _page1, page2) = devices_fixture(&mut h);
+    assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
+    click(&mut h, "Device -K01: Contactor / relay coil");
+    assert_eq!(h.state().panel.devices.selected, Some(coil));
+    let row = "-K01 NO contact, page 2, column 2";
+    assert!(
+        h.query_by_label("-K01 Contactor / relay coil, page 1, column 1").is_some(),
+        "unfolded: {:?}",
+        h.state().panel.devices.entries()
+    );
+    let before = head(&mut h);
+    click(&mut h, row);
+    assert_eq!(active(&mut h), Some(page2), "the symbol's page is shown");
+    let selected = h.state().cad.session.selection();
+    assert!(!selected.is_empty(), "the symbol is selected");
+    let t = h.state_mut();
+    let p = t.project().unwrap().clone();
+    let mapped = p.read(&mut t.cad.session, |p, _| {
+        let doc = p.ledger.document();
+        let rep =
+            doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page2).unwrap().0;
+        ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
+    });
+    assert_eq!(selected, mapped.unwrap(), "exactly the contact's drawing is selected");
+    assert_eq!(head(&mut h), before, "a go to records nothing");
+    assert_eq!(h.state().cad.session.docs.len(), 1, "one page window");
+    let shot = take(&h, &deltas, "016-devices.png");
+    // Filter: by tag and by text.
+    ok(&mut h, r#"place {"symbol":"mcb1","at":[100,0]}"#);
+    h.run_steps(2);
+    assert_eq!(h.state().panel.devices.entries().len(), 2);
+    h.state_mut().panel.devices.filter = "q".into();
+    h.run_steps(2);
+    let tags: Vec<_> = h.state().panel.devices.entries().iter().map(|e| e.tag.clone().unwrap_or_default()).collect();
+    assert_eq!(tags, ["-Q01"]);
+    h.state_mut().panel.devices.filter = "relay".into();
+    h.run_steps(2);
+    let tags: Vec<_> = h.state().panel.devices.entries().iter().map(|e| e.tag.clone().unwrap_or_default()).collect();
+    assert_eq!(tags, ["-K01"]);
+    let rebuilds = h.state().panel.devices.rebuilds;
+    h.run_steps(10);
+    assert_eq!(h.state().panel.devices.rebuilds, rebuilds, "no rebuild while nothing changes");
+    if shots().is_some() {
+        assert!(shot.is_some(), "016-devices.png needs a wgpu adapter");
+    }
+}
+
+/// Editing a device property in the Devices tab is exactly `setprop`'s transaction and one `u`;
+/// a tag another device has is refused with the merge offer, which merges in one step.
+#[test]
+fn devices_tab_edits_a_property_in_one_transaction() {
+    let mut h = build(trial(), None);
+    let (coil, ..) = devices_fixture(&mut h);
+    click(&mut h, "Device -K01: Contactor / relay coil");
+    let before = head(&mut h);
+    h.get_by_label("Description field").click();
+    h.run_steps(2);
+    h.event(Event::Key {
+        key: Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    });
+    h.event(Event::Text("Main contactor".into()));
+    h.run_steps(1);
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    h.run_steps(2);
+    assert_eq!(head(&mut h), before + 1, "one transaction");
+    let (label, ops) = last_ops(&mut h);
+    assert_eq!(label, "Set property");
+    assert!(
+        matches!(ops.as_slice(), [Op::SetProperty { key, after: Some(v), .. }] if key == "description" && v == "Main contactor"),
+        "{ops:?}"
+    );
+    assert!(h.query_by_label("Device -K01: Main contactor").is_some(), "the list follows");
+    assert!(
+        h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(),
+        "Enter stayed in the field"
+    );
+    ok(&mut h, "u");
+    h.run_steps(2);
+    assert_eq!(head(&mut h), before + 2, "one undo");
+    assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "u puts it back");
+
+    // A second coil given -K01's tag: refused with the merge offer; nothing written until it is
+    // taken; the merge joins the contact to -K01 in one step.
+    ok(&mut h, r#"place {"symbol":"no","at":[0,40]}"#);
+    h.run_steps(2);
+    let other = doc(&mut h).components.keys().copied().find(|c| *c != coil).unwrap();
+    let before = head(&mut h);
+    h.state_mut().panel_action(project_panel::Action::SetDeviceProperty {
+        component: other,
+        key: "tag",
+        value: "K01".into(),
+        merge: false,
+    });
+    h.run_steps(2);
+    assert_eq!(head(&mut h), before, "refused");
+    let err = h.state().panel.devices.error.clone().expect("the refusal is shown");
+    assert!(err.0.contains("already used by -K01") && err.1.is_some(), "{err:?}");
+    h.state_mut().panel.devices.selected = Some(other);
+    h.run_steps(2);
+    click(&mut h, ecad_trial::devices_panel::MERGE);
+    assert_eq!(
+        head(&mut h),
+        before + 1,
+        "the merge is one transaction: {:?} {:?}",
+        h.state().panel.devices.error,
+        h.state().cad.session.log.last()
+    );
+    assert_eq!(last_ops(&mut h).0, "Merge into -K01");
+    ok(&mut h, "u");
+    assert_eq!(head(&mut h), before + 2, "and one undo");
+}

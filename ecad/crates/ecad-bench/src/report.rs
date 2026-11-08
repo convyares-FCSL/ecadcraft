@@ -16,7 +16,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 15] = [
+const COLUMNS: [(&str, &str); 17] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -29,12 +29,14 @@ const COLUMNS: [(&str, &str); 15] = [
     ("switch_ms", "switch ms"),
     ("preview_ms", "preview ms"),
     ("panel_ms", "panel ms"),
+    ("devices_ms", "devices ms"),
+    ("goto_ms", "goto ms"),
     ("place_ms", "place ms"),
     ("join_ms", "join ms"),
     ("tag_ms", "tag ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 15] {
+fn values(m: &Measured) -> [Option<f64>; 17] {
     [
         Some(m.open_ms),
         Some(m.derive_ms),
@@ -48,6 +50,8 @@ fn values(m: &Measured) -> [Option<f64>; 15] {
         Some(m.switch_ms),
         Some(m.preview_ms),
         Some(m.panel_ms),
+        Some(m.devices_ms),
+        Some(m.goto_ms),
         Some(m.place_ms),
         Some(m.join_ms),
         Some(m.tag_ms),
@@ -69,7 +73,7 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9} {:>9} {:>8} {:>7}\n",
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9} {:>11} {:>8} {:>9} {:>8} {:>7}\n",
         "tier",
         "history",
         "file MB",
@@ -86,6 +90,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         "switch ms",
         "preview ms",
         "panel ms",
+        "devices ms",
+        "goto ms",
         "place ms",
         "join ms",
         "tag ms"
@@ -93,7 +99,7 @@ pub fn table(rows: &[Row], runs: usize) -> String {
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
             r.tier,
             r.variant,
             mb(m.bytes),
@@ -110,6 +116,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             cell(Some(m.switch_ms), 10, 2),
             cell(Some(m.preview_ms), 11, 2),
             cell(Some(m.panel_ms), 9, 3),
+            cell(Some(m.devices_ms), 11, 2),
+            cell(Some(m.goto_ms), 8, 2),
             cell(Some(m.place_ms), 9, 2),
             cell(Some(m.join_ms), 8, 2),
             cell(Some(m.tag_ms), 7, 2),
@@ -122,7 +130,7 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          making another page the one active page, and back to page 1; preview: project, build and \
          rasterise a page at 480 x 320; panel: rebuild the Project panel's rows after one renamepage; \
          each a median over up to 10 pages spread over the project. Targets (design 016): switch <= 5 ms \
-         and preview <= 15 ms on large. place, join and tag (brief 018): a starter coil placed as a \
+         and preview <= 15 ms on large. devices: rebuild the Devices tab's list; goto: show a device symbol's page and select it. place, join and tag (brief 018): a starter coil placed as a \
          new device, a NO contact added to it, and its tag renamed. Peak memory is not measured.\n"
     ));
     out
@@ -206,6 +214,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "switch_ms": m.switch_ms,
                 "preview_ms": m.preview_ms,
                 "panel_ms": m.panel_ms,
+                "devices_ms": m.devices_ms,
+                "goto_ms": m.goto_ms,
                 "place_ms": m.place_ms,
                 "join_ms": m.join_ms,
                 "tag_ms": m.tag_ms,

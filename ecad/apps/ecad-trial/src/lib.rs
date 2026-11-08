@@ -54,6 +54,7 @@
 )]
 
 pub mod debugger;
+pub mod devices_panel;
 pub mod preview;
 pub mod project_panel;
 pub mod search;
@@ -208,6 +209,11 @@ pub struct NameBox {
     pub error: Option<String>,
     focused: bool,
 }
+
+/// The drawing height a Devices tab go to shows at least and at most, in drawing units (mm).
+pub const GOTO_MIN_HEIGHT: f64 = 60.0;
+/// See [`GOTO_MIN_HEIGHT`].
+pub const GOTO_MAX_HEIGHT: f64 = 600.0;
 
 /// Accessible label of the name box's field.
 pub const NAME_BOX_FIELD: &str = "Page title";
@@ -1288,6 +1294,13 @@ impl Trial {
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
             panel.sync(serial, p.change_count(), || Some(p.page_rows()));
+            // The Devices tab's copy, only while it is shown (and then only when something changed).
+            if panel.tab == project_panel::Tab::Devices {
+                let doc = p.ledger.document();
+                panel
+                    .devices
+                    .sync(serial, p.change_count(), |f| Some(ecad_cadcraft::device_list::device_entries(doc, f)));
+            }
         });
         self.panel.previewed = self.preview.as_ref().map(|v| v.page);
     }
@@ -1385,6 +1398,20 @@ impl Trial {
             }
             A::SaveAs => self.request_save_as(),
             A::CloseProject => self.close_project(),
+            A::GotoSymbol(rep) => {
+                let _ = self.goto_symbol(rep);
+            }
+            A::SetDeviceProperty { component, key, value, merge } => {
+                let line = format!(
+                    "setprop {}",
+                    json!({"component": component.hex(), "key": key, "value": value, "merge": merge})
+                );
+                if let Some(e) = self.run_line(&line) {
+                    self.panel.devices.refused(component, key, &value, e);
+                } else {
+                    self.panel.devices.error = None;
+                }
+            }
         }
         self.refresh_panel();
     }
@@ -1407,6 +1434,30 @@ impl Trial {
         self.panel.reveal(page);
         self.after_logic();
         r
+    }
+
+    /// The Devices tab's go to: `symbol`'s page becomes the active page (the path of `openpage` and
+    /// Go to Reference), the view is centred on it at the current zoom and it is selected.
+    ///
+    /// # Errors
+    /// No project, an unknown symbol, or a page that cannot be shown (echoed).
+    pub fn goto_symbol(&mut self, symbol: ecad_model::RepresentationId) -> Result<(), String> {
+        let p = self.project.clone().ok_or("no ECAD project is open")?;
+        let page = p
+            .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol).map(|t| t.0))?
+            .ok_or("that symbol no longer exists")?;
+        self.show_page(page)?;
+        let (_, at, handles) = p
+            .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol))?
+            .ok_or("that symbol no longer exists")?;
+        if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
+            // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
+            // only while empty may have a tiny or a huge view).
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height });
+        }
+        self.cad.session.set_selection(handles);
+        Ok(())
     }
 
     /// Open the page name box for a new page, prefilled with its number (the panel's **+** and

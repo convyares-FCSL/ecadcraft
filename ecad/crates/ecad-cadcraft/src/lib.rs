@@ -42,6 +42,7 @@ pub mod commands;
 pub mod convert;
 pub mod debug;
 mod device_cmds;
+pub mod device_list;
 pub mod devices;
 pub mod file;
 pub mod interact;
