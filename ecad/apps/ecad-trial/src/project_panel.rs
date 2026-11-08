@@ -158,6 +158,11 @@ impl ProjectPanel {
         *self = ProjectPanel { collapsed: self.collapsed, ..ProjectPanel::default() };
     }
 
+    /// The row being dragged and the gap it would land in (0 = before the first row), if any.
+    pub fn dragging(&self) -> Option<(PageId, Option<usize>)> {
+        self.drag.map(|d| (d.page, d.gap))
+    }
+
     /// The row index of `page`.
     pub fn index_of(&self, page: PageId) -> Option<usize> {
         self.rows.iter().position(|r| r.id == page)
@@ -271,6 +276,8 @@ impl ProjectPanel {
             };
             area = area.vertical_scroll_offset(want.max(0.0));
         }
+        // Rows are exactly ROW_H apart (the reveal and drag maths count on it).
+        ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         let drag_before = self.drag;
         let list = area.show_rows(ui, ROW_H, n, |ui, range| {
@@ -431,13 +438,16 @@ impl ProjectPanel {
         }
         let width = (right - num.right()).max(0.0);
         let shown = cut(ui, &title, &font, width);
+        let was_cut = shown != title;
         p.text(pos2(num.right(), rect.center().y), egui::Align2::LEFT_CENTER, shown, font, colour);
 
-        let resp = resp.on_hover_text(format!("Page {}: {}", row.number, row.title));
+        // A title cut with `…` shows in full on hover.
+        let resp = if was_cut { resp.on_hover_text(format!("Page {}: {}", row.number, row.title)) } else { resp };
         if resp.drag_started() && writable {
             self.drag = Some(Drag { page: row.id, from: i, gap: None });
         }
-        if resp.double_clicked() {
+        // A click just before a double-click makes egui count three: either renames.
+        if resp.double_clicked() || resp.triple_clicked() {
             if writable {
                 self.start_rename(row.id);
             }
@@ -525,6 +535,12 @@ impl ProjectPanel {
         }
         if resp.lost_focus() {
             let esc = ui.input(|i| i.key_pressed(Key::Escape));
+            // The key that ended the edit is the field's: CADCraft's command line, laid out after
+            // the panel, must not take it too (Enter there repeats the last command).
+            ui.input_mut(|i| {
+                i.consume_key(Modifiers::NONE, Key::Enter);
+                i.consume_key(Modifiers::NONE, Key::Escape);
+            });
             let page = r.page;
             let text = r.text.trim().to_string();
             let same = text == r.old;

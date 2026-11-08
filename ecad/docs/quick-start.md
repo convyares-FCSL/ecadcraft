@@ -6,13 +6,27 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 > **What you are running.** `ecad-trial` is an experiment, not an ECAD application. It is
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
-> are saved as `.ecad` files (persistence stage 2a). A read-only debugger panel (stage 2b)
-> opens from the banner; it is never shown unless you open it. An **ECAD** tab in Tool Sets has
-> buttons for the ECAD commands; eight of them (Convert to Component, Add Terminal, Place Symbol,
-> Wire, Connect, Disconnect, Cable Slash, Cable View) work by clicking, with prompts at CADCraft's
-> command line.
+> are saved as `.ecad` files (persistence stage 2a). The **PROJECT** panel on the far left lists
+> the project's pages, shows one of them at a time and holds New, Open, Save, Save As and Close
+> (brief 016; there is no top banner any more). An **ECAD** tab in Tool Sets has buttons for the
+> ECAD commands; most work by clicking, with prompts at CADCraft's command line. An **ECAD Dev**
+> tab beside it holds the read-only debugger panel (stage 2b), snapshot export and the ECAD
+> command window for JSON forms; none of them is shown unless you open it.
 
 ## Which revision this describes, and what has been tried
+
+**Brief 016 (design `ecad/docs/design/016.md`), on `feature/project-manager`, not yet in `dev`:**
+the Project panel, one active page at a time, undo and redo bringing their page to the front, a
+read-only preview of another page, and the top banner replaced by the panel's header and an
+**ECAD Dev** tool set (design 016, "Top bar removed"). Sections 4, 5E, 6, 7 and 8 describe it.
+- *Automated checks:* `ecad/apps/ecad-trial/tests/project_panel.rs` (design 016 checks A to J by
+  label in a 1280×800 headless window, and the six `016-*.png` screenshots), the one-window and
+  undo checks in `ecad/crates/ecad-cadcraft/tests/project_pages.rs`, check K in
+  `ecad/apps/ecad-mcp/tests/mcp_contracts.rs`, and `the_quick_start_trial_runs_headless`
+  (sections 5 to 7 below).
+- *Agent-observed:* the worker rendered the `016-*.png` reference screenshots headless (wgpu) and
+  looked at them; no agent has clicked through the live window.
+- *Owner-tried:* not yet.
 
 This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
 Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.15.1**
@@ -48,7 +62,7 @@ checks and your trial on native Windows (2026-11-06, below); no agent has run it
 after brief 004 was merged, adds **Cable View** to the ECAD tab: one click switches a cable
 between the traditional view (every wire and the slash) and a fan view (one magenta trunk that
 fans out to the wire ends), and back (section 5B). The switch is presentation only: it writes no
-transaction and never changes the banner's change count. Each cable's view is remembered for you
+transaction and never changes the project's change count. Each cable's view is remembered for you
 outside the `.ecad` file, in `cable-views.json` in your ECAD settings folder (section 9). Nothing
 outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
 checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
@@ -317,13 +331,18 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
 
 ## 4. Where to type
 
-- **The banner's `Command:` field (top of the window).** Use this for ECAD commands, which take
-  JSON parameters, for example `wire {"points":[[0,0],[40,0]]}`. It takes a whole line, spaces
-  included, so it also accepts CADCraft command lines such as `line 0,0 40,0`. Press Enter or
-  **Run**. Copy and paste (Ctrl+C, Ctrl+V) work with other programs such as Notepad.
+- **The PROJECT panel (far left).** Its header shows the project's status line (name, pages,
+  file, unsaved changes, and any read-only or unconfirmed-save warning), the buttons **New**,
+  **Open…**, **Save**, **Save As…** and **Close**, and one small line saying this is an
+  experiment. Below it, the project's pages: click one to show it (section 5E).
+- **The ECAD command window** (Tool Sets > **ECAD Dev** > **JSON Command**). Use it for ECAD
+  commands with JSON parameters, for example `wire {"points":[[0,0],[40,0]]}`. It takes a whole
+  line, spaces included, so it also accepts CADCraft command lines such as `line 0,0 40,0`. Press
+  Enter or **Run**; close it with its ×. Copy and paste (Ctrl+C, Ctrl+V) work with other
+  programs such as Notepad.
 - **CADCraft's command line (bottom of the drawing area).** A space there means Enter, so it
-  cannot take JSON. Use it for plain CADCraft commands and for the prompts of mouse-driven
-  commands such as `move`.
+  cannot take JSON with spaces. Use it for plain CADCraft commands, for the prompts of
+  mouse-driven commands such as `move`, and for `u` and `redo`.
 - **The mouse** works as in CADCraft: drawing, selecting and dragging.
 - **The ECAD tab in Tool Sets** (the left panel: click **ECAD** beside Drafting and Modeling),
   with one button per implemented ECAD command, in groups (Components, Wiring, Edit, Pages,
@@ -340,19 +359,20 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
   - **Connect**: click a wire near its end, then a terminal. **Disconnect**: click a wire near
     an attached end.
   - These six put their prompts at CADCraft's command line (bottom of the drawing area) and leave
-    the Command field empty. Answer by clicking, or type a point (`40,10`) or an option letter and
+    the ECAD command window alone. Answer by clicking, or type a point (`40,10`) or an option letter and
     press Enter. Enter (or Space, or a right-click) finishes; Esc cancels what is not done yet
     (objects already added stay); `u` afterwards undoes the last object.
   - **Inspect Project** runs at once and shows the project's IDs at the command line.
-  - **Set Property, Add to Cable, Delete Electrical Object, New Page, Open Page** only fill in
-    the Command field with an editable line, and a note under the field says what to fill in.
+  - **Set Property, Add to Cable, Delete Electrical Object, New Page, Open Page, Rename Page,
+    Move Page** only open the ECAD command window with an editable line, and a note under the
+    field says what to fill in.
     Replace each `<placeholder>`, then press Enter or **Run**. A line that still holds a
     placeholder is refused, never run. IDs come from the current selection where it names them:
     select a wire before **Set Property** or **Delete Electrical Object**, and its ID is filled
     in. The selection is left as it is.
-- **Typing a command name** (`wire`, `addterminal` …) in either field starts the same
-  click-based form as its button. `name {json}` in the banner's field runs the JSON form with no
-  prompts, as scripts do.
+- **Typing a command name** (`wire`, `addterminal` …) in either place starts the same
+  click-based form as its button. `name {json}` in the ECAD command window runs the JSON form with
+  no prompts, as scripts do.
 
 **What the drawing shows.** Every terminal has a small cyan ring; a wire end attached to a
 terminal has a green dot, and a loose wire end a small grey square. They keep their size at every
@@ -367,11 +387,11 @@ you want to check later.
 ## 5. Example: two components connected by a wire (by clicking)
 
 Open the **ECAD** tab in Tool Sets first. Prompts appear at CADCraft's command line at the bottom
-of the drawing area; type there (or in the banner's field) only where a step says so.
+of the drawing area; type there (or in the ECAD command window) only where a step says so.
 
-1. **Draw a rectangle.** In the Command field: `line 0,0 40,0 40,20 0,20 c`. Then type `zoom e`
+1. **Draw a rectangle.** In the ECAD command window: `line 0,0 40,0 40,20 0,20 c`. Then type `zoom e`
    (or zoom with the mouse wheel) so it fills the view; leave room on the right for the coil.
-   Expected: four lines; the banner shows 1 change not saved.
+   Expected: four lines; the Project panel's status line shows 1 change not saved.
 2. **Make it a component.** Select the four lines with a window selection (click above left of
    the rectangle, then below right of it), then click **Convert to Component**.
    Expected: `Component <id> created from 4 objects.` at the command line. **Note this component
@@ -399,9 +419,9 @@ of the drawing area; type there (or in the banner's field) only where a step say
 6. **Look before you type IDs.** With no command running, rest the pointer on the coil, on the
    ring at 40,10 (or the coil's ring at 90,0) or on the wire. Expected: a tooltip with
    `Component (no tag)` and its terminals, `Terminal 1` (or `Terminal A1`) and its wire, or `Wire (no tag)` with `End A: terminal 1 of …` and
-   `End B: terminal A1 of …`. Nothing changes in the banner's change count.
+   `End B: terminal A1 of …`. Nothing changes in the Project panel's change count.
 
-Typing instead of clicking still works, in the banner's Command field:
+Typing instead of clicking still works, in the ECAD command window:
 `convertcomponent` (with the lines selected), `addterminal {"handle":"<handle of the right-hand
 edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
 `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`. The headless test
@@ -413,10 +433,10 @@ A cable groups existing wires; the wires themselves do not change. You draw it a
 (the *slash*) across the wires. This example uses a page of its own so the coordinates are easy
 to read.
 
-1. **A page with three wires and a plain line.** In the Command field:
+1. **A page with three wires and a plain line.** In the ECAD command window:
    `newpage {"title":"cables"}`. Then click **Wire**, click at `0,0` and `60,0` and press Enter;
    do the same at `0,5` → `60,5` and `0,10` → `60,10` (typing the points at the command line, or
-   `wire {"points":[[0,0],[60,0]]}` in the Command field, works too). Draw a plain line with
+   `wire {"points":[[0,0],[60,0]]}` in the ECAD command window, works too). Draw a plain line with
    `line 0,15 60,15` and press Enter, then `zoom e`.
    Expected: three wires with grey squares at their loose ends, and a line without marks.
 2. **Draw the slash.** Click **Cable Slash** (Wiring group). The prompt says
@@ -427,7 +447,7 @@ to read.
 3. **Click.** Expected: `Cable <id> created with 3 wires: wire …, wire …, wire ….` and
    `1 object that is not a wire was ignored.` at the command line; the slash stays as a plain
    line in the wire colour, with a small magenta dot on each wire it holds and no end marks; the
-   banner's change count goes up by one. The wires are listed bottom to top: the order is the
+   Project panel's change count goes up by one. The wires are listed bottom to top: the order is the
    direction you drew the slash.
 4. **Look.** With no command running, rest the pointer on the slash. Expected: a tooltip with
    `Cable (no tag)`, its ID, `View: traditional`, `Wires: 3` and the three wires. On a wire:
@@ -444,7 +464,7 @@ to read.
    **Delete Electrical Object**: it fills in `ecaddelete {"cable":"<id>"}`; press Enter.
    Expected: `Cable <id> deleted; its 3 wires are kept.` in the reply; the wires stay.
 
-`cableslash {"from":[28,-3],"to":[32,18]}` in the Command field does the same as steps 2 and 3
+`cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command window does the same as steps 2 and 3
 (add `"tag":"-W1"` to name the cable). In the debugger, selecting the slash shows its trail:
 item → representation `slash` → cable → its wires in order.
 
@@ -463,7 +483,7 @@ project.
    wire, `y = 5`), a small curved bend where each outer wire leaves a spine (the middle wire leaves
    it straight), and a thin tail to each wire end. The grey
    squares at the wire ends stay where they were, at the ends of the tails. The command line says
-   `Cable <first 8 hex digits>… now shown in fan view.` The banner's change count does **not**
+   `Cable <first 8 hex digits>… now shown in fan view.` The Project panel's change count does **not**
    change. The prompt repeats.
 2. **Switch back.** Click the magenta trunk (between a spine and the label box). Expected: the three wires and the slash are back,
    `… now shown in traditional view.`, the change count still unchanged. Press Enter (or Esc) to
@@ -538,7 +558,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 
 0. **Make the cable again.** Section 5A step 7 deleted the cable (its wires stayed). Slash them
    again: click **Cable Slash**, click at about `28,-3` and then `32,18` (or type
-   `cableslash {"from":[28,-3],"to":[32,18]}` in the Command field). Expected: `Cable <id>
+   `cableslash {"from":[28,-3],"to":[32,18]}` in the ECAD command window). Expected: `Cable <id>
    created with 3 wires: …`. If you skipped step 7 and the cable is still there, skip this step.
 
 1. **Mark where it leaves.** Click **Cable Reference** (Wiring group, after Cable View). The
@@ -547,7 +567,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    right of the wire ends, at about `65,5`.
    Expected: `Reference for cable … placed on page 2.` and `It has no other end yet: open the
    other page and click Continue Cable.`; a red ring at the point and, beside it, a magenta flag
-   around a small red `/?`. The banner's change count goes up by one.
+   around a small red `/?`. The Project panel's change count goes up by one.
 2. **A page where it arrives.** `newpage {"title":"field"}` (page 3). Draw a component with three
    terminals as in section 5: `line 100,-5 110,-5 110,15 100,15 c`, select the four lines, click
    **Convert to Component**, then **Add Terminal** at `100,0`, `100,5` and `100,10` and press
@@ -593,6 +613,41 @@ Typed: `cableref {"cable":"<id>","at":[65,5]}`, `cablecontinue {"cable":"<id>","
 `cablegoto {"reference":"<id>"}` and `cablerefs {}` (lists every reference with its text, partner
 and whether it is an orphan; read only).
 
+## 5E. Project panel (by clicking)
+
+On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brief 016, design
+`ecad/docs/design/016.md`. Everything here is by clicking.
+
+1. **See the pages.** The **PROJECT** panel on the far left lists `1 Supply`, `2 Field`; the page
+   shown is highlighted (a bar in the accent colour at its left) and named in the single drawing tab, for example
+   `demo - page 1: Supply`.
+2. **Switch.** Click `Field`: it replaces `Supply` in the same tab, at the view you left it. Click
+   `Supply` again.
+3. **New page.** Click **+** in the panel's header: page 3 appears, shown, with its title `3`
+   selected for renaming. Type `Spare`, press Enter. (Esc, or Enter on `3`, keeps `3`.)
+4. **Rename.** Double-click `Spare`, type `Spare 2`, press Enter. Type `u` at the command line:
+   back to `Spare`. An empty title, or one over 200 characters, is refused under the field and
+   nothing is recorded.
+5. **Reorder.** Drag `Spare` above `Supply`: it becomes page 1, and the reference texts on the
+   other pages change their page numbers (`/2.1` becomes `/3.1`). Click `Spare`, then the down
+   arrow in the header twice to put it back (or Alt+Down). Each move is one `u`.
+6. **Keyboard.** After clicking a row, Up and Down move an outline, Enter shows that page, F2
+   renames it, Space previews it. Any other key goes to the command line as usual.
+7. **Undo brings the page.** On `Field`, draw a wire. Click `Supply`. Type `u`: `Field` comes to
+   the front with the wire gone, and the command line says `Page 2 "Field" brought to the front.`
+   `redo` puts the wire back, still on `Field`.
+8. **Preview.** On `Supply`, click the magenta reference point, then **Preview Reference** (Tool
+   Sets > ECAD > Wiring). A read-only window over the drawing shows `Field` around the other end,
+   with a magenta ring on it and `/1.2` beside it. Scroll to zoom, drag to pan; nothing in it can
+   be selected and nothing is recorded. Click **×** to close it. Click `Field`'s row and press
+   Space: a preview of the whole page; **Open page** shows it in the drawing tab.
+9. **Closed tab.** Close the drawing tab (its ×): the panel still lists every page and none is
+   highlighted; click one to show it again. To close the project itself, click **Close** in the
+   panel's header (it asks to save changes).
+10. **Collapse.** The `<` at the right of the panel's header folds it to a thin strip; click the
+    strip to open it again.
+
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -601,31 +656,32 @@ and whether it is an orphan; read only).
 2. **Undo/redo.** Type `u` three times, then `redo` three times.
    Expected: the drawing steps back and forward exactly, and the IDs stay the same.
    `undo {"mode":"mark"}` is refused as not supported on ECAD pages.
-3. **Multiple pages.** `newpage {"title":"2"}`.
-   Expected: a second tab, "… - page 2". Draw or wire something on it, then switch tabs.
-   Closing page 2's tab asks nothing, and the project stays open with 1 page.
-   To reopen it, type `ecadinspect` and find page 2's ID in the reply, then type
-   `openpage {"page":"<page id>"}`. Expected: its content is back.
+3. **Multiple pages.** Click **+** in the PROJECT panel (or `newpage {"title":"2"}` in the ECAD
+   command window). Expected: page 2 replaces page 1 in the one drawing tab, "… - page 2: 2".
+   Draw or wire something on it, then click page 1 in the panel, then page 2 again: its content
+   is there. Closing the drawing tab asks nothing; the panel still lists both pages and one click
+   shows a page again (section 5E).
 
 ## 7. Save, close and reopen
 
-1. **Save.** Press Ctrl+S, or click **Save** in the banner. A new project asks for a file name
+1. **Save.** Press Ctrl+S, or click **Save** in the PROJECT panel. A new project asks for a file name
    in the trial's own dialog: type `~/ecad-projects/demo` (on native Windows
    `C:\dev\ecad-projects\demo`) and press Enter. `.ecad` is added.
    Expected:
-   - the banner shows `file /home/<you>/ecad-projects/demo.ecad, no unsaved changes` (on native
-     Windows `file C:\dev\ecad-projects\demo.ecad, no unsaved changes`; the whole line reads
-     `Project "demo": 2 pages open, file …, no unsaved changes.` after section 6);
-   - the tab is called "demo - page 1";
+   - the PROJECT panel's status line shows `file /home/<you>/ecad-projects/demo.ecad, no unsaved
+     changes` (on native Windows `file C:\dev\ecad-projects\demo.ecad, no unsaved changes`; the
+     whole line reads `Project "demo": 2 pages, file …, no unsaved changes.` after section 6);
+   - with page 1 shown, the tab is called "demo - page 1: 1";
    - the command line says `Saved: …`.
 2. **Save again.** Make an edit, then Ctrl+S.
-   Expected: no dialog; the banner returns to no unsaved changes.
-3. **Close.** Make one more edit, then close the last page, or the window.
+   Expected: no dialog; the status line returns to no unsaved changes.
+3. **Close.** Make one more edit, then click **Close** in the PROJECT panel, or close the window.
+   (Closing the drawing tab only hides the page; the project stays open.)
    Expected: "Save changes to project "demo"?" with **Save**, **Discard** and **Cancel**:
    - Cancel keeps everything open;
    - Save writes the change, then closes;
    - Discard closes, and the file keeps its last saved state.
-4. **Reopen.** Start the app with the file, or click **Open project…** in the banner when no
+4. **Reopen.** Start the app with the file, or click **Open…** in the PROJECT panel when no
    project is open:
 
    ```sh
@@ -769,7 +825,8 @@ What the agent can and cannot do:
 
 ### The debugger panel
 
-Click **Debugger** in the banner; **Hide debugger** (or **Close** in the panel) hides it. It is a
+Click **Debugger** in Tool Sets > **ECAD Dev**; click it again (or **Close** in the panel) to
+hide it. It is a
 read-only developer view on the right of the window. It follows one trail: **selected drawing
 objects → ECAD IDs → model objects → the transactions that touched them, with the values each
 change replaced (before) and set (after) → where each transaction's record is in the saved file,
@@ -802,11 +859,11 @@ and its bytes.**
 
 ### Worked example: what to inspect when placing, wiring, moving, undoing and saving
 
-Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger**. Type commands in
-the banner's Command field. IDs and offsets will differ from any shown here.
+Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger** (Tool Sets >
+ECAD Dev). Type commands in the ECAD command window (ECAD Dev > JSON Command). IDs and offsets will differ from any shown here.
 
 1. **At the start.** Expected: `live at seq 1`; **History** shows `#1 [pending] New project`.
-   The banner says no unsaved changes: a new project's own setup is not counted as a change until
+   The PROJECT panel says no unsaved changes: a new project's own setup is not counted as a change until
    the project has a file, and the panel says so.
 2. **Place.** `place {"at":[100,0],"rotation":90}`, then click the coil in the drawing.
    Expected: `live at seq 2`. **Selection** shows
@@ -844,8 +901,8 @@ the banner's Command field. IDs and offsets will differ from any shown here.
 
 ### Inspector snapshots
 
-- **Exporting.** Start with `--snapshots <folder>`, then click **Export inspector snapshot** in
-  the banner. Snapshots are also written before a project is discarded, and at exit. They are
+- **Exporting.** Start with `--snapshots <folder>`, then click **Export Inspector Snapshot** in
+  Tool Sets > ECAD Dev (shown only with `--snapshots`). Snapshots are also written before a project is discarded, and at exit. They are
   diagnostic files, not saved projects, and cannot be reopened. Their format is
   `ecad-inspect/2`: the design, its history and, new in stage 2b, the file's persistence facts
   (path, header, record offsets, lock).
@@ -887,8 +944,9 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | draw move ms | In a headless drawing session with page 1 open, move a component that has wires attached, as MOVE does it on its symbol: the drawing change is turned into ECAD ops (the wires follow), recorded, and page 1 is drawn again (brief 014). |
 | move+wires ms | In the same session, move that component together with every wire attached to it, as a window around them selects them: each wire's far end leaves its terminal, so the ends are matched against the page's terminals (brief 014). |
 | draw wire ms | In the same session, draw one wire between two terminals on page 1 with the `wire` command, as the mouse wire tool does (brief 014). |
-| 1st view ms | In a headless session with page 1 shown, bring up a page not viewed before with `openpage` (the path of Go to Reference): median over up to 10 pages spread over the project (brief 014 fix round, for the 016 decision). |
-| back ms | After each of those, switch back to page 1, already viewed, with `openpage`: median over the same pages. |
+| switch ms | In a headless session with one page active, make another page the active page with `openpage` (the path of the Project panel and Go to Reference), and back to page 1 after each: median over up to 10 pages spread over the project. Target (design 016): at most 5 ms on large, 2 ms on medium. |
+| preview ms | Draw the read-only preview of a page: project it, build its display list and rasterise it at 480 × 320. Target: at most 15 ms on large, 8 ms on medium. |
+| panel ms | Rebuild the Project panel's rows after one `renamepage` (page order and titles only). |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
 file opened once; the three draw columns run on another copy, opened once in one drawing session
@@ -1022,6 +1080,12 @@ Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 
+- **Pages and the Project panel** (brief 016): there is no Delete page (no command exists yet).
+  The preview shows no terminal or wire-end marks and cannot be edited. Page views, the panel's
+  width and whether it is collapsed are remembered for the session only. The page number shown is
+  the page's position; designer-chosen page numbers come later (F6). The JSON form of ECAD
+  commands needs the ECAD command window: CADCraft's own command line takes a space as Enter.
+
 - It is an experiment. No native file dialogs (the trial has its own path dialog) and no ECAD
   menu (CADCraft shows no top-level menu supplied by an embedder; use the ECAD tab or type the
   command name). The ECAD tab's buttons are text, not icons.
@@ -1050,7 +1114,7 @@ Your table of three clean runs goes here once you have run it.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
   - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, New Page, Open
-    Page, Rename Page and Move Page still fill in the Command field.
+    Page, Rename Page and Move Page still open the ECAD command window with a template.
 - **Cable Slash** (brief 004, owner answers of 2026-11-06):
   - A wire counts when the slash crosses it, passes through one of its bends, or ends on it. A
     slash that meets a wire only at the wire's own end, or runs along it, does not take it; the
@@ -1150,7 +1214,7 @@ Your table of three clean runs goes here once you have run it.
   are started; `--help`, `--version` and usage errors print only when the output is redirected to
   a file or pipe. Use a debug build (`cargo run -p ecad-trial -- --help`) to see them.
 - Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
-  in the Command field saves only into a folder that already exists.
+  in the ECAD command window saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
 - No library files (`.ecadlib`) and no checkpoints.

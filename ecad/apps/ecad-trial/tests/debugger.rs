@@ -125,7 +125,7 @@ fn the_quick_start_debugger_example_runs_headless() {
     assert_eq!(snap.label(), "live at seq 1");
     assert_eq!(
         saved_summary(snap),
-        "Saved through transaction 0; 1 pending (in memory only). The banner counts 0: a new project's own setup \
+        "Saved through transaction 0; 1 pending (in memory only). The Project panel counts 0: a new project's own setup \
 is not counted as a change until the project has a file."
     );
     assert_eq!(snap.record_state(1), RecordState::Pending { attempt: None }, "a new project is in memory only");

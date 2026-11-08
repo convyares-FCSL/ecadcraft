@@ -719,3 +719,46 @@ fn stdio_a_clean_exit_releases_the_writer_lock() {
     assert!(!summary.contains("read-only") && !summary.contains("reclaimed"), "{summary}");
     drop(s);
 }
+
+// ---------- brief 016: one active page ----------
+
+/// Design 016 check K: through `execute`, `openpage` switches the session's one active page and
+/// an edit after it is recorded on that page as the agent; `u` of an edit made on another page
+/// brings that page back to the front of the session; with writes off `openpage` still works and
+/// edits are refused.
+#[test]
+fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_changes() {
+    let mut c = writer();
+    let first = c.doc().page_order[0];
+    let p2 = c.exec("newpage", json!({"title": "Field"}));
+    let field: ecad_model::PageId = ecad_model::PageId(u128::from_str_radix(p2["page"].as_str().unwrap(), 16).unwrap());
+    let active = |c: &mut Client| c.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap();
+    let windows = |c: &mut Client| c.s.with_session(|s, _| s.docs.len()).unwrap();
+    assert_eq!((active(&mut c), windows(&mut c)), (Some(field), 1));
+    c.exec("openpage", json!({"page": first.hex()}));
+    assert_eq!((active(&mut c), windows(&mut c)), (Some(first), 1), "one page window");
+    let w = c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    let conductor = w["conductor"].as_str().unwrap().to_string();
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    let doc = c.doc();
+    assert!(doc.items.values().any(|i| i.page == first), "the wire is on the page made active");
+    assert!(doc.items.values().all(|i| i.page != field));
+    // Undo from Field of the wire on page 1: page 1 is active again in the agent's session.
+    c.exec("openpage", json!({"page": field.hex()}));
+    c.exec("u", json!({}));
+    assert_eq!(active(&mut c), Some(first), "the undo brought page 1 back");
+    assert!(c.doc().conductors.keys().all(|k| k.hex() != conductor));
+    assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
+
+    // Writes off: openpage works, edits are refused.
+    let mut r = reader();
+    let first = r.doc().page_order[0];
+    r.exec("openpage", json!({"page": first.hex()}));
+    let before = r.log();
+    assert_eq!(
+        r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [9, 0]]}})),
+        policy::WRITES_OFF
+    );
+    assert_eq!(r.log(), before);
+}
