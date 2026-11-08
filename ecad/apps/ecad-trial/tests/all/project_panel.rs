@@ -703,6 +703,16 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     assert!(h.state().panel.rename.is_none(), "no rename");
     assert_eq!(head(&mut h), before, "nothing recorded");
     assert_eq!(doc(&mut h).page_order.len(), 2);
+    // Brief 019, check J: every Properties field and dialog field read-only, Issue hidden; a
+    // revision can still be reopened (the command reads only).
+    assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
+    h.state_mut().open_project_props();
+    assert!(h.state().project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
+    h.state_mut().project_props = None;
+    h.state_mut().open_revisions();
+    assert!(h.state().revisions.as_ref().is_some_and(|d| d.read_only), "no pending row, no Issue");
+    h.state_mut().revisions = None;
+    assert_eq!(head(&mut h), before, "nothing recorded");
     drop(h);
     drop(first);
     let _ = std::fs::remove_dir_all(&dir);

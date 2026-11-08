@@ -248,8 +248,23 @@ impl ProjectPanel {
 
     /// Bring the copy up to date: `count` is the project's change count, `project` names the
     /// project, `rows` reads the rows (called only when either differs from the copy's).
-    pub fn sync(&mut self, project: u64, count: u64, rows: impl FnOnce() -> Option<Vec<TreeRow>>) {
+    pub fn sync(
+        &mut self,
+        project: u64,
+        count: u64,
+        changed: impl FnOnce(u64) -> Option<bool>,
+        rows: impl FnOnce() -> Option<Vec<TreeRow>>,
+    ) {
         if self.seen == Some((project, count)) {
+            return;
+        }
+        // Brief 019's update map: a change that cannot touch the tree (a wire, a property of a
+        // device) only moves the count the copy is up to date with.
+        if let Some((p, n)) = self.seen
+            && p == project
+            && changed(n) == Some(false)
+        {
+            self.seen = Some((project, count));
             return;
         }
         if let Some(r) = rows() {

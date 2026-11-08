@@ -332,6 +332,8 @@ pub struct Trial {
     new_page_folder: Option<ecad_model::FolderId>,
     /// The revision shown in the panel (its log point), when one is open.
     panel_revision: Option<u64>,
+    /// The selection last checked for frame objects.
+    frame_checked: Vec<Handle>,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -459,6 +461,7 @@ impl Trial {
             revisions: None,
             new_page_folder: None,
             panel_revision: None,
+            frame_checked: Vec::new(),
         }
     }
 
@@ -757,7 +760,14 @@ impl Trial {
     /// The sheet frame is never selected (design 019 §3.2): a selection that held only the frame
     /// says why it is empty.
     fn drop_frame_selection(&mut self) {
-        if ecad_cadcraft::frame::drop_from_selection(&mut self.cad.session) {
+        // Only when the selection changed: no work on a frame where nothing was picked.
+        let sel = self.cad.session.selection();
+        if sel == self.frame_checked {
+            return;
+        }
+        let only_frame = ecad_cadcraft::frame::drop_from_selection(&mut self.cad.session);
+        self.frame_checked = self.cad.session.selection();
+        if only_frame {
             self.cad.session.echo(ecad_cadcraft::frame::DERIVED);
         }
     }
@@ -1472,7 +1482,7 @@ impl Trial {
                 }
                 None => {}
             }
-            panel.sync(serial, p.change_count(), || Some(p.tree_rows()));
+            panel.sync(serial, p.change_count(), |n| p.tree_changes_since(n), || Some(p.tree_rows()));
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {

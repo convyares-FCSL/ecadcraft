@@ -307,6 +307,24 @@ pub struct Change {
     pub devices: crate::device_list::DeviceTouch,
     /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
+    /// Whether it could change the Pages tree ([`tree_touched`]).
+    pub tree: bool,
+}
+
+/// Whether `ops` could change the Pages tree (design 019 §9): pages added, removed, renamed or
+/// moved, a page's properties (number, folder), folder ops. Every other op changes nothing there.
+pub fn tree_touched(ops: &[Op]) -> bool {
+    ops.iter().any(|op| {
+        matches!(
+            op,
+            Op::AddPage { .. }
+                | Op::RemovePage { .. }
+                | Op::AddFolder { .. }
+                | Op::RemoveFolder { .. }
+                | Op::ModifyFolder { .. }
+                | Op::SetProperty { object: ecad_model::ObjectRef::Page(_), .. }
+        )
+    })
 }
 
 /// Injected failures for the experiment (never set in normal use).
@@ -477,6 +495,8 @@ pub struct Project {
     frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
     /// An op of the update map was committed since the frame was drawn.
     frame_stale: bool,
+    /// The change count when a page last became unavailable or available again (its row label).
+    unavailable_at: u64,
     /// How many times a frame was worked out again (tests and bench: only when it can differ).
     pub frame_builds: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
@@ -883,6 +903,7 @@ impl Project {
             frame: None,
             frame_stale: false,
             frame_builds: 0,
+            unavailable_at: 0,
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
@@ -953,6 +974,7 @@ impl Project {
             frame: None,
             frame_stale: false,
             frame_builds: 0,
+            unavailable_at: 0,
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
@@ -1053,6 +1075,7 @@ impl Project {
             frame: None,
             frame_stale: false,
             frame_builds: 0,
+            unavailable_at: 0,
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
@@ -1203,7 +1226,7 @@ impl Project {
         self.views.retain(|k| doc.cables.contains_key(k));
         // A view is drawn on every page showing the cable: the active page is redrawn, every
         // other page when it becomes active.
-        self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()));
+        self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
         self.redraw_window(pg, Some("cableview"));
         (true, self.settings.store(self.id, &self.views))
     }
@@ -1335,15 +1358,29 @@ impl Project {
         Some(out)
     }
 
+    /// Whether the changes after change `n` could have changed the Pages tree; `None` when the
+    /// changes are too old to tell (rebuild it).
+    pub fn tree_changes_since(&self, n: u64) -> Option<bool> {
+        if n >= self.change_count {
+            return Some(false);
+        }
+        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+            return None;
+        }
+        // A page that became (un)available shows a different row label.
+        Some(self.unavailable_at > n || self.changes.iter().filter(|c| c.n > n).any(|c| c.tree))
+    }
+
     /// Record one change and the pages it could change.
     fn record_change(
         &mut self,
         pages: Option<BTreeSet<PageId>>,
         devices: crate::device_list::DeviceTouch,
         props: Option<BTreeSet<ecad_model::ObjectRef>>,
+        tree: bool,
     ) {
         self.change_count += 1;
-        self.changes.push_back(Change { n: self.change_count, pages, devices, props });
+        self.changes.push_back(Change { n: self.change_count, pages, devices, props, tree });
         while self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
         }
@@ -1559,6 +1596,9 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = map;
                     v.last = Some(st.doc.clone());
+                    if v.unavailable {
+                        self.unavailable_at = self.change_count;
+                    }
                     v.unavailable = false;
                 }
             }
@@ -1570,6 +1610,9 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = HandleMap::default();
                     v.last = Some(st.doc.clone());
+                    if !v.unavailable {
+                        self.unavailable_at = self.change_count;
+                    }
                     v.unavailable = true;
                 }
                 pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
@@ -1610,6 +1653,7 @@ impl Project {
         let pages = pages_touched(self.ledger.document(), &ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
+        let tree = tree_touched(&ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
@@ -1620,7 +1664,7 @@ impl Project {
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props);
+        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props, tree);
         self.redraw_window(pg, Some(command));
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
@@ -1828,6 +1872,7 @@ impl DocumentOwner for Project {
         let scope = crate::references::cables_touched(self.ledger.document(), &t.ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
+        let tree = tree_touched(&t.ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
@@ -1854,7 +1899,7 @@ impl DocumentOwner for Project {
             c.insert(page);
             c
         });
-        self.record_change(changed, devices, props);
+        self.record_change(changed, devices, props, tree);
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
@@ -2043,6 +2088,7 @@ impl Project {
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
+        let tree = tree_touched(&ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
@@ -2074,7 +2120,7 @@ impl Project {
                     Some(&drawn),
                     self.active_page(),
                 );
-                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props);
+                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props, tree);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.

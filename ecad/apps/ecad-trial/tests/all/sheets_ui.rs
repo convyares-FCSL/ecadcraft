@@ -94,6 +94,11 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     ok(&mut h, r#"wire {"points":[[0,100],[30,100]]}"#);
     h.run_steps(2);
     assert_eq!(h.state().props_rebuilds, builds, "a wire touches neither the page's nor the project's rows");
+    // Nor the Pages tree (design 019 §9): no rebuild on an unrelated commit.
+    let tree_builds = h.state().panel.rebuilds;
+    ok(&mut h, r#"line {"points":[[0,110],[30,110]]}"#);
+    h.run_steps(5);
+    assert_eq!(h.state().panel.rebuilds, tree_builds, "a line does not rebuild the tree");
 
     // Project Properties: one transaction; Cancel writes nothing.
     click(&mut h, project_panel::PROJECT_PROPS);
