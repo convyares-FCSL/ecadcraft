@@ -23,7 +23,7 @@
 )]
 
 use cadcraft_ui_egui::switch::Switch;
-use ecad_trial::startup::{Adapter, StartupTiming, Step};
+use ecad_trial::startup::{Adapter, StartupTiming, Step, preferred_folder};
 use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
@@ -32,11 +32,9 @@ struct App(Trial, Option<Timing>);
 /// Start-up timing still running (only with `ECAD_STARTUP_TIMING` on).
 struct Timing {
     marks: StartupTiming,
-    /// Where the JSON goes.
-    dir: std::path::PathBuf,
-    /// Frames started so far.
-    frames: u32,
-    /// Whether the first `ui` pass has been marked.
+    /// Where the JSON should go (the snapshots folder); the temp folder otherwise.
+    dir: Option<std::path::PathBuf>,
+    /// Whether the first full `ui` pass has been marked.
     built: bool,
 }
 
@@ -45,14 +43,15 @@ impl eframe::App for App {
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        // Called once at the start of every frame, so the second call follows the first present.
-        if let Some(t) = &mut self.1 {
-            t.frames = t.frames.saturating_add(1);
-            if t.frames >= 2 {
-                t.marks.mark(Step::FirstPresent);
-                t.marks.finish(&t.dir);
-                self.1 = None;
-            }
+        // Called at the start of every frame, logic-only ones (minimised or occluded) included. A
+        // full `ui` pass is painted and presented in the same frame, so the first call after it
+        // follows the first present.
+        if let Some(t) = &mut self.1
+            && t.built
+        {
+            t.marks.mark(Step::FirstPresent);
+            t.marks.finish(t.dir.as_deref());
+            self.1 = None;
         }
         self.0.cad.raw_input_hook(ctx, raw);
         cadcraft_ui_egui::cmdline::capture_tab(ctx, raw);
@@ -67,6 +66,10 @@ impl eframe::App for App {
         }
     }
     fn on_exit(&mut self) {
+        // Closed before the first present: keep the marks reached so far.
+        if let Some(t) = self.1.take() {
+            t.marks.finish(t.dir.as_deref());
+        }
         self.0.on_exit();
     }
     fn persist_egui_memory(&self) -> bool {
@@ -129,8 +132,8 @@ fn main() -> eframe::Result {
         TITLE,
         options,
         Box::new(move |cc| {
-            // Beside the snapshots, or in the temp folder (only looked up when timing).
-            let dir = timing.as_ref().map(|_| snapshots.clone().unwrap_or_else(std::env::temp_dir));
+            // The snapshots folder, if any (only looked at when timing).
+            let snapshots_for_timing = timing.as_ref().and(snapshots.clone());
             if let Some(t) = &mut timing {
                 t.mark(Step::Creator);
                 if let Some(rs) = &cc.wgpu_render_state {
@@ -149,7 +152,11 @@ fn main() -> eframe::Result {
             if let Some(t) = &mut timing {
                 t.mark(Step::SetWgpu);
             }
-            let timing = timing.zip(dir).map(|(marks, dir)| Timing { marks, dir, frames: 0, built: false });
+            let timing = timing.map(|marks| Timing {
+                marks,
+                dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()),
+                built: false,
+            });
             Ok(Box::new(App(trial, timing)))
         }),
     )

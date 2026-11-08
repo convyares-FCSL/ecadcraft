@@ -4,9 +4,32 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use ecad_trial::Trial;
+use std::path::{Path, PathBuf};
+
 use ecad_trial::startup::{
-    Adapter, Origin, StartupTiming, Step, auxv_clock_ticks, enabled, process_age, process_age_from,
+    Adapter, Origin, StartupTiming, Step, auxv_clock_ticks, enabled, preferred_folder, process_age, process_age_from,
 };
+
+/// A fresh temp folder, removed when dropped (also when an assertion fails).
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("ecad-startup-contracts-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        TempDir(dir)
+    }
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn the_switch_is_on_only_when_asked() {
@@ -90,8 +113,8 @@ fn every_step_has_a_distinct_number_and_name() {
 
 #[test]
 fn the_json_file_holds_every_mark_and_the_adapter() {
-    let dir = std::env::temp_dir().join(format!("ecad-startup-contracts-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let tmp = TempDir::new("json");
+    let dir = tmp.path();
     let mut t = quiet(Some(Duration::from_millis(40)));
     for step in Step::ALL {
         t.mark(step);
@@ -103,7 +126,8 @@ fn the_json_file_holds_every_mark_and_the_adapter() {
     });
     assert!(t.adapter_line().contains("backend Vulkan"), "{}", t.adapter_line());
     assert!(t.adapter_line().contains("IntegratedGpu"), "{}", t.adapter_line());
-    let path = t.write_json(&dir).unwrap();
+    assert!(t.complete());
+    let path = t.write_json(dir).unwrap();
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
     assert!(name.starts_with("ecad-startup-") && name.ends_with(".json"), "{name}");
     let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
@@ -118,8 +142,62 @@ fn the_json_file_holds_every_mark_and_the_adapter() {
     let total = v["total_ms"].as_f64().unwrap();
     // Each value is rounded to a microsecond.
     assert!((sum - total).abs() < 0.01, "steps {sum} vs total {total}");
-    assert!(v["main_unix_ms"].as_str().unwrap().parse::<u128>().is_ok());
-    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(v["main_unix_ms"].as_u64().is_some_and(|ms| ms > 1_700_000_000_000), "{}", v["main_unix_ms"]);
+    assert_eq!(v["complete"], true);
+}
+
+#[test]
+fn the_json_file_never_replaces_an_earlier_one() {
+    let tmp = TempDir::new("names");
+    let mut t = quiet(None);
+    t.mark(Step::Main);
+    let paths: Vec<PathBuf> = (0..3).map(|_| t.write_json(tmp.path()).unwrap()).collect();
+    let names: Vec<String> = paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+    assert!(names[1].ends_with("-1.json") && names[2].ends_with("-2.json"), "{names:?}");
+    assert_eq!(names[0].replace(".json", "-1.json"), names[1]);
+    for p in &paths {
+        assert!(std::fs::read_to_string(p).unwrap().contains("\"complete\": false"), "{}", p.display());
+    }
+}
+
+#[test]
+fn the_json_file_goes_to_the_snapshots_folder_or_else_the_temp_folder() {
+    let tmp = TempDir::new("folders");
+    let mut t = quiet(None);
+    t.mark(Step::Main);
+    // A snapshots folder that does not exist yet is created.
+    let missing = tmp.path().join("new snaps").join("deeper");
+    let (p, why) = t.write_json_preferring(Some(&missing)).unwrap();
+    assert_eq!(p.parent(), Some(missing.as_path()));
+    assert_eq!(why, None);
+    // A "folder" that is a file falls back to the temp folder, saying why.
+    let file = tmp.path().join("a file");
+    std::fs::write(&file, "x").unwrap();
+    let (p, why) = t.write_json_preferring(Some(&file)).unwrap();
+    assert_eq!(p.parent(), Some(std::env::temp_dir().as_path()));
+    assert!(why.is_some_and(|w| w.contains("a file")));
+    std::fs::remove_file(&p).unwrap();
+    // No snapshots folder: the temp folder.
+    let (p, why) = t.write_json_preferring(None).unwrap();
+    assert_eq!(p.parent(), Some(std::env::temp_dir().as_path()));
+    assert_eq!(why, None);
+    std::fs::remove_file(&p).unwrap();
+}
+
+#[test]
+fn the_preferred_folder_expands_home_as_snapshot_export_does() {
+    let home = Path::new("/home/someone");
+    // (snapshots, home, expected)
+    let rows: Vec<(Option<&str>, Option<&Path>, Option<PathBuf>)> = vec![
+        (None, Some(home), None),
+        (Some("snaps"), Some(home), Some(PathBuf::from("snaps"))),
+        (Some("~/snaps"), Some(home), Some(home.join("snaps"))),
+        (Some(r"~\snaps"), Some(home), Some(home.join("snaps"))),
+        (Some("~/snaps"), None, None), // no home known: the temp folder
+    ];
+    for (snapshots, home, want) in rows {
+        assert_eq!(preferred_folder(snapshots.map(Path::new), home), want, "{snapshots:?}");
+    }
 }
 
 #[test]
