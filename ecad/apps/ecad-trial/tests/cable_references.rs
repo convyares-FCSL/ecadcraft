@@ -171,3 +171,103 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
     assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (/1.2)."));
 }
+
+/// The reference texts page `page_uid` draws now (the drawing as it is, not a fresh derivation).
+fn drawn_ref_texts(t: &mut Trial, page_uid: u64) -> Vec<String> {
+    let p = t.project().unwrap().clone();
+    p.read(&mut t.cad.session, |p, pg| {
+        let Some(page) = p.page_of(page_uid) else { return Vec::new() };
+        let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
+        p.pages[&page]
+            .map
+            .ref_text_handles()
+            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
+            .filter_map(|e| match &e.kind {
+                cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
+                _ => None,
+            })
+            .collect()
+    })
+    .unwrap()
+}
+
+/// Owner's two-page trial (brief 014 fix round): page 2's cable end is erased (page 1's marker
+/// becomes `/?`), the owner switches to page 1 and types `u`: page 1, in front, shows `/2.1` again
+/// at once, although the undone erase was on page 2.
+#[test]
+fn undo_typed_on_page_1_redraws_it_after_an_erase_on_page_2() {
+    let mut h = harness(trial());
+    h.get_by_label(tools::TAB).click();
+    h.run_steps(3);
+    let t = h.state_mut();
+    t.cad.session.viewport_px = (1280.0, 800.0);
+    for y in [0, 5, 10] {
+        assert!(t.submit_command(&format!(r#"wire {{"points":[[0,{y}],[60,{y}]]}}"#)).is_none());
+    }
+    assert!(t.submit_command(r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#).is_none());
+    let page1 = t.cad.session.state().unwrap().uid;
+    let cable = doc(t).cables.keys().next().copied().unwrap();
+    assert!(t.submit_command(&format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
+    assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
+    let page2 = t.cad.session.state().unwrap().uid;
+    assert!(
+        t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex()))
+            .is_none()
+    );
+    h.run_steps(3);
+    // Erase page 2's end: every drawn object on page 2 except terminal markers.
+    let t = h.state_mut();
+    let p = t.project().unwrap().clone();
+    let erase: Vec<String> = p
+        .read(&mut t.cad.session, |p, pg| {
+            let page = p.page_of(page2).unwrap();
+            let map = &p.pages[&page].map;
+            pg.drawing_of(p, page)
+                .unwrap()
+                .model
+                .iter()
+                .map(|e| e.handle)
+                .filter(|hd| !matches!(map.get(*hd), Some(ecad_cadcraft::Mapped::Marker(..))))
+                .map(|hd| hd.hex())
+                .collect()
+        })
+        .unwrap();
+    let before = head(t);
+    assert!(t.submit_command(&format!(r#"erase {{"handles":{}}}"#, serde_json::to_string(&erase).unwrap())).is_none());
+    assert_eq!(head(t), before + 1, "{:?}", t.cad.session.log.last());
+    h.run_steps(3);
+    // Switch to page 1 (its tab comes to the front) and let frames run.
+    let t = h.state_mut();
+    let title = t.cad.session.docs.iter().find(|d| d.uid == page1).unwrap().title.clone();
+    h.get_by_label(&title).click();
+    h.run_steps(3);
+    assert_eq!(h.state_mut().cad.session.state().unwrap().uid, page1, "the tab click brought page 1 to the front");
+    let t = h.state_mut();
+    assert!(drawn_ref_texts(t, page1).iter().any(|x| x == "/?"), "{:?}", drawn_ref_texts(t, page1));
+    // Typed `u`.
+    assert!(t.submit_command("u").is_none());
+    h.run_steps(3);
+    let t = h.state_mut();
+    assert_eq!(head(t), before + 2);
+    let texts = drawn_ref_texts(t, page1);
+    assert!(texts.iter().any(|x| x == "/2.1"), "page 1 in front still shows {texts:?}");
+    // Pressing `u` again and again, then redoing: page 1, in front, always draws what the
+    // document says, with no frame in which the change count moved and the text did not.
+    let derived = |t: &mut Trial| {
+        let d = doc(t);
+        let p = t.project().unwrap().clone();
+        let page = p.read(&mut t.cad.session, |p, _| p.page_of(page1)).unwrap().unwrap();
+        let mut v: Vec<String> =
+            ecad_cadcraft::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
+        v.sort();
+        v
+    };
+    for cmd in ["u", "u", "u", "u", "redo", "redo", "redo", "redo", "u"] {
+        let t = h.state_mut();
+        let _ = t.submit_command(cmd);
+        let mut drawn = drawn_ref_texts(t, page1);
+        drawn.sort();
+        assert_eq!(drawn, derived(t), "right after {cmd}: {:?}", t.cad.session.log.last());
+        h.run_steps(2);
+    }
+}

@@ -1222,10 +1222,8 @@ pub fn cables_on_page(
     let idx = PageIndex::new(doc, page);
     // Only cables shown on the page: with a representation there, or a member routed there.
     let mut shown: BTreeSet<CableId> = idx.cables.keys().copied().collect();
-    for (k, c) in &doc.cables {
-        if c.members.iter().any(|m| idx.routes.contains_key(&m.conductor)) {
-            shown.insert(*k);
-        }
+    for w in idx.routes.keys() {
+        shown.extend(doc.cables_of(*w));
     }
     shown
         .into_iter()
@@ -1246,7 +1244,7 @@ pub struct PageIndex<'a> {
 }
 
 impl<'a> PageIndex<'a> {
-    /// One pass over the document's representations on `page`.
+    /// One pass over the representations on `page` (through the page index, brief 014).
     pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
         let mut idx = PageIndex {
             routes: BTreeMap::new(),
@@ -1254,7 +1252,7 @@ impl<'a> PageIndex<'a> {
             conductors: BTreeMap::new(),
             cables: BTreeMap::new(),
         };
-        for (id, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
+        for (id, r) in doc.representations_on(page) {
             match r.subject {
                 Subject::Conductor(w) => {
                     idx.conductors.entry(w).or_default().push(r);
@@ -1269,7 +1267,7 @@ impl<'a> PageIndex<'a> {
                         idx.routes.insert(w, p);
                     }
                 }
-                Subject::Cable(k) => idx.cables.entry(k).or_default().push((*id, r)),
+                Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
                 Subject::Component(_) => {}
             }
         }

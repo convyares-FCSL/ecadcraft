@@ -48,6 +48,9 @@ pub mod project;
 pub mod references;
 pub mod slash;
 mod translate;
+/// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
+#[cfg(feature = "translate-oracle")]
+pub mod translate_oracle;
 pub mod verify;
 pub mod views;
 

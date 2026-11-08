@@ -16,17 +16,34 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 6] = [
+const COLUMNS: [(&str, &str); 11] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
     ("first_page_ms", "1st page ms"),
     ("edit_ms", "edit ms"),
     ("save_ms", "save ms"),
+    ("draw_move_ms", "draw move ms"),
+    ("draw_window_ms", "move+wires ms"),
+    ("draw_wire_ms", "draw wire ms"),
+    ("switch_first_ms", "1st view ms"),
+    ("switch_back_ms", "back ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 6] {
-    [Some(m.open_ms), Some(m.derive_ms), m.xref_ms, Some(m.first_page_ms), Some(m.edit_ms), Some(m.save_ms)]
+fn values(m: &Measured) -> [Option<f64>; 11] {
+    [
+        Some(m.open_ms),
+        Some(m.derive_ms),
+        m.xref_ms,
+        Some(m.first_page_ms),
+        Some(m.edit_ms),
+        Some(m.save_ms),
+        Some(m.draw_move_ms),
+        Some(m.draw_window_ms),
+        Some(m.draw_wire_ms),
+        Some(m.switch_first_ms),
+        Some(m.switch_back_ms),
+    ]
 }
 
 /// A table cell: `—` where nothing was measured.
@@ -44,13 +61,27 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9}\n",
-        "tier", "history", "file MB", "txs", "open ms", "derive ms", "xref ms", "1st page ms", "edit ms", "save ms"
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>12} {:>8}\n",
+        "tier",
+        "history",
+        "file MB",
+        "txs",
+        "open ms",
+        "derive ms",
+        "xref ms",
+        "1st page ms",
+        "edit ms",
+        "save ms",
+        "draw move ms",
+        "move+wires ms",
+        "draw wire ms",
+        "1st view ms",
+        "back ms"
     );
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {}\n",
             r.tier,
             r.variant,
             mb(m.bytes),
@@ -61,11 +92,19 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             cell(Some(m.first_page_ms), 12, 1),
             cell(Some(m.edit_ms), 9, 2),
             cell(Some(m.save_ms), 9, 2),
+            cell(Some(m.draw_move_ms), 13, 2),
+            cell(Some(m.draw_window_ms), 14, 2),
+            cell(Some(m.draw_wire_ms), 13, 2),
+            cell(Some(m.switch_first_ms), 12, 2),
+            cell(Some(m.switch_back_ms), 8, 2),
         ));
     }
     out.push_str(&format!(
         "Median of {runs} runs each; generation not timed. xref is brief 010's cable reference derivation \
-         on the opened document. Peak memory is not measured.\n"
+         on the opened document. draw move, move+wires and draw wire (the draw edit columns): one edit on \
+         page 1 made through the engine in a headless CADCraft session. 1st view and back (switch page): \
+         with page 1 shown, `openpage` of a page not viewed before, then back to page 1; median over up \
+         to 10 pages spread over the project. Peak memory is not measured.\n"
     ));
     out
 }
@@ -142,6 +181,11 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "first_page_ms": m.first_page_ms,
                 "edit_ms": m.edit_ms,
                 "save_ms": m.save_ms,
+                "draw_move_ms": m.draw_move_ms,
+                "draw_window_ms": m.draw_window_ms,
+                "draw_wire_ms": m.draw_wire_ms,
+                "switch_first_ms": m.switch_first_ms,
+                "switch_back_ms": m.switch_back_ms,
             })
         }).collect::<Vec<_>>(),
     })

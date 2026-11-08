@@ -562,7 +562,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
    now shows /3.1.` and `Connect each wire's free end to its terminal with Connect.`; three short
    wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
-   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. On page 2 the `/?` is now a magenta `/3.1`, and the
+   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. Switch to page 2: its `/?` is now a magenta `/3.1` (only the page in front is redrawn by a change; another open page it affected is redrawn when you bring it to the front), and the
    wire ends next to the reference lost their grey squares (the wires continue). One change.
 4. **Connect.** Click **Connect**, click each short wire near its right end, then the terminal
    at the same height. Expected: each wire stretches to its terminal; green dots there. In the
@@ -577,13 +577,14 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    again: back on page 2. Without a selection the button asks `Select a cable reference:`.
 7. **Move a page.** Click **Move Page** (Pages group). It fills in
    `movepage {"page":"<this page's id>","index":<new position>}`; replace `<new position>` with
-   `1` and press Enter. Expected: the page is now first; both references show the new numbers at
-   once; the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
+   `1` and press Enter. Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
    rename changes the hover lens, not the marker text (it shows numbers, not titles).
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
    wires themselves stay, still connected to the component on that page); the other page's
-   marker turns red `/?`; the reply adds `Cable …'s reference on page … now has no other end.`;
+   marker turns red `/?` (click its tab to see it: an edit in the drawing redraws only the page
+   in front, and another page whose references it changed is redrawn when you bring it to the
+   front); the reply adds `Cable …'s reference on page … now has no other end.`;
    the debugger's Diagnostics lists it under **Cable references**. Type `u`: everything is back
    with the same IDs.
 
@@ -883,9 +884,15 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | 1st page ms | Open the file in a headless drawing session and draw page 1: what you wait for before you see a drawing. |
 | edit ms | Record one new wire in the open project (one transaction, checked as any edit is). |
 | save ms | Save that wire (append one transaction and flush). |
+| draw move ms | In a headless drawing session with page 1 open, move a component that has wires attached, as MOVE does it on its symbol: the drawing change is turned into ECAD ops (the wires follow), recorded, and page 1 is drawn again (brief 014). |
+| move+wires ms | In the same session, move that component together with every wire attached to it, as a window around them selects them: each wire's far end leaves its terminal, so the ends are matched against the page's terminals (brief 014). |
+| draw wire ms | In the same session, draw one wire between two terminals on page 1 with the `wire` command, as the mouse wire tool does (brief 014). |
+| 1st view ms | In a headless session with page 1 shown, bring up a page not viewed before with `openpage` (the path of Go to Reference): median over up to 10 pages spread over the project (brief 014 fix round, for the 016 decision). |
+| back ms | After each of those, switch back to page 1, already viewed, with `openpage`: median over the same pages. |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
-file opened once. Every open reads from a warm file cache (the file was just written), so a cold
+file opened once; the three draw columns run on another copy, opened once in one drawing session
+(the moves go alternately down and back up). Every open reads from a warm file cache (the file was just written), so a cold
 open after a restart can be slower.
 
 **How long it takes** (one run on native Windows 11, 2026-11-07, which is also the first result
@@ -899,6 +906,38 @@ with the number of transactions times the size of the project, so the large tier
 | small | churned | 3.24 | 3 386 | 1 050 | 0.14 | 1 064 | 0.92 | 26 |
 | medium | lean | 8.69 | 6 798 | 27 772 | 1.98 | 27 975 | 9.6 | 40 |
 | medium | churned | 32.62 | 33 986 | 138 928 | 1.96 | 140 887 | 15.8 | 62 |
+
+The draw columns were added by brief 014 (branch `ecad/drawing-edit-speed`), which made an edit
+in the drawing cost in proportion to what it touches. Native Windows 11, release, 2026-11-08,
+median of 3 runs. **Before** is `f095edf` (brief 013 with its fix round merged, before 014
+changed the translation; the bench columns were applied on top to measure it), **after** is
+`4ca788c` (014 with its fix round). Large was measured after only.
+
+| tier | history | draw move ms before | after | move+wires ms before | after | draw wire ms before | after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| small | lean | 3.74 | 0.22 | 4.09 | 0.25 | 0.13 | 0.13 |
+| small | churned | 2.74 | 0.19 | 2.81 | 0.20 | 0.12 | 0.10 |
+| medium | lean | 78.04 | 0.36 | 66.76 | 0.38 | 0.49 | 0.25 |
+| medium | churned | 54.61 | 0.43 | 52.02 | 0.43 | 0.44 | 0.26 |
+| large | lean | — | 1.17 | — | 1.52 | — | 1.21 |
+| large | churned | — | 1.19 | — | 1.39 | — | 1.32 |
+
+The before run was on a busier machine than the after run (its open times are about 1.5 times
+higher), so compare the draw columns by their growth with the tier rather than to the
+millisecond. What still grows from medium to large is redrawing the page, which goes through the
+whole document to find what is on it (`docs/deferred-work.md`), not the translation.
+
+After briefs 009 to 011 were merged into the branch (`c5dfb21`), every commit derived all cable
+references twice and the cable look went through every representation, so medium draw edits rose
+to about 7.5 ms. The 014 fix round derives references only for the cables an edit touches, finds a
+page's objects through the page index, and redraws only the page in front (another open page whose
+references changed is redrawn when it comes to the front). Medium after it, same machine, median
+of 5: lean 0.53 / 0.59 / 0.38 ms and churned 0.54 / 0.66 / 0.39 ms (draw move / move+wires /
+draw wire), against 0.25 / 0.27 / 0.21 and 1.49 / 1.68 / 1.03 before the merge (`9045d27`) and
+7.61 / 7.57 / 7.20 and 7.43 / 7.26 / 7.19 at `c5dfb21`.
+
+The other columns were not changed by brief 014. Not yet tried by you: open the medium project
+(`--keep`) in the trial and say whether moving a component feels instant.
 
 The table is printed and also written as JSON to
 `ecad/target/bench/load-<date>-<time>-<commit>.json` (UTC; an existing file is never
