@@ -62,6 +62,14 @@ v1 file converts, and the file's structure is easy to see with our own tools.
    - **The crash, torn-write and power-loss-ordering tests are permanent,** in the slow set.
    - The rest of EEP-0005's test requirements: Linux, cold-cache open, and real assets.
 
+## Later (owner, 2026-11-08), not in this brief
+
+- **HTML inspector: a raw/readable toggle.** For any record (a transaction row, part or asset),
+  switch between the human-readable decoded view and the raw stored form (compressed bytes as hex,
+  with the table, key, size and compression), and back, read-only, never changing the file. To keep
+  this cheap later, `export-jsonl` in this brief should be able to include each record's raw stored
+  bytes alongside the decoded form (an option such as `--with-raw`).
+
 ## Not in this brief
 
 - Branch create, switch and merge UI.
