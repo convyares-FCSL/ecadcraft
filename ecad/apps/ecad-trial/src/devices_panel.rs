@@ -50,10 +50,15 @@ type Editing = (ComponentId, &'static str, String);
 #[derive(Debug, Default)]
 pub struct DevicesPanel {
     pub filter: String,
-    /// The list, kept up to date by `ecad-cadcraft`.
+    /// The list of every device, kept up to date by `ecad-cadcraft`.
     pub list: ecad_cadcraft::device_list::DeviceList,
+    /// The filter the rows were laid out with (a new filter lays them out again; the list itself
+    /// is never rebuilt for it).
+    laid_out_filter: String,
     rows: Vec<Row>,
     pub expanded: BTreeSet<ComponentId>,
+    /// How many devices the filter shows.
+    shown: usize,
     pub selected: Option<ComponentId>,
     editing: Option<Editing>,
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
@@ -64,15 +69,16 @@ pub struct DevicesPanel {
 }
 
 impl DevicesPanel {
-    /// The devices listed now.
-    pub fn entries(&self) -> &[DeviceEntry] {
-        &self.list.entries
+    /// The devices listed now (those the filter matches).
+    pub fn entries(&self) -> Vec<DeviceEntry> {
+        self.list.entries.iter().filter(|e| ecad_cadcraft::device_list::matches(e, &self.filter)).cloned().collect()
     }
 
     /// Bring the list up to date ([`ecad_cadcraft::device_list::DeviceList::sync`]: built whole
     /// once, then only the devices a change touched), and lay it out again when it changed.
     pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
-        if self.list.sync(serial, p, &self.filter) {
+        let filtered = self.filter != self.laid_out_filter;
+        if self.list.sync(serial, p) || filtered {
             self.flatten();
         }
     }
@@ -87,9 +93,17 @@ impl DevicesPanel {
     fn flatten(&mut self) {
         let mut rows = Vec::new();
         let mut last: Option<&str> = None;
-        for (i, e) in self.list.entries.iter().enumerate() {
+        let shown: Vec<usize> = (0..self.list.entries.len())
+            .filter(|i| self.list.entries.get(*i).is_some_and(|e| ecad_cadcraft::device_list::matches(e, &self.filter)))
+            .collect();
+        for (k, &i) in shown.iter().enumerate() {
+            let Some(e) = self.list.entries.get(i) else { continue };
             if last != Some(e.group.as_str()) {
-                let n = self.list.entries.iter().skip(i).take_while(|x| x.group == e.group).count();
+                let n = shown
+                    .iter()
+                    .skip(k)
+                    .take_while(|j| self.list.entries.get(**j).is_some_and(|x| x.group == e.group))
+                    .count();
                 rows.push(Row::Group(e.group.clone(), n));
                 last = Some(e.group.as_str());
             }
@@ -99,6 +113,8 @@ impl DevicesPanel {
             }
         }
         self.rows = rows;
+        self.shown = shown.len();
+        self.laid_out_filter = self.filter.clone();
     }
 
     /// Expand or fold device `c`'s symbols.
@@ -118,7 +134,7 @@ impl DevicesPanel {
         )
         .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
-        let count = self.list.entries.len();
+        let count = self.shown;
         ui.label(
             RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim),
         );

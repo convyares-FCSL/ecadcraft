@@ -9,16 +9,16 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > are saved as `.ecad` files (persistence stage 2a). The **PROJECT** panel on the far left lists
 > the project's pages, shows one of them at a time and holds New, Open, Save, Save As and Close
 > (brief 016; there is no top banner any more). An **ECAD** tab in Tool Sets has buttons for the
-> ECAD commands; most work by clicking, with prompts at CADCraft's command line. An **ECAD Dev**
-> tab beside it holds the read-only debugger panel (stage 2b), snapshot export and the ECAD
-> command window for JSON forms; none of them is shown unless you open it.
+> ECAD commands; most work by clicking, with prompts at CADCraft's command line. A **Developer** section at the bottom of the
+> panel (folded) holds the read-only debugger panel (stage 2b), snapshot export, Inspect Project
+> and the ECAD command window for JSON forms; none of them is shown unless you open it.
 
 ## Which revision this describes, and what has been tried
 
 **Brief 016 (design `ecad/docs/design/016.md`), on `feature/project-manager`, not yet in `dev`:**
 the Project panel, one active page at a time, undo and redo bringing their page to the front, a
 read-only preview of another page, and the top banner replaced by the panel's header and an
-**ECAD Dev** tool set (design 016, "Top bar removed"). Sections 4, 5E, 6, 7 and 8 describe it.
+folded **Developer** section at the bottom of the panel (design 016, "Top bar removed"). Sections 4, 5E, 6, 7 and 8 describe it.
 - *Automated checks:* `ecad/apps/ecad-trial/tests/all/project_panel.rs` (design 016 checks A to J by
   label in a 1280×800 headless window, and the six `016-*.png` screenshots), the one-window and
   undo checks in `ecad/crates/ecad-cadcraft/tests/all/project_pages.rs`, check K in
@@ -356,7 +356,7 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
   file, unsaved changes, and any read-only or unconfirmed-save warning), the buttons **New**,
   **Open…**, **Save**, **Save As…** and **Close**, and one small line saying this is an
   experiment. Below it, the project's pages: click one to show it (section 5E).
-- **The ECAD command window** (Tool Sets > **ECAD Dev** > **JSON Command**). Use it for ECAD
+- **The ECAD command window** (PROJECT panel > **Developer** > **JSON Command**). Use it for ECAD
   commands with JSON parameters, for example `wire {"points":[[0,0],[40,0]]}`. It takes a whole
   line, spaces included, so it also accepts CADCraft command lines such as `line 0,0 40,0`. Press
   Enter or **Run**; close it with its ×. Copy and paste (Ctrl+C, Ctrl+V) work with other
@@ -393,11 +393,12 @@ cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   #
     the ECAD command window alone. Answer by clicking, or type a point (`40,10`) or an option letter and
     press Enter. Enter (or Space, or a right-click) finishes; Esc cancels what is not done yet
     (objects already added stay); `u` afterwards undoes the last object.
-  - **Inspect Project** runs at once and shows the project's IDs at the command line.
-  - **New Page** and **Rename Page** open a small name box (prefilled with the next number, or
-    with the page's title); OK or Enter creates or renames the page in one step, Cancel does
-    nothing.
-  - **Set Property, Add to Cable, Delete Electrical Object, Open Page, Move Page** only open the
+  - Pages are made, opened, renamed and moved in the PROJECT panel (**+**, a click, double-click
+    or the row's right-click menu, drag or the arrows; section 5E), not in Tool Sets. **New page…**
+    and **Rename…** in the row's menu open a small name box; OK or Enter acts in one step.
+  - **Inspect Project** is in the panel's **Developer** section; it shows the project's IDs at
+    the command line.
+  - **Set Property, Add to Cable, Delete Electrical Object** only open the
     ECAD command window with an editable line, and a note under the
     field says what to fill in.
     Replace each `<placeholder>`, then press Enter or **Run**. A line that still holds a
@@ -631,10 +632,8 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    Reference**. Expected: the `field` tab is current, centred on `20,5`, with its reference point
    selected, and `Page 3 "field", at the other end of cable … (/3.1).` Click **Go to Reference**
    again: back on page 2. Without a selection the button asks `Select a cable reference:`.
-7. **Move a page.** Click **Move Page** (Pages group). It fills in
-   `movepage {"page":"<this page's id>","index":<new position>}`; replace `<new position>` with
-   `1` and press Enter. Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. **Rename Page** works the same way (`"title"`); a
-   rename changes the hover lens, not the marker text (it shows numbers, not titles).
+7. **Move a page.** In the PROJECT panel drag this page's row to the top (or click it and the
+   up arrow in the header). Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. Renaming (double-click the row) changes the hover lens, not the marker text (it shows numbers, not titles).
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
    wires themselves stay, still connected to the component on that page); the other page's
@@ -659,10 +658,11 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
    `demo - page 1: Supply`.
 2. **Switch.** Click `Field`: it replaces `Supply` in the same tab, at the view you left it. Click
    `Supply` again.
-3. **New page.** Click **+** in the panel's header (or **New Page** in Tool Sets > ECAD > Pages):
+3. **New page.** Click **+** in the panel's header (or **New page…** in a row's right-click menu):
    a small name box opens with `3` selected. Type `Spare`, press Enter (or **OK**): page 3 is
-   added and shown at once, one `u`. **Cancel** (or Esc) does nothing. **Rename Page** in Tool
-   Sets opens the same box for the page shown, prefilled with its title.
+   added and shown at once, one `u`. **Cancel** (or Esc) does nothing. **Rename…** in a row's
+   right-click menu opens the same box, prefilled with its title; the menu also has Open,
+   Preview, Move up and Move down.
 4. **Rename.** Double-click `Spare`, type `Spare 2`, press Enter. Type `u` at the command line:
    back to `Spare`. An empty title, or one over 200 characters, is refused under the field and
    nothing is recorded.
@@ -706,7 +706,7 @@ Open the **ECAD** tab first.
    Expected: `Added NO contact 13/14 to -K01 (now on page 1).`; the contact shows `-K01` and
    `13`/`14`. (Typing `D` at the prompt still works: the default device is shown as an option you
    can click, `[-K01/New]`.)
-3. **Another page.** Make page 2 (**+** in the PROJECT panel, or **New Page**). In
+3. **Another page.** Make page 2 (**+** in the PROJECT panel). In
    Find Symbol type `-K01` and click the `-K01` row: the window lists what `-K01` can take, with
    the next labels. Click **NC contact … 21/22**, then click on page 2.
    Expected: `21`/`22` on page 2, still `-K01`.
@@ -933,7 +933,7 @@ What the agent can and cannot do:
 
 ### The debugger panel
 
-Click **Debugger** in Tool Sets > **ECAD Dev**; click it again (or **Close** in the panel) to
+Click **Debugger** in the PROJECT panel's **Developer** section (unfold it first); click it again (or **Close** in the panel) to
 hide it. It is a
 read-only developer view on the right of the window. It follows one trail: **selected drawing
 objects → ECAD IDs → model objects → the transactions that touched them, with the values each
@@ -967,8 +967,8 @@ and its bytes.**
 
 ### Worked example: what to inspect when placing, wiring, moving, undoing and saving
 
-Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger** (Tool Sets >
-ECAD Dev). Type commands in the ECAD command window (ECAD Dev > JSON Command). IDs and offsets will differ from any shown here.
+Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger** (PROJECT panel >
+Developer). Type commands in the ECAD command window (Developer > JSON Command). IDs and offsets will differ from any shown here.
 
 1. **At the start.** Expected: `live at seq 1`; **History** shows `#1 [pending] New project`.
    The PROJECT panel says no unsaved changes: a new project's own setup is not counted as a change until
@@ -1010,7 +1010,7 @@ ECAD Dev). Type commands in the ECAD command window (ECAD Dev > JSON Command). I
 ### Inspector snapshots
 
 - **Exporting.** Start with `--snapshots <folder>`, then click **Export Inspector Snapshot** in
-  Tool Sets > ECAD Dev (shown only with `--snapshots`). Snapshots are also written before a project is discarded, and at exit. They are
+  the PROJECT panel's Developer section (shown only with `--snapshots`). Snapshots are also written before a project is discarded, and at exit. They are
   diagnostic files, not saved projects, and cannot be reopened. Their format is
   `ecad-inspect/2`: the design, its history and, new in stage 2b, the file's persistence facts
   (path, header, record offsets, lock).
@@ -1224,8 +1224,7 @@ Your table of three clean runs goes here once you have run it.
     model-space views (VPORTS), and only on the Model tab.
   - Terminal and wire-end marks use the dark theme's colours; on the light theme cyan and green
     are hard to see.
-  - Only the built-in coil can be placed. Set Property, Add to Cable, Delete, Open Page and Move
-    Page still open the ECAD command window with a template.
+  - Set Property, Add to Cable and Delete still open the ECAD command window with a template.
 - **Devices and tags** (brief 018):
   - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
     boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.

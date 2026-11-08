@@ -72,7 +72,14 @@ pub enum Action {
         value: String,
         merge: bool,
     },
+    /// Rename this page in the name box (the row's right-click menu).
+    RenameInBox(PageId),
+    /// A developer tool of the Developer section ([`crate::tools::developer_tools`]).
+    Tool(&'static str),
 }
+
+/// Accessible label of the Developer section's header.
+pub const DEVELOPER: &str = "Developer";
 
 /// The panel's two tabs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -118,6 +125,8 @@ pub struct Header {
     pub read_only: bool,
     /// The experiment note, as one small line.
     pub note: &'static str,
+    /// Snapshots can be exported (`--snapshots`).
+    pub snapshots: bool,
 }
 
 /// The panel's state.
@@ -276,6 +285,25 @@ impl ProjectPanel {
         });
         self.status(ui, header, &mut out);
         ui.separator();
+
+        // The developer tools, at the bottom, folded by default (owner, 2026-11-08).
+        egui::Panel::bottom("ecad.project.developer").resizable(false).show(ui, |ui| {
+            egui::CollapsingHeader::new(RichText::new(DEVELOPER).small())
+                .id_salt("ecad.project.developer.header")
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for t in crate::tools::developer_tools(header.snapshots) {
+                            if header.name.is_none() && t.id != "ecad.dev.command" {
+                                continue;
+                            }
+                            if ui.small_button(t.label).on_hover_text(t.tooltip).clicked() {
+                                out.push(Action::Tool(t.id));
+                            }
+                        }
+                    });
+                });
+        });
 
         if header.name.is_none() {
             ui.label(RichText::new("No project open.").color(t.text_dim));
@@ -508,6 +536,10 @@ impl ProjectPanel {
             self.cursor = Some(i);
         }
         resp.context_menu(|ui| {
+            if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
+                out.push(Action::New);
+                ui.close();
+            }
             if ui.button("Open").clicked() {
                 out.push(Action::Open(row.id));
                 ui.close();
@@ -516,8 +548,8 @@ impl ProjectPanel {
                 out.push(Action::Preview(row.id));
                 ui.close();
             }
-            if ui.add_enabled(writable, egui::Button::new("Rename").shortcut_text("F2")).clicked() {
-                self.start_rename(row.id);
+            if ui.add_enabled(writable, egui::Button::new("Rename…")).clicked() {
+                out.push(Action::RenameInBox(row.id));
                 ui.close();
             }
             let n = self.rows.len();

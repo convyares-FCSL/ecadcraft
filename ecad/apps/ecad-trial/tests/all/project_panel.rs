@@ -326,9 +326,10 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "prefilled");
     click(&mut h, "Cancel");
     assert!(h.state().name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
-    click(&mut h, tools::TAB);
-    click(&mut h, "New Page");
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "Tool Sets' New Page too");
+    h.get_by_label("Page 1: Supply").click_secondary();
+    h.run_steps(3);
+    click(&mut h, "New page…");
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row menu's New page too");
     key(&mut h, Key::Enter, Modifiers::NONE);
     assert!(h.state().name_box.is_none());
     assert_eq!(head(&mut h), before + 1, "one transaction");
@@ -892,4 +893,22 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
     click(&mut h, project_panel::PAGES_TAB);
     click(&mut h, project_panel::DEVICES_TAB);
     assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds + 1);
+}
+
+/// The developer tools live in the Project panel's Developer section, folded by default (owner,
+/// 2026-11-08): no ECAD Dev tab; Inspect Project, Debugger and JSON Command from there.
+#[test]
+fn the_developer_section_is_folded_and_runs_the_developer_tools() {
+    let mut h = build(trial(), None);
+    assert!(h.query_by_label("ECAD Dev").is_none(), "no ECAD Dev tab");
+    assert!(h.query_by_label("Debugger").is_none(), "folded by default");
+    click(&mut h, project_panel::DEVELOPER);
+    assert!(h.query_by_label("Export Inspector Snapshot").is_none(), "only with --snapshots");
+    click(&mut h, "Debugger");
+    assert!(h.state().debugger.open, "the debugger opens");
+    click(&mut h, "JSON Command");
+    assert!(h.state().command_open, "the command window opens");
+    let n = h.state().cad.session.log.len();
+    click(&mut h, "Inspect Project");
+    assert!(h.state().cad.session.log.len() > n, "Inspect Project answers at the command line");
 }
