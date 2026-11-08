@@ -23,6 +23,7 @@ mod mouse_tools_contracts;
 mod project_pages;
 mod recovery;
 mod refusals;
+mod sheets_contracts;
 mod terminal_name_contracts;
 mod tester_014_r3_scope_probe;
 mod upstream_sync_contracts;

@@ -316,7 +316,8 @@ fn with_writes_off_every_catalogued_command_but_the_read_ones_is_refused_and_not
     let mut checked = 0;
     for spec in cadcraft_engine::command_specs() {
         let id = spec.id;
-        if policy::READ_COMMANDS.contains(&id) {
+        // Brief 019: `pageprops {}` and `projectprops {}` only read.
+        if policy::READ_COMMANDS.contains(&id) || policy::reads_only(id, &json!({})) {
             continue;
         }
         let r = c.exec_raw(id, json!({}));
