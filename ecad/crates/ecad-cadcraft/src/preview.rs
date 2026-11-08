@@ -142,3 +142,18 @@ pub fn rasterise(
     let pm = raster::render(&list, &rv, &ro).ok_or("the preview could not be rasterised")?;
     Ok(PreviewImage { width, height, rgba: pm.data().to_vec() })
 }
+
+/// The cable reference the selection `handles` on document `uid` names (its point or its text),
+/// for Preview Reference.
+pub fn selected_reference(p: &Project, uid: u64, handles: &[cadcraft_engine::doc::Handle]) -> Option<RepresentationId> {
+    let page = p.page_of(uid)?;
+    let map = &p.pages.get(&page)?.map;
+    let doc = p.ledger.document();
+    handles.iter().find_map(|h| match map.get(*h)? {
+        crate::project::Mapped::RefText(r) => Some(r),
+        crate::project::Mapped::Item(i) => {
+            doc.representation_of_item(i).filter(|(_, r)| crate::references::is_reference(r)).map(|(id, _)| id)
+        }
+        _ => None,
+    })
+}

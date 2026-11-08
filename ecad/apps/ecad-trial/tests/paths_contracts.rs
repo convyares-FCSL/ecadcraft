@@ -186,8 +186,7 @@ fn files_save_and_reopen_under_awkward_folder_names() {
         let want = ecad(&folder.join("demo"));
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()));
         assert!(Path::new(&want).is_file());
-        t.cad.request_close_all();
-        t.after_logic();
+        t.close_project();
         t.open_project(&want).unwrap();
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()));
     }
@@ -202,8 +201,7 @@ fn tilde_paths_save_under_the_home_folder_with_either_separator() {
         let want = home.0.join(file).display().to_string();
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()), "{typed}");
         // Reopened through the same `~` spelling.
-        t.cad.request_close_all();
-        t.after_logic();
+        t.close_project();
         t.open_project(typed).unwrap();
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()));
     }
@@ -311,7 +309,7 @@ fn the_banner_names_the_file_as_saved() {
     let file = home.0.join("demo.ecad").display().to_string();
     assert_eq!(
         status_line(&t.status().unwrap()),
-        format!("Project \"demo\": 1 page open, file {file}, no unsaved changes.")
+        format!("Project \"demo\": 1 page, file {file}, no unsaved changes.")
     );
 }
 

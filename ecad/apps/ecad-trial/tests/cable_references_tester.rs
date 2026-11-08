@@ -530,6 +530,10 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // baseline.
     let orphan_text = screen(&h, 68.0, 6.25);
     ok(&mut h, "u");
+    // Brief 016 (AC8): the undo brings Field, where the erase was, to the front.
+    assert_eq!(current_page(&mut h), field, "the undo shows the page it changed");
+    assert_eq!(shown_text(&mut h), "/1.2");
+    ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, supply.hex()));
     assert_eq!(shown_text(&mut h), "/2.1", "undo restores the link");
     // Pixel checks when frames were rendered.
     let (Some(source), Some(target), Some(orphan), Some(_), Some(preview)) = (source, target, orphan, hover, preview)

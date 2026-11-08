@@ -69,14 +69,20 @@ fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
             }
             Kind::Run(line) => line.to_string(),
             Kind::Template => tools::template(t.id, &tools::Picked::default()).unwrap().0,
+            // Trial tools (Preview Reference, the ECAD Dev tab) run no command.
+            Kind::Trial => continue,
         };
         let command = line.split_whitespace().next().unwrap();
         assert!(ids.contains(&command), "{} runs the existing command {command}", t.id);
     }
     let tab = tools::tab();
     assert_eq!(tab.name, "ECAD");
-    assert_eq!(tab.groups.iter().map(|g| g.tools.len()).sum::<usize>(), TOOLS.len(), "every tool is in a group");
-    assert!(tab.groups.iter().all(|g| !g.tools.is_empty()));
+    let dev = tools::dev_tab(true);
+    assert_eq!(dev.name, "ECAD Dev");
+    let count = |t: &cadcraft_ui_egui::palettes::ExtraToolTab| t.groups.iter().map(|g| g.tools.len()).sum::<usize>();
+    assert_eq!(count(&tab) + count(&dev), TOOLS.len(), "every tool is in a group");
+    assert!(tab.groups.iter().chain(&dev.groups).all(|g| !g.tools.is_empty()));
+    assert_eq!(count(&tools::dev_tab(false)), count(&dev) - 1, "Export Inspector Snapshot only with --snapshots");
 }
 
 #[test]

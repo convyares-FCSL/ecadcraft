@@ -7,12 +7,19 @@
 //! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
 //!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
 //!   Component converts the current selection at once, or asks to select objects.
-//! - **Run** buttons type the command into the same path as the banner's Command field, so the
+//! - **Run** buttons type the command into the same path as the ECAD command window, so the
 //!   command's own validation, transaction and undo apply.
-//! - **Template** buttons put an editable command line in the Command field, with a short note
-//!   on what to fill in, and run nothing. IDs and handles are filled in from the current
+//! - **Template** buttons open the ECAD command window with an editable command line and a short
+//!   note on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
+//! - **Trial** buttons act in the trial itself: Preview Reference (brief 016) and the **ECAD Dev**
+//!   tab's developer tools (the debugger, inspector snapshots and the command window), which
+//!   replaced the trial's top banner (owner, 2026-11-08).
+//!
+//! The command window stays because CADCraft's own command line takes a space as Enter: it can
+//! run `name {json}` only when the line has no space at all, so JSON with spaces or a title such
+//! as `Motor control` cannot be typed there.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -27,6 +34,11 @@ pub const TAB: &str = "ECAD";
 /// The tab's groups, in order.
 pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit", "Pages", "Inspect"];
 
+/// The developer tab beside ECAD (owner, 2026-11-08: the banner's developer tools moved here).
+pub const DEV_TAB: &str = "ECAD Dev";
+/// The developer tab's one group.
+pub const DEV_GROUP: &str = "Developer";
+
 /// What a button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -34,8 +46,10 @@ pub enum Kind {
     Start(&'static str),
     /// Run this command line now (it needs no values beyond the selection).
     Run(&'static str),
-    /// Prefill the Command field with a template.
+    /// Open the ECAD command window with a template.
     Template,
+    /// Handled by the trial itself (no command).
+    Trial,
 }
 
 /// One button: a stable, namespaced id, its group, label and tooltip.
@@ -143,52 +157,59 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cablegoto"),
     },
     Tool {
+        id: "ecad.cablepreview",
+        group: "Wiring",
+        label: "Preview Reference",
+        tooltip: "Preview the other end of the selected cable reference without leaving this page",
+        kind: Kind::Trial,
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
-        tooltip: "Set a property such as the tag, or a cable's designation or type (fills in the Command field)",
+        tooltip: "Set a property such as the tag, or a cable's designation or type (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.cableadd",
         group: "Wiring",
         label: "Add to Cable",
-        tooltip: "Group wires into a cable (fills in the Command field)",
+        tooltip: "Group wires into a cable (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.delete",
         group: "Edit",
         label: "Delete Electrical Object",
-        tooltip: "Delete a component, wire or cable with its connections (fills in the Command field)",
+        tooltip: "Delete a component, wire or cable with its connections (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.newpage",
         group: "Pages",
         label: "New Page",
-        tooltip: "Add a page to the project (fills in the Command field)",
+        tooltip: "Add a page to the project (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.openpage",
         group: "Pages",
         label: "Open Page",
-        tooltip: "Open a closed page again (fills in the Command field)",
+        tooltip: "Open a closed page again (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.renamepage",
         group: "Pages",
         label: "Rename Page",
-        tooltip: "Rename a page (fills in the Command field)",
+        tooltip: "Rename a page (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.movepage",
         group: "Pages",
         label: "Move Page",
-        tooltip: "Move a page to another position (fills in the Command field)",
+        tooltip: "Move a page to another position (opens the ECAD command window)",
         kind: Kind::Template,
     },
     Tool {
@@ -198,22 +219,46 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Show the project's IDs and history at the command line (read-only; runs now)",
         kind: Kind::Run("ecadinspect"),
     },
+    Tool {
+        id: "ecad.dev.debugger",
+        group: DEV_GROUP,
+        label: "Debugger",
+        tooltip: "Open or close the read-only debugger panel",
+        kind: Kind::Trial,
+    },
+    Tool {
+        id: "ecad.dev.snapshot",
+        group: DEV_GROUP,
+        label: "Export Inspector Snapshot",
+        tooltip: "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.",
+        kind: Kind::Trial,
+    },
+    Tool {
+        id: "ecad.dev.command",
+        group: DEV_GROUP,
+        label: "JSON Command",
+        tooltip: "Open the ECAD command window: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
+        kind: Kind::Trial,
+    },
 ];
 
 /// The tab as CADCraft's Tool Sets panel shows it.
 pub fn tab() -> ExtraToolTab {
-    ExtraToolTab {
-        name: TAB.into(),
-        groups: GROUPS
+    ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
+}
+
+/// The ECAD Dev tab; Export Inspector Snapshot only when `snapshots` is on (`--snapshots`).
+pub fn dev_tab(snapshots: bool) -> ExtraToolTab {
+    ExtraToolTab { name: DEV_TAB.into(), groups: vec![group(DEV_GROUP, snapshots)] }
+}
+
+fn group(name: &str, snapshots: bool) -> ExtraToolGroup {
+    ExtraToolGroup {
+        name: name.into(),
+        tools: TOOLS
             .iter()
-            .map(|g| ExtraToolGroup {
-                name: (*g).into(),
-                tools: TOOLS
-                    .iter()
-                    .filter(|t| t.group == *g)
-                    .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
-                    .collect(),
-            })
+            .filter(|t| t.group == name && (snapshots || t.id != "ecad.dev.snapshot"))
+            .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
             .collect(),
     }
 }

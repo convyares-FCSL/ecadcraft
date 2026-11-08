@@ -5,32 +5,40 @@
 //! open at a time. Everything ECAD-specific runs through `ecad-cadcraft`; this crate only adds
 //! what a person needs to try it:
 //!
-//! - a banner naming the experiment, the project, its file and its unsaved changes, with New,
-//!   Open, Save and Save As;
+//! - the **Project** panel on the far left ([`project_panel`], brief 016): the project's pages,
+//!   one click to make a page the one active page, new / rename / reorder through the page
+//!   commands, and in its header the project's status (name, file, unsaved changes, read-only
+//!   and unconfirmed-save warnings), New, Open, Save, Save As and Close, and the experiment note
+//!   (they were in a top banner until owner, 2026-11-08);
+//! - a read-only **preview** of another page ([`preview`], brief 016), floating over the drawing;
 //! - **project files** (`.ecad`, persistence stage 2a): Save writes to the project's file, Save As
 //!   (and the first Save) asks for a file name in a small dialog of its own (the trial has no
 //!   native file dialogs), Open opens a project file; a project another session is editing, or a
 //!   damaged one, opens read-only and can be saved as another file;
-//! - closing a project with unsaved changes asks **Save**, **Discard** or **Cancel** (it replaces
-//!   CADCraft's prompt for ECAD pages, through `CadApp`'s public close API; no upstream change);
+//! - one page window: closing its tab leaves the project open with no page shown (a click in the
+//!   panel shows a page again); closing the project (the panel's Close, or quitting) with unsaved
+//!   changes asks **Save**, **Discard** or **Cancel** (it replaces CADCraft's prompt for ECAD
+//!   pages, through `CadApp`'s public close API; no upstream change);
 //! - optional export of inspector snapshots (`--snapshots <dir>`), which are diagnostic files, not
 //!   saved projects;
 //! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]): buttons start the click-based
-//!   forms of the ECAD commands (brief 008), run a command, or prefill the command field;
+//!   forms of the ECAD commands (brief 008), run a command, or open the ECAD command window with a
+//!   template; and an **ECAD Dev** tab beside it: the debugger, snapshot export and the ECAD
+//!   command window;
 //! - terminal and wire-end marks over ECAD pages (drawn by CADCraft from the project's overlay),
 //!   and a hover tooltip naming the ECAD object under the pointer and its connections
 //!   ([`Trial::hover_lines`]), read only.
-//! - the read-only **debugger** panel (persistence stage 2b, [`debugger`]), opened from the
-//!   banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
+//! - the read-only **debugger** panel (persistence stage 2b, [`debugger`]), opened from ECAD Dev
+//!   and never shown by default: selected drawing objects → ECAD IDs → model objects →
 //!   transactions with before/after values → saved record offsets and bytes, with pending
 //!   changes kept apart from durably saved history.
 //!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
 //! written), autosave, the control channel, saved window or profile state and ECAD menus
 //! (CADCraft shows no top-level menu supplied by an embedder). The JSON forms of ECAD commands are
-//! typed in the banner's command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
-//! own command line takes a space as Enter, so it cannot take a JSON argument); a bare command
-//! name starts its interactive form in either field.
+//! typed in the ECAD command window, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
+//! own command line takes a space as Enter, so it cannot take a JSON argument with spaces); a bare
+//! command name starts its interactive form in either.
 //!
 //! Project files belong in a local folder: by default `C:\dev\ecad-projects` on Windows (never the
 //! OneDrive-redirected Documents folder) and `~/ecad-projects` on Linux, including the Linux home
@@ -46,6 +54,8 @@
 )]
 
 pub mod debugger;
+pub mod preview;
+pub mod project_panel;
 pub mod startup;
 pub mod tools;
 
@@ -61,7 +71,10 @@ use cadcraft_ui_egui::{CadApp, Services};
 use debugger::Debugger;
 use ecad_cadcraft::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
 use ecad_inspect::EventKind;
+use ecad_model::PageId;
 use eframe::egui::{self, RichText};
+use preview::Preview;
+use project_panel::{Header, ProjectPanel};
 use serde_json::json;
 
 /// Window title.
@@ -80,12 +93,15 @@ macro_rules! default_folder {
     };
 }
 
-/// The banner shown above CADCraft's window contents.
+/// What the trial is, in full (the Project panel's experiment line shows [`NOTE`] with this as
+/// its hover text; the top banner that showed it was removed, owner 2026-11-08).
 pub const BANNER: &str = concat!(
     "ECAD TRIAL (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
     default_folder!(),
     "); other locations are unverified."
 );
+/// The experiment line at the top of the Project panel (one small line; [`BANNER`] on hover).
+pub const NOTE: &str = "ECAD trial (experiment): keep .ecad files in a local folder.";
 /// Said wherever snapshots are mentioned.
 pub const SNAPSHOT_NOTE: &str = "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
 /// Name of a new project until it is saved.
@@ -146,8 +162,8 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
     Ok(Invocation::Run { snapshots, project })
 }
 
-/// The project line of the banner, for example
-/// `Project "demo": 1 page open, file C:\dev\ecad-projects\demo.ecad, no unsaved changes.`
+/// The project's status line at the top of the Project panel, for example
+/// `Project "demo": 2 pages, file C:\dev\ecad-projects\demo.ecad, no unsaved changes.`
 pub fn status_line(s: &Status) -> String {
     let plural = |n: u64, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
     let file = s.file.path.as_deref().map_or("not saved to a file yet".to_string(), |p| format!("file {p}"));
@@ -156,16 +172,17 @@ pub fn status_line(s: &Status) -> String {
     } else {
         format!("{} not saved", plural(s.unsaved, "change"))
     };
-    format!("Project \"{}\": {}, {file}, {changes}.", s.name, plural(s.pages as u64, "page") + " open")
+    format!("Project \"{}\": {}, {file}, {changes}.", s.name, plural(s.pages as u64, "page"))
 }
 
 /// Lines echoed at the command line when a project is created.
 const INTRO: &[&str] = &[
-    "ECAD trial (experiment): Save As writes the project to a .ecad file; Open (in the banner) opens one.",
+    "ECAD trial (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
+New, Open, Save and Save As.",
     "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Terminal, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
-    "JSON forms go in the banner's \"Command\" field (the command line below takes a space as Enter), for \
-example:  wire {\"points\":[[0,0],[40,0]]}",
+    "JSON forms go in the ECAD command window (Tool Sets > ECAD Dev > JSON Command; the command line below takes \
+a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
     "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
 ];
@@ -206,10 +223,11 @@ struct Held {
     changes: u64,
 }
 
-/// What the banner shows about the open project.
+/// What the Project panel's header shows about the open project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
     pub name: String,
+    /// Pages in the project.
     pub pages: usize,
     /// Transactions not yet saved.
     pub unsaved: u64,
@@ -230,14 +248,26 @@ pub struct Trial {
     /// A message waiting in a dialog.
     notice: Option<String>,
     snapshot_count: u32,
-    /// The banner's command field (whole lines, spaces included).
+    /// The ECAD command window's field (whole lines, spaces included).
     pub command: String,
     /// What to fill in, after an ECAD Tool Sets button put a template in the command field.
     command_hint: Option<&'static str>,
     /// Give the command field keyboard focus on the next frame.
     focus_command: bool,
-    /// The read-only debugger panel (closed until opened from the banner).
+    /// The ECAD command window is open (ECAD Dev > JSON Command, or a template button).
+    pub command_open: bool,
+    /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
+    /// The Project panel (brief 016).
+    pub panel: ProjectPanel,
+    /// The read-only preview of another page (brief 016), when open.
+    pub preview: Option<Preview>,
+    /// Which project the panel's copy belongs to: counts projects attached in this session.
+    project_serial: u64,
+    /// The `keep_open` the trial last gave the project: on, except while a close or quit asks.
+    keep_open: Option<bool>,
+    /// A Save As that a close waits for is being confirmed (the close goes on after it).
+    confirming_close: bool,
     /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
     focus_drawing: bool,
     /// The ECAD object under the pointer and since when (egui time, seconds).
@@ -340,7 +370,7 @@ impl Trial {
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
-        cad.extra_tool_tabs = vec![tools::tab()];
+        cad.extra_tool_tabs = vec![tools::tab(), tools::dev_tab(snapshots.is_some())];
         Trial {
             cad,
             project: None,
@@ -354,7 +384,13 @@ impl Trial {
             command: String::new(),
             command_hint: None,
             focus_command: false,
+            command_open: false,
             debugger: Debugger::default(),
+            panel: ProjectPanel::default(),
+            preview: None,
+            project_serial: 0,
+            keep_open: None,
+            confirming_close: false,
             focus_drawing: false,
             hovered: None,
             hover: None,
@@ -403,6 +439,11 @@ impl Trial {
 
     fn attach(&mut self, p: ProjectHandle) {
         self.project = Some(p);
+        self.project_serial += 1;
+        self.keep_open = None;
+        self.panel.clear();
+        self.preview = None;
+        self.sync_keep_open();
         self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
@@ -452,8 +493,22 @@ impl Trial {
         if self.cad.session.state().is_ok_and(|st| owned(self, st.uid)) {
             return Ok(());
         }
-        let i = self.cad.session.docs.iter().position(|d| owned(self, d.uid)).ok_or("no ECAD project is open")?;
-        self.cad.run("document.switch", json!({ "index": i })).map(|_| ())
+        if let Some(i) = self.cad.session.docs.iter().position(|d| owned(self, d.uid)) {
+            return self.cad.run("document.switch", json!({ "index": i })).map(|_| ());
+        }
+        // The page window was closed (design 016 §4.1): show the page again first.
+        self.show_page_window().map(|_| ())
+    }
+
+    /// Open the page window again, on the page shown last (else the first page). Returns its uid.
+    fn show_page_window(&mut self) -> Result<u64, String> {
+        let p = self.project.clone().ok_or("no ECAD project is open")?;
+        let page = p
+            .read(&mut self.cad.session, |p, _| {
+                p.active_page().or(self.panel.active).or_else(|| p.ledger.document().page_order.first().copied())
+            })?
+            .ok_or("the project has no pages")?;
+        p.open_page(&mut self.cad.session, page)
     }
 
     /// The current project (open or already closed).
@@ -461,8 +516,13 @@ impl Trial {
         self.project.as_ref()
     }
 
-    /// Whether the project has a page open.
+    /// Whether a project is open (with or without its page window, design 016 §4.1).
     pub fn project_open(&self) -> bool {
+        self.project.as_ref().is_some_and(|p| p.is_attached(&self.cad.session))
+    }
+
+    /// Whether the project's page window is open.
+    pub fn page_window_open(&self) -> bool {
         self.cad.session.docs.iter().any(|d| self.cad.session.ext.owner_of(d.uid).is_some())
     }
 
@@ -525,6 +585,7 @@ impl Trial {
         if self.dialog.take().is_some_and(|d| d.then_close.is_some()) {
             self.cad.session.echo("Close cancelled; the ECAD project stays open.");
         }
+        self.sync_keep_open();
     }
 
     /// Confirm the open file dialog: open, or save as, the path typed. On failure the dialog
@@ -532,6 +593,7 @@ impl Trial {
     /// once more first.
     pub fn confirm_dialog(&mut self) {
         let Some(mut d) = self.dialog.take() else { return };
+        self.confirming_close = d.then_close.is_some();
         let path = d.path.trim().to_string();
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
@@ -568,6 +630,8 @@ impl Trial {
                 self.dialog = Some(d);
             }
         }
+        self.confirming_close = false;
+        self.sync_keep_open();
     }
 
     /// The open project's name, pages, unsaved transactions and file.
@@ -578,7 +642,7 @@ impl Trial {
         let p = self.project.as_ref()?;
         p.read(&mut self.cad.session, |p, _| Status {
             name: p.name.clone(),
-            pages: p.open_pages(),
+            pages: p.ledger.document().page_order.len(),
             unsaved: p.unsaved_transactions(),
             file: p.file_status(),
         })
@@ -592,11 +656,9 @@ impl Trial {
         // Only the page being shown is redrawn on a commit (owner, 2026-11-08): a page a commit
         // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
         // again next frame (a failed projection is reported by the redraw itself).
-        if let Some(p) = self.project.as_ref() {
-            let _ = p.refresh_shown(&mut self.cad.session);
-        }
         self.handle_tools();
         self.hold_close();
+        self.sync_keep_open();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {
             let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
             if owned {
@@ -664,7 +726,10 @@ impl Trial {
     pub fn answer(&mut self, a: Answer) {
         let Some(held) = self.held.take() else { return };
         match a {
-            Answer::Cancel => self.cad.session.echo("Close cancelled; the ECAD project stays open."),
+            Answer::Cancel => {
+                self.cad.session.echo("Close cancelled; the ECAD project stays open.");
+                self.sync_keep_open();
+            }
             Answer::Save => {
                 let file = self.status().map(|s| s.file).unwrap_or_default();
                 if file.path.is_some() && file.read_only.is_none() {
@@ -779,8 +844,35 @@ impl Trial {
                 self.command = line;
                 self.command_hint = Some(hint);
                 self.focus_command = true;
+                self.command_open = true;
                 Ok(())
             }
+            tools::Kind::Trial => self.trial_tool(id),
+        }
+    }
+
+    /// The tools the trial handles itself: Preview Reference and the ECAD Dev tab.
+    fn trial_tool(&mut self, id: &str) -> Result<(), String> {
+        match id {
+            "ecad.cablepreview" => self.preview_reference(),
+            "ecad.dev.debugger" => {
+                self.toggle_debugger();
+                Ok(())
+            }
+            "ecad.dev.snapshot" => {
+                let r = self.export_snapshot("manual");
+                self.notice = Some(match &r {
+                    Ok(p) => format!("Snapshot written to {}.\n\n{SNAPSHOT_NOTE}", p.display()),
+                    Err(e) => format!("Snapshot not written: {e}"),
+                });
+                r.map(|_| ())
+            }
+            "ecad.dev.command" => {
+                self.command_open = true;
+                self.focus_command = true;
+                Ok(())
+            }
+            _ => Err(format!("unknown ECAD tool {id}")),
         }
     }
 
@@ -827,11 +919,77 @@ impl Trial {
 
     /// Per-frame logic (before layout).
     pub fn logic(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.prepare_quit();
+        }
         self.cad.logic(ctx);
         self.after_logic();
         if std::mem::take(&mut self.cad.quit_requested) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+    }
+
+    /// The window is closing: a project with unsaved changes must be asked about, so closing its
+    /// page window closes the project again (`keep_open` off), and a project whose page window
+    /// was closed shows a page first, so CADCraft's quit asks about it (never lose work).
+    pub fn prepare_quit(&mut self) {
+        if !self.project_open() {
+            return;
+        }
+        self.set_keep_open(false);
+        let unsaved = self.status().is_some_and(|s| s.unsaved > 0);
+        if unsaved && !self.page_window_open() {
+            let _ = self.show_page_window();
+        }
+    }
+
+    /// Close the app as the window's close button does: [`Trial::prepare_quit`], then CADCraft's
+    /// quit (which asks about unsaved changes). Returns whether the close has to wait.
+    pub fn request_quit(&mut self) -> bool {
+        self.prepare_quit();
+        let wait = self.cad.request_quit();
+        self.after_logic();
+        wait
+    }
+
+    /// Give the project `keep_open` (only when it differs from what it was given last).
+    fn set_keep_open(&mut self, on: bool) {
+        if self.keep_open == Some(on) {
+            return;
+        }
+        if let Some(p) = &self.project
+            && p.is_attached(&self.cad.session)
+            && p.configure(&mut self.cad.session, |p| p.keep_open = on).is_ok()
+        {
+            self.keep_open = Some(on);
+        }
+    }
+
+    /// `keep_open` is on except while a close of the project or a quit is being asked about.
+    fn sync_keep_open(&mut self) {
+        let closing = self.confirming_close
+            || self.cad.closing.is_some()
+            || self.held.is_some()
+            || self.dialog.as_ref().is_some_and(|d| d.then_close.is_some());
+        if !closing {
+            self.set_keep_open(true);
+        }
+    }
+
+    /// Close the project, as the Project panel's **Close** does: unsaved changes are asked about
+    /// (Save, Discard, Cancel), as when the last page of a project was closed before brief 016.
+    pub fn close_project(&mut self) {
+        if !self.project_open() {
+            return;
+        }
+        if !self.page_window_open() && self.show_page_window().is_err() {
+            return;
+        }
+        let owned = |t: &Self, uid: u64| t.cad.session.ext.owner_of(uid).is_some();
+        let Some(i) = self.cad.session.docs.iter().position(|d| owned(self, d.uid)) else { return };
+        self.set_keep_open(false);
+        self.cad.request_close(Some(i));
+        self.after_logic();
     }
 
     /// Open or close the debugger panel.
@@ -857,10 +1015,9 @@ impl Trial {
         }
     }
 
-    /// Lay out the banner, the harness dialogs, the debugger (when open) and CADCraft's window
-    /// contents.
+    /// Lay out the harness dialogs, the debugger (when open), the Project panel, CADCraft's window
+    /// contents, the ECAD command window and the preview (when open).
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        self.banner(ui);
         self.dialogs(ui.ctx());
         if self.debugger.open {
             // The snapshot is taken (and the project released) before anything is drawn.
@@ -876,8 +1033,11 @@ impl Trial {
                 self.debugger_action(a);
             }
         }
+        self.project_panel(ui);
         self.cad.ui(ui);
         self.handle_tools();
+        self.command_window(ui.ctx());
+        self.preview_window(ui.ctx());
         if std::mem::take(&mut self.focus_drawing) {
             // Keys go to CADCraft's command line when no text field has the keyboard.
             ui.ctx().memory_mut(|m| {
@@ -1021,105 +1181,289 @@ impl Trial {
         }
     }
 
-    fn banner(&mut self, ui: &mut egui::Ui) {
-        let status = self.status();
-        let warn = ui.visuals().warn_fg_color;
-        #[derive(PartialEq)]
-        enum Click {
-            New,
-            Open,
-            Save,
-            SaveAs,
-            Export,
-            Debugger,
-        }
-        let mut click = None;
-        let mut submit: Option<String> = None;
-        egui::Panel::top("ecad_trial_banner").show(ui, |ui| {
-            ui.label(RichText::new(BANNER).strong().color(warn));
-            ui.horizontal_wrapped(|ui| match &status {
-                Some(s) => {
-                    ui.label(status_line(s));
-                    if let Some(r) = &s.file.read_only {
-                        ui.label(RichText::new(format!("Read-only: {r}. Use Save As.")).color(warn));
-                    }
-                    if s.file.unconfirmed {
-                        ui.label(RichText::new("Last save not confirmed durable: Save again.").color(warn));
-                    }
-                    if ui.button("Save").clicked() {
-                        click = Some(Click::Save);
-                    }
-                    if ui.button("Save As…").clicked() {
-                        click = Some(Click::SaveAs);
-                    }
-                    if self.snapshots.is_some()
-                        && ui.button("Export inspector snapshot").on_hover_text(SNAPSHOT_NOTE).clicked()
-                    {
-                        click = Some(Click::Export);
-                    }
-                    let label = if self.debugger.open { "Hide debugger" } else { "Debugger" };
-                    if ui.button(label).on_hover_text(debugger::HOVER).clicked() {
-                        click = Some(Click::Debugger);
-                    }
-                }
-                None => {
-                    ui.label("No ECAD project is open.");
-                    if ui.button("New project").clicked() {
-                        click = Some(Click::New);
-                    }
-                    if ui.button("Open project…").clicked() {
-                        click = Some(Click::Open);
-                    }
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label("Command:");
-                let field = ui.add(
-                    egui::TextEdit::singleline(&mut self.command)
-                        .hint_text("wire {\"points\":[[0,0],[40,0]]}")
-                        .desired_width(ui.available_width() - 60.0),
-                );
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let running = self.cad.session.running.is_some();
-                if (ui.button("Run").clicked() || enter) && (running || !self.command.trim().is_empty()) {
-                    submit = Some(std::mem::take(&mut self.command));
-                    field.request_focus();
-                } else if std::mem::take(&mut self.focus_command) {
-                    // An ECAD Tool Sets button put a template here: edit it next.
-                    field.request_focus();
-                }
-            });
-            if self.command.trim().is_empty() && submit.is_none() {
-                self.command_hint = None;
+    /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
+    /// read again only when it moved (or the project changed). A busy project keeps the copy.
+    pub fn refresh_panel(&mut self) {
+        let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
+            if self.panel.rows().is_empty() && self.panel.active.is_none() {
+                return;
             }
-            if let Some(hint) = self.command_hint {
-                ui.label(RichText::new(hint).small());
-            }
+            self.panel.clear();
+            self.preview = None;
+            return;
+        };
+        let serial = self.project_serial;
+        let panel = &mut self.panel;
+        let _ = p.read(&mut self.cad.session, |p, _| {
+            panel.active = p.active_page();
+            panel.sync(serial, p.change_count(), || Some(p.page_rows()));
         });
-        if let Some(text) = submit
-            && self.submit_command(&text).is_some()
-        {
-            self.command = text; // keep it for correction
+        self.panel.previewed = self.preview.as_ref().map(|v| v.page);
+    }
+
+    /// What the panel's header shows.
+    fn header(&mut self) -> Header {
+        match self.status() {
+            Some(s) => {
+                let mut warnings = Vec::new();
+                if let Some(r) = &s.file.read_only {
+                    warnings.push(format!("Read-only: {r}. Use Save As."));
+                }
+                if s.file.unconfirmed {
+                    warnings.push("Last save not confirmed durable: Save again.".to_string());
+                }
+                Header {
+                    name: Some(s.name.clone()),
+                    status: status_line(&s),
+                    read_only: s.file.read_only.is_some(),
+                    warnings,
+                    note: NOTE,
+                }
+            }
+            None => Header { note: NOTE, ..Header::default() },
         }
-        match click {
-            Some(Click::New) => {
+    }
+
+    /// The Project panel (or its collapsed strip) at the far left, and what it asks for.
+    fn project_panel(&mut self, ui: &mut egui::Ui) {
+        self.refresh_panel();
+        let header = self.header();
+        let t = cadcraft_ui_egui::theme::Tokens::get();
+        let actions = if self.panel.collapsed {
+            egui::Panel::left("ecad_project_strip")
+                .resizable(false)
+                .exact_size(project_panel::STRIP_W)
+                .frame(egui::Frame::NONE.fill(t.chrome))
+                .show(ui, |ui| self.panel.strip(ui));
+            Vec::new()
+        } else {
+            egui::Panel::left("ecad_project")
+                .resizable(true)
+                .default_size(220.0)
+                .min_size(160.0)
+                .max_size(360.0)
+                .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(6, 4)))
+                .show(ui, |ui| self.panel.show(ui, &header))
+                .inner
+        };
+        for a in actions {
+            self.panel_action(a);
+        }
+    }
+
+    /// Act on one thing the Project panel asked for. Writes go through the page commands' JSON
+    /// forms on the command path, so each is exactly that command's transaction and one undo step.
+    pub fn panel_action(&mut self, a: project_panel::Action) {
+        use project_panel::Action as A;
+        self.panel.note = None;
+        match a {
+            A::Open(page) => {
+                let _ = self.show_page(page);
+            }
+            A::New => self.new_page_from_panel(),
+            A::Rename(page, title) => {
+                let line = format!("renamepage {}", json!({"page": page.hex(), "title": title}));
+                match self.run_line(&line) {
+                    None => self.panel.rename = None,
+                    Some(e) => {
+                        if let Some(r) = &mut self.panel.rename {
+                            r.text = title;
+                            r.error = Some(e);
+                        }
+                    }
+                }
+            }
+            A::Move(page, index) => {
+                let _ = self.run_line(&format!("movepage {}", json!({"page": page.hex(), "index": index})));
+            }
+            A::Preview(page) => self.preview_page(page),
+            A::NewProject => {
                 if let Err(e) = self.new_project() {
                     self.notice = Some(e);
                 }
             }
-            Some(Click::Open) => self.request_open(),
-            Some(Click::Save) => {
+            A::OpenProject => {
+                if self.project_open() {
+                    self.notice = Some("Close this project first (Close, in the Project panel).".into());
+                } else {
+                    self.request_open();
+                }
+            }
+            A::Save => {
                 let _ = self.save();
             }
-            Some(Click::SaveAs) => self.request_save_as(),
-            Some(Click::Debugger) => self.toggle_debugger(),
-            Some(Click::Export) => {
-                self.notice = Some(match self.export_snapshot("manual") {
-                    Ok(p) => format!("Snapshot written to {}.\n\n{SNAPSHOT_NOTE}", p.display()),
-                    Err(e) => format!("Snapshot not written: {e}"),
-                });
+            A::SaveAs => self.request_save_as(),
+            A::CloseProject => self.close_project(),
+        }
+        self.refresh_panel();
+    }
+
+    /// Make `page` the active page, as a click on its row does: a command waiting at a prompt is
+    /// cancelled first (nothing written), then the page is shown in the one page window. A
+    /// preview of that page closes.
+    ///
+    /// # Errors
+    /// No project, or the page cannot be shown (echoed at the command line).
+    pub fn show_page(&mut self, page: PageId) -> Result<(), String> {
+        let p = self.project.clone().ok_or("no ECAD project is open")?;
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        let r = p.open_page(&mut self.cad.session, page).map(|_| ());
+        if let Err(e) = &r {
+            self.cad.session.echo(e.clone());
+        }
+        self.panel.reveal(page);
+        self.after_logic();
+        r
+    }
+
+    /// **New page** in the panel: `newpage` titled with its number (design 016 Q8), then the new
+    /// page's title opens for renaming. One transaction in total when the title is kept.
+    fn new_page_from_panel(&mut self) {
+        let n = self.panel.rows().len() + 1;
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        if self.run_line(&format!("newpage {}", json!({ "title": n.to_string() }))).is_some() {
+            return;
+        }
+        self.refresh_panel();
+        if let Some(page) = self.panel.active {
+            self.panel.start_rename(page);
+        }
+    }
+
+    /// Preview `page` at its extents (the panel's Preview, Space or context menu). Asked again for
+    /// the page previewed now, the preview closes.
+    pub fn preview_page(&mut self, page: PageId) {
+        if self.preview.as_ref().is_some_and(|v| v.page == page) {
+            self.preview = None;
+            return;
+        }
+        if self.panel.active == Some(page) {
+            self.panel.note = Some(project_panel::ALREADY_SHOWN.into());
+            self.cad.session.echo(project_panel::ALREADY_SHOWN);
+            return;
+        }
+        let mut v = Preview::new(page, None, None);
+        if let Some(r) = self.cad.canvas.rect {
+            v.place(r);
+        }
+        self.preview = Some(v);
+    }
+
+    /// **Preview Reference** (design 016 §4.4): the selected cable reference's other end, in the
+    /// preview. Starts no command and records nothing.
+    ///
+    /// # Errors
+    /// No reference selected, or an orphan (also echoed).
+    pub fn preview_reference(&mut self) -> Result<(), String> {
+        let r = (|| {
+            let st = self.cad.session.state().map_err(|_| ecad_cadcraft::preview::NOT_A_REFERENCE.to_string())?;
+            let (uid, handles) = (st.uid, st.selection.clone());
+            let p = self.project.clone().ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
+            p.read(&mut self.cad.session, |p, _| {
+                let r = ecad_cadcraft::preview::selected_reference(p, uid, &handles)
+                    .ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
+                ecad_cadcraft::preview::other_end(p, r)
+            })?
+        })();
+        match r {
+            Ok((page, at)) => {
+                let mut v = Preview::at_reference(page, at);
+                if let Some(r) = self.cad.canvas.rect {
+                    v.place(r);
+                }
+                self.preview = Some(v);
+                Ok(())
+            }
+            Err(e) => {
+                self.cad.session.echo(e.clone());
+                Err(e)
+            }
+        }
+    }
+
+    /// The preview window: brought up to date (only when a change touched its page), shown, and
+    /// closed when its page is gone or became active.
+    fn preview_window(&mut self, ctx: &egui::Context) {
+        let Some(project) = self.project.clone() else {
+            self.preview = None;
+            return;
+        };
+        let Some(v) = &mut self.preview else { return };
+        if !v.update(&project, &mut self.cad.session) {
+            self.preview = None;
+            self.cad.session.echo("The previewed page no longer exists.");
+            return;
+        }
+        if self.panel.active == Some(v.page) {
+            self.preview = None;
+            return;
+        }
+        match v.show(ctx) {
+            Some(preview::Action::Close) => self.preview = None,
+            Some(preview::Action::Open(page, view)) => {
+                self.preview = None;
+                if self.show_page(page).is_ok()
+                    && let Ok(st) = self.cad.session.state_mut()
+                {
+                    let c = cadcraft_engine::geom::Vec2::new(view.center.x, view.center.y);
+                    let _ = st.set_view(cadcraft_engine::View { center: c, height: view.height });
+                }
             }
             None => {}
+        }
+    }
+
+    /// The ECAD command window (ECAD Dev > JSON Command, and the template buttons): one line run
+    /// as typed, `name {json}` included, with the template's note under it.
+    fn command_window(&mut self, ctx: &egui::Context) {
+        if !self.command_open {
+            return;
+        }
+        let mut open = true;
+        let mut submit: Option<String> = None;
+        egui::Window::new("ECAD command")
+            .id(egui::Id::unique("ecad.command"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(560.0)
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -150.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Command:");
+                    let field = ui.add(
+                        egui::TextEdit::singleline(&mut self.command)
+                            .id(egui::Id::unique("ecad.command.field"))
+                            .hint_text("wire {\"points\":[[0,0],[40,0]]}")
+                            .desired_width(ui.available_width() - 50.0),
+                    );
+                    let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let running = self.cad.session.running.is_some();
+                    if (ui.button("Run").clicked() || enter) && (running || !self.command.trim().is_empty()) {
+                        submit = Some(std::mem::take(&mut self.command));
+                        field.request_focus();
+                    } else if std::mem::take(&mut self.focus_command) {
+                        field.request_focus();
+                    }
+                });
+                if self.command.trim().is_empty() && submit.is_none() {
+                    self.command_hint = None;
+                }
+                if let Some(hint) = self.command_hint {
+                    ui.label(RichText::new(hint).small());
+                }
+            });
+        if !open {
+            self.command_open = false;
+        }
+        if let Some(text) = submit
+            && self.submit_command(&text).is_some()
+        {
+            self.command = text; // keep it for correction
         }
     }
 
@@ -1152,8 +1496,9 @@ impl Trial {
             ui.set_width(460.0);
             ui.label(RichText::new(format!("Save changes to project \"{name}\"?")).strong());
             ui.add_space(4.0);
+            let _ = title;
             ui.label(format!(
-                "\"{title}\" is the last open page of the project, which has {changes} unsaved change{}.",
+                "Closing the project. It has {changes} unsaved change{}.",
                 if changes == 1 { "" } else { "s" }
             ));
             ui.label(match (&file.path, &file.read_only) {
