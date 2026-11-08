@@ -16,6 +16,10 @@ Check the branch's diff against `dev` for:
 - Windows and Linux: anything platform-specific, path handling, file locking and line endings.
 - Never-crash rules, error types, test coverage of the brief's acceptance criteria.
 - Scope creep beyond the brief.
+- Lazy rebuilds: any view, panel, index or derived text rebuilt from the whole project on every
+  commit, undo or redo is a serious finding. Each must have an update map (see "Derived views
+  scale with what changed" in `ecad/CLAUDE.md`) and a test that an unrelated edit leaves it
+  untouched.
 
 Report findings ranked most serious first, each with file, line and the concrete failure it could
 cause. Say plainly if there is nothing worth raising.

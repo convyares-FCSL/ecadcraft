@@ -21,7 +21,9 @@ Write the spec to `ecad/docs/design/<brief-id>.md` with:
 - states (empty, normal, invalid, read-only) and what each looks like;
 - colours and line weights by name from `ecad/docs/design/tokens.md` (create it if missing);
 - acceptance checks the tester can run from the outside;
-- what is deliberately out of scope.
+- what is deliberately out of scope;
+- for any view, list or panel: its update map — which edits change what it shows, and that all
+  others leave it alone (see "Derived views scale with what changed" in `ecad/CLAUDE.md`).
 
 Do not write code. Do not invent electrical semantics: if the brief leaves a behaviour open, list it
 as a question for the architect.

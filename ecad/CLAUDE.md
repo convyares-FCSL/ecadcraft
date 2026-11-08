@@ -104,6 +104,11 @@ cargo xtask patches               # only when files outside ecad/ changed
   rescans the whole project on an ordinary commit. Only the page on screen redraws; other open
   pages are marked stale and redraw when brought to the front. The reviewer checks this once per
   feature, and `cargo xtask bench` is the evidence.
+  **No lazy default (owner, 2026-11-08).** Every command goes through the log, so "rebuild it on
+  every commit" is never the answer, even when it is fast on the medium project. Each new view or
+  panel ships with an **update map**: which ops (by kind and target) change what it shows, what it
+  does for each, and that every other op does nothing. A full rebuild is allowed only on open,
+  reload or first show. No refresh buttons: views stay live.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
   code with `// ECAD-SEAM(owner):`. Keep ECAD semantics out of upstream crates.
 - Rust only for product code. **Exception (owner decision, 2026-10-12):** developer tools under
