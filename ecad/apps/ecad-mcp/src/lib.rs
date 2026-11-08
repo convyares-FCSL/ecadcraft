@@ -29,6 +29,7 @@
 )]
 
 pub mod args;
+pub mod demo;
 pub mod policy;
 mod tools;
 

@@ -330,6 +330,13 @@ rebuild by running it (section 3); Cargo rebuilds what changed.
 
 ## 3. Running again
 
+**Start from the demo:** `cargo xtask demo` writes a small motor control panel (three pages:
+Supply, Motor control, Field; devices such as `-K01` across pages 2 and 3; cable `-W01` with
+`/page.column` references) to `C:\dev\ecad-projects\demo.ecad` (`~/ecad-projects/demo.ecad` on
+Linux); open it as below. It is rebuilt from `ecad/examples/demo/commands.jsonl` through the MCP
+`execute` tool, so it never goes stale; an existing file is replaced only with
+`cargo xtask demo --force` (or give another path: `cargo xtask demo C:\dev\ecad-projects\try.ecad`).
+
 ```sh
 cd ~/ecadcraft/ecad
 export CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0

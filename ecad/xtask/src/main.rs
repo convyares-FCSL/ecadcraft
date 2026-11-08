@@ -182,12 +182,24 @@ fn ci() -> Result<(), String> {
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|test-changed>
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed>
   test-changed [--base <ref>] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default dev, committed or not) and of
         every crate that depends on them; --dry-run only names the crates
+  demo [<path.ecad>] [--force]
+        write the demo project (default C:\\dev\\ecad-projects\\demo.ecad, ~/ecad-projects/demo.ecad
+        elsewhere) from ecad/examples/demo/commands.jsonl; an existing file needs --force
   bench [--tier small|medium|large|all] [--keep <folder>] [--compare <earlier.json>]
         project load benchmark (release build), run on demand only; not part of ci";
+
+/// The demo project (`ecad-demo`, built from `ecad/examples/demo/commands.jsonl` through the MCP
+/// `execute` tool), with `args` passed through: `[<path.ecad>] [--force]`.
+fn demo(args: &[String]) -> Result<(), String> {
+    run(Command::new(env!("CARGO"))
+        .args(["run", "--release", "--package", "ecad-mcp", "--bin", "ecad-demo", "--"])
+        .args(args)
+        .current_dir(ecad_root()))
+}
 
 /// The load benchmark in release, with `args` passed through. Never called by [`ci`].
 fn bench(args: &[String]) -> Result<(), String> {
@@ -376,6 +388,7 @@ fn main() -> ExitCode {
         "wasm" => wasm(),
         "ci" => ci(),
         "bench" => bench(rest),
+        "demo" => demo(rest),
         "test-changed" => test_changed(rest),
         _ => Err(USAGE.into()),
     };
