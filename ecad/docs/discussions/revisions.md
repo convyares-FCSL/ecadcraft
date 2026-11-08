@@ -26,6 +26,11 @@ revision.
 
 ### 3.1 One user-facing word: "revision"
 
+> **Revised 2026-11-08** by [`history-and-branches.md`](history-and-branches.md) §2: users now
+> see **versions** (named points, each a snapshot) and **revisions** (issued releases: a version
+> plus release data and frozen outputs), with those distinct meanings. Format terms stay
+> internal. The rest of this section is kept as first agreed.
+
 - The UI and the workflow show only **revisions** (Rev A, B, C). Users never see both "version"
   and "revision": mixing them leaves teams unsure which to bump.
 - "Version" stays internal: `container_version`, `schema_version`, the op `v`, and the op name

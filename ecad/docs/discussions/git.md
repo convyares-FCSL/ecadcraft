@@ -1,10 +1,15 @@
 # Discussion: ECAD projects in git
 
-Status: **Agreed direction** (owner, 2026-11-08): ship native git workflows instead of ever
-building a proprietary PLM vault. Two layers: **Layer A** first (git diff and merge drivers for
-`.ecad`), **Layer B** later (a folder project built on [EEP-0004](../spec/eep-0004.md)'s parts).
-Related: [`revisions.md`](revisions.md) (the shared state-diff engine), [EEP-0002](../spec/eep-0002.md)
-(today's format), [EEP-0003](../spec/eep-0003.md) (version 2).
+Status: **Superseded in part** (owner, 2026-11-08). Git is an **optional integration or
+export, never the model**: history, versions, branches and merges live inside ECAD
+([`history-and-branches.md`](history-and-branches.md)), stored as
+[EEP-0005](../spec/eep-0005.md) describes. What still stands: §1 (why a raw `.ecad` fights git)
+and §2.1 (a `git diff` driver built on the shared state-diff engine), for teams that keep `.ecad`
+files in git. §2.2's merge driver, if built, calls ECAD's own three-way merge
+(`history-and-branches.md` §3.5). §3 (folder projects) is **dropped**: the project is one
+self-contained file, and a folder is no longer an unpacked form of it.
+Related: [`revisions.md`](revisions.md), [EEP-0002](../spec/eep-0002.md),
+[EEP-0003](../spec/eep-0003.md), [EEP-0004](../spec/eep-0004.md).
 Raised by: the owner, 2026-11-08. Written by: the overseer, recording the owner's reasoning.
 
 ## 1. Why today's `.ecad` fights git
@@ -86,7 +91,11 @@ or binary change and cannot merge it. Two options:
 project opts into (recommended: cheap, and it serves teams before stage 4); (b) wait for
 Layer B.]`
 
-## 3. Layer B: folder projects (`.ecaddir/`)
+## 3. Layer B: folder projects (`.ecaddir/`) (dropped, 2026-11-08)
+
+> Kept for the record. Superseded by `history-and-branches.md`: branches and merges are
+> inside ECAD, and the `.ecad` file is never a folder. An export of a project as files for
+> external tools remains possible, as an export only.
 
 Each EEP-0004 part becomes a deterministic, canonical file in a project folder:
 
@@ -112,7 +121,7 @@ Each EEP-0004 part becomes a deterministic, canonical file in a project folder:
 `[OPEN: the folder files' encoding. (a) canonical JSON lines, as EEP-0002 §4 (recommended: git
 line merges and web diffs need text); (b) version 2 binary per part, with the diff driver.]`
 
-## 4. Rollout
+## 4. Rollout (as first agreed; Layer B no longer applies)
 
 | When | What |
 | --- | --- |
