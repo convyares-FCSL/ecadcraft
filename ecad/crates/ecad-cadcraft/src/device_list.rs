@@ -55,12 +55,21 @@ pub struct DeviceTouch {
     pub components: BTreeSet<ComponentId>,
     /// Pages were added, removed, moved or renamed: the `/page.column` texts may differ.
     pub pages: bool,
+    /// The project settings changed (tag prefixes, padding): the Devices list shows none of them,
+    /// but the symbol search's prefixes and next tags may differ.
+    pub settings: bool,
 }
 
 impl DeviceTouch {
     /// Nothing in the list can differ.
     pub fn is_empty(&self) -> bool {
         self.components.is_empty() && !self.pages
+    }
+
+    /// Nothing the symbol search shows can differ (its rows and its second step): no device, no
+    /// page and no setting was touched.
+    pub fn leaves_search(&self) -> bool {
+        self.is_empty() && !self.settings
     }
 }
 
@@ -76,6 +85,7 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
         }
     };
     let mut pages = false;
+    let mut settings = false;
     for op in ops {
         match op {
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => component(&Subject::Component(*id)),
@@ -104,17 +114,20 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                 pages = true
             }
             Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => pages = true,
-            Op::SetProjectSettings { before, after }
+            Op::SetProjectSettings { before, after } => {
+                settings = true;
                 if before.sheet != after.sheet
                     || before.length_unit != after.length_unit
-                    || before.reference_style != after.reference_style =>
-            {
-                pages = true
+                    || before.reference_style != after.reference_style
+                {
+                    pages = true;
+                }
             }
             _ => {}
         }
     }
     t.pages = pages;
+    t.settings = settings;
     t
 }
 

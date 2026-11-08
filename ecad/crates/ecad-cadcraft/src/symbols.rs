@@ -12,6 +12,9 @@
 //!
 //! This module reads no project and changes nothing.
 
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
 use ecad_model::{Definition, DefinitionId, Document, LibraryId, Origin, Primitive, Pt, TerminalDef};
 
 /// The library ID of the starter symbols.
@@ -51,17 +54,33 @@ pub struct Starter {
 }
 
 impl Starter {
-    /// The definition with its origin.
-    pub fn definition(&self) -> Definition {
+    /// The definition with its origin, built and hashed once per run (the Place preview asks for it
+    /// every frame).
+    ///
+    /// # Errors
+    /// Its content hash could not be computed (never for the built-in symbols; a definition is
+    /// never stored with a made-up origin hash).
+    pub fn definition(&self) -> Result<&'static Definition, String> {
+        static BUILT: OnceLock<BTreeMap<&'static str, Result<Definition, String>>> = OnceLock::new();
+        let built = BUILT.get_or_init(|| STARTERS.iter().map(|s| (s.key, s.build())).collect());
+        match built.get(self.key) {
+            Some(Ok(d)) => Ok(d),
+            Some(Err(e)) => Err(e.clone()),
+            None => Err(format!("{} is not a starter symbol", self.key)),
+        }
+    }
+
+    fn build(&self) -> Result<Definition, String> {
         let mut d = Definition {
             name: self.name.into(),
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
         };
-        let content_hash = ecad_file::definition_hash(&d).unwrap_or(ecad_model::ContentHash([0; 32]));
+        let content_hash = ecad_file::definition_hash(&d)
+            .map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: 1, content_hash });
-        d
+        Ok(d)
     }
 
     /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
@@ -76,8 +95,8 @@ impl Starter {
 
     /// Its box (width, height) in millimetres.
     pub fn size(&self) -> (f64, f64) {
-        let d = self.definition();
-        let (lo, hi) = bounds(&d);
+        let Ok(d) = self.definition() else { return (0.0, 0.0) };
+        let (lo, hi) = bounds(d);
         ((hi.x - lo.x).max(0.0), (hi.y - lo.y).max(0.0))
     }
 }
@@ -524,13 +543,13 @@ mod tests {
         let mut ids = std::collections::BTreeSet::new();
         for s in STARTERS {
             assert!(keys.insert(s.key) && ids.insert(s.id), "{} repeated", s.key);
-            let d = s.definition();
+            let d = s.definition().unwrap();
             assert!(!d.graphics.is_empty() && !d.terminals.is_empty(), "{}", s.key);
             for t in &d.terminals {
                 let on = |v: f64| (v / SYMBOL_GRID_MM - (v / SYMBOL_GRID_MM).round()).abs() < 1e-9;
                 assert!(on(t.at.x) && on(t.at.y), "{} terminal {} off the grid", s.key, t.key);
             }
-            assert_eq!(of_definition(&d).map(|x| x.key), Some(s.key));
+            assert_eq!(of_definition(d).map(|x| x.key), Some(s.key));
             // The origin's hash is the content's.
             let o = d.origin.clone().unwrap();
             let mut bare = d.clone();
