@@ -1,6 +1,8 @@
 # Continuous integration in two levels (owner decision, 2026-11-08; ecad/CLAUDE.md, "Branches and
 # testing"):
-# - Quick check, on every pull request into dev: fmt, clippy and the ECAD workspace tests on Linux.
+# - Quick check, on every pull request into dev: fmt and clippy (all targets, so tests must still
+#   compile) for the ECAD workspace on Linux. Tests run in the worker's scoped checks and at the
+#   QA gate; compiling ~50 test binaries took ~8 min of a ~12 min run (2026-11-08).
 # - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
 #   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
 #   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
@@ -49,9 +51,6 @@ jobs:
       - name: Clippy
         working-directory: ecad
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - name: Tests
-        working-directory: ecad
-        run: cargo test --workspace --all-features
 
   fmt:
     name: Format

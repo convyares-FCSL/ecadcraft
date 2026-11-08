@@ -29,3 +29,8 @@ that already reached `dev`, branch `feature/<name>` again from `dev`.
   while cable references are the only kind. The first step of the components feature replaces
   that with an index from target item to the references that point at it, type-agnostic, so
   component cross-references (coil and contacts, parent and child parts) need no special case.
+- **Before the next feature: fast tests (owner decision, 2026-11-08).** Order: close out the open
+  PRs, take `dev` into `main` through the QA gate, then restructure the tests for rapid
+  development before starting any new feature. CI showed compiling and linking about 50 test
+  executables (one per `tests/*.rs` file, each linking egui and wgpu, with optimisation on) took
+  about 8 minutes, against 26 seconds of running. First candidate: one test executable per crate.

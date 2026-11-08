@@ -43,8 +43,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     change can break. A re-test after a fix runs only what failed.
   - **Reviewer:** once per feature, on the PR into `dev`, and on any brief the tester would cover.
     Reads; runs cargo only for `cargo xtask patches` or to confirm a specific finding.
-  - **CI:** pull requests into `dev` run the fast check (fmt, clippy and the ECAD workspace tests on
-    Linux). The full suite (`cargo xtask ci` with wasm, root CADCraft, Linux and Windows) runs on
+  - **CI:** pull requests into `dev` run the quick check: fmt and clippy with all targets on Linux,
+    so every test must still compile; tests themselves run in the worker's scoped checks. The full suite (`cargo xtask ci` with wasm, root CADCraft, Linux and Windows) runs on
     pull requests into `main`, on pushes to `main`, and by hand (`workflow_dispatch`). Run wasm
     locally only when a change could affect it (dependencies, `cfg(target_arch)`, platform code in
     `ecad-model`/`ecad-store`/`ecad-file`).
