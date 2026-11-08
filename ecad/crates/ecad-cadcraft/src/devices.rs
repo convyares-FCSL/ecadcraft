@@ -317,7 +317,7 @@ pub fn join_labels(
             }
             let labels = s.labels();
             if let Some(l) = labels.iter().find(|l| used.contains(*l)) {
-                return Err(format!("{who} already has terminal {l}."));
+                return Err(format!("{who} already has connection point {l}."));
             }
             Ok(labels)
         }
@@ -574,7 +574,7 @@ pub fn plan_merge(
         let mut cps = BTreeMap::new();
         for ((old, at), label) in shown.iter().zip(labels) {
             if into_labels.contains(&label) || assigned.contains(&label) {
-                return Err(format!("{who} already has terminal {label}."));
+                return Err(format!("{who} already has connection point {label}."));
             }
             assigned.insert(label.clone());
             let nt = match new_terminal.get(old) {
@@ -604,7 +604,7 @@ pub fn plan_merge(
         }
         let label = term.label.clone().unwrap_or_else(|| t.hex());
         if into_labels.contains(&label) || assigned.contains(&label) {
-            return Err(format!("{who} already has terminal {label}."));
+            return Err(format!("{who} already has connection point {label}."));
         }
         assigned.insert(label.clone());
         add(t, label, &mut ops_add, ids, &mut new_terminal);

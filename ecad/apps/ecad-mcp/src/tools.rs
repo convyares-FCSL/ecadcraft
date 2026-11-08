@@ -60,7 +60,7 @@ pub fn definitions(writes: bool) -> Vec<Value> {
         "Save the project to its .ecad file. Refused now: writes are off (start the server with --write)."
     };
     vec![
-        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their terminals, conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
+        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`terminals`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
             "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_history", "description": "The project's transactions in order: seq, id, label, kind (edit, undo of #n, redo of #n), author (`user` or `agent <name>`), time and op count. Page with offset and limit (default: the last 100).",
             "inputSchema": {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 0}}}}),

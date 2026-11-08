@@ -91,12 +91,12 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     button(h, tools::TAB);
     button(h, "Convert to Component");
     assert_eq!(doc(h).components.len(), 1);
-    button(h, "Add Terminal");
-    assert_eq!(prompt(h), "Specify point for terminal 1 on a component or [Name]:");
+    button(h, "Add Connection Point");
+    assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
     type_enter(h, "40,10");
     type_enter(h, "0,10");
     type_enter(h, "");
-    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
+    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Connection Point");
     button(h, "Place Symbol");
     type_enter(h, "R");
     assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
@@ -212,9 +212,9 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     pointer_to(&mut h, on_wire);
     h.run_steps(2);
     assert!(h.query_by_label("Wire (no tag)").is_some());
-    assert!(h.query_by_label("End B: terminal A1 of ").is_none(), "lines are whole");
+    assert!(h.query_by_label("End B: connection point A1 of ").is_none(), "lines are whole");
     let lines = h.state().hover_lines().unwrap().to_vec();
-    assert!(lines.iter().any(|l| l.starts_with("End B: terminal A1 of ")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("End B: connection point A1 of ")), "{lines:?}");
     // Empty space: no tooltip.
     let empty = screen(&h, 60.0, 40.0);
     pointer_to(&mut h, empty);

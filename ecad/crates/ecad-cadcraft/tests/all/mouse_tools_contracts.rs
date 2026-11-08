@@ -222,7 +222,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
             |h| {
                 start(h, "connect");
                 click(h, Vec2::new(19.0, 30.0));
-                assert_eq!(prompt(h), "Select terminal for end B:");
+                assert_eq!(prompt(h), "Select connection point for end B:");
                 let px = h.s.pixel_size();
                 click(h, Vec2::new(40.0 + 4.0 * px, 10.0));
                 typed(h, "");
@@ -607,7 +607,7 @@ fn the_prompt_names_the_default_terminal_name_that_is_used() {
     assert_eq!(label, "2", "smallest unused number on that component");
     assert_eq!(
         shown,
-        format!("Specify point for terminal {label} on a component or [Name]:"),
+        format!("Specify point for connection point {label} on a component or [Name]:"),
         "the prompt promised a different name than the one used"
     );
     h.s.cancel();

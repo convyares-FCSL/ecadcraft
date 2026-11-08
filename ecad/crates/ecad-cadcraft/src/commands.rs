@@ -43,12 +43,12 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addterminal", "Add Terminal", run_addterminal)
+        CommandSpec::new("addterminal", "Add Connection Point", run_addterminal)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
         CommandSpec::new("wire", "Wire", run_wire)
-            .params("{points: [[x,y], …]} (ends on terminals attach)")
+            .params("{points: [[x,y], …]} (ends on connection points attach)")
             .interactive(interact::wire)
             .noundo(),
         CommandSpec::new("connect", "Connect", run_connect)
@@ -333,7 +333,7 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
         let (rid, r) = doc.representation_of_item(item).ok_or("that item is not part of a component")?;
         let Subject::Component(c) = r.subject else { return Err("that item is not part of a component".into()) };
         if r.form != Form::Drawn {
-            return Err("terminals of placed symbols come from their definition".into());
+            return Err("connection points of placed symbols come from their definition".into());
         }
         let t: TerminalId = p.ids.fresh();
         let mut after = r.clone();
@@ -342,7 +342,7 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
             Op::AddTerminal { id: t, terminal: Terminal { component: c, label, key: None } },
             Op::ModifyRepresentation { id: rid, before: r.clone(), after },
         ];
-        p.apply_edit(pg, "addterminal", "Add terminal", ops)?;
+        p.apply_edit(pg, "addterminal", "Add connection point", ops)?;
         Ok(json!({"terminal": t.hex()}))
     })
 }
@@ -413,13 +413,13 @@ fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         let doc = p.ledger.document();
         let conductor = doc.conductors.get(&c).ok_or("no such conductor")?;
         if !doc.terminals.contains_key(&t) {
-            return Err("no such terminal".into());
+            return Err("no such connection point".into());
         }
         let at = ecad_model::derive::terminal_positions(doc, page)
             .into_iter()
             .find(|(x, _, _)| *x == t)
             .map(|(_, _, p)| p)
-            .ok_or("the terminal is not shown on this page")?;
+            .ok_or("the connection point is not shown on this page")?;
         let (route, item, current) = route_and_end(p, page, c, end)?;
         let mut ops = Vec::new();
         if !current.near(at, 1e-12) {

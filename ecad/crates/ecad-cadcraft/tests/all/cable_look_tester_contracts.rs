@@ -64,7 +64,7 @@ struct Fx {
     wires: Vec<ConductorId>,
 }
 
-/// A drawn component at `x` with terminals at y = 0, 5, 10, 15.
+/// A drawn component at `x` with connection points at y = 0, 5, 10, 15.
 fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     let before = h.lines_on(page);
     h.cmdline(line);

@@ -73,7 +73,7 @@ fn new_lines(h: &mut H, page: PageId, line: &str) -> Vec<Handle> {
     h.lines_on(page).into_iter().filter(|x| !before.contains(x)).collect()
 }
 
-/// A drawn component (closed rectangle converted) with terminals at x, y = 0, 5, 10.
+/// A drawn component (closed rectangle converted) with connection points at x, y = 0, 5, 10.
 fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     let lines = new_lines(h, page, line);
     assert_eq!(lines.len(), 4);
@@ -1187,7 +1187,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
         eprintln!("setvar clayer ECAD-CABLES refused: {r:?}");
     }
     g.h.check();
-    // ECAD picks on a fan line: Disconnect, Add Terminal, Convert to Component.
+    // ECAD picks on a fan line: Disconnect, Add Connection Point, Convert to Component.
     for cmd in ["disconnect", "connect"] {
         g.h.s.start(cmd).unwrap();
         let p0 = prompt(&g.h);

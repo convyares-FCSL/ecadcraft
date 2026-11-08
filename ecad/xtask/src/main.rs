@@ -232,12 +232,20 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
 /// upstream change selects the ECAD crates that use it. The files [`affects_everything`] names
 /// (the workspace manifest and lock file, the repository root manifest, cargo configuration and
 /// toolchain files) select every member. Markdown files and files in no package
-/// (docs, tools, CI) select nothing. `meta` is `cargo metadata --format-version 1` output with
+/// (docs, tools, CI) select nothing, except the folders [`READ_BY`] names, which select the
+/// package that reads them. `meta` is `cargo metadata --format-version 1` output with
 /// its resolve graph. The result is sorted by name.
 ///
 /// # Errors
 ///
 /// `meta` has no package list or no resolve graph.
+/// Folders of the workspace that belong to no package but are read into one at build time
+/// (`include_str!`), with the package that reads them: a change there selects that package.
+const READ_BY: &[(&str, &str)] = &[
+    // The demo's command list, embedded by `ecad-mcp`'s demo module (`cargo xtask demo`).
+    ("examples/", "ecad-mcp"),
+];
+
 fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<String>, String> {
     let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
     let repo = norm(repo);
@@ -274,6 +282,15 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             local.iter().filter(|(_, _, dir)| path.starts_with(dir.as_str())).max_by_key(|(_, _, dir)| dir.len());
         if let Some((id, _, _)) = owner {
             hit.insert(id);
+        } else if let Some(rest) = path.strip_prefix(workspace.as_str()) {
+            // A folder read into a package at build time.
+            for (folder, reader) in READ_BY {
+                if rest.starts_with(folder)
+                    && let Some((id, _, _)) = local.iter().find(|(_, name, _)| name == reader)
+                {
+                    hit.insert(id);
+                }
+            }
         }
     }
     // Everything that depends on a selected package, to a fixed point (the graph is finite and
@@ -486,6 +503,8 @@ mod tests {
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
+        // The demo's command list is embedded by ecad-mcp, which nothing depends on.
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 

@@ -916,7 +916,7 @@ fn describe(doc: &Document, r: &Resolved) -> String {
         parts.push(format!("item {}", i.short()));
     }
     if let Some(t) = r.terminal {
-        parts.push(format!("terminal {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
+        parts.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
     }
     if let Some(rep) = r.representation {
         parts.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));

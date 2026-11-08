@@ -211,7 +211,7 @@ fn short(hex: &str) -> &str {
 pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
     match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
-        None => format!("terminal {}", short(&t.hex())),
+        None => format!("connection point {}", short(&t.hex())),
     }
 }
 
@@ -595,7 +595,7 @@ fn component_lines(doc: &Document, c: ComponentId) -> Vec<String> {
     ];
     let terminals: Vec<(TerminalId, String)> =
         doc.terminals_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
-    lines.push(format!("Terminals: {}", terminals.len()));
+    lines.push(format!("Connection points: {}", terminals.len()));
     for (t, label) in terminals {
         let k = doc.ends_at(t).len();
         lines.push(format!("  {label} — {k} wire end{}", if k == 1 { "" } else { "s" }));
@@ -612,7 +612,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
         })
         .unwrap_or_default();
     let mut lines = vec![
-        format!("Terminal {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
+        format!("Connection point {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
         format!("of component {of}"),
         format!("id {}", t.hex()),
     ];
@@ -696,7 +696,7 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
                             .map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
                     })
                     .unwrap_or_default();
-                format!("End {end:?}: terminal {} of {of}", terminal_name(doc, t))
+                format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
             }
             None => format!("End {end:?}: not connected"),
         });
@@ -728,7 +728,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };
     let Subject::Component(c) = rep.subject else { return Err(NOT_OUTLINE.into()) };
     if rep.form != Form::Drawn {
-        return Err("terminals of placed symbols come from their definition".into());
+        return Err("connection points of placed symbols come from their definition".into());
     }
     match doc.items.get(&item).map(|i| &i.kind) {
         Some(ItemKind::Primitive(prim)) => Ok((c, prim.clone())),

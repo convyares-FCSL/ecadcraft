@@ -909,20 +909,42 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
     assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds + 1);
 }
 
-/// The developer tools live in the Project panel's Developer section, folded by default (owner,
-/// 2026-11-08): no ECAD Dev tab; Inspect Project, Debugger and JSON Command from there.
+/// The developer tools live in the Project panel's Developer section, folded by default, and the
+/// section hosts them itself (owner, 2026-11-08): the command field with its reply, the debugger
+/// inline, and Inspect Project as readable text. No ECAD Dev tab, no right-hand debugger panel, no
+/// floating command window.
 #[test]
-fn the_developer_section_is_folded_and_runs_the_developer_tools() {
-    let mut h = build(trial(), None);
+fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
+    let deltas: Deltas = Arc::default();
+    let mut h = build(trial(), Some(deltas.clone()));
     assert!(h.query_by_label("ECAD Dev").is_none(), "no ECAD Dev tab");
-    assert!(h.query_by_label("Debugger").is_none(), "folded by default");
+    assert!(h.query_by_label(ecad_trial::developer::FIELD).is_none(), "folded by default");
     click(&mut h, project_panel::DEVELOPER);
+    assert!(h.state().developer.open);
     assert!(h.query_by_label("Export Inspector Snapshot").is_none(), "only with --snapshots");
-    click(&mut h, "Debugger");
-    assert!(h.state().debugger.open, "the debugger opens");
-    click(&mut h, "JSON Command");
-    assert!(h.state().command_open, "the command window opens");
-    let n = h.state().cad.session.log.len();
-    click(&mut h, "Inspect Project");
-    assert!(h.state().cad.session.log.len() > n, "Inspect Project answers at the command line");
+    // The command field: Run shows the reply under it; one transaction.
+    let before = head(&mut h);
+    h.state_mut().command = r#"wire {"points":[[0,0],[40,0]]}"#.into();
+    h.run_steps(1);
+    click(&mut h, "Run");
+    assert_eq!(head(&mut h), before + 1, "the line ran");
+    let reply = h.state().developer.reply.join(
+        "
+",
+    );
+    assert!(reply.contains("conductor"), "the reply is shown in the section: {reply}");
+    // The debugger, inline.
+    click(&mut h, ecad_trial::developer::DEBUGGER);
+    assert!(h.state().debugger.open, "{:?} {:?}", h.state().developer.body, h.state().developer.open);
+    assert!(h.query_by_label("ECAD debugger (read-only)").is_some(), "drawn in the section");
+    h.run_steps(3);
+    let shot = take(&h, &deltas, "016-developer.png");
+    if shots().is_some() {
+        assert!(shot.is_some(), "016-developer.png needs a wgpu adapter");
+    }
+    // Inspect Project: readable, in the section.
+    click(&mut h, ecad_trial::developer::INSPECT);
+    let text = h.state().developer.inspect.clone().unwrap_or_default();
+    assert!(text.contains("Pages (1):") && text.contains("Counts:") && text.contains("1 conductors"), "{text}");
+    assert_eq!(head(&mut h), before + 1, "reading records nothing");
 }

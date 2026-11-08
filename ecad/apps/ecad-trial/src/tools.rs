@@ -7,14 +7,14 @@
 //! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
 //!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
 //!   Component converts the current selection at once, or asks to select objects.
-//! - **Run** buttons type the command into the same path as the ECAD command window, so the
+//! - **Run** buttons type the command into the same path as the ECAD command field, so the
 //!   command's own validation, transaction and undo apply.
-//! - **Template** buttons open the ECAD command window with an editable command line and a short
+//! - **Template** buttons open the ECAD command field with an editable command line and a short
 //!   note on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
 //! - **Trial** buttons act in the trial itself: Preview Reference (brief 016) and the **ECAD Dev**
-//!   tab's developer tools (the debugger, inspector snapshots and the command window), which
+//!   tab's developer tools (now the Project panel's Developer section: the command field, the debugger and snapshots), which
 //!   replaced the trial's top banner (owner, 2026-11-08).
 //!
 //! The command window stays because CADCraft's own command line takes a space as Enter: it can
@@ -45,7 +45,7 @@ pub enum Kind {
     Start(&'static str),
     /// Run this command line now (it needs no values beyond the selection).
     Run(&'static str),
-    /// Open the ECAD command window with a template.
+    /// Open the ECAD command field with a template.
     Template,
     /// Handled by the trial itself (no command).
     Trial,
@@ -83,8 +83,8 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.addterminal",
         group: "Components",
-        label: "Add Terminal",
-        tooltip: "Click on a component's outline to add terminals; Enter to finish",
+        label: "Add Connection Point",
+        tooltip: "Click on a component's outline to add connection points; Enter to finish",
         kind: Kind::Start("addterminal"),
     },
     Tool {
@@ -112,14 +112,14 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.wire",
         group: "Wiring",
         label: "Wire",
-        tooltip: "Click points to draw a wire; ends on terminals attach; Enter to finish",
+        tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
     },
     Tool {
         id: "ecad.connect",
         group: "Wiring",
         label: "Connect",
-        tooltip: "Click a wire near its end, then a terminal",
+        tooltip: "Click a wire near its end, then a connection point",
         kind: Kind::Start("connect"),
     },
     Tool {
@@ -189,21 +189,21 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
-        tooltip: "Set a property such as the tag, or a cable's designation or type (opens the ECAD command window)",
+        tooltip: "Set a property such as the tag, or a cable's designation or type (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.cableadd",
         group: "Wiring",
         label: "Add to Cable",
-        tooltip: "Group wires into a cable (opens the ECAD command window)",
+        tooltip: "Group wires into a cable (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.delete",
         group: "Edit",
         label: "Delete Electrical Object",
-        tooltip: "Delete a component, wire or cable with its connections (opens the ECAD command window)",
+        tooltip: "Delete a component, wire or cable with its connections (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
@@ -231,7 +231,7 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.dev.command",
         group: DEV_GROUP,
         label: "JSON Command",
-        tooltip: "Open the ECAD command window: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
+        tooltip: "Open the ECAD command field: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
         kind: Kind::Trial,
     },
 ];

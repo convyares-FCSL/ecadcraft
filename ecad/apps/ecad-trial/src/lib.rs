@@ -22,7 +22,7 @@
 //! - optional export of inspector snapshots (`--snapshots <dir>`), which are diagnostic files, not
 //!   saved projects;
 //! - an **ECAD** tab in CADCraft's Tool Sets panel ([`tools`]): buttons start the click-based
-//!   forms of the ECAD commands (brief 008), run a command, or open the ECAD command window with a
+//!   forms of the ECAD commands (brief 008), run a command, or open the ECAD command field with a
 //!   template; and an **ECAD Dev** tab beside it: the debugger, snapshot export and the ECAD
 //!   command window;
 //! - terminal and wire-end marks over ECAD pages (drawn by CADCraft from the project's overlay),
@@ -36,7 +36,7 @@
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
 //! written), autosave, the control channel, saved window or profile state and ECAD menus
 //! (CADCraft shows no top-level menu supplied by an embedder). The JSON forms of ECAD commands are
-//! typed in the ECAD command window, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
+//! typed in the ECAD command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
 //! own command line takes a space as Enter, so it cannot take a JSON argument with spaces); a bare
 //! command name starts its interactive form in either.
 //!
@@ -54,6 +54,7 @@
 )]
 
 pub mod debugger;
+pub mod developer;
 pub mod devices_panel;
 pub mod preview;
 pub mod project_panel;
@@ -182,9 +183,9 @@ pub fn status_line(s: &Status) -> String {
 const INTRO: &[&str] = &[
     "ECAD trial (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
 New, Open, Save and Save As.",
-    "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Terminal, Place Symbol, Wire, Connect and \
+    "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Connection Point, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
-    "JSON forms go in the ECAD command window (PROJECT panel > Developer > JSON Command; the command line below takes \
+    "JSON forms go in the ECAD command field (PROJECT panel > Developer, at the top; the command line below takes \
 a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
     "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
@@ -280,14 +281,15 @@ pub struct Trial {
     /// A message waiting in a dialog.
     notice: Option<String>,
     snapshot_count: u32,
-    /// The ECAD command window's field (whole lines, spaces included).
+    /// The ECAD command field's field (whole lines, spaces included).
     pub command: String,
     /// What to fill in, after an ECAD Tool Sets button put a template in the command field.
     command_hint: Option<&'static str>,
     /// Give the command field keyboard focus on the next frame.
     focus_command: bool,
-    /// The ECAD command window is open (Developer > JSON Command, or a template button).
-    pub command_open: bool,
+    /// The Project panel's Developer section: the command field's reply, the inline debugger and
+    /// the project summary.
+    pub developer: developer::Developer,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
     /// The Project panel (brief 016).
@@ -435,7 +437,7 @@ impl Trial {
             command: String::new(),
             command_hint: None,
             focus_command: false,
-            command_open: false,
+            developer: developer::Developer::default(),
             debugger: Debugger::default(),
             panel: ProjectPanel::default(),
             preview: None,
@@ -936,7 +938,7 @@ impl Trial {
                 self.command = line;
                 self.command_hint = Some(hint);
                 self.focus_command = true;
-                self.command_open = true;
+                self.developer.open = true;
                 Ok(())
             }
             tools::Kind::Trial => self.trial_tool(id),
@@ -960,7 +962,7 @@ impl Trial {
                 r.map(|_| ())
             }
             "ecad.dev.command" => {
-                self.command_open = true;
+                self.developer.open = true;
                 self.focus_command = true;
                 Ok(())
             }
@@ -1157,11 +1159,108 @@ impl Trial {
         self.after_logic();
     }
 
-    /// Open or close the debugger panel.
+    /// Show or hide the debugger, inline in the Project panel's Developer section (which unfolds).
     pub fn toggle_debugger(&mut self) {
         self.debugger.open = !self.debugger.open;
         if self.debugger.open {
+            self.developer.open = true;
+            self.developer.body = developer::Body::Debugger;
             self.refresh_debugger(false);
+        } else if self.developer.body == developer::Body::Debugger {
+            self.developer.body = developer::Body::None;
+        }
+    }
+
+    /// **Inspect Project** in the Developer section: a readable summary of the project (pages,
+    /// devices, cables, counts, file and transaction), shown there. Read only.
+    pub fn inspect_project(&mut self) {
+        self.developer.open = true;
+        self.developer.body = developer::Body::Inspect;
+        let Some(p) = self.project.clone() else {
+            self.developer.inspect = Some("No ECAD project is open.".into());
+            return;
+        };
+        let file = self.status().map(|s| status_line(&s)).unwrap_or_default();
+        let text = p.read(&mut self.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let mut out =
+                vec![file, format!("Transaction {} (saved through {}).", p.ledger.head(), p.ledger.persisted())];
+            out.push(String::new());
+            out.push(format!("Pages ({}):", doc.page_order.len()));
+            for (i, page) in doc.page_order.iter().enumerate() {
+                let title = doc.pages.get(page).map(|x| x.title.as_str()).unwrap_or_default();
+                let items = doc.items.values().filter(|it| it.page == *page).count();
+                out.push(format!("  {:>3}  {title}  ({items} items)  {}", i + 1, page.hex()));
+            }
+            let devices = ecad_cadcraft::devices::devices(doc, None);
+            out.push(String::new());
+            out.push(format!("Devices ({}):", devices.len()));
+            for c in &devices {
+                out.push(format!(
+                    "  {:<8} {}  ({})  {}",
+                    ecad_cadcraft::devices::tag_words(doc, *c),
+                    ecad_cadcraft::devices::description(doc, *c),
+                    ecad_cadcraft::devices::pages_words(doc, *c),
+                    c.hex()
+                ));
+            }
+            out.push(String::new());
+            out.push(format!("Cables ({}):", doc.cables.len()));
+            for (k, cable) in &doc.cables {
+                out.push(format!(
+                    "  {:<8} {} members  {}",
+                    ecad_cadcraft::views::cable_title(doc, *k),
+                    cable.members.len(),
+                    k.hex()
+                ));
+            }
+            out.push(String::new());
+            out.push(format!(
+                "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
+                doc.components.len(),
+                doc.terminals.len(),
+                doc.conductors.len(),
+                doc.items.len(),
+                doc.representations.len(),
+                doc.definitions.len()
+            ));
+            out.join("\n")
+        });
+        self.developer.inspect = Some(text.unwrap_or_else(|e| format!("The project could not be read: {e}")));
+    }
+
+    /// Act on what the Developer section asked for.
+    fn developer_action(&mut self, a: developer::Action) {
+        match a {
+            developer::Action::Run(line) => {
+                let n = self.cad.session.log.len();
+                let failed = self.submit_command(&line);
+                self.developer.reply = self
+                    .cad
+                    .session
+                    .log
+                    .iter()
+                    .skip(n)
+                    .filter(|l| !l.starts_with("Command: "))
+                    .take(40)
+                    .cloned()
+                    .collect();
+                if failed.is_some() {
+                    self.command = line; // kept for correction
+                }
+            }
+            developer::Action::ToggleDebugger => self.toggle_debugger(),
+            developer::Action::Inspect => self.inspect_project(),
+            developer::Action::Snapshot => {
+                let _ = self.trial_tool("ecad.dev.snapshot");
+            }
+            developer::Action::Debugger(a) => {
+                let close = a == debugger::Action::Close;
+                self.debugger_action(a);
+                if close {
+                    self.developer.body = developer::Body::None;
+                }
+            }
         }
     }
 
@@ -1181,22 +1280,12 @@ impl Trial {
     }
 
     /// Lay out the harness dialogs, the debugger (when open), the Project panel, CADCraft's window
-    /// contents, the ECAD command window and the preview (when open).
+    /// contents, the ECAD command field and the preview (when open).
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         self.dialogs(ui.ctx());
-        if self.debugger.open {
+        if self.debugger.open && self.developer.open && self.developer.body == developer::Body::Debugger {
             // The snapshot is taken (and the project released) before anything is drawn.
             self.refresh_debugger(false);
-            let action = egui::Panel::right("ecad_debugger")
-                .resizable(true)
-                .default_size(460.0)
-                .min_size(280.0)
-                .max_size(620.0)
-                .show(ui, |ui| self.debugger.show(ui))
-                .inner;
-            if let Some(a) = action {
-                self.debugger_action(a);
-            }
         }
         self.project_panel(ui);
         self.sync_props();
@@ -1204,7 +1293,6 @@ impl Trial {
         self.take_props();
         self.drop_frame_selection();
         self.handle_tools();
-        self.command_window(ui.ctx());
         self.sheet_windows(ui.ctx());
         self.preview_window(ui.ctx());
         self.symbol_search(ui.ctx());
@@ -1423,25 +1511,49 @@ impl Trial {
         self.refresh_panel();
         let header = self.header();
         let t = cadcraft_ui_egui::theme::Tokens::get();
-        let actions = if self.panel.collapsed {
+        let (actions, dev) = if self.panel.collapsed {
             egui::Panel::left("ecad_project_strip")
                 .resizable(false)
                 .exact_size(project_panel::STRIP_W)
                 .frame(egui::Frame::NONE.fill(t.chrome))
                 .show(ui, |ui| self.panel.strip(ui));
-            Vec::new()
+            (Vec::new(), Vec::new())
         } else {
+            let running = self.cad.session.running.is_some();
+            let project = header.name.is_some();
             egui::Panel::left("ecad_project")
                 .resizable(true)
                 .default_size(220.0)
                 .min_size(160.0)
-                .max_size(360.0)
+                // Wide enough for the debugger when it is shown inline.
+                .max_size(720.0)
                 .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(6, 4)))
-                .show(ui, |ui| self.panel.show(ui, &header))
+                .show(ui, |ui| {
+                    let dev = developer::show(
+                        ui,
+                        developer::Parts {
+                            dev: &mut self.developer,
+                            command: &mut self.command,
+                            hint: self.command_hint,
+                            focus: &mut self.focus_command,
+                            debugger: &mut self.debugger,
+                            running,
+                            snapshots: header.snapshots,
+                            project,
+                        },
+                    );
+                    (self.panel.show(ui, &header), dev)
+                })
                 .inner
         };
+        if self.command.trim().is_empty() {
+            self.command_hint = None;
+        }
         for a in actions {
             self.panel_action(a);
+        }
+        for a in dev {
+            self.developer_action(a);
         }
     }
 
@@ -1489,10 +1601,6 @@ impl Trial {
             A::SaveAs => self.request_save_as(),
             A::CloseProject => self.close_project(),
             A::RenameInBox(page) => self.open_rename_box(Some(page)),
-            A::Tool(id) => {
-                // Refusals are echoed at the command line by the command path itself.
-                let _ = self.tool(id);
-            }
             A::GotoSymbol(rep) => {
                 let _ = self.goto_symbol(rep);
             }
@@ -1997,56 +2105,6 @@ impl Trial {
                 }
             }
             None => {}
-        }
-    }
-
-    /// The ECAD command window (Developer > JSON Command, and the template buttons): one line run
-    /// as typed, `name {json}` included, with the template's note under it.
-    fn command_window(&mut self, ctx: &egui::Context) {
-        if !self.command_open {
-            return;
-        }
-        let mut open = true;
-        let mut submit: Option<String> = None;
-        egui::Window::new("ECAD command")
-            .id(egui::Id::unique("ecad.command"))
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_width(560.0)
-            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -150.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Command:");
-                    let field = ui.add(
-                        egui::TextEdit::singleline(&mut self.command)
-                            .id(egui::Id::unique("ecad.command.field"))
-                            .hint_text("wire {\"points\":[[0,0],[40,0]]}")
-                            .desired_width(ui.available_width() - 50.0),
-                    );
-                    let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let running = self.cad.session.running.is_some();
-                    if (ui.button("Run").clicked() || enter) && (running || !self.command.trim().is_empty()) {
-                        submit = Some(std::mem::take(&mut self.command));
-                        field.request_focus();
-                    } else if std::mem::take(&mut self.focus_command) {
-                        field.request_focus();
-                    }
-                });
-                if self.command.trim().is_empty() && submit.is_none() {
-                    self.command_hint = None;
-                }
-                if let Some(hint) = self.command_hint {
-                    ui.label(RichText::new(hint).small());
-                }
-            });
-        if !open {
-            self.command_open = false;
-        }
-        if let Some(text) = submit
-            && self.submit_command(&text).is_some()
-        {
-            self.command = text; // keep it for correction
         }
     }
 

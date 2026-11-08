@@ -484,7 +484,7 @@ pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: Represen
             crate::slash::name_list(many)
         )),
     }
-    out.push("Connect each wire's free end to its terminal with Connect.".into());
+    out.push("Connect each wire's free end to its connection point with Connect.".into());
     out
 }
 
