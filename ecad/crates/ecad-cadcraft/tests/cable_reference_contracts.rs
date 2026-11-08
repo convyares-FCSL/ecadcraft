@@ -958,3 +958,101 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     assert_eq!(v["text"], "/1.2");
     assert!(took < std::time::Duration::from_secs(120), "continuing {n} wires took {took:?}");
 }
+
+// ---------------------------------------------------------------- the flag's side (fix round 1)
+
+/// The drawn flag outline and text anchor of `page`'s reference end of `cable` (traditional view).
+fn drawn_flag(h: &mut H, page: PageId, cable: CableId) -> (Vec<Pt>, Pt) {
+    use ecad_cadcraft::look::{Role, Shape};
+    let doc = h.doc();
+    let drawings = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    let d = drawings.get(&cable).expect("the cable is drawn");
+    let flag = d.parts.iter().find_map(|p| match (&p.role, &p.shape) {
+        (Role::Flag, Shape::Path { points, .. }) => Some(points.clone()),
+        _ => None,
+    });
+    let text = d.parts.iter().find_map(|p| match (&p.role, &p.shape) {
+        (Role::ReferenceText, Shape::Text { at, .. }) => Some(*at),
+        _ => None,
+    });
+    (flag.expect("a flag"), text.expect("a reference text"))
+}
+
+/// Design 009 §7.2 with design 010 §6.2: the flag of `page`'s reference end points along `u`, away
+/// from the wires; only its flat side's margin (h/2) is behind the point, the text is wholly on
+/// the far side, and the pick box follows the flag (its mirror image, among the wires, picks
+/// nothing).
+fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
+    let doc = h.doc();
+    let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
+    let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
+    // The wires leave the point the other way.
+    let ends = ecad_model::derive::route_ends_by_page(&doc);
+    let routes: Vec<Pt> = doc.cables[&cable]
+        .members
+        .iter()
+        .filter_map(|x| ends.get(&(x.conductor, page)).copied())
+        .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
+        .collect();
+    assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
+
+    let (flag, text_at) = drawn_flag(h, page, cable);
+    let hh = ecad_cadcraft::look::LABEL_HEIGHT;
+    let w = ecad_cadcraft::look::font_width(&m.text);
+    for p in &flag {
+        assert!(along(*p) >= -0.5 * hh - 1e-9, "flag point {p:?} reaches back into the wires ({u:?})");
+    }
+    let reach = flag.iter().map(|p| along(*p)).fold(f64::MIN, f64::max);
+    assert!(reach >= hh, "the flag points away from the wires ({u:?}): reach {reach}");
+    let corners = [text_at, Pt::new(text_at.x + w, text_at.y), Pt::new(text_at.x, text_at.y + hh)];
+    for c in corners.iter().chain([Pt::new(text_at.x + w, text_at.y + hh)].iter()) {
+        assert!(along(*c) >= -1e-9, "the text {:?} sits away from the wires ({u:?}): corner {c:?}", m.text);
+    }
+    let centre = Pt::new(text_at.x + 0.5 * w, text_at.y + 0.5 * hh);
+    // Among the wires, 1.5 h behind the point (beyond the flat side's h/2 margin).
+    let mirror = Pt::new(m.at.x - 1.5 * hh * u.x, m.at.y - 1.5 * hh * u.y);
+    assert_eq!(ecad_cadcraft::references::reference_at(&doc, page, centre, 0.1), Some(m.reference), "pick the text");
+    assert_eq!(ecad_cadcraft::references::reference_at(&doc, page, mirror, 0.1), None, "the box follows the flag");
+}
+
+/// Fixture R's page 1: the wires come from the left, the flag points right.
+#[test]
+fn the_flag_points_right_when_the_wires_come_from_the_left() {
+    let (mut r, _) = continued();
+    assert_flag_away(&mut r.h, r.supply, r.c1, Pt::new(1.0, 0.0));
+}
+
+/// Fixture R's page 2 (the continued end): the wires leave to the right, the flag points left and
+/// `/1.2` sits left of the point, clear of the wires.
+#[test]
+fn the_flag_points_left_when_the_wires_leave_to_the_right() {
+    let (mut r, _) = continued();
+    assert_flag_away(&mut r.h, r.field, r.c1, Pt::new(-1.0, 0.0));
+}
+
+/// Three vertical wires (x = 0, 5, 10, y = 0 to 60) slashed into cable C1, with a reference at `at`.
+fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    for x in [0.0, 5.0, 10.0] {
+        h.run("wire", json!({"points": [[x, 0.0], [x, 60.0]]})).unwrap();
+    }
+    let c1: CableId =
+        id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
+    h.run("cableref", json!({"cable": c1.hex(), "at": at})).unwrap();
+    (h, page, c1)
+}
+
+/// Wires coming from below: the flag sits above the point and points up.
+#[test]
+fn the_flag_points_up_when_the_wires_come_from_below() {
+    let (mut h, page, c1) = vertical_cable([5.0, 65.0]);
+    assert_flag_away(&mut h, page, c1, Pt::new(0.0, 1.0));
+}
+
+/// Wires coming from above: the flag sits below the point and points down.
+#[test]
+fn the_flag_points_down_when_the_wires_come_from_above() {
+    let (mut h, page, c1) = vertical_cable([5.0, -5.0]);
+    assert_flag_away(&mut h, page, c1, Pt::new(0.0, -1.0));
+}
