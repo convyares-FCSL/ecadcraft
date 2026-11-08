@@ -73,6 +73,9 @@ fn row(variant: &str, open_ms: f64) -> Row {
             draw_wire_ms: 1.5,
             switch_first_ms: 2.5,
             switch_back_ms: 0.5,
+            place_ms: 1.0,
+            join_ms: 1.0,
+            tag_ms: 0.5,
         },
     }
 }

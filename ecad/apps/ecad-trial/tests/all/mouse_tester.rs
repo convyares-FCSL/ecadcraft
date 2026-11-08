@@ -23,7 +23,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 /// Texture updates in order: `Some(image)` sets, `None` frees.
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
+pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).
 struct Collect(Deltas);
@@ -38,7 +38,7 @@ impl egui_kittest::TestRenderer for Collect {
     }
 }
 
-fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
+pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
@@ -62,13 +62,13 @@ fn harness() -> Harness<'static, Trial> {
     harness_with(None)
 }
 
-fn doc(h: &mut Harness<'static, Trial>) -> Document {
+pub(crate) fn doc(h: &mut Harness<'static, Trial>) -> Document {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
 }
 
-fn head(h: &mut Harness<'static, Trial>) -> u64 {
+pub(crate) fn head(h: &mut Harness<'static, Trial>) -> u64 {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
@@ -82,16 +82,16 @@ fn unsaved(h: &mut Harness<'static, Trial>) -> (bool, Vec<bool>) {
     (project, tabs)
 }
 
-fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
+pub(crate) fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("canvas laid out").to_screen(Vec2::new(x, y))
 }
 
-fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
+pub(crate) fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
     h.event(Event::PointerMoved(at));
     h.run_steps(2);
 }
 
-fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
+pub(crate) fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
     pointer_to(h, at);
     for pressed in [true, false] {
         h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
@@ -99,7 +99,7 @@ fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
     h.run_steps(2);
 }
 
-fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
+pub(crate) fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
     if !text.is_empty() {
         h.event(Event::Text(text.into()));
         h.run_steps(1);
@@ -108,16 +108,16 @@ fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
     h.run_steps(2);
 }
 
-fn button(h: &mut Harness<'static, Trial>, label: &str) {
+pub(crate) fn button(h: &mut Harness<'static, Trial>, label: &str) {
     h.get_by_label(label).click();
     h.run_steps(3);
 }
 
-fn prompt(h: &Harness<'static, Trial>) -> String {
+pub(crate) fn prompt(h: &Harness<'static, Trial>) -> String {
     h.state().cad.session.current_prompt().map(|p| p.display()).unwrap_or_default()
 }
 
-fn ok(h: &mut Harness<'static, Trial>, line: &str) {
+pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
     let e = h.state_mut().submit_command(line);
     assert!(e.is_none(), "{line}: {e:?}");
     h.run_steps(2);
@@ -522,7 +522,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 
 /// Render the harness's last frame with egui-wgpu (the canvas uses its CPU path in tests, so the
 /// frame is plain egui shapes) and save it as PNG. `None` when no adapter is available.
-fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());

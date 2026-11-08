@@ -16,7 +16,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 11] = [
+const COLUMNS: [(&str, &str); 14] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -28,9 +28,12 @@ const COLUMNS: [(&str, &str); 11] = [
     ("draw_wire_ms", "draw wire ms"),
     ("switch_first_ms", "1st view ms"),
     ("switch_back_ms", "back ms"),
+    ("place_ms", "place ms"),
+    ("join_ms", "join ms"),
+    ("tag_ms", "tag ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 11] {
+fn values(m: &Measured) -> [Option<f64>; 14] {
     [
         Some(m.open_ms),
         Some(m.derive_ms),
@@ -43,6 +46,9 @@ fn values(m: &Measured) -> [Option<f64>; 11] {
         Some(m.draw_wire_ms),
         Some(m.switch_first_ms),
         Some(m.switch_back_ms),
+        Some(m.place_ms),
+        Some(m.join_ms),
+        Some(m.tag_ms),
     ]
 }
 
@@ -61,7 +67,7 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>12} {:>8}\n",
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>12} {:>8} {:>9} {:>8} {:>7}\n",
         "tier",
         "history",
         "file MB",
@@ -76,12 +82,15 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         "move+wires ms",
         "draw wire ms",
         "1st view ms",
-        "back ms"
+        "back ms",
+        "place ms",
+        "join ms",
+        "tag ms"
     );
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
             r.tier,
             r.variant,
             mb(m.bytes),
@@ -97,6 +106,9 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             cell(Some(m.draw_wire_ms), 13, 2),
             cell(Some(m.switch_first_ms), 12, 2),
             cell(Some(m.switch_back_ms), 8, 2),
+            cell(Some(m.place_ms), 9, 2),
+            cell(Some(m.join_ms), 8, 2),
+            cell(Some(m.tag_ms), 7, 2),
         ));
     }
     out.push_str(&format!(
@@ -104,7 +116,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          on the opened document. draw move, move+wires and draw wire (the draw edit columns): one edit on \
          page 1 made through the engine in a headless CADCraft session. 1st view and back (switch page): \
          with page 1 shown, `openpage` of a page not viewed before, then back to page 1; median over up \
-         to 10 pages spread over the project. Peak memory is not measured.\n"
+         to 10 pages spread over the project. place, join and tag (brief 018): a starter coil placed as a \
+         new device, a NO contact added to it, and its tag renamed. Peak memory is not measured.\n"
     ));
     out
 }
@@ -186,6 +199,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "draw_wire_ms": m.draw_wire_ms,
                 "switch_first_ms": m.switch_first_ms,
                 "switch_back_ms": m.switch_back_ms,
+                "place_ms": m.place_ms,
+                "join_ms": m.join_ms,
+                "tag_ms": m.tag_ms,
             })
         }).collect::<Vec<_>>(),
     })

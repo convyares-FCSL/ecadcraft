@@ -417,6 +417,9 @@ impl Trial {
             *shown = true;
             self.lwdisplay_set = Some(true);
         }
+        // Symbols snap to the 5 mm terminal grid of ECAD pages (design 018 §5.3, owner answer
+        // Q8); F9 turns it off as in CADCraft.
+        self.cad.session.settings.snapmode = true;
     }
 
     /// Save the project to its file (Save As when it has none yet).

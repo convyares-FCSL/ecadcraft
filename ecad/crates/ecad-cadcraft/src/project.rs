@@ -438,6 +438,15 @@ fn base_drawing() -> Drawing {
         l.color = cadcraft_engine::doc::color::Color::Index(8);
         d.layers.push(l);
     }
+    // The starter symbols' terminals lie on a 5 mm grid (design 018 §4, `ecad.symbol-grid`): snap
+    // and grid spacing of an ECAD page follow it.
+    let grid = cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(
+        crate::symbols::SYMBOL_GRID_MM,
+        crate::symbols::SYMBOL_GRID_MM,
+        0.0,
+    ));
+    d.header.set("SNAPUNIT", grid.clone());
+    d.header.set("GRIDUNIT", grid);
     d
 }
 
@@ -1701,6 +1710,10 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
             _ => return None,
         }
     }
