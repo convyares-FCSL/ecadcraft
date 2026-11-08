@@ -36,6 +36,8 @@ pub enum Kind {
     Run(&'static str),
     /// Prefill the Command field with a template.
     Template,
+    /// Open or close the symbol search window (brief 018, [`crate::search`]).
+    Search,
 }
 
 /// One button: a stable, namespaced id, its group, label and tooltip.
@@ -51,6 +53,13 @@ pub struct Tool {
 
 /// The buttons, in panel order. Only commands that exist (`ecad_cadcraft::commands::specs`).
 pub const TOOLS: &[Tool] = &[
+    Tool {
+        id: "ecad.findsymbol",
+        group: "Components",
+        label: "Find Symbol",
+        tooltip: "Type a few letters (coil, contact, fuse, -Q, -K01) and click a symbol or device to place it",
+        kind: Kind::Search,
+    },
     Tool {
         id: "ecad.convertcomponent",
         group: "Components",
@@ -69,8 +78,22 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.place",
         group: "Components",
         label: "Place Symbol",
-        tooltip: "Place coil symbols by clicking; R then Enter rotates, M then Enter mirrors; Enter to finish",
+        tooltip: "Type a symbol (coil, no, nc, mcb1…) or Enter for the last one, then click to place devices; R rotates, D adds to a device, T sets the tag; Enter to finish",
         kind: Kind::Start("place"),
+    },
+    Tool {
+        id: "ecad.deviceprops",
+        group: "Components",
+        label: "Device Properties",
+        tooltip: "Click a device to see and change its tag, description, maker and part number",
+        kind: Kind::Start("deviceprops"),
+    },
+    Tool {
+        id: "ecad.devicedelete",
+        group: "Components",
+        label: "Delete Device",
+        tooltip: "Click a device to delete it with every symbol on every page (asks first)",
+        kind: Kind::Start("devicedelete"),
     },
     Tool {
         id: "ecad.wire",
@@ -275,8 +298,9 @@ impl Picked {
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
-                // A cable reference's text names its cable (brief 010).
-                Some(Mapped::RefText(r)) => {
+                // A cable reference's text names its cable (brief 010); a device's tag text or
+                // terminal label names its device (brief 018).
+                Some(Mapped::RefText(r) | Mapped::Tag(r)) => {
                     if let Some(r) = doc.representations.get(&r) {
                         subjects.insert(r.subject);
                     }

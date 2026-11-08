@@ -98,7 +98,7 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
     button(h, "Place Symbol");
     type_enter(h, "R");
-    assert_eq!(prompt(h), "Specify insertion point (rotation 90, not mirrored) or [Rotate/Mirror]:");
+    assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
     // The coil follows the cursor before the click.
     let at = screen(h, 100.0, 0.0);
     pointer_to(h, at);

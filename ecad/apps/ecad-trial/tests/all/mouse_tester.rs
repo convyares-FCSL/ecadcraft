@@ -264,7 +264,8 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     let (right, left) = (edge(&j, 40.0), edge(&j, 0.0));
     ok(&mut j, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
     ok(&mut j, &format!("addterminal {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
-    ok(&mut j, r#"place {"at":[100,0],"rotation":90}"#);
+    // Place Symbol by clicks places the starter coil, a device (brief 018).
+    ok(&mut j, r#"place {"symbol":"coil","at":[100,0],"rotation":90}"#);
     ok(&mut j, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let mut by_clicks = doc(&mut h);
     // Clicked bends land within a pixel of 70,10 and 70,0; put them on the grid to compare.

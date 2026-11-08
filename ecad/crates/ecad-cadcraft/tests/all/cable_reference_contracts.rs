@@ -423,7 +423,7 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     let lines = r.h.p(|p| hover_lines(p, u, text)).unwrap();
     assert_eq!(lines[0], "Cable reference  /2.1");
     assert!(lines.contains(&"Other end: page 2 \"Field\", column 1, 3 wires".to_string()), "{lines:?}");
-    assert_eq!(lines.iter().filter(|l| l.contains("-> K2:")).count(), 3, "{lines:?}");
+    assert_eq!(lines.iter().filter(|l| l.contains("-> -K02:")).count(), 3, "{lines:?}");
     let v = r.h.run("cablegoto", json!({"reference": rid.hex()})).unwrap();
     let fid = reference_on(&mut r.h, r.field);
     assert_eq!(v["reference"], json!(fid.hex()));

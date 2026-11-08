@@ -19,6 +19,7 @@
 //! This module adds no ECAD meaning: no numbering beyond the default terminal name, no new
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
+mod devices;
 mod forms;
 mod refs;
 
@@ -39,9 +40,8 @@ use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
-pub(crate) use forms::{
-    addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, place, wire,
-};
+pub(crate) use devices::{devicedelete, deviceprops, place};
+pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
@@ -446,9 +446,18 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::Fan(_) if view.map.reference_of(h).is_some() => {
             crate::references::hover_lines(doc, view.map.reference_of(h)?)?
         }
+        // A device's tag text or terminal label (brief 018): the device's lens.
+        Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
+            Subject::Component(c) => crate::devices::hover_lines(doc, c, r),
+            _ => return None,
+        },
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
-            (_, r) => match r.subject {
+            (rid, r) => match r.subject {
+                // A device (a tagged component, brief 018): design 018 §6.4's lens.
+                Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
+                    crate::devices::hover_lines(doc, c, rid)
+                }
                 Subject::Component(c) => component_lines(doc, c),
                 Subject::Conductor(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
@@ -699,7 +708,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let doc = p.ledger.document();
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
-        Some(Mapped::Marker(..)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Marker(..) | Mapped::Tag(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };

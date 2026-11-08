@@ -18,8 +18,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op,
-    Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger,
+    LengthUnit, Op, Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
@@ -40,6 +40,10 @@ pub enum Mapped {
     /// The derived text of a cable reference (brief 010), by its reference representation:
     /// computed, not an item. Erasing it erases its reference; other edits are refused.
     RefText(RepresentationId),
+    /// A device's derived tag text or terminal label beside one of its symbols (brief 018), by
+    /// the symbol representation: computed, not an item. Erasing it erases its representation;
+    /// other edits of it alone are refused.
+    Tag(RepresentationId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -60,6 +64,8 @@ pub struct HandleMap {
     quiet: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
+    /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
+    tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
 }
 
 impl HandleMap {
@@ -134,6 +140,18 @@ impl HandleMap {
         self.refs.insert(reference, h);
         self.by_handle.insert(h, Mapped::RefText(reference));
     }
+    /// The handle of a derived tag text or terminal label.
+    pub fn tag_text(&self, rep: RepresentationId, of: crate::devices::TextOf) -> Option<Handle> {
+        self.tags.get(&(rep, of)).copied()
+    }
+    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
+        self.tags.insert((rep, of), h);
+        self.by_handle.insert(h, Mapped::Tag(rep));
+    }
+    /// Every handle of a tag text or terminal label.
+    pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.tags.values().copied()
+    }
     /// Every handle of a reference text.
     pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.refs.values().copied()
@@ -150,11 +168,13 @@ impl HandleMap {
     }
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
-        self.by_handle.len() == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len()
+        self.by_handle.len()
+            == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len() + self.tags.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
             && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
+            && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
     }
 }
 
@@ -319,6 +339,11 @@ pub struct Project {
     /// default, `Author::Agent(<client name>)` when an agent drives the session (brief 011). A
     /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
     pub author: Author,
+    /// The highest number each tag prefix has had (brief 018), read from the log as it grows.
+    pub(crate) tag_high: crate::devices::TagHigh,
+    /// What the last placement in this session placed (symbol key, device), for the prompts'
+    /// defaults (design 018 §5.3).
+    pub(crate) last_placed: Option<(String, ComponentId)>,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -491,6 +516,9 @@ pub fn project_page_with(
     if d.layer(crate::views::LAYER).is_none() {
         d.layers.push(cables_layer());
     }
+    if d.layer(crate::devices::TAG_LAYER).is_none() {
+        d.layers.push(CLayer::new(crate::devices::TAG_LAYER));
+    }
     for h in prev.handles() {
         d.bump_handseed(h);
     }
@@ -576,6 +604,12 @@ pub fn project_page_with(
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
+    // Device tags and terminal labels (brief 018): derived on every draw, never stored.
+    for t in crate::devices::texts_on_page(doc, page) {
+        let h = prev.tag_text(t.rep, t.of).unwrap_or_else(|| d.new_handle());
+        ents.push(crate::devices::text_entity(&t, h));
+        map.insert_tag_text(t.rep, t.of, h);
+    }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
     for e in ents {
@@ -650,6 +684,8 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            tag_high: crate::devices::TagHigh::default(),
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -707,6 +743,8 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            tag_high: crate::devices::TagHigh::default(),
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -794,6 +832,8 @@ impl Project {
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
+            tag_high: crate::devices::TagHigh::default(),
+            last_placed: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1092,6 +1132,8 @@ impl Project {
                     // Reference texts are derived too (brief 010): moving a reference point or a
                     // member route moves or rewrites them.
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
+                    // Tag texts and terminal labels follow their symbols (brief 018).
+                    amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1364,7 +1406,9 @@ impl DocumentOwner for Project {
             self.restore(pg, c.uid, page);
             return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
+        self.tag_high.catch_up(&self.ledger);
         let t = translate::translate(&mut translate::Ctx {
+            tags: &mut self.tag_high,
             ledger: &mut self.ledger,
             page,
             map: &view.map,
@@ -1385,8 +1429,14 @@ impl DocumentOwner for Project {
         };
         if t.ops.is_empty() {
             // Only differences that are not recorded (header variables such as the current layer).
+            // A new draw order (TEXTTOFRONT, DRAWORDER) is not recorded either: the page is drawn
+            // in the projection's order again (brief 018 put derived texts on every page).
+            let reordered = !now.model.iter().map(|e| e.handle).eq(last.model.iter().map(|e| e.handle));
             if let Some(v) = self.pages.get_mut(&page) {
                 v.last = Some(now);
+            }
+            if reordered {
+                self.refresh_page(pg, page, Some(c.command), None, false);
             }
             self.events.record(EventKind::NoChange, Some(c.command), head, Some(page), "");
             return Verdict::Accept;

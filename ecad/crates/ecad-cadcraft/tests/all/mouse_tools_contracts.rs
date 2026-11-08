@@ -161,8 +161,10 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 for k in 0..4 {
                     let rot = f64::from(k * 90);
                     let y = f64::from(k * 40);
-                    h.run("place", json!({"at": [200.0, y], "rotation": rot, "mirror": false})).unwrap();
-                    h.run("place", json!({"at": [260.0, y], "rotation": rot, "mirror": true})).unwrap();
+                    // A typed point at the first prompt places the default symbol (brief 018).
+                    let place = |at: [f64; 2], mirror: bool| json!({"symbol": "coil", "at": at, "rotation": rot, "mirror": mirror});
+                    h.run("place", place([200.0, y], false)).unwrap();
+                    h.run("place", place([260.0, y], true)).unwrap();
                 }
             },
         ),

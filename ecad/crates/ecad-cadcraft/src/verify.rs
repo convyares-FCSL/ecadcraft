@@ -114,6 +114,10 @@ pub fn verify_page_with(
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
+    // Device tags and terminal labels (brief 018), derived like the cable parts.
+    for t in crate::devices::texts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
+    }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
 
@@ -137,6 +141,13 @@ pub fn verify_page_with(
         if let Some(Mapped::RefText(r)) = map.get(e.handle) {
             if !doc.representations.contains_key(&r) {
                 problems.push(format!("a reference text is drawn for {r}, which does not exist"));
+            }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Tag(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a tag text is drawn for {r}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
@@ -306,5 +317,5 @@ pub fn verify_page_with(
 
 /// What a computed entity draws, for comparing multisets: its kind, lineweight and colour.
 fn computed_key(e: &Entity) -> String {
-    format!("{:?} {:?} {:?}", e.kind, e.common.lineweight, e.common.color)
+    format!("{:?} {:?} {:?} {}", e.kind, e.common.lineweight, e.common.color, e.common.layer)
 }

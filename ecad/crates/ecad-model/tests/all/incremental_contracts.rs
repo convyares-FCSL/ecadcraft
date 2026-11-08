@@ -593,9 +593,10 @@ impl Gen {
         if self.rng.chance(30)
             && let Some((cid, _)) = doc.components.iter().nth(self.rng.below(doc.components.len()))
             && let Some(t) = doc.terminals_of(*cid).map(|(t, _)| t).next()
-            && let Some((iid, it)) = doc.items.iter().find(|(i, it)| {
-                matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none()
-            })
+            && let Some((iid, it)) = doc
+                .items
+                .iter()
+                .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
         {
             let mut connection_points = std::collections::BTreeMap::new();
             connection_points.insert(t, Pt::new(0.0, 10.0));

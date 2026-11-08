@@ -486,7 +486,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
     assert!(lines.first().is_some_and(|l| l == "Cable reference  /2.1"), "hover: {lines:?}");
     assert!(lines.iter().any(|l| l == r#"Other end: page 2 "Field", column 1, 3 wires"#), "hover: {lines:?}");
-    assert_eq!(lines.iter().filter(|l| l.contains(" -> K2:")).count(), 3, "hover: {lines:?}");
+    assert_eq!(lines.iter().filter(|l| l.contains(" -> -K02:")).count(), 3, "hover: {lines:?}");
     let hover = take(&h, &deltas, "010-ref-hover.png");
     // Go back by pickfirst: Supply's point selected, the button jumps at once.
     park(&mut h);

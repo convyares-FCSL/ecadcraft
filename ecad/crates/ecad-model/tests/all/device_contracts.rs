@@ -64,7 +64,13 @@ fn fixture() -> Fx {
 
 /// Ops adding a symbol of `definition` at `at` as a representation of K1 with two new terminals
 /// labelled `labels`, with connection points (local frame) when `cps`.
-fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2], cps: bool) -> (Vec<Op>, [TerminalId; 2]) {
+fn contact_ops(
+    fx: &mut Fx,
+    definition: DefinitionId,
+    at: Pt,
+    labels: [&str; 2],
+    cps: bool,
+) -> (Vec<Op>, [TerminalId; 2]) {
     let (t1, t2, item, rep): (TerminalId, TerminalId, ItemId, ecad_model::RepresentationId) =
         (fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh());
     let mut connection_points = std::collections::BTreeMap::new();
@@ -96,12 +102,11 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
 #[test]
 fn i14_as_relaxed_table() {
     // (definition shown, connection points, accepted)
-    let rows = [("own definition, keys", true, false, true), ("other definition, no points", false, false, false), (
-        "other definition, points",
-        false,
-        true,
-        true,
-    )];
+    let rows = [
+        ("own definition, keys", true, false, true),
+        ("other definition, no points", false, false, false),
+        ("other definition, points", false, true, true),
+    ];
     for (case, own, cps, ok) in rows {
         let mut fx = fixture();
         let d = if own { fx.coil } else { fx.contact };

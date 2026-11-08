@@ -1,0 +1,215 @@
+//! The JSON forms of brief 018's commands (design 018 §8): `place` with a starter symbol, `setprop`
+//! on device properties (tag rules, merging), `symbols` and `devices` (read only).
+//!
+//! The interactive forms ([`crate::interact`]) commit through exactly these.
+
+use cadcraft_engine::{EngineError, Session};
+use ecad_model::tag::TAG_KEY;
+use ecad_model::{Color, ComponentId, ObjectRef, Op, Placement, Pt, Style};
+use serde_json::{Value, json};
+
+use crate::commands::{with_any_page, with_project};
+use crate::devices::{self, Target};
+use crate::project::Project;
+
+fn err(m: impl Into<String>) -> EngineError {
+    EngineError::Other(m.into())
+}
+
+fn style(p: &Project) -> Style {
+    Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
+}
+
+fn hex_id<T: From<u128>>(v: &Value, key: &str) -> Result<Option<T>, String> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(x) => x
+            .as_str()
+            .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
+            .map(|n| Some(T::from(n)))
+            .ok_or_else(|| format!("`{key}` (hex id) is required")),
+    }
+}
+
+/// Whether a `place` call is brief 018's form (a starter symbol), rather than the experiment's.
+pub(crate) fn is_symbol_place(params: &Value) -> bool {
+    ["symbol", "device", "tag"].iter().any(|k| params.get(*k).is_some_and(|v| !v.is_null()))
+}
+
+/// `place {at, rotation?, mirror?, symbol, device?, tag?}` (design 018 §8).
+pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("definition").is_some_and(|v| !v.is_null()) && params.get("symbol").is_some_and(|v| !v.is_null()) {
+        return Err(err("`symbol` and `definition` are mutually exclusive"));
+    }
+    let key = params
+        .get("symbol")
+        .and_then(Value::as_str)
+        .ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
+    let starter = devices::starter(key).map_err(err)?;
+    let at = params.get("at").ok_or_else(|| err("`at` [x,y] is required"))?;
+    let at = at
+        .as_array()
+        .and_then(|a| Some(Pt::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
+        .ok_or_else(|| err("`at` [x,y] is required"))?;
+    if !(at.is_finite() && at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
+        return Err(err(crate::interact::OUT_OF_RANGE));
+    }
+    let degrees = match params.get("rotation") {
+        None | Some(Value::Null) => 0.0,
+        Some(v) => {
+            v.as_f64().filter(|d| d.is_finite()).ok_or_else(|| err("`rotation` must be a finite number of degrees"))?
+        }
+    };
+    let mirror = match params.get("mirror") {
+        None | Some(Value::Null) => false,
+        Some(v) => v.as_bool().ok_or_else(|| err("`mirror` must be true or false"))?,
+    };
+    let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
+    let tag = match params.get("tag") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(_) => return Err(err("`tag` must be a string")),
+    };
+    if device.is_some() && tag.is_some() {
+        return Err(err("`tag` is for a new device; `device` joins an existing one"));
+    }
+    with_project(s, |p, pg, page| {
+        let doc = p.ledger.document();
+        let target = match (device, tag) {
+            (Some(c), _) => {
+                if !doc.components.contains_key(&c) {
+                    return Err("No such device.".into());
+                }
+                Target::Join(c)
+            }
+            (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, devices::padding(doc))?)),
+            (None, None) => Target::New(None),
+        };
+        let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let style = style(p);
+        let plan =
+            devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
+        p.apply_edit(pg, "place", &plan.label, plan.ops.clone())?;
+        p.last_placed = Some((starter.key.to_string(), plan.component));
+        let doc = p.ledger.document();
+        Ok(json!({
+            "component": plan.component.hex(),
+            "representation": plan.representation.hex(),
+            "item": plan.item.hex(),
+            "definition": plan.definition.hex(),
+            "symbol": starter.key,
+            "tag": plan.tag,
+            "joined": plan.joined,
+            "pages": devices::page_numbers(doc, plan.component),
+            "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
+        }))
+    })
+}
+
+/// Whether `setprop` on `object` and `key` follows design 018 §6.1's rules.
+pub(crate) fn is_device_property(object: ObjectRef, key: &str) -> bool {
+    matches!(object, ObjectRef::Component(_)) && devices::PROPERTIES.iter().any(|(k, _)| *k == key)
+}
+
+/// `setprop {component, key, value, merge?}` for a device property (design 018 §6, owner decisions
+/// 2026-11-08): the value rules of §6.1; a tag another device holds is refused with the ways
+/// forward, unless `merge` is true, which makes this device part of that one (one transaction).
+pub(crate) fn run_setprop(
+    s: &mut Session,
+    params: &Value,
+    c: ComponentId,
+    key: String,
+) -> cadcraft_engine::Result<Value> {
+    let value = match params.get("value") {
+        Some(Value::Null) => None,
+        Some(Value::String(v)) => Some(v.clone()),
+        Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
+        None => return Err(err("`value` is required (a string, or null to clear the property)")),
+    };
+    let merge = match params.get("merge") {
+        None | Some(Value::Null) => false,
+        Some(v) => v.as_bool().ok_or_else(|| err("`merge` must be true or false"))?,
+    };
+    with_project(s, |p, pg, _page| {
+        let doc = p.ledger.document();
+        let component = doc.components.get(&c).ok_or("no such object")?;
+        let value = devices::property_value(doc, &key, value.as_deref())?;
+        let before = component.properties.get(&key).cloned();
+        if key == TAG_KEY
+            && let Some(t) = &value
+            && let Some(holder) = devices::holder_of(doc, t, Some(c))
+        {
+            if !merge {
+                let next = devices::tag_of(doc, c)
+                    .and_then(ecad_model::tag::parse)
+                    .or_else(|| ecad_model::tag::parse(t))
+                    .and_then(|(prefix, _)| p.tag_high.clone().next(&p.ledger, &prefix).ok());
+                let way = match next {
+                    Some(n) => format!(
+                        "Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."
+                    ),
+                    None => "Set `merge` to true to make this the same device, or choose another tag.".into(),
+                };
+                return Err(devices::duplicate_words(doc, t, holder, &way));
+            }
+            let ops = devices::plan_merge(doc, &mut p.ids, c, holder)?;
+            let into = devices::tag_words(doc, holder);
+            p.apply_edit(pg, "setprop", &format!("Merge into {into}"), ops)?;
+            let doc = p.ledger.document();
+            return Ok(json!({
+                "changed": true, "merged": true, "component": holder.hex(), "tag": into,
+                "message": format!("{} is now part of {into} ({} symbols on {}).", before.unwrap_or_else(|| "The device".into()),
+                    doc.representations_of(ecad_model::Subject::Component(holder)).count(), devices::pages_words(doc, holder)),
+            }));
+        }
+        if before == value {
+            return Ok(json!({"changed": false, "value": value}));
+        }
+        let label = if key == TAG_KEY { "Set tag" } else { "Set property" };
+        let op = Op::SetProperty { object: ObjectRef::Component(c), key: key.clone(), before, after: value.clone() };
+        p.apply_edit(pg, "setprop", label, vec![op])?;
+        Ok(json!({"changed": true, "value": value, "component": c.hex()}))
+    })
+}
+
+/// `symbols {query?}` (design 018 §8): read only.
+pub(crate) fn run_symbols(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let q = match params.get("query") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(q)) => Some(q.clone()),
+        Some(_) => return Err(err("`query` must be a string")),
+    };
+    with_any_page(s, |p, _| Ok(devices::symbols_json(p.ledger.document(), q.as_deref())))
+}
+
+/// `devices {tag?}` (design 018 §8): read only.
+pub(crate) fn run_devices(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let q = match params.get("tag") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(q)) => Some(q.clone()),
+        Some(_) => return Err(err("`tag` must be a string")),
+    };
+    with_any_page(s, |p, _| Ok(devices::devices_json(p.ledger.document(), q.as_deref())))
+}
+
+/// `deviceprops {component}`: the device's properties (read only); its interactive form changes them.
+pub(crate) fn run_deviceprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let c: ComponentId =
+        hex_id(params, "component").map_err(err)?.ok_or_else(|| err("`component` (hex id) is required"))?;
+    with_any_page(s, |p, _| {
+        let doc = p.ledger.document();
+        if !doc.components.contains_key(&c) {
+            return Err("No such device.".into());
+        }
+        Ok(devices::device_json(doc, c))
+    })
+}
+
+/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete` (design 018 §6.3).
+pub(crate) fn run_devicedelete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let c: ComponentId =
+        hex_id(params, "component").map_err(err)?.ok_or_else(|| err("`component` (hex id) is required"))?;
+    let tag = with_any_page(s, |p, _| Ok(devices::tag_words(p.ledger.document(), c)))?;
+    let r = crate::commands::run_delete(s, &json!({"component": c.hex()}))?;
+    Ok(json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}))
+}

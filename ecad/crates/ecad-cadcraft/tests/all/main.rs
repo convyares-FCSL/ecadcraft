@@ -15,6 +15,7 @@ mod cable_view_contracts;
 mod cable_view_tester_contracts;
 mod census;
 mod debugger;
+mod device_contracts;
 mod experiment;
 mod files;
 mod interactive_contracts;
