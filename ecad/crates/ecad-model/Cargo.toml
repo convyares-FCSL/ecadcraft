@@ -1,0 +1,26 @@
+[package]
+name = "ecad-model"
+description = "ECAD document model: objects, typed IDs, ops, transactions and history (no CADCraft dependency)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+# Turns on this crate's verify mode for its own tests (see the `verify-invariants` feature).
+ecad-model = { path = ".", features = ["verify-invariants"] }
+
+[features]
+# Verify mode: after every transaction, also run the full invariant check and the index check and
+# assert that they agree with the scoped check (brief 013). Every crate that depends on
+# ecad-model enables it through its dev-dependencies, so every `cargo test` verifies while app
+# builds, debug or release, take the fast path. `ECAD_VERIFY_INVARIANTS=1` turns it on at run time.
+verify-invariants = []

@@ -1,0 +1,57 @@
+# The ECAD workspace. It is separate from CADCraft's root workspace on purpose: upstream files stay
+# untouched, and CADCraft crates are used by path. See docs/document-architecture-proposal.md §8.
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+repository = "https://github.com/convyares-FCSL/ecadcraft"
+
+[workspace.dependencies]
+ecad-model = { path = "crates/ecad-model" }
+ecad-store = { path = "crates/ecad-store" }
+ecad-inspect = { path = "crates/ecad-inspect" }
+ecad-file = { path = "crates/ecad-file" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1
+
+# Mirrors CADCraft's root [patch.crates-io] (CADCraft 0.15.1, ../Cargo.toml): patches apply only at a
+# workspace root, and the CADCraft crates used by path need the same egui and winit forks.
+# Re-copy on every upstream sync. Entries the ECAD graph does not use (egui_demo_lib,
+# egui_extras, egui_inspection, egui_system_font_provider) are left out. The PDF backends are
+# used since brief 011: `ecad-mcp` uses `cadcraft-mcp`, whose `cadcraft-io` writes PDF (krilla;
+# hayro-syntax and hayro-jbig2 are not in the ECAD graph).
+[patch.crates-io]
+krilla = { version = "=0.8.2", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+# Keep the complete egui family and native event bridge on reviewed fork commits.
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }

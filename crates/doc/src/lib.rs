@@ -10,11 +10,13 @@ mod array;
 mod constraint;
 mod entity;
 mod extents;
+mod format;
 mod gdt;
 mod header;
 pub mod library;
 mod plotstyle;
 mod plotter;
+mod refedit;
 mod store;
 mod tables;
 
@@ -25,15 +27,18 @@ pub use cadcraft_color as color;
 pub use cadcraft_geom as geom;
 pub use constraint::*;
 pub use entity::*;
-pub use extents::{MAX_BLOCK_DEPTH, entity_bounds};
+pub use extents::{MAX_BLOCK_DEPTH, entity_bounds, extent_bounds};
+pub use format::Format;
 pub use gdt::*;
 pub use header::{HVal, Header};
 pub use plotstyle::*;
 pub use plotter::*;
+pub use refedit::{RefEdit, WorkItem};
 pub use store::EntityStore;
 pub use tables::*;
 
 /// File data CADCraft doesn't model, kept for saving (#528).
+pub mod dynblock;
 pub mod foreign;
 
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +64,26 @@ pub enum Space {
     Paper(String),
 }
 
+impl Space {
+    /// Whether this is a layout's paper space.
+    pub fn is_paper(&self) -> bool {
+        matches!(self, Space::Paper(_))
+    }
+
+    /// The layout whose paper space this is; `None` for model space.
+    pub fn layout(&self) -> Option<&str> {
+        match self {
+            Space::Paper(n) => Some(n),
+            Space::Model => None,
+        }
+    }
+
+    /// The tab name (CTAB): `Model`, or the layout's name.
+    pub fn tab_name(&self) -> &str {
+        self.layout().unwrap_or("Model")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Drawing {
     pub header: Header,
@@ -75,6 +100,9 @@ pub struct Drawing {
     pub blocks: BTreeMap<String, std::sync::Arc<Block>>,
     pub model: EntityStore,
     pub layouts: Vec<Layout>,
+    /// The layout a file marks active (its block is `*Paper_Space`, the others `*Paper_SpaceN`),
+    /// written active again. `None`, or a layout that no longer exists: the first by tab order.
+    pub active_layout: Option<String>,
     pub views: Vec<NamedView>,
     /// Model space viewport configurations (VPORTS): the tiles shown and named ones.
     pub vports: Vec<VportConfig>,
@@ -95,6 +123,15 @@ pub struct Drawing {
     /// Objects hidden for this session by ISOLATEOBJECTS / HIDEOBJECTS. Never written to a file:
     /// a drawing opens with everything shown again.
     pub hidden_objects: BTreeSet<Handle>,
+    /// What reading the file left out (a DWG's object records the reader couldn't decode), told
+    /// to the user when the drawing opens. Never written to a file.
+    pub read_notes: Vec<String>,
+    /// The in-place block reference edit in progress (REFEDIT). Never written to a file; files are
+    /// written from [`Drawing::committed`].
+    pub refedit: Option<RefEdit>,
+    /// Records of the file this drawing was read from that the reader could not place (a damaged
+    /// file), counted by the section they came from. Never written to a file.
+    pub skipped_records: BTreeMap<String, usize>,
 }
 
 impl Default for Drawing {
@@ -110,12 +147,14 @@ impl Drawing {
         d.header = Header::imperial();
         d
     }
-    /// An empty metric drawing (millimetres, ISO-25 dimensions).
+    /// An empty metric drawing (millimetres, ISO-25 dimensions, multileaders and tables to match).
     pub fn new_metric() -> Self {
         let mut d = Drawing::bare();
         d.header = Header::metric();
         d.scales = metric_scales();
         d.dim_styles.push(DimStyle::iso25());
+        d.mleader_styles = vec![MLeaderStyle::metric()];
+        d.table_styles = vec![TableStyle::metric()];
         d.header.set_str("DIMSTYLE", "ISO-25");
         d
     }
@@ -137,6 +176,7 @@ impl Drawing {
             blocks: BTreeMap::new(),
             model: EntityStore::new(),
             layouts: vec![Layout::new("Layout1", 1), Layout::new("Layout2", 2)],
+            active_layout: None,
             views: Vec::new(),
             vports: Vec::new(),
             ucss: Vec::new(),
@@ -148,6 +188,9 @@ impl Drawing {
             scales: imperial_scales(),
             handseed: 0x100,
             hidden_objects: BTreeSet::new(),
+            read_notes: Vec::new(),
+            refedit: None,
+            skipped_records: BTreeMap::new(),
         }
     }
 
@@ -261,6 +304,18 @@ impl Drawing {
         true
     }
 
+    /// The layouts in the order their paper space blocks are named in a file: the active one
+    /// (`*Paper_Space`) first, then the others by tab order (`*Paper_Space0`, `*Paper_Space1`, …).
+    pub fn paper_space_layouts(&self) -> Vec<&Layout> {
+        let mut ls: Vec<&Layout> = self.layouts.iter().collect();
+        ls.sort_by_key(|l| l.tab_order);
+        if let Some(i) = self.active_layout.as_ref().and_then(|a| ls.iter().position(|l| l.name.eq_ignore_ascii_case(a))) {
+            let active = ls.remove(i);
+            ls.insert(0, active);
+        }
+        ls
+    }
+
     pub fn space(&self, space: &Space) -> Option<&EntityStore> {
         match space {
             Space::Model => Some(&self.model),
@@ -314,13 +369,19 @@ impl Drawing {
         !self.hidden_objects.is_empty() && self.hidden_objects.contains(&h)
     }
 
-    /// Bounds of all visible entities in a space.
+    /// Whether an entity counts in the extents: as AutoCAD 2024 counts it for ZOOM Extents and
+    /// EXTMIN/EXTMAX, on a layer that is off too, but not on a frozen one.
+    pub fn in_extents(&self, e: &Entity) -> bool {
+        e.common.visible && self.layer(&e.common.layer).is_none_or(|l| !l.frozen) && !self.is_hidden_object(e.handle)
+    }
+
+    /// Bounds of the entities in a space that count in its extents ([`Drawing::in_extents`]).
     pub fn extents(&self, space: &Space) -> cadcraft_geom::Bounds2 {
         let mut b = cadcraft_geom::Bounds2::EMPTY;
         if let Some(store) = self.space(space) {
             for e in store.iter() {
-                if self.is_visible(e) {
-                    b = b.union(&entity_bounds(self, e, 0));
+                if self.in_extents(e) {
+                    b = b.union(&extent_bounds(self, e));
                 }
             }
         }

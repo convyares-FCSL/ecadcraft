@@ -1,0 +1,10 @@
+[package]
+name = "ecad-xtask"
+description = "ECAD workspace checks: layering of ecad-* crates and the upstream patch guard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde_json = { workspace = true }

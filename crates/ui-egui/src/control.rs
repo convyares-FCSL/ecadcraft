@@ -18,6 +18,7 @@
 //! - `ui.screenshot {path?}`: PNG of the window; `ui.render {path?, width?, height?, fit?}`: headless
 //!   render of the drawing (no window needed; fits the drawing unless `fit` is false; replies `pngBase64`)
 //! - `app.open {path}`, `app.save {path?}`, `app.quit`
+//! - `control.methods`: this list, with params and a description; `ping`: replies `"pong"`
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -101,8 +102,9 @@ struct Widget {
     selected: Option<bool>,
 }
 
+/// egui temp-data key holding the widgets observed during the current frame.
 fn widgets_id() -> egui::Id {
-    egui::Id::new("cadcraft-observed-widgets")
+    egui::Id::unique("cadcraft-observed-widgets")
 }
 
 pub(crate) fn begin_frame(ctx: &egui::Context) {
@@ -185,6 +187,42 @@ fn wrap(r: Result<Value, String>) -> Outcome {
     }
 }
 
+/// What `control.methods` replies: method, params, description. Keep in step with `handle` and the
+/// table in `docs/control-protocol.md` (`tests/it/control_methods.rs` checks the table).
+const METHODS: &[(&str, &str, &str)] = &[
+    ("cmdline.input", "{text}", "Type a line at the command line exactly like a user (commands, prompts, keywords; empty = Enter)."),
+    ("cmdline.script", "{text}", "Run a multi-line script, like a .scr file."),
+    ("cmdline.key", "{key: \"enter\"|\"escape\"}", "Press Enter or Escape at the command line."),
+    ("cmdline.state", "", "Current prompt, keywords, accepted input kinds and history tail."),
+    ("engine.execute", "{command, params}", "Run any command with JSON parameters. Never opens a dialog."),
+    ("engine.commands", "", "Every command: id, label, menu path, shortcut, aliases, params doc, enabled."),
+    ("drawing.inspect", "{entities?, limit?}", "Drawing summary and entities with handles and geometry."),
+    ("ui.inspect", "", "UI state, canvas rect, view, cursor and snap, performance, keyboard focus."),
+    ("ui.elements", "{label?, role?, focused?}", "Observed visible controls with their egui id, rectangle, state and focus."),
+    ("ui.menu.list", "", "The menu tree."),
+    ("ui.menu.invoke", "{command}", "Invoke a menu item like a click (interactive)."),
+    ("ui.pointer", "{x, y, space?, button?, action?}", "Click or move in the drawing area (world coordinates by default). Right button = Enter."),
+    ("ui.click", "{x, y, button?, shift?, ctrl?}", "Real egui click in screen points."),
+    ("ui.move", "{x, y}", "Real egui pointer move in screen points."),
+    ("ui.drag", "{x, y, to: [x, y], button?}", "Real press, move and release."),
+    ("ui.key", "{key, cmd?, shift?, alt?}", "Synthetic key press."),
+    ("ui.text", "{text}", "Synthetic text input."),
+    ("ui.set", "UiState fields", "Change UI state: palettes, toolbars, command line, theme…"),
+    ("ui.resize", "{width, height}", "Resize the window."),
+    ("ui.focus", "", "Activate the native window."),
+    ("ui.screenshot", "{path?}", "PNG of the window (needs a presented frame)."),
+    ("ui.render", "{path?, width?, height?, fit?}", "Headless render of the drawing; replies pngBase64."),
+    ("app.open", "{path}", "Open a drawing."),
+    ("app.save", "{path?}", "Save the drawing (Save As with a path)."),
+    ("app.quit", "", "Quit without the unsaved-changes prompt."),
+    ("control.methods", "", "This list."),
+    ("ping", "", "Replies \"pong\"."),
+];
+
+fn methods_json() -> Value {
+    METHODS.iter().map(|(method, params, description)| json!({"method": method, "params": params, "description": description})).collect()
+}
+
 pub fn all_commands(app: &CadApp) -> Value {
     let mut v: Vec<Value> = cadcraft_engine::command_specs().iter().map(|c| serde_json::to_value(c.info(&app.session)).unwrap_or_default()).collect();
     for (id, label, menu, sc) in crate::menus::UI_COMMANDS {
@@ -215,12 +253,14 @@ pub fn cmdline_state(app: &CadApp) -> Value {
     })
 }
 
+/// Build the `ui.inspect` snapshot: UI state and theme, animations, focus, canvas/window rects, view, cursor, snap, session summary, close prompt and performance counters.
 pub fn inspect(app: &CadApp, ctx: &egui::Context) -> Value {
     let r = ctx.content_rect();
     let view = app.session.state().map(|s| s.view()).ok();
     json!({
         "ui": serde_json::to_value(&app.ui).unwrap_or_default(),
         "theme": if app.shown_theme() == egui::Theme::Light { "light" } else { "dark" },
+        "animations": app.shows_animations(),
         "focus": focus_json(ctx),
         "canvasRect": app.canvas.rect.map(|c| json!([c.left(), c.top(), c.width(), c.height()])),
         "window": [r.width(), r.height()],
@@ -229,7 +269,7 @@ pub fn inspect(app: &CadApp, ctx: &egui::Context) -> Value {
         "snap": app.canvas.snap.map(|s| json!({"point": [s.point.x, s.point.y], "mode": s.name})),
         "session": app.session.summary(),
         "closePrompt": app.close_prompt(),
-        "perf": {"frameMs": app.frame_ms, "buildMs": app.canvas.build_ms, "drawMs": app.canvas.draw_ms, "meshMs": app.canvas.mesh_ms, "renderer": if app.canvas.gpu.is_some() { "gpu" } else { "cpu" }, "prims": app.canvas.list.as_ref().map(|l| l.prims.len())},
+        "perf": {"frameMs": app.frame_ms, "buildMs": app.canvas.build_ms, "drawMs": app.canvas.draw_ms, "meshMs": app.canvas.mesh_ms, "building": app.canvas.building(), "renderer": if app.canvas.gpu.is_some() { "gpu" } else { "cpu" }, "prims": app.canvas.list.as_ref().map(|l| l.prims.len()), "uiFrames": app.ui_frames, "passIndex": ctx.current_pass_index()},
     })
 }
 
@@ -336,7 +376,7 @@ pub fn handle(app: &mut CadApp, ctx: &egui::Context, req: &ControlRequest) -> Ou
             }
             let r = match s("button").unwrap_or("left") {
                 "right" => app.session.input(Input::Enter),
-                _ if app.session.running.is_some() => app.session.input(Input::Point(wp)),
+                _ if app.session.prompting() => app.session.input(Input::Point(wp)),
                 _ => app.session.idle_click(wp, p.get("shift").and_then(Value::as_bool).unwrap_or(false)),
             };
             match r {
@@ -414,7 +454,7 @@ pub fn handle(app: &mut CadApp, ctx: &egui::Context, req: &ControlRequest) -> Ou
             }
             match serde_json::from_value::<crate::UiState>(cur) {
                 Ok(u) => {
-                    if let Err(error) = u.docking.validate() {
+                    if let Err(error) = crate::docking::validate(&u.docking) {
                         return err(error);
                     }
                     app.ui = u;
@@ -433,10 +473,17 @@ pub fn handle(app: &mut CadApp, ctx: &egui::Context, req: &ControlRequest) -> Ou
             let w = f("width").unwrap_or(1600.0).clamp(16.0, 8192.0) as u32;
             let h = f("height").unwrap_or(1000.0).clamp(16.0, 8192.0) as u32;
             let Ok(st) = app.session.state() else { return err("no drawing") };
-            let list = cadcraft_render::build(&st.doc, &st.space, &cadcraft_render::Options::default());
+            // `window`: just that area, at the size given or matching its shape.
+            let window = render_window(p);
+            let opts = cadcraft_render::Options { view: window, transparency: app.session.settings.transparency_display, ..Default::default() };
+            let list = cadcraft_render::build(&st.doc, &st.space, &opts);
             let v = st.view();
             let fit = p.get("fit").and_then(Value::as_bool).unwrap_or(true);
-            let view = render_view(&list.bounds, v.center, v.height, fit, w, h);
+            let view = match &window {
+                Some(win) => cadcraft_render::raster::View::of_window(win, f("width").map(|x| x as u32), f("height").map(|x| x as u32)),
+                None => render_view(&list.bounds, v.center, v.height, fit, w, h),
+            };
+            let (w, h) = (view.width, view.height);
             let Some(png) = cadcraft_render::raster::render_png(&list, &view, &cadcraft_render::raster::RasterOptions::default()) else {
                 return err("render failed");
             };
@@ -453,7 +500,8 @@ pub fn handle(app: &mut CadApp, ctx: &egui::Context, req: &ControlRequest) -> Ou
             let Some(path) = s("path") else { return err("missing path") };
             wrap(app.run("open", json!({"path": path})))
         }
-        "app.save" => wrap(app.run(if s("path").is_some() { "saveas" } else { "qsave" }, p.clone())),
+        // Never `null` params: those mean a user's Save, which may pick a file or ask.
+        "app.save" => wrap(app.run(if s("path").is_some() { "saveas" } else { "qsave" }, if p.is_null() { json!({}) } else { p.clone() })),
         "app.quit" => {
             // Programmatic calls never open dialogs: quit without the unsaved-changes prompt.
             app.quit_confirmed = true;
@@ -461,8 +509,23 @@ pub fn handle(app: &mut CadApp, ctx: &egui::Context, req: &ControlRequest) -> Ou
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             ok(Value::Null)
         }
-        other => err(format!("unknown method `{other}`")),
+        "control.methods" => ok(methods_json()),
+        "ping" => ok(json!("pong")),
+        other => err(format!("unknown method `{other}`; `control.methods` lists them (docs/control-protocol.md)")),
     }
+}
+
+/// The `window` of a `ui.render` request: two finite corners [[x0, y0], [x1, y1]] around an area
+/// (`None` when absent or unusable).
+pub fn render_window(p: &Value) -> Option<cadcraft_geom::Bounds2> {
+    let a = p.get("window")?.as_array().filter(|a| a.len() == 2)?;
+    let pt = |v: &Value| -> Option<cadcraft_geom::Vec2> {
+        let c = v.as_array().filter(|c| c.len() == 2)?;
+        let (x, y) = (c[0].as_f64()?, c[1].as_f64()?);
+        (x.is_finite() && y.is_finite()).then(|| cadcraft_geom::Vec2::new(x, y))
+    };
+    let b = cadcraft_geom::Bounds2::new(pt(&a[0])?, pt(&a[1])?);
+    (b.width() > 0.0 && b.height() > 0.0).then_some(b)
 }
 
 /// The raster view for `ui.render`: fitted to the drawing's bounds, or the current screen view.
@@ -483,18 +546,172 @@ fn render_reply(png: &[u8], w: u32, h: u32, path: Option<&str>) -> Value {
     v
 }
 
-/// Save a screenshot PNG.
-pub fn save_screenshot(image: &egui::ColorImage, path: Option<&str>) -> Value {
+/// A private, per-process screenshot directory for pathless `ui.screenshot` requests.
+///
+/// The directory is created with owner-only permissions (`0700` on Unix) under a name that
+/// includes the process id, a monotonic nonce and a sequence number. `create_dir` fails rather
+/// than following a pre-created symlink, so another local user cannot redirect the write.
+fn private_shot_dir() -> std::io::Result<std::path::PathBuf> {
+    use std::sync::OnceLock;
+    static DIR: OnceLock<Result<std::path::PathBuf, String>> = OnceLock::new();
+    DIR.get_or_init(|| create_private_shot_dir().map_err(|e| e.to_string())).clone().map_err(std::io::Error::other)
+}
+
+/// Process-wide monotonic counter used to keep pathless screenshot names unique.
+fn next_pathless_nonce() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Create at most 32 exclusive `cadcraft-shots-<pid>-<stamp>-<nonce>` directories in the temp dir; only `AlreadyExists` is retried.
+fn create_private_shot_dir() -> std::io::Result<std::path::PathBuf> {
+    let base = std::env::temp_dir();
+    let stamp = crate::now_ms().to_bits();
+    for _ in 0..32 {
+        let nonce = next_pathless_nonce();
+        let dir = base.join(format!("cadcraft-shots-{}-{stamp:x}-{nonce}", std::process::id()));
+        match create_private_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "could not create a private screenshot directory"))
+}
+
+/// Create `path` with mode 0700 on Unix (plain create elsewhere), failing rather than following or reusing a pre-created entry.
+fn create_private_dir(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        std::fs::DirBuilder::new().mode(0o700).create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(path)
+    }
+}
+
+/// Create a new file with owner-only permissions. `create_new` uses `O_EXCL` on Unix and refuses
+/// an existing path, including a symlink, so a pre-created link cannot redirect the screenshot.
+fn create_private_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+/// True when the metadata has no group/other permission bits (always true on non-Unix).
+fn is_private_shot_dir(meta: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        meta.permissions().mode() & 0o077 == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        true
+    }
+}
+
+/// Pathless screenshots share one directory per process. Tests that write them hold this guard,
+/// so no other test writes while it is cleaned up. Dropping it, even while a failed test unwinds,
+/// removes every screenshot file in the directory and then the directory itself.
+#[cfg(test)]
+pub(crate) struct PathlessShots {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+pub(crate) fn lock_pathless_shots() -> PathlessShots {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    PathlessShots { _lock: LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner) }
+}
+
+#[cfg(test)]
+impl Drop for PathlessShots {
+    fn drop(&mut self) {
+        let Ok(dir) = private_shot_dir() else { return };
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with("cadcraft-shot-") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        let _ = std::fs::remove_dir(&dir);
+    }
+}
+
+/// Save a pathless screenshot into the private per-process directory: re-validate or recreate it as an owner-only real directory (0700 on Unix; plain create elsewhere), then create up to 64 exclusive files (0600 on Unix) and write a PNG.
+fn save_pathless_screenshot(img: &image::RgbaImage, token: u64) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write as _;
+    let dir = private_shot_dir()?;
+    // Tests and users may remove the private directory between requests; recreate it exclusively
+    // rather than following anything that replaced it.
+    if !std::fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_dir() && !m.file_type().is_symlink() && is_private_shot_dir(&m)) {
+        match create_private_dir(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let meta = std::fs::symlink_metadata(&dir)?;
+                if !meta.file_type().is_dir() || meta.file_type().is_symlink() || !is_private_shot_dir(&meta) {
+                    return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "the screenshot directory was replaced"));
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    for _ in 0..64 {
+        let path = dir.join(format!("cadcraft-shot-{token}-{}.png", next_pathless_nonce()));
+        match create_private_file(&path) {
+            Ok(mut file) => {
+                let written = img.write_to(&mut file, image::ImageFormat::Png).map_err(std::io::Error::other).and_then(|()| file.flush());
+                if let Err(e) = written {
+                    // The reply carries no path on failure, so nobody else could remove the partial file.
+                    drop(file);
+                    let _ = std::fs::remove_file(&path);
+                    return Err(e);
+                }
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "could not allocate a unique screenshot file"))
+}
+
+/// Save a screenshot PNG. Only called from the logic drain, never from the screenshot callback.
+///
+/// An explicit `path` is written as before. Without one, the file gets a unique name inside a
+/// private per-process directory, created exclusively with owner-only permissions; concurrent
+/// requests (even from two app instances with the same per-process token) cannot collide or
+/// follow a pre-created symlink.
+pub fn save_screenshot(image: &egui::ColorImage, path: Option<&str>, token: u64) -> Value {
     let [w, h] = image.size;
-    let mut buf = Vec::with_capacity(w * h * 4);
+    let Some(len) = w.checked_mul(h).and_then(|pixels| pixels.checked_mul(4)) else {
+        return json!({"ok": false, "error": "screenshot dimensions overflow", "request": token});
+    };
+    let mut buf = Vec::with_capacity(len);
     for c in &image.pixels {
         buf.extend_from_slice(&c.to_array());
     }
-    let Some(img) = image::RgbaImage::from_raw(w as u32, h as u32, buf) else { return json!({"ok": false, "error": "bad image"}) };
-    let path = path.map(str::to_string).unwrap_or_else(|| std::env::temp_dir().join("cadcraft-shot.png").to_string_lossy().to_string());
-    match img.save(&path) {
-        Ok(()) => json!({"ok": true, "result": {"path": path, "width": w, "height": h}}),
-        Err(e) => json!({"ok": false, "error": e.to_string()}),
+    let Some(img) = image::RgbaImage::from_raw(w as u32, h as u32, buf) else {
+        return json!({"ok": false, "error": "bad image", "request": token});
+    };
+    let saved = match path {
+        Some(path) => img.save(path).map(|()| path.to_string()).map_err(std::io::Error::other),
+        None => save_pathless_screenshot(&img, token).map(|path| path.to_string_lossy().into_owned()),
+    };
+    match saved {
+        Ok(path) => json!({"ok": true, "request": token, "result": {"path": path, "width": w, "height": h}}),
+        Err(e) => json!({"ok": false, "error": e.to_string(), "request": token}),
     }
 }
 
@@ -548,6 +765,53 @@ mod tests {
         assert!(req.begin());
         let _ = req.reply.send(json!({"ok": true}));
         assert_eq!(pending.wait(Duration::ZERO), json!({"ok": true}));
+    }
+
+    /// Two pathless saves with the same token produce distinct, decodable PNGs; on Unix the files are 0600 and their directory 0700.
+    #[test]
+    fn pathless_screenshots_are_unique_private_png_files() {
+        let _shots = lock_pathless_shots();
+        let img = egui::ColorImage::filled([4, 3], egui::Color32::RED);
+        let first = save_screenshot(&img, None, 1);
+        let second = save_screenshot(&img, None, 1);
+        assert_eq!(first["ok"], true, "{first}");
+        assert_eq!(second["ok"], true, "{second}");
+        let a = std::path::PathBuf::from(first["result"]["path"].as_str().unwrap_or_default());
+        let b = std::path::PathBuf::from(second["result"]["path"].as_str().unwrap_or_default());
+        assert_ne!(a, b, "the same per-process token must not reuse a pathless file");
+        for path in [&a, &b] {
+            let bytes = std::fs::read(path).expect("the screenshot file exists");
+            assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{path:?} is a PNG");
+            image::load_from_memory(&bytes).expect("decodable PNG");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            for path in [&a, &b] {
+                let mode = std::fs::metadata(path).expect("metadata").permissions().mode() & 0o777;
+                assert_eq!(mode, 0o600, "screenshot {path:?} is owner-only");
+            }
+            let dir = a.parent().expect("the file has a private directory");
+            let dir_mode = std::fs::metadata(dir).expect("directory metadata").permissions().mode() & 0o777;
+            assert_eq!(dir_mode, 0o700, "the screenshot directory is owner-only");
+        }
+    }
+
+    /// `create_new` refuses a pre-existing symlink with `AlreadyExists` and leaves the link target unchanged.
+    #[cfg(unix)]
+    #[test]
+    fn private_screenshot_file_refuses_a_preexisting_symlink() {
+        let dir = std::env::temp_dir().join(format!("cadcraft-shot-symlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        create_private_dir(&dir).expect("private test directory");
+        let target = dir.join("target.txt");
+        std::fs::write(&target, b"do not overwrite").expect("target file");
+        let link = dir.join("shot.png");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        let err = create_private_file(&link).expect_err("an existing symlink is refused");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&target).expect("target unchanged"), b"do not overwrite");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

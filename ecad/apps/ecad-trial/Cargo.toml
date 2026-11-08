@@ -1,0 +1,31 @@
+[package]
+name = "ecad-trial"
+description = "ECAD desktop trial harness (experiment only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-inspect = { workspace = true }
+ecad-model = { workspace = true }
+ecad-file = { workspace = true }
+cadcraft-engine = { path = "../../../crates/engine" }
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# The same eframe build as CADCraft's desktop app (system clipboard included; without its persistence of window state).
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+ecad-store = { workspace = true }
+# The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature).
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
+# The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
+egui_kittest = "=0.37.0"

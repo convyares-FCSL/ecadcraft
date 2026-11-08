@@ -40,7 +40,11 @@ pub struct ClipSource {
 pub(crate) fn copy(s: &mut Session, ents: Vec<Entity>, base: Vec2) -> Result<()> {
     let uid = s.state()?.uid;
     let defs = defs_for(s.doc()?, &ents);
+    let handles = ents.iter().map(|e| e.handle).collect();
     set(s, ents, base, defs, Some(uid));
+    // ECAD-SEAM(owner): report the copy so an owner can keep what the objects mean.
+    let serial = s.clipboard_source.as_ref().map_or(0, |c| c.serial);
+    s.ext.note_clipboard(crate::ext::ClipboardCopy { serial, uid, handles });
     Ok(())
 }
 
@@ -77,19 +81,24 @@ pub fn from_active(s: &Session) -> bool {
 pub(crate) fn paste(s: &mut Session, m: &Mat3) -> Result<Vec<Handle>> {
     let ents = s.clipboard.clone();
     let defs = s.clipboard_source.as_ref().map(|c| c.defs.clone());
+    let serial = s.clipboard_source.as_ref().map_or(0, |c| c.serial);
     let space = s.space();
     let d = s.doc_mut()?;
     let renames = defs.map(|x| merge(d, &x)).unwrap_or_default();
     let mut out = Vec::new();
-    for e in &ents {
-        let mut e = adopt(d, e, &renames);
+    // ECAD-SEAM(owner): which new entity was pasted from which clipboard entity.
+    let mut pasted = Vec::new();
+    for src in &ents {
+        let mut e = adopt(d, src, &renames);
         e.kind.transform(m);
         d.ensure_layer(&e.common.layer);
         out.push(e.handle);
+        pasted.push((e.handle, crate::ext::Source::Clipboard { serial, handle: src.handle }));
         if let Some(st) = d.space_mut(&space) {
             st.push(e);
         }
     }
+    s.ext.note_copies(pasted);
     s.set_selection(out.clone());
     Ok(out)
 }

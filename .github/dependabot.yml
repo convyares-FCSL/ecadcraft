@@ -1,0 +1,20 @@
+version: 2
+# ECAD (owner decision, 2026-11-08): only the GitHub Actions pins in our workflows are kept up to
+# date here, weekly, as pull requests into `dev`. CADCraft's root Cargo dependencies arrive through
+# the upstream sync instead (ecad/UPSTREAM-PATCHES.md); the ECAD workspace's own dependencies are a
+# separate decision. Upstream's version of this file also updated the root Cargo.lock daily.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"

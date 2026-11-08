@@ -1,0 +1,26 @@
+[package]
+name = "ecad-bench"
+description = "Project load benchmark, run on demand (`cargo xtask bench`): synthetic projects, open, derive, first page and save timings (brief 012)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-store = { workspace = true }
+ecad-file = { workspace = true }
+# The first-page timing only: open a project in a headless CADCraft session and project page 1.
+ecad-cadcraft = { path = "../ecad-cadcraft" }
+cadcraft-engine = { path = "../../../crates/engine" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+# The differential test: every drawing-edit translation is compared with the pre-014 code (brief 014).
+ecad-cadcraft = { path = "../ecad-cadcraft", features = ["translate-oracle"] }

@@ -1,0 +1,150 @@
+# Continuous integration in two levels (owner decision, 2026-11-08; ecad/CLAUDE.md, "Branches and
+# testing"):
+# - Quick check, on every pull request into dev: fmt and clippy (all targets, so tests must still
+#   compile) for the ECAD workspace on Linux. Tests run in the worker's scoped checks and at the
+#   QA gate; compiling ~50 test binaries took ~8 min of a ~12 min run (2026-11-08).
+# - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
+#   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
+#   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
+# Every action is pinned to a commit hash (the tag in the comment); Dependabot proposes updates
+# (owner decision, 2026-11-08). Green CI is required before review; it is not approval to merge.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  # Debug info and incremental caches push a full workspace build past 25 GB, more than a
+  # hosted runner's disk; without them it is a fraction of that.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  quick:
+    name: ECAD quick check
+    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+      - name: Format
+        working-directory: ecad
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        working-directory: ecad
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  fmt:
+    name: Format
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  test:
+    name: Clippy and tests
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # The packages CADCraft's own CI installs (upstream ci.yml, 0.15.1); mesa-vulkan-drivers gives
+      # the UI tests a software GPU for their wgpu rendering.
+      - name: Install windowing, font and GPU libraries for the desktop app and its tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev mesa-vulkan-drivers libgl1-mesa-dev
+      # Mirrors upstream CADCraft's CI (craft-common-actions gate.yml, called with
+      # craft-fonts-ref in upstream ci.yml at v0.15.1): its tests build with craft-fonts embedded,
+      # and some need its CJK glyphs. Bump the pin with each upstream sync. ECAD jobs build
+      # without craft-fonts, as ECAD code and tests must work without it.
+      - name: Check out craft-fonts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: storytold/craft-fonts
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+          path: craft-fonts
+          persist-credentials: false
+      - name: Build with craft-fonts
+        run: |
+          echo "CRAFT_FONTS_DIR=$GITHUB_WORKSPACE/craft-fonts" >> "$GITHUB_ENV"
+          echo "CRAFT_FONTS_REQUIRED=1" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+
+  ecad:
+    name: ECAD workspace
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The upstream patch guard diffs against the incorporated CADCraft commit.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+      - name: fmt, clippy, tests, layers, patch guard, wasm
+        working-directory: ecad
+        run: cargo xtask ci
+      - name: Tests without extra features
+        working-directory: ecad
+        run: cargo test --workspace
+
+  ecad-windows:
+    name: ECAD workspace (Windows)
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: windows-latest
+    steps:
+      # ECAD files are LF (ecad/CLAUDE.md); the runner's Git would otherwise check out CRLF.
+      - name: Check out with LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The upstream patch guard diffs against the incorporated CADCraft commit.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+      - name: fmt, clippy, tests, layers, patch guard, wasm
+        working-directory: ecad
+        run: cargo xtask ci
+      - name: Tests without extra features
+        working-directory: ecad
+        run: cargo test --workspace

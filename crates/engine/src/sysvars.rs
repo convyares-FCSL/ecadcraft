@@ -7,6 +7,7 @@ use crate::{EngineError, Result, Session};
 mod table;
 
 const SESSION_VARS: &[&str] = &[
+    "AUDITCTL",
     "OSMODE",
     "OSNAPHATCH",
     "ANNOAUTOSCALE",
@@ -34,23 +35,42 @@ const SESSION_VARS: &[&str] = &[
     "DYNPICOORDS",
     "DYNPROMPT",
     "LWDISPLAY",
+    "PLOTTRANSPARENCYOVERRIDE",
+    "SELECTIONCYCLING",
     "SELECTSIMILARMODE",
     "OBJECTISOLATIONMODE",
     "QPMODE",
+    "HIGHLIGHT",
+    "SELECTIONEFFECT",
+    "SELECTIONPREVIEW",
+    "PREVIEWEFFECT",
+    "PREVIEWFILTER",
+    "GRIPS",
+    "GRIPOBJLIMIT",
+    "SELECTIONAREA",
+    "WINDOWAREACOLOR",
+    "CROSSINGAREACOLOR",
+    "SELECTIONAREAOPACITY",
     "PICKBOX",
     "APERTURE",
     "PICKFIRST",
+    "ACADLSPASDOC",
+    "CMDECHO",
+    "FILEDIA",
     "PICKADD",
+    "PICKDRAG",
     "PICKSTYLE",
     "GRIPSIZE",
     "CURSORSIZE",
     "MAXARRAY",
     "ZOOMFACTOR",
+    "MEASUREINIT",
     "LASTPOINT",
     "FONTALT",
     "FONTFALLBACK",
     "SAVETIME",
     "SAVEFILEPATH",
+    "ISAVEBAK",
 ];
 
 pub fn get(s: &Session, name: &str) -> Option<Value> {
@@ -88,42 +108,67 @@ pub fn get(s: &Session, name: &str) -> Option<Value> {
         "DYNPICOORDS" => json!(i32::from(st.dynpi_absolute)),
         "DYNPROMPT" => json!(i32::from(st.dynprompt)),
         "LWDISPLAY" => json!(i32::from(st.lwdisplay)),
+        "PLOTTRANSPARENCYOVERRIDE" => json!(st.plot_transparency_override),
+        // Negative while turned off, so the toggle keeps the display it turns back on.
+        "SELECTIONCYCLING" => {
+            let d = i32::from(st.selection_cycling_display);
+            json!(if st.selection_cycling { d } else { -d })
+        }
         "SELECTSIMILARMODE" => json!(st.selectsimilarmode),
         // Isolation is temporary: hidden objects show again when the drawing is reopened.
         "OBJECTISOLATIONMODE" => json!(0),
         "QPMODE" => json!(i32::from(st.qpmode)),
+        "HIGHLIGHT" => json!(i32::from(st.highlight)),
+        "SELECTIONEFFECT" => json!(st.selectioneffect),
+        "SELECTIONPREVIEW" => json!(st.selectionpreview),
+        "PREVIEWEFFECT" => json!(st.previeweffect),
+        "PREVIEWFILTER" => json!(st.previewfilter),
+        "GRIPS" => json!(st.grips),
+        "GRIPOBJLIMIT" => json!(st.gripobjlimit),
+        "SELECTIONAREA" => json!(i32::from(st.selectionarea)),
+        "WINDOWAREACOLOR" => json!(st.windowareacolor),
+        "CROSSINGAREACOLOR" => json!(st.crossingareacolor),
+        "SELECTIONAREAOPACITY" => json!(st.selectionareaopacity),
         "PICKBOX" => json!(st.pickbox),
         "APERTURE" => json!(st.aperture),
         "PICKFIRST" => json!(i32::from(st.pickfirst)),
+        "ACADLSPASDOC" => json!(i32::from(st.acadlspasdoc)),
+        "CMDECHO" => json!(i32::from(st.cmdecho)),
+        "FILEDIA" => json!(i32::from(st.filedia)),
         "PICKADD" => json!(i32::from(st.pickadd)),
+        "PICKDRAG" => json!(i32::from(st.pickdrag) * 2),
         "PICKSTYLE" => json!(st.pickstyle),
         "GRIPSIZE" => json!(st.gripsize),
         "CURSORSIZE" => json!(st.cursorsize),
         "MAXARRAY" => json!(st.maxarray),
         "ZOOMFACTOR" => json!(st.zoomfactor),
+        "MEASUREINIT" => json!(i32::from(st.measureinit)),
         "LASTPOINT" => json!([s.last_point.x, s.last_point.y, 0.0]),
-        // Held in radians (as `$ANGBASE` in DXF); reported in degrees, like POLARANG.
+        // Held in radians (`$ANGBASE` in DXF is in degrees); reported in degrees, like POLARANG.
         "ANGBASE" => json!(s.doc().ok()?.header.f64("ANGBASE", 0.0).to_degrees()),
         "CONSTRAINTINFER" => json!(i32::from(s.doc().ok()?.parametric.settings.infer)),
+        // Text, as AutoCAD reads it back; the header keeps the index (and CECOLOR_RGB) for DXF.
+        "CECOLOR" => json!(crate::cmd::current_color_value(s.doc().ok()?)),
         // Process-wide font substitution (profile settings, not saved in the drawing).
         "FONTALT" => json!(cadcraft_fonts::ttf::font_alt()),
         "FONTFALLBACK" => json!(cadcraft_fonts::ttf::fallback_fonts()),
         // Autosave (profile settings too).
         "SAVETIME" => json!(crate::autosave::savetime()),
         "SAVEFILEPATH" => json!(crate::autosave::savefilepath()),
+        "ISAVEBAK" => json!(i32::from(crate::autosave::isavebak())),
         "CMDNAMES" => json!(s.running.as_ref().map(|r| r.id.to_ascii_uppercase()).unwrap_or_default()),
         "DWGNAME" => json!(s.state().map(|d| d.title.clone()).unwrap_or_default()),
         "DBMOD" => json!(s.state().map(|d| i32::from(d.is_dirty())).unwrap_or(0)),
+        // The drawing's folder with a trailing separator ("" while it has no file); DWGTITLED is 1 once it has one.
+        "DWGPREFIX" => json!(s.state().ok().and_then(|d| d.path.as_deref()).map(dwg_prefix).unwrap_or_default()),
+        "DWGTITLED" => json!(s.state().map(|d| i32::from(d.path.is_some())).unwrap_or(0)),
+        "CMDACTIVE" => json!(i32::from(s.running.is_some())),
+        "TILEMODE" => json!(i32::from(s.state().is_ok_and(|d| d.space.layout().is_none()))),
+        "PLATFORM" => json!(std::env::consts::OS),
+        "BLOCKEDITOR" => json!(i32::from(s.state().is_ok_and(|d| d.block_edit.is_some()))),
         // The template NEW/QNEW start from (a profile setting, like FONTALT; "" = none).
         "QNEWTEMPLATE" => json!(crate::cmd::file::qnew_template()),
-        "CTAB" => json!(
-            s.state()
-                .map(|d| match &d.space {
-                    cadcraft_doc::Space::Model => "Model".to_string(),
-                    cadcraft_doc::Space::Paper(n) => n.clone(),
-                })
-                .unwrap_or_default()
-        ),
+        "CTAB" => json!(s.state().map(|d| d.space.tab_name().to_string()).unwrap_or_default()),
         // UNDO state of the drawing: Control/Auto/group bits and the number of marks.
         "UNDOCTL" => json!(s.state().ok()?.undo_ctl.bits()),
         "UNDOMARKS" => json!(s.state().ok()?.undo_marks()),
@@ -157,12 +202,31 @@ pub fn get(s: &Session, name: &str) -> Option<Value> {
     Some(v)
 }
 
+/// DWGPREFIX: the folder of the drawing file, made absolute, with a trailing separator.
+fn dwg_prefix(path: &str) -> String {
+    let full = std::path::absolute(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+    match full.parent() {
+        Some(dir) => {
+            let mut text = dir.to_string_lossy().into_owned();
+            if !text.ends_with(std::path::MAIN_SEPARATOR) {
+                text.push(std::path::MAIN_SEPARATOR);
+            }
+            text
+        }
+        None => String::new(),
+    }
+}
+
 fn as_bool(v: &Value) -> Option<bool> {
     v.as_bool().or_else(|| v.as_i64().map(|i| i != 0)).or_else(|| v.as_str().and_then(|s| s.trim().parse::<i64>().ok()).map(|i| i != 0))
 }
 /// QPMODE is -1/0 (off), 1 or 2 (on) in AutoCAD; booleans work too.
 fn as_i(v: &Value) -> Option<i64> {
     v.as_i64().or_else(|| v.as_bool().map(i64::from)).or_else(|| v.as_str().and_then(|s| s.trim().parse::<i64>().ok()))
+}
+/// A whole number from 0 to `max` (a mode or a small bitcode).
+fn small(v: &Value, max: u8) -> Option<u8> {
+    as_i(v).filter(|n| (0..=i64::from(max)).contains(n)).and_then(|n| u8::try_from(n).ok())
 }
 fn as_f64(v: &Value) -> Option<f64> {
     v.as_f64().or_else(|| v.as_str().and_then(crate::units::parse_distance)).filter(|f| f.is_finite())
@@ -172,7 +236,25 @@ fn as_pt(v: &Value) -> Option<cadcraft_geom::Vec2> {
 }
 
 /// Variables `get` reports from session or drawing state that `set` can't change.
-const READ_ONLY: &[&str] = &["CMDNAMES", "DWGNAME", "DBMOD", "CTAB", "LASTPOINT", "VIEWCTR", "VIEWSIZE", "EXTMIN", "EXTMAX", "UNDOCTL", "UNDOMARKS"];
+const READ_ONLY: &[&str] = &[
+    "CMDNAMES",
+    "DWGNAME",
+    "DWGPREFIX",
+    "DWGTITLED",
+    "CMDACTIVE",
+    "TILEMODE",
+    "PLATFORM",
+    "DBMOD",
+    "BLOCKEDITOR",
+    "CTAB",
+    "LASTPOINT",
+    "VIEWCTR",
+    "VIEWSIZE",
+    "EXTMIN",
+    "EXTMAX",
+    "UNDOCTL",
+    "UNDOMARKS",
+];
 
 pub fn is_read_only(name: &str) -> bool {
     READ_ONLY.iter().any(|r| r.eq_ignore_ascii_case(name.trim())) || table::is_read_only(&name.trim().to_ascii_uppercase())
@@ -200,6 +282,8 @@ pub fn set(s: &mut Session, name: &str, v: &Value) -> Result<()> {
     let st = &mut s.settings;
     match n.as_str() {
         "OSMODE" => st.osmode = v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())).ok_or_else(bad)? as u32 & 0x7fff,
+        // The `color` command's input: ByLayer, ByBlock, a name, an index or a true colour.
+        "CECOLOR" => crate::cmd::set_current_color_value(s, v).ok_or_else(bad)?,
         "OSNAPHATCH" => st.osnaphatch = as_bool(v).ok_or_else(bad)?,
         "ANNOAUTOSCALE" => st.annoautoscale = as_i(v).filter(|i| (-4..=4).contains(i)).ok_or_else(bad)? > 0,
         // A scale of the drawing's list; ANNOAUTOSCALE adds it to the annotative objects.
@@ -238,6 +322,14 @@ pub fn set(s: &mut Session, name: &str, v: &Value) -> Result<()> {
         "DYNPICOORDS" => st.dynpi_absolute = as_bool(v).ok_or_else(bad)?,
         "DYNPROMPT" => st.dynprompt = as_bool(v).ok_or_else(bad)?,
         "LWDISPLAY" => st.lwdisplay = as_bool(v).ok_or_else(bad)?,
+        "PLOTTRANSPARENCYOVERRIDE" => {
+            st.plot_transparency_override = as_i(v).filter(|i| (0..=2).contains(i)).and_then(|i| u8::try_from(i).ok()).ok_or_else(bad)?
+        }
+        "SELECTIONCYCLING" => {
+            let i = as_i(v).filter(|i| (-2..=2).contains(i)).ok_or_else(bad)?;
+            st.selection_cycling = i > 0;
+            st.selection_cycling_display = u8::try_from(i.unsigned_abs()).map_err(|_| bad())?;
+        }
         "SELECTSIMILARMODE" => st.selectsimilarmode = as_i(v).filter(|b| (0..=255).contains(b)).ok_or_else(bad)? as u32,
         "OBJECTISOLATIONMODE" => match as_i(v) {
             Some(0) => {}
@@ -245,21 +337,38 @@ pub fn set(s: &mut Session, name: &str, v: &Value) -> Result<()> {
             _ => return Err(bad()),
         },
         "QPMODE" => st.qpmode = as_i(v).ok_or_else(bad)? > 0,
+        "HIGHLIGHT" => st.highlight = as_bool(v).ok_or_else(bad)?,
+        "SELECTIONEFFECT" => st.selectioneffect = small(v, 1).ok_or_else(bad)?,
+        "SELECTIONPREVIEW" => st.selectionpreview = small(v, 3).ok_or_else(bad)?,
+        "PREVIEWEFFECT" => st.previeweffect = small(v, 2).ok_or_else(bad)?,
+        "PREVIEWFILTER" => st.previewfilter = small(v, 63).ok_or_else(bad)?,
+        "GRIPS" => st.grips = small(v, 2).ok_or_else(bad)?,
+        "GRIPOBJLIMIT" => st.gripobjlimit = as_i(v).filter(|n| (0..=32_767).contains(n)).and_then(|n| u32::try_from(n).ok()).ok_or_else(bad)?,
+        "SELECTIONAREA" => st.selectionarea = as_bool(v).ok_or_else(bad)?,
+        "WINDOWAREACOLOR" => st.windowareacolor = small(v, 255).filter(|c| *c >= 1).ok_or_else(bad)?,
+        "CROSSINGAREACOLOR" => st.crossingareacolor = small(v, 255).filter(|c| *c >= 1).ok_or_else(bad)?,
+        "SELECTIONAREAOPACITY" => st.selectionareaopacity = small(v, 100).ok_or_else(bad)?,
         "PICKBOX" => st.pickbox = as_f64(v).ok_or_else(bad)?.clamp(0.0, 50.0),
         "APERTURE" => st.aperture = as_f64(v).ok_or_else(bad)?.clamp(1.0, 50.0),
         "PICKFIRST" => st.pickfirst = as_bool(v).ok_or_else(bad)?,
+        "ACADLSPASDOC" => st.acadlspasdoc = as_bool(v).ok_or_else(bad)?,
+        "CMDECHO" => st.cmdecho = small(v, 1).ok_or_else(bad)? == 1,
+        "FILEDIA" => st.filedia = small(v, 1).ok_or_else(bad)? == 1,
         "PICKADD" => st.pickadd = as_bool(v).ok_or_else(bad)?,
+        "PICKDRAG" => st.pickdrag = as_i(v).filter(|b| matches!(b, 0 | 2)).map(|b| b == 2).ok_or_else(bad)?,
         "PICKSTYLE" => st.pickstyle = as_i(v).filter(|b| (0..=3).contains(b)).and_then(|b| u8::try_from(b).ok()).ok_or_else(bad)?,
         "GRIPSIZE" => st.gripsize = as_f64(v).ok_or_else(bad)?.clamp(1.0, 255.0),
         "CURSORSIZE" => st.cursorsize = as_f64(v).ok_or_else(bad)?.clamp(1.0, 100.0),
         "MAXARRAY" => st.maxarray = as_f64(v).ok_or_else(bad)?.clamp(100.0, 10_000_000.0) as u64,
         "ZOOMFACTOR" => st.zoomfactor = as_i(v).filter(|z| (3..=100).contains(z)).ok_or_else(bad)? as u32,
+        "MEASUREINIT" => st.measureinit = small(v, 1).ok_or_else(bad)? == 1,
         "FONTALT" => cadcraft_fonts::ttf::set_font_alt(v.as_str().ok_or_else(bad)?),
         "FONTFALLBACK" => cadcraft_fonts::ttf::set_fallback_fonts(v.as_str().ok_or_else(bad)?),
         "SAVETIME" => crate::autosave::set_savetime(
             as_f64(v).filter(|m| *m >= 0.0 && *m <= f64::from(crate::autosave::MAX_SAVETIME)).ok_or_else(bad)?.round() as u32,
         ),
         "SAVEFILEPATH" => crate::autosave::set_savefilepath(v.as_str().ok_or_else(bad)?),
+        "ISAVEBAK" => crate::autosave::set_isavebak(as_bool(v).ok_or_else(bad)?),
         // A number is in degrees; text is an angle typed in AUNITS (SETVAR at the command line).
         "ANGBASE" => {
             let a = match v {
@@ -269,12 +378,35 @@ pub fn set(s: &mut Session, name: &str, v: &Value) -> Result<()> {
             let a = a.filter(|a| a.is_finite()).ok_or_else(bad)?;
             s.doc_mut()?.header.set_f64("ANGBASE", cadcraft_geom::norm_angle(a));
         }
+        // Whole numbers inside the range UNITS clamps to.
+        "LUNITS" | "LUPREC" | "AUNITS" | "AUPREC" => {
+            let (_, lo, hi) = crate::cmd::UNIT_RANGES.iter().find(|(k, ..)| k.eq_ignore_ascii_case(&n)).copied().ok_or_else(bad)?;
+            let i = as_i(v)
+                .or_else(|| as_f64(v).filter(|f| f.fract() == 0.0 && f.abs() < 1e15).map(|f| f as i64))
+                .filter(|i| (lo..=hi).contains(i))
+                .ok_or_else(bad)?;
+            s.doc_mut()?.header.set_i64(&n, i);
+        }
         "CONSTRAINTINFER" => s.doc_mut()?.parametric.settings.infer = as_bool(v).ok_or_else(bad)?,
         _ => {
             if let Some(r) = table::set(s, &n, v) {
                 return r;
             }
             let d = s.doc_mut()?;
+            // A dimension variable takes only the values its style field takes, as in DIMSTYLE and DIMOVERRIDE.
+            if let Some((_, field)) = cadcraft_doc::DIMVARS.iter().find(|(var, _)| *var == n) {
+                let mut st = d.dim_style(&d.header.str("DIMSTYLE", "Standard")).cloned().unwrap_or_default();
+                if !st.apply_fields(&serde_json::Map::from_iter([((*field).to_string(), v.clone())])).is_empty() {
+                    return Err(bad());
+                }
+                // A real style field (DIMJOGANG, DIMSCALE...) is a real variable, even set to a
+                // whole number first, so a later fraction still fits. It takes the value the style
+                // took.
+                if let Some(f) = serde_json::to_value(&st).ok().and_then(|j| j.get(*field).filter(|f| f.is_f64()).and_then(|f| f.as_f64())) {
+                    d.header.set_f64(&n, f);
+                    return Ok(());
+                }
+            }
             let val = match v {
                 Value::Number(x) if x.is_i64() => cadcraft_doc::HVal::Int(x.as_i64().unwrap_or(0)),
                 Value::Number(x) => cadcraft_doc::HVal::Real(x.as_f64().filter(|f| f.is_finite()).ok_or_else(bad)?),
@@ -336,7 +468,7 @@ pub fn list(s: &Session) -> Value {
     }
     if let Ok(d) = s.doc() {
         for (k, v) in &d.header.vars {
-            if matches!(k.as_str(), "ANGBASE" | "SNAPUNIT" | "GRIDUNIT") {
+            if matches!(k.as_str(), "ANGBASE" | "SNAPUNIT" | "GRIDUNIT" | "CECOLOR") {
                 m.insert(k.clone(), get(s, k).unwrap_or(Value::Null));
             } else if !k.starts_with("CADCRAFT_") {
                 m.insert(k.clone(), serde_json::to_value(v).unwrap_or(Value::Null));

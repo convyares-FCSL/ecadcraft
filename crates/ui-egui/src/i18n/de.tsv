@@ -67,6 +67,7 @@
 	Blend	Übergang
 	Block	Block
 	Block Attribute Manager...	Blockattribut-Manager...
+	Block Description...	Blockbeschreibung...
 	Block Editor	Blockeditor
 	Block Reference	Blockreferenz
 	Block...	Block...
@@ -145,6 +146,7 @@
 	Current selection	Aktuelle Auswahl
 	Current: {color}	Aktuell: {color}
 	Cut	Ausschneiden
+	Cut with Base Point	Mit Basispunkt ausschneiden
 	Cyan	Cyan
 	Cylinder	Zylinder
 	DWG	DWG
@@ -333,6 +335,10 @@
 	Import	Importieren
 	In	Vergrößern
 	In-window Menu Bar	Menüleiste im Fenster
+	Align Multileaders	Mehrfachführungslinien ausrichten
+	Collect	Sammeln
+	Collect Multileaders	Mehrfachführungslinien sammeln
+	Edit Multileader	Mehrfachführungslinie bearbeiten
 	Include in new selection set	In neuen Auswahlsatz aufnehmen
 	Increment angle	Inkrementwinkel
 	Index Color	Indexfarbe
@@ -452,6 +458,7 @@
 	N	N
 	Name	Name
 	Name (A–Z)	Name (A–Z)
+	Named Viewports...	Benannte Ansichtsfenster...
 	Nearest	Nächstgelegener
 	New	Neu
 	New (metric)	Neu (metrisch)
@@ -472,6 +479,7 @@
 	No selection	Keine Auswahl
 	Node	Knoten
 	None	Keine
+	Normal	Normal
 	Not available	Nicht verfügbar
 	Not available yet	Noch nicht verfügbar
 	OK	OK
@@ -618,6 +626,7 @@
 	Rename Text Style	Textstil umbenennen
 	Rename...	Umbenennen...
 	Repeat {command}	{command} wiederholen
+	Replace Block...	Block ersetzen...
 	Requires a point (x,y, @dx,dy or @d<a).	Erfordert einen Punkt (x,y, @dx,dy oder @d<a).
 	Reset Palettes	Paletten zurücksetzen
 	Restore	Wiederherstellen
@@ -669,6 +678,11 @@
 	Select an object to change or	Wählen Sie ein zu änderndes Objekt oder
 	Select an object to measure or	Wählen Sie ein zu messendes Objekt oder
 	Select an object.	Wählen Sie ein Objekt.
+	Add to Working Set	Zum Arbeitssatz hinzufügen
+	Edit Reference In-Place	Referenz an Ort und Stelle bearbeiten
+	Save Reference Edits	Referenzänderungen speichern
+	Working Set	Arbeitssatz
+	Xref and Block In-place Editing	Xref- und Block-Bearbeitung am Ort
 	Select an open curve.	Wählen Sie eine offene Kurve.
 	Select an open line, arc, polyline, ellipse arc or spline.	Wählen Sie eine offene Linie, einen Bogen, eine Polylinie, einen Ellipsenbogen oder einen Spline.
 	Select arc or circle	Wählen Sie einen Bogen oder Kreis
@@ -958,8 +972,9 @@
 	Viewport Properties	Ansichtsfenster-Eigenschaften
 	Viewport {id}	Ansichtsfenster {id}
 	Viewports	Ansichtsfenster
+	Volume	Volumen
 	W	W
-	WCS ⌄	WKS ⌄
+	WCS	WKS
 	White	Weiß
 	Width factor	Breitenfaktor
 	Window	Fenster
@@ -995,6 +1010,8 @@
 	Hide Others	Andere ausblenden
 	Accessibility	Bedienungshilfen
 	Show System Cursor	Systemzeiger anzeigen
+	Animation Effects	Animationseffekte
+	Animation effects	Animationseffekte
 	3D Mouse...	3D-Maus...
 	3D Mouse	3D-Maus
 	Calibrate 3D Mouse	3D-Maus kalibrieren
@@ -1015,3 +1032,15 @@
 	Left device button: zoom extents. Right device button: calibrate.	Linke Gerätetaste: auf Grenzen zoomen. Rechte Gerätetaste: kalibrieren.
 	Hatch Pattern	Schraffurmuster
 	Search for pattern	Muster suchen
+	Not a number or distance: {text}	Keine Zahl und keine Entfernung: {text}
+	Query Texts	Texte abfragen
+	Analyze Shapes	Formen analysieren
+	Italic	Kursiv
+	Underline	Unterstrichen
+	Overline	Überstrichen
+	Justify	Blocksatz
+	Text color	Textfarbe
+	Click the ruler to add a tab stop, right-click to remove one	Klick auf das Lineal setzt einen Tabstopp, Rechtsklick entfernt ihn
+	Check for Updates…	Nach Updates suchen…
+	CADCraft is up to date.	CADCraft ist auf dem neuesten Stand.
+	Could not check for updates.	Die Suche nach Updates ist fehlgeschlagen.

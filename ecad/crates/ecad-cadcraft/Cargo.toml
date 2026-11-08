@@ -1,0 +1,41 @@
+[package]
+name = "ecad-cadcraft"
+description = "Adapter between the ECAD document and the CADCraft engine (provisional, proposal Part B)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Deliberate panics inside owner callbacks and ECAD commands, for the experiment's containment
+# tests only. Never enabled in normal builds; `cargo xtask ci` tests with all features.
+fault-injection = []
+# Test oracle (brief 014): every translation of a drawing edit also runs the earlier
+# whole-document code and aborts the process if the ops differ. Enabled for this crate's own
+# tests (and ecad-bench's differential test) through dev-dependencies, and by `--all-features`;
+# never in app builds.
+translate-oracle = []
+# `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
+# cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
+# release or the trial (brief 009 review S3). Delete once brief 010's `cableref` is merged.
+test-ops = []
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-store = { workspace = true }
+ecad-file = { workspace = true }
+ecad-inspect = { workspace = true }
+cadcraft-engine = { path = "../../../crates/engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# Every test run compares each drawing-edit translation with the pre-014 code (brief 014), and
+# this crate's own tests see `apply_ops`.
+ecad-cadcraft = { path = ".", features = ["translate-oracle", "test-ops"] }
