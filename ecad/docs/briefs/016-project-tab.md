@@ -1,10 +1,18 @@
 # Brief 016: Project tab: see and switch pages
 
 Status: Approved (owner, 2026-11-08: "move onto project tab")
-Branch: `ecad/project-tab`
+Branch: `feature/project-manager` (from `dev`, after the QA gate and the test restructure; owner
+decision 2026-11-08, see `docs/features.md`)
 Designer: **yes** (design spec first, in `docs/design/016.md`) · Size: M
-Depends on: briefs 009, 010 and 011 (the stack in PRs #29, #28 and #27). This branch starts on top
-of `ecad/agent-mcp`, and is rebased onto `dev` as they merge.
+Depends on: briefs 009–011 and 014 merged into `dev` (014's "switch page" bench column decides the
+speed target below).
+
+> [!update] 2026-11-08: one active page, plus a preview
+> The owner's two-page trial of 014 showed that several editable pages open at once makes undo and
+> references hard to follow (an undo changed a page that wasn't visible). Pages all live in one
+> `.ecad` and in memory, so showing one is cheap. Decision: **one active (editable) page at a
+> time**, switched from the Project panel, with a **read-only preview** of another page for
+> checking references. Scope items 7 and 8 and acceptance criteria 7 to 9 below were added for it.
 
 ## Goal
 
@@ -58,6 +66,14 @@ needed soon".
    - screenshots needed;
    - everything with click-only steps, as for briefs 008–010.
 6. **The quick start:** a "Project panel" section with click-only steps.
+7. **One active page.** Exactly one page is editable and drawn at a time; the Project panel, Go to
+   Reference, `openpage` and MCP switch it. Undo and redo bring the page they change to the front,
+   so the owner always sees what is undone. Edits redraw only the active page; the stale-page
+   marking 014 added for other open tabs is removed once nothing else is open.
+8. **A read-only preview** of one other page, for checking a reference's other end without
+   leaving the active page (for example from the reference's hover or the panel). It cannot be
+   edited, is drawn from the model when shown, and is never updated in the background. The
+   designer decides where it appears (split, overlay or panel) and how it is opened and closed.
 
 Out of scope: lists of cables, components or references (future); page templates and title
 blocks; multi-project tabs; any `.ecad` format change or new op.
@@ -73,6 +89,12 @@ blocks; multi-project tabs; any `.ecad` format change or new op.
    measurable cost per frame. Add a bench or test figure for it.
 5. Closing a page's tab leaves the page listed, and one click reopens it.
 6. Reference screenshots, as the design lists them, approved by the owner.
+7. Switching the active page meets a target set from 014's "switch page" bench column (the
+   designer proposes it; the owner approves), on the large tier, and the bench reports it.
+8. Undo or redo of an edit made on another page brings that page to the front and shows the
+   change; a test covers it.
+9. The preview shows the other end of a reference correctly after moves, renames, undo and redo,
+   and cannot change the project.
 
 ## Needs owner check
 
