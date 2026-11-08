@@ -217,6 +217,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
 }
 
 #[test]
+#[ignore = "slow: 400-edit oracle probe, about 110 s; runs at the QA gate"]
 fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
