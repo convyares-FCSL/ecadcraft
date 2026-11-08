@@ -58,7 +58,15 @@ pub struct Measured {
     pub draw_window_ms: f64,
     /// Draw one wire between two terminals on page 1, in a headless CADCraft session (brief 014).
     pub draw_wire_ms: f64,
+    /// With the project open and page 1 shown, bring up a page not viewed before (`openpage`, the
+    /// path of Go to Reference): median over up to [`SWITCH_PAGES`] pages spread over the project.
+    pub switch_first_ms: f64,
+    /// Then switch back to page 1, already viewed (`openpage` again), median over the same pages.
+    pub switch_back_ms: f64,
 }
+
+/// Most pages the switch-page timings visit, spread evenly over the page order.
+pub const SWITCH_PAGES: usize = 10;
 
 /// The median of `samples` (0 for none).
 pub fn median(samples: &mut [f64]) -> f64 {
@@ -141,6 +149,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
+    let (mut switch_first_ms, mut switch_back_ms) = switch_pages(path, &scratch.join("switch.ecad"))?;
 
     let m = Measured {
         bytes,
@@ -154,6 +163,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         draw_move_ms: median(&mut draw_move_ms),
         draw_window_ms: median(&mut draw_window_ms),
         draw_wire_ms: median(&mut draw_wire_ms),
+        switch_first_ms: median(&mut switch_first_ms),
+        switch_back_ms: median(&mut switch_back_ms),
     };
     Ok((m, doc))
 }
@@ -317,6 +328,66 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
         drop(project);
         drop(s);
         Ok((moves, windows, wires))
+    })();
+    remove(copy);
+    result
+}
+
+/// The pages after page 1 to visit: up to [`SWITCH_PAGES`] of them, spread evenly over the order.
+fn spread(order: &[ecad_model::PageId]) -> Vec<ecad_model::PageId> {
+    let rest = order.get(1..).unwrap_or_default();
+    let n = rest.len().min(SWITCH_PAGES);
+    (0..n).filter_map(|i| rest.get(i * rest.len() / n.max(1)).copied()).collect()
+}
+
+/// Copy `path` to `copy` and open it in a headless CADCraft session with page 1 shown (not timed).
+/// Then for each page of [`spread`]: bring it up for the first time with `openpage` (timed), and
+/// switch back to page 1, already viewed, with `openpage` (timed). Both go through the engine and
+/// `Project::open_page`, as the trial's `openpage` and Go to Reference do. Every switch must leave
+/// the asked page in front.
+fn switch_pages(path: &Path, copy: &Path) -> Result<(Vec<f64>, Vec<f64>), String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
+            &mut s,
+            path_text(copy)?,
+            OPEN_SEED,
+            ecad_cadcraft::views::Settings::none(),
+        )?;
+        let order = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
+        let first = *order.first().ok_or("the project has no pages")?;
+        let pages = spread(&order);
+        if pages.is_empty() {
+            return Err("the project has only one page; nothing to switch to".into());
+        }
+        let shown = |project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::Session| {
+            let uid = s.state().map(|st| st.uid).ok();
+            project.read(s, |p, _| uid.and_then(|u| p.page_of(u)))
+        };
+        let (mut first_view, mut back) = (Vec::with_capacity(pages.len()), Vec::with_capacity(pages.len()));
+        for page in pages {
+            let t = Instant::now();
+            s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
+            first_view.push(ms(t));
+            if shown(&project, &mut s)? != Some(page) {
+                return Err(format!("openpage {page} did not bring the page to the front"));
+            }
+            let t = Instant::now();
+            s.execute("openpage", &json!({"page": first.hex()})).map_err(|e| format!("openpage {first}: {e}"))?;
+            back.push(ms(t));
+            if shown(&project, &mut s)? != Some(first) {
+                return Err("switching back did not bring page 1 to the front".into());
+            }
+        }
+        // Dropping the session and the handle releases the project and its writer lock.
+        drop(project);
+        drop(s);
+        Ok((first_view, back))
     })();
     remove(copy);
     result

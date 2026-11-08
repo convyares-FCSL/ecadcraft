@@ -1171,3 +1171,50 @@ fn undo_marks_other_pages_stale_and_they_show_the_reverted_text_in_front() {
     assert!(!texts.iter().any(|t| t.contains("/2.3")), "{texts:?}");
     r.h.check();
 }
+
+/// Owner's two-page trial (brief 014 fix round): page 2's cable end is erased (page 1 shows `/?`),
+/// then page 1 is brought to the front and the erase is undone from there. The undone edit was on
+/// page 2, but page 1's reference text changed, so page 1, in front, is redrawn at once.
+#[test]
+fn undo_from_the_front_page_redraws_it_when_its_reference_text_changed() {
+    let mut r = connected();
+    r.h.activate(r.field);
+    let doc = r.h.doc();
+    let keep: Vec<cadcraft_engine::doc::Handle> = doc
+        .representations
+        .values()
+        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Component(_)))
+        .flat_map(|x| x.items.iter())
+        .map(|i| r.h.handle_of(r.field, *i))
+        .collect();
+    let erase: Vec<String> =
+        r.h.pv(|p, pg| pg.entities_of(p, r.field))
+            .iter()
+            .map(|e| e.handle)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|h| !matches!(r.h.mapped(r.field, *h), Some(Mapped::Marker(..))) && !keep.contains(h))
+            .map(|h| h.hex())
+            .collect();
+    r.h.run("erase", json!({ "handles": erase })).unwrap();
+    r.h.activate(r.supply);
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/?")), "{texts:?}");
+
+    // Undo from page 1 (in front): Field's end is back, and Supply shows `/2.1` straight away.
+    let head = r.h.head();
+    r.h.run("u", Value::Null).unwrap();
+    assert_eq!(r.h.head(), head + 1, "one undo");
+    assert_eq!(text_of(&mut r.h, r.supply), "/2.1");
+    assert!(!r.h.p(|p| p.pages[&r.supply].stale), "the page in front is never stale");
+    let texts = drawn_texts(&mut r.h, r.supply);
+    assert!(texts.iter().any(|t| t.contains("/2.1")), "page 1 in front was not redrawn: {texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("/?")), "{texts:?}");
+    r.h.check();
+    // And typed at the command line, as the owner did (`u` then Enter), for a second round.
+    r.h.run("redo", Value::Null).unwrap();
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/?")), "redo redraws the front too");
+    r.h.cmdline("u");
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("/2.1")), "typed u redraws the front");
+    r.h.check();
+}

@@ -887,6 +887,8 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | draw move ms | In a headless drawing session with page 1 open, move a component that has wires attached, as MOVE does it on its symbol: the drawing change is turned into ECAD ops (the wires follow), recorded, and page 1 is drawn again (brief 014). |
 | move+wires ms | In the same session, move that component together with every wire attached to it, as a window around them selects them: each wire's far end leaves its terminal, so the ends are matched against the page's terminals (brief 014). |
 | draw wire ms | In the same session, draw one wire between two terminals on page 1 with the `wire` command, as the mouse wire tool does (brief 014). |
+| 1st view ms | In a headless session with page 1 shown, bring up a page not viewed before with `openpage` (the path of Go to Reference): median over up to 10 pages spread over the project (brief 014 fix round, for the 016 decision). |
+| back ms | After each of those, switch back to page 1, already viewed, with `openpage`: median over the same pages. |
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
 file opened once; the three draw columns run on another copy, opened once in one drawing session
