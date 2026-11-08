@@ -1,6 +1,6 @@
 # Brief 022: Connectivity and wire numbers
 
-Status: Approved (owner, 2026-11-08: "Yes, start F4")
+Status: Approved (owner, 2026-11-08: "Yes, start F4"); design 022 approved with all recommendations, Q14 offering choices instead of refusing
 Branch: `feature/connectivity` (worktree `C:\dev\ecad-features\connectivity`), from
 `feature/project-manager` (016 + 018). It is rebased onto `dev` once that merges, and onto 019's
 references when that merges.
