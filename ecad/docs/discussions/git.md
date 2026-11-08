@@ -35,10 +35,10 @@ branches never mint the same ID for different objects.
 
 - The diff driver (`textconv` in `.gitattributes`) uses **the same state-diff engine** as
   revision comparison ([`revisions.md`](revisions.md) §3.2). It compares materialised document
-  or part states, never raw ops.
+  or chunk states, never raw ops.
 - So `git diff`, even on version 2 binary files, prints engineering changes:
   "Page 4: added component -K01", "Page 12: -F01 property rating 10A → 16A", "wire re-attached".
-- With snapshots (EEP-0004), the engine skips every part whose `state_hash` is unchanged.
+- With snapshots (EEP-0004), the engine skips every chunk whose `state_hash` is unchanged.
 
 `[OPEN: how the driver is invoked. (a) the `ecad` command-line tool (EEP-0003 §16.2), for example
 `ecad diff --textconv <file>` (recommended: one tool for upgrade, diff and merge); (b) a separate
@@ -97,12 +97,12 @@ Layer B.]`
 > inside ECAD, and the `.ecad` file is never a folder. An export of a project as files for
 > external tools remains possible, as an export only.
 
-Each EEP-0004 part becomes a deterministic, canonical file in a project folder:
+Each EEP-0004 chunk becomes a deterministic, canonical file in a project folder:
 
-- **Pages.** Each `"page:<PageId>"` part (the page's items and the representations on it,
+- **Pages.** Each `"page:<PageId>"` chunk (the page's items and the representations on it,
   including their connection points) is its own file, so page edits merge as separate files on
   GitHub with no driver.
-- **The project part** (components, terminals, conductors, cables, definitions, layers, settings)
+- **The project chunk** (components, terminals, conductors, cables, definitions, layers, settings)
   is written as **one canonical line per object, sorted by ID**, or split into one file per
   object table. Two branches that add different components or wires then auto-merge with plain
   git line merging.
@@ -114,12 +114,12 @@ Each EEP-0004 part becomes a deterministic, canonical file in a project folder:
   self-contained `.ecad`. The converter works both ways.
 - **Ignored files.** `.lock`, `.tmp-*`, `.tail-*` and `.ecad-session` are always git-ignored
   (EEP-0002 §13).
-- **Integrity.** Each file carries its part's `state_hash` (EEP-0004 §5); ECAD checks the
+- **Integrity.** Each file carries its chunk's `state_hash` (EEP-0004 §5); ECAD checks the
   folder's invariants on open, after any merge, and refuses to save over a folder that does not
   pass, with a domain-level report.
 
 `[OPEN: the folder files' encoding. (a) canonical JSON lines, as EEP-0002 §4 (recommended: git
-line merges and web diffs need text); (b) version 2 binary per part, with the diff driver.]`
+line merges and web diffs need text); (b) version 2 binary per chunk, with the diff driver.]`
 
 ## 4. Rollout (as first agreed; Layer B no longer applies)
 
@@ -127,5 +127,5 @@ line merges and web diffs need text); (b) version 2 binary per part, with the di
 | --- | --- |
 | **When a second person joins** | Layer A: the diff driver and the merge driver for `.ecad`. |
 | **Earlier, if teams need web review** | The committed review summary (§2.3). |
-| **Stage 4 (snapshots, EEP-0004)** | Layer B designed together with snapshot parts: the folder layout is the parts' layout. |
+| **Stage 4 (snapshots, EEP-0004)** | Layer B designed together with snapshot chunks: the folder layout is the chunks' layout. |
 | **With Layer B** | Web review without drivers; the summary file becomes optional. |

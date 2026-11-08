@@ -40,12 +40,12 @@ revision.
 ### 3.2 Issuing a revision writes a snapshot
 
 Once snapshots exist (stage 4, EEP-0004), issuing a revision MUST write a full snapshot (every
-part, then an index) immediately after the revision point.
+chunk, then an index) immediately after the revision point.
 
 - **Diffs.** The log between Rev A and Rev B is noisy: an engineer may add, move, rename and
   delete a component ten times between releases. The shop floor cares only about the net change
   between released states. With a snapshot at every revision, "what changed since Rev B" is a
-  state-to-state diff of the two revisions' parts, and every page whose `state_hash` is unchanged
+  state-to-state diff of the two revisions' chunks, and every page whose `state_hash` is unchanged
   is skipped. The same state-diff engine drives `git diff` on `.ecad` files ([`git.md`](git.md)
   §2.1).
 - **Experience.** Issuing (F7, Release) is already a deliberate milestone with an expected pause

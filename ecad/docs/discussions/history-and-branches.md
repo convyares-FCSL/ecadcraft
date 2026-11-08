@@ -68,13 +68,13 @@ revisions, with the distinct meanings above. Format terms (`container_version`,
    file. **Snapshots are loading accelerators** tied to exact history points: they make opening
    faster and never replace the log, so none is needed to share the file.
 9. **Open loads only what is needed** (owner rule): `meta`, the active branch's latest snapshot
-   (only the parts the shown page and the panels need) and the transactions after it. Other
+   (only the chunks the shown page and the panels need) and the transactions after it. Other
    branches, older versions and revisions, full histories and assets are read only when used:
    switching branch, paging the History panel (newest first), showing an asset, comparing (the
-   differing parts only), undoing past the snapshot. Open time depends on the active branch's
+   differing chunks only), undoing past the snapshot. Open time depends on the active branch's
    tail and the shown page, not on file size, branch count or history length: it stays roughly
    flat as the history grows tenfold. EEP-0005 §5 specifies it.
-10. **Save writes only what is new:** new transactions and parts, never a rewrite of what is
+10. **Save writes only what is new:** new transactions and chunks, never a rewrite of what is
     stored (EEP-0005 §6).
 
 ## 4. Project fields are history
@@ -101,7 +101,7 @@ are undoable, branchable and captured by versions.
 
 ## 6. Size
 
-A branch stores only its own transactions after the fork. Snapshot parts are content-addressed
+A branch stores only its own transactions after the fork. Snapshot chunks are content-addressed
 and shared across versions and branches (EEP-0004 §5, EEP-0005), so a file grows with what
 differs, not with the number of branches or versions.
 

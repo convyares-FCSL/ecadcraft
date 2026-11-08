@@ -4,7 +4,7 @@ Status: **Decided: redb** (owner, 2026-11-08). The earlier recommendation of our
 **withdrawn**; §9 explains why. Sections 1–8 are kept as the record of how the decision was reached.
 
 Related: `discussions/history-and-branches.md` (the model: one log per branch, versions as
-snapshots, content-addressed parts and assets), EEP-0005 (container v2, draft), and the spike report
+snapshots, content-addressed chunks and assets), EEP-0005 (container v2, draft), and the spike report
 `worker` notes `spike-storage-report.md`.
 
 ---
@@ -16,7 +16,7 @@ These requirements were agreed before any engine was compared:
 - **One self-contained `.ecad` file**, with nothing to install and no server.
 - **The log stays the truth:** one append-only log per branch, starting with a fork transaction and
   ending with merge transactions.
-- **Versions are snapshots**, built from **content-addressed parts** (one per page plus the shared
+- **Versions are snapshots**, built from **content-addressed chunks** (one per page plus the shared
   model tables) and stored once, so branches cost only what differs.
 - **Assets** (images, PDFs) are stored once each, by hash.
 - **Opening loads only what's needed:** `meta`, then the active branch's latest snapshot, then the
@@ -35,8 +35,8 @@ engines; only the physical form differs.
 | `meta` | file | Format and container version, the file's ID, the ECAD build that wrote it, and cache bookkeeping. **No design data.** | rarely |
 | `branches` | branch | ID, name, status (open / merged / archived), parent branch and fork point, current head, release-line flag | on fork, merge and each save (head) |
 | `log:<branch>` | transaction | This branch's **own linear log**, today's v1 rules: `seq`, `prev` hash chain, author (user or agent), time and ops. Row 1 is the **fork transaction** (parent branch, point, snapshot). **Merge transactions** name the source branch and head and carry the resolved changes as ordinary ops. Append-only, never edited. | every save (new rows only) |
-| `versions` | named point | Name, branch, point in that branch's log, and the part hashes of its snapshot. A **revision** is a version plus release data (rev, date, drawn, checked, approved) and a release-line flag. | on create version or issue revision |
-| `parts` | content hash | Snapshot pieces: one per page plus the shared model tables (chunked; see §6). Stored **once** and shared by every version and branch that has the same content. | only when content is new |
+| `versions` | named point | Name, branch, point in that branch's log, and the chunk hashes of its snapshot. A **revision** is a version plus release data (rev, date, drawn, checked, approved) and a release-line flag. | on create version or issue revision |
+| `chunks` | content hash | Snapshot pieces: one per page plus the shared model tables (chunked; see §6). Stored **once** and shared by every version and branch that has the same content. | only when content is new |
 | `assets` | content hash | Images and PDFs, stored once and uncompressed. | on insert |
 
 **What is not in the file:** derived state (nets are recomputed; wire numbers are the stored
@@ -45,9 +45,9 @@ exception, as decided in F4) and per-user view state.
 **Where project fields live:** title, customer, drawing number, status, the revision table, sheet
 and tag settings are **transactions in the branch log** (`SetProperty` on the project,
 `SetProjectSettings`). So they're undoable, branchable and captured by versions. Their current
-values also live in the snapshot's model part, so opening never replays history to find them.
+values also live in the snapshot's model chunk, so opening never replays history to find them.
 
-**On open:** read `meta` and `branches`, then the active branch's latest version parts (the shown
+**On open:** read `meta` and `branches`, then the active branch's latest version chunks (the shown
 page first, other pages on demand), then only the `log:<branch>` rows after that snapshot. Other
 branches, older versions, the full history and assets load only when used.
 
@@ -57,7 +57,7 @@ branches, older versions, the full history and assets load only when used.
 |---|---|---|---|
 | `meta`, `branches`, `versions` | Typed frames; the latest copy is found through the **index frame written at the end of each save** (a committed generation) | Key-value tables in one write transaction | Ordinary tables in one transaction |
 | `log:<branch>` | Typed log frames tagged with the branch ID, appended. The per-branch chain is today's v1 framing (CRC, hash chain) | A table keyed by `(branch, seq)` | A table keyed by `(branch_id, seq)` |
-| `parts`, `assets` | Typed frames keyed by hash, Zstandard-compressed (assets stored), located through the index | Tables keyed by hash | Tables keyed by hash (BLOBs) |
+| `chunks`, `assets` | Typed frames keyed by hash, Zstandard-compressed (assets stored), located through the index | Tables keyed by hash | Tables keyed by hash (BLOBs) |
 | Commit point | The index frame, plus its hash and generation | The redb commit | The SQLite commit (WAL), folded into the file on save |
 | Compaction | Our "Compact" rewrites live frames | `compact()` | `VACUUM` |
 
@@ -72,7 +72,7 @@ same container trait: swap the physical layer, keep the tables.
 |---|---|---|---|
 | 1 | **A ZIP container**, Zstandard per entry, with our own "committed generations" save | A standard format readable by any tool; holds assets; per-entry compression; unzipped, it is a git folder | Owner: readability by other tools doesn't matter; git is not the model; "I'm not Autodesk" |
 | 2 | **Our own container**: today's framing extended with typed frames plus an index written at the end | We already wrote and tested durable append and recovery (stage 2a); zero dependencies; full control at every major version | Owner: databases weren't excluded, show the options |
-| 3 | **An embedded database**, with **redb** "my favourite on paper" and SQLite as the benchmark | Crash safety, recovery and compaction from a well-tested engine; less code of ours; a database's tables map directly onto logs, branches, versions, parts and assets | The owner chose to measure rather than argue |
+| 3 | **An embedded database**, with **redb** "my favourite on paper" and SQLite as the benchmark | Crash safety, recovery and compaction from a well-tested engine; less code of ours; a database's tables map directly onto logs, branches, versions, chunks and assets | The owner chose to measure rather than argue |
 | 4 | Stated expectation before the numbers: **"redb or SQLite wins on effort and safety; our own container wins on raw speed and control. The spike will tell by how much."** | Not stated, it was a prediction | The bake-off |
 
 The owner leaned towards redb at stage 3 (it fits, it's pure Rust, and it's a single file).
@@ -96,7 +96,7 @@ SQLite); then torn-write tests.
 | Deduplication (an unchanged version or duplicate asset writes nothing) | n/a | **works** |
 | Crash tests | n/a | **0 failures** |
 
-**So the model itself is the win,** whichever engine is chosen: per-branch logs, snapshot parts,
+**So the model itself is the win,** whichever engine is chosen: per-branch logs, snapshot chunks,
 and loading only what's needed.
 
 ### Between the engines
@@ -121,7 +121,7 @@ and loading only what's needed.
 | **"redb: less code, pure Rust, single file, my favourite on paper"** | True on code, Rust and single file. **New, against it:** redb's allocator rounds every allocation up to a power of two, so files are 23–34 % larger after compaction (up to 65 % before). **redb dropped support for its own previous file format in version 3.0 (2025)**, so `.ecad` files would depend on migrations we don't control. Reopen after a crash is slow without quick-repair. | **Weaker than argued.** The size cost is real, and the format-control finding goes directly against the owner's "never stuck behind someone else's decisions". |
 | **"SQLite is the benchmark everyone measures against"** | It's fast to open and as compact as ours, but its saves are the slowest, because folding the WAL after every save costs as much as the commit. Spikes reach 38–43 ms. After a crash, committed saves may live only in the `-wal` side file, so copying just the `.ecad` loses them. It also needs a C toolchain on every target. | **Ruled out.** It fails "one self-contained file" at exactly the wrong moment, and it's not Rust. |
 | **"Our own container wins on raw speed and control"** (stage 2 and the stage 4 prediction) | Confirmed: **fastest save, smallest file, full format control.** The cost was underestimated: about 3k lines including tests, with recovery the subtle part. | **Confirmed, with a realistic cost.** |
-| **"We already wrote durable append and recovery in stage 2a"** | Helpful, but v2 adds typed frames, an index, parts and compaction. The new recovery path is where the bug was. | **Partly true.** The experience transfers; the new code still needs its own tests. |
+| **"We already wrote durable append and recovery in stage 2a"** | Helpful, but v2 adds typed frames, an index, chunks and compaction. The new recovery path is where the bug was. | **Partly true.** The experience transfers; the new code still needs its own tests. |
 | **ZIP (stage 1)** | Not measured; dropped before the bake-off. Its one remaining advantage, readability by standard tools, has no value here. | **Rightly dropped.** |
 
 ---
@@ -155,7 +155,7 @@ the fix.
    gate, not a spike.
 2. **Recovery code is reviewed as risky code:** the tester's risky-area list (`ecad/CLAUDE.md`)
    already includes the store.
-3. **Split the shared project part into fixed-size chunks.** It's the biggest lever for any engine:
+3. **Split the shared project data into fixed-size chunks.** It's the biggest lever for any engine:
    15 of the ~19 ms open, and about 1.65 MB of each version.
 4. **Fallback:** if our container's recovery proves hard to get right, redb with quick-repair is a
    measured, working alternative behind the same container trait.
@@ -196,7 +196,7 @@ format than the evidence supports.
 | Size after compaction, lean / churned | 49 / 63 MB | 66 / 78 MB | **+15–17 MB** (+23–34 %) |
 
 None of these is a user-facing problem we can name. The improvement over v1 (seconds down to
-milliseconds) comes from **the model**: per-branch logs, snapshot parts, and loading only what's
+milliseconds) comes from **the model**: per-branch logs, snapshot chunks, and loading only what's
 needed. redb delivers all of it. Saving half a millisecond and 15 MB doesn't justify owning a new
 recovery engine.
 
@@ -234,10 +234,10 @@ engine.
   log.
 - **Physically in redb:**
   - one `transactions` table keyed by `(branch_id, sequence)`, plus `branches` (name, status,
-    parent, fork point, head, release-line flag), `versions`, `parts`, `assets` and `meta`;
+    parent, fork point, head, release-line flag), `versions`, `chunks`, `assets` and `meta`;
   - sharing one physical table keeps the schema fixed as branches are created and archived; each
     branch's logical identity, ordering and ancestry stay explicit;
-  - a save writes the new transactions, any new parts and the updated branch head in **one redb
+  - a save writes the new transactions, any new chunks and the updated branch head in **one redb
     write transaction**, so they commit together;
   - **append-only is enforced by ECAD's API**; redb doesn't prevent edits.
 
