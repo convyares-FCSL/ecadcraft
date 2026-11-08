@@ -37,9 +37,12 @@ opt-level = 1
 
 # Mirrors CADCraft's root [patch.crates-io] (CADCraft 0.15.1, ../Cargo.toml): patches apply only at a
 # workspace root, and the CADCraft crates used by path need the same egui and winit forks.
-# Re-copy on every upstream sync. Entries the ECAD graph does not use (the PDF backends,
-# egui_demo_lib, egui_extras, egui_inspection, egui_system_font_provider) are left out.
+# Re-copy on every upstream sync. Entries the ECAD graph does not use (egui_demo_lib,
+# egui_extras, egui_inspection, egui_system_font_provider) are left out. The PDF backends are
+# used since brief 011: `ecad-mcp` uses `cadcraft-mcp`, whose `cadcraft-io` writes PDF (krilla;
+# hayro-syntax and hayro-jbig2 are not in the ECAD graph).
 [patch.crates-io]
+krilla = { version = "=0.8.2", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
 # Keep the complete egui family and native event bridge on reviewed fork commits.
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }

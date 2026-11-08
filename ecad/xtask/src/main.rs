@@ -35,6 +35,8 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-bench", Class::Adapter),
     ("ecad-cli", Class::Ui),
     ("ecad-trial", Class::Ui),
+    // Headless by construction: CADCraft crates below the UI only.
+    ("ecad-mcp", Class::Adapter),
     ("ecad-xtask", Class::Exempt),
 ];
 

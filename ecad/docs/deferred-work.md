@@ -25,6 +25,18 @@ started.
   (the debugger, the Tool Sets seam X8 and later work have changed files outside `ecad/` since the
   proposal was written against `baee1b8`), then get the owner's approval for implementation.
 
+## Bridged agent access (brief 011, owner answer 2026-11-07)
+
+- **What:** an agent driving the running trial through an opt-in, localhost-only control channel
+  (`--control PORT` with CADCraft's control token), with a banner showing when an agent is
+  connected and when it last wrote (brief 011, scope item 2).
+- **Status:** deferred; brief 011 ships the headless `ecad-mcp` only.
+- **Before resuming:** the trial is shared by the person and the agent, so the author must be
+  recorded **per call**, not per session: every agent call sets `Author::Agent(<name>)` for its
+  own transactions and restores `Author::User` afterwards, including when the call fails or
+  panics, so no person's edit is ever recorded as the agent's (and none of the agent's as the
+  person's). The headless server sets the author once because only the agent edits there.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
