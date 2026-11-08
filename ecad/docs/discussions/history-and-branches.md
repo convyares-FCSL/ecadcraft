@@ -62,6 +62,15 @@ revisions, with the distinct meanings above. Format terms (`container_version`,
    file. Caches (intermediate snapshots, indexes) make it faster and are never needed to share
    it. The snapshot a fork starts from is **not** a cache: it is the branch's base, and can be
    checked against the parent's log in the same file.
+9. **Open loads only what is needed** (owner rule): `meta`, the active branch's latest snapshot
+   (only the parts the shown page and the panels need) and the transactions after it. Other
+   branches, older versions and revisions, full histories and assets are read only when used:
+   switching branch, paging the History panel (newest first), showing an asset, comparing (the
+   differing parts only), undoing past the snapshot. Open time depends on the active branch's
+   tail and the shown page, not on file size, branch count or history length: it stays roughly
+   flat as the history grows tenfold. EEP-0005 §5 specifies it.
+10. **Save writes only what is new:** new transactions and parts, never a rewrite of what is
+    stored (EEP-0005 §6).
 
 ## 4. Project fields are history
 
