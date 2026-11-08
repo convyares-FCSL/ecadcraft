@@ -6,8 +6,8 @@
 //!   taking and releasing the writer lock as the app does).
 //! - **edit** and **save** run on one copy of the file, opened once and not timed: each run
 //!   commits one add-wire transaction (timed as edit), then saves it (timed as save).
-//! - **xref** (cable references) is measured only where the derivation exists; see
-//!   [`cable_references_ms`].
+//! - **xref** (cable references) times brief 010's `ecad_model::derive::cable_references` on the
+//!   document the open runs replayed to, as **derive** times the nets; see [`cable_references_ms`].
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -35,7 +35,7 @@ pub struct Measured {
     pub open_ms: f64,
     /// Nets on the opened document (`ecad_model::derive::nets`).
     pub derive_ms: f64,
-    /// Cable references on the opened document; `None` until the derivation exists (brief 010).
+    /// Cable references on the opened document (`ecad_model::derive::cable_references`, brief 010).
     pub xref_ms: Option<f64>,
     /// Open the file in a headless CADCraft session and project page 1 (`ecad-cadcraft`).
     pub first_page_ms: f64,
@@ -71,12 +71,15 @@ fn open(path: &Path) -> Result<ecad_file::OpenedDisk, String> {
     Ok(o)
 }
 
-/// The time to derive the cable references of `doc`, or `None` while this revision has no such
-/// derivation. Brief 010 (PR #28) adds `ecad_model::derive::cable_references`; once it is merged
-/// this times that function, and the `xref_ms` column fills in.
+/// The time to derive the cable references of `doc` (brief 010's
+/// `ecad_model::derive::cable_references`), in milliseconds. Always `Some` in this revision; the
+/// `Option` keeps the report's `—` for a revision without the derivation.
 pub fn cable_references_ms(doc: &Document) -> Option<f64> {
-    let _ = doc;
-    None
+    let start = Instant::now();
+    let refs = ecad_model::derive::cable_references(doc);
+    let took = ms(start);
+    std::hint::black_box(refs);
+    Some(took)
 }
 
 /// Measure the project file at `path`, `runs` times each; `scratch` is a folder for the copy the
