@@ -895,6 +895,43 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
     assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds + 1);
 }
 
+/// Review of PR #41 (S1, S3, W1): the page rows and the Find Symbol window follow their update
+/// maps. Drawing edits (a wire, its undo and redo, a line) re-read neither; a device change re-reads
+/// the search but not the page rows; a page rename re-reads the rows once; idle frames read
+/// nothing.
+#[test]
+fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
+    let mut h = build(trial(), None);
+    let (coil, page1, _page2) = devices_fixture(&mut h);
+    {
+        let s = &mut h.state_mut().search;
+        s.open = true;
+        s.query = "k".into();
+        s.picked = Some(ecad_trial::search::Pick::Symbol("no"));
+    }
+    h.run_steps(3);
+    let count = |h: &Harness<'static, Trial>| (h.state().panel.rebuilds, h.state().search.rebuilds);
+    let (rows, search) = count(&h);
+    h.run_steps(5);
+    assert_eq!(count(&h), (rows, search), "idle frames read nothing");
+
+    ok(&mut h, r#"wire {"points":[[0,-40],[60,-40]]}"#);
+    ok(&mut h, "u");
+    ok(&mut h, "redo");
+    ok(&mut h, r#"line {"points":[[0,-60],[60,-60]]}"#);
+    h.run_steps(3);
+    assert_eq!(count(&h), (rows, search), "wires and lines leave the page rows and the search alone");
+
+    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"description","value":"Pump"}}"#, coil.hex()));
+    h.run_steps(3);
+    assert_eq!(h.state().panel.rebuilds, rows, "a device change leaves the page rows");
+    assert_eq!(h.state().search.rebuilds, search + 2, "the rows and the second step, once each");
+
+    ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Renamed"}}"#, page1.hex()));
+    h.run_steps(3);
+    assert_eq!(h.state().panel.rebuilds, rows + 1, "a rename re-reads the rows once");
+}
+
 /// The developer tools live in the Project panel's Developer section, folded by default, and the
 /// section hosts them itself (owner, 2026-11-08): the command field with its reply, the debugger
 /// inline, and Inspect Project as readable text. No ECAD Dev tab, no right-hand debugger panel, no

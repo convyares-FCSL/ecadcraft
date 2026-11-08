@@ -96,12 +96,15 @@ pub fn format(prefix: &str, n: u64, padding: u8) -> String {
 /// added when it starts with a letter.
 ///
 /// # Errors
-/// [`BAD_TAG`] when it is empty, longer than [`MAX_TAG_CHARS`] characters, or holds a control
-/// character.
+/// [`BAD_TAG`] when it is empty, longer than [`MAX_TAG_CHARS`] characters, holds a control
+/// character, or is nothing but `-` (its [`key`] would be empty or `-`).
 pub fn normalise(text: &str, padding: u8) -> Result<String, String> {
     let t = text.trim();
     let n = t.chars().count();
-    if !(1..=MAX_TAG_CHARS).contains(&n) || t.chars().any(char::is_control) {
+    if !(1..=MAX_TAG_CHARS).contains(&n)
+        || t.chars().any(char::is_control)
+        || t.chars().all(|c| c == '-' || c.is_whitespace())
+    {
         return Err(BAD_TAG.into());
     }
     if let Some((prefix, number)) = parse(t) {
@@ -142,7 +145,7 @@ mod tests {
         for (input, pad, want) in rows {
             assert_eq!(normalise(input, pad).as_deref(), Ok(want), "{input}");
         }
-        for bad in ["", "   ", "a\u{7}", &"K".repeat(41)] {
+        for bad in ["", "   ", "a\u{7}", &"K".repeat(41), "-", "--", " - - "] {
             assert!(normalise(bad, 2).is_err(), "{bad:?}");
         }
     }

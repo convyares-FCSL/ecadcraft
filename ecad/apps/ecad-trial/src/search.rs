@@ -151,6 +151,46 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
     }
 }
 
+/// Which project and which of its changes a copy was read at: (project serial, change count).
+pub type At = (u64, u64);
+
+/// A copy read for `key` at a project change ([`At`]).
+#[derive(Debug)]
+struct Cached<K, V> {
+    key: K,
+    at: Option<At>,
+    value: V,
+}
+
+impl<K: PartialEq, V: Clone> Cached<K, V> {
+    /// The copy for `key` at `at`, read again only when the key or the project differs, or
+    /// `unchanged(count the copy was read at)` is false. Returns the value and whether it was read.
+    fn get(
+        slot: &mut Option<Self>,
+        key: K,
+        at: Option<At>,
+        unchanged: impl Fn(u64) -> bool,
+        read: impl FnOnce() -> V,
+    ) -> (V, bool) {
+        if let Some(c) = slot.as_mut()
+            && c.key == key
+        {
+            let keep = match (c.at, at) {
+                (None, None) => true,
+                (Some((sp, sn)), Some((p, n))) => sp == p && (sn == n || unchanged(sn)),
+                _ => false,
+            };
+            if keep {
+                c.at = at;
+                return (c.value.clone(), false);
+            }
+        }
+        let value = read();
+        *slot = Some(Cached { key, at, value: value.clone() });
+        (value, true)
+    }
+}
+
 /// The search window's state.
 #[derive(Debug, Default)]
 pub struct SymbolSearch {
@@ -160,8 +200,12 @@ pub struct SymbolSearch {
     pub selected: usize,
     /// Give the field the keyboard on the next frame.
     pub focus: bool,
-    /// The rows for (query, project head), recomputed only when either changes.
-    cache: Option<((String, u64), (Vec<Row>, usize, Option<String>))>,
+    /// The rows, for (query, project) as of a change count ([`Cached`]).
+    cache: Option<Cached<String, (Vec<Row>, usize, Option<String>)>>,
+    /// The second step's choices, for (pick, project) as of a change count.
+    choice_cache: Option<Cached<Pick, Vec<Choice>>>,
+    /// How many times the rows and the choices were read from the project (tests).
+    pub rebuilds: u64,
     /// The row picked: the window then shows its second step ([`choices`]).
     pub picked: Option<Pick>,
 }
@@ -173,21 +217,36 @@ impl SymbolSearch {
         self.focus = self.open;
     }
 
-    /// The rows for the current query, read with `doc` (`head` decides whether the cached ones
-    /// still hold).
+    /// The rows for the current query (update map, owner 2026-11-08): read again only when the
+    /// query or the project differs, or when a change since the copy touched a device, a page or
+    /// the settings (`unchanged(since)` says none did). Drawing edits, wires and view switches
+    /// keep the copy.
     pub fn rows_for(
         &mut self,
-        head: u64,
-        doc: impl FnOnce() -> Option<(Vec<Row>, usize, Option<String>)>,
+        at: Option<At>,
+        unchanged: impl Fn(u64) -> bool,
+        read: impl FnOnce() -> (Vec<Row>, usize, Option<String>),
     ) -> (Vec<Row>, usize, Option<String>) {
-        let key = (self.query.clone(), head);
-        if let Some((k, v)) = &self.cache
-            && *k == key
-        {
-            return v.clone();
-        }
-        let v = doc().unwrap_or_else(|| rows(None, &self.query));
-        self.cache = Some((key, v.clone()));
+        let key = self.query.clone();
+        let (v, built) = Cached::get(&mut self.cache, key, at, unchanged, read);
+        self.rebuilds += u64::from(built);
+        v
+    }
+
+    /// The second step's choices for the pick shown, under the same update map as
+    /// [`SymbolSearch::rows_for`]; empty when nothing is picked.
+    pub fn choices_for(
+        &mut self,
+        at: Option<At>,
+        unchanged: impl Fn(u64) -> bool,
+        read: impl FnOnce(&Pick) -> Vec<Choice>,
+    ) -> Vec<Choice> {
+        let Some(pick) = self.picked.clone() else {
+            self.choice_cache = None;
+            return Vec::new();
+        };
+        let (v, built) = Cached::get(&mut self.choice_cache, pick.clone(), at, unchanged, || read(&pick));
+        self.rebuilds += u64::from(built);
         v
     }
 

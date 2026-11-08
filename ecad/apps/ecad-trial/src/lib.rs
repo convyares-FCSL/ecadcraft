@@ -939,25 +939,36 @@ impl Trial {
         }
     }
 
-    /// The symbol search window (brief 018): its rows are read from the project only when the
-    /// query or the head changed; a chosen row starts Place Symbol with it.
+    /// The symbol search window (brief 018): its rows and second step are read from the project
+    /// only when the query, the pick or a device, page or setting changed (search.rs's update
+    /// map); a chosen row starts Place Symbol with it.
     fn symbol_search(&mut self, ctx: &egui::Context) {
         if !self.search.open {
             return;
         }
-        let (project, session) = (&self.project, &mut self.cad.session);
-        let head = project.as_ref().and_then(|p| p.read(session, |p, _| p.ledger.head()).ok()).unwrap_or(0);
-        let q = self.search.query.clone();
-        let rows = self.search.rows_for(head, || {
-            project.as_ref().and_then(|p| p.read(session, |p, _| search::rows(Some(p.ledger.document()), &q)).ok())
+        let (project, session, finder, serial) =
+            (&self.project, &mut self.cad.session, &mut self.search, self.project_serial);
+        let q = finder.query.clone();
+        // Both are copies kept under the search's update map (search.rs): a frame reads nothing
+        // from the project unless a change touched a device, a page or the settings.
+        let read = project.as_ref().and_then(|p| {
+            p.read(session, |p, _| {
+                let at = Some((serial, p.change_count()));
+                let unchanged = |since: u64| p.device_changes_since(since).is_some_and(|t| t.leaves_search());
+                let rows = finder.rows_for(at, unchanged, || search::rows(Some(p.ledger.document()), &q));
+                let choices = finder.choices_for(at, unchanged, |pick| search::choices(p, pick));
+                (rows, choices)
+            })
+            .ok()
         });
-        let choices = match &self.search.picked {
-            Some(pick) => {
-                project.as_ref().and_then(|p| p.read(session, |p, _| search::choices(p, pick)).ok()).unwrap_or_default()
+        let (rows, choices) = match read {
+            Some(v) => v,
+            None => {
+                let rows = finder.rows_for(None, |_| true, || search::rows(None, &q));
+                (rows, Vec::new())
             }
-            None => Vec::new(),
         };
-        if let Some(choice) = self.search.show(ctx, &rows, &choices) {
+        if let Some(choice) = finder.show(ctx, &rows, &choices) {
             let _ = self.start_choice(&choice);
         }
     }
@@ -1402,7 +1413,9 @@ impl Trial {
         let panel = &mut self.panel;
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
-            panel.sync(serial, p.change_count(), || Some(p.page_rows()));
+            // Update map: rows are re-read only when a page was added, removed (rename and move
+            // included) or became (un)available; every other change leaves them.
+            panel.sync(serial, p.page_list_version(), || Some(p.page_rows()));
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {

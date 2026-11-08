@@ -165,8 +165,9 @@ impl ProjectPanel {
         &self.rows
     }
 
-    /// Bring the copy up to date: `count` is the project's change count, `project` names the
-    /// project, `rows` reads the rows (called only when either differs from the copy's).
+    /// Bring the copy up to date: `count` is the project's page list version
+    /// (`Project::page_list_version`), `project` names the project, `rows` reads the rows (called
+    /// only when either differs from the copy's).
     pub fn sync(&mut self, project: u64, count: u64, rows: impl FnOnce() -> Option<Vec<PageRow>>) {
         if self.seen == Some((project, count)) {
             return;

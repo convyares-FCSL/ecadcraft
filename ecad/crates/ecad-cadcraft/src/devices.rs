@@ -147,14 +147,29 @@ impl TagHigh {
     /// # Errors
     /// As [`TagHigh::next`].
     pub fn next_in(&mut self, doc: &Document, prefix: &str) -> Result<String, String> {
+        let (prefix, n, t) = self.first_free(doc, prefix)?;
+        self.high.insert(prefix, n);
+        Ok(t)
+    }
+
+    /// The tag [`TagHigh::next_in`] would give, without using it up and without reading the log
+    /// (for prompts, previews and pick lists, which run every frame). The project keeps its copy
+    /// caught up on every change, so this never reads the log.
+    ///
+    /// # Errors
+    /// As [`TagHigh::next`].
+    pub fn peek(&self, doc: &Document, prefix: &str) -> Result<String, String> {
+        self.first_free(doc, prefix).map(|(_, _, t)| t)
+    }
+
+    fn first_free(&self, doc: &Document, prefix: &str) -> Result<(String, u64, String), String> {
         let prefix = prefix.trim_start_matches('-').to_ascii_uppercase();
         let first = self.high.get(&prefix).copied().unwrap_or(0).saturating_add(1);
         // Bounded: a hostile file may hold many tags above the highest the log shows.
         for n in (first..=tag::MAX_TAG_NUMBER).take(10_000) {
             let t = tag::format(&prefix, n, padding(doc));
             if doc.components_tagged(&t).is_empty() {
-                self.high.insert(prefix, n);
-                return Ok(t);
+                return Ok((prefix, n, t));
             }
         }
         Err(format!("No tag number is left for -{prefix}; type a tag."))
@@ -372,11 +387,11 @@ pub fn plan_place(
         Some(d) => d,
         None => {
             let d: DefinitionId = ids.fresh();
-            ops.push(Op::EmbedDefinition { id: d, definition: s.definition() });
+            ops.push(Op::EmbedDefinition { id: d, definition: s.definition()?.clone() });
             d
         }
     };
-    let def = s.definition();
+    let def = s.definition()?;
     // A typed tag a device already holds is that device (a tag is an identity).
     let target = match target {
         Target::New(Some(t)) => match holder_of(doc, &t, None) {
@@ -548,8 +563,21 @@ pub fn plan_merge(
     };
     let reps: Vec<(RepresentationId, Representation)> =
         doc.representations_of(Subject::Component(from)).map(|(id, r)| (id, r.clone())).collect();
+    let from_words = tag_words(doc, from);
     for (rid, r) in &reps {
         let shown = shown_terminals(doc, from, r);
+        // A symbol whose device's connection points do not match its definition (an old or
+        // hand-edited file) would move without any, which the model refuses (I14) with words
+        // nobody can act on: say what is wrong instead.
+        if r.form == Form::Symbol
+            && shown.is_empty()
+            && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty())
+        {
+            let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.clone());
+            return Err(format!(
+                "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
+            ));
+        }
         let starter = rep_starter(doc, r);
         let labels: Vec<String> = match starter {
             Some(s) if !matches!(s.kind, Kind::Fixed { .. }) => {
@@ -873,16 +901,16 @@ pub fn tag_matches(t: &str, query: &str) -> bool {
 /// Every device (a component with a tag) whose tag matches `query` (or every one), ordered by
 /// prefix, then number, then ID.
 pub fn devices(doc: &Document, query: Option<&str>) -> Vec<ComponentId> {
+    // Through the tag index (brief 018 "Speed"): untagged components are never visited.
     let mut v: Vec<(String, u64, String, ComponentId)> = doc
-        .components
-        .iter()
-        .filter_map(|(id, c)| {
-            let t = c.properties.get(TAG_KEY)?;
+        .tagged()
+        .filter_map(|(_, id)| {
+            let t = doc.components.get(&id)?.properties.get(TAG_KEY)?;
             if query.is_some_and(|q| !tag_matches(t, q)) {
                 return None;
             }
             let (p, n) = tag::parse(t).unwrap_or_else(|| (tag::key(t), 0));
-            Some((p, n, t.clone(), *id))
+            Some((p, n, t.clone(), id))
         })
         .collect();
     v.sort();
@@ -1075,5 +1103,6 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
 /// The tag the next new device of symbol `s` would get in project `p`, without using it up (for
 /// prompts and pick lists).
 pub fn next_tag_preview(p: &crate::project::Project, s: &Starter) -> Option<String> {
-    p.tag_high.clone().next(&p.ledger, &prefix_for(p.ledger.document(), s)).ok()
+    let doc = p.ledger.document();
+    p.tag_high.peek(doc, &prefix_for(doc, s)).ok()
 }

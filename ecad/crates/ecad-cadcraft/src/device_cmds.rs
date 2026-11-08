@@ -143,7 +143,7 @@ pub(crate) fn run_setprop(
                 let next = devices::tag_of(doc, c)
                     .and_then(ecad_model::tag::parse)
                     .or_else(|| ecad_model::tag::parse(t))
-                    .and_then(|(prefix, _)| p.tag_high.clone().next(&p.ledger, &prefix).ok());
+                    .and_then(|(prefix, _)| p.tag_high.peek(doc, &prefix).ok());
                 let way = match next {
                     Some(n) => format!(
                         "Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."
