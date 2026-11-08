@@ -32,26 +32,26 @@ changing how ECAD marks, previews or tooltips look; replace one only with the ow
 | `016-large.png` | 500 pages, page 250 active and its row scrolled into view (500 empty pages made in the test: the large bench project opens too slowly in test builds, which check every invariant) | pending owner approval |
 
 Rendered at 1280×800, dark theme, by `ac6_reference_screenshots` in `../mouse_tester.rs`.
-Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test mouse_tester ac6`
+Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial mouse_tester::ac6`
 (needs a wgpu adapter; in CI the test only checks pixels and writes nothing).
 
 The 004 images are rendered by `ac9_cable_slash_by_label_and_reference_screenshots` in
 `../cable_slash_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_slash_tester ac9`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_slash_tester::ac9`.
 
 The 005 images are rendered by `ac5_cable_view_by_label_and_reference_screenshots` in
 `../cable_view_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_view_tester ac5`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_view_tester::ac5`.
 
 The 009 images are rendered by `check_a_core_label_by_label_and_reference_screenshots` and
 `one_sided_fan_reference_screenshot` in `../cable_look_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_look_tester`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_look_tester::`.
 
 The 010 images are rendered by `fixture_r_by_label_and_canvas_clicks_with_reference_screenshots` in
 `../cable_references_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_references_tester`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_references_tester::`.
 
-The 016 images are rendered by `ecad/apps/ecad-trial/tests/project_panel.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test project_panel`. The earlier images
+The 016 images are rendered by `project_panel.rs`; regenerate with
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial project_panel::`. The earlier images
 (004 to 010) still show the top banner, removed by brief 016; they are replaced only with the
 owner's approval.

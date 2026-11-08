@@ -2,3 +2,9 @@
 
 # Local AI chat history, handovers and agent-local settings: never pushed
 /private/
+
+# Projects a test or a trial run leaves in the source tree (brief 017 review): never committed.
+# The golden file of the format tests is the only tracked project.
+*.ecad
+*.ecad.lock
+!/crates/ecad-file/tests/golden/*.ecad

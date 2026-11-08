@@ -26,8 +26,11 @@ Rules:
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` (plus `cargo xtask patches`
   when files outside `ecad/` changed), using the shared build folder `ecad/CLAUDE.md` names
   (`CARGO_TARGET_DIR=C:/dev/ecad-target`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`). Then
-  run the tests of what you changed: your new acceptance tests and `cargo test -p <crate>` for the
-  crates you touched. Never the whole workspace: the full suite runs at the QA gate.
+  run the tests of what you changed: `cargo xtask test-changed` (the fast tests of the crates you
+  touched and of every crate that depends on them), plus any of your new tests you marked slow
+  (`cargo test -p <crate> <name> -- --include-ignored`). Never the whole workspace: the full suite,
+  slow set included, runs at the QA gate. New tests go in the crate's `tests/all/` as modules
+  (see "Test layout" in `ecad/CLAUDE.md`).
   Documentation-only commits need no cargo at all.
   Commit in small, clear steps.
 - Update `docs/quick-start.md` in the same branch if anything the owner runs or sees changes.

@@ -15,10 +15,11 @@ Do:
 1. Read the brief and its acceptance criteria first, and write your test plan before reading the
    implementation.
 2. Run tests that suit the scope of the change (see "Checks are scoped to the change" in
-   `ecad/CLAUDE.md`): your own new acceptance tests first, then the changed crates' tests
-   (`cargo test -p <crate>`, with and without `--all-features` where features matter) and their
-   dependents; the whole workspace only when shared code (`ecad-model`, `ecad-file`, `ecad-store`)
-   or CADCraft changed. On a re-test after a fix round, run only what failed plus the crate that
+   `ecad/CLAUDE.md`): your own new acceptance tests first, then the changed crates' tests and their
+   dependents (`cargo xtask test-changed`, or `cargo test -p <crate>` with and without
+   `--all-features` where features matter); add `-- --include-ignored` for the slow set of the
+   crates the change can break (`#[ignore = "slow: …"]`); the whole workspace only when shared
+   code (`ecad-model`, `ecad-file`, `ecad-store`) or CADCraft changed. On a re-test after a fix round, run only what failed plus the crate that
    changed. The full suite runs at the QA gate (the PR from `dev` into `main`). Use the shared build folder
    (`CARGO_TARGET_DIR=C:/dev/ecad-target`) even from your own worktree; use a folder of your own
    only if another agent is building at the same time.
