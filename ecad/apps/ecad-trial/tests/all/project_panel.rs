@@ -16,9 +16,9 @@ use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
+pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
-struct Collect(Deltas);
+pub(crate) struct Collect(pub(crate) Deltas);
 
 impl egui_kittest::TestRenderer for Collect {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
@@ -50,7 +50,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 }
 
 /// Render the harness's last frame with egui-wgpu and save it as PNG; `None` without an adapter.
-fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
@@ -154,7 +154,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     Some(image)
 }
 
-fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
+pub(crate) fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
     // 60 frames a second, so two clicks a few frames apart are a double-click.
     let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).with_step_dt(1.0 / 60.0);
     if let Some(d) = deltas {
@@ -171,7 +171,7 @@ fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
     h
 }
 
-fn trial() -> Trial {
+pub(crate) fn trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
@@ -179,31 +179,31 @@ fn trial() -> Trial {
     t
 }
 
-fn ok(h: &mut Harness<'static, Trial>, line: &str) {
+pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
     let e = h.state_mut().submit_command(line);
     assert!(e.is_none(), "{line}: {e:?}");
     h.run_steps(2);
 }
 
-fn doc(h: &mut Harness<'static, Trial>) -> ecad_model::Document {
+pub(crate) fn doc(h: &mut Harness<'static, Trial>) -> ecad_model::Document {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
 }
 
-fn head(h: &mut Harness<'static, Trial>) -> u64 {
+pub(crate) fn head(h: &mut Harness<'static, Trial>) -> u64 {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
 }
 
-fn last_ops(h: &mut Harness<'static, Trial>) -> (String, Vec<Op>) {
+pub(crate) fn last_ops(h: &mut Harness<'static, Trial>) -> (String, Vec<Op>) {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.log().last().map(|x| (x.label.clone(), x.ops.clone())).unwrap()).unwrap()
 }
 
-fn active(h: &mut Harness<'static, Trial>) -> Option<PageId> {
+pub(crate) fn active(h: &mut Harness<'static, Trial>) -> Option<PageId> {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap()
@@ -222,18 +222,18 @@ fn tab_title(h: &Harness<'static, Trial>) -> String {
     owned.first().map(|d| d.title.clone()).unwrap_or_default()
 }
 
-fn click(h: &mut Harness<'static, Trial>, label: &str) {
+pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
     h.get_by_label(label).click();
     h.run_steps(3);
 }
 
-fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
+pub(crate) fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
     h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
     h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers });
     h.run_steps(2);
 }
 
-fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
+pub(crate) fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
     h.event(Event::PointerMoved(at));
     if let Some(pressed) = pressed {
         h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
@@ -242,12 +242,12 @@ fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
 }
 
 /// The screen rectangle of the panel row labelled `label`.
-fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
+pub(crate) fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
     h.get_by_label(label).rect()
 }
 
 /// Fixture P: Supply (C1 leaving at (65,5), `2-A-6`), Field (C1 arriving at (20,5), `1-B-6`), Spare.
-fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
+pub(crate) fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let supply = doc(h).page_order[0];
     ok(h, &format!(r#"renamepage {{"page":"{}","title":"Supply"}}"#, supply.hex()));
@@ -264,11 +264,11 @@ fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     (d.page_order[0], d.page_order[1], d.page_order[2])
 }
 
-fn shots() -> Option<std::path::PathBuf> {
+pub(crate) fn shots() -> Option<std::path::PathBuf> {
     std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from)
 }
 
-fn take(h: &Harness<'static, Trial>, deltas: &Deltas, name: &str) -> Option<egui::ColorImage> {
+pub(crate) fn take(h: &Harness<'static, Trial>, deltas: &Deltas, name: &str) -> Option<egui::ColorImage> {
     shots().and_then(|dir| shot(h, deltas, &dir.join(name)))
 }
 
@@ -693,9 +693,9 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     click(&mut h, "Page 2: Field");
     let field = doc(&mut h).page_order[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
-    // New page, Move up and Move down are disabled and named by why.
+    // New page, New folder, Move up and Move down are disabled and named by why.
     let disabled = h.get_all_by_label(project_panel::READ_ONLY).count();
-    assert_eq!(disabled, 3, "New page, Move up and Move down");
+    assert_eq!(disabled, 4, "New page, New folder, Move up and Move down");
     h.get_all_by_label(project_panel::READ_ONLY).for_each(|n| n.click());
     h.run_steps(3);
     key(&mut h, Key::ArrowUp, Modifiers::ALT);

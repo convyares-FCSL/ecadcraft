@@ -50,6 +50,7 @@ pub mod interact;
 pub mod look;
 pub mod preview;
 pub mod project;
+pub mod props;
 pub mod references;
 pub mod revisions;
 pub mod sheet_cmds;

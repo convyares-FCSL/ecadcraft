@@ -812,7 +812,20 @@ fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             .ok_or_else(|| format!("Rev {rev} has not been issued."))?;
         let name = row.issued.clone().unwrap_or_else(|| revisions::version_name(&rev));
         let at = *doc.versions.get(&name).ok_or_else(|| format!("Rev {rev}'s log point is missing."))?;
-        let then = p.ledger.state_at(at).map_err(|e| e.to_string())?;
+        let mut then = p.ledger.state_at(at).map_err(|e| e.to_string())?;
+        // The revision table as at that revision (design 019 §7.3): `at` precedes the issue, so
+        // the live project's issued rows up to and including this one are copied in (issued rows
+        // never change, so this is exact).
+        for r in revisions::list(doc).into_iter().filter(|r| r.n <= row.n && r.issued.is_some()) {
+            for (f, v) in FIELDS.iter().zip(r.fields.iter()) {
+                if !v.is_empty() {
+                    then.properties.insert(r.key(f), v.clone());
+                }
+            }
+            if let Some(i) = &r.issued {
+                then.properties.insert(r.key(revisions::ISSUED), i.clone());
+            }
+        }
         let book = Book::of(&then);
         let pages: Vec<Value> = book
             .order

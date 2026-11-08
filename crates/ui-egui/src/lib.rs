@@ -319,6 +319,10 @@ pub struct CadApp {
     /// Clicks on [`Self::extra_tool_tabs`] tools, oldest first, waiting for the embedder
     /// ([`Self::take_tool_requests`]). CADCraft never starts them itself.
     tool_requests: Vec<String>,
+    // ECAD-SEAM(owner): a section of the Properties palette drawn by the embedding application.
+    /// Draws the embedding application's own section at the top of the Properties palette, under
+    /// its header. `None` by default: the palette is unchanged.
+    pub owner_properties: Option<Box<dyn FnMut(&mut egui::Ui)>>,
 }
 
 impl CadApp {
@@ -375,6 +379,7 @@ impl CadApp {
             updates_rt: updates_ui::Runtime::default(),
             extra_tool_tabs: Vec::new(),
             tool_requests: Vec::new(),
+            owner_properties: None,
         }
     }
 

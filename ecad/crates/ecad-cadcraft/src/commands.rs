@@ -100,7 +100,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("setprop", "Set Property", run_setprop)
             .params(
-                "{component|conductor|cable: id, key, value: string|null, merge?: bool} (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
+                "{component|conductor|cable: id, key, value: string|null, merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
             )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
@@ -535,6 +535,11 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
         None => return Err(err("`value` is required (a string, or null to clear the property)")),
     };
+    // Several devices at once (brief 019, the Properties panel): one transaction for all.
+    if params.get("components").is_some() {
+        let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;
+        return run_setprop_many(s, cs, key, value);
+    }
     let object = if let Some(c) = opt_id(params, "component").map_err(err)? {
         ObjectRef::Component(c)
     } else if let Some(c) = opt_id(params, "conductor").map_err(err)? {
@@ -565,6 +570,42 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         }
         p.apply_edit(pg, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
         Ok(json!({"changed": true}))
+    })
+}
+
+/// `setprop {components: [id…], key, value}`: a device property written to several devices in
+/// one transaction (design 019 §8.2); tags are one per device, so `tag` is refused.
+fn run_setprop_many(
+    s: &mut Session,
+    cs: Vec<ComponentId>,
+    key: String,
+    value: Option<String>,
+) -> cadcraft_engine::Result<Value> {
+    if key == ecad_model::tag::TAG_KEY {
+        return Err(err("Tags are one per device."));
+    }
+    with_project(s, |p, pg, _page| {
+        let doc = p.ledger.document();
+        let after = crate::devices::property_value(doc, &key, value.as_deref())?;
+        let mut ops = Vec::new();
+        for c in &cs {
+            let comp = doc.components.get(c).ok_or("no such object")?;
+            let before = comp.properties.get(&key).cloned();
+            if before != after {
+                ops.push(Op::SetProperty {
+                    object: ObjectRef::Component(*c),
+                    key: key.clone(),
+                    before,
+                    after: after.clone(),
+                });
+            }
+        }
+        if ops.is_empty() {
+            return Ok(json!({"changed": false}));
+        }
+        let n = ops.len();
+        p.apply_edit(pg, "setprop", "Set property", ops)?;
+        Ok(json!({"changed": true, "devices": n}))
     })
 }
 

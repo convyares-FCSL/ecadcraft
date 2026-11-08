@@ -18,6 +18,7 @@ mod mouse;
 mod mouse_tester;
 mod paths_contracts;
 mod project_panel;
+mod sheets_ui;
 mod startup_contracts;
 mod startup_tester;
 mod tools;

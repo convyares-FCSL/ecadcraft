@@ -305,6 +305,8 @@ pub struct Change {
     pub pages: Option<BTreeSet<PageId>>,
     /// What it could change in the Devices list ([`crate::device_list::devices_touched`]).
     pub devices: crate::device_list::DeviceTouch,
+    /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
+    pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
 }
 
 /// Injected failures for the experiment (never set in normal use).
@@ -1201,7 +1203,7 @@ impl Project {
         self.views.retain(|k| doc.cables.contains_key(k));
         // A view is drawn on every page showing the cable: the active page is redrawn, every
         // other page when it becomes active.
-        self.record_change(None, crate::device_list::DeviceTouch::default());
+        self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()));
         self.redraw_window(pg, Some("cableview"));
         (true, self.settings.store(self.id, &self.views))
     }
@@ -1317,10 +1319,31 @@ impl Project {
         Some(out)
     }
 
+    /// The objects whose Properties rows the changes after change `n` could have changed, together;
+    /// `None` when any could have, or the changes are too old to tell (rebuild the copy).
+    pub fn props_changes_since(&self, n: u64) -> Option<BTreeSet<ecad_model::ObjectRef>> {
+        if n >= self.change_count {
+            return Some(BTreeSet::new());
+        }
+        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+            return None;
+        }
+        let mut out = BTreeSet::new();
+        for c in self.changes.iter().filter(|c| c.n > n) {
+            out.extend(c.props.as_ref()?.iter().copied());
+        }
+        Some(out)
+    }
+
     /// Record one change and the pages it could change.
-    fn record_change(&mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch) {
+    fn record_change(
+        &mut self,
+        pages: Option<BTreeSet<PageId>>,
+        devices: crate::device_list::DeviceTouch,
+        props: Option<BTreeSet<ecad_model::ObjectRef>>,
+    ) {
         self.change_count += 1;
-        self.changes.push_back(Change { n: self.change_count, pages, devices });
+        self.changes.push_back(Change { n: self.change_count, pages, devices, props });
         while self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
         }
@@ -1586,6 +1609,7 @@ impl Project {
         let scope = crate::references::cables_touched(self.ledger.document(), &ops);
         let pages = pages_touched(self.ledger.document(), &ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
+        let props = crate::props::touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
@@ -1596,7 +1620,7 @@ impl Project {
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices);
+        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props);
         self.redraw_window(pg, Some(command));
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
@@ -1803,6 +1827,7 @@ impl DocumentOwner for Project {
         // after the commit (brief 014): a move of a component outside any cable derives none.
         let scope = crate::references::cables_touched(self.ledger.document(), &t.ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
+        let props = crate::props::touched(self.ledger.document(), &t.ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
             self.restore(pg, c.uid, page);
@@ -1829,7 +1854,7 @@ impl DocumentOwner for Project {
             c.insert(page);
             c
         });
-        self.record_change(changed, devices);
+        self.record_change(changed, devices, props);
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
@@ -2017,6 +2042,7 @@ impl Project {
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
+        let props = crate::props::touched(self.ledger.document(), &ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
@@ -2048,7 +2074,7 @@ impl Project {
                     Some(&drawn),
                     self.active_page(),
                 );
-                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices);
+                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
