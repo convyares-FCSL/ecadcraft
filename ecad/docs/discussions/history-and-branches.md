@@ -91,7 +91,39 @@ A branch stores only its own transactions after the fork. Snapshot parts are con
 and shared across versions and branches (EEP-0004 §5, EEP-0005), so a file grows with what
 differs, not with the number of branches or versions.
 
-## 7. Still open
+## 7. Revisions and branches
+
+Issued revisions are the fixed points the real world relies on. Agreed rules (owner,
+2026-11-08):
+
+1. **Revisions are issued only on a release line.** In v0.1 the only release line is `main`.
+   Other branches may create versions (snapshots) but not revisions.
+2. **Issued revisions are immutable.** No merge, edit or undo changes the state an issued revision
+   names. Undoing an issue asks first (§3, contract 6).
+3. **A merge lands after the latest revision.** It is appended to the target's current working
+   state, after its latest issued revision. A branch forked at Rev A and merged after `main`
+   issued Rev B and Rev C changes nothing in B or C; its work first appears in the next issued
+   revision, Rev D.
+4. **Crossing revisions is allowed, and reported.** The merge compares three states: the common
+   ancestor (here the fork point, Rev A), the target now (after Rev C) and the branch head
+   (§3, contract 5). The report says "based on Rev A; `main` has since issued Rev B and Rev C",
+   and conflicts are framed against those revisions: "Rev B changed -K01 rating to 16 A; this
+   branch changed it to 20 A".
+5. **Updating a branch first is optional.** "Update the branch from `main`" merges `main` into
+   the branch (the same mechanism, reversed), so the branch is based on Rev C and its later merge
+   back has fewer and more local conflicts. The common ancestor is then the last merge between
+   the two.
+6. **Traceability.** The next revision's change list (C → D) records "Merged branch X (based on
+   Rev A)", from the merge transaction's source branch and ancestor (EEP-0005 §3.3).
+7. **Later, not v0.1: more than one release line.**
+   - **Maintenance:** branch from an old revision (Rev B), mark the branch as a release line, and
+     issue Rev B.1 on it; optionally merge it forward into `main`.
+   - **Customer variants:** each its own release line with its own revision sequence.
+
+   Revision names are **unique across the project** (A, B, B.1, C …), so a revision always names
+   one fixed point, whichever line issued it.
+
+## 8. Still open
 
 - Merge conflict UI details: how "edit" is presented, and how a conflict involving a connection
   (a conductor end re-attached on both sides) is shown.

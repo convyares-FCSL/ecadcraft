@@ -69,6 +69,12 @@ part, then an index) immediately after the revision point.
   removed, and resets the working file's baseline.
 - It is safe because option C keeps each frozen release outside the working file.
 
+### 3.5 Revisions and branches
+
+How revisions relate to branches (issued only on a release line, immutable, merges landing after
+the latest revision, crossing revisions with reporting, unique revision names) is in
+[`history-and-branches.md`](history-and-branches.md) §7.
+
 ## 4. Rollout order
 
 | When | What |
