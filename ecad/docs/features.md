@@ -10,13 +10,15 @@ that new briefs know which branch they belong to. The owner corrects it when a g
 
 | Feature | Branch (from now on) | Briefs so far | State |
 | --- | --- | --- | --- |
-| Platform: Windows and Linux, upstream sync | `feature/platform` | 000, 001, 002, 003, 007 | In `dev` |
-| Cables: slash, views, look, cores, references | `feature/cables` | 004, 005, 009, 010 | 004–009 in `dev`; 010 in PR #28 |
+| Platform: Windows and Linux | `feature/platform` | 000, 001, 002, 003 | In `dev` |
+| Upstream sync: policy, then sync to the latest CADCraft | `feature/upstream-sync` | 007; next: PR #5's policy | 007 in `dev`; policy deferred, next after fast tests |
+| Fast tests | `feature/fast-tests` | 017 | PR #40 into `dev` (review fixes pushed); not merged |
+| Cables: slash, views, look, cores, references | `feature/cables` | 004, 005, 009, 010 | In `dev` |
 | Usability: ECAD tools by mouse | `feature/usability` | 008 | In `dev` |
-| Agent access (MCP) | `feature/agent-access` | 011 | PR #27 |
-| Performance and the project file | `feature/performance` | 012, 013, 014, 015 | 012, 013, 015 in `dev`; 014 in PR #32 |
+| Agent access (MCP) | `feature/agent-access` | 011 | In `dev` |
+| Performance and the project file | `feature/performance` | 012, 013, 014, 015 | In `dev` |
 | Libraries and components | `feature/components` | 006 (contract only) | Stage 3 not started; first step below |
-| Project manager: pages, then cables, components | `feature/project-manager` | 016 | Brief approved, design next |
+| Project manager: pages, then cables, components | `feature/project-manager` | 016 | Brief approved; after the upstream sync |
 
 A feature branch stays open while the feature is being shaped. When a later brief extends a feature
 that already reached `dev`, branch `feature/<name>` again from `dev`.
@@ -34,3 +36,7 @@ that already reached `dev`, branch `feature/<name>` again from `dev`.
   development before starting any new feature. CI showed compiling and linking about 50 test
   executables (one per `tests/*.rs` file, each linking egui and wgpu, with optimisation on) took
   about 8 minutes, against 26 seconds of running. First candidate: one test executable per crate.
+- **Order (owner decision, 2026-11-08):** 017 fast tests, then the upstream sync policy (PR #5's
+  deferred proposal, `deferred/upstream-sync-policy.md`) and a sync to the latest CADCraft (0.18.0
+  on 2026-11-06, 473 commits after our 0.15.1), then 016 project manager. QA gates fast-forward
+  `main` to `dev` (no merge commits), on the owner's go-ahead each time.

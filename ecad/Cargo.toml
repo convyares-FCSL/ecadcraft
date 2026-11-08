@@ -29,11 +29,15 @@ todo = "warn"
 too_many_arguments = "allow"
 type_complexity = "allow"
 
+# Dependencies (crates.io and CADCraft's crates by path; not ECAD's own) are optimised: they are
+# compiled once and cached, and egui and wgpu stay usable in tests and the trial.
 [profile.dev.package."*"]
 opt-level = 2
 
+# ECAD's own crates build unoptimised for dev and test, so a change recompiles quickly (owner
+# decision, 2026-11-08, brief 017). A test too slow at this level is marked slow, not optimised.
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 # Mirrors CADCraft's root [patch.crates-io] (CADCraft 0.15.1, ../Cargo.toml): patches apply only at a
 # workspace root, and the CADCraft crates used by path need the same egui and winit forks.

@@ -26,21 +26,21 @@ changing how ECAD marks, previews or tooltips look; replace one only with the ow
 | `010-continue-preview.png` | Continue Cable on page 2 before the second click, cursor at (40,5): three stubs and the slash previewed, the ring with the live `/1.2`; CADCraft's dynamic-input box covers the `-> 3 wires continue` preview text (brief 010) | pending owner approval |
 
 Rendered at 1280×800, dark theme, by `ac6_reference_screenshots` in `../mouse_tester.rs`.
-Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test mouse_tester ac6`
+Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial mouse_tester::ac6`
 (needs a wgpu adapter; in CI the test only checks pixels and writes nothing).
 
 The 004 images are rendered by `ac9_cable_slash_by_label_and_reference_screenshots` in
 `../cable_slash_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_slash_tester ac9`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_slash_tester::ac9`.
 
 The 005 images are rendered by `ac5_cable_view_by_label_and_reference_screenshots` in
 `../cable_view_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_view_tester ac5`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_view_tester::ac5`.
 
 The 009 images are rendered by `check_a_core_label_by_label_and_reference_screenshots` and
 `one_sided_fan_reference_screenshot` in `../cable_look_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_look_tester`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_look_tester::`.
 
 The 010 images are rendered by `fixture_r_by_label_and_canvas_clicks_with_reference_screenshots` in
 `../cable_references_tester.rs`; regenerate with
-`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial --test cable_references_tester`.
+`ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial cable_references_tester::`.
