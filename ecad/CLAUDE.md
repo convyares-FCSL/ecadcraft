@@ -67,6 +67,12 @@ cargo xtask patches               # only when files outside ecad/ changed
   CADCraft crates' tests.
 - `ecad-model`, `ecad-store` and `ecad-file` must never depend on a `cadcraft-*` crate. Only
   `ecad-cadcraft` touches the engine.
+- **Derived views scale with what changed (owner decision, 2026-11-08).** Anything derived from the
+  model (reference texts, page projections, lists, panels) states what it depends on and is
+  updated from the objects a commit touched (brief 013's touched set and indexes). It never
+  rescans the whole project on an ordinary commit. Only the page on screen redraws; other open
+  pages are marked stale and redraw when brought to the front. The reviewer checks this once per
+  feature, and `cargo xtask bench` is the evidence.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
   code with `// ECAD-SEAM(owner):`. Keep ECAD semantics out of upstream crates.
 - Rust only for product code. **Exception (owner decision, 2026-10-12):** developer tools under

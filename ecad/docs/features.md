@@ -15,8 +15,17 @@ that new briefs know which branch they belong to. The owner corrects it when a g
 | Usability: ECAD tools by mouse | `feature/usability` | 008 | In `dev` |
 | Agent access (MCP) | `feature/agent-access` | 011 | PR #27 |
 | Performance and the project file | `feature/performance` | 012, 013, 014, 015 | 012, 013, 015 in `dev`; 014 in PR #32 |
-| Libraries and components | `feature/components` | 006 (contract only) | Stage 3 not started |
+| Libraries and components | `feature/components` | 006 (contract only) | Stage 3 not started; first step below |
 | Project manager: pages, then cables, components | `feature/project-manager` | 016 | Brief approved, design next |
 
 A feature branch stays open while the feature is being shaped. When a later brief extends a feature
 that already reached `dev`, branch `feature/<name>` again from `dev`.
+
+## Agreed first steps
+
+- **Components: a general reference index (owner decision, 2026-11-08).** References are their own
+  objects: a source, where the text is shown, points at a target drawn item, and the text is the
+  target's page and column. Brief 014 scopes reference work per cable touched, which is enough
+  while cable references are the only kind. The first step of the components feature replaces
+  that with an index from target item to the references that point at it, type-agnostic, so
+  component cross-references (coil and contacts, parent and child parts) need no special case.
