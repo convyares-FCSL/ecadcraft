@@ -504,8 +504,8 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
 4. **Hover.** Rest the pointer on a tail: `Cable C1`, then `Core: 1 (W1)`, its ID, its type and
    its wires with their cores (`  W1  core 1`). On a wire in traditional view: `In cable C1, core 1`.
 5. **A reference end.** Place one with **Cable Reference** (section 5D). The fan stops at that
-   end: no spine, bends or tails there; the trunk runs to a magenta flag beside the point, and
-   the flag shows the other end's page and column (such as `/3.1`; a red `/?` while there is no
+   end: no spine, bends or tails there; the trunk runs to a magenta flag beside the point,
+   pointing away from the wires, and the flag shows the other end's page and column (such as `/3.1`; a red `/?` while there is no
    other end). The loose-end squares at that end are not drawn. Erasing the point fans that end
    again; `u` brings it back.
 
@@ -548,7 +548,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
    Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
    now shows /3.1.` and `Connect each wire's free end to its terminal with Connect.`; three short
    wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
-   `20,5` and a flag with `/2.2` beside it. On page 2 the `/?` is now a magenta `/3.1`, and the
+   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. On page 2 the `/?` is now a magenta `/3.1`, and the
    wire ends next to the reference lost their grey squares (the wires continue). One change.
 4. **Connect.** Click **Connect**, click each short wire near its right end, then the terminal
    at the same height. Expected: each wire stretches to its terminal; green dots there. In the

@@ -551,22 +551,11 @@ fn i_both_ends_at_reference_ends() {
     assert!(of_role(&fan, Role::Spine).is_empty() && of_role(&fan, Role::Tail).is_empty());
     assert!(of_role(&fan, Role::Bend).is_empty());
     let trunk: Vec<Pt> = of_role(&fan, Role::Trunk).into_iter().flat_map(path).collect();
-    // Combined trial with 010: the flag is as wide as the left end's live text.
-    let doc = f.h.doc();
-    let left = doc
-        .representations
-        .iter()
-        .find(|(_, r)| {
-            r.role == look::REFERENCE_ROLE
-                && r.items
-                    .iter()
-                    .any(|i| matches!(doc.items[i].kind, ItemKind::Primitive(Primitive::Point { at }) if at.x < 0.0))
-        })
-        .map(|(id, _)| *id)
-        .unwrap();
-    let w = look::font_width(&look::reference_text(&doc, left));
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))), "{trunk:?}");
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + w + 1.25, 22.5))), "{trunk:?}");
+    // Each flag points away from the wires (fix round 1 of the stack): the right one reaches right,
+    // the left one (wires to its right) reaches left, so both flat sides, where the trunk attaches,
+    // face the cable, h/2 from their points.
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(125.0 - 1.25, 22.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + 1.25, 22.5))), "{trunk:?}");
     assert_eq!(of_role(&fan, Role::Flag).len(), 2);
     f.h.check();
 }

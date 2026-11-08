@@ -103,6 +103,9 @@ pub struct Marker {
     pub text_at: Pt,
     /// The text reads leftwards from `text_at` (right-aligned): the wires come from the right.
     pub right_aligned: bool,
+    /// The unit direction away from the wires (design 010 §6.2's u): the side brief 009's flag
+    /// takes.
+    pub text_dir: Pt,
     /// Text height in drawing units.
     pub height: f64,
 }
@@ -134,6 +137,7 @@ pub fn markers_from(doc: &Document, refs: Vec<CableReference>, page: PageId) -> 
                 text: r.text,
                 text_at,
                 right_aligned: r.text_dir.x < 0.0,
+                text_dir: r.text_dir,
                 height: z.text_height,
             })
         })
@@ -143,7 +147,13 @@ pub fn markers_from(doc: &Document, refs: Vec<CableReference>, page: PageId) -> 
 /// The derived text one reference end shows, with whether it is an orphan; `None` when
 /// `reference` is no cable reference.
 pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(String, bool)> {
-    cable_references(doc).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan))
+    marker_text_dir(doc, reference).map(|(text, orphan, _)| (text, orphan))
+}
+
+/// [`marker_text`] with the direction away from the wires (design 010 §6.2's u), which brief
+/// 009's flag points along.
+pub fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
+    cable_references(doc).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
 }
 
 // The marker of a reference end (flag and text) is drawn by brief 009's `look.rs` only, with the
@@ -173,8 +183,9 @@ pub fn reference_at(doc: &Document, page: PageId, p: Pt, radius: f64) -> Option<
 
 /// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
 fn text_box_holds(m: &Marker, p: Pt, pad: f64) -> bool {
-    // Brief 009 draws the marker: its flag around the text, at the reference point.
-    let (lo, hi) = crate::look::marker_box(m.at, &m.text);
+    // Brief 009 draws the marker: its flag around the text, at the reference point, on the side
+    // away from the wires.
+    let (lo, hi) = crate::look::marker_box(m.at, &m.text, crate::look::FlagSide::away(m.text_dir));
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
