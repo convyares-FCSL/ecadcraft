@@ -995,3 +995,119 @@ fn a_refused_transaction_holding_nan_rolls_back() {
     assert_eq!(bytes(b.ledger.document()), before);
     b.ledger.document().check_index().unwrap();
 }
+
+/// What a preview must leave exactly as it was: the document's bytes and `==`, its indexes, the
+/// log, the undo and redo stacks and the ledger's health.
+struct Snapshot {
+    bytes: Vec<u8>,
+    doc: Document,
+    log: usize,
+    head: u64,
+    undo: Option<String>,
+    redo: Option<String>,
+    ends: Vec<(ecad_model::ConductorId, End)>,
+    cables: Vec<ecad_model::CableId>,
+}
+
+fn snapshot(b: &Base) -> Snapshot {
+    let l = &b.ledger;
+    Snapshot {
+        bytes: bytes(l.document()),
+        doc: l.document().clone(),
+        log: l.log().len(),
+        head: l.head(),
+        undo: l.undo_label().map(str::to_owned),
+        redo: l.redo_label().map(str::to_owned),
+        ends: l.document().ends_at(b.term),
+        cables: l.document().cables_of(b.wire),
+    }
+}
+
+fn assert_as_before(b: &Base, s: &Snapshot, case: &str) {
+    let l = &b.ledger;
+    assert_eq!(bytes(l.document()), s.bytes, "{case}: document bytes");
+    assert_eq!(*l.document(), s.doc, "{case}: document");
+    l.document().check_index().unwrap_or_else(|e| panic!("{case}: indexes stale: {e}"));
+    assert_eq!(l.document().ends_at(b.term), s.ends, "{case}: terminal index");
+    assert_eq!(l.document().cables_of(b.wire), s.cables, "{case}: cable index");
+    assert_eq!(l.log().len(), s.log, "{case}: log length");
+    assert_eq!(l.head(), s.head, "{case}: head");
+    assert_eq!(l.undo_label(), s.undo.as_deref(), "{case}: undo stack");
+    assert_eq!(l.redo_label(), s.redo.as_deref(), "{case}: redo stack");
+    assert!(l.diagnostics().is_empty(), "{case}: {:?}", l.diagnostics());
+    assert!(l.replay_matches().unwrap(), "{case}: the log no longer replays to the document");
+    assert_eq!(l.state_at(s.head).unwrap(), s.doc, "{case}: state at head");
+}
+
+/// Brief 014, acceptance 4, from the outside: a panic inside the preview closure of
+/// `Ledger::with_applied` and `Document::with_applied`, caught with `catch_unwind`, leaves the
+/// document, its indexes and the log (with its undo and redo stacks) exactly as they were, for a
+/// transaction whose end state is valid (so the closure runs and panics) and for every single op
+/// type (the closure panics when it runs; refusals must leave things alone too).
+#[test]
+fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut b = base();
+    // Leave something on the redo stack as well.
+    b.ledger
+        .commit(Author::User, "extra", vec![Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "e".into() } }])
+        .unwrap();
+    b.ledger.undo(Author::User).unwrap();
+    assert!(b.ledger.redo_label().is_some());
+    let before = snapshot(&b);
+
+    let valid = vec![
+        Op::AttachEnd { conductor: b.wire2, end: End::B, before: None, after: Some(b.term) },
+        Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
+        Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
+        Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
+        Op::SetProperty {
+            object: ObjectRef::Component(b.comp),
+            key: "tag".into(),
+            before: Some("K1".into()),
+            after: Some("K2".into()),
+        },
+        Op::AddPage { id: b.ids.fresh(), page: Page { title: "2".into() }, index: 1 },
+    ];
+    let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];
+    for op in applicable(&mut b) {
+        cases.push((format!("single {}", op.name()), vec![op]));
+    }
+    let mut ran = 0;
+    for (case, ops) in &cases {
+        let mut closure_ran = false;
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            b.ledger.with_applied(ops, |d| {
+                closure_ran = true;
+                // The closure sees the change before it panics.
+                let _ = d.check_index();
+                std::panic::resume_unwind(Box::new(format!("panic in the preview of {case}")));
+            })
+        }));
+        if closure_ran {
+            ran += 1;
+            assert!(r.is_err(), "{case}: the panic must propagate");
+        } else {
+            assert!(matches!(r, Ok(Err(_))), "{case}: the closure did not run, so the ops were refused");
+        }
+        assert_as_before(&b, &before, &format!("Ledger::with_applied, {case}"));
+
+        // The plain document form.
+        let mut d = b.ledger.document().clone();
+        let r = catch_unwind(AssertUnwindSafe(|| d.with_applied(ops, |_| std::panic::resume_unwind(Box::new("boom")))));
+        assert_eq!(r.is_err(), closure_ran, "{case}: the document form behaves as the ledger form");
+        assert_eq!(bytes(&d), before.bytes, "Document::with_applied, {case}");
+        assert_eq!(d, before.doc, "Document::with_applied, {case}");
+        d.check_index().unwrap_or_else(|e| panic!("Document::with_applied, {case}: {e}"));
+    }
+    assert!(ran >= 2, "the closure ran (and panicked) in only {ran} cases");
+
+    // The ledger carries on: a preview without a panic, a redo, and a commit of the same ops.
+    let pages = b.ledger.with_applied(&valid, |d| d.pages.len()).unwrap();
+    assert_eq!(pages, 2);
+    assert_as_before(&b, &before, "after a normal preview");
+    b.ledger.redo(Author::User).unwrap();
+    b.ledger.commit(Author::User, "valid", valid).unwrap();
+    assert!(b.ledger.replay_matches().unwrap());
+    b.ledger.document().check_index().unwrap();
+}
