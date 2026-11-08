@@ -87,6 +87,12 @@ generator_contracts.rs`), written with the branch and run by the tester and CI; 
 `cargo xtask bench --tier small` on native Windows 11 Pro, 2026-11-07, which printed the table and
 wrote the JSON. You have not run it yet.
 
+**Branch `ecad/startup-timing` (brief 015)**, cut from `dev` at `bb86e05`, adds start-up timing
+to the trial, switched on by `ECAD_STARTUP_TIMING=1` (section 8, "Measuring start-up"). With the
+switch off nothing changes. Evidence: `ecad/apps/ecad-trial/tests/startup_contracts.rs`, written
+with the branch; three agent launches of the release trial on native Windows 11 Pro, 2026-11-08
+(section 8). You have not run it yet.
+
 Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
@@ -792,6 +798,77 @@ in another session. Results depend on the machine and what else it is doing; com
 the same machine. There are no pass or fail limits yet, and peak memory is not measured. The
 generated cable references (each page's first cable continued on the next page) are recorded as
 brief 010 records them; on a revision without brief 010 they open as ordinary points and lines.
+
+### Measuring start-up (brief 015)
+
+To see where the time goes between launching the trial and its first frame, set
+`ECAD_STARTUP_TIMING=1` before starting it. Each step is printed on stderr as it is reached, then
+one line with the GPU adapter eframe picked and the total, and the same marks are written to a new
+file `ecad-startup-<time>.json` (the time is `main`'s, in milliseconds since 1970; `-1`, `-2`, ...
+is added rather than replace a file). It goes in the folder given to `--snapshots` (created if
+missing, `~` meaning your home folder), or else, or if that fails, in your temp folder; the last
+stderr line says where. If you close the window before its first frame, the marks reached so far
+are still written, marked `"complete": false`. Unset, `0` or `off`: no output, no file.
+
+A release build on Windows has no console, so its stderr is lost unless you redirect it; the JSON
+file is always written. From Git Bash, in `ecad/`:
+
+```sh
+ECAD_STARTUP_TIMING=1 target/release/ecad-trial.exe 2> startup-1.txt
+```
+
+In PowerShell (stderr is not captured; read the JSON file):
+
+```powershell
+$env:ECAD_STARTUP_TIMING = "1"; .\target\release\ecad-trial.exe; Remove-Item Env:ECAD_STARTUP_TIMING
+# then open the newest ecad-startup-*.json in $env:TEMP
+```
+
+Close the window after it has drawn, and repeat for three runs. Each mark shows the time since the
+start and, in brackets, the step: the time since the previous mark. The steps add up to the total.
+
+| Mark | Reached when (the step before it covers) |
+| --- | --- |
+| 1 main entered | The program's own code starts. Before it: the OS loader, DLLs and any virus scan. |
+| 2 install() done | ECAD's commands are registered with CADCraft. |
+| 3 run_native called | The window options are built and eframe takes over. |
+| 4 creator entered | eframe has made the event loop, the window (still hidden), the wgpu instance, adapter, device and surface, and egui's context. Not the fonts: egui builds its font atlas in the first frame (step 7). |
+| 5a shell built | CADCraft's app and shell exist. |
+| 5b project opened | ECAD's new project is created (or the file is opened). |
+| 6 set_wgpu done | CADCraft's GPU canvas is set up (pipelines and shaders). |
+| 7 first update built | The first frame's user interface has been built, including egui's font atlas (font loading and glyphs). |
+| 8 first frame presented | The next frame starts after the first full one, so that one was painted and presented (eframe has no call-back after presenting). An upper bound: it includes tessellation, the font texture upload, painting, presenting (which can wait for vsync), showing the window and the wait until the next frame. |
+
+**Where the start is.** On Linux the marks count from the process's creation (from `/proc`), so
+mark 1 includes the loader; the kernel gives the creation time in clock ticks, so mark 1 there is
+accurate to about ±10 to 20 ms. On Windows they count from mark 1, `main`: the creation time would
+need `GetProcessTimes`, which needs `unsafe` (forbidden in this workspace) or a new dependency.
+To measure the time before `main` on Windows, while the trial is still open run, in PowerShell:
+
+```powershell
+([DateTimeOffset](Get-Process ecad-trial).StartTime).ToUnixTimeMilliseconds()
+```
+
+and subtract that number from `main_unix_ms` in the run's JSON file: the difference is the
+milliseconds between Windows creating the process and `main`.
+
+**Agent runs (not yours),** native Windows 11 Pro, 2026-11-08, release build after the review
+fixes, no project, launched from Git Bash and closed after 8 s. "Before main" is `main_unix_ms`
+minus the process start time from PowerShell, as above. Columns 4 to 8 are steps (time since the
+previous mark):
+
+| run | before main | 4 creator | 5a + 5b | 6 set_wgpu | 7 first update | 8 presented | total from main |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 244 ms | 757 ms | 0.6 ms | 2.5 ms | 40 ms | 63 ms | 863 ms |
+| 2 | 56 ms | 723 ms | 0.4 ms | 2.9 ms | 39 ms | 56 ms | 821 ms |
+| 3 | 75 ms | 736 ms | 0.4 ms | 2.7 ms | 39 ms | 62 ms | 841 ms |
+
+Marks 2 and 3 took under 0.5 ms. Adapter: Vulkan, "NVIDIA RTX 3500 Ada Generation Laptop GPU",
+discrete. Run 1 was the first launch of a freshly built exe. An earlier agent run of the first
+version of this branch, on a freshly built exe, spent about 2.6 s before `main` on its first
+launch and about 0.15 s on the next two (measured from Git Bash's clock, so approximate).
+
+Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 
