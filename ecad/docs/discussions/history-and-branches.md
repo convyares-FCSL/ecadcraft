@@ -1,7 +1,8 @@
 # Discussion: history, versions and branches
 
 Status: **Agreed direction** (owner, 2026-11-08). Storage-neutral: how it is stored is
-[EEP-0005](../spec/eep-0005.md) (Draft, awaiting a storage bake-off). It supersedes the
+[EEP-0005](../spec/eep-0005.md) (Draft; engine decided: redb, see
+[`storage-engine-decision.md`](storage-engine-decision.md)). It supersedes the
 folder-project and git-native ideas of [`git.md`](git.md): git is an optional integration,
 never the model. It refines the vocabulary of [`revisions.md`](revisions.md) (§2 below).
 Raised by: the owner, 2026-11-08. Written by: the overseer, recording the owner's direction.
@@ -40,10 +41,15 @@ revisions, with the distinct meanings above. Format terms (`container_version`,
    the explicit, confirmed compaction of `revisions.md` §3.4.
 2. **Stable identities.** Objects keep their 128-bit IDs across branches and merges
    (EEP-0002 §7.2). The same object on two branches is the same ID.
-3. **Each branch is its own independent linear log**, with today's version 1 rules: its own `seq`
-   from 1 and its own hash chain (EEP-0002 §6, §8).
-   - A branch starts with a **fork transaction** naming the parent branch and the point it
-     forked from (`seq` and chain value), and the snapshot at that point (its part hashes).
+3. **Each branch owns its own logical, append-only log**, with today's version 1 rules: its own
+   `seq` from 1 and its own hash chain (EEP-0002 §6, §8).
+   - Only the original branch (`main`) starts from the project root.
+   - Every other branch starts from an **immutable reference to a specific transaction in its
+     parent branch** (the fork point: `seq` and chain value). Branches may fork from other
+     branches.
+   - **Ancestral history is referenced, never copied.** A branch's state is its parent's state at
+     the fork point followed by its own transactions; later parent transactions do not affect it.
+     A branch is never snapshot-only.
    - A **merge** is a transaction appended to the target branch. It names the source branch and
      the source head (chain value) and contains the resolved changes as **ordinary ops**, so the
      target branch replays self-contained, without reading the source's log. The source branch
@@ -56,12 +62,11 @@ revisions, with the distinct meanings above. Format terms (`container_version`,
    duplicate tags) on the result. A property changed on one side only is taken; a property
    changed differently on both sides is a conflict for the user.
 6. **Undo is per branch.** Undoing a merge or a revision issue asks first.
-7. **Determinism.** Replaying a branch from its fork snapshot gives the same state every time,
-   on every machine (FILE-02).
+7. **Determinism.** Replaying a branch (its ancestry, then its own log) gives the same state
+   every time, on every machine (FILE-02).
 8. **One self-contained `.ecad`.** Everything needed to open, replay, compare and merge is in the
-   file. Caches (intermediate snapshots, indexes) make it faster and are never needed to share
-   it. The snapshot a fork starts from is **not** a cache: it is the branch's base, and can be
-   checked against the parent's log in the same file.
+   file. **Snapshots are loading accelerators** tied to exact history points: they make opening
+   faster and never replace the log, so none is needed to share the file.
 9. **Open loads only what is needed** (owner rule): `meta`, the active branch's latest snapshot
    (only the parts the shown page and the panels need) and the transactions after it. Other
    branches, older versions and revisions, full histories and assets are read only when used:
