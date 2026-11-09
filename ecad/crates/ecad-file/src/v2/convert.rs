@@ -165,9 +165,14 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
         source_container: opened.header.container_version,
         source_schema: opened.header.schema_version,
     };
-    let temp = ecad_store::disk::temp_path(&output);
+    // The output is created with create-new semantics (`Store::create`): never a check and then
+    // a rename, so a file that appears at that name meanwhile is never replaced. The whole project
+    // is one write transaction: a crash leaves an empty database there, which opens as "not an
+    // ECAD project" and is never mistaken for a conversion.
+    let mut created = false;
     let written = (|| -> Result<(), String> {
-        let store = Store::create(&temp).map_err(|e| e.to_string())?;
+        let store = Store::create(&output).map_err(|e| e.to_string())?;
+        created = true;
         let (p, _) = ProjectV2::create(
             store,
             project,
@@ -180,14 +185,12 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
         )
         .map_err(|e| e.to_string())?;
         drop(p);
-        if output.exists() {
-            return Err(format!("{} appeared while converting; it is never overwritten", output.display()));
-        }
-        ecad_store::disk::replace(&temp, &output).map_err(|e| e.to_string())?;
         ecad_store::disk::sync_dir(&ecad_store::disk::parent_dir(&output)).map_err(|e| e.to_string())
     })();
     if let Err(e) = written {
-        let _ = ecad_store::disk::remove_file(&temp);
+        if created {
+            let _ = ecad_store::disk::remove_file(&output);
+        }
         return Err(format!("the conversion was not written: {e}"));
     }
     match verify(&output, &opened.ledger, &link) {

@@ -708,7 +708,6 @@ impl Debugger {
                 "Opening found",
                 f.open_report.clone().unwrap_or_else(|| "(created in this session, not opened from a file)".into()),
             );
-            row("Preserved tail", f.preserved_tail.clone().unwrap_or_else(|| "none".into()));
         });
         if let Some(r) = &f.read_only {
             ui.label(RichText::new(format!("Read-only: {r}")).color(warn));

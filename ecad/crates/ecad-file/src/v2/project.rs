@@ -163,6 +163,9 @@ struct StackState {
     redo: Vec<(u64, TxId)>,
     undo_hidden: u64,
     redo_hidden: u64,
+    /// The cap the record was written with (0: the stacks are whole): entries below are read
+    /// this many at a time.
+    cap: u64,
 }
 
 impl StackState {
@@ -199,19 +202,29 @@ impl StackState {
         let top = |s: &[(u64, TxId)], hidden: u64| {
             let cut = s.len().saturating_sub(cap);
             let kept = s.get(cut..).unwrap_or_default().iter().map(|(q, id)| (*q, format!("{:032x}", id.0))).collect();
-            (kept, hidden + cut as u64)
+            (kept, hidden.saturating_add(cut as u64))
         };
         let ((undo, uh), (redo, rh)) = (top(&self.undo, self.undo_hidden), top(&self.redo, self.redo_hidden));
         (undo, redo, uh, rh)
     }
 
     /// From a version row.
+    /// The cap is the record's own `stack_cap`, never this build's [`STACK_CAP`]: a record holds
+    /// at most that many entries of each stack, and entries below them only with a cap.
     fn from_record(v: &VersionRecord) -> Result<Self, String> {
+        let cap = v.stack_cap;
+        if cap == 0 && (v.undo_hidden > 0 || v.redo_hidden > 0) {
+            return Err("the stack record has entries below it but no cap".into());
+        }
+        if cap > 0 && (v.undo.len() as u64 > cap || v.redo.len() as u64 > cap) {
+            return Err(format!("the stack record holds more than its cap of {cap}"));
+        }
         Ok(Self {
             undo: stacks_from_record(&v.undo)?,
             redo: stacks_from_record(&v.redo)?,
             undo_hidden: v.undo_hidden,
             redo_hidden: v.redo_hidden,
+            cap,
         })
     }
 }
@@ -229,7 +242,7 @@ fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<
     let mut from = 1;
     let mut prev = seed;
     while from <= upto {
-        let to = upto.min(from + 4_095);
+        let to = upto.min(from.saturating_add(4_095));
         let (txs, last, damage) = read_rows(r, branch, from, to, prev).map_err(|e| e.to_string())?;
         if let Some(d) = damage {
             return Err(format!("transaction {:?}: {}", d.seq, d.detail));
@@ -238,7 +251,8 @@ fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<
             ecad_model::tag::note_ops(&mut high, &tx.ops);
         }
         prev = last;
-        from = to + 1;
+        let Some(next) = to.checked_add(1) else { break };
+        from = next;
     }
     Ok(high)
 }
@@ -268,14 +282,11 @@ fn read_rows(
 ) -> Result<(Vec<Transaction>, Hash, Option<DamageV2>), StoreError> {
     let rows = r.tx_range(branch, from..=to)?;
     let mut out = Vec::with_capacity(rows.len());
-    let mut expected = from;
+    // `None` once past u64::MAX: no row can follow.
+    let mut expected = Some(from);
     for (seq, flag, stored, body) in rows {
-        if seq != expected {
-            return Ok((
-                out,
-                prev,
-                Some(DamageV2 { seq: Some(expected), detail: "the transaction is missing".into() }),
-            ));
+        if Some(seq) != expected {
+            return Ok((out, prev, Some(DamageV2 { seq: expected, detail: "the transaction is missing".into() })));
         }
         match decode_row(seq, flag, &stored, &body, &prev) {
             Ok(tx) => {
@@ -284,10 +295,12 @@ fn read_rows(
             }
             Err(detail) => return Ok((out, prev, Some(DamageV2 { seq: Some(seq), detail }))),
         }
-        expected += 1;
+        expected = seq.checked_add(1);
     }
-    if expected <= to {
-        return Ok((out, prev, Some(DamageV2 { seq: Some(expected), detail: "the transaction is missing".into() })));
+    if let Some(e) = expected
+        && e <= to
+    {
+        return Ok((out, prev, Some(DamageV2 { seq: Some(e), detail: "the transaction is missing".into() })));
     }
     Ok((out, prev, None))
 }
@@ -366,7 +379,7 @@ impl History for StoreHistory {
         'walk: while hi >= 1 && (out.len() as u64) < count {
             let lo = hi.saturating_sub(4_095).max(1);
             let rows = r.tx_range(self.branch, lo..=hi).map_err(|e| bad(e.to_string()))?;
-            if rows.len() as u64 != hi - lo + 1 {
+            if rows.len() as u64 != (hi - lo).saturating_add(1) {
                 return Err(bad(format!("transactions {lo} to {hi} are not all stored")));
             }
             let mut heads = Vec::with_capacity(rows.len());
@@ -451,7 +464,7 @@ impl History for StoreHistory {
         let read_range = |(from, to): (u64, u64)| -> Result<Range, String> {
             let r = store.reader().map_err(|e| e.to_string())?;
             let stored = r.tx_range(branch, from..=to).map_err(|e| e.to_string())?;
-            if stored.len() as u64 != to - from + 1 {
+            if stored.len() as u64 != to.saturating_sub(from).saturating_add(1) {
                 return Err(format!("transactions {from} to {to} are not all stored"));
             }
             let mut out = Range { first_prev: [0; 32], last: [0; 32], rows: Vec::with_capacity(stored.len()) };
@@ -479,9 +492,10 @@ impl History for StoreHistory {
         while from <= seq {
             let mut ranges = Vec::new();
             while from <= seq && ranges.len() < 8 {
-                let to = seq.min(from + 4_095);
+                let to = seq.min(from.saturating_add(4_095));
                 ranges.push((from, to));
-                from = to + 1;
+                let Some(next) = to.checked_add(1) else { break };
+                from = next;
             }
             let wanted = ranges.len();
             let read = chunks::par_map(ranges, read_range);
@@ -535,7 +549,8 @@ impl History for StoreHistory {
             Some(v) => (load_snapshot(&r, v).map_err(err)?.0, v.point.seq, v.point.hash().map_err(err)?),
             None => (Document::default(), 0, self.seed),
         };
-        let (txs, _, damage) = read_rows(&r, self.branch, from + 1, seq, prev).map_err(|e| err(e.to_string()))?;
+        let (txs, _, damage) =
+            read_rows(&r, self.branch, from.saturating_add(1), seq, prev).map_err(|e| err(e.to_string()))?;
         if let Some(d) = damage {
             return Err(err(format!("transaction {:?}: {}", d.seq, d.detail)));
         }
@@ -752,7 +767,7 @@ impl ProjectV2 {
                     None => HighWater::new(),
                 };
                 let (tail, verified_chain, row_damage) =
-                    read_rows(&r, branch, snap_seq + 1, to, snap_chain).map_err(|e| e.to_string())?;
+                    read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain).map_err(|e| e.to_string())?;
                 let history: Arc<dyn History> =
                     Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
                 let base = Base {
@@ -763,6 +778,7 @@ impl ProjectV2 {
                     undo_hidden: stacks.undo_hidden,
                     redo_hidden: stacks.redo_hidden,
                     indexed: true,
+                    stack_cap: stacks.cap,
                     history,
                 };
                 let tail_len = tail.len() as u64;
@@ -792,8 +808,10 @@ impl ProjectV2 {
         };
         drop(r);
         let damage = damage.or(row_damage);
-        let damage =
-            damage.or(failure.map(|(i, e)| DamageV2 { seq: Some(snap_seq + i as u64 + 1), detail: e.to_string() }));
+        let damage = damage.or(failure.map(|(i, e)| DamageV2 {
+            seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)),
+            detail: e.to_string(),
+        }));
         let verified = ledger.head();
         let verified_chain = if verified == snap_seq + tail_len {
             verified_chain
@@ -1005,7 +1023,7 @@ impl ProjectV2 {
             if ledger.persisted() != head {
                 ledger.mark_persisted(head).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
             }
-            return Ok(SavedV2 { first_seq: head + 1, last_seq: head, ..SavedV2::default() });
+            return Ok(SavedV2 { first_seq: head.saturating_add(1), last_seq: head, ..SavedV2::default() });
         }
         if ledger.base() > head || ledger.head() < head {
             return Err(SaveErrorV2::Encode(format!(
@@ -1026,7 +1044,7 @@ impl ProjectV2 {
                 None => return Err(SaveErrorV2::ExternalChange("the branch is gone".into())),
             }
         }
-        let mut saved = SavedV2 { first_seq: head + 1, last_seq: ledger.head(), ..SavedV2::default() };
+        let mut saved = SavedV2 { first_seq: head.saturating_add(1), last_seq: ledger.head(), ..SavedV2::default() };
         let mut chains: BTreeMap<u64, Hash> = BTreeMap::new();
         chains.insert(head, prev);
         for tx in &pending {
@@ -1147,7 +1165,7 @@ impl ProjectV2 {
         let in_memory = lo >= base;
         let built = if in_memory {
             let mut dirty = Dirty::default();
-            for seq in lo + 1..=hi {
+            for seq in lo.saturating_add(1)..=hi {
                 if let Some(tx) = ledger.transaction(seq) {
                     dirty.add_ops(&tx.ops);
                 }
@@ -1243,7 +1261,7 @@ impl ProjectV2 {
 
     /// The undo and redo stacks at `at`: from those at the snapshot this project was opened from
     /// and the transactions after it in memory. When that pops below what is held, the next
-    /// entries of the snapshot's stacks are read from the file ([`STACK_CAP`] at a time, walking
+    /// entries of the snapshot's stacks are read from the file (the record's cap at a time, walking
     /// back only as far as they go) and kept. A point before the snapshot is read from the file.
     fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
         let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
@@ -1258,6 +1276,7 @@ impl ProjectV2 {
                 }
                 let history = self.history();
                 let base = &mut self.base_stacks;
+                let cap = base.cap.max(1);
                 let mut grew = false;
                 for undo in [true, false] {
                     let (stack, hidden) = if undo {
@@ -1268,7 +1287,7 @@ impl ProjectV2 {
                     if *hidden == 0 {
                         continue;
                     }
-                    let n = (*hidden).min(STACK_CAP);
+                    let n = (*hidden).min(cap);
                     let more = history.stack_slice(self.base_seq, undo, stack.len() as u64, n).map_err(enc)?;
                     if more.len() as u64 != n {
                         return Err(SaveErrorV2::Encode("the history holds fewer undo steps than recorded".into()));
@@ -1285,7 +1304,7 @@ impl ProjectV2 {
             }
         }
         let (undo, redo) = self.history().stacks_at(at).map_err(enc)?;
-        Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0 })
+        Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0, cap: 0 })
     }
 
     /// The tag high-water mark at `at`: from the one at the snapshot this project was opened from
@@ -1293,7 +1312,7 @@ impl ProjectV2 {
     fn tag_high_at(&self, ledger: &Ledger, at: u64) -> Result<HighWater, SaveErrorV2> {
         if at >= self.base_seq && self.base_seq >= ledger.base() {
             let mut high = self.base_tag_high.clone();
-            for seq in self.base_seq + 1..=at {
+            for seq in self.base_seq.saturating_add(1)..=at {
                 if let Some(tx) = ledger.transaction(seq) {
                     ecad_model::tag::note_ops(&mut high, &tx.ops);
                 }

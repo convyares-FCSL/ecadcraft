@@ -24,8 +24,6 @@ pub struct FileStatus {
     pub read_only: Option<String>,
     /// The last Save As replaced its target, but durability was not confirmed; Save confirms it.
     pub unconfirmed: bool,
-    /// Where the interrupted trailing bytes found at open were preserved (version 1 only).
-    pub preserved_tail: Option<String>,
 }
 
 /// The outcome of writing a project to a new file.
@@ -259,6 +257,7 @@ impl Binding {
     /// # Errors
     /// As [`Binding::open`].
     pub fn open_read_only(path: &str, seed: u64, writer: &str) -> Result<Opened, String> {
+        not_a_project(path)?;
         if let Some(out) = needs_conversion(path) {
             return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
         }
@@ -288,7 +287,6 @@ impl Binding {
             path: Some(d.path().display().to_string()),
             read_only: d.read_only().map(ToString::to_string),
             unconfirmed: d.unconfirmed(),
-            preserved_tail: None,
         }
     }
 

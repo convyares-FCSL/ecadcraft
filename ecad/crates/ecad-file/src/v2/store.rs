@@ -112,19 +112,34 @@ impl Store {
         Self { db: RwLock::new(Some(db)), reopen, repaired }
     }
 
-    /// Create a new, empty database at `path` (which must not exist).
+    /// Create a new, empty database at `path`, with create-new semantics: an existing file is
+    /// never replaced.
     ///
     /// # Errors
-    /// The file could not be created.
+    /// [`StoreError::Refused`] when `path` exists; the file could not be created (it is then
+    /// removed).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn create(path: &std::path::Path) -> Result<Self, StoreError> {
-        let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(path).map_err(engine)?;
-        let flag = Arc::new(AtomicBool::new(false));
-        let backend = redb::backends::FileBackend::new(file).map_err(engine)?;
-        let db = builder(&flag).create_with_backend(backend).map_err(open_err)?;
-        let me = Self::new(Db::Writable(db), Self::reopen_path(path, true), false);
-        me.init()?;
-        Ok(me)
+        let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                StoreError::Refused(format!("{} already exists; it is never overwritten", path.display()))
+            } else {
+                engine(e)
+            }
+        })?;
+        // The file is ours from here: a failure removes it.
+        let made = (|| {
+            let flag = Arc::new(AtomicBool::new(false));
+            let backend = redb::backends::FileBackend::new(file).map_err(engine)?;
+            let db = builder(&flag).create_with_backend(backend).map_err(open_err)?;
+            let me = Self::new(Db::Writable(db), Self::reopen_path(path, true), false);
+            me.init()?;
+            Ok(me)
+        })();
+        if made.is_err() {
+            let _ = std::fs::remove_file(path);
+        }
+        made
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -173,13 +188,30 @@ impl Store {
         Ok(me)
     }
 
-    /// Open a database from its bytes, held in memory (EEP-0005 §11: what a wasm build reads).
-    /// Writes go to the memory copy only.
+    /// Open a database from its bytes, held in memory by redb's own in-memory backend (EEP-0005
+    /// §11: what a wasm build reads). The bytes are moved into the backend once and the caller's
+    /// buffer is released; nothing else keeps a copy. Writes go to the memory copy only, and
+    /// cannot fail, so the handle is never reopened.
     ///
     /// # Errors
     /// The bytes are not a redb database.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, StoreError> {
-        Self::with_backend(ecad_store::power::PowerLoss::from_image(bytes))
+        let backend = redb::backends::InMemoryBackend::new();
+        backend.set_len(bytes.len() as u64).map_err(engine)?;
+        backend.write(0, &bytes).map_err(engine)?;
+        drop(bytes);
+        // redb's default mode: `SingleWriter` coordinates processes through file locks, which a
+        // buffer in memory has none of (and needs none: one handle owns it).
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut b = Database::builder();
+        let seen = flag.clone();
+        b.set_repair_callback(move |_| seen.store(true, Ordering::SeqCst));
+        let db = b.create_with_backend(backend).map_err(open_err)?;
+        let reopen: Reopen =
+            Box::new(|| Err(StoreError::Engine("a database held in memory cannot be reopened".into())));
+        let me = Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst));
+        me.init()?;
+        Ok(me)
     }
 
     /// Run `f` on the database; after redb's "an earlier I/O error" (it refuses a handle once a
@@ -639,7 +671,7 @@ impl Writer {
                 None => 0,
             }
         };
-        if seq != last + 1 {
+        if last.checked_add(1) != Some(seq) {
             return Err(StoreError::Refused(format!(
                 "transaction {seq} does not follow the branch's last stored transaction {last}"
             )));
@@ -757,7 +789,7 @@ impl Writer {
                     b.copy_from_slice(key.get(..16).unwrap_or(&[0u8; 16]));
                     let seq = key_seq(&key);
                     let expected = match last {
-                        Some((lb, ls)) if lb == b => ls + 1,
+                        Some((lb, ls)) if lb == b => ls.saturating_add(1),
                         _ => 1,
                     };
                     if cut.is_some_and(|(cb, cs)| cb.0 == b && seq > cs) {

@@ -585,6 +585,13 @@ impl Document {
         self.conn = crate::connectivity::Connectivity::build(self);
     }
 
+    /// Whether the index built on threads (as on open) equals one built on a single thread.
+    /// For tests.
+    #[doc(hidden)]
+    pub fn index_build_is_deterministic(&self) -> bool {
+        Index::build(self) == Index::build_serial(self)
+    }
+
     /// Whether the kept index equals one rebuilt from the stored objects.
     ///
     /// # Errors

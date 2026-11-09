@@ -2,8 +2,8 @@
 //! a flag byte saying which. Hashes and chain values are always over the uncompressed bytes.
 //!
 //! Native builds compress and decompress with the `zstd` crate (libzstd, level 1); the wasm
-//! reader decodes with `ruzstd` (pure Rust), so a browser build needs no C toolchain (overseer,
-//! 2026-11-09). Both read the same standard Zstandard frames: the format does not depend on
+//! reader decodes with `ruzstd` (pure Rust, decode only), so a browser build needs no C
+//! toolchain (overseer, 2026-11-09). Both read the same standard Zstandard frames: the format does not depend on
 //! which wrote it. Decoding is capped, so a hostile file cannot make a reader allocate without
 //! bound.
 
@@ -26,10 +26,11 @@ fn compress(bytes: &[u8]) -> Option<Vec<u8>> {
     zstd::bulk::compress(bytes, LEVEL).ok()
 }
 
-/// A Zstandard frame of `bytes` (the wasm build writes only into memory).
+/// The wasm build only reads (`ruzstd` decodes, and its encoder is never linked): anything it
+/// stores in its memory copy is stored as it is.
 #[cfg(target_arch = "wasm32")]
-fn compress(bytes: &[u8]) -> Option<Vec<u8>> {
-    Some(ruzstd::encoding::compress_to_vec(bytes, ruzstd::encoding::CompressionLevel::Fastest))
+fn compress(_bytes: &[u8]) -> Option<Vec<u8>> {
+    None
 }
 
 /// `bytes` as a stored body: the flag and the bytes, compressed when that is smaller.

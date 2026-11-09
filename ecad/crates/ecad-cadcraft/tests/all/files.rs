@@ -171,3 +171,18 @@ fn opening_a_file_that_is_not_a_project_reports_why() {
     assert!(s.docs.is_empty());
     assert!(ProjectHandle::open_file(&mut s, &d.path("missing"), 1).is_err());
 }
+
+/// The read-only open (an agent with writes off) refuses a file that is not a project in the
+/// same words.
+#[test]
+fn opening_a_non_project_read_only_reports_why() {
+    let d = TempDir::new("notproject-ro");
+    let p = d.path("notes.ecad");
+    std::fs::write(
+        &p, b"hello
+",
+    )
+    .unwrap();
+    let e = ecad_cadcraft::file::Binding::open_read_only(&p, 1, "test").err().unwrap();
+    assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
+}

@@ -295,9 +295,13 @@ pub fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 /// The media type and bytes of an `assets` value.
 ///
 /// # Errors
-/// A malformed value.
+/// A malformed value, or a media type over 255 bytes.
 pub fn split_asset_value(v: &[u8]) -> Result<(String, &[u8]), String> {
     let len = v.get(..2).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or("an asset row is too short")?;
+    // EEP-0005 read limits: a media type is at most 255 bytes.
+    if len > 255 {
+        return Err("an asset's media type is longer than 255 bytes".into());
+    }
     let media = v.get(2..2 + len).ok_or("an asset row is too short")?;
     let media = std::str::from_utf8(media).map_err(|_| "an asset's media type is not UTF-8")?;
     Ok((media.to_string(), v.get(2 + len..).unwrap_or_default()))

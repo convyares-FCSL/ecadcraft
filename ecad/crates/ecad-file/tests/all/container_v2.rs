@@ -416,3 +416,132 @@ fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
     ecad_file::v2::convert::convert_file(&src, Some(&out), WRITER).unwrap();
     check(open(&out).ledger.document(), "converted");
 }
+
+/// A project of `n` edits written to `p`, and the reference ledger.
+fn deep(dir: &TempDir, n: usize) -> (PathBuf, Ledger) {
+    let mut f = fixture();
+    for i in 0..n {
+        f.commit(
+            "Property",
+            vec![Op::SetProperty {
+                object: ObjectRef::Project,
+                key: format!("k{i}"),
+                before: None,
+                after: Some("v".into()),
+            }],
+        );
+    }
+    let p = dir.path("p.ecad");
+    create(&p, &f.ledger, 2_000);
+    (p, f.ledger)
+}
+
+/// Rewrite the head snapshot's version row of the file at `p` with `edit`.
+fn craft_head_record(p: &std::path::Path, head: u64, edit: impl FnOnce(&mut schema::VersionRecord)) {
+    let store = Store::open(p, true).unwrap();
+    let branch = BranchId::main_of(PROJECT.0);
+    let r = store.reader().unwrap();
+    let mut v = r.auto_at_or_before(branch, head).unwrap().unwrap();
+    drop(r);
+    edit(&mut v);
+    let mut w = store.writer().unwrap();
+    w.put_version(branch, &v).unwrap();
+    w.commit().unwrap();
+}
+
+/// Readers take the stack cap from the record, not this build's 1 024: a record written with a
+/// cap of 100 reads the entries below it 100 at a time, and undoes exactly as the replayed
+/// project all the way back.
+#[test]
+fn a_stack_record_with_another_cap_is_read_with_its_own_cap() {
+    let dir = TempDir::new("other-cap");
+    let (p, reference) = deep(&dir, 400);
+    let depth = reference.stacks().0.len() as u64;
+    craft_head_record(&p, reference.head(), |v| {
+        let cut = v.undo.len() - 100;
+        v.undo.drain(..cut);
+        v.undo_hidden += cut as u64;
+        v.stack_cap = 100;
+    });
+    let mut o = open(&p);
+    assert!(o.report.damage.is_none(), "{:?}", o.report);
+    assert_eq!(o.ledger.stack_depths().0, depth);
+    let mut r = reference.clone();
+    while r.undo(Author::User).is_ok() {
+        o.ledger.undo(Author::User).unwrap();
+    }
+    assert_eq!(o.ledger.document(), r.document());
+    assert!(o.ledger.undo(Author::User).is_err());
+    // The entries below the record, 100 at a time (1 024 at a time would be one read).
+    assert_eq!(u64::from(o.ledger.stack_rebuilds()), (depth - 100).div_ceil(100));
+    assert!(o.ledger.stack_rebuilds() > 1);
+}
+
+/// Crafted stack records (deeper than the history, more entries than the cap, entries below with
+/// no cap) are damage: the project opens read-only from the root, never overflows.
+#[test]
+fn crafted_stack_records_open_read_only_from_the_root() {
+    type Craft = fn(&mut schema::VersionRecord);
+    let crafts: [(&str, Craft); 4] = [
+        ("undo deeper than u64", |v| v.undo_hidden = u64::MAX),
+        ("redo deeper than the history", |v| v.redo_hidden = v.point.seq),
+        ("more entries than the cap", |v| v.stack_cap = 2),
+        ("entries below and no cap", |v| {
+            v.undo_hidden = 1;
+            v.stack_cap = 0;
+        }),
+    ];
+    for (what, craft) in crafts {
+        let dir = TempDir::new("crafted-stack");
+        let (p, reference) = deep(&dir, 20);
+        craft_head_record(&p, reference.head(), craft);
+        let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER)
+            .unwrap_or_else(|e| panic!("{what}: refused the whole project: {e}"));
+        assert!(o.report.damage.is_some(), "{what}: no damage reported");
+        assert!(o.project.read_only().is_some(), "{what}: not read-only");
+        assert_eq!(o.ledger.document(), reference.document(), "{what}");
+    }
+}
+
+/// A crafted file with a stored row at `u64::MAX`: appending after it is refused (no overflow),
+/// the export reports the gap instead of walking 2^52 empty ranges, and the project still opens.
+#[test]
+fn a_row_at_the_largest_sequence_number_is_refused_not_overflowed() {
+    let dir = TempDir::new("max-seq");
+    let f = fixture();
+    let p = dir.path("p.ecad");
+    create(&p, &f.ledger, 2_000);
+    let branch = BranchId::main_of(PROJECT.0);
+    {
+        let db = redb::Database::open(&p).unwrap();
+        let w = db.begin_write().unwrap();
+        {
+            let mut t = w.open_table(schema::TRANSACTIONS).unwrap();
+            let value = schema::tx_value(0, &[0; 32], b"{}");
+            t.insert(schema::tx_key(branch, u64::MAX), value.as_slice()).unwrap();
+        }
+        w.commit().unwrap();
+    }
+    let store = Store::open(&p, true).unwrap();
+    let mut w = store.writer().unwrap();
+    for seq in [0, 1, u64::MAX] {
+        assert!(matches!(w.append_tx(branch, seq, &[0; 32], b"{}"), Err(StoreError::Refused(_))), "seq {seq}");
+    }
+    drop(w);
+    let mut out = Vec::new();
+    assert!(ecad_file::v2::inspect::export_jsonl(&store, false, &mut out).is_err());
+    drop(store);
+    let o = open(&p);
+    assert_eq!(o.ledger.document(), f.ledger.document());
+}
+
+/// The converter's output is created with create-new semantics: a file already at that name (for
+/// example one that appeared after the converter's first look) is refused and left as it was.
+#[test]
+fn creating_a_file_never_replaces_one_already_there() {
+    let dir = TempDir::new("create-new");
+    let p = dir.path("taken.ecad");
+    std::fs::write(&p, b"someone else's file").unwrap();
+    assert!(matches!(Store::create(&p), Err(StoreError::Refused(_))));
+    assert_eq!(std::fs::read(&p).unwrap(), b"someone else's file");
+}

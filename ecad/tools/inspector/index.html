@@ -132,7 +132,7 @@ function render() {
     <tr><th>Read-only</th><td>${f.read_only ? `<span class="warn">${esc(f.read_only)}</span>` : "no"}</td></tr>
     <tr><th>Unconfirmed Save As</th><td>${f.unconfirmed ? '<span class="warn">yes</span>' : "no"}</td></tr>
     <tr><th>Failed save attempt</th><td>${f.attempt ? `<span class="warn">${esc(JSON.stringify(f.attempt))}</span>` : "none"}</td></tr>
-    <tr><th>Preserved tail</th><td class="mono">${esc(f.preserved_tail ?? "none")}</td></tr>
+    ${f.preserved_tail != null ? `<tr><th>Preserved tail</th><td class="mono">${esc(f.preserved_tail)}</td></tr>` : ""}
     <tr><th>Opening found</th><td>${esc(f.open_report ?? "")}</td></tr>
     <tr><th>Records in the file</th><td>${esc(records.size)}</td></tr>
     </table></div>`;

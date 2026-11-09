@@ -128,24 +128,7 @@ impl Index {
             let ha = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, items).ok()).flatten();
             let hb = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, reps).ok()).flatten();
             let mut rest = Index::default();
-            for (id, c) in &doc.components {
-                rest.component(*id, c, Delta::Add);
-            }
-            for (id, t) in &doc.terminals {
-                rest.terminal(*id, t, Delta::Add);
-            }
-            for (id, c) in &doc.conductors {
-                rest.conductor(*id, c, Delta::Add);
-            }
-            for (id, c) in &doc.cables {
-                rest.cable(*id, c, Delta::Add);
-            }
-            for (id, p) in &doc.pages {
-                rest.page(*id, p, Delta::Add);
-            }
-            for (id, f) in &doc.folders {
-                rest.folder(*id, f, Delta::Add);
-            }
+            rest.add_rest(doc);
             let a = ha.and_then(|h| h.join().ok()).unwrap_or_else(items);
             let b = hb.and_then(|h| h.join().ok()).unwrap_or_else(reps);
             (a, b, rest)
@@ -158,6 +141,43 @@ impl Index {
         ix.item_reps = b.item_reps;
         ix.terminal_reps = b.terminal_reps;
         ix
+    }
+
+    /// The index built on one thread, every object into one index: what [`Index::build`]'s
+    /// threads must equal (a test compares them).
+    pub(crate) fn build_serial(doc: &Document) -> Self {
+        let mut ix = Index::default();
+        for (id, item) in &doc.items {
+            ix.item(*id, item, Delta::Add);
+        }
+        for (id, r) in &doc.representations {
+            ix.representation(*id, r, Delta::Add);
+        }
+        ix.add_rest(doc);
+        ix
+    }
+
+    /// Everything but items and representations.
+    fn add_rest(&mut self, doc: &Document) {
+        let rest = self;
+        for (id, c) in &doc.components {
+            rest.component(*id, c, Delta::Add);
+        }
+        for (id, t) in &doc.terminals {
+            rest.terminal(*id, t, Delta::Add);
+        }
+        for (id, c) in &doc.conductors {
+            rest.conductor(*id, c, Delta::Add);
+        }
+        for (id, c) in &doc.cables {
+            rest.cable(*id, c, Delta::Add);
+        }
+        for (id, p) in &doc.pages {
+            rest.page(*id, p, Delta::Add);
+        }
+        for (id, f) in &doc.folders {
+            rest.folder(*id, f, Delta::Add);
+        }
     }
 
     pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {

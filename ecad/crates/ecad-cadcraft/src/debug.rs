@@ -206,7 +206,6 @@ pub struct FileFacts {
     pub read_only: Option<String>,
     /// The last Save As replaced its target without confirming durability.
     pub unconfirmed: bool,
-    pub preserved_tail: Option<String>,
     /// What opening found, when the project was opened from a file.
     pub open_report: Option<String>,
     /// A version 2 file's facts (the debugger's Storage view).
@@ -232,7 +231,6 @@ impl FileFacts {
             "records": self.spans.iter().map(|s| json!({"seq": s.seq, "offset": s.offset, "len": s.len})).collect::<Vec<_>>(),
             "read_only": self.read_only,
             "unconfirmed": self.unconfirmed,
-            "preserved_tail": self.preserved_tail,
             "open_report": self.open_report,
             "storage": self.storage.as_ref().map(|s| json!({
                 "branch": s.branch, "head": s.head, "snapshot_seq": s.snapshot_seq,
@@ -430,7 +428,6 @@ impl Project {
                 f.path = st.path;
                 f.read_only = st.read_only;
                 f.unconfirmed = st.unconfirmed;
-                f.preserved_tail = st.preserved_tail;
                 f.lock_file = self.file.lock_file();
                 f.storage = self.file.storage();
                 f.writer_persisted = f.storage.as_ref().map(|s| s.head);

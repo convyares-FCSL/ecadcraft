@@ -199,14 +199,20 @@ pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Resul
     // In chunks, so a long history never sits in memory at once.
     let mut from = 1;
     while from <= head {
-        let to = head.min(from + 4_095);
-        for (_, flag, _, body) in r.tx_range(id, from..=to).map_err(|e| e.to_string())? {
+        let to = head.min(from.saturating_add(4_095));
+        let rows = r.tx_range(id, from..=to).map_err(|e| e.to_string())?;
+        // Rows run 1..=head with no gap: a gap is damage, never a walk over empty ranges.
+        if rows.len() as u64 != to.saturating_sub(from).saturating_add(1) {
+            return Err(format!("transactions {from} to {to} are not all stored"));
+        }
+        for (_, flag, _, body) in rows {
             let record = pack::unpack(flag, &body)?;
             let v: Value = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
             out.write_all(&codec.encode(&v).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             lines += 1;
         }
-        from = to + 1;
+        let Some(next) = to.checked_add(1) else { break };
+        from = next;
     }
     Ok(lines)
 }

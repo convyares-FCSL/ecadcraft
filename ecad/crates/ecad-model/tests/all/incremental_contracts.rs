@@ -320,6 +320,20 @@ fn every_op_inverse_after_apply_restores_the_exact_document() {
     }
 }
 
+/// Brief 021: the index built on threads (items and representations apart, as on open) equals
+/// one built on a single thread, on a document with every kind of object and after every op.
+#[test]
+fn the_parallel_index_build_equals_a_serial_build() {
+    let mut b = base();
+    let before = b.ledger.document().clone();
+    assert!(before.index_build_is_deterministic());
+    for op in applicable(&mut b) {
+        let mut doc = before.clone();
+        op.apply(&mut doc).unwrap_or_else(|e| panic!("{}: {e}", op.name()));
+        assert!(doc.index_build_is_deterministic(), "after {}", op.name());
+    }
+}
+
 #[test]
 fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let mut b = base();

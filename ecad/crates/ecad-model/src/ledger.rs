@@ -108,6 +108,8 @@ pub struct Ledger {
     health: Health,
     /// How often the whole undo and redo stacks were read from the history (at most once).
     stack_rebuilds: u32,
+    /// Stack entries read from the history at a time ([`Base::stack_cap`]).
+    stack_read: u64,
 }
 
 /// The derived undo/redo stacks: the `seq` and ID of each entry, so that admitting a step never
@@ -249,12 +251,13 @@ fn stacks_from<H: History + ?Sized>(h: &H, seq: u64) -> Result<(Vec<(u64, TxId)>
         let mut s = Stacks::default();
         let mut from = 1;
         while from <= seq {
-            let to = seq.min(from + 4_095);
+            let to = seq.min(from.saturating_add(4_095));
             for tx in h.transactions(from, to)? {
                 s.admit(&tx)?;
                 s.push(&tx);
             }
-            from = to + 1;
+            let Some(next) = to.checked_add(1) else { break };
+            from = next;
         }
         Ok((s.undo, s.redo))
     }
@@ -275,6 +278,9 @@ pub struct Base {
     pub redo_hidden: u64,
     /// `doc`'s derived index is already built (it is built here otherwise).
     pub indexed: bool,
+    /// The cap the snapshot recorded its stacks with: entries below them are read from the
+    /// history this many at a time (0: the stacks are whole; [`STACK_READ`] is then used).
+    pub stack_cap: u64,
     pub history: Arc<dyn History>,
 }
 
@@ -655,6 +661,7 @@ impl Ledger {
             verify: false,
             health: Health::default(),
             stack_rebuilds: 0,
+            stack_read: STACK_READ,
         }
     }
 
@@ -704,7 +711,22 @@ impl Ledger {
     /// [`ModelError::CorruptLog`] when the base's stacks are inconsistent (an entry at 0 or after
     /// the base, or out of order) or their tops cannot be read from the history.
     pub fn from_base(base: Base, tail: Vec<Transaction>, seed: u64) -> Result<(Self, Option<(usize, ModelError)>)> {
-        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, history } = base;
+        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, stack_cap, history } = base;
+        // Each transaction up to the base is on at most one stack: more entries than that (a
+        // crafted file) is damage, never an allocation or a loop.
+        let depth = [undo.len() as u64, undo_hidden, redo.len() as u64, redo_hidden]
+            .into_iter()
+            .try_fold(0u64, u64::checked_add);
+        if depth.is_none_or(|n| n > seq) {
+            return Err(ModelError::CorruptLog(format!(
+                "the undo and redo stacks recorded at {seq} are deeper than the history"
+            )));
+        }
+        if stack_cap == 0 && (undo_hidden > 0 || redo_hidden > 0) {
+            return Err(ModelError::CorruptLog(format!(
+                "the stacks recorded at {seq} have entries below them but no cap"
+            )));
+        }
         for stack in [&undo, &redo] {
             let bad_entry = stack.iter().any(|(s, _)| *s == 0 || *s > seq);
             let unordered = stack.windows(2).any(|w| matches!(w, [a, b] if a.0 >= b.0));
@@ -736,6 +758,7 @@ impl Ledger {
             verify: false,
             health: Health::default(),
             stack_rebuilds: 0,
+            stack_read: if stack_cap == 0 { STACK_READ } else { stack_cap },
         };
         me.load_tops()?;
         let failure = me.extend_prefix(tail);
@@ -751,14 +774,14 @@ impl Ledger {
         let mut failure = None;
         let start = self.head();
         for (i, tx) in log.into_iter().enumerate() {
-            let expected = start + i as u64 + 1;
+            let expected = start.checked_add(i as u64).and_then(|n| n.checked_add(1));
             // A step that pops below what the snapshot recorded reads the stacks whole first.
             let full = if self.stacks.needs_full(tx.kind) { self.rebuild_stacks() } else { Ok(()) };
             let step = if let Err(e) = full {
                 Err(e)
-            } else if tx.seq != expected {
+            } else if Some(tx.seq) != expected {
                 Err(ModelError::CorruptLog(format!(
-                    "transaction {} has sequence {} at position {}",
+                    "transaction {} has sequence {} at position {:?}",
                     tx.id, tx.seq, expected
                 )))
             } else {
@@ -800,7 +823,7 @@ impl Ledger {
         failure
     }
 
-    /// Read the next [`STACK_READ`] entries below an emptied stack from the history: the base's
+    /// Read the next [`Base::stack_cap`] entries below an emptied stack from the history: the base's
     /// stack entries just below those already read (the transactions after the base never reach
     /// below what is held without this). Kept for the session; each further read goes deeper.
     ///
@@ -819,19 +842,19 @@ impl Ledger {
             let h = self.history.as_ref().ok_or_else(|| {
                 ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
             })?;
-            let n = hidden.min(STACK_READ);
+            let n = hidden.min(self.stack_read);
             let more = h.stack_slice(self.base, undo, known, n)?;
             if more.len() as u64 != n || more.iter().any(|(s, _)| *s > self.base) {
                 return Err(ModelError::CorruptLog("the history does not agree with the recorded undo stacks".into()));
             }
             if undo {
                 self.stacks.undo = more;
-                self.stacks.undo_hidden -= n;
-                self.stacks.undo_known += n;
+                self.stacks.undo_hidden = hidden.saturating_sub(n);
+                self.stacks.undo_known = known.saturating_add(n);
             } else {
                 self.stacks.redo = more;
-                self.stacks.redo_hidden -= n;
-                self.stacks.redo_known += n;
+                self.stacks.redo_hidden = hidden.saturating_sub(n);
+                self.stacks.redo_known = known.saturating_add(n);
             }
             self.stack_rebuilds += 1;
         }
@@ -923,6 +946,7 @@ impl Ledger {
             verify,
             health,
             stack_rebuilds: 0,
+            stack_read: STACK_READ,
         })
     }
 
@@ -990,9 +1014,16 @@ impl Ledger {
         self.tx(seq)
     }
 
+    /// The sequence number the next transaction gets.
+    fn next_seq(&self) -> Result<u64> {
+        self.head()
+            .checked_add(1)
+            .ok_or_else(|| ModelError::CorruptLog("the history has no room for another transaction".into()))
+    }
+
     /// Sequence number of the last applied transaction (0 when empty).
     pub fn head(&self) -> u64 {
-        self.base + self.log.len() as u64
+        self.base.saturating_add(self.log.len() as u64)
     }
 
     /// Sequence number of the last transaction known to be durably saved.
@@ -1103,7 +1134,7 @@ impl Ledger {
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
-        let seq = self.head() + 1;
+        let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
         let kind = TxKind::Edit;
         let stacks = &self.stacks;
@@ -1134,7 +1165,7 @@ impl Ledger {
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
-        let seq = self.head() + 1;
+        let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
         // Not refused through undo/redo (their target is the stack top); kept so a bad kind can
         // never be recorded.

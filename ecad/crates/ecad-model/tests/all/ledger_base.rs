@@ -69,6 +69,8 @@ fn based_capped(l: &Ledger, at: u64, cap: usize) -> (Ledger, Arc<Store>) {
         undo_hidden,
         redo_hidden,
         indexed: false,
+        // Read back 1 024 at a time, as written by this build (the record keeps `cap` of them).
+        stack_cap: 1_024,
         history: store.clone(),
     };
     let (b, failure) = Ledger::from_base(base, l.log()[at as usize..].to_vec(), 1).unwrap();
@@ -146,9 +148,36 @@ fn inconsistent_snapshot_stacks_are_refused() {
         undo_hidden: 0,
         redo_hidden: 0,
         indexed: false,
+        stack_cap: 0,
         history: store,
     };
     assert!(matches!(Ledger::from_base(bad, vec![], 1), Err(ModelError::CorruptLog(_))));
+}
+
+/// A crafted snapshot whose stack counts exceed its history (up to `u64::MAX`), or that has
+/// entries below its stacks but no cap, is refused: never an overflow, allocation or long loop.
+#[test]
+fn snapshot_stacks_deeper_than_the_history_are_refused() {
+    let reference = full();
+    let at = reference.head();
+    let (undo, redo) = reference.stacks();
+    let store = Arc::new(Store { log: reference.log().to_vec(), reads: AtomicUsize::new(0), fail: Mutex::new(false) });
+    let crafted = |undo_hidden: u64, redo_hidden: u64, stack_cap: u64| Base {
+        seq: at,
+        doc: reference.document().clone(),
+        undo: undo.clone(),
+        redo: redo.clone(),
+        undo_hidden,
+        redo_hidden,
+        indexed: false,
+        stack_cap,
+        history: store.clone(),
+    };
+    for (uh, rh, cap) in [(u64::MAX, 0, 1_024), (0, u64::MAX, 1_024), (at, 0, 1_024), (0, at, 3), (1, 0, 0)] {
+        let r = Ledger::from_base(crafted(uh, rh, cap), vec![], 1);
+        assert!(matches!(r, Err(ModelError::CorruptLog(_))), "hidden {uh}/{rh}, cap {cap}: {:?}", r.err());
+    }
+    assert!(Ledger::from_base(crafted(0, 0, 0), vec![], 1).is_ok(), "whole stacks need no cap");
 }
 
 /// Brief 021: a snapshot records only the top of each stack. Undo and redo below it read the
