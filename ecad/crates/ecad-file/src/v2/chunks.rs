@@ -454,7 +454,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String>
 
 /// `f` over `items`, on up to 8 threads where the platform has them (results in the order of
 /// `items`); on one thread on wasm. A share whose thread cannot start is left out.
-fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
+pub(crate) fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
     let threads = if cfg!(target_arch = "wasm32") {
         1
     } else {

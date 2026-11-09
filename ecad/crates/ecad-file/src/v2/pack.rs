@@ -64,9 +64,45 @@ pub fn decode_ruzstd(body: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+thread_local! {
+    /// One decompression context per thread, reused: making one per row costs more than the row
+    /// (a history is read row by row).
+    static DCTX: std::cell::RefCell<Option<zstd::bulk::Decompressor<'static>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
-    let d = zstd::stream::read::Decoder::new(body).map_err(|e| format!("damaged compressed body: {e}"))?;
-    read_capped(d)
+    let damaged = |e: &dyn std::fmt::Display| format!("damaged compressed body: {e}");
+    match zstd::zstd_safe::get_frame_content_size(body) {
+        // The frame says its size (every frame this build writes does): decode in one call.
+        Ok(Some(n)) => {
+            let n = usize::try_from(n)
+                .ok()
+                .filter(|n| *n <= MAX_BODY)
+                .ok_or_else(|| format!("a compressed body expands to more than {MAX_BODY} bytes"))?;
+            let run = |d: &mut zstd::bulk::Decompressor<'static>| d.decompress(body, n).map_err(|e| damaged(&e));
+            let out = DCTX.with(|cell| match cell.try_borrow_mut() {
+                Ok(mut slot) => {
+                    if slot.is_none() {
+                        *slot = zstd::bulk::Decompressor::new().ok();
+                    }
+                    match slot.as_mut() {
+                        Some(d) => run(d),
+                        None => Err("no decompression context".to_string()),
+                    }
+                }
+                Err(_) => zstd::bulk::Decompressor::new().map_err(|e| damaged(&e)).and_then(|mut d| run(&mut d)),
+            })?;
+            if out.len() != n {
+                return Err(damaged(&"its size differs from its header"));
+            }
+            Ok(out)
+        }
+        // A frame without its size (another writer): stream it, capped.
+        Ok(None) => read_capped(zstd::stream::read::Decoder::new(body).map_err(|e| damaged(&e))?),
+        Err(_) => Err(damaged(&"not a Zstandard frame")),
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

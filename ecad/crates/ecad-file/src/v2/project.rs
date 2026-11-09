@@ -344,9 +344,11 @@ impl History for StoreHistory {
         }
     }
 
-    /// Only each row's `seq`, `id`, `kind` and `prev` are decoded (its record still checked
-    /// against its chain value): the ops are skipped, so reading a long history once is quick.
-    fn stacks_at(&self, seq: u64) -> ecad_model::Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+    /// Walks the history backwards from `seq`, only as far as the wanted entries go: an undo pops
+    /// the newest live entry of the undo stack and an edit or redo pushes one; a redo pops the
+    /// redo stack, an undo pushes one, and an edit empties it. Each row is checked against its
+    /// chain value and the row before it.
+    fn stack_slice(&self, seq: u64, undo: bool, skip: u64, count: u64) -> ecad_model::Result<Vec<(u64, TxId)>> {
         #[derive(serde::Deserialize)]
         struct Head {
             seq: u64,
@@ -356,45 +358,163 @@ impl History for StoreHistory {
         }
         let bad = |m: String| ModelError::CorruptLog(m);
         let r = self.read()?;
+        let mut out = Vec::new();
+        let (mut debt, mut skipped) = (0u64, 0u64);
+        // The `prev` of the lowest row read so far: the next (older) range must end with it.
+        let mut expect_last: Option<Hash> = None;
+        let mut hi = seq;
+        'walk: while hi >= 1 && (out.len() as u64) < count {
+            let lo = hi.saturating_sub(4_095).max(1);
+            let rows = r.tx_range(self.branch, lo..=hi).map_err(|e| bad(e.to_string()))?;
+            if rows.len() as u64 != hi - lo + 1 {
+                return Err(bad(format!("transactions {lo} to {hi} are not all stored")));
+            }
+            let mut heads = Vec::with_capacity(rows.len());
+            let mut last_chain = None;
+            for (q, flag, chain_value, body) in rows {
+                let record = pack::unpack(flag, &body).map_err(bad)?;
+                if chain::tx_hash(&record) != chain_value {
+                    return Err(bad(format!("transaction {q} does not match its chain value")));
+                }
+                let h: Head = serde_json::from_slice(&record).map_err(|e| bad(format!("transaction {q}: {e}")))?;
+                let prev = chain::parse_hex(&h.prev).ok_or_else(|| bad(format!("transaction {q}: bad prev")))?;
+                if h.seq != q || last_chain.is_some_and(|c| c != prev) {
+                    return Err(bad(format!("transaction {q} does not follow the one before")));
+                }
+                last_chain = Some(chain_value);
+                heads.push((h, prev));
+            }
+            if let (Some(want), Some(have)) = (expect_last, last_chain)
+                && want != have
+            {
+                return Err(bad("the history's chain is broken between two ranges".into()));
+            }
+            expect_last = heads.first().map(|(_, p)| *p);
+            for (h, _) in heads.into_iter().rev() {
+                use crate::v1::TxKind as K;
+                let (push, pop, clears) = match (h.kind, undo) {
+                    (K::Edit, true) | (K::Redo(_), true) => (true, false, false),
+                    (K::Undo(_), true) => (false, true, false),
+                    (K::Undo(_), false) => (true, false, false),
+                    (K::Redo(_), false) => (false, true, false),
+                    (K::Edit, false) => (false, false, true),
+                };
+                if clears {
+                    break 'walk;
+                }
+                if pop {
+                    debt += 1;
+                } else if push {
+                    if debt > 0 {
+                        debt -= 1;
+                    } else if skipped < skip {
+                        skipped += 1;
+                    } else {
+                        out.push((h.seq, h.id));
+                        if out.len() as u64 == count {
+                            break 'walk;
+                        }
+                    }
+                }
+            }
+            if lo == 1 {
+                break;
+            }
+            hi = lo - 1;
+        }
+        out.reverse();
+        Ok(out)
+    }
+
+    /// Only each row's `seq`, `id`, `kind` and `prev` are decoded (its record still checked
+    /// against its chain value): the ops are skipped. Rows are read and decoded in parallel, in
+    /// waves of up to eight ranges of 4 096, then folded into the stacks in order, so a long
+    /// history is read once quickly and memory stays bounded.
+    fn stacks_at(&self, seq: u64) -> ecad_model::Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+        #[derive(serde::Deserialize)]
+        struct Head {
+            seq: u64,
+            id: TxId,
+            kind: crate::v1::TxKind,
+            prev: String,
+        }
+        /// A range's rows, checked on their own: each row against its chain value and the one
+        /// before it; the first row's `prev` and the last row's chain value link the ranges.
+        struct Range {
+            first_prev: Hash,
+            last: Hash,
+            rows: Vec<(u64, TxId, crate::v1::TxKind)>,
+        }
+        let bad = |m: String| ModelError::CorruptLog(m);
+        let store = self.store.upgrade().ok_or_else(|| bad("the project's file is closed".into()))?;
+        let branch = self.branch;
+        let read_range = |(from, to): (u64, u64)| -> Result<Range, String> {
+            let r = store.reader().map_err(|e| e.to_string())?;
+            let stored = r.tx_range(branch, from..=to).map_err(|e| e.to_string())?;
+            if stored.len() as u64 != to - from + 1 {
+                return Err(format!("transactions {from} to {to} are not all stored"));
+            }
+            let mut out = Range { first_prev: [0; 32], last: [0; 32], rows: Vec::with_capacity(stored.len()) };
+            for (i, (q, flag, chain_value, body)) in stored.into_iter().enumerate() {
+                let record = pack::unpack(flag, &body)?;
+                if chain::tx_hash(&record) != chain_value {
+                    return Err(format!("transaction {q} does not match its chain value"));
+                }
+                let h: Head = serde_json::from_slice(&record).map_err(|e| format!("transaction {q}: {e}"))?;
+                let prev = chain::parse_hex(&h.prev).ok_or_else(|| format!("transaction {q}: bad prev"))?;
+                if h.seq != q || (i > 0 && prev != out.last) {
+                    return Err(format!("transaction {q} does not follow the one before"));
+                }
+                if i == 0 {
+                    out.first_prev = prev;
+                }
+                out.last = chain_value;
+                out.rows.push((q, h.id, h.kind));
+            }
+            Ok(out)
+        };
         let (mut undo, mut redo): (Vec<(u64, TxId)>, Vec<(u64, TxId)>) = (Vec::new(), Vec::new());
         let mut prev = self.seed;
         let mut from = 1;
         while from <= seq {
-            let to = seq.min(from + 4_095);
-            let rows = r.tx_range(self.branch, from..=to).map_err(|e| bad(e.to_string()))?;
-            if rows.len() as u64 != to - from + 1 {
-                return Err(bad(format!("transactions {from} to {to} are not all stored")));
+            let mut ranges = Vec::new();
+            while from <= seq && ranges.len() < 8 {
+                let to = seq.min(from + 4_095);
+                ranges.push((from, to));
+                from = to + 1;
             }
-            for (q, flag, stored, body) in rows {
-                let record = pack::unpack(flag, &body).map_err(bad)?;
-                if chain::tx_hash(&record) != stored {
-                    return Err(bad(format!("transaction {q} does not match its chain value")));
+            let wanted = ranges.len();
+            let read = chunks::par_map(ranges, read_range);
+            if read.len() != wanted {
+                return Err(bad("the history could not be read: a worker thread did not start".into()));
+            }
+            for range in read {
+                let range = range.map_err(bad)?;
+                if range.first_prev != prev {
+                    return Err(bad("the history's chain is broken between two ranges".into()));
                 }
-                let h: Head = serde_json::from_slice(&record).map_err(|e| bad(format!("transaction {q}: {e}")))?;
-                if h.seq != q || chain::parse_hex(&h.prev) != Some(prev) {
-                    return Err(bad(format!("transaction {q} does not follow the one before")));
-                }
-                prev = stored;
-                match h.kind {
-                    crate::v1::TxKind::Edit => {
-                        undo.push((q, h.id));
-                        redo.clear();
-                    }
-                    crate::v1::TxKind::Undo(of) => {
-                        if undo.pop().map(|t| t.1) != Some(of) {
-                            return Err(bad(format!("undo {q} does not undo the latest step")));
+                prev = range.last;
+                for (q, id, kind) in range.rows {
+                    match kind {
+                        crate::v1::TxKind::Edit => {
+                            undo.push((q, id));
+                            redo.clear();
                         }
-                        redo.push((q, h.id));
-                    }
-                    crate::v1::TxKind::Redo(of) => {
-                        if redo.pop().map(|t| t.1) != Some(of) {
-                            return Err(bad(format!("redo {q} does not redo the latest undo")));
+                        crate::v1::TxKind::Undo(of) => {
+                            if undo.pop().map(|t| t.1) != Some(of) {
+                                return Err(bad(format!("undo {q} does not undo the latest step")));
+                            }
+                            redo.push((q, id));
                         }
-                        undo.push((q, h.id));
+                        crate::v1::TxKind::Redo(of) => {
+                            if redo.pop().map(|t| t.1) != Some(of) {
+                                return Err(bad(format!("redo {q} does not redo the latest undo")));
+                            }
+                            undo.push((q, id));
+                        }
                     }
                 }
             }
-            from = to + 1;
         }
         Ok((undo, redo))
     }
@@ -453,8 +573,6 @@ pub struct ProjectV2 {
     snap_ref: Option<SnapshotRef>,
     /// The undo and redo stacks at the ledger's base (the snapshot opened from).
     base_stacks: StackState,
-    /// The whole stacks at `base_seq`, once read from the history (at most once a session).
-    full_base_stacks: Option<StackState>,
     base_seq: u64,
     writer: String,
     read_only: Option<String>,
@@ -679,7 +797,6 @@ impl ProjectV2 {
             base_tag_high,
             snap_ref,
             base_stacks: stacks,
-            full_base_stacks: None,
             base_seq: snap_seq,
             writer: writer.to_string(),
             read_only,
@@ -830,7 +947,6 @@ impl ProjectV2 {
             base_tag_high: HighWater::new(),
             snap_ref: latest,
             base_stacks: StackState::default(),
-            full_base_stacks: None,
             base_seq: 0,
             writer: writer.to_string(),
             read_only: None,
@@ -1094,27 +1210,47 @@ impl ProjectV2 {
     }
 
     /// The undo and redo stacks at `at`: from those at the snapshot this project was opened from
-    /// and the transactions after it in memory; when that pops below what the snapshot recorded,
-    /// the whole stacks at that snapshot are read from the file once and kept. A point before it
-    /// is read from the file.
+    /// and the transactions after it in memory. When that pops below what is held, the next
+    /// entries of the snapshot's stacks are read from the file ([`STACK_CAP`] at a time, walking
+    /// back only as far as they go) and kept. A point before the snapshot is read from the file.
     fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
         let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
         if at >= self.base_seq && self.base_seq >= ledger.base() {
             let from = usize::try_from(self.base_seq - ledger.base()).unwrap_or(usize::MAX);
             let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
             let txs = ledger.log().get(from..to).unwrap_or_default();
-            let mut s = self.full_base_stacks.clone().unwrap_or_else(|| self.base_stacks.clone());
-            if s.advance(txs) {
-                return Ok(s);
+            loop {
+                let mut s = self.base_stacks.clone();
+                if s.advance(txs) {
+                    return Ok(s);
+                }
+                let history = self.history();
+                let base = &mut self.base_stacks;
+                let mut grew = false;
+                for undo in [true, false] {
+                    let (stack, hidden) = if undo {
+                        (&mut base.undo, &mut base.undo_hidden)
+                    } else {
+                        (&mut base.redo, &mut base.redo_hidden)
+                    };
+                    if *hidden == 0 {
+                        continue;
+                    }
+                    let n = (*hidden).min(STACK_CAP);
+                    let more = history.stack_slice(self.base_seq, undo, stack.len() as u64, n).map_err(enc)?;
+                    if more.len() as u64 != n {
+                        return Err(SaveErrorV2::Encode("the history holds fewer undo steps than recorded".into()));
+                    }
+                    let mut all = more;
+                    all.append(stack);
+                    *stack = all;
+                    *hidden -= n;
+                    grew = true;
+                }
+                if !grew {
+                    return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
+                }
             }
-            let (undo, redo) = self.history().stacks_at(self.base_seq).map_err(enc)?;
-            let full = StackState { undo, redo, undo_hidden: 0, redo_hidden: 0 };
-            self.full_base_stacks = Some(full.clone());
-            let mut s = full;
-            if !s.advance(txs) {
-                return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
-            }
-            return Ok(s);
         }
         let (undo, redo) = self.history().stacks_at(at).map_err(enc)?;
         Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0 })

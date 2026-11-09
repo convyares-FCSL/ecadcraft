@@ -121,7 +121,14 @@ struct Stacks {
     /// undo or redo first reaches them ([`Ledger::rebuild_stacks`]).
     undo_hidden: u64,
     redo_hidden: u64,
+    /// How many entries of the base's stacks (from their tops) have been read so far.
+    undo_known: u64,
+    redo_known: u64,
 }
+
+/// How many stack entries are read from the history at a time, when undo or redo reaches below
+/// what is held (the cap a snapshot records, brief 021).
+pub const STACK_READ: u64 = 1_024;
 
 impl Stacks {
     /// Whether `kind` would pop a stack whose visible part is empty but which has hidden entries.
@@ -217,11 +224,33 @@ pub trait History: std::fmt::Debug + Send + Sync {
     /// # Errors
     /// As [`History::transaction`]; an inconsistent undo/redo structure.
     fn stacks_at(&self, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+        stacks_from(self, seq)
+    }
+
+    /// Entries `skip .. skip + count` counted from the top of the undo (or redo) stack after
+    /// transaction `seq`, oldest first (fewer when the stack is shallower). A store walks the
+    /// history backwards from `seq` only as far as those entries go.
+    ///
+    /// # Errors
+    /// As [`History::stacks_at`].
+    fn stack_slice(&self, seq: u64, undo: bool, skip: u64, count: u64) -> Result<Vec<(u64, TxId)>> {
+        let (u, r) = self.stacks_at(seq)?;
+        let s = if undo { u } else { r };
+        let end = s.len().saturating_sub(usize::try_from(skip).unwrap_or(usize::MAX));
+        let start = end.saturating_sub(usize::try_from(count).unwrap_or(usize::MAX));
+        Ok(s.get(start..end).unwrap_or_default().to_vec())
+    }
+}
+
+/// The whole undo and redo stacks after transaction `seq`, from the kinds of every transaction
+/// up to it.
+fn stacks_from<H: History + ?Sized>(h: &H, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+    {
         let mut s = Stacks::default();
         let mut from = 1;
         while from <= seq {
             let to = seq.min(from + 4_095);
-            for tx in self.transactions(from, to)? {
+            for tx in h.transactions(from, to)? {
                 s.admit(&tx)?;
                 s.push(&tx);
             }
@@ -635,7 +664,14 @@ impl Ledger {
             older: BTreeMap::new(),
             persisted: seq,
             ids: IdAllocator::seeded(seed),
-            stacks: Stacks { undo, redo, undo_hidden, redo_hidden },
+            stacks: Stacks {
+                undo_known: undo.len() as u64,
+                redo_known: redo.len() as u64,
+                undo,
+                redo,
+                undo_hidden,
+                redo_hidden,
+            },
             verify: false,
             health: Health::default(),
             stack_rebuilds: 0,
@@ -703,36 +739,45 @@ impl Ledger {
         failure
     }
 
-    /// Read the whole undo and redo stacks, once: the stacks at the base from the history (from
-    /// the transactions' kinds), then the in-memory log. Called only when undo or redo reaches
-    /// below what the snapshot the ledger was opened from recorded; afterwards nothing is hidden.
+    /// Read the next [`STACK_READ`] entries below an emptied stack from the history: the base's
+    /// stack entries just below those already read (the transactions after the base never reach
+    /// below what is held without this). Kept for the session; each further read goes deeper.
     ///
     /// # Errors
-    /// The history could not be read, or does not agree with the stacks' visible tops.
+    /// The history could not be read, or holds fewer entries than the depth recorded.
     fn rebuild_stacks(&mut self) -> Result<()> {
-        if self.stacks.undo_hidden == 0 && self.stacks.redo_hidden == 0 {
-            return Ok(());
+        for undo in [true, false] {
+            let (held, hidden, known) = if undo {
+                (self.stacks.undo.len(), self.stacks.undo_hidden, self.stacks.undo_known)
+            } else {
+                (self.stacks.redo.len(), self.stacks.redo_hidden, self.stacks.redo_known)
+            };
+            if held > 0 || hidden == 0 {
+                continue;
+            }
+            let h = self.history.as_ref().ok_or_else(|| {
+                ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
+            })?;
+            let n = hidden.min(STACK_READ);
+            let more = h.stack_slice(self.base, undo, known, n)?;
+            if more.len() as u64 != n || more.iter().any(|(s, _)| *s > self.base) {
+                return Err(ModelError::CorruptLog("the history does not agree with the recorded undo stacks".into()));
+            }
+            if undo {
+                self.stacks.undo = more;
+                self.stacks.undo_hidden -= n;
+                self.stacks.undo_known += n;
+            } else {
+                self.stacks.redo = more;
+                self.stacks.redo_hidden -= n;
+                self.stacks.redo_known += n;
+            }
+            self.stack_rebuilds += 1;
         }
-        let h = self.history.as_ref().ok_or_else(|| {
-            ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
-        })?;
-        let (undo, redo) = h.stacks_at(self.base)?;
-        let mut full = Stacks { undo, redo, undo_hidden: 0, redo_hidden: 0 };
-        for tx in &self.log {
-            full.admit(tx)?;
-            full.push(tx);
-        }
-        // The rebuilt stacks must end with what was visible.
-        let agrees = |all: &[(u64, TxId)], top: &[(u64, TxId)]| all.ends_with(top);
-        if !agrees(&full.undo, &self.stacks.undo) || !agrees(&full.redo, &self.stacks.redo) {
-            return Err(ModelError::CorruptLog("the history does not agree with the recorded undo stacks".into()));
-        }
-        self.stacks = full;
-        self.stack_rebuilds += 1;
         self.load_tops()
     }
 
-    /// How often the whole undo and redo stacks were read from the history (at most once).
+    /// How often stack entries below what was held were read from the history.
     pub fn stack_rebuilds(&self) -> u32 {
         self.stack_rebuilds
     }

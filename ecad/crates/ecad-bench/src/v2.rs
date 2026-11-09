@@ -285,17 +285,17 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         (
             "ruzstd (Fastest)",
             |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
-            |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b),
+            |b| ecad_file::v2::pack::decode_ruzstd(b),
         ),
         (
             "zstd 1",
             |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()),
-            |b| zstd::stream::decode_all(b).map_err(|e| e.to_string()),
+            |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b),
         ),
         (
             "zstd 3",
             |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()),
-            |b| zstd::stream::decode_all(b).map_err(|e| e.to_string()),
+            |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b),
         ),
     ];
     for (name, enc, dec) in all {

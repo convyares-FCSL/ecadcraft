@@ -184,7 +184,7 @@ fn stacks_cut_at_the_snapshot_are_read_whole_once_when_undo_goes_below_them() {
                 break;
             }
         }
-        assert!(b.stack_rebuilds() <= 1, "read whole at most once: {}", b.stack_rebuilds());
+        assert!(b.stack_rebuilds() <= 2, "one read per stack (shallower than 1 024): {}", b.stack_rebuilds());
         // The same steps on each stack (the new transactions' IDs come from each ledger's seed).
         let seqs = |l: &Ledger| {
             let (u, r) = l.stacks();

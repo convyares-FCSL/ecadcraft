@@ -333,3 +333,32 @@ fn undo_below_the_recorded_stack_top_reads_the_history_once() {
     assert_eq!(again.ledger.document(), reference.document());
     assert_eq!(again.ledger.stack_depths(), (reference.stacks().0.len() as u64, reference.stacks().1.len() as u64));
 }
+
+/// The store walks the history backwards for stack entries below what a snapshot held: the same
+/// entries as slicing the stacks replayed from the root, for undos and redos mixed with edits.
+#[test]
+fn the_backward_walk_finds_the_same_stack_entries_as_a_full_replay() {
+    let dir = TempDir::new("walk");
+    let mut f = fixture();
+    edits(&mut f, 60);
+    for _ in 0..9 {
+        f.ledger.undo(Author::User).unwrap();
+    }
+    f.ledger.redo(Author::User).unwrap();
+    f.ledger.redo(Author::User).unwrap();
+    let p = dir.path("p.ecad");
+    drop(create(&p, &f.ledger, 2_000));
+    let o = open(&p);
+    let h = o.ledger.history().unwrap().clone();
+    let at = f.ledger.head();
+    let (undo, redo) = f.ledger.stacks();
+    for (which, full) in [(true, &undo), (false, &redo)] {
+        for (skip, count) in [(0, 1), (0, 5), (2, 3), (3, 10), (0, 10_000), (50, 7), (10_000, 4)] {
+            let walked = h.stack_slice(at, which, skip, count).unwrap();
+            let end = full.len().saturating_sub(skip as usize);
+            let start = end.saturating_sub(count as usize);
+            let seqs = |v: &[(u64, TxId)]| v.iter().map(|x| x.0).collect::<Vec<_>>();
+            assert_eq!(seqs(&walked), seqs(&full[start..end]), "undo {which}, skip {skip}, count {count}");
+        }
+    }
+}
