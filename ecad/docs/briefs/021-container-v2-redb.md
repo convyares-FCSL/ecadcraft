@@ -94,8 +94,11 @@ v1 file converts, and the file's structure is easy to see with our own tools.
 
 1. The demo and the large bench project convert from v1, replay-verified identical, and open in
    v2.
-2. On the large tier, save per edit and open are in the bake-off's redb range (about 1–1.4 ms per
-   save; open under about 100 ms). Open time stays flat as history grows tenfold.
+2. On the large tier, save per edit is in the bake-off's redb range (about 1–1.4 ms; 2.2 ms with
+   quick-repair) and open is under about 250 ms (overseer and owner, 2026-11-09: judged against
+   v1's 2.4–8.5 s and what a user notices, not the bake-off). Open time stays flat as history grows
+   tenfold. The first undo below a snapshot's recorded stack top stays under about 2 s at ten times
+   the churned history, once a session.
 3. Crash, torn-write and power-loss-ordering tests: 0 failures over the agreed rounds.
 4. `ecadinspect` shows the tables, branches, log, versions and parts; `export-jsonl` round-trips
    into a v1-readable history.

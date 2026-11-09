@@ -723,50 +723,76 @@ impl ProjectV2 {
                 }
             }
         }
-        let mut snap_meta = None;
-        let (snap_seq, snap_chain, doc, stacks, set) = match loaded {
-            Some((v, doc, meta)) => {
-                snap_meta = meta;
-                let chain = v.point.hash().map_err(OpenErrorV2::Damaged)?;
-                let stacks = StackState::from_record(&v).map_err(OpenErrorV2::Damaged)?;
-                let set = ChunkSet::from_record(&v.chunks).map_err(OpenErrorV2::Damaged)?;
-                (v.point.seq, chain, doc, stacks, set)
-            }
-            None => (0, seed_chain, Document::default(), StackState::default(), ChunkSet::default()),
-        };
-        // The snapshot's point must be the stored row's chain value.
-        if snap_seq > 0 && r.tx(branch, snap_seq)?.map(|(_, c, _)| c) != Some(snap_chain) {
-            damage = damage.or(Some(DamageV2 {
-                seq: Some(snap_seq),
-                detail: "the snapshot's point does not match its transaction".into(),
-            }));
-        }
-        // The tag high-water mark at the snapshot: carried by `model:meta`; a snapshot written
-        // without it is scanned once (a cache, rebuilt from the history).
-        let base_tag_high = match snap_meta {
-            Some(m) => m.tag_high,
-            None if snap_seq > 0 => scan_tag_high(&r, branch, snap_seq, seed_chain).unwrap_or_default(),
-            None => HighWater::new(),
-        };
+        // Start from the snapshot; if anything about it fails (its point row, its stack record,
+        // the rows under it), open from the project root instead, read-only with the damage
+        // reported (EEP-0005 §5.8), as for a damaged chunk.
         let to = head.min(last);
-        let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq + 1, to, snap_chain)?;
+        let mut loaded = loaded;
+        let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
+            let using = loaded.take();
+            let from_snapshot = using.as_ref().map(|(v, _, _)| v.point.seq);
+            let attempt = (|| -> Result<_, String> {
+                let (snap_seq, snap_chain, doc, stacks, set, meta) = match using {
+                    Some((v, doc, meta)) => {
+                        let chain = v.point.hash()?;
+                        let stacks = StackState::from_record(&v)?;
+                        let set = ChunkSet::from_record(&v.chunks)?;
+                        // The snapshot's point must be the stored row's chain value.
+                        if r.tx(branch, v.point.seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) != Some(chain) {
+                            return Err("the snapshot's point does not match its transaction".into());
+                        }
+                        (v.point.seq, chain, doc, stacks, set, meta)
+                    }
+                    None => (0, seed_chain, Document::default(), StackState::default(), ChunkSet::default(), None),
+                };
+                // The tag high-water mark at the snapshot: carried by `model:meta`; a snapshot
+                // written without it is scanned once (a cache, rebuilt from the history).
+                let base_tag_high = match meta {
+                    Some(m) => m.tag_high,
+                    None if snap_seq > 0 => scan_tag_high(&r, branch, snap_seq, seed_chain)?,
+                    None => HighWater::new(),
+                };
+                let (tail, verified_chain, row_damage) =
+                    read_rows(&r, branch, snap_seq + 1, to, snap_chain).map_err(|e| e.to_string())?;
+                let history: Arc<dyn History> =
+                    Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
+                let base = Base {
+                    seq: snap_seq,
+                    doc,
+                    undo: stacks.undo.clone(),
+                    redo: stacks.redo.clone(),
+                    undo_hidden: stacks.undo_hidden,
+                    redo_hidden: stacks.redo_hidden,
+                    indexed: true,
+                    history,
+                };
+                let tail_len = tail.len() as u64;
+                let (ledger, failure) =
+                    Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
+                Ok((
+                    ledger,
+                    failure,
+                    snap_seq,
+                    snap_chain,
+                    stacks,
+                    set,
+                    base_tag_high,
+                    tail_len,
+                    verified_chain,
+                    row_damage,
+                ))
+            })();
+            match (attempt, from_snapshot) {
+                (Ok(done), _) => break done,
+                (Err(e), Some(seq)) => {
+                    damage = damage.or(Some(DamageV2 { seq: Some(seq), detail: format!("snapshot: {e}") }));
+                    snap_ref = None;
+                }
+                (Err(e), None) => return Err(OpenErrorV2::Damaged(e)),
+            }
+        };
         drop(r);
         let damage = damage.or(row_damage);
-        let history: Arc<dyn History> =
-            Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
-        let base = Base {
-            seq: snap_seq,
-            doc,
-            undo: stacks.undo.clone(),
-            redo: stacks.redo.clone(),
-            undo_hidden: stacks.undo_hidden,
-            redo_hidden: stacks.redo_hidden,
-            indexed: true,
-            history,
-        };
-        let tail_len = tail.len() as u64;
-        let (ledger, failure) = Ledger::from_base(base, tail, seed)
-            .map_err(|e| OpenErrorV2::Damaged(format!("the snapshot at {snap_seq}: {e}")))?;
         let damage =
             damage.or(failure.map(|(i, e)| DamageV2 { seq: Some(snap_seq + i as u64 + 1), detail: e.to_string() }));
         let verified = ledger.head();

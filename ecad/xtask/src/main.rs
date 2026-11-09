@@ -494,12 +494,21 @@ mod tests {
         let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
+            [
+                "ecad-bench",
+                "ecad-cadcraft",
+                "ecad-cli",
+                "ecad-file",
+                "ecad-inspect",
+                "ecad-mcp",
+                "ecad-model",
+                "ecad-trial"
+            ]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
