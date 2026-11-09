@@ -487,6 +487,8 @@ pub struct Project {
     pub(crate) tag_high: crate::devices::TagHigh,
     /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
     page_list_version: u64,
+    /// What OOPS may bring back on each page document (brief 023, [`crate::oops`]).
+    oops: crate::oops::Records,
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
     pub(crate) last_placed: Option<(String, ComponentId)>,
@@ -856,6 +858,7 @@ impl Project {
             pages: BTreeMap::new(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
+            oops: crate::oops::Records::default(),
             faults: Faults::default(),
             persistence,
             baseline,
@@ -927,6 +930,7 @@ impl Project {
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
+            oops: crate::oops::Records::default(),
             faults: Faults::default(),
             persistence: Persistence::TestStore,
             baseline,
@@ -1039,6 +1043,7 @@ impl Project {
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
+            oops: crate::oops::Records::default(),
             faults: Faults::default(),
             persistence: Persistence::File,
             baseline,
@@ -1415,6 +1420,8 @@ impl Project {
                 st.block_edit = None;
                 st.revision += 1;
                 self.page_views.insert(old, left);
+                // What OOPS kept belongs to the page drawn there before (brief 023).
+                self.oops.stale_doc(uid);
                 if let Some(v) = self.pages.get_mut(&old) {
                     *v = PageView::default();
                 }
@@ -1787,6 +1794,7 @@ impl DocumentOwner for Project {
         match start {
             Start::Lisp => Some(LISP_REFUSED.into()),
             Start::Command("appload" | "lisp") => Some(LISP_REFUSED.into()),
+            Start::Command("oops") => self.page_of(uid).and_then(|page| self.oops.refuse_start(uid, page)),
             Start::Command(id) if REFUSED_COMMANDS.contains(&id) => {
                 Some(format!("{} is not available on ECAD pages: it edits blocks outside the commands ECAD records", id.to_ascii_uppercase()))
             }
@@ -1825,6 +1833,13 @@ impl DocumentOwner for Project {
             self.restore(pg, c.uid, page);
             return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
+        // OOPS brings back only the plain drawing the last erase on this page removed (brief 023).
+        if c.command == "oops" && !self.oops.allows(c.uid, page, &last, &now) {
+            self.restore(pg, c.uid, page);
+            self.events.record(EventKind::Refused, Some(c.command), head, Some(page), crate::oops::REFUSED);
+            return Verdict::Refuse(crate::oops::REFUSED.into());
+        }
+        let stash = crate::oops::STASH_COMMANDS.contains(&c.command);
         self.tag_high.catch_up(&self.ledger);
         let t = translate::translate(&mut translate::Ctx {
             tags: &mut self.tag_high,
@@ -1842,10 +1857,16 @@ impl DocumentOwner for Project {
             Ok(t) => t,
             Err(m) => {
                 self.restore(pg, c.uid, page);
+                if stash {
+                    self.oops.note_refused(c.uid);
+                }
                 self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
                 return Verdict::Refuse(m);
             }
         };
+        if stash && !t.ops.is_empty() {
+            self.oops.note_accepted(c.uid, page, self.ledger.document(), &view.map, &t.ops);
+        }
         if t.ops.is_empty() {
             // Only differences that are not recorded (header variables such as the current layer).
             // A new draw order (TEXTTOFRONT, DRAWORDER) is not recorded either: the page is drawn
@@ -1966,6 +1987,7 @@ impl DocumentOwner for Project {
     }
 
     fn closed(&mut self, s: &mut Session, uid: u64) -> bool {
+        self.oops.forget(uid);
         if let Some(page) = self.page_of(uid) {
             // The page's view is remembered for when it is shown again (design 016 §4.1).
             if let Some(st) = s.docs.iter().find(|d| d.uid == uid) {
@@ -2061,6 +2083,7 @@ impl Project {
 
     fn history(&mut self, pg: &mut Pages<'_>, undo: bool) -> cadcraft_engine::Result<Option<String>> {
         let command = if undo { "undo" } else { "redo" };
+        self.oops.stale();
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }

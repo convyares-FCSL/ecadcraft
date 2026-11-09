@@ -185,7 +185,8 @@ impl Interactive for WireNumber {
     fn prompt(&self, _s: &Session) -> Prompt {
         match (&self.picked, &self.conflict) {
             (Some(_), Some(v)) => {
-                let mut p = Prompt::new(format!("{v} is used by another net. [Swap/Another/Merge]"), Accept::TEXT).kw(&["Swap", "Another", "Merge"]);
+                let mut p =
+                    Prompt::new(format!("{v} is used by another net. Swap, use another or merge?"), Accept::TEXT).kw(&["Swap", "Another", "Merge"]);
                 p.default = Some("Another".into());
                 p
             }
@@ -244,7 +245,7 @@ impl Interactive for Renumber {
         "RENUMBERWIRES"
     }
     fn prompt(&self, _s: &Session) -> Prompt {
-        let mut p = Prompt::new("Renumber [Unnumbered/All]", Accept::TEXT).kw(&["Unnumbered", "All"]);
+        let mut p = Prompt::new("Renumber which wires?", Accept::TEXT).kw(&["Unnumbered", "All"]);
         p.default = Some("Unnumbered".into());
         p
     }
