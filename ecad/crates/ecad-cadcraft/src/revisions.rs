@@ -217,9 +217,7 @@ mod tests {
 
     #[test]
     fn next_revs() {
-        for (last, next) in
-            [(None, "A"), (Some("A"), "B"), (Some("Z"), "AA"), (Some("AZ"), "BA"), (Some("0"), "1"), (Some("P3"), "P4")]
-        {
+        for (last, next) in [(None, "A"), (Some("A"), "B"), (Some("Z"), "AA"), (Some("AZ"), "BA"), (Some("0"), "1"), (Some("P3"), "P4")] {
             assert_eq!(next_rev(last), next, "{last:?}");
         }
     }

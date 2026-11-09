@@ -11,10 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
-    TerminalId,
-};
+use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -124,9 +121,7 @@ impl Primitive {
     /// The same path with one end moved (`End::A` = first vertex).
     pub fn with_path_end(&self, end: End, to: Pt) -> Option<Primitive> {
         match self {
-            Primitive::Line { a, b } => {
-                Some(if end == End::A { Primitive::Line { a: to, b: *b } } else { Primitive::Line { a: *a, b: to } })
-            }
+            Primitive::Line { a, b } => Some(if end == End::A { Primitive::Line { a: to, b: *b } } else { Primitive::Line { a: *a, b: to } }),
             Primitive::Polyline { vertices, closed: false } => {
                 let mut v = vertices.clone();
                 let slot = if end == End::A { v.first_mut()? } else { v.last_mut()? };
@@ -141,13 +136,9 @@ impl Primitive {
         match self {
             Primitive::Line { a, b } => a.is_finite() && b.is_finite(),
             Primitive::Polyline { vertices, .. } => vertices.iter().all(|p| p.is_finite()),
-            Primitive::Arc { center, radius, start, end } => {
-                center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite()
-            }
+            Primitive::Arc { center, radius, start, end } => center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite(),
             Primitive::Circle { center, radius } => center.is_finite() && radius.is_finite(),
-            Primitive::Text { at, height, rotation, .. } => {
-                at.is_finite() && height.is_finite() && rotation.is_finite()
-            }
+            Primitive::Text { at, height, rotation, .. } => at.is_finite() && height.is_finite() && rotation.is_finite(),
             Primitive::Point { at } => at.is_finite(),
         }
     }
@@ -414,11 +405,7 @@ pub struct Definition {
 impl Definition {
     /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
     pub fn bridged_with<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a str> + 'a {
-        self.bridges
-            .iter()
-            .filter(move |g| g.iter().any(|k| k == key))
-            .flat_map(|g| g.iter().map(String::as_str))
-            .filter(move |k| *k != key)
+        self.bridges.iter().filter(move |g| g.iter().any(|k| k == key)).flat_map(|g| g.iter().map(String::as_str)).filter(move |k| *k != key)
     }
 }
 

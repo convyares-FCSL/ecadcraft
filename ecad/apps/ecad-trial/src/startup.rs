@@ -63,17 +63,8 @@ pub enum Step {
 
 impl Step {
     /// Every step, in order.
-    pub const ALL: [Step; 9] = [
-        Step::Main,
-        Step::Install,
-        Step::RunNative,
-        Step::Creator,
-        Step::Shell,
-        Step::Project,
-        Step::SetWgpu,
-        Step::FirstUpdate,
-        Step::FirstPresent,
-    ];
+    pub const ALL: [Step; 9] =
+        [Step::Main, Step::Install, Step::RunNative, Step::Creator, Step::Shell, Step::Project, Step::SetWgpu, Step::FirstUpdate, Step::FirstPresent];
 
     /// The mark's number in brief 015 (step 5 is split into `5a` and `5b`).
     pub fn number(self) -> &'static str {
@@ -236,10 +227,7 @@ impl StartupTiming {
     /// The adapter line, as printed.
     pub fn adapter_line(&self) -> String {
         match &self.adapter {
-            Some(a) => format!(
-                "ecad-startup: wgpu adapter: backend {}, name {:?}, device type {}",
-                a.backend, a.name, a.device_type
-            ),
+            Some(a) => format!("ecad-startup: wgpu adapter: backend {}, name {:?}, device type {}", a.backend, a.name, a.device_type),
             None => "ecad-startup: wgpu adapter: none (no wgpu render state)".to_string(),
         }
     }
@@ -259,10 +247,7 @@ impl StartupTiming {
                 })
             })
             .collect();
-        let adapter = self
-            .adapter
-            .as_ref()
-            .map(|a| json!({ "backend": a.backend, "name": a.name, "device_type": a.device_type }));
+        let adapter = self.adapter.as_ref().map(|a| json!({ "backend": a.backend, "name": a.name, "device_type": a.device_type }));
         json!({
             "format": "ecad-startup-timing/1",
             "product": env!("CARGO_PKG_VERSION"),
@@ -292,8 +277,7 @@ impl StartupTiming {
         let text = serde_json::to_string_pretty(&self.to_json()).map_err(|e| e.to_string())?;
         let mut last = String::new();
         for n in 0..100u32 {
-            let name =
-                if n == 0 { format!("ecad-startup-{stamp}.json") } else { format!("ecad-startup-{stamp}-{n}.json") };
+            let name = if n == 0 { format!("ecad-startup-{stamp}.json") } else { format!("ecad-startup-{stamp}-{n}.json") };
             let path = dir.join(name);
             match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(mut f) => {
@@ -315,9 +299,7 @@ impl StartupTiming {
     pub fn write_json_preferring(&self, preferred: Option<&Path>) -> Result<(PathBuf, Option<String>), String> {
         let mut why = None;
         if let Some(dir) = preferred {
-            let attempt = std::fs::create_dir_all(dir)
-                .map_err(|e| format!("{}: {e}", dir.display()))
-                .and_then(|()| self.write_json(dir));
+            let attempt = std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display())).and_then(|()| self.write_json(dir));
             match attempt {
                 Ok(p) => return Ok((p, None)),
                 Err(e) => why = Some(e),
@@ -341,9 +323,7 @@ impl StartupTiming {
         say(&format!("ecad-startup: total {total:.1} ms from {}{partial}", self.origin.name()));
         match self.write_json_preferring(preferred) {
             Ok((p, None)) => say(&format!("ecad-startup: written {}", p.display())),
-            Ok((p, Some(why))) => {
-                say(&format!("ecad-startup: written {} (the snapshots folder failed: {why})", p.display()))
-            }
+            Ok((p, Some(why))) => say(&format!("ecad-startup: written {} (the snapshots folder failed: {why})", p.display())),
             Err(e) => say(&format!("ecad-startup: the timing file could not be written: {e}")),
         }
     }
@@ -366,13 +346,7 @@ pub fn preferred_folder(snapshots: Option<&Path>, home: Option<&Path>) -> Option
 
 /// A mark as printed: number, label, time since the origin and the step.
 pub fn mark_line(m: &Mark) -> String {
-    format!(
-        "ecad-startup: {:>2} {:<48} {:>9.1} ms (+{:.1} ms)",
-        m.step.number(),
-        m.step.label(),
-        m.since_start_ms,
-        m.step_ms
-    )
+    format!("ecad-startup: {:>2} {:<48} {:>9.1} ms (+{:.1} ms)", m.step.number(), m.step.label(), m.since_start_ms, m.step_ms)
 }
 
 fn round(ms: f64) -> f64 {

@@ -55,9 +55,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -70,19 +68,12 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -101,10 +92,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -135,9 +123,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -297,16 +283,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     }
     assert_eq!(h.state().cad.session.docs.len(), 1, "exactly one ECAD file tab after clicking every row");
     click(&mut h, "Page 1: Supply");
-    let shown = h
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .count();
+    let shown = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
     assert!(shown > 3, "the page window shows Supply's items ({shown})");
 
     // J: after a row click, Down, Down, Enter makes row 3 active; typing then reaches the
@@ -368,13 +345,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     h.run_steps(3);
     assert!(h.state().panel.rename.is_some(), "double-click opens rename");
     let rename = take(&h, &deltas, "016-rename.png");
-    h.event(Event::Key {
-        key: Key::A,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: Modifiers::COMMAND,
-    });
+    h.event(Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
     h.event(Event::Text("Spare 2".into()));
     h.run_steps(1);
     key(&mut h, Key::Enter, Modifiers::NONE);
@@ -427,14 +398,10 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "Move page");
-    assert!(
-        matches!(ops.as_slice(), [Op::RemovePage { id, index: 2, .. }, Op::AddPage { index: 0, .. }] if *id == spare),
-        "{ops:?}"
-    );
+    assert!(matches!(ops.as_slice(), [Op::RemovePage { id, index: 2, .. }, Op::AddPage { index: 0, .. }] if *id == spare), "{ops:?}");
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
-    let texts: Vec<String> =
-        ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
+    let texts: Vec<String> = ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
     assert_eq!(texts, ["2-A-6"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");
@@ -548,11 +515,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(h.state().preview.as_ref().unwrap().projections, n, "an edit on Supply does not touch Field");
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(
-        h.state().preview.as_ref().unwrap().title,
-        "page 2: Field",
-        "the number stays with the page (brief 019)"
-    );
+    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "the number stays with the page (brief 019)");
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field X"}}"#, field.hex()));
     h.run_steps(2);
     assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field X");
@@ -754,11 +717,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     click(&mut h, "Device -K01: Contactor / relay coil");
     assert_eq!(h.state().panel.devices.selected, Some(coil));
     let row = "-K01 NO contact, 2-A-6";
-    assert!(
-        h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(),
-        "unfolded: {:?}",
-        h.state().panel.devices.entries()
-    );
+    assert!(h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(), "unfolded: {:?}", h.state().panel.devices.entries());
     let before = head(&mut h);
     click(&mut h, row);
     assert_eq!(active(&mut h), Some(page2), "the symbol's page is shown");
@@ -768,8 +727,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     let p = t.project().unwrap().clone();
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let rep =
-            doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page2).unwrap().0;
+        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page2).unwrap().0;
         ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
     });
     assert_eq!(selected, mapped.unwrap(), "exactly the contact's drawing is selected");
@@ -806,13 +764,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     let before = head(&mut h);
     h.get_by_label("Description field").click();
     h.run_steps(2);
-    h.event(Event::Key {
-        key: Key::A,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: Modifiers::COMMAND,
-    });
+    h.event(Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
     h.event(Event::Text("Main contactor".into()));
     h.run_steps(1);
     key(&mut h, Key::Enter, Modifiers::NONE);
@@ -820,15 +772,9 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "Set property");
-    assert!(
-        matches!(ops.as_slice(), [Op::SetProperty { key, after: Some(v), .. }] if key == "description" && v == "Main contactor"),
-        "{ops:?}"
-    );
+    assert!(matches!(ops.as_slice(), [Op::SetProperty { key, after: Some(v), .. }] if key == "description" && v == "Main contactor"), "{ops:?}");
     assert!(h.query_by_label("Device -K01: Main contactor").is_some(), "the list follows");
-    assert!(
-        h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(),
-        "Enter stayed in the field"
-    );
+    assert!(h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(), "Enter stayed in the field");
     ok(&mut h, "u");
     h.run_steps(2);
     assert_eq!(head(&mut h), before + 2, "one undo");
@@ -840,12 +786,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     h.run_steps(2);
     let other = doc(&mut h).components.keys().copied().find(|c| *c != coil).unwrap();
     let before = head(&mut h);
-    h.state_mut().panel_action(project_panel::Action::SetDeviceProperty {
-        component: other,
-        key: "tag",
-        value: "K01".into(),
-        merge: false,
-    });
+    h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), merge: false });
     h.run_steps(2);
     assert_eq!(head(&mut h), before, "refused");
     let err = h.state().panel.devices.error.clone().expect("the refusal is shown");
@@ -853,13 +794,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     h.state_mut().panel.devices.selected = Some(other);
     h.run_steps(2);
     click(&mut h, ecad_trial::devices_panel::MERGE);
-    assert_eq!(
-        head(&mut h),
-        before + 1,
-        "the merge is one transaction: {:?} {:?}",
-        h.state().panel.devices.error,
-        h.state().cad.session.log.last()
-    );
+    assert_eq!(head(&mut h), before + 1, "the merge is one transaction: {:?} {:?}", h.state().panel.devices.error, h.state().cad.session.log.last());
     assert_eq!(last_ops(&mut h).0, "Merge into -K01");
     ok(&mut h, "u");
     assert_eq!(head(&mut h), before + 2, "and one undo");

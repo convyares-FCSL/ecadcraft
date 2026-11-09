@@ -17,9 +17,9 @@ use std::collections::BTreeMap;
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_model::{
-    CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, End, Form,
-    Item, ItemId, ItemKind, ObjectRef, Op, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style,
-    Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, End, Form, Item, ItemId, ItemKind,
+    ObjectRef, Op, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef,
+    TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -186,14 +186,12 @@ pub(crate) fn err(m: impl Into<String>) -> EngineError {
 /// session, so it cannot call an owner-aware session method while the project is locked; the lock
 /// is taken with `try_lock`, so a re-entrant command is refused instead of deadlocking.
 pub(crate) fn with_project<R>(
-    s: &mut Session,
-    f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, String>,
+    s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, String>,
 ) -> cadcraft_engine::Result<R> {
     let owner = owner_of_active(s).map_err(err)?;
     let uid = s.state()?.uid;
     let mut guard = try_lock(&owner).map_err(err)?;
-    let p =
-        guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
+    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
     let page = p.page_of(uid).ok_or_else(|| err("page view not found"))?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
         return Err(err(UNAVAILABLE));
@@ -202,14 +200,10 @@ pub(crate) fn with_project<R>(
 }
 
 /// Like [`with_project`] for commands that also work on an unavailable page (open, inspect).
-pub(crate) fn with_any_page<R>(
-    s: &mut Session,
-    f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, String>,
-) -> cadcraft_engine::Result<R> {
+pub(crate) fn with_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, String>) -> cadcraft_engine::Result<R> {
     let owner = owner_of_active(s).map_err(err)?;
     let mut guard = try_lock(&owner).map_err(err)?;
-    let p =
-        guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
+    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
     f(p, &mut Pages(s)).map_err(EngineError::Other)
 }
 
@@ -251,12 +245,7 @@ fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, St
 }
 
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
-pub(crate) fn opt_typed<'a, T>(
-    p: &'a Value,
-    key: &str,
-    what: &str,
-    get: impl Fn(&'a Value) -> Option<T>,
-) -> Result<Option<T>, String> {
+pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, String> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => get(v).map(Some).ok_or_else(|| format!("`{key}` must be {what}")),
@@ -291,9 +280,7 @@ fn handles(s: &Session, p: &Value) -> Result<Vec<Handle>, String> {
     if a.len() > MAX_HANDLES {
         return Err(format!("at most {MAX_HANDLES} handles per call"));
     }
-    a.iter()
-        .map(|h| h.as_str().and_then(Handle::parse_hex).ok_or_else(|| format!("`{h}` is not a valid handle")))
-        .collect()
+    a.iter().map(|h| h.as_str().and_then(Handle::parse_hex).ok_or_else(|| format!("`{h}` is not a valid handle"))).collect()
 }
 
 pub(crate) fn plain_style(p: &Project) -> Style {
@@ -314,9 +301,7 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                 Some(Mapped::Fan(k)) if !map.is_fan(k) => drawn = Some(k),
                 Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
                 Some(_) => {
-                    return Err(
-                        "only plain geometry can be converted; part of the selection already has a meaning".into()
-                    );
+                    return Err("only plain geometry can be converted; part of the selection already has a meaning".into());
                 }
                 None => return Err("the selection holds an object this page does not know".into()),
             }
@@ -348,11 +333,7 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 }
 
 fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let h = params
-        .get("handle")
-        .and_then(Value::as_str)
-        .and_then(Handle::parse_hex)
-        .ok_or_else(|| err("`handle` is required"))?;
+    let h = params.get("handle").and_then(Value::as_str).and_then(Handle::parse_hex).ok_or_else(|| err("`handle` is required"))?;
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     let label = params.get("label").and_then(Value::as_str).map(str::to_string);
     with_project(s, |p, pg, page| {
@@ -385,10 +366,8 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     if raw.len() > MAX_WIRE_POINTS {
         return Err(err(format!("at most {MAX_WIRE_POINTS} points per wire")));
     }
-    let pts: Vec<Pt> = raw
-        .iter()
-        .map(|v| point(v).ok_or_else(|| err(format!("`{v}` is not a finite [x,y] point"))))
-        .collect::<cadcraft_engine::Result<_>>()?;
+    let pts: Vec<Pt> =
+        raw.iter().map(|v| point(v).ok_or_else(|| err(format!("`{v}` is not a finite [x,y] point")))).collect::<cadcraft_engine::Result<_>>()?;
     if pts.len() < 2 {
         return Err(err("`points` needs at least two [x,y] points"));
     }
@@ -434,16 +413,10 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
                 }
                 junction_ops.extend(j.tagless.ops);
                 junction_ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(j.tagless.terminal) });
-                junctions.push(
-                    json!({"end": format!("{end:?}"), "junction": j.tagless.component.hex(), "at": [j.at.x, j.at.y]}),
-                );
+                junctions.push(json!({"end": format!("{end:?}"), "junction": j.tagless.component.hex(), "at": [j.at.x, j.at.y]}));
             }
         }
-        let item = Item {
-            page,
-            style: plain_style(p),
-            kind: ItemKind::Primitive(Primitive::Polyline { vertices: pts.clone(), closed: false }),
-        };
+        let item = Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Polyline { vertices: pts.clone(), closed: false }) };
         let mut ops = vec![
             Op::CreateConductor { id: w, conductor },
             Op::AddItem { id: i, item },
@@ -473,8 +446,7 @@ fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
         p.apply_edit(pg, "wire", "Wire", ops)?;
         let doc = p.ledger.document();
         let conn = doc.connectivity();
-        let number =
-            conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n));
+        let number = conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n));
         let mut r = json!({"conductor": w.hex(), "item": i.hex(), "attached": attached, "potential": potential, "number": number});
         if !junctions.is_empty() {
             r["junctions"] = json!(junctions);
@@ -512,11 +484,7 @@ fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if !current.near(at, 1e-12) {
             let ItemKind::Primitive(prim) = &item.kind else { return Err("route is not a path".into()) };
             let moved = prim.with_path_end(end, at).ok_or("route is not a path")?;
-            ops.push(Op::ModifyItem {
-                id: route,
-                before: item.clone(),
-                after: Item { kind: ItemKind::Primitive(moved), ..item.clone() },
-            });
+            ops.push(Op::ModifyItem { id: route, before: item.clone(), after: Item { kind: ItemKind::Primitive(moved), ..item.clone() } });
         }
         ops.push(Op::AttachEnd { conductor: c, end, before: conductor.end(end), after: Some(t) });
         p.apply_edit(pg, "connect", "Connect", ops)?;
@@ -563,9 +531,7 @@ pub(crate) fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                 }
             }
             for cable in doc.cables_of(c) {
-                if let Some((i, m)) =
-                    doc.cables.get(&cable).and_then(|k| k.members.iter().enumerate().find(|(_, m)| m.conductor == c))
-                {
+                if let Some((i, m)) = doc.cables.get(&cable).and_then(|k| k.members.iter().enumerate().find(|(_, m)| m.conductor == c)) {
                     ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
                 }
             }
@@ -667,12 +633,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 
 /// `setprop {components: [id…], key, value}`: a device property written to several devices in
 /// one transaction (design 019 §8.2); tags are one per device, so `tag` is refused.
-fn run_setprop_many(
-    s: &mut Session,
-    cs: Vec<ComponentId>,
-    key: String,
-    value: Option<String>,
-) -> cadcraft_engine::Result<Value> {
+fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: Option<String>) -> cadcraft_engine::Result<Value> {
     if key == ecad_model::tag::TAG_KEY {
         return Err(err("Tags are one per device."));
     }
@@ -684,12 +645,7 @@ fn run_setprop_many(
             let comp = doc.components.get(c).ok_or("no such object")?;
             let before = comp.properties.get(&key).cloned();
             if before != after {
-                ops.push(Op::SetProperty {
-                    object: ObjectRef::Component(*c),
-                    key: key.clone(),
-                    before,
-                    after: after.clone(),
-                });
+                ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: key.clone(), before, after: after.clone() });
             }
         }
         if ops.is_empty() {
@@ -737,13 +693,7 @@ fn core_ops(cable: CableId, index: usize, conductor: ConductorId, old: Option<St
 fn duplicates(doc: &ecad_model::Document, cable: CableId, conductor: ConductorId, core: &str) -> Vec<ConductorId> {
     doc.cables
         .get(&cable)
-        .map(|c| {
-            c.members
-                .iter()
-                .filter(|m| m.conductor != conductor && m.core.as_deref() == Some(core))
-                .map(|m| m.conductor)
-                .collect()
-        })
+        .map(|c| c.members.iter().filter(|m| m.conductor != conductor && m.core.as_deref() == Some(core)).map(|m| m.conductor).collect())
         .unwrap_or_default()
 }
 
@@ -763,11 +713,7 @@ fn run_cablecore(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         let Some(cable) = doc.cables_of(conductor).first().copied() else {
             return Err(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor)));
         };
-        let index = doc
-            .cables
-            .get(&cable)
-            .and_then(|c| c.members.iter().position(|m| m.conductor == conductor))
-            .ok_or("no such conductor")?;
+        let index = doc.cables.get(&cable).and_then(|c| c.members.iter().position(|m| m.conductor == conductor)).ok_or("no such conductor")?;
         let old = doc.cables.get(&cable).and_then(|c| c.members.get(index)).and_then(|m| m.core.clone());
         let dups = core.as_deref().map(|c| duplicates(doc, cable, conductor, c)).unwrap_or_default();
         let mut r = json!({
@@ -791,13 +737,8 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let members = doc.cables.get(&cable).ok_or("no such cable")?.members.clone();
-        let wrong = || {
-            format!(
-                "`cores` must list one label (or null) per member: cable {} has {} members",
-                views::cable_title(doc, cable),
-                members.len()
-            )
-        };
+        let wrong =
+            || format!("`cores` must list one label (or null) per member: cable {} has {} members", views::cable_title(doc, cable), members.len());
         let list = params.get("cores").and_then(Value::as_array).ok_or_else(wrong)?;
         if list.len() != members.len() {
             return Err(wrong());
@@ -865,10 +806,9 @@ fn run_cablefan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         }
         let name = |e: crate::look::MarkerEnd| if e == crate::look::MarkerEnd::A { "A" } else { "B" };
         let fe = match (end, &at) {
-            (Some(e), _) => ends
-                .iter()
-                .find(|f| f.end == e)
-                .ok_or_else(|| format!("End {} of cable {title} stops at a reference; it has no spine.", name(e)))?,
+            (Some(e), _) => {
+                ends.iter().find(|f| f.end == e).ok_or_else(|| format!("End {} of cable {title} stops at a reference; it has no spine.", name(e)))?
+            }
             (None, JoinAt::Point(q)) => ends
                 .iter()
                 .min_by(|a, b| {
@@ -911,10 +851,7 @@ fn run_cablefan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
                 let (item, rid): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
                 let style = plain_style(p);
                 vec![
-                    Op::AddItem {
-                        id: item,
-                        item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: j }) },
-                    },
+                    Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: j }) } },
                     Op::LinkRepresentation {
                         id: rid,
                         rep: Representation {
@@ -1016,8 +953,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         if found.members.is_empty() {
             return Err(slash::no_wires(found.ignored.len()));
         }
-        let blocked: Vec<(ConductorId, CableId)> =
-            slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+        let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
         if !blocked.is_empty() {
             return Err(slash::already_in_cable(doc, &blocked, "Nothing was created."));
         }
@@ -1030,10 +966,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         for (index, m) in found.members.iter().enumerate() {
             ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: None } });
         }
-        ops.push(Op::AddItem {
-            id: item,
-            item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
-        });
+        ops.push(Op::AddItem { id: item, item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
         ops.push(Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -1075,8 +1008,7 @@ fn run_cableview(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     with_any_page(s, |p, pg| {
         let doc = p.ledger.document();
         let Some(k) = cable else {
-            let views: serde_json::Map<String, Value> =
-                doc.cables.keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
+            let views: serde_json::Map<String, Value> = doc.cables.keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
             return Ok(json!({ "views": views }));
         };
         if !doc.cables.contains_key(&k) {
@@ -1123,10 +1055,7 @@ pub fn builtin_coil() -> Definition {
         bridges: Vec::new(),
         name: "Coil (experiment)".into(),
         origin: None,
-        graphics: vec![Primitive::Polyline {
-            vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(),
-            closed: true,
-        }],
+        graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
@@ -1140,9 +1069,7 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
         return crate::device_cmds::run_place(s, params);
     }
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
-    let degrees = opt_typed(params, "rotation", "a finite number of degrees", |v| v.as_f64().filter(|d| d.is_finite()))
-        .map_err(err)?
-        .unwrap_or(0.0);
+    let degrees = opt_typed(params, "rotation", "a finite number of degrees", |v| v.as_f64().filter(|d| d.is_finite())).map_err(err)?.unwrap_or(0.0);
     let mirror = opt_typed(params, "mirror", "true or false", Value::as_bool).map_err(err)?.unwrap_or(false);
     let wanted: Option<DefinitionId> = opt_id(params, "definition").map_err(err)?;
     with_project(s, |p, pg, page| {
@@ -1160,27 +1087,17 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
             },
         };
         let (c, item, r): (ComponentId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        ops.push(Op::CreateComponent {
-            id: c,
-            component: Component { definition: Some(def_id), ..Component::default() },
-        });
+        ops.push(Op::CreateComponent { id: c, component: Component { definition: Some(def_id), ..Component::default() } });
         let mut terminals = Vec::new();
         for td in &def.terminals {
             let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal {
-                id: t,
-                terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) },
-            });
+            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
             terminals.push(json!({"key": td.key, "terminal": t.hex()}));
         }
         let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         ops.push(Op::AddItem {
             id: item,
-            item: Item {
-                page,
-                style: plain_style(p),
-                kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }),
-            },
+            item: Item { page, style: plain_style(p), kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }) },
         });
         ops.push(Op::LinkRepresentation {
             id: r,
@@ -1237,9 +1154,7 @@ fn run_inspect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
 /// The result fields every reference command reports about one end, derived after the commit.
 fn reference_fields(doc: &ecad_model::Document, reference: RepresentationId) -> (Value, bool, Value) {
     match crate::references::all(doc).into_iter().find(|r| r.reference == reference) {
-        Some(r) => {
-            (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex())))
-        }
+        Some(r) => (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex()))),
         None => (Value::String("/?".into()), true, Value::Null),
     }
 }
@@ -1255,10 +1170,7 @@ fn run_cableref(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         crate::references::check_reference(doc, page, cable)?;
         let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         let ops = vec![
-            Op::AddItem {
-                id: item,
-                item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Point { at }) },
-            },
+            Op::AddItem { id: item, item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Point { at }) } },
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
@@ -1295,12 +1207,7 @@ fn member_list(p: &Value) -> Result<Option<Vec<ConductorId>>, String> {
                 return Err(crate::references::too_many_members());
             }
             a.iter()
-                .map(|v| {
-                    v.as_str()
-                        .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
-                        .map(ConductorId::from)
-                        .ok_or_else(|| BAD.to_string())
-                })
+                .map(|v| v.as_str().and_then(|t| u128::from_str_radix(t.trim(), 16).ok()).map(ConductorId::from).ok_or_else(|| BAD.to_string()))
                 .collect::<Result<Vec<_>, _>>()
                 .map(Some)
         }
@@ -1323,10 +1230,7 @@ fn run_cablecontinue(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         let style = plain_style(p);
         let mut ops = vec![
-            Op::AddItem {
-                id: item,
-                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) },
-            },
+            Op::AddItem { id: item, item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) } },
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
@@ -1344,11 +1248,7 @@ fn run_cablecontinue(s: &mut Session, params: &Value) -> cadcraft_engine::Result
             let (i, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
             ops.push(Op::AddItem {
                 id: i,
-                item: Item {
-                    page,
-                    style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line { a: stub.a, b: stub.b }),
-                },
+                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: stub.a, b: stub.b }) },
             });
             ops.push(Op::LinkRepresentation {
                 id: r,
@@ -1387,8 +1287,7 @@ fn run_cablecontinue(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         p.apply_edit(pg, "cablecontinue", "Continue cable", ops)?;
         let doc = p.ledger.document();
         let (text, _, partner) = reference_fields(doc, rep);
-        let skipped: Vec<Value> =
-            plan.skipped.iter().map(|(w, why)| json!({"conductor": w.hex(), "reason": why.reason()})).collect();
+        let skipped: Vec<Value> = plan.skipped.iter().map(|(w, why)| json!({"conductor": w.hex(), "reason": why.reason()})).collect();
         Ok(json!({
             "reference": rep.hex(),
             "item": item.hex(),
@@ -1457,8 +1356,7 @@ fn run_cablerefs(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         {
             return Err("no such cable".into());
         }
-        let refs: Vec<_> =
-            crate::references::all(doc).into_iter().filter(|r| cable.is_none_or(|k| r.cable == k)).collect();
+        let refs: Vec<_> = crate::references::all(doc).into_iter().filter(|r| cable.is_none_or(|k| r.cable == k)).collect();
         Ok(json!({ "references": ecad_inspect::references_json(doc, &refs) }))
     })
 }
@@ -1517,10 +1415,7 @@ fn run_movepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
             return Ok(json!({"page": page.hex(), "title": old.title, "index": to, "changed": false}));
         }
         let title = old.title.clone();
-        let ops = vec![
-            Op::RemovePage { id: page, page: old.clone(), index: from },
-            Op::AddPage { id: page, page: old, index: to - 1 },
-        ];
+        let ops = vec![Op::RemovePage { id: page, page: old.clone(), index: from }, Op::AddPage { id: page, page: old, index: to - 1 }];
         p.apply_edit(pg, "movepage", "Move page", ops)?;
         Ok(json!({"page": page.hex(), "title": title, "index": to, "changed": true}))
     })

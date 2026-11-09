@@ -126,16 +126,11 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                     component(&r.subject);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                moved_pages(&mut extra)
-            }
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => moved_pages(&mut extra),
             Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
             Op::SetProjectSettings { before, after } => {
                 settings = true;
-                if before.sheet != after.sheet
-                    || before.length_unit != after.length_unit
-                    || before.reference_style != after.reference_style
-                {
+                if before.sheet != after.sheet || before.length_unit != after.length_unit || before.reference_style != after.reference_style {
                     pages = true;
                 }
             }
@@ -192,13 +187,7 @@ pub fn renumber(doc: &Document, entries: &mut [DeviceEntry]) {
 }
 
 /// One symbol row: its book position (for sorting) and the row.
-fn symbol_entry(
-    doc: &Document,
-    book: &Book,
-    rid: RepresentationId,
-    r: &ecad_model::Representation,
-    name: String,
-) -> (usize, SymbolEntry) {
+fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_model::Representation, name: String) -> (usize, SymbolEntry) {
     let page_number = book.number(doc, r.page);
     let grid = ecad_model::sheet::Grid::of(doc, r.page);
     let place = position(doc, r).and_then(|p| ecad_model::derive::place_on(&grid, &page_number, p));

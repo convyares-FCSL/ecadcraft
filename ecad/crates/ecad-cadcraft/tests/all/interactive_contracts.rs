@@ -80,13 +80,7 @@ fn line_at(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) -> Handle {
 
 fn rectangle(h: &mut H) -> Vec<Handle> {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    h.s.doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle)
-        .collect()
+    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect()
 }
 
 fn page(h: &mut H) -> PageId {
@@ -157,10 +151,7 @@ fn scene(h: &mut H, by_prompts: bool) {
         typed(h, "100,0");
         typed(h, "M");
         typed(h, "R");
-        assert_eq!(
-            prompt(h),
-            "Specify insertion point (new device -K02, rotation 180, mirrored) or [Rotate/Mirror/Device/Tag]:"
-        );
+        assert_eq!(prompt(h), "Specify insertion point (new device -K02, rotation 180, mirrored) or [Rotate/Mirror/Device/Tag]:");
         typed(h, "100,60");
         typed(h, "");
     } else {
@@ -320,13 +311,7 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
         ("convert after picks", |h, _| {
             start(h, "convertcomponent");
             let all: Vec<Handle> =
-                h.s.doc()
-                    .unwrap()
-                    .model
-                    .iter()
-                    .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-                    .map(|e| e.handle)
-                    .collect();
+                h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
             h.s.input(Input::Pick(all)).unwrap();
         }),
         ("terminal name pending", |h, _| {
@@ -441,8 +426,7 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
         // After the commit the end shows a dot when attached, a square when loose.
         let uid = h.s.state().unwrap().uid;
         let marks = h.p(|p| interact::overlay_marks(p, uid));
-        let at_end =
-            marks.iter().filter(|m| m.at.near(Vec2::new(end.x, end.y), 1e-9)).map(|m| m.shape).collect::<Vec<_>>();
+        let at_end = marks.iter().filter(|m| m.at.near(Vec2::new(end.x, end.y), 1e-9)).map(|m| m.shape).collect::<Vec<_>>();
         assert!(at_end.contains(if attaches { &MarkShape::Dot } else { &MarkShape::Square }), "{at_end:?}");
     }
 }
@@ -475,11 +459,7 @@ fn errors_are_shown_and_the_prompt_repeats() {
     let head = h.head();
     let cases: &[(&str, Vec2, &str)] = &[
         ("addterminal", Vec2::new(200.0, 200.0), "No component outline there. Click on a component's outline."),
-        (
-            "addterminal",
-            Vec2::new(15.0, 60.0),
-            "That object is not part of a component. Convert it to a component first.",
-        ),
+        ("addterminal", Vec2::new(15.0, 60.0), "That object is not part of a component. Convert it to a component first."),
         ("addterminal", Vec2::new(105.0, 5.0), "connection points of placed symbols come from their definition"),
         ("addterminal", Vec2::new(15.0, 80.0), "That is not a component outline."),
         ("connect", Vec2::new(15.0, 60.0), "That is not a wire."),
@@ -500,10 +480,7 @@ fn errors_are_shown_and_the_prompt_repeats() {
     start(&mut h, "connect");
     click(&mut h, Vec2::new(2.0, 80.0));
     click(&mut h, Vec2::new(200.0, 200.0));
-    assert_eq!(
-        h.s.log.last().unwrap(),
-        "No connection point there. Move onto a connection point until the green ring shows."
-    );
+    assert_eq!(h.s.log.last().unwrap(), "No connection point there. Move onto a connection point until the green ring shows.");
     assert_eq!(prompt(&h), "Select connection point for end A:");
     h.s.cancel();
     // Wire: Enter with one point; Convert: Enter with nothing.
@@ -517,8 +494,7 @@ fn errors_are_shown_and_the_prompt_repeats() {
     assert_eq!(h.s.log.last().unwrap(), "Nothing selected; nothing converted.");
     // Convert: a refusal ends the command (the selection is wrong).
     start(&mut h, "convertcomponent");
-    let wire_handle =
-        h.s.doc().unwrap().model.iter().find(|e| matches!(e.kind, EntityKind::LwPolyline(_))).unwrap().handle;
+    let wire_handle = h.s.doc().unwrap().model.iter().find(|e| matches!(e.kind, EntityKind::LwPolyline(_))).unwrap().handle;
     h.s.input(Input::Pick(vec![wire_handle])).unwrap();
     typed(&mut h, "");
     assert!(h.s.log.last().unwrap().contains("only plain geometry can be converted"));
@@ -637,10 +613,7 @@ fn a_click_lands_on_the_outline_nearest_the_cursor() {
     let line = Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(10.0, 0.0) };
     assert_eq!(interact::nearest_on(&line, Pt::new(4.0, 1.0)), Some(Pt::new(4.0, 0.0)));
     assert_eq!(interact::nearest_on(&line, Pt::new(-4.0, 1.0)), Some(Pt::new(0.0, 0.0)));
-    let square = Primitive::Polyline {
-        vertices: vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 10.0), Pt::new(0.0, 10.0)],
-        closed: true,
-    };
+    let square = Primitive::Polyline { vertices: vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 10.0), Pt::new(0.0, 10.0)], closed: true };
     assert_eq!(interact::nearest_on(&square, Pt::new(-1.0, 5.0)), Some(Pt::new(0.0, 5.0)), "the closing side");
     let circle = Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 5.0 };
     assert_eq!(interact::nearest_on(&circle, Pt::new(0.0, 7.0)), Some(Pt::new(0.0, 5.0)));

@@ -39,12 +39,8 @@ fn scenario_s1_to_s16() {
     // S3: place a symbol rotated 90°.
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
     let c2: ComponentId = id(&r, "component");
-    let keys: Vec<(String, TerminalId)> = r["terminals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "terminal")))
-        .collect();
+    let keys: Vec<(String, TerminalId)> =
+        r["terminals"].as_array().unwrap().iter().map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "terminal"))).collect();
     let (s1, s2) = (keys[0].1, keys[1].1);
     assert!(h.terminal_pos(p1, s1).near(Pt::new(90.0, 10.0), 1e-9), "A1 at (90,10): placement applied");
     assert!(h.terminal_pos(p1, s2).near(Pt::new(110.0, 10.0), 1e-9));
@@ -52,10 +48,8 @@ fn scenario_s1_to_s16() {
     // S4: three wires.
     let r = h.run("wire", json!({"points": pts(&[(40.0, 15.0), (65.0, 15.0), (65.0, 10.0), (90.0, 10.0)])})).unwrap();
     let w1: ConductorId = id(&r, "conductor");
-    let w2: ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (55.0, -10.0)])})).unwrap(), "conductor");
-    let w3: ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(40.0, 5.0), (50.0, -20.0)])})).unwrap(), "conductor");
+    let w2: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (55.0, -10.0)])})).unwrap(), "conductor");
+    let w3: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 5.0), (50.0, -20.0)])})).unwrap(), "conductor");
     let doc = h.doc();
     assert_eq!(doc.conductors[&w1].ends, [Some(t1), Some(s1)]);
     assert_eq!(doc.conductors[&w2].ends, [Some(t2), None]);
@@ -151,8 +145,7 @@ fn scenario_s1_to_s16() {
     let p2: PageId = id(&r, "page");
     h.activate(p2);
     h.run("line", json!({"points": [[0, 0], [10, 10]]})).unwrap();
-    let w4: ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (30.0, 20.0)])})).unwrap(), "conductor");
+    let w4: ConductorId = id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (30.0, 20.0)])})).unwrap(), "conductor");
     let cable = h.run("cableadd", json!({"conductors": [w2_hex(w3), w2_hex(w4)], "tag": "-W1"})).unwrap();
     h.run("setprop", json!({"component": c1b.hex(), "key": "tag", "value": "-K2"})).unwrap();
     let i2 = h.page_index(p2).unwrap();
@@ -178,11 +171,7 @@ fn scenario_s1_to_s16() {
         h.run("redo", Value::Null).unwrap();
     }
     assert_eq!(h.doc().cables.len(), 1);
-    assert_eq!(
-        id::<ecad_model::CableId>(&cable, "cable"),
-        *h.doc().cables.keys().next().unwrap(),
-        "redo recreates the same cable ID"
-    );
+    assert_eq!(id::<ecad_model::CableId>(&cable, "cable"), *h.doc().cables.keys().next().unwrap(), "redo recreates the same cable ID");
 
     // S12: close the page window showing page 2 (the trial's `keep_open`: no prompt, the project
     // stays open), then show it again.
@@ -224,11 +213,7 @@ fn scenario_s1_to_s16() {
     let log = h.p(|p| p.ledger.full_log().unwrap());
     let mut s1 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
-    assert_eq!(
-        reopened.read(&mut s1, |p, _| p.ledger.full_log().unwrap()).unwrap(),
-        log,
-        "every transaction exactly once"
-    );
+    assert_eq!(reopened.read(&mut s1, |p, _| p.ledger.full_log().unwrap()).unwrap(), log, "every transaction exactly once");
 
     // S14: undo everything, then redo everything: state and IDs restored at every point.
     let trail: Vec<Document> = h.trail.clone();
@@ -287,8 +272,7 @@ fn scenario_s1_to_s16() {
     assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
     h.check();
     // H2: no committed drawing ever differed from its projection.
-    let mismatched: Vec<_> =
-        h.p(|p| p.events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect());
+    let mismatched: Vec<_> = h.p(|p| p.events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect());
     assert!(mismatched.is_empty(), "{mismatched:?}");
 }
 

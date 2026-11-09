@@ -211,8 +211,7 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
     let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(app, &scratch.join("draw.ecad"), runs)?;
-    let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms, mut devupd_ms) =
-        switch_pages(app, &scratch.join("switch.ecad"))?;
+    let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms, mut devupd_ms) = switch_pages(app, &scratch.join("switch.ecad"))?;
     let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(app, &scratch.join("devices.ecad"), runs)?;
     let mut nets_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
@@ -265,8 +264,7 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
 fn first_page(path: &str) -> Result<f64, String> {
     let mut s = cadcraft_engine::Session::empty();
     let t = Instant::now();
-    let (project, _) =
-        ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
     let elapsed = ms(t);
     let (pages, read_only) = project.read(&mut s, |p, _| (p.open_pages(), p.file_status().read_only))?;
     if pages != 1 {
@@ -353,9 +351,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         ops.push(Op::DeleteConductor { id: victim, conductor: bare });
         let t = Instant::now();
         let scope = checks.scope(ledger.document(), &ops);
-        ledger
-            .commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign)
-            .map_err(|e| e.to_string())?;
+        ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
         let last = ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
         checks.update(ledger.document(), &last, scope, tol);
         out.push(ms(t));
@@ -401,9 +397,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-net-{}", run + 1))?;
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
-            o.ledger
-                .commit_extended(Author::User, "Wire", ops, None, ecad_model::wiring::assign)
-                .map_err(|e| e.to_string())?;
+            o.ledger.commit_extended(Author::User, "Wire", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
             checks.update(o.ledger.document(), &last, scope, tol);
             std::hint::black_box(ecad_cadcraft::wires::labels_on_page(o.ledger.document(), page));
@@ -433,9 +427,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             ops.push(Op::DeleteConductor { id: victim, conductor: bare });
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
-            o.ledger
-                .commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign)
-                .map_err(|e| e.to_string())?;
+            o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
             checks.update(o.ledger.document(), &last, scope, tol);
             cut.push(ms(t));
@@ -472,11 +464,8 @@ fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::
             let Subject::Component(c) = r.subject else { return None };
             let item = *r.items.first()?;
             let wired = doc.terminals_of(c).any(|(t, _)| !doc.ends_at(t).is_empty());
-            (r.page == page
-                && r.form == Form::Symbol
-                && wired
-                && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
-            .then_some((c, item))
+            (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
+                .then_some((c, item))
         })?;
         let map = &p.pages.get(&page)?.map;
         let symbol = map.item(item)?;
@@ -491,8 +480,7 @@ fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::
             }
         }
         let shown = ecad_model::derive::terminal_positions(doc, page);
-        let mut others =
-            shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component != component));
+        let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component != component));
         let (_, _, from) = *others.next()?;
         let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6))?;
         Some(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
@@ -515,21 +503,11 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
     let result = (|| {
         ecad_cadcraft::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
-            &mut s,
-            path_text(copy)?,
-            OPEN_SEED,
-            ecad_cadcraft::views::Settings::none(),
-        )?;
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
         let one_tx = |before: u64, after: u64, what: &str| {
-            if after == before + 1 {
-                Ok(())
-            } else {
-                Err(format!("the {what} was not recorded as one transaction (head {before} → {after})"))
-            }
+            if after == before + 1 { Ok(()) } else { Err(format!("the {what} was not recorded as one transaction (head {before} → {after})")) }
         };
-        let (mut moves, mut windows, mut wires) =
-            (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
+        let (mut moves, mut windows, mut wires) = (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
         for run in 0..runs {
             let target = draw_target(&project, &mut s)?;
             let dy = if run % 2 == 0 { -5.0 } else { 5.0 };
@@ -578,12 +556,7 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
     let result = (|| {
         ecad_cadcraft::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
-            &mut s,
-            path_text(copy)?,
-            OPEN_SEED,
-            ecad_cadcraft::views::Settings::none(),
-        )?;
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let before = head(s)?;
@@ -595,8 +568,7 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
             }
             Ok((took, r))
         };
-        let (mut places, mut joins, mut tags) =
-            (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
+        let (mut places, mut joins, mut tags) = (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
         for run in 0..runs {
             // Far from the generated drawing, so nothing else is touched.
             let x = -1000.0 - 50.0 * run as f64;
@@ -637,12 +609,7 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
     let result = (|| {
         ecad_cadcraft::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
-            &mut s,
-            path_text(copy)?,
-            OPEN_SEED,
-            ecad_cadcraft::views::Settings::none(),
-        )?;
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let t = Instant::now();
             s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
@@ -708,12 +675,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
     let result = (|| {
         ecad_cadcraft::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
-            &mut s,
-            path_text(copy)?,
-            OPEN_SEED,
-            ecad_cadcraft::views::Settings::none(),
-        )?;
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
         let order = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let first = *order.first().ok_or("the project has no pages")?;
         let pages = spread(&order);
@@ -725,8 +687,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             project.read(s, |p, _| (uid.and_then(|u| p.page_of(u)), p.open_pages()))
         };
         let n = pages.len();
-        let (mut switch, mut preview, mut panel) =
-            (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
+        let (mut switch, mut preview, mut panel) = (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
         let (mut devices, mut goto, mut devupd) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
         // The Devices tab's list, built once as when the tab is shown.
         let mut list = ecad_cadcraft::device_list::DeviceList::default();
@@ -758,8 +719,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             }
             // The Devices tab's list, rebuilt.
             let t = Instant::now();
-            let listed = project
-                .read(&mut s, |p, _| ecad_cadcraft::device_list::device_entries(p.ledger.document(), "").len())?;
+            let listed = project.read(&mut s, |p, _| ecad_cadcraft::device_list::device_entries(p.ledger.document(), "").len())?;
             devices.push(ms(t));
             if listed == 0 {
                 return Err("the Devices list is empty".into());
@@ -774,11 +734,8 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             let rep = found.map(|(r, _)| r);
             // One device property edit, then the list brought up to date (only that device).
             if let Some((_, c)) = found {
-                s.execute(
-                    "setprop",
-                    &json!({"component": c.hex(), "key": "description", "value": format!("bench {page}")}),
-                )
-                .map_err(|e| format!("setprop {c}: {e}"))?;
+                s.execute("setprop", &json!({"component": c.hex(), "key": "description", "value": format!("bench {page}")}))
+                    .map_err(|e| format!("setprop {c}: {e}"))?;
                 let t = Instant::now();
                 let changed = project.read(&mut s, |p, _| list.sync(1, p))?;
                 devupd.push(ms(t));
@@ -795,9 +752,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             if let Some(rep) = rep {
                 let t = Instant::now();
                 s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
-                let handles = project
-                    .read(&mut s, |p, _| ecad_cadcraft::device_list::symbol_target(p, rep).map(|x| x.2))?
-                    .unwrap_or_default();
+                let handles = project.read(&mut s, |p, _| ecad_cadcraft::device_list::symbol_target(p, rep).map(|x| x.2))?.unwrap_or_default();
                 s.set_selection(handles.clone());
                 goto.push(ms(t));
                 if handles.is_empty() {

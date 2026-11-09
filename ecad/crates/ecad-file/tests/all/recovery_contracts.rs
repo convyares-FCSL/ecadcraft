@@ -169,10 +169,7 @@ fn failures(f: &File, n: usize) -> Vec<(&'static str, Check, Vec<u8>)> {
     };
     out.push(("precondition", Check::Precondition, tx_line(f, n, &tx)));
     // Invariant: an item on a page that does not exist.
-    let tx = Transaction {
-        ops: vec![Op::AddItem { id: ItemId(0xbeef), item: Item { page: PageId(0xfeed), ..ghost } }],
-        ..tx
-    };
+    let tx = Transaction { ops: vec![Op::AddItem { id: ItemId(0xbeef), item: Item { page: PageId(0xfeed), ..ghost } }], ..tx };
     out.push(("invariant", Check::Invariant, tx_line(f, n, &tx)));
     // An embedded definition whose recorded content hash is not its content's.
     let mut definition = f.ledger.document().definitions.values().find(|d| d.origin.is_some()).unwrap().clone();
@@ -220,9 +217,7 @@ fn the_source_is_preserved_and_a_read_only_file_refuses_save() {
     let bytes = with_line(&f, last, &line);
     let (mut file, mut ledger, report) = ProjectFile::open(MemoryMedium::from_bytes(bytes.clone()), SEED).unwrap();
     assert_eq!(report.access, Access::ReadOnly);
-    ledger
-        .commit(Author::User, "edit", vec![Op::AddPage { id: PageId(0x99), page: Page::new("x"), index: 1 }])
-        .unwrap();
+    ledger.commit(Author::User, "edit", vec![Op::AddPage { id: PageId(0x99), page: Page::new("x"), index: 1 }]).unwrap();
     assert!(matches!(file.save(&mut ledger), Err(ecad_file::SaveError::ReadOnly)));
     assert_eq!(file.medium().read_all().unwrap(), bytes, "nothing written or truncated");
     // Save As rescues the verified history into a new file.

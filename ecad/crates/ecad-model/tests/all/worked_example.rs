@@ -2,8 +2,8 @@
 
 use ecad_model::derive::{mismatches, nets};
 use ecad_model::{
-    Author, CableMember, Color, Component, Conductor, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page,
-    Primitive, Pt, Representation, Style, Subject, Terminal,
+    Author, CableMember, Color, Component, Conductor, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation,
+    Style, Subject, Terminal,
 };
 
 fn style(layer: ecad_model::LayerId) -> Style {
@@ -18,10 +18,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "New project",
-        vec![
-            Op::AddPage { id: p1, page: Page::new("1"), index: 0 },
-            Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-        ],
+        vec![Op::AddPage { id: p1, page: Page::new("1"), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
     )
     .unwrap();
     let line = |a: (f64, f64), b: (f64, f64)| Item {
@@ -32,26 +29,13 @@ fn worked_example_replays_and_undoes() {
     let poly = |v: &[(f64, f64)]| Item {
         page: p1,
         style: style(layer),
-        kind: ItemKind::Primitive(Primitive::Polyline {
-            vertices: v.iter().map(|p| Pt::new(p.0, p.1)).collect(),
-            closed: false,
-        }),
+        kind: ItemKind::Primitive(Primitive::Polyline { vertices: v.iter().map(|p| Pt::new(p.0, p.1)).collect(), closed: false }),
     };
 
     // 1. Raw geometry.
     let rect: Vec<_> = (0..4).map(|_| ids.fresh()).collect();
-    let corners = [
-        ((0.0, 0.0), (40.0, 0.0)),
-        ((40.0, 0.0), (40.0, 20.0)),
-        ((40.0, 20.0), (0.0, 20.0)),
-        ((0.0, 20.0), (0.0, 0.0)),
-    ];
-    l.commit(
-        Author::User,
-        "Line",
-        rect.iter().zip(corners).map(|(id, (a, b))| Op::AddItem { id: *id, item: line(a, b) }).collect(),
-    )
-    .unwrap();
+    let corners = [((0.0, 0.0), (40.0, 0.0)), ((40.0, 0.0), (40.0, 20.0)), ((40.0, 20.0), (0.0, 20.0)), ((0.0, 20.0), (0.0, 0.0))];
+    l.commit(Author::User, "Line", rect.iter().zip(corners).map(|(id, (a, b))| Op::AddItem { id: *id, item: line(a, b) }).collect()).unwrap();
 
     // 2. Convert to component, add terminals.
     let (c1, r1) = (ids.fresh(), ids.fresh());
@@ -66,10 +50,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "Convert to component",
-        vec![
-            Op::CreateComponent { id: c1, component: Component::default() },
-            Op::LinkRepresentation { id: r1, rep: rep1.clone() },
-        ],
+        vec![Op::CreateComponent { id: c1, component: Component::default() }, Op::LinkRepresentation { id: r1, rep: rep1.clone() }],
     )
     .unwrap();
     let ts: Vec<_> = (0..3).map(|_| ids.fresh()).collect();
@@ -77,10 +58,7 @@ fn worked_example_replays_and_undoes() {
     for (t, y) in ts.iter().zip([15.0, 10.0, 5.0]) {
         rep1b.connection_points.insert(*t, Pt::new(40.0, y));
     }
-    let mut ops: Vec<Op> = ts
-        .iter()
-        .map(|t| Op::AddTerminal { id: *t, terminal: Terminal { component: c1, label: None, key: None } })
-        .collect();
+    let mut ops: Vec<Op> = ts.iter().map(|t| Op::AddTerminal { id: *t, terminal: Terminal { component: c1, label: None, key: None } }).collect();
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1.clone(), after: rep1b.clone() });
     l.commit(Author::User, "Add terminals", ops).unwrap();
 
@@ -115,11 +93,7 @@ fn worked_example_replays_and_undoes() {
         Author::User,
         "Connect",
         vec![
-            Op::ModifyItem {
-                id: i5,
-                before: poly(&[(90.0, 15.0), (55.0, 15.0)]),
-                after: poly(&[(90.0, 15.0), (40.0, 15.0)]),
-            },
+            Op::ModifyItem { id: i5, before: poly(&[(90.0, 15.0), (55.0, 15.0)]), after: poly(&[(90.0, 15.0), (40.0, 15.0)]) },
             Op::AttachEnd { conductor: w1, end: End::B, before: None, after: Some(ts[0]) },
         ],
     )
@@ -140,11 +114,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "Grip edit",
-        vec![Op::ModifyItem {
-            id: i6,
-            before: poly(&[(90.0, 10.0), (40.0, 10.0)]),
-            after: poly(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]),
-        }],
+        vec![Op::ModifyItem { id: i6, before: poly(&[(90.0, 10.0), (40.0, 10.0)]), after: poly(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]) }],
     )
     .unwrap();
     let nets_before = nets(l.document());
@@ -163,10 +133,7 @@ fn worked_example_replays_and_undoes() {
     for ((_, i), before) in wires.iter().zip(before_items) {
         let ItemKind::Primitive(p) = &before.kind else { unreachable!() };
         let (_, b) = p.path_ends().unwrap();
-        let after = Item {
-            kind: ItemKind::Primitive(p.with_path_end(End::B, Pt::new(b.x, b.y - 5.0)).unwrap()),
-            ..before.clone()
-        };
+        let after = Item { kind: ItemKind::Primitive(p.with_path_end(End::B, Pt::new(b.x, b.y - 5.0)).unwrap()), ..before.clone() };
         ops.push(Op::ModifyItem { id: *i, before, after });
     }
     l.commit(Author::User, "Move", ops).unwrap();
@@ -179,11 +146,7 @@ fn worked_example_replays_and_undoes() {
     l.undo(Author::User).unwrap();
     l.undo(Author::User).unwrap();
     assert!(l.document().cables.is_empty());
-    assert_eq!(
-        l.document().conductors.clone().into_iter().collect::<Vec<_>>(),
-        conductors_before,
-        "conductor identities untouched"
-    );
+    assert_eq!(l.document().conductors.clone().into_iter().collect::<Vec<_>>(), conductors_before, "conductor identities untouched");
     l.redo(Author::User).unwrap();
     assert!(l.document().cables.contains_key(&k1), "redo recreates the cable with the same ID");
     l.redo(Author::User).unwrap();

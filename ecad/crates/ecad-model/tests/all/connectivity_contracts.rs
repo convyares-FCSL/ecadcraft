@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    Author, Component, ComponentId, Conductor, ConductorId, Connectivity, Definition, DefinitionId, Document, End,
-    IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Terminal, TerminalDef, TerminalId,
+    Author, Component, ComponentId, Conductor, ConductorId, Connectivity, Definition, DefinitionId, Document, End, IdAllocator, Ledger, ObjectRef,
+    Op, Page, PageId, Terminal, TerminalDef, TerminalId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -48,10 +48,7 @@ impl P {
         let mut ts = Vec::new();
         for k in 1..=n {
             let t: TerminalId = self.ids.fresh();
-            ops.push(Op::AddTerminal {
-                id: t,
-                terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string()) },
-            });
+            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string()) } });
             ts.push(t);
         }
         self.commit(ops);
@@ -109,12 +106,7 @@ impl P {
 
     fn set(&mut self, w: ConductorId, key: &str, value: Option<&str>) {
         let before = self.doc().conductors.get(&w).unwrap().properties.get(key).cloned();
-        self.commit(vec![Op::SetProperty {
-            object: ObjectRef::Conductor(w),
-            key: key.into(),
-            before,
-            after: value.map(Into::into),
-        }]);
+        self.commit(vec![Op::SetProperty { object: ObjectRef::Conductor(w), key: key.into(), before, after: value.map(Into::into) }]);
     }
 
     /// Fix `value` on the whole net of `w`, as `wirenumber` does.
@@ -170,10 +162,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         name: "bridged".into(),
         origin: None,
         graphics: vec![],
-        terminals: ["1", "2", "3"]
-            .iter()
-            .map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0) })
-            .collect(),
+        terminals: ["1", "2", "3"].iter().map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect(),
         bridges: vec![vec!["1".into(), "2".into()]],
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
@@ -422,12 +411,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let before = p.doc().components.get(&c).unwrap().properties.get(NAME).cloned();
                 let after = Some(names[next(names.len())].to_string());
                 if before != after {
-                    p.commit(vec![Op::SetProperty {
-                        object: ObjectRef::Component(c),
-                        key: NAME.into(),
-                        before,
-                        after,
-                    }]);
+                    p.commit(vec![Op::SetProperty { object: ObjectRef::Component(c), key: NAME.into(), before, after }]);
                 }
             }
             8 if !comps.is_empty() => {
@@ -436,8 +420,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let doc = p.doc();
                 let ts: Vec<(TerminalId, Terminal)> = doc.terminals_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
-                    let mut ops: Vec<Op> =
-                        ts.into_iter().map(|(id, terminal)| Op::RemoveTerminal { id, terminal }).collect();
+                    let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveTerminal { id, terminal }).collect();
                     ops.push(Op::DeleteComponent { id: c, component: doc.components.get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
@@ -471,8 +454,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(Some(k[0]), Some(k[1]));
     let before = p.doc().connectivity().clone();
-    let tag =
-        Op::SetProperty { object: ObjectRef::Component(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Component(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::new("2"), index: 1 }];
     let head = p.ledger.head();

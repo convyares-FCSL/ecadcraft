@@ -380,12 +380,7 @@ impl ProjectPanel {
 
     /// Forget the project (it was closed).
     pub fn clear(&mut self) {
-        *self = ProjectPanel {
-            collapsed: self.collapsed,
-            tab: self.tab,
-            folded: std::mem::take(&mut self.folded),
-            ..ProjectPanel::default()
-        };
+        *self = ProjectPanel { collapsed: self.collapsed, tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
     }
 
     /// The row being dragged and the gap it would land in (0 = before the first row), if any.
@@ -489,11 +484,7 @@ impl ProjectPanel {
                 if ui.small_button(PROJECT_INFO).on_hover_text("Title, drawing number, customer, status").clicked() {
                     out.push(Action::ProjectInfo);
                 }
-                if ui
-                    .small_button(PROJECT_SETTINGS)
-                    .on_hover_text("Sheet and grid, reference style, page numbers, tags")
-                    .clicked()
-                {
+                if ui.small_button(PROJECT_SETTINGS).on_hover_text("Sheet and grid, reference style, page numbers, tags").clicked() {
                     out.push(Action::ProjectSettings);
                 }
                 if ui.small_button(REVISIONS).on_hover_text("Issue a revision, reopen an issued one").clicked() {
@@ -506,17 +497,15 @@ impl ProjectPanel {
         let writable = writable && self.revision.is_none();
         if let Some(bar) = self.revision.clone() {
             let t = Tokens::get();
-            let shown =
-                egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap()).widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.revision")
-                        });
-                        if ui.small_button(BACK_TO_CURRENT).clicked() {
-                            out.push(Action::BackToCurrent);
-                        }
-                    });
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.revision"));
+                    if ui.small_button(BACK_TO_CURRENT).clicked() {
+                        out.push(Action::BackToCurrent);
+                    }
                 });
+            });
             // `ecad.revision-bar`: a 3 px accent bar on its left.
             let r = shown.response.rect;
             ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
@@ -535,14 +524,7 @@ impl ProjectPanel {
             for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB), (Tab::Checks, checks.as_str())] {
                 let resp = ui.selectable_label(self.tab == tab, RichText::new(name).small());
                 let resp = if tab == Tab::Checks {
-                    resp.widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::Role::Button,
-                            true,
-                            self.tab == tab,
-                            crate::checks_panel::CHECKS_TAB,
-                        )
-                    });
+                    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, self.tab == tab, crate::checks_panel::CHECKS_TAB));
                     resp
                 } else {
                     resp
@@ -727,9 +709,7 @@ impl ProjectPanel {
         }
 
         // A click elsewhere (the drawing) disarms the panel.
-        if ui.input(|i| i.pointer.any_pressed())
-            && ui.ctx().pointer_interact_pos().is_some_and(|p| !panel_rect.contains(p))
-        {
+        if ui.input(|i| i.pointer.any_pressed()) && ui.ctx().pointer_interact_pos().is_some_and(|p| !panel_rect.contains(p)) {
             self.armed = false;
         }
         out
@@ -767,21 +747,14 @@ impl ProjectPanel {
             Some(Vis::Page(i)) => self.rows.get(*i).filter(|r| r.folder == folder).map(|r| r.id),
             _ => None,
         };
-        let index = before.map(|b| {
-            self.rows.iter().filter(|r| r.folder == folder && r.id != page).take_while(|r| r.id != b).count() + 1
-        });
+        let index = before.map(|b| self.rows.iter().filter(|r| r.folder == folder && r.id != page).take_while(|r| r.id != b).count() + 1);
         (folder, index)
     }
 
     /// One folder row: chevron, name, `(n)`; click folds, double-click renames, drag moves it,
     /// right-click offers the folder's actions.
     fn folder_row(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        resp: egui::Response,
-        (id, name, depth, pages): (FolderId, &str, usize, usize),
-        writable: bool,
+        &mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, (id, name, depth, pages): (FolderId, &str, usize, usize), writable: bool,
         out: &mut Vec<Action>,
     ) {
         let t = Tokens::get();
@@ -800,22 +773,12 @@ impl ProjectPanel {
         icons::paint(&p, chev, if folded { Icon::ChevronRight } else { Icon::ChevronDown }, false);
         let font = egui::FontId::monospace(12.0);
         if self.folder_rename.as_ref().is_some_and(|r| r.of == id) {
-            let field = Rect::from_min_max(
-                pos2(chev.right() + 4.0, rect.top() + 1.0),
-                pos2(rect.right() - 4.0, rect.bottom() - 1.0),
-            );
+            let field = Rect::from_min_max(pos2(chev.right() + 4.0, rect.top() + 1.0), pos2(rect.right() - 4.0, rect.bottom() - 1.0));
             self.folder_field(ui, field, out);
             return;
         }
-        let named =
-            p.text(pos2(chev.right() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, name, font.clone(), t.text);
-        p.text(
-            pos2(named.right() + 6.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            format!("({pages})"),
-            font,
-            t.text_dim,
-        );
+        let named = p.text(pos2(chev.right() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, name, font.clone(), t.text);
+        p.text(pos2(named.right() + 6.0, rect.center().y), egui::Align2::LEFT_CENTER, format!("({pages})"), font, t.text_dim);
         if resp.drag_started() && writable {
             self.drag = Some(Drag { page: PageId(0), from: usize::MAX, gap: None, folder: Some(id), onto: None });
         }
@@ -911,27 +874,16 @@ impl ProjectPanel {
         if let Some(n) = &self.note {
             ui.label(RichText::new(n).small().color(t.text_dim));
         }
-        ui.add(egui::Label::new(RichText::new(header.note).small().color(warn)).truncate())
-            .on_hover_text(crate::BANNER);
+        ui.add(egui::Label::new(RichText::new(header.note).small().color(warn)).truncate()).on_hover_text(crate::BANNER);
     }
 
     /// One row: number, title, states and its clicks.
     #[allow(clippy::too_many_arguments)]
-    fn row(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        resp: egui::Response,
-        i: usize,
-        row: &PageRow,
-        writable: bool,
-        out: &mut Vec<Action>,
-    ) {
+    fn row(&mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, i: usize, row: &PageRow, writable: bool, out: &mut Vec<Action>) {
         let t = Tokens::get();
         let active = self.active == Some(row.id);
         let label = row_label(&row.number, &row.title);
-        let resp =
-            if row.duplicate { resp.on_hover_text(format!("Two pages are numbered {}.", row.number)) } else { resp };
+        let resp = if row.duplicate { resp.on_hover_text(format!("Two pages are numbered {}.", row.number)) } else { resp };
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, &label));
         let p = ui.painter_at(rect);
         let dragging = self.drag.is_some_and(|d| d.page == row.id);
@@ -995,8 +947,7 @@ impl ProjectPanel {
         if resp.double_clicked() || resp.triple_clicked() {
             let on_number = resp.interact_pointer_pos().is_some_and(|p| p.x < num.right());
             if writable && on_number {
-                self.number_edit =
-                    Some(InPlace { of: row.id, text: row.number.clone(), error: None, old: row.number.clone() });
+                self.number_edit = Some(InPlace { of: row.id, text: row.number.clone(), error: None, old: row.number.clone() });
             } else if writable {
                 self.start_rename(row.id);
             }
@@ -1037,8 +988,7 @@ impl ProjectPanel {
                 self.move_row(i, i - 1, out);
                 ui.close();
             }
-            if ui.add_enabled(writable && i + 1 < n, egui::Button::new("Move down").shortcut_text("Alt+Down")).clicked()
-            {
+            if ui.add_enabled(writable && i + 1 < n, egui::Button::new("Move down").shortcut_text("Alt+Down")).clicked() {
                 self.move_row(i, i + 1, out);
                 ui.close();
             }
@@ -1073,22 +1023,14 @@ impl ProjectPanel {
         if opening {
             resp.request_focus();
             if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
-                let all = egui::text::CCursorRange::two(
-                    egui::text::CCursor::new(0),
-                    egui::text::CCursor::new(r.old.chars().count()),
-                );
+                let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(r.old.chars().count()));
                 state.cursor.set_char_range(Some(all));
                 state.store(ui.ctx(), id);
             }
         }
         if let Some(e) = &r.error {
-            egui::Tooltip::always_open(
-                ui.ctx().clone(),
-                ui.layer_id(),
-                id.with("error"),
-                egui::PopupAnchor::Position(rect.left_bottom()),
-            )
-            .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+            egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
+                .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
         }
         if resp.lost_focus() {
             let esc = ui.input(|i| i.key_pressed(Key::Escape));
@@ -1162,9 +1104,7 @@ impl ProjectPanel {
             if let Some(r) = self.rows.get(cur) {
                 out.push(Action::Preview(r.id));
             }
-        } else if ui.input(|i| {
-            i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. }))
-        }) {
+        } else if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. }))) {
             // Any other key goes to the command line and disarms the panel.
             self.armed = false;
         }
@@ -1191,22 +1131,14 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
     if opening {
         resp.request_focus();
         if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
-            let all = egui::text::CCursorRange::two(
-                egui::text::CCursor::new(0),
-                egui::text::CCursor::new(edit.old.chars().count()),
-            );
+            let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(edit.old.chars().count()));
             state.cursor.set_char_range(Some(all));
             state.store(ui.ctx(), id);
         }
     }
     if let Some(e) = &edit.error {
-        egui::Tooltip::always_open(
-            ui.ctx().clone(),
-            ui.layer_id(),
-            id.with("error"),
-            egui::PopupAnchor::Position(rect.left_bottom()),
-        )
-        .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+        egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
+            .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
     }
     if !resp.lost_focus() {
         return None;
@@ -1242,8 +1174,7 @@ fn icon_button(ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, enabled: bo
 
 /// `text` cut with `…` to fit `width` in `font`.
 fn cut(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
-    let fits =
-        |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x) <= width;
+    let fits = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x) <= width;
     if fits(text) {
         return text.to_string();
     }

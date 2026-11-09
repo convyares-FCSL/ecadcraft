@@ -21,14 +21,7 @@
 //!
 //! Excluded until later stages: library files beyond their header and chain seed (stage 3), checkpoints (disabled; their
 //! trust contract is unresolved), and other codecs.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod canonical;
 pub mod chain;
@@ -47,6 +40,4 @@ pub use crc::crc32c;
 pub use disk::{DiskError, DiskProject, Durability, OpenedDisk, ReadOnly, StepFaults};
 pub use read::{Access, Check, Corruption, OpenError, OpenReport, Opened, Outcome, RecordSpan, open_project};
 pub use record::{CODEC, CONTAINER_VERSION, Header, SCHEMA_VERSION, definition_hash};
-pub use write::{
-    Attempt, AttemptStage, AttemptSummary, ProjectFile, SaveError, SaveOutcome, WriterState, WriterSummary,
-};
+pub use write::{Attempt, AttemptStage, AttemptSummary, ProjectFile, SaveError, SaveOutcome, WriterState, WriterSummary};

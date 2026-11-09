@@ -26,9 +26,8 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAl
 use cadcraft_engine::geom::Vec3;
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME, name_key};
 use ecad_model::{
-    Component, ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId,
-    ItemKind, Op, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
-    Terminal, TerminalId,
+    Component, ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -56,8 +55,7 @@ pub const MAX_NAME_CHARS: usize = 16;
 pub const MAX_PLACES: usize = 3;
 
 /// Why a conductor label alone cannot be edited.
-pub const LABEL_DERIVED: &str =
-    "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
+pub const LABEL_DERIVED: &str = "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
 
 /// The continuation name rule, in words (design 022 §3.2).
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
@@ -83,9 +81,8 @@ pub fn kind_of(doc: &Document, c: ComponentId) -> Option<&str> {
 /// [`NAME_RULE`].
 pub fn valid_name(text: &str) -> Result<String, String> {
     let t = text.trim();
-    let ok = !t.is_empty()
-        && t.chars().count() <= MAX_NAME_CHARS
-        && t.chars().all(|c| c.is_alphanumeric() || matches!(c, '+' | '-' | '/' | '.' | '_'));
+    let ok =
+        !t.is_empty() && t.chars().count() <= MAX_NAME_CHARS && t.chars().all(|c| c.is_alphanumeric() || matches!(c, '+' | '-' | '/' | '.' | '_'));
     if ok { Ok(t.to_string()) } else { Err(NAME_RULE.into()) }
 }
 
@@ -163,8 +160,8 @@ type Bbox = (Pt, Pt);
 /// The box round a label's text: baseline centre `at`, angle `theta`, width `w`, height `h`.
 fn text_box(at: Pt, theta: f64, w: f64, h: f64) -> Bbox {
     let (d, n) = (Pt::new(theta.cos(), theta.sin()), Pt::new(-theta.sin(), theta.cos()));
-    let corners = [(-w / 2.0, 0.0), (w / 2.0, 0.0), (w / 2.0, h), (-w / 2.0, h)]
-        .map(|(u, v)| Pt::new(at.x + d.x * u + n.x * v, at.y + d.y * u + n.y * v));
+    let corners =
+        [(-w / 2.0, 0.0), (w / 2.0, 0.0), (w / 2.0, h), (-w / 2.0, h)].map(|(u, v)| Pt::new(at.x + d.x * u + n.x * v, at.y + d.y * u + n.y * v));
     let (mut lo, mut hi) = (corners[0], corners[0]);
     for c in corners {
         lo = Pt::new(lo.x.min(c.x), lo.y.min(c.y));
@@ -238,11 +235,7 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// Labels are placed in route order. Each takes the first place ([`candidates`]) where its box
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
-pub fn labels_on_page_with(
-    doc: &Document,
-    page: PageId,
-    hidden: &std::collections::BTreeSet<ItemId>,
-) -> Vec<WireLabel> {
+pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
     let h = doc.settings.wiring.label_height();
     // Every route on the page: (representation, conductor, vertices).
     let mut routes: Vec<(RepresentationId, ConductorId, Vec<Pt>)> = Vec::new();
@@ -270,11 +263,7 @@ pub fn labels_on_page_with(
         let w = cadcraft_engine::fonts::line_width(&label.text, h, 1.0);
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
-        let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h)
-            .into_iter()
-            .filter(|p| p.is_finite())
-            .map(|p| (p, text_box(p, theta, w, h)))
-            .collect();
+        let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h).into_iter().filter(|p| p.is_finite()).map(|p| (p, text_box(p, theta, w, h))).collect();
         let clear_of_labels = |bx: &Bbox| placed.iter().all(|q| !boxes_meet(bx, q, LABEL_CLEARANCE));
         let clear_of_wires = |bx: &Bbox| {
             others().all(|s| match (s.first(), s.get(1)) {
@@ -289,15 +278,7 @@ pub fn labels_on_page_with(
             .or_else(|| tried.first());
         let Some((at, bx)) = pick else { continue };
         placed.push(*bx);
-        out.push(WireLabel {
-            conductor: *c,
-            rep: *rid,
-            at: *at,
-            rotation: theta,
-            height: h,
-            text: label.text,
-            error: label.error,
-        });
+        out.push(WireLabel { conductor: *c, rep: *rid, at: *at, rotation: theta, height: h, text: label.text, error: label.error });
     }
     out
 }
@@ -305,11 +286,8 @@ pub fn labels_on_page_with(
 /// A label as an entity on [`LABEL_LAYER`].
 pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
-    let color = if l.error {
-        cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI)
-    } else {
-        cadcraft_engine::doc::color::Color::ByLayer
-    };
+    let color =
+        if l.error { cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI) } else { cadcraft_engine::doc::color::Color::ByLayer };
     Entity {
         handle,
         common: Common { layer: LABEL_LAYER.into(), color, ..Common::default() },
@@ -351,12 +329,8 @@ pub fn other_places(doc: &Document, c: ComponentId) -> (String, Vec<ComponentId>
     let Some(key) = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).map(|n| name_key(n)) else {
         return (String::new(), Vec::new());
     };
-    let mut others: Vec<(((usize, u32, u32), String), ComponentId)> = doc
-        .continuations_named(&key)
-        .into_iter()
-        .filter(|o| *o != c)
-        .filter_map(|o| place_of(doc, o).map(|p| (p, o)))
-        .collect();
+    let mut others: Vec<(((usize, u32, u32), String), ComponentId)> =
+        doc.continuations_named(&key).into_iter().filter(|o| *o != c).filter_map(|o| place_of(doc, o).map(|p| (p, o))).collect();
     others.sort();
     let ids = others.iter().map(|(_, o)| *o).collect();
     let mut words: Vec<String> = others.iter().take(MAX_PLACES).map(|((_, w), _)| w.clone()).collect();
@@ -368,12 +342,7 @@ pub fn other_places(doc: &Document, c: ComponentId) -> (String, Vec<ComponentId>
 
 /// The texts beside a continuation symbol (design 022 §3.2): its name, and its other places
 /// under it; `None` when `c` is not a continuation.
-pub fn continuation_texts(
-    doc: &Document,
-    c: ComponentId,
-    rep: RepresentationId,
-    pl: &Placement,
-) -> Option<Vec<DerivedText>> {
+pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
     if kind_of(doc, c) != Some(CONTINUATION) {
         return None;
     }
@@ -453,13 +422,7 @@ pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(Con
 /// # Errors
 /// The starter definition cannot be built (never expected).
 pub fn plan_tagless(
-    doc: &Document,
-    ids: &mut IdAllocator,
-    page: PageId,
-    style: Style,
-    s: &Starter,
-    placement: Placement,
-    props: ecad_model::Properties,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, s: &Starter, placement: Placement, props: ecad_model::Properties,
 ) -> Result<Tagless, String> {
     let mut ops = Vec::new();
     let definition = match symbols::embedded(doc, s) {
@@ -472,15 +435,9 @@ pub fn plan_tagless(
     };
     let (component, terminal, item, representation): (ComponentId, TerminalId, ItemId, RepresentationId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateComponent {
-        id: component,
-        component: Component { properties: props, definition: Some(definition) },
-    });
+    ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: Some(definition) } });
     ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()) } });
-    ops.push(Op::AddItem {
-        id: item,
-        item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) },
-    });
+    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
         rep: Representation {
@@ -564,13 +521,7 @@ pub struct Junction {
 /// # Errors
 /// Design 022 §3.1's refusals: a cable core, a wire drawn on more than one page, a junction
 /// already there, the point at a route end.
-pub fn plan_junction(
-    doc: &Document,
-    ids: &mut IdAllocator,
-    page: PageId,
-    style: Style,
-    on: OnWire,
-) -> Result<Junction, String> {
+pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, on: OnWire) -> Result<Junction, String> {
     let c = on.conductor;
     let cond = doc.conductors.get(&c).ok_or("No such wire.")?;
     if let Some(k) = doc.cables_of(c).first() {
@@ -583,13 +534,9 @@ pub fn plan_junction(
             .map_or_else(String::new, |n| format!("'s core {n}"));
         return Err(format!("{cable}{core} can't take a junction: a cable core runs end to end."));
     }
-    let pages: std::collections::BTreeSet<PageId> =
-        doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).collect();
+    let pages: std::collections::BTreeSet<PageId> = doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).collect();
     if pages.len() > 1 {
-        return Err(format!(
-            "This wire is drawn on {} pages; add the junction where it is a single wire.",
-            pages.len()
-        ));
+        return Err(format!("This wire is drawn on {} pages; add the junction where it is a single wire.", pages.len()));
     }
     let (item_id, item, v) = route_vertices(doc, c, page).ok_or("The wire has no route on this page.")?;
     for (_, r) in doc.representations_on(page) {
@@ -597,9 +544,7 @@ pub fn plan_junction(
         if kind_of(doc, j) != Some(JUNCTION) {
             continue;
         }
-        let here = doc
-            .terminals_of(j)
-            .any(|(t, _)| ecad_model::derive::terminal_position(doc, page, t).is_some_and(|p| p.near(on.at, ON_WIRE)));
+        let here = doc.terminals_of(j).any(|(t, _)| ecad_model::derive::terminal_position(doc, page, t).is_some_and(|p| p.near(on.at, ON_WIRE)));
         if here {
             return Err("There is a junction here already.".into());
         }
@@ -636,27 +581,15 @@ pub fn plan_junction(
     let old_b = cond.end(End::B);
     tagless.ops.push(Op::AttachEnd { conductor: c, end: End::B, before: old_b, after: Some(j) });
     let (c2, i2, r2): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    tagless.ops.push(Op::CreateConductor {
-        id: c2,
-        conductor: Conductor { properties: cond.properties.clone(), ends: [Some(j), old_b] },
-    });
+    tagless.ops.push(Op::CreateConductor { id: c2, conductor: Conductor { properties: cond.properties.clone(), ends: [Some(j), old_b] } });
     let mut second = item;
     second.kind = ItemKind::Primitive(path(rest));
     tagless.ops.push(Op::AddItem { id: i2, item: second });
-    let role = doc
-        .representations_of(Subject::Conductor(c))
-        .find(|(_, r)| r.page == page)
-        .map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
+    let role =
+        doc.representations_of(Subject::Conductor(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
     tagless.ops.push(Op::LinkRepresentation {
         id: r2,
-        rep: Representation {
-            subject: Subject::Conductor(c2),
-            page,
-            form: Form::Drawn,
-            role,
-            items: vec![i2],
-            connection_points: BTreeMap::new(),
-        },
+        rep: Representation { subject: Subject::Conductor(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
     });
     Ok(Junction { tagless, second: c2, at: on.at })
 }
@@ -690,9 +623,7 @@ pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
     let mut v: Vec<String> = net
         .terminals
         .iter()
-        .filter(|t| {
-            doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(JUNCTION | CONTINUATION)))
-        })
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(JUNCTION | CONTINUATION))))
         .map(|t| point_words(doc, *t))
         .collect();
     v.sort();

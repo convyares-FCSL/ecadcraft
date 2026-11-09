@@ -160,9 +160,7 @@ impl PowerLoss {
                 let n = i.pending.len();
                 for (k, c) in i.pending.iter().enumerate() {
                     let limit = match c {
-                        Change::Write { data, .. } if k + 1 == n => {
-                            Some(usize::try_from(rng.below(data.len() as u64 + 1)).unwrap_or(0))
-                        }
+                        Change::Write { data, .. } if k + 1 == n => Some(usize::try_from(rng.below(data.len() as u64 + 1)).unwrap_or(0)),
                         _ => None,
                     };
                     apply(&mut image, c, limit);
@@ -204,10 +202,8 @@ impl redb::StorageBackend for PowerLoss {
     fn read(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
         let i = lock(&self.inner)?;
         let start = usize::try_from(offset).map_err(io::Error::other)?;
-        let src = i
-            .current
-            .get(start..start.saturating_add(out.len()))
-            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "read past the end"))?;
+        let src =
+            i.current.get(start..start.saturating_add(out.len())).ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "read past the end"))?;
         out.copy_from_slice(src);
         Ok(())
     }

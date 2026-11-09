@@ -16,14 +16,7 @@
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod book;
 pub mod connectivity;
@@ -42,15 +35,15 @@ pub mod wiring;
 
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING,
-    Definition, Document, End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive,
-    ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef,
+    Cable, CableMember, Color, Component, Conductor, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING, Definition, Document, End, Folder,
+    Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
+    SymbolInstance, Terminal, TerminalDef,
 };
 pub use error::{ModelError, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId,
-    ProjectId, RepresentationId, TerminalId, TxId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId,
+    TerminalId, TxId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, History, Ledger, Transaction, TxKind};

@@ -63,8 +63,7 @@ fn power_round(seed: u64, mode: CrashMode, span: Option<u64>) -> std::result::Re
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) =
-        ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     let mut acked = (ledger.head(), ledger.document().clone());
@@ -132,11 +131,7 @@ fn run_rounds(name: &str, n: u64, mode: CrashMode) {
             Err(e) => failures.push(format!("round {round} (seed {seed:#x}): {e}")),
         }
     }
-    eprintln!(
-        "{name}: {n} rounds, {} failures, {:.1} s; {outcomes:?}",
-        failures.len(),
-        started.elapsed().as_secs_f64()
-    );
+    eprintln!("{name}: {n} rounds, {} failures, {:.1} s; {outcomes:?}", failures.len(), started.elapsed().as_secs_f64());
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
@@ -178,9 +173,7 @@ fn child_v2_writer() {
         (o.project, o.ledger)
     } else {
         let mut f = fixture();
-        let (d, _) =
-            ecad_file::v2::disk::DiskProjectV2::create(&file, PROJECT, &mut f.ledger, None, None, "crash child")
-                .unwrap();
+        let (d, _) = ecad_file::v2::disk::DiskProjectV2::create(&file, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
         (d, f.ledger)
     };
     let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(acks_path(&file)).unwrap();
@@ -353,8 +346,7 @@ fn child_v2_save_as_writer() {
     let mut rng = Rng::new(u64::from(std::process::id()) ^ 0x5A5A);
     let mut f = fixture();
     let first = dir.join("p0.ecad");
-    let (mut disk, _) =
-        ecad_file::v2::disk::DiskProjectV2::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
+    let (mut disk, _) = ecad_file::v2::disk::DiskProjectV2::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
     let mut ledger = f.ledger;
     writeln!(acks, "f {} {} {}", first.display(), ledger.head(), digest(ledger.document())).unwrap();
     for i in 1..u32::MAX {
@@ -372,9 +364,7 @@ fn child_v2_save_as_writer() {
             let n = 1 + rng.below(50);
             edit(&mut g.ledger, &mut rng, n, false);
             let target = dir.join(format!("n{i}.ecad"));
-            let (d, _) =
-                ecad_file::v2::disk::DiskProjectV2::create(&target, PROJECT, &mut g.ledger, None, None, "crash child")
-                    .unwrap();
+            let (d, _) = ecad_file::v2::disk::DiskProjectV2::create(&target, PROJECT, &mut g.ledger, None, None, "crash child").unwrap();
             drop(d);
             writeln!(acks, "f {} {} {}", target.display(), g.ledger.head(), digest(g.ledger.document())).unwrap();
         }
@@ -396,13 +386,7 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
         std::fs::create_dir_all(&dir).unwrap();
         let acks_file = dir.join("acks");
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--ignored",
-                "--exact",
-                "container_crash::child_v2_save_as_writer",
-                "--nocapture",
-                "--test-threads=1",
-            ])
+            .args(["--ignored", "--exact", "container_crash::child_v2_save_as_writer", "--nocapture", "--test-threads=1"])
             .env("ECAD_TEST_CHILD", "1")
             .env(CHILD_DIR, &dir)
             .stdout(std::process::Stdio::null())
@@ -410,9 +394,7 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
             .spawn()
             .unwrap();
         let start = Instant::now();
-        while std::fs::read_to_string(&acks_file).unwrap_or_default().is_empty()
-            && start.elapsed() < Duration::from_secs(60)
-        {
+        while std::fs::read_to_string(&acks_file).unwrap_or_default().is_empty() && start.elapsed() < Duration::from_secs(60) {
             if let Ok(Some(status)) = child.try_wait() {
                 failures.push(format!("round {round}: the writer exited by itself ({status})"));
                 break;
@@ -443,10 +425,7 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
                     }
                     if let Some((head, fp)) = acked.get(&key) {
                         if o.ledger.head() < *head {
-                            failures.push(format!(
-                                "round {round}: {key} reopened at {}, {head} acknowledged",
-                                o.ledger.head()
-                            ));
+                            failures.push(format!("round {round}: {key} reopened at {}, {head} acknowledged", o.ledger.head()));
                         } else if o.ledger.head() == *head && *fp != digest(o.ledger.document()) {
                             failures.push(format!("round {round}: {key} does not hold what was saved"));
                         }

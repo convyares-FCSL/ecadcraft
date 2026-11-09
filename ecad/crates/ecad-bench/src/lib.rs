@@ -13,14 +13,7 @@
 //! are made of existing ops and opened, derived, projected and saved by the product crates. The
 //! generator does not use CADCraft; only the first-page timing does (through `ecad-cadcraft`).
 //! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod generate;
 pub mod measure;
@@ -63,10 +56,12 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             "--compare" => o.compare = Some(PathBuf::from(value()?)),
             "--runs" => {
                 let v = value()?;
-                o.runs =
-                    v.trim().parse::<usize>().ok().filter(|n| (1..=measure::MAX_RUNS).contains(n)).ok_or_else(
-                        || format!("--runs must be a whole number from 1 to {}\n{USAGE}", measure::MAX_RUNS),
-                    )?;
+                o.runs = v
+                    .trim()
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|n| (1..=measure::MAX_RUNS).contains(n))
+                    .ok_or_else(|| format!("--runs must be a whole number from 1 to {}\n{USAGE}", measure::MAX_RUNS))?;
             }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown option {other}\n{USAGE}")),
@@ -90,11 +85,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
 
 /// The ECAD workspace root (`ecad/`).
 pub fn ecad_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."))
+    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// Generate one tier, lean and churned, check that both histories end in the same document, write
@@ -138,13 +129,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         let v2m = v2::measure(&v2_path, runs, scratch, convert_ms);
         measure::release_lock_file(&v2_path);
         let compression = v2::compression(&v2_path)?;
-        rows.push(report::Row {
-            tier: tier.name.into(),
-            variant: variant.name().into(),
-            measured,
-            v2: Some(v2m?),
-            compression: Some(compression),
-        });
+        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured, v2: Some(v2m?), compression: Some(compression) });
     }
     Ok(rows)
 }
@@ -159,8 +144,7 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
     let earlier = match &o.compare {
         Some(c) => {
             let text = std::fs::read_to_string(c).map_err(|e| format!("{}: {e}", c.display()))?;
-            let v: serde_json::Value =
-                serde_json::from_str(&text).map_err(|e| format!("{}: not a results file: {e}", c.display()))?;
+            let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{}: not a results file: {e}", c.display()))?;
             if v.get("rows").and_then(serde_json::Value::as_array).is_none() {
                 return Err(format!("{}: not a results file (no `rows`)", c.display()));
             }

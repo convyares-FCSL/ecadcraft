@@ -74,15 +74,9 @@ impl Starter {
     }
 
     fn build(&self) -> Result<Definition, String> {
-        let mut d = Definition {
-            bridges: Vec::new(),
-            name: self.name.into(),
-            origin: None,
-            graphics: graphics(self.key),
-            terminals: terminals(self.key),
-        };
-        let content_hash = ecad_file::definition_hash(&d)
-            .map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
+        let mut d =
+            Definition { bridges: Vec::new(), name: self.name.into(), origin: None, graphics: graphics(self.key), terminals: terminals(self.key) };
+        let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: 1, content_hash });
         Ok(d)
     }
@@ -159,22 +153,8 @@ pub const STARTERS: &[Starter] = &[
         kind: Kind::Fixed { exclusive: true },
         id: def_id(6),
     },
-    Starter {
-        key: "fuse",
-        name: "Fuse",
-        aliases: &["fuse"],
-        prefix: "F",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(7),
-    },
-    Starter {
-        key: "psu",
-        name: "Power supply",
-        aliases: &["psu", "ac/dc"],
-        prefix: "G",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(8),
-    },
+    Starter { key: "fuse", name: "Fuse", aliases: &["fuse"], prefix: "F", kind: Kind::Fixed { exclusive: true }, id: def_id(7) },
+    Starter { key: "psu", name: "Power supply", aliases: &["psu", "ac/dc"], prefix: "G", kind: Kind::Fixed { exclusive: true }, id: def_id(8) },
     Starter {
         key: "pbno",
         name: "Push button, NO",
@@ -207,22 +187,8 @@ pub const STARTERS: &[Starter] = &[
         kind: Kind::Fixed { exclusive: true },
         id: def_id(12),
     },
-    Starter {
-        key: "motor3",
-        name: "Motor, 3-phase",
-        aliases: &["motor"],
-        prefix: "M",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(13),
-    },
-    Starter {
-        key: "motor1",
-        name: "Motor, single-phase",
-        aliases: &["motor"],
-        prefix: "M",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(14),
-    },
+    Starter { key: "motor3", name: "Motor, 3-phase", aliases: &["motor"], prefix: "M", kind: Kind::Fixed { exclusive: true }, id: def_id(13) },
+    Starter { key: "motor1", name: "Motor, single-phase", aliases: &["motor"], prefix: "M", kind: Kind::Fixed { exclusive: true }, id: def_id(14) },
     Starter {
         key: "trafo",
         name: "Transformer",
@@ -231,22 +197,8 @@ pub const STARTERS: &[Starter] = &[
         kind: Kind::Fixed { exclusive: true },
         id: def_id(15),
     },
-    Starter {
-        key: "terminal",
-        name: "Terminal",
-        aliases: &["terminal", "clamp"],
-        prefix: "X",
-        kind: Kind::Terminal,
-        id: def_id(16),
-    },
-    Starter {
-        key: "di",
-        name: "PLC digital input",
-        aliases: &["plc", "input", "di"],
-        prefix: "A",
-        kind: Kind::Plc { letter: 'I' },
-        id: def_id(17),
-    },
+    Starter { key: "terminal", name: "Terminal", aliases: &["terminal", "clamp"], prefix: "X", kind: Kind::Terminal, id: def_id(16) },
+    Starter { key: "di", name: "PLC digital input", aliases: &["plc", "input", "di"], prefix: "A", kind: Kind::Plc { letter: 'I' }, id: def_id(17) },
     Starter {
         key: "do",
         name: "PLC digital output",
@@ -255,14 +207,7 @@ pub const STARTERS: &[Starter] = &[
         kind: Kind::Plc { letter: 'Q' },
         id: def_id(18),
     },
-    Starter {
-        key: "junction",
-        name: "Junction",
-        aliases: &["junction", "dot", "tee"],
-        prefix: "",
-        kind: Kind::Tagless,
-        id: def_id(19),
-    },
+    Starter { key: "junction", name: "Junction", aliases: &["junction", "dot", "tee"], prefix: "", kind: Kind::Tagless, id: def_id(19) },
     Starter {
         key: "continuation",
         name: "Continuation",
@@ -290,10 +235,7 @@ pub fn of_definition(d: &Definition) -> Option<&'static Starter> {
 
 /// The project's embedded copy of `s`, found by origin (library and definition).
 pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
-    doc.definitions
-        .iter()
-        .find(|(_, d)| d.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id))
-        .map(|(id, _)| *id)
+    doc.definitions.iter().find(|(_, d)| d.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id)).map(|(id, _)| *id)
 }
 
 /// Most symbols one search lists.
@@ -353,9 +295,7 @@ fn shifted(prims: Vec<Primitive>, dx: f64) -> Vec<Primitive> {
         .into_iter()
         .map(|g| match g {
             Primitive::Line { a, b } => Primitive::Line { a: m(&a), b: m(&b) },
-            Primitive::Polyline { vertices, closed } => {
-                Primitive::Polyline { vertices: vertices.iter().map(m).collect(), closed }
-            }
+            Primitive::Polyline { vertices, closed } => Primitive::Polyline { vertices: vertices.iter().map(m).collect(), closed },
             Primitive::Circle { center, radius } => Primitive::Circle { center: m(&center), radius },
             other => other,
         })
@@ -379,12 +319,7 @@ fn contact_no() -> Vec<Primitive> {
 }
 
 fn contact_nc() -> Vec<Primitive> {
-    vec![
-        line((0.0, 10.0), (0.0, 4.0)),
-        line((0.0, -10.0), (0.0, -4.0)),
-        line((0.0, 4.0), (3.0, 4.0)),
-        line((0.0, -4.0), (4.0, 5.5)),
-    ]
+    vec![line((0.0, 10.0), (0.0, 4.0)), line((0.0, -10.0), (0.0, -4.0)), line((0.0, 4.0), (3.0, 4.0)), line((0.0, -4.0), (4.0, 5.5))]
 }
 
 fn mcb() -> Vec<Primitive> {
@@ -462,9 +397,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((0.0, 4.0), (0.0, 10.0)),
             line((0.0, -4.0), (0.0, -10.0)),
         ],
-        "motor3" => {
-            motor("3~", &[((-10.0, 15.0), (-5.0, 8.66)), ((0.0, 15.0), (0.0, 10.0)), ((10.0, 15.0), (5.0, 8.66))])
-        }
+        "motor3" => motor("3~", &[((-10.0, 15.0), (-5.0, 8.66)), ((0.0, 15.0), (0.0, 10.0)), ((10.0, 15.0), (5.0, 8.66))]),
         "motor1" => motor("1~", &[((-5.0, 15.0), (-5.0, 8.66)), ((5.0, 15.0), (5.0, 8.66))]),
         "trafo" => {
             // Where x = ±5 meets each circle of radius 6 around (0, ±4.5).
@@ -496,14 +429,7 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         "coil" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         "no" | "pbno" | "sel" => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
         "nc" | "pbnc" => vec![t("11", 0.0, 10.0), t("12", 0.0, -10.0)],
-        "power3" => vec![
-            t("1", -10.0, 10.0),
-            t("2", -10.0, -10.0),
-            t("3", 0.0, 10.0),
-            t("4", 0.0, -10.0),
-            t("5", 10.0, 10.0),
-            t("6", 10.0, -10.0),
-        ],
+        "power3" => vec![t("1", -10.0, 10.0), t("2", -10.0, -10.0), t("3", 0.0, 10.0), t("4", 0.0, -10.0), t("5", 10.0, 10.0), t("6", 10.0, -10.0)],
         "mcb1" | "fuse" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
         "mcb2" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("3", 10.0, 10.0), t("4", 10.0, -10.0)],
         "psu" => {

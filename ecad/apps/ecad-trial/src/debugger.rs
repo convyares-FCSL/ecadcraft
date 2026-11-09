@@ -17,9 +17,7 @@ use std::path::Path;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::debug::{
-    self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve,
-};
+use ecad_cadcraft::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
 use eframe::egui::{self, Color32, RichText};
 
@@ -387,9 +385,7 @@ impl Debugger {
     pub fn run_check(&mut self, kind: CheckKind, project: &ProjectHandle, s: &mut Session) {
         let check = match (kind, &self.snap) {
             (_, None) => return,
-            (CheckKind::Replay, Some(snap)) => {
-                debug::verify_replay_from(snap.base, snap.history.as_ref(), &self.log, &snap.doc)
-            }
+            (CheckKind::Replay, Some(snap)) => debug::verify_replay_from(snap.base, snap.history.as_ref(), &self.log, &snap.doc),
             (CheckKind::Projection, Some(snap)) => match project.debug_projection_inputs(s) {
                 Ok(inputs) => debug::verify_projection(&inputs),
                 Err(e) => Check { what: "projection", at_seq: snap.head, ok: false, lines: vec![e] },
@@ -397,12 +393,7 @@ impl Debugger {
             (CheckKind::File, Some(snap)) => match (snap.store_arc(), &snap.file.path) {
                 (Some(st), _) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
                 (None, Some(p)) => debug::verify_file(Path::new(p), &self.log, &snap.file, snap.persisted),
-                (None, None) => Check {
-                    what: "file",
-                    at_seq: snap.head,
-                    ok: false,
-                    lines: vec!["the project has no file yet".into()],
-                },
+                (None, None) => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
             },
         };
         self.checks.push(Ran { check, time: now() });
@@ -453,28 +444,25 @@ impl Debugger {
         ui.separator();
         let trail_open = !self.focus.is_empty() || self.tx.is_some() || !self.focus_from.is_empty();
         let list_height = if trail_open { ui.available_height() * 0.45 } else { ui.available_height() };
-        egui::ScrollArea::vertical().id_salt("dbg_view").max_height(list_height).auto_shrink([false, true]).show(
-            ui,
-            |ui| match self.view {
-                View::Selection => self.selection_view(ui),
-                View::Model => self.model_view(ui, false),
-                View::Definitions => self.model_view(ui, true),
-                View::History => self.history_view(ui),
-                View::Persistence => self.persistence_view(ui),
-                View::Storage => {
-                    if self.storage_view(ui) {
-                        action = Some(Action::ReadStorage);
-                    }
+        egui::ScrollArea::vertical().id_salt("dbg_view").max_height(list_height).auto_shrink([false, true]).show(ui, |ui| match self.view {
+            View::Selection => self.selection_view(ui),
+            View::Model => self.model_view(ui, false),
+            View::Definitions => self.model_view(ui, true),
+            View::History => self.history_view(ui),
+            View::Persistence => self.persistence_view(ui),
+            View::Storage => {
+                if self.storage_view(ui) {
+                    action = Some(Action::ReadStorage);
                 }
-                View::Branches => self.branches_view(ui),
-                View::Diagnostics => self.diagnostics_view(ui),
-                View::Checks => {
-                    if let Some(k) = self.checks_view(ui) {
-                        action = Some(Action::Check(k));
-                    }
+            }
+            View::Branches => self.branches_view(ui),
+            View::Diagnostics => self.diagnostics_view(ui),
+            View::Checks => {
+                if let Some(k) = self.checks_view(ui) {
+                    action = Some(Action::Check(k));
                 }
-            },
-        );
+            }
+        });
         if trail_open {
             ui.separator();
             egui::ScrollArea::vertical().id_salt("dbg_trail").auto_shrink([false, false]).show(ui, |ui| {
@@ -531,11 +519,7 @@ impl Debugger {
             .filter(|id| matches!(id, ObjectId::Definition(_)) == definitions)
             .map(|id| (id, debug::object_label(&snap.doc, id)))
             .filter(|(id, label)| {
-                q.is_empty()
-                    || label.to_lowercase().contains(&q)
-                    || id.short().contains(&q)
-                    || id.hex().contains(&q)
-                    || id.kind().contains(&q)
+                q.is_empty() || label.to_lowercase().contains(&q) || id.short().contains(&q) || id.hex().contains(&q) || id.kind().contains(&q)
             })
             .collect();
         let mut follow = None;
@@ -559,9 +543,7 @@ impl Debugger {
         let warn = ui.visuals().warn_fg_color;
         let head = snap.head;
         let where_ = snap.file.path.clone().unwrap_or_else(|| "no file yet".into());
-        ui.label(
-            RichText::new(format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted)).color(ok_color()),
-        );
+        ui.label(RichText::new(format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted)).color(ok_color()));
         let c = snap.state_counts();
         if c.unconfirmed > 0 {
             ui.label(
@@ -575,11 +557,7 @@ impl Debugger {
         }
         if c.pending > 0 {
             ui.label(
-                RichText::new(format!(
-                    "Pending (in memory only; lost unless saved): transactions {}–{head}.",
-                    head - c.pending + 1
-                ))
-                .color(warn),
+                RichText::new(format!("Pending (in memory only; lost unless saved): transactions {}–{head}.", head - c.pending + 1)).color(warn),
             );
         } else {
             ui.label("Nothing pending.");
@@ -587,11 +565,7 @@ impl Debugger {
         ui.horizontal(|ui| {
             ui.label("State at transaction");
             ui.add(egui::TextEdit::singleline(&mut self.at_text).desired_width(60.0));
-            if ui
-                .button("Rebuild")
-                .on_hover_text("Rebuilt from a copy of the history; the live project is unchanged")
-                .clicked()
-            {
+            if ui.button("Rebuild").on_hover_text("Rebuilt from a copy of the history; the live project is unchanged").clicked() {
                 let seq = self.at_text.trim().parse::<u64>().unwrap_or(head);
                 self.show_at(seq);
             }
@@ -609,14 +583,8 @@ impl Debugger {
         pager(ui, "transactions", self.log.len(), &mut self.history_page);
         for tx in self.log.iter().rev().skip(self.history_page * PAGE).take(PAGE) {
             let state = snap.record_state(tx.seq);
-            let text = RichText::new(format!(
-                "#{} [{}] {} ({}, {} ops)",
-                tx.seq,
-                state.label(),
-                tx.label,
-                debug::tx_kind(tx, &self.log),
-                tx.ops.len()
-            ));
+            let text =
+                RichText::new(format!("#{} [{}] {} ({}, {} ops)", tx.seq, state.label(), tx.label, debug::tx_kind(tx, &self.log), tx.ops.len()));
             let chosen = self.tx == Some(tx.seq);
             let text = if chosen { text } else { text.color(state_color(state, warn)) };
             if ui.selectable_label(chosen, text).clicked() {
@@ -636,24 +604,12 @@ impl Debugger {
                 ui.label(format!("History at seq {}: {e}", h.seq));
             }
             Ok(doc) => {
-                ui.label(
-                    RichText::new(format!(
-                        "History at seq {} (rebuilt from a copy of the log; the live project is unchanged)",
-                        h.seq
-                    ))
-                    .strong(),
-                );
+                ui.label(RichText::new(format!("History at seq {} (rebuilt from a copy of the log; the live project is unchanged)", h.seq)).strong());
                 let counts = debug::counts(doc);
                 ui.label(counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "));
                 let mut pick = None;
                 for id in debug::objects(doc).into_iter().filter(|i| !matches!(i, ObjectId::Item(_))).take(PAGE) {
-                    if ui
-                        .selectable_label(
-                            h.focus == Some(id),
-                            format!("{} {}  {}", id.kind(), id.short(), debug::object_label(doc, id)),
-                        )
-                        .clicked()
-                    {
+                    if ui.selectable_label(h.focus == Some(id), format!("{} {}  {}", id.kind(), id.short(), debug::object_label(doc, id))).clicked() {
                         pick = Some(id);
                     }
                 }
@@ -704,10 +660,7 @@ impl Debugger {
             if let Some(last) = f.spans.last() {
                 row("Last record", format!("transaction {} at offset {} ({} bytes)", last.seq, last.offset, last.len));
             }
-            row(
-                "Opening found",
-                f.open_report.clone().unwrap_or_else(|| "(created in this session, not opened from a file)".into()),
-            );
+            row("Opening found", f.open_report.clone().unwrap_or_else(|| "(created in this session, not opened from a file)".into()));
         });
         if let Some(r) = &f.read_only {
             ui.label(RichText::new(format!("Read-only: {r}")).color(warn));
@@ -725,9 +678,7 @@ impl Debugger {
             );
         }
         if let Some(n) = f.pending_fragment {
-            ui.label(
-                RichText::new(format!("An incomplete trailing write of {n} bytes is still in the file.")).color(warn),
-            );
+            ui.label(RichText::new(format!("An incomplete trailing write of {n} bytes is still in the file.")).color(warn));
         }
     }
 
@@ -762,16 +713,11 @@ impl Debugger {
                     },
                 ),
             );
-            row(
-                "Converted from version 1",
-                st.link_v1.as_ref().map_or_else(|| "no".into(), |(h, n)| format!("{n} transactions, final hash {h}")),
-            );
+            row("Converted from version 1", st.link_v1.as_ref().map_or_else(|| "no".into(), |(h, n)| format!("{n} transactions, final hash {h}")));
             row("Writable", if st.writable { "yes".into() } else { "no (read-only)".into() });
         });
-        let ask = ui
-            .button("Read table sizes")
-            .on_hover_text("Reads the file's tables and version rows (on request; the project is not locked)")
-            .clicked();
+        let ask =
+            ui.button("Read table sizes").on_hover_text("Reads the file's tables and version rows (on request; the project is not locked)").clicked();
         if let Some((read, when)) = &self.storage {
             ui.label(format!("Read {when}:"));
             match read {
@@ -823,12 +769,7 @@ impl Debugger {
                     let frame = egui::Frame::group(ui.style());
                     frame.show(ui, |ui| {
                         ui.label(RichText::new(format!("{} ({})", b.name, b.status)).strong());
-                        ui.label(format!(
-                            "head {}, {} rows, {from}{}",
-                            b.head,
-                            b.rows,
-                            if b.release_line { ", release line" } else { "" }
-                        ));
+                        ui.label(format!("head {}, {} rows, {from}{}", b.head, b.rows, if b.release_line { ", release line" } else { "" }));
                         ui.monospace(format!("ID {}  head chain {}", b.id, b.head_chain));
                     });
                 }
@@ -878,37 +819,19 @@ impl Debugger {
         let mut run = None;
         ui.label("Checks run only when asked, on copies, and never change the project.");
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("Verify replay")
-                .on_hover_text("Replay the history and compare with the live document")
-                .clicked()
-            {
+            if ui.button("Verify replay").on_hover_text("Replay the history and compare with the live document").clicked() {
                 run = Some(CheckKind::Replay);
             }
-            if ui
-                .button("Verify projection")
-                .on_hover_text("Reproject the open pages and compare with their drawings")
-                .clicked()
-            {
+            if ui.button("Verify projection").on_hover_text("Reproject the open pages and compare with their drawings").clicked() {
                 run = Some(CheckKind::Projection);
             }
-            if ui
-                .button("Verify file")
-                .on_hover_text("Re-read the file: frames, checksums, hash chain, history")
-                .clicked()
-            {
+            if ui.button("Verify file").on_hover_text("Re-read the file: frames, checksums, hash chain, history").clicked() {
                 run = Some(CheckKind::File);
             }
         });
         let warn = ui.visuals().warn_fg_color;
         for r in self.checks.iter().rev() {
-            let head = format!(
-                "{} {} at seq {}, {}",
-                if r.check.ok { "PASS" } else { "FAIL" },
-                r.check.what,
-                r.check.at_seq,
-                r.time
-            );
+            let head = format!("{} {} at seq {}, {}", if r.check.ok { "PASS" } else { "FAIL" }, r.check.what, r.check.at_seq, r.time);
             ui.label(RichText::new(head).strong().color(if r.check.ok { ok_color() } else { warn }));
             for l in &r.check.lines {
                 ui.label(format!("  {l}"));
@@ -924,25 +847,18 @@ impl Debugger {
         // ECAD IDs → model objects (live values).
         for id in &self.focus {
             let label = debug::object_label(&snap.doc, *id);
-            egui::CollapsingHeader::new(format!("{} {} {label}", id.kind(), id.short()))
-                .id_salt(("dbg_obj", id.hex(), id.kind()))
-                .show(ui, |ui| {
-                    ui.monospace(format!("ID {}", id.hex()));
-                    let users = debug::used_by(&snap.doc, *id);
-                    if !users.is_empty() {
-                        let shown: Vec<String> =
-                            users.iter().take(PAGE).map(|u| format!("{} {}", u.kind(), u.short())).collect();
-                        ui.label(format!(
-                            "Used by: {}{}",
-                            shown.join(", "),
-                            if users.len() > PAGE { ", …" } else { "" }
-                        ));
-                    }
-                    match debug::object_json(&snap.doc, *id) {
-                        Some(v) => ui.monospace(json_text(&v)),
-                        None => ui.label("Not in the live model (deleted or never created)."),
-                    };
-                });
+            egui::CollapsingHeader::new(format!("{} {} {label}", id.kind(), id.short())).id_salt(("dbg_obj", id.hex(), id.kind())).show(ui, |ui| {
+                ui.monospace(format!("ID {}", id.hex()));
+                let users = debug::used_by(&snap.doc, *id);
+                if !users.is_empty() {
+                    let shown: Vec<String> = users.iter().take(PAGE).map(|u| format!("{} {}", u.kind(), u.short())).collect();
+                    ui.label(format!("Used by: {}{}", shown.join(", "), if users.len() > PAGE { ", …" } else { "" }));
+                }
+                match debug::object_json(&snap.doc, *id) {
+                    Some(v) => ui.monospace(json_text(&v)),
+                    None => ui.label("Not in the live model (deleted or never created)."),
+                };
+            });
         }
         // → the transactions that touched them.
         let touching = self.touching();
@@ -979,12 +895,7 @@ impl Debugger {
         ));
         let command = snap.events.iter().find(|e| e.seq == seq && e.command.is_some());
         if let Some(e) = command {
-            ui.label(format!(
-                "Recorded by command {} (event #{} {:?})",
-                e.command.as_deref().unwrap_or(""),
-                e.n,
-                e.kind
-            ));
+            ui.label(format!("Recorded by command {} (event #{} {:?})", e.command.as_deref().unwrap_or(""), e.n, e.kind));
         }
         let mut read = false;
         let mut read_row = false;
@@ -1021,10 +932,7 @@ impl Debugger {
         match &self.record {
             Some(Ok(r)) => {
                 match &r.check {
-                    Ok(()) => ui.label(
-                        RichText::new("The bytes are a valid record holding exactly this transaction.")
-                            .color(ok_color()),
-                    ),
+                    Ok(()) => ui.label(RichText::new("The bytes are a valid record holding exactly this transaction.").color(ok_color())),
                     Err(e) => ui.label(RichText::new(format!("The bytes do NOT match: {e}")).color(warn)),
                 };
                 ui.monospace(debug::printable(&r.shown));
@@ -1041,15 +949,12 @@ impl Debugger {
         for (i, op) in tx.ops.iter().take(MAX_OPS).enumerate() {
             let v = op_view(op);
             let targets = v.targets.iter().map(|t| t.short()).collect::<Vec<_>>().join(", ");
-            egui::CollapsingHeader::new(format!("{} {}  {targets}", i + 1, v.name)).id_salt(("dbg_op", seq, i)).show(
-                ui,
-                |ui| {
-                    ui.label("before:");
-                    ui.monospace(v.before.as_ref().map_or_else(|| "(none)".into(), json_text));
-                    ui.label("after:");
-                    ui.monospace(v.after.as_ref().map_or_else(|| "(none)".into(), json_text));
-                },
-            );
+            egui::CollapsingHeader::new(format!("{} {}  {targets}", i + 1, v.name)).id_salt(("dbg_op", seq, i)).show(ui, |ui| {
+                ui.label("before:");
+                ui.monospace(v.before.as_ref().map_or_else(|| "(none)".into(), json_text));
+                ui.label("after:");
+                ui.monospace(v.after.as_ref().map_or_else(|| "(none)".into(), json_text));
+            });
         }
         if tx.ops.len() > MAX_OPS {
             ui.label(format!("… {} more ops", tx.ops.len() - MAX_OPS));

@@ -133,10 +133,7 @@ pub fn format(prefix: &str, n: u64, padding: u8) -> String {
 pub fn normalise(text: &str, padding: u8) -> Result<String, String> {
     let t = text.trim();
     let n = t.chars().count();
-    if !(1..=MAX_TAG_CHARS).contains(&n)
-        || t.chars().any(char::is_control)
-        || t.chars().all(|c| c == '-' || c.is_whitespace())
-    {
+    if !(1..=MAX_TAG_CHARS).contains(&n) || t.chars().any(char::is_control) || t.chars().all(|c| c == '-' || c.is_whitespace()) {
         return Err(BAD_TAG.into());
     }
     if let Some((prefix, number)) = parse(t) {

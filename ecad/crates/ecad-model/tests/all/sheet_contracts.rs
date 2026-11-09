@@ -15,11 +15,7 @@ fn fixture() -> F {
     let mut ids = IdAllocator::seeded(19);
     let mut ledger = Ledger::new(19);
     let pages: Vec<PageId> = (0..3).map(|_| ids.fresh()).collect();
-    let ops = pages
-        .iter()
-        .enumerate()
-        .map(|(i, p)| Op::AddPage { id: *p, page: Page::new(format!("{i}")), index: i })
-        .collect();
+    let ops = pages.iter().enumerate().map(|(i, p)| Op::AddPage { id: *p, page: Page::new(format!("{i}")), index: i }).collect();
     ledger.commit(Author::User, "pages", ops).unwrap();
     F { ids, ledger, pages }
 }
@@ -29,12 +25,7 @@ fn folder(name: &str, parent: Option<FolderId>) -> Folder {
 }
 
 fn set_page(page: PageId, key: &str, before: Option<&str>, after: Option<&str>) -> Op {
-    Op::SetProperty {
-        object: ObjectRef::Page(page),
-        key: key.into(),
-        before: before.map(str::to_string),
-        after: after.map(str::to_string),
-    }
+    Op::SetProperty { object: ObjectRef::Page(page), key: key.into(), before: before.map(str::to_string), after: after.map(str::to_string) }
 }
 
 #[test]
@@ -47,12 +38,7 @@ fn page_and_project_properties_set_and_undo() {
             "props",
             vec![
                 set_page(p, NUMBER_KEY, None, Some("100")),
-                Op::SetProperty {
-                    object: ObjectRef::Project,
-                    key: "title".into(),
-                    before: None,
-                    after: Some("P7".into()),
-                },
+                Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
             ],
         )
         .unwrap();
@@ -104,10 +90,7 @@ fn folder_invariants_refuse_bad_states() {
         ("a page's folder is not an ID", |f, _, _| vec![set_page(f.pages[0], FOLDER_KEY, None, Some("nope"))]),
         ("a parent is missing", |_, a, b| vec![Op::AddFolder { id: a, folder: folder("A", Some(b)), index: 0 }]),
         ("a folder inside itself", |_, a, b| {
-            vec![
-                Op::AddFolder { id: a, folder: folder("A", Some(b)), index: 0 },
-                Op::AddFolder { id: b, folder: folder("B", Some(a)), index: 1 },
-            ]
+            vec![Op::AddFolder { id: a, folder: folder("A", Some(b)), index: 0 }, Op::AddFolder { id: b, folder: folder("B", Some(a)), index: 1 }]
         }),
         ("removing a folder a page is in", |f, a, _| {
             vec![

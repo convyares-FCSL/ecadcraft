@@ -13,14 +13,7 @@
 //! Release builds on Windows open no console window beside the trial, as CADCraft's desktop app;
 //! their `--help`, `--version` and usage errors are then not shown (use a debug build).
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use cadcraft_ui_egui::switch::Switch;
 use ecad_trial::startup::{Adapter, StartupTiming, Step, preferred_folder};
@@ -108,10 +101,7 @@ fn main() -> eframe::Result {
     );
     let mut options = eframe::NativeOptions {
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface),
-        viewport: egui::ViewportBuilder::default()
-            .with_title(TITLE)
-            .with_inner_size([1400.0, 900.0])
-            .with_min_inner_size([900.0, 560.0]),
+        viewport: egui::ViewportBuilder::default().with_title(TITLE).with_inner_size([1400.0, 900.0]).with_min_inner_size([900.0, 560.0]),
         persist_window: false,
         stencil_buffer: STENCIL_BITS,
         ..Default::default()
@@ -152,11 +142,8 @@ fn main() -> eframe::Result {
             if let Some(t) = &mut timing {
                 t.mark(Step::SetWgpu);
             }
-            let timing = timing.map(|marks| Timing {
-                marks,
-                dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()),
-                built: false,
-            });
+            let timing =
+                timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()), built: false });
             Ok(Box::new(App(trial, timing)))
         }),
     )

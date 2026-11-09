@@ -9,24 +9,15 @@ fn the_demo_command_list_builds_the_control_panel() {
     let mut mcp = EcadMcp::in_memory("demo", 0xDE30, Options { write: true, agent: None }).unwrap();
     let n = demo::run(&mut mcp, demo::COMMANDS).unwrap_or_else(|e| panic!("{e}"));
     assert!(n > 60, "{n} commands");
-    let (doc, log) = mcp
-        .with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap())
-        .unwrap();
+    let (doc, log) = mcp.with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap()).unwrap();
     // Three pages, as named.
     let titles: Vec<&str> = doc.page_order.iter().map(|p| doc.pages[p].title.as_str()).collect();
     assert_eq!(titles, ["Supply", "Motor control", "Field"]);
     // Every transaction after the project's creation is the demo's, as an agent.
     assert!(log.iter().skip(1).all(|t| t.author == Author::Agent(demo::AUTHOR.into())));
     // The devices, by tag.
-    let tags: Vec<String> = ecad_cadcraft::devices::devices(&doc, None)
-        .into_iter()
-        .map(|c| ecad_cadcraft::devices::tag_words(&doc, c))
-        .collect();
-    assert_eq!(
-        tags,
-        ["-G01", "-H01", "-H02", "-K01", "-M01", "-Q01", "-Q02", "-S01", "-S02", "-X01", "-X02"],
-        "{tags:?}"
-    );
+    let tags: Vec<String> = ecad_cadcraft::devices::devices(&doc, None).into_iter().map(|c| ecad_cadcraft::devices::tag_words(&doc, c)).collect();
+    assert_eq!(tags, ["-G01", "-H01", "-H02", "-K01", "-M01", "-Q01", "-Q02", "-S01", "-S02", "-X01", "-X02"], "{tags:?}");
     // -K01 is one device across pages 2 and 3: coil, hold-in NO, power contacts, NC.
     let k1 = doc.components_tagged("-K01")[0];
     assert_eq!(doc.representations_of(Subject::Component(k1)).count(), 4);
@@ -58,18 +49,14 @@ fn the_demo_nets_and_wire_numbers() {
     // Every conductor's label, by page, as the pages show them.
     let mut shown: Vec<String> = Vec::new();
     for (i, page) in doc.page_order.iter().enumerate() {
-        let mut labels: Vec<String> = ecad_cadcraft::wires::labels_on_page(&doc, *page)
-            .into_iter()
-            .map(|l| format!("{}: {}", i + 1, l.text))
-            .collect();
+        let mut labels: Vec<String> =
+            ecad_cadcraft::wires::labels_on_page(&doc, *page).into_iter().map(|l| format!("{}: {}", i + 1, l.text)).collect();
         labels.sort();
         labels.dedup();
         shown.extend(labels);
     }
-    let checks: Vec<String> = ecad_cadcraft::checks::all(&doc, 1e-9)
-        .iter()
-        .map(|c| format!("{:?} {} {}", c.kind, c.locator(&doc), c.which))
-        .collect();
+    let checks: Vec<String> =
+        ecad_cadcraft::checks::all(&doc, 1e-9).iter().map(|c| format!("{:?} {} {}", c.kind, c.locator(&doc), c.which)).collect();
     // Recorded from the build (design 022 §14 asks for the actual list). Page 1: L and N on each
     // side of -Q01, PE, and the PSU outputs through continuations 24V and 0V. Page 2: 24V-01 from
     // the continuation, the control nets, 0V-01 through the junction, L1-L3 above the contactor
@@ -130,12 +117,7 @@ fn the_demo_nets_and_wire_numbers() {
     // Checks: -M01:PE, and the three L continuations whose partners are not drawn.
     assert_eq!(
         checks,
-        [
-            "LonelyContinuation 2-C-4 L1",
-            "LonelyContinuation 2-C-4 L2",
-            "LonelyContinuation 2-C-4 L3",
-            "Unconnected 3-C-5 -M01:PE"
-        ],
+        ["LonelyContinuation 2-C-4 L1", "LonelyContinuation 2-C-4 L2", "LonelyContinuation 2-C-4 L3", "Unconnected 3-C-5 -M01:PE"],
         "{checks:#?}"
     );
 }

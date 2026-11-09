@@ -3,9 +3,8 @@
 
 use ecad_model::derive::terminal_positions;
 use ecad_model::{
-    Author, Color, Component, ComponentId, Definition, DefinitionId, IdAllocator, Item, ItemId, ItemKind, Layer,
-    Ledger, ObjectRef, Op, Page, PageId, Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance,
-    Terminal, TerminalDef, TerminalId,
+    Author, Color, Component, ComponentId, Definition, DefinitionId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, ObjectRef, Op, Page, PageId,
+    Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
 };
 
 struct Fx {
@@ -35,10 +34,7 @@ fn symbol(fx: &Fx, definition: DefinitionId, at: Pt) -> Item {
     Item {
         page: fx.page,
         style: Style { layer: fx.layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
-        kind: ItemKind::Symbol(SymbolInstance {
-            definition,
-            placement: Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 },
-        }),
+        kind: ItemKind::Symbol(SymbolInstance { definition, placement: Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 } }),
     }
 }
 
@@ -65,13 +61,7 @@ fn fixture() -> Fx {
 
 /// Ops adding a symbol of `definition` at `at` as a representation of K1 with two new terminals
 /// labelled `labels`, with connection points (local frame) when `cps`.
-fn contact_ops(
-    fx: &mut Fx,
-    definition: DefinitionId,
-    at: Pt,
-    labels: [&str; 2],
-    cps: bool,
-) -> (Vec<Op>, [TerminalId; 2]) {
+fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2], cps: bool) -> (Vec<Op>, [TerminalId; 2]) {
     let (t1, t2, item, rep): (TerminalId, TerminalId, ItemId, ecad_model::RepresentationId) =
         (fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh());
     let mut connection_points = std::collections::BTreeMap::new();
@@ -130,12 +120,8 @@ fn connection_points_of_a_symbol_follow_its_placement() {
     assert!(shown.iter().any(|(t, _, p)| *t == t1 && p.near(Pt::new(50.0, 10.0), 1e-9)));
     assert!(shown.iter().any(|(t, _, p)| *t == t2 && p.near(Pt::new(50.0, -10.0), 1e-9)));
     // Moving the instance moves its terminals, with no change to the representation.
-    let (item, before) = doc
-        .items
-        .iter()
-        .find(|(_, i)| matches!(&i.kind, ItemKind::Symbol(s) if s.definition == fx.contact))
-        .map(|(id, i)| (*id, i.clone()))
-        .unwrap();
+    let (item, before) =
+        doc.items.iter().find(|(_, i)| matches!(&i.kind, ItemKind::Symbol(s) if s.definition == fx.contact)).map(|(id, i)| (*id, i.clone())).unwrap();
     let after = symbol(&fx, fx.contact, Pt::new(80.0, 5.0));
     fx.l.commit(Author::User, "move", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
     let shown = terminal_positions(fx.l.document(), fx.page);

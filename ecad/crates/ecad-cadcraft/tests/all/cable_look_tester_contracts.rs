@@ -29,8 +29,8 @@ use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::{
-    CableId, CableMember, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, Transaction,
+    CableId, CableMember, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style,
+    Subject, Transaction,
 };
 use serde_json::{Value, json};
 
@@ -92,8 +92,7 @@ fn fixture_on(mut h: H, left: bool, right: bool) -> Fx {
         h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
     h.run("setprop", json!({"cable": c1.hex(), "key": "designation", "value": "MOTOR M1"})).unwrap();
     h.run("setprop", json!({"cable": c1.hex(), "key": "type", "value": "4/C #10"})).unwrap();
     h.run("zoom", json!({"mode": "window", "p1": [-30, -30], "p2": [140, 50]})).unwrap();
@@ -156,9 +155,7 @@ fn near(a: Pt, b: Pt) -> bool {
 fn all_finite(d: &look::CableDrawing) -> bool {
     d.parts.iter().all(|p| match &p.shape {
         Shape::Path { points, .. } => points.iter().all(|q| q.is_finite()),
-        Shape::Arc { center, radius, start, end } => {
-            center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite()
-        }
+        Shape::Arc { center, radius, start, end } => center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite(),
         Shape::Text { at, rotation, .. } => at.is_finite() && rotation.is_finite(),
     })
 }
@@ -218,11 +215,7 @@ fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
     let m = h.doc().cables[&cable].members[index].clone();
     let ops = vec![
         Op::RemoveCableMember { cable, index, member: m.clone() },
-        Op::AddCableMember {
-            cable,
-            index,
-            member: CableMember { conductor: m.conductor, core: core.map(str::to_string) },
-        },
+        Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: core.map(str::to_string) } },
     ];
     h.project.apply_ops(&mut h.s, "Core label", ops).unwrap();
     h.check();
@@ -231,11 +224,7 @@ fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
 /// The squares (loose ends) of the overlay on `page`.
 fn squares(h: &mut H, page: PageId) -> Vec<Vec2> {
     let uid = h.p(|p| p.pages[&page].uid).unwrap();
-    h.p(|p| overlay_marks(p, uid))
-        .into_iter()
-        .filter(|m| m.shape == cadcraft_engine::ext::MarkShape::Square)
-        .map(|m| m.at)
-        .collect()
+    h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == cadcraft_engine::ext::MarkShape::Square).map(|m| m.at).collect()
 }
 
 /// Texts on the reserved layer on `page`: (insert, rotation, value).
@@ -273,11 +262,7 @@ fn cablecore_json_contract_table() {
             params: |f| json!({"conductor": f.wires[0].hex(), "core": "ü".repeat(32)}),
             want: Ok(Some("üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü")),
         },
-        Row {
-            name: "upper-case hex id",
-            params: |f| json!({"conductor": f.wires[0].hex().to_uppercase(), "core": "1"}),
-            want: Ok(Some("1")),
-        },
+        Row { name: "upper-case hex id", params: |f| json!({"conductor": f.wires[0].hex().to_uppercase(), "core": "1"}), want: Ok(Some("1")) },
         Row {
             name: "33 characters",
             params: |f| json!({"conductor": f.wires[0].hex(), "core": "x".repeat(33)}),
@@ -288,11 +273,7 @@ fn cablecore_json_contract_table() {
             params: |f| json!({"conductor": f.wires[0].hex(), "core": "x".repeat(1000)}),
             want: Err("A core label can be at most 32 characters."),
         },
-        Row {
-            name: "carriage return",
-            params: |f| json!({"conductor": f.wires[0].hex(), "core": "1\r"}),
-            want: Ok(Some("1")),
-        },
+        Row { name: "carriage return", params: |f| json!({"conductor": f.wires[0].hex(), "core": "1\r"}), want: Ok(Some("1")) },
         Row {
             name: "tab inside",
             params: |f| json!({"conductor": f.wires[0].hex(), "core": "1\t2"}),
@@ -323,33 +304,17 @@ fn cablecore_json_contract_table() {
             params: |f| json!({"conductor": f.wires[0].hex(), "core": {"v": "1"}}),
             want: Err("`core` must be a string, or null to clear it"),
         },
-        Row {
-            name: "core missing",
-            params: |f| json!({"conductor": f.wires[0].hex()}),
-            want: Err("`core` must be a string, or null to clear it"),
-        },
+        Row { name: "core missing", params: |f| json!({"conductor": f.wires[0].hex()}), want: Err("`core` must be a string, or null to clear it") },
         Row { name: "empty object", params: |_| json!({}), want: Err("`conductor` (hex id) is required") },
         Row { name: "null params", params: |_| Value::Null, want: Err("`conductor` (hex id) is required") },
-        Row {
-            name: "conductor a number",
-            params: |_| json!({"conductor": 12, "core": "1"}),
-            want: Err("`conductor` (hex id) is required"),
-        },
-        Row {
-            name: "conductor not hex",
-            params: |_| json!({"conductor": "W1", "core": "1"}),
-            want: Err("`conductor` (hex id) is required"),
-        },
+        Row { name: "conductor a number", params: |_| json!({"conductor": 12, "core": "1"}), want: Err("`conductor` (hex id) is required") },
+        Row { name: "conductor not hex", params: |_| json!({"conductor": "W1", "core": "1"}), want: Err("`conductor` (hex id) is required") },
         Row {
             name: "conductor overflows 128 bits",
             params: |_| json!({"conductor": "f".repeat(40), "core": "1"}),
             want: Err("`conductor` (hex id) is required"),
         },
-        Row {
-            name: "a cable id as conductor",
-            params: |f| json!({"conductor": f.c1.hex(), "core": "1"}),
-            want: Err("no such conductor"),
-        },
+        Row { name: "a cable id as conductor", params: |f| json!({"conductor": f.c1.hex(), "core": "1"}), want: Err("no such conductor") },
         Row {
             name: "batch, cores too short",
             params: |f| json!({"cable": f.c1.hex(), "cores": []}),
@@ -380,11 +345,7 @@ fn cablecore_json_contract_table() {
             params: |f| json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "y".repeat(33)]}),
             want: Err("Core 4: A core label can be at most 32 characters."),
         },
-        Row {
-            name: "batch, cable missing",
-            params: |_| json!({"cores": ["1", "2", "3", "4"]}),
-            want: Err("`cable` (hex id) is required"),
-        },
+        Row { name: "batch, cable missing", params: |_| json!({"cores": ["1", "2", "3", "4"]}), want: Err("`cable` (hex id) is required") },
         Row {
             name: "batch, no such cable",
             params: |f| json!({"cable": f.wires[0].hex(), "cores": ["1", "2", "3", "4"]}),
@@ -405,8 +366,7 @@ fn cablecore_json_contract_table() {
             }
             (Err(words), Err(e)) => {
                 if !e.contains(words) || f.h.head() != head || f.h.doc() != doc {
-                    failures
-                        .push(format!("{}: {params} refused with {e:?}, want {words:?}, nothing written", row.name));
+                    failures.push(format!("{}: {params} refused with {e:?}, want {words:?}, nothing written", row.name));
                 }
             }
             (want, got) => failures.push(format!("{}: {params}: want {want:?}, got {got:?}", row.name)),
@@ -443,10 +403,7 @@ fn ac3_save_and_reopen_keep_core_labels_and_replay_matches() {
     let mut h = H { s, project: handle, trail: Vec::new() };
     assert_eq!(h.doc(), doc, "document unchanged by save and reopen");
     assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log, "log unchanged by save and reopen");
-    assert_eq!(
-        cores(&mut h, f.c1),
-        vec![Some("1".into()), Some("BK".into()), Some("grün/gelb".into()), Some("PE".into())]
-    );
+    assert_eq!(cores(&mut h, f.c1), vec![Some("1".into()), Some("BK".into()), Some("grün/gelb".into()), Some("PE".into())]);
     assert!(h.p(|p| p.ledger.replay_matches().unwrap()));
     h.check();
     // The labels are drawn at once (traditional, at the slash) and in fan view after a switch.
@@ -510,11 +467,8 @@ fn ac5_interactive_equals_json_for_a_table_of_inputs() {
         (".", Value::Null, Some("1")),
     ];
     // How the wire (W3, y = 10) is picked: (name, fan view, point on the canvas).
-    let picks: [(&str, bool, (f64, f64)); 3] = [
-        ("route", false, (30.0, 10.0)),
-        ("fan tail", true, (10.0, 10.0)),
-        ("traditional core label", false, (0.0, 0.0)),
-    ];
+    let picks: [(&str, bool, (f64, f64)); 3] =
+        [("route", false, (30.0, 10.0)), ("fan tail", true, (10.0, 10.0)), ("traditional core label", false, (0.0, 0.0))];
     for (typed, value, before) in &cases {
         for (how, fan_view, at) in picks {
             if how == "traditional core label" && before.is_none() {
@@ -543,11 +497,7 @@ fn ac5_interactive_equals_json_for_a_table_of_inputs() {
             let head = b.h.head();
             b.h.s.start("cablecore").unwrap();
             click(&mut b.h, at.x + 0.2, at.y + 0.2).unwrap();
-            assert_eq!(
-                prompt(&b.h),
-                format!("Core number or colour for W3 <{}>:", before.unwrap_or("none")),
-                "{how}, {typed:?}"
-            );
+            assert_eq!(prompt(&b.h), format!("Core number or colour for W3 <{}>:", before.unwrap_or("none")), "{how}, {typed:?}");
             b.h.s.input(Input::Text((*typed).to_string())).unwrap();
             b.h.s.input(Input::Enter).unwrap();
             assert!(b.h.s.running.is_none());
@@ -609,16 +559,10 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
         };
         // Left: S = (20, y).
         assert!(near(find(Role::CoreLabel, &core, true), Pt::new(20.0 - g - wc, y + lift)), "left core {core}");
-        assert!(
-            near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::LABEL_SPACING - ww, y + lift)),
-            "left {wire}"
-        );
+        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::LABEL_SPACING - ww, y + lift)), "left {wire}");
         // Right: S = (100, y).
         assert!(near(find(Role::CoreLabel, &core, false), Pt::new(100.0 + g, y + lift)), "right core {core}");
-        assert!(
-            near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::LABEL_SPACING, y + lift)),
-            "right {wire}"
-        );
+        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::LABEL_SPACING, y + lift)), "right {wire}");
         // Labels sit on their own wire's tail, never on the spine side of the tail start.
         let tail_end_x = |left: bool| if left { 0.0 } else { 120.0 };
         for left in [true, false] {
@@ -858,10 +802,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
     for x in bad {
         let head = f.h.head();
         let before = base.items[&route].clone();
-        let after = Item {
-            kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(x, 5.0) }),
-            ..before.clone()
-        };
+        let after = Item { kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(x, 5.0) }), ..before.clone() };
         assert!(f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: route, before, after }]).is_err());
         assert_eq!(f.h.head(), head);
         let rep_item = base.representations.values().find(|r| r.role == look::REFERENCE_ROLE).unwrap().items[0];
@@ -960,8 +901,7 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
             h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("X{i:02}")})).unwrap();
             ws.push(w);
         }
-        let k: CableId =
-            id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");
+        let k: CableId = id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");
         assert_eq!(h.doc().cables[&k].members.len(), 20);
         let head = h.head();
         let labels: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
@@ -986,8 +926,7 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
         // Each tail lies on its own wire's line (no two tails share a line on the same side).
         let across = |q: Pt| if vertical { q.x } else { q.y };
         let along = |q: Pt| if vertical { q.y } else { q.x };
-        let mut lines: Vec<(bool, i64)> =
-            tails.iter().map(|t| (along(t[0]) < 40.0, (across(t[0]) * 1000.0).round() as i64)).collect();
+        let mut lines: Vec<(bool, i64)> = tails.iter().map(|t| (along(t[0]) < 40.0, (across(t[0]) * 1000.0).round() as i64)).collect();
         lines.sort();
         lines.dedup();
         assert_eq!(lines.len(), 40, "tails on distinct lines");
@@ -1084,11 +1023,8 @@ fn ac6_huge_finite_reference_point_draws_only_finite_geometry() {
             view(&mut f.h, f.c1, v);
             f.h.check();
             let d = drawing(&mut f.h, f.page, f.c1, v == "fan");
-            let bad: Vec<_> = d
-                .parts
-                .iter()
-                .filter(|p| !all_finite(&look::CableDrawing { parts: vec![(*p).clone()], ..Default::default() }))
-                .collect();
+            let bad: Vec<_> =
+                d.parts.iter().filter(|p| !all_finite(&look::CableDrawing { parts: vec![(*p).clone()], ..Default::default() })).collect();
             assert!(bad.is_empty(), "reference at {at:?}, {v}: non-finite parts {bad:?}");
         }
     }
@@ -1147,16 +1083,8 @@ fn cablefan_json_contract_table() {
     let rows = [
         Row { name: "point on the spine", params: |k| json!({"cable": k, "at": [22.5, 11]}), want: Ok(11.0) },
         Row { name: "point off the spine snaps", params: |k| json!({"cable": k, "at": [5, 2]}), want: Ok(2.0) },
-        Row {
-            name: "point above clamps",
-            params: |k| json!({"cable": k, "end": "A", "at": [0, 1e12]}),
-            want: Ok(15.0),
-        },
-        Row {
-            name: "point below clamps",
-            params: |k| json!({"cable": k, "end": "A", "at": [0, -1e12]}),
-            want: Ok(0.0),
-        },
+        Row { name: "point above clamps", params: |k| json!({"cable": k, "end": "A", "at": [0, 1e12]}), want: Ok(15.0) },
+        Row { name: "point below clamps", params: |k| json!({"cable": k, "end": "A", "at": [0, -1e12]}), want: Ok(0.0) },
         Row { name: "fraction 0", params: |k| json!({"cable": k, "end": "A", "at": 0}), want: Ok(0.0) },
         Row { name: "fraction 1", params: |k| json!({"cable": k, "end": "A", "at": 1}), want: Ok(15.0) },
         Row { name: "fraction 0.2", params: |k| json!({"cable": k, "end": "A", "at": 0.2}), want: Ok(3.0) },
@@ -1170,58 +1098,18 @@ fn cablefan_json_contract_table() {
             params: |k| json!({"cable": k, "end": "A", "at": -0.1}),
             want: Err("`at` as a fraction must be from 0 to 1"),
         },
-        Row {
-            name: "huge fraction",
-            params: |k| json!({"cable": k, "end": "A", "at": 1e308}),
-            want: Err("`at` as a fraction must be from 0 to 1"),
-        },
-        Row {
-            name: "point beyond 1e12",
-            params: |k| json!({"cable": k, "end": "A", "at": [0, 1.0000001e12]}),
-            want: Err("Point out of range."),
-        },
-        Row {
-            name: "point 1e308",
-            params: |k| json!({"cable": k, "at": [1e308, 1e308]}),
-            want: Err("Point out of range."),
-        },
+        Row { name: "huge fraction", params: |k| json!({"cable": k, "end": "A", "at": 1e308}), want: Err("`at` as a fraction must be from 0 to 1") },
+        Row { name: "point beyond 1e12", params: |k| json!({"cable": k, "end": "A", "at": [0, 1.0000001e12]}), want: Err("Point out of range.") },
+        Row { name: "point 1e308", params: |k| json!({"cable": k, "at": [1e308, 1e308]}), want: Err("Point out of range.") },
         Row { name: "at missing", params: |k| json!({"cable": k, "end": "A"}), want: Err("`at` must be a point") },
-        Row {
-            name: "at a bool",
-            params: |k| json!({"cable": k, "end": "A", "at": true}),
-            want: Err("`at` must be a point"),
-        },
-        Row {
-            name: "at a string",
-            params: |k| json!({"cable": k, "end": "A", "at": "0.5"}),
-            want: Err("`at` must be a point"),
-        },
-        Row {
-            name: "at an object",
-            params: |k| json!({"cable": k, "end": "A", "at": {"x": 0, "y": 1}}),
-            want: Err("`at` must be a point"),
-        },
-        Row {
-            name: "at one number",
-            params: |k| json!({"cable": k, "end": "A", "at": [1]}),
-            want: Err("`at` must be a point"),
-        },
-        Row {
-            name: "at strings",
-            params: |k| json!({"cable": k, "end": "A", "at": ["1", "2"]}),
-            want: Err("`at` must be a point"),
-        },
-        Row {
-            name: "end lower case",
-            params: |k| json!({"cable": k, "end": "a", "at": 0.5}),
-            want: Err("`end` must be"),
-        },
+        Row { name: "at a bool", params: |k| json!({"cable": k, "end": "A", "at": true}), want: Err("`at` must be a point") },
+        Row { name: "at a string", params: |k| json!({"cable": k, "end": "A", "at": "0.5"}), want: Err("`at` must be a point") },
+        Row { name: "at an object", params: |k| json!({"cable": k, "end": "A", "at": {"x": 0, "y": 1}}), want: Err("`at` must be a point") },
+        Row { name: "at one number", params: |k| json!({"cable": k, "end": "A", "at": [1]}), want: Err("`at` must be a point") },
+        Row { name: "at strings", params: |k| json!({"cable": k, "end": "A", "at": ["1", "2"]}), want: Err("`at` must be a point") },
+        Row { name: "end lower case", params: |k| json!({"cable": k, "end": "a", "at": 0.5}), want: Err("`end` must be") },
         Row { name: "end a number", params: |k| json!({"cable": k, "end": 0, "at": 0.5}), want: Err("`end` must be") },
-        Row {
-            name: "cable missing",
-            params: |_| json!({"end": "A", "at": 0.5}),
-            want: Err("`cable` (hex id) is required"),
-        },
+        Row { name: "cable missing", params: |_| json!({"end": "A", "at": 0.5}), want: Err("`cable` (hex id) is required") },
         Row { name: "null params", params: |_| Value::Null, want: Err("`cable` (hex id) is required") },
     ];
     let mut failures = Vec::new();
@@ -1240,8 +1128,7 @@ fn cablefan_json_contract_table() {
             }
             (Err(words), Err(e)) => {
                 if !e.contains(words) || f.h.head() != head || f.h.doc() != doc {
-                    failures
-                        .push(format!("{}: {params} refused with {e:?}, want {words:?}, nothing written", row.name));
+                    failures.push(format!("{}: {params} refused with {e:?}, want {words:?}, nothing written", row.name));
                 }
             }
             (want, got) => failures.push(format!("{}: {params}: want {want:?}, got {got:?}", row.name)),
@@ -1412,8 +1299,7 @@ fn cablefan_interactive_middle_and_refusals() {
 /// each record one transaction and leave the page consistent.
 #[test]
 fn s2_window_round_a_labelled_cable_with_components() {
-    for (cmd, extra) in [("move", json!({"delta": [0, 60]})), ("copy", json!({"delta": [0, 60]})), ("erase", json!({}))]
-    {
+    for (cmd, extra) in [("move", json!({"delta": [0, 60]})), ("copy", json!({"delta": [0, 60]})), ("erase", json!({}))] {
         let mut f = fixture(true, true);
         f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4"]})).unwrap();
         let all: Vec<String> = f.h.p(|p| p.pages[&f.page].map.handles().map(|h| h.hex()).collect());

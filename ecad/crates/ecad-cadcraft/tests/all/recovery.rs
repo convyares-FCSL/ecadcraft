@@ -48,15 +48,7 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     let (mut h, c1, _c2, _w) = small_project(31);
     let page = h.first_page();
     let handles = h.rep_handles(page, c1);
-    h.s.set_selection(
-        h.s.doc()
-            .unwrap()
-            .model
-            .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-            .map(|e| e.handle)
-            .collect(),
-    );
+    h.s.set_selection(h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect());
     h.cfg(|p| p.faults.fail_projections = 1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), 1);
@@ -181,10 +173,7 @@ fn verification_catches_each_kind_of_disagreement() {
                 x.model.remove(line);
             }),
         ),
-        (
-            "symbol block",
-            tamper(&|x| x.blocks.values_mut().for_each(|b| Arc::make_mut(b).entities = Default::default())),
-        ),
+        ("symbol block", tamper(&|x| x.blocks.values_mut().for_each(|b| Arc::make_mut(b).entities = Default::default()))),
     ];
     for (what, v) in cases {
         assert!(!v.ok(), "{what}: not detected");

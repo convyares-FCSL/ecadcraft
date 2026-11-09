@@ -8,9 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cadcraft_engine::Session;
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
-use ecad_model::{
-    ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Placement, Pt, Subject, TerminalId,
-};
+use ecad_model::{ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Placement, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::commands::{err, id, opt_id, plain_style, point, with_any_page, with_project};
@@ -49,9 +47,7 @@ pub fn net_json(doc: &Document, net: &NetData) -> Value {
         .terminals
         .iter()
         .filter(|t| {
-            doc.terminals.get(t).is_none_or(|x| {
-                !matches!(wires::kind_of(doc, x.component), Some(ecad_model::connectivity::JUNCTION | CONTINUATION))
-            })
+            doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(ecad_model::connectivity::JUNCTION | CONTINUATION)))
         })
         .map(|t| json!({"terminal": t.hex(), "label": wires::point_words(doc, *t)}))
         .collect();
@@ -111,9 +107,7 @@ fn chosen_net(doc: &Document, p: &Value) -> Result<NetId, String> {
 pub(crate) fn run_nets(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let limit = match params.get("limit") {
         None | Some(Value::Null) => DEFAULT_LIMIT,
-        Some(v) => {
-            v.as_u64().map(|n| (n as usize).clamp(1, MAX_LIMIT)).ok_or_else(|| err("`limit` must be a number"))?
-        }
+        Some(v) => v.as_u64().map(|n| (n as usize).clamp(1, MAX_LIMIT)).ok_or_else(|| err("`limit` must be a number"))?,
     };
     let all = params.get("all").and_then(Value::as_bool).unwrap_or(false);
     let after = opt_str(params, "after").map_err(err)?.map(|a| a.trim().to_string());
@@ -145,8 +139,7 @@ pub(crate) fn run_nets(s: &mut Session, params: &Value) -> cadcraft_engine::Resu
             conn.nets().map(|(id, _)| id).collect()
         };
         ids.retain(|id| conn.net(*id).is_some_and(|n| all || !n.conductors.is_empty()));
-        let mut keyed: Vec<((u8, u128), NetId)> =
-            ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
+        let mut keyed: Vec<((u8, u128), NetId)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
         keyed.sort();
         if let Some(a) = &after {
             let cursor = u128::from_str_radix(a, 16).map_err(|_| "`after` must be a cursor from `next`".to_string())?;
@@ -259,10 +252,7 @@ pub(crate) fn run_wirenumber(s: &mut Session, params: &Value) -> cadcraft_engine
         let current = with_project(s, |p, _, _| {
             let doc = p.ledger.document();
             let id = chosen_net(doc, params)?;
-            doc.connectivity()
-                .net(id)
-                .and_then(|n| wiring::net_number(doc, n))
-                .ok_or_else(|| "That net has no number to fix yet.".to_string())
+            doc.connectivity().net(id).and_then(|n| wiring::net_number(doc, n)).ok_or_else(|| "That net has no number to fix yet.".to_string())
         })?;
         let mut p = params.clone();
         p["value"] = json!(current);
@@ -286,17 +276,14 @@ pub(crate) fn run_wirenumber(s: &mut Session, params: &Value) -> cadcraft_engine
             let current = wiring::net_number(doc, &net).ok_or("That net has no number to release.")?;
             let ops = wiring::write_ops(doc, &net, &current, false);
             if ops.is_empty() {
-                return Ok(
-                    json!({"number": current, "fixed": false, "conductors": net.conductors.len(), "changed": false}),
-                );
+                return Ok(json!({"number": current, "fixed": false, "conductors": net.conductors.len(), "changed": false}));
             }
             p.apply_edit(pg, "wirenumber", "Release wire number", ops)?;
             return Ok(json!({"number": current, "fixed": false, "conductors": net.conductors.len()}));
         };
         let conn = doc.connectivity();
         let exempt = doc.settings.wiring.potentials.iter().any(|x| !x.numbered && x.prefix == v);
-        let others: Vec<NetId> =
-            if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
+        let others: Vec<NetId> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
         if others.is_empty() {
             let ops = wiring::write_ops(doc, &net, &v, true);
             if !ops.is_empty() {
@@ -341,9 +328,8 @@ pub(crate) fn run_wirenumber(s: &mut Session, params: &Value) -> cadcraft_engine
             }
             Some("merge") => {
                 sense.map_err(|why| format!("The nets can't be merged: {why}."))?;
-                let name = wires::valid_name(&v).map_err(|_| {
-                    format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)
-                })?;
+                let name =
+                    wires::valid_name(&v).map_err(|_| format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE))?;
                 let starter = wires::continuation_starter().ok_or("the continuation symbol is missing")?;
                 let style = plain_style(p);
                 let mut ops = wiring::write_ops(doc, &net, &v, true);
@@ -388,12 +374,7 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
         for w in &net.conductors {
             let before = doc.conductors.get(w).and_then(|x| x.properties.get(wiring::POTENTIAL_KEY)).cloned();
             if before != value {
-                ops.push(Op::SetProperty {
-                    object: ObjectRef::Conductor(*w),
-                    key: wiring::POTENTIAL_KEY.into(),
-                    before,
-                    after: value.clone(),
-                });
+                ops.push(Op::SetProperty { object: ObjectRef::Conductor(*w), key: wiring::POTENTIAL_KEY.into(), before, after: value.clone() });
             }
         }
         let n = net.conductors.len();
@@ -401,11 +382,7 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
             p.apply_edit(pg, "potential", "Set potential", ops)?;
         }
         let doc = p.ledger.document();
-        let number = doc
-            .connectivity()
-            .net_of_conductor(c)
-            .and_then(|id| doc.connectivity().net(id))
-            .and_then(|n| wiring::net_number(doc, n));
+        let number = doc.connectivity().net_of_conductor(c).and_then(|id| doc.connectivity().net(id)).and_then(|n| wiring::net_number(doc, n));
         Ok(json!({"potential": value, "conductors": n, "number": number}))
     })
 }
@@ -439,30 +416,22 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             w.scheme = Scheme::parse(sc).ok_or("`scheme` must be \"potential\", \"page\" or \"page-column\"")?;
         }
         if let Some(d) = params.get("digits").filter(|v| !v.is_null()) {
-            let d = d
-                .as_u64()
-                .filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d))
-                .ok_or("`digits` must be 1 to 6")?;
+            let d = d.as_u64().filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or("`digits` must be 1 to 6")?;
             w.digits = d as u8;
         }
         if let Some(c) = opt_str(params, "colour_style")? {
-            w.colour_style = wiring::ColourStyle::parse(c)
-                .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+            w.colour_style =
+                wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
         }
         if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
-            let hv = hv
-                .as_f64()
-                .filter(|x| wiring::LABEL_HEIGHTS.contains(x))
-                .ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+            let hv = hv.as_f64().filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
             w.label_height = hv;
         }
         if let Some(u) = opt_str(params, "unclassified_prefix")? {
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();
         }
         if let Some(list) = params.get("potentials").filter(|v| !v.is_null()) {
-            let a = list
-                .as_array()
-                .ok_or("`potentials` must be the whole table: [{name, prefix, numbered, colour, cross_section}]")?;
+            let a = list.as_array().ok_or("`potentials` must be the whole table: [{name, prefix, numbered, colour, cross_section}]")?;
             if a.len() > 200 {
                 return Err("at most 200 potentials".into());
             }
@@ -470,8 +439,7 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             let mut names = BTreeSet::new();
             for r in a {
                 let field = |k: &str| r.get(k).and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
-                let name =
-                    wiring::valid_text("potential", Some(&field("name")))?.ok_or("every potential needs a `name`")?;
+                let name = wiring::valid_text("potential", Some(&field("name")))?.ok_or("every potential needs a `name`")?;
                 if !names.insert(name.to_uppercase()) {
                     return Err(format!("potential {name} is listed twice"));
                 }
@@ -479,8 +447,7 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
                     prefix: wiring::valid_text("prefix", Some(&field("prefix")))?.unwrap_or_default(),
                     numbered: r.get("numbered").and_then(Value::as_bool).unwrap_or(true),
                     colour: wiring::valid_text("colour", Some(&field("colour")))?.unwrap_or_default(),
-                    cross_section: wiring::valid_text("cross-section", Some(&field("cross_section")))?
-                        .unwrap_or_default(),
+                    cross_section: wiring::valid_text("cross-section", Some(&field("cross_section")))?.unwrap_or_default(),
                     name,
                 });
             }
@@ -531,9 +498,8 @@ pub(crate) fn run_junction(s: &mut Session, params: &Value) -> cadcraft_engine::
         // nothing to split (the Checks row's Add junction, design 022 §8).
         let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
         let through = wires::wire_at(doc, page, at, ON_WIRE, None).filter(|on| {
-            wires::route_vertices(doc, on.conductor, page).is_some_and(|(_, _, v)| {
-                !v.first().is_some_and(|f| f.near(on.at, ON_WIRE)) && !v.last().is_some_and(|l| l.near(on.at, ON_WIRE))
-            })
+            wires::route_vertices(doc, on.conductor, page)
+                .is_some_and(|(_, _, v)| !v.first().is_some_and(|f| f.near(on.at, ON_WIRE)) && !v.last().is_some_and(|l| l.near(on.at, ON_WIRE)))
         });
         if through.is_none() && loose.len() >= 2 {
             let starter = wires::junction_starter().ok_or("the junction symbol is missing")?;
@@ -542,8 +508,7 @@ pub(crate) fn run_junction(s: &mut Session, params: &Value) -> cadcraft_engine::
             let snapped = loose
                 .first()
                 .and_then(|(c, e)| {
-                    wires::route_vertices(doc, *c, page)
-                        .and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
+                    wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
                 })
                 .unwrap_or(at);
             let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
@@ -571,29 +536,19 @@ pub(crate) fn run_checks(s: &mut Session, params: &Value) -> cadcraft_engine::Re
         None | Some(Value::Null) => None,
         Some(Value::Array(a)) => Some(
             a.iter()
-                .map(|k| {
-                    k.as_str()
-                        .and_then(crate::checks::Kind::parse)
-                        .ok_or_else(|| err(format!("unknown check kind {k}")))
-                })
+                .map(|k| k.as_str().and_then(crate::checks::Kind::parse).ok_or_else(|| err(format!("unknown check kind {k}"))))
                 .collect::<cadcraft_engine::Result<_>>()?,
         ),
         Some(_) => return Err(err("`kinds` must be a list of check kinds")),
     };
     let limit = match params.get("limit") {
         None | Some(Value::Null) => crate::checks::DEFAULT_LIMIT,
-        Some(v) => v
-            .as_u64()
-            .map(|n| (n as usize).clamp(1, crate::checks::MAX_LIMIT))
-            .ok_or_else(|| err("`limit` must be a number"))?,
+        Some(v) => v.as_u64().map(|n| (n as usize).clamp(1, crate::checks::MAX_LIMIT)).ok_or_else(|| err("`limit` must be a number"))?,
     };
     let after = params.get("after").and_then(Value::as_u64).map(|n| n as usize).unwrap_or(0);
     with_any_page(s, |p, _| {
         let doc = p.ledger.document();
-        let rows: Vec<_> = crate::checks::all(doc, p.tolerance)
-            .into_iter()
-            .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))
-            .collect();
+        let rows: Vec<_> = crate::checks::all(doc, p.tolerance).into_iter().filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind))).collect();
         let shown: Vec<Value> = rows.iter().skip(after).take(limit).map(|c| c.to_json(doc)).collect();
         let mut r = json!({"checks": shown, "total": rows.len()});
         if rows.len() > after + limit {
@@ -606,12 +561,7 @@ pub(crate) fn run_checks(s: &mut Session, params: &Value) -> cadcraft_engine::Re
 /// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?}`: a tagless
 /// component (design 022 §3.2).
 pub(crate) fn place_tagless(
-    s: &mut Session,
-    params: &Value,
-    starter: &'static Starter,
-    at: Pt,
-    degrees: f64,
-    mirror: bool,
+    s: &mut Session, params: &Value, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     if params.get("device").is_some_and(|v| !v.is_null()) || params.get("tag").is_some_and(|v| !v.is_null()) {
         return Err(err(format!("A {} has no tag and is not part of a device.", starter.name.to_lowercase())));
@@ -653,17 +603,10 @@ pub(crate) fn place_tagless(
 
 /// The `setprop` rules of brief 022 for a conductor or a continuation: `Ok(Some(value))` to write
 /// (checked), `Err` to refuse; `Ok(None)` when the key is not one of brief 022's.
-pub(crate) fn setprop_rule(
-    doc: &Document,
-    object: ObjectRef,
-    key: &str,
-    value: Option<&str>,
-) -> Result<Option<Option<String>>, String> {
+pub(crate) fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, String> {
     match object {
         ObjectRef::Conductor(_) => match key {
-            k if k == wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
-                Err(USE_WIRENUMBER.into())
-            }
+            k if k == wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED => Err(USE_WIRENUMBER.into()),
             k if k == wiring::POTENTIAL_KEY => Err(USE_POTENTIAL.into()),
             k if k == wiring::CROSS_SECTION => Ok(Some(wiring::valid_text("cross-section", value)?)),
             k if k == wiring::COLOUR => Ok(Some(wiring::valid_text("colour", value)?)),

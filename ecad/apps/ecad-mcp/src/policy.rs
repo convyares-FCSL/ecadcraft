@@ -49,9 +49,7 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("pr
 
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`]).
 pub fn reads_only(id: &str, params: &Value) -> bool {
-    READ_WITHOUT_FIELDS
-        .iter()
-        .any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
+    READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
 }
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
@@ -133,16 +131,14 @@ fn several_steps(id: &str, params: &Value) -> bool {
     }
     let count = params.get("count").filter(|v| !v.is_null());
     let counted = count.is_some_and(|c| c.as_f64().is_none_or(|n| n.is_nan() || n > 1.0));
-    let back =
-        id == "undo" && params.get("mode").and_then(Value::as_str).is_some_and(|m| m.eq_ignore_ascii_case("back"));
+    let back = id == "undo" && params.get("mode").and_then(Value::as_str).is_some_and(|m| m.eq_ignore_ascii_case("back"));
     let all = id == "mredo" && params.get("all").is_some_and(|v| !v.is_null() && v != &Value::Bool(false));
     counted || back || all
 }
 
 /// Whether SETVAR is asked to set AUDITCTL (which makes AUDIT write a log file).
 fn sets_auditctl(id: &str, params: &Value) -> bool {
-    id == "setvar"
-        && params.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().eq_ignore_ascii_case("auditctl"))
+    id == "setvar" && params.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().eq_ignore_ascii_case("auditctl"))
 }
 
 /// Said when a write is refused because the server was started without `--write`.
@@ -232,9 +228,7 @@ mod tests {
         ] {
             assert_eq!(check(id, &p, true, None), Err(one_step(id)), "{id} {p}");
         }
-        for (id, p) in
-            [("undo", json!({"count": 1})), ("redo", json!({})), ("u", json!({})), ("mredo", json!({"all": false}))]
-        {
+        for (id, p) in [("undo", json!({"count": 1})), ("redo", json!({})), ("u", json!({})), ("mredo", json!({"all": false}))] {
             assert!(check(id, &p, true, None).is_ok(), "{id} {p}");
         }
         assert!(check("audit", &none, true, None).is_err());

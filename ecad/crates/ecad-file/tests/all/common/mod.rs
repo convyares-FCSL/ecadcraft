@@ -35,10 +35,7 @@ pub fn coil(graphics_scale: f64) -> Definition {
         name: "Coil".into(),
         origin: None,
         graphics: vec![
-            Primitive::Polyline {
-                vertices: vec![Pt::new(-5.0, -10.0), Pt::new(5.0, -10.0), Pt::new(5.0, 10.0), Pt::new(-5.0, 10.0)],
-                closed: true,
-            },
+            Primitive::Polyline { vertices: vec![Pt::new(-5.0, -10.0), Pt::new(5.0, -10.0), Pt::new(5.0, 10.0), Pt::new(-5.0, 10.0)], closed: true },
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
         terminals: vec![
@@ -66,18 +63,9 @@ impl Fixture {
         let (c, t1, t2, item, rep): (ComponentId, TerminalId, TerminalId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
-            Op::CreateComponent {
-                id: c,
-                component: Component { properties: Default::default(), definition: Some(def) },
-            },
-            Op::AddTerminal {
-                id: t1,
-                terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".into()) },
-            },
-            Op::AddTerminal {
-                id: t2,
-                terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".into()) },
-            },
+            Op::CreateComponent { id: c, component: Component { properties: Default::default(), definition: Some(def) } },
+            Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".into()) } },
+            Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".into()) } },
             Op::AddItem {
                 id: item,
                 item: Item {
@@ -108,8 +96,7 @@ impl Fixture {
 
 pub fn fixture() -> Fixture {
     let mut ids = IdAllocator::seeded(SEED ^ 0xA11C);
-    let (page, layer, d1, d2): (PageId, LayerId, DefinitionId, DefinitionId) =
-        (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (page, layer, d1, d2): (PageId, LayerId, DefinitionId, DefinitionId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let mut f = Fixture {
         ledger: Ledger::new(SEED),
         ids,
@@ -218,12 +205,7 @@ pub fn fixture() -> Fixture {
     for (key, value) in [("tag", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
         f.commit(
             "Set property",
-            vec![Op::SetProperty {
-                object: ObjectRef::Component(c1),
-                key: key.into(),
-                before: None,
-                after: Some(value.into()),
-            }],
+            vec![Op::SetProperty { object: ObjectRef::Component(c1), key: key.into(), before: None, after: Some(value.into()) }],
         );
     }
     let at = f.ledger.head();

@@ -46,11 +46,7 @@ fn typed_paths_are_expanded_completed_or_refused() {
         ("~/demo", true, Is(ecad(&profile.join("demo")))),
         (r"~\demo", true, Is(ecad(&profile.join("demo")))),
         ("~//demo", true, Is(ecad(&profile.join("demo")))),
-        (
-            "  ~/ecad-projects/demo.ecad  ",
-            true,
-            Is(profile.join("ecad-projects").join("demo.ecad").display().to_string()),
-        ),
+        ("  ~/ecad-projects/demo.ecad  ", true, Is(profile.join("ecad-projects").join("demo.ecad").display().to_string())),
         ("~/Schaltpläne/Anlage ü", true, Is(ecad(&profile.join("Schaltpläne").join("Anlage ü")))),
         // The rest is joined component by component: one separator throughout, the platform's.
         ("~/ecad-projects/demo", true, Is(ecad(&profile.join("ecad-projects").join("demo")))),
@@ -137,13 +133,7 @@ fn child_prints_its_home_folder() {
 fn the_home_folder_is_known_without_the_home_variable() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args([
-            "--exact",
-            "paths_contracts::child_prints_its_home_folder",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
+        .args(["--exact", "paths_contracts::child_prints_its_home_folder", "--ignored", "--nocapture", "--test-threads=1"])
         .env_remove("HOME")
         .output()
         .unwrap();
@@ -285,10 +275,8 @@ fn a_case_variant_spelling_of_the_own_file_is_the_same_file() {
     let s = t.status().unwrap();
     assert_eq!(s.unsaved, 0);
     if cfg!(windows) {
-        let files = std::fs::read_dir(&d.0)
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("ecad")));
+        let files =
+            std::fs::read_dir(&d.0).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("ecad")));
         assert_eq!(files.count(), 1, "one project file");
     }
     // A different existing file still asks first.
@@ -318,10 +306,7 @@ fn the_banner_names_the_file_as_saved() {
     assert!(status_line(&t.status().unwrap()).contains("not saved to a file yet, 1 change not saved."));
     assert_eq!(save_as(&mut t, "~/demo"), None);
     let file = home.0.join("demo.ecad").display().to_string();
-    assert_eq!(
-        status_line(&t.status().unwrap()),
-        format!("Project \"demo\": 1 page, file {file}, no unsaved changes.")
-    );
+    assert_eq!(status_line(&t.status().unwrap()), format!("Project \"demo\": 1 page, file {file}, no unsaved changes."));
 }
 
 #[test]

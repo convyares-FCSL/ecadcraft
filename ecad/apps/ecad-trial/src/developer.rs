@@ -76,11 +76,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
     let panel_h = ui.available_height();
     let open = p.dev.open;
     let mut bottom = egui::Panel::bottom("ecad.project.developer").resizable(open);
-    bottom = if open {
-        bottom.default_size(panel_h * 0.6).min_size(120.0).max_size(panel_h * 0.9)
-    } else {
-        bottom.exact_size(24.0)
-    };
+    bottom = if open { bottom.default_size(panel_h * 0.6).min_size(120.0).max_size(panel_h * 0.9) } else { bottom.exact_size(24.0) };
     bottom.show(ui, |ui| {
         let mut toggled = false;
         ui.horizontal_wrapped(|ui| {
@@ -93,11 +89,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
             }
             // The tools, on the header line.
             if p.project {
-                if ui
-                    .selectable_label(p.dev.body == Body::Debugger, RichText::new(DEBUGGER).small())
-                    .on_hover_text(debugger::HOVER)
-                    .clicked()
-                {
+                if ui.selectable_label(p.dev.body == Body::Debugger, RichText::new(DEBUGGER).small()).on_hover_text(debugger::HOVER).clicked() {
                     out.push(Action::ToggleDebugger);
                 }
                 if ui
@@ -146,12 +138,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
         if !p.dev.reply.is_empty() {
             let text = p.dev.reply.join("\n");
             egui::ScrollArea::vertical().id_salt("ecad.dev.reply").max_height(80.0).show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut text.as_str())
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(1),
-                );
+                ui.add(egui::TextEdit::multiline(&mut text.as_str()).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY).desired_rows(1));
             });
         }
         if let Some(line) = submit {
@@ -167,11 +154,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
             Body::Inspect => {
                 if let Some(text) = &p.dev.inspect {
                     egui::ScrollArea::both().id_salt("ecad.dev.inspect").auto_shrink([false, false]).show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut text.as_str())
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(f32::INFINITY),
-                        );
+                        ui.add(egui::TextEdit::multiline(&mut text.as_str()).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY));
                     });
                 }
             }

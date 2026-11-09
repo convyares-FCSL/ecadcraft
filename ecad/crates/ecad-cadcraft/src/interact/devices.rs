@@ -12,9 +12,7 @@ use ecad_model::{ComponentId, Placement, Subject};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{
-    OUT_OF_RANGE, TERMINAL_ACI, TERMINAL_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind,
-};
+use super::{OUT_OF_RANGE, TERMINAL_ACI, TERMINAL_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
 use crate::devices::{self, TextOf};
 use crate::project::Mapped;
 use crate::symbols::{self, Starter};
@@ -51,20 +49,9 @@ fn yes(i: &Input) -> Option<bool> {
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let default = read(s, |p, _| Ok(p.last_placed.as_ref().map(|(k, _)| k.clone()))).ok().flatten();
-    let default = default
-        .and_then(|k| symbols::by_key(&k))
-        .or_else(|| symbols::STARTERS.first())
-        .ok_or_else(|| other("no starter symbols are built in"))?;
-    Ok(Box::new(Safe(Place {
-        stage: Stage::Symbol,
-        default,
-        symbol: None,
-        rotation: 0,
-        mirror: false,
-        join: None,
-        tag: None,
-        last: None,
-    })))
+    let default =
+        default.and_then(|k| symbols::by_key(&k)).or_else(|| symbols::STARTERS.first()).ok_or_else(|| other("no starter symbols are built in"))?;
+    Ok(Box::new(Safe(Place { stage: Stage::Symbol, default, symbol: None, rotation: 0, mirror: false, join: None, tag: None, last: None })))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,32 +180,13 @@ impl Place {
         }
         let r = commit(s, "place", &params)?;
         let tag = r.get("tag").and_then(Value::as_str).unwrap_or_default().to_string();
-        let labels: Vec<&str> = r
-            .get("terminals")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|t| t.get("label").and_then(Value::as_str))
-            .collect();
-        let component = r
-            .get("component")
-            .and_then(Value::as_str)
-            .and_then(|h| u128::from_str_radix(h, 16).ok())
-            .map(ComponentId::from);
+        let labels: Vec<&str> =
+            r.get("terminals").and_then(Value::as_array).into_iter().flatten().filter_map(|t| t.get("label").and_then(Value::as_str)).collect();
+        let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(ComponentId::from);
         if r.get("joined").and_then(Value::as_bool) == Some(true) {
-            let pages: Vec<String> = r
-                .get("pages")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_u64)
-                .map(|n| n.to_string())
-                .collect();
-            let pages = if pages.len() == 1 {
-                format!("page {}", pages.join(", "))
-            } else {
-                format!("pages {}", pages.join(", "))
-            };
+            let pages: Vec<String> =
+                r.get("pages").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_u64).map(|n| n.to_string()).collect();
+            let pages = if pages.len() == 1 { format!("page {}", pages.join(", ")) } else { format!("pages {}", pages.join(", ")) };
             s.echo(format!("Added {} {} to {tag} (now on {pages}).", sym.name, labels.join("/")));
             self.join = component;
         } else {
@@ -239,9 +207,10 @@ impl Place {
         let prefix = self.symbol().prefix;
         read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok(p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| {
-                devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(px, _)| px == prefix)
-            }))
+            Ok(p.last_placed
+                .as_ref()
+                .map(|(_, c)| *c)
+                .filter(|c| devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(px, _)| px == prefix)))
         })
         .ok()
         .flatten()
@@ -281,10 +250,7 @@ impl Place {
                         self.choose(s, &t)?;
                         if self.symbol.is_some() && matches!(self.stage, Stage::Symbol | Stage::DeviceSymbol(_)) {
                             if let Some(c) = device {
-                                read(s, |p, _| {
-                                    devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())
-                                })
-                                .map_err(other)?;
+                                read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(other)?;
                                 self.join = Some(c);
                             }
                             self.stage = Stage::Point;
@@ -384,11 +350,10 @@ impl Place {
             },
             Stage::ConfirmJoin(c, _) => match (yes(&i), &i) {
                 (Some(true), _) | (None, Input::Enter) => {
-                    read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()))
-                        .map_err(|e| {
-                            self.stage = Stage::Tag;
-                            other(e)
-                        })?;
+                    read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(|e| {
+                        self.stage = Stage::Tag;
+                        other(e)
+                    })?;
                     self.join = Some(c);
                     self.tag = None;
                     self.stage = Stage::Point;
@@ -423,9 +388,7 @@ impl Interactive for Place {
     }
     fn prompt(&self, s: &Session) -> Prompt {
         match &self.stage {
-            Stage::Symbol => {
-                prompt("Enter symbol", TEXT_OR_POINT, &["List", "Rotate", "Mirror"], Some(self.default.key.into()))
-            }
+            Stage::Symbol => prompt("Enter symbol", TEXT_OR_POINT, &["List", "Rotate", "Mirror"], Some(self.default.key.into())),
             Stage::DeviceSymbol(c) => {
                 let t = read(s, |p, _| Ok(devices::tag_words(p.ledger.document(), *c))).unwrap_or_default();
                 prompt(format!("Enter symbol to add to {t}"), Accept::TEXT, &["List"], Some(self.default.key.into()))
@@ -436,12 +399,7 @@ impl Interactive for Place {
                     Some((w, _, _)) => format!("{w}, {rot}"),
                     None => rot,
                 };
-                prompt(
-                    format!("Specify insertion point ({what})"),
-                    Accept::POINT,
-                    &["Rotate", "Mirror", "Device", "Tag"],
-                    None,
-                )
+                prompt(format!("Specify insertion point ({what})"), Accept::POINT, &["Rotate", "Mirror", "Device", "Tag"], None)
             }
             Stage::Device => {
                 let default = self
@@ -460,19 +418,11 @@ impl Interactive for Place {
             Stage::ConfirmJoin(c, t) => {
                 let holder = read(s, |p, _| Ok(devices::holder_words(p.ledger.document(), *c))).unwrap_or_default();
                 let name = self.symbol().name;
-                prompt(
-                    format!("{t} exists: {holder}. Add this {name} to it?"),
-                    Accept::TEXT,
-                    &["Yes", "Choose another"],
-                    Some("Yes".into()),
-                )
+                prompt(format!("{t} exists: {holder}. Add this {name} to it?"), Accept::TEXT, &["Yes", "Choose another"], Some("Yes".into()))
             }
-            Stage::ConfirmNew(t) => prompt(
-                format!("No device {t}. Make it a new device with that tag?"),
-                Accept::TEXT,
-                &["Yes", "Choose another"],
-                Some("Yes".into()),
-            ),
+            Stage::ConfirmNew(t) => {
+                prompt(format!("No device {t}. Make it a new device with that tag?"), Accept::TEXT, &["Yes", "Choose another"], Some("Yes".into()))
+            }
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -486,11 +436,7 @@ impl Interactive for Place {
         }
         let pl = self.placement(cursor);
         let Ok(def) = self.symbol().definition() else { return Vec::new() };
-        def.graphics
-            .iter()
-            .filter_map(|g| super::forms::placed(g, &pl))
-            .map(|g| crate::convert::kind_for_primitive(&g))
-            .collect()
+        def.graphics.iter().filter_map(|g| super::forms::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
     }
     /// Its terminal rings, tag and terminal labels at their would-be positions.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
@@ -500,14 +446,10 @@ impl Interactive for Place {
         let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
         let pl = self.placement(cursor);
         let Ok(def) = self.symbol().definition() else { return Vec::new() };
-        let mut out: Vec<Entity> = def
-            .terminals
-            .iter()
-            .map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI))
-            .collect();
+        let mut out: Vec<Entity> =
+            def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI)).collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
-            let at: Vec<(TextOf, String, ecad_model::Pt)> =
-                def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
+            let at: Vec<(TextOf, String, ecad_model::Pt)> = def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
             for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at) {
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, TERMINAL_ACI));
@@ -573,24 +515,15 @@ struct Props {
     merge: Option<(ComponentId, String)>,
 }
 
-const KEYWORDS: [(&str, &str); 6] = [
-    ("Tag", "tag"),
-    ("Description", "description"),
-    ("Maker", "maker"),
-    ("Part", "part_number"),
-    ("Location", "location"),
-    ("Function", "function"),
-];
+const KEYWORDS: [(&str, &str); 6] =
+    [("Tag", "tag"), ("Description", "description"), ("Maker", "maker"), ("Part", "part_number"), ("Location", "location"), ("Function", "function")];
 
 impl Props {
     fn show(s: &mut Session, c: ComponentId) {
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
             let props = doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
-            Ok(devices::PROPERTIES
-                .iter()
-                .map(|(k, label)| format!("{label}: {}", props.get(*k).map_or("?", String::as_str)))
-                .collect::<Vec<_>>())
+            Ok(devices::PROPERTIES.iter().map(|(k, label)| format!("{label}: {}", props.get(*k).map_or("?", String::as_str))).collect::<Vec<_>>())
         })
         .unwrap_or_default();
         for l in lines {
@@ -723,18 +656,9 @@ impl Interactive for Props {
             );
         }
         match self.key {
-            None => prompt(
-                "Enter property to change",
-                Accept::TEXT,
-                &KEYWORDS.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
-                None,
-            ),
+            None => prompt("Enter property to change", Accept::TEXT, &KEYWORDS.iter().map(|(k, _)| *k).collect::<Vec<_>>(), None),
             Some(key) => {
-                let current = read(s, |p, _| {
-                    Ok(p.ledger.document().components.get(&c).and_then(|x| x.properties.get(key).cloned()))
-                })
-                .ok()
-                .flatten();
+                let current = read(s, |p, _| Ok(p.ledger.document().components.get(&c).and_then(|x| x.properties.get(key).cloned()))).ok().flatten();
                 let label = devices::PROPERTIES.iter().find(|(k, _)| *k == key).map_or(key, |(_, l)| *l);
                 prompt(format!("New {}", label.to_lowercase()), Accept::TEXT, &[], current)
             }
@@ -770,11 +694,7 @@ impl Interactive for Delete {
         let Some(c) = self.device else { return Prompt::new("Select a device", Accept::SELECT) };
         let (tag, n, pages) = read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok((
-                devices::tag_words(doc, c),
-                doc.representations_of(Subject::Component(c)).count(),
-                devices::pages_words(doc, c),
-            ))
+            Ok((devices::tag_words(doc, c), doc.representations_of(Subject::Component(c)).count(), devices::pages_words(doc, c)))
         })
         .unwrap_or_default();
         prompt(

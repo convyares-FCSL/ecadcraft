@@ -137,19 +137,12 @@ fn odd_paths_through_the_dialog_save_where_the_banner_says() {
     std::fs::create_dir_all(cwd.0.join("inner")).unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args([
-            "--exact",
-            "windows_trial_contracts::child_saves_odd_paths",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
+        .args(["--exact", "windows_trial_contracts::child_saves_odd_paths", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(cwd.0.join("inner"))
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let listing: Vec<_> =
-        std::fs::read_dir(cwd.0.join("inner")).unwrap().filter_map(Result::ok).map(|e| e.file_name()).collect();
+    let listing: Vec<_> = std::fs::read_dir(cwd.0.join("inner")).unwrap().filter_map(Result::ok).map(|e| e.file_name()).collect();
     println!("{text}\nLISTING {listing:?}");
     assert!(out.status.success(), "{text}");
     assert!(!cwd.0.join("inner").join("~").exists());
@@ -294,13 +287,7 @@ fn snapshots_with_a_tilde_never_make_a_tilde_folder() {
     let cwd = TempDir::new("snap-cwd");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args([
-            "--exact",
-            "windows_trial_contracts::child_exports_a_snapshot_to_tilde",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
+        .args(["--exact", "windows_trial_contracts::child_exports_a_snapshot_to_tilde", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(&cwd.0)
         .output()
         .unwrap();
@@ -367,8 +354,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let mut t = trial(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
-    let model =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
+    let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
     let p = t.project().unwrap().clone();
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap();
     match save_as(&mut t, &typed) {
@@ -450,10 +436,7 @@ fn the_extension_is_added_once_and_quotes_are_stripped() {
         assert_eq!(save_as(&mut t, &typed), None, "{typed}");
         let want = d.0.join(file);
         let got = t.status().unwrap().file.path.unwrap();
-        assert!(
-            std::fs::canonicalize(&got).is_ok_and(|g| g == std::fs::canonicalize(&want).unwrap()),
-            "{typed} -> {got}"
-        );
+        assert!(std::fs::canonicalize(&got).is_ok_and(|g| g == std::fs::canonicalize(&want).unwrap()), "{typed} -> {got}");
         assert!(!got.contains('"'), "{got}");
         assert!(!got.to_ascii_lowercase().ends_with(".ecad.ecad"), "{got}");
     }
@@ -521,9 +504,7 @@ fn snapshots_argument_with_a_tilde_goes_to_the_home_folder() {
     use std::ffi::OsString;
     let home = TempDir::new("f1-home");
     for typed in ["~/snaps", r"~\snaps2"] {
-        let Ok(ecad_trial::Invocation::Run { snapshots, .. }) =
-            parse_args(vec![OsString::from("--snapshots"), OsString::from(typed)])
-        else {
+        let Ok(ecad_trial::Invocation::Run { snapshots, .. }) = parse_args(vec![OsString::from("--snapshots"), OsString::from(typed)]) else {
             panic!("{typed}")
         };
         let mut t = trial(Some(&home.0), snapshots);

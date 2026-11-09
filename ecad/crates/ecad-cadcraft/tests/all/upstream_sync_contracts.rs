@@ -33,12 +33,8 @@ fn fixture() -> H {
 
 /// The §17.4 checks, as a result rather than a panic, so a table can report every row.
 fn consistent(h: &mut H) -> Result<(), String> {
-    catch_unwind(AssertUnwindSafe(|| h.check())).map_err(|p| {
-        p.downcast_ref::<String>()
-            .cloned()
-            .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default()
-    })
+    catch_unwind(AssertUnwindSafe(|| h.check()))
+        .map_err(|p| p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default())
 }
 
 /// Engine undo and redo steps on the active (owned) page: there must be none.
@@ -86,22 +82,9 @@ fn assert_probe(name: &'static str, steps: &[&'static str]) {
     let report: String = outcomes.iter().map(|o| format!("  {o:?}\n")).collect();
     println!("{name}:\n{report}");
     for o in &outcomes {
-        assert!(
-            o.consistent.is_ok(),
-            "{name}: step {:?} left the project inconsistent: {:?}\n{report}",
-            o.step,
-            o.consistent
-        );
-        assert_eq!(
-            o.engine_steps, 0,
-            "{name}: step {:?} pushed an engine undo step on an owned page\n{report}",
-            o.step
-        );
-        assert!(
-            o.head_after <= o.head_before + 1,
-            "{name}: step {:?} appended more than one transaction\n{report}",
-            o.step
-        );
+        assert!(o.consistent.is_ok(), "{name}: step {:?} left the project inconsistent: {:?}\n{report}", o.step, o.consistent);
+        assert_eq!(o.engine_steps, 0, "{name}: step {:?} pushed an engine undo step on an owned page\n{report}", o.step);
+        assert!(o.head_after <= o.head_before + 1, "{name}: step {:?} appended more than one transaction\n{report}", o.step);
     }
 }
 
@@ -122,12 +105,7 @@ fn lisp_command_inside_a_routine_is_recorded_or_refused() {
 
 #[test]
 fn lisp_entmod_of_a_line_is_recorded_or_refused() {
-    assert_probe(
-        "entmod",
-        &[
-            "(setq e (entget (ssname (ssget \"X\" '((0 . \"LINE\"))) 0))) (entmod (subst '(8 . \"MOVED\") (assoc 8 e) e))",
-        ],
-    );
+    assert_probe("entmod", &["(setq e (entget (ssname (ssget \"X\" '((0 . \"LINE\"))) 0))) (entmod (subst '(8 . \"MOVED\") (assoc 8 e) e))"]);
 }
 
 /// One traced step of a JSON-form sequence.
@@ -135,9 +113,7 @@ fn trace(h: &mut H, cmd: &str, params: serde_json::Value) -> String {
     let head = h.head();
     let r = h.s.execute(cmd, &params).map_err(|e| e.to_string());
     let editing = h.s.state().is_ok_and(|st| st.block_edit.is_some());
-    let labels: Vec<String> = h.p(|p| {
-        p.ledger.log().iter().skip(head as usize).map(|t| format!("{} ({} ops)", t.label, t.ops.len())).collect()
-    });
+    let labels: Vec<String> = h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| format!("{} ({} ops)", t.label, t.ops.len())).collect());
     let items = h.doc().items.len();
     let entities = h.s.doc().map(|d| d.model.len()).unwrap_or(0);
     format!(
@@ -153,14 +129,7 @@ fn block_editor_on_the_current_drawing_is_recorded_or_refused() {
     let mut log = Vec::new();
     log.push(trace(&mut h, "bedit", json!({"name": "<Current Drawing>"})));
     if h.s.state().is_ok_and(|st| st.block_edit.is_some()) {
-        let all: Vec<_> =
-            h.s.doc()
-                .unwrap()
-                .model
-                .iter()
-                .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-                .map(|e| e.handle.hex())
-                .collect();
+        let all: Vec<_> = h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
         log.push(trace(&mut h, "erase", json!({"handles": all})));
         log.push(trace(&mut h, "bclose", json!({"save": true})));
     }
@@ -231,12 +200,7 @@ fn a_plain_drawing_keeps_upstream_lisp_undo_grouping() {
     let mut s = cadcraft_engine::Session::empty();
     s.execute("new", &json!({})).unwrap();
     let before = s.state().map(|st| st.undo.len()).unwrap();
-    let r = s.lisp_eval(
-        "(command \"line\" \"0,0\" \"10,0\" \"\") (command \"line\" \"0,5\" \"10,5\" \"\")",
-        false,
-        true,
-        Vec::new(),
-    );
+    let r = s.lisp_eval("(command \"line\" \"0,0\" \"10,0\" \"\") (command \"line\" \"0,5\" \"10,5\" \"\")", false, true, Vec::new());
     let after = s.state().map(|st| st.undo.len()).unwrap();
     println!("{r:?} log: {:?}", s.log);
     assert_eq!(s.doc().unwrap().model.len(), 2);
@@ -425,10 +389,8 @@ fn the_ui_entry_points_on_an_ecad_page_change_nothing() {
         let mut h = fixture();
         let b = before(&mut h);
         let s = std::mem::replace(&mut h.s, cadcraft_engine::Session::empty());
-        let mut app = cadcraft_ui_egui::CadApp::new(
-            s,
-            cadcraft_ui_egui::Services { pick_open: None, pick_save: None, pick_lisp: None, no_file_system: false },
-        );
+        let mut app =
+            cadcraft_ui_egui::CadApp::new(s, cadcraft_ui_egui::Services { pick_open: None, pick_save: None, pick_lisp: None, no_file_system: false });
         let r = f(&mut app);
         let dialog = app.ui.dialog.take();
         h.s = std::mem::replace(&mut app.session, cadcraft_engine::Session::empty());
@@ -523,8 +485,7 @@ fn every_command_started_interactively_and_answered_with_enter_leaves_the_projec
     // The census runs each command's JSON form; this starts each one as typed, accepts the
     // defaults with Enter twice and cancels, looking for any other path around the owner or an
     // engine undo step left on an ECAD page.
-    const SKIP: &[&str] =
-        &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
+    const SKIP: &[&str] = &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
     ecad_cadcraft::install();
     let ours: Vec<&str> = ecad_cadcraft::commands::specs().iter().map(|c| c.id).collect();
     let mut broken = Vec::new();

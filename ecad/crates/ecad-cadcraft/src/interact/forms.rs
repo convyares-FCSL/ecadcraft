@@ -12,9 +12,9 @@ use ecad_model::{CableId, ComponentId, ConductorId, End, Placement, Primitive, P
 use serde_json::{Value, json};
 
 use super::{
-    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start,
-    capture_at, capture_preview, drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name,
-    pick, pixel, preview_entity, preview_text, pt, read, ring_kind, terminal_for, terminal_name, v2, valid_name,
+    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start, capture_at, capture_preview,
+    drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read,
+    ring_kind, terminal_for, terminal_name, v2, valid_name,
 };
 use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, with_project};
 use crate::project::Mapped;
@@ -39,10 +39,7 @@ pub(super) fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -
                 p.refresh_pages(pg, Some(name));
                 Ok(())
             });
-            s.echo(format!(
-                "Internal error in {}; the page was redrawn from the project. Objects already added stay.",
-                name.to_ascii_uppercase()
-            ));
+            s.echo(format!("Internal error in {}; the page was redrawn from the project. Objects already added stay.", name.to_ascii_uppercase()));
             Ok(Step::Done)
         }
     }
@@ -327,13 +324,8 @@ impl Wire {
             params["potential"] = json!(pot);
         }
         let r = commit(s, "wire", &params)?;
-        let attached: Vec<(String, String)> = r
-            .get("attached")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(|a| (hex_of(a, "end"), hex_of(a, "terminal")))
-            .collect();
+        let attached: Vec<(String, String)> =
+            r.get("attached").and_then(Value::as_array).into_iter().flatten().map(|a| (hex_of(a, "end"), hex_of(a, "terminal"))).collect();
         let names = read(s, |p, _| {
             let doc = p.ledger.document();
             Ok(attached
@@ -470,8 +462,7 @@ impl Interactive for Wire {
         if !super::model_space(s) {
             return Vec::new();
         }
-        let mut out: Vec<EntityKind> =
-            self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
+        let mut out: Vec<EntityKind> = self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
         if let Some(last) = self.points.last()
             && in_range(cursor)
         {
@@ -590,9 +581,7 @@ impl Interactive for Link {
         match (self.end, self.connect) {
             (None, true) => Prompt::new("Select wire near the end to connect", Accept::POINT),
             (None, false) => Prompt::new("Select wire near the end to disconnect", Accept::POINT),
-            (Some((_, end, at)), _) => {
-                Prompt::new(format!("Select connection point for end {}", end_name(end)), Accept::POINT).base(v2(at))
-            }
+            (Some((_, end, at)), _) => Prompt::new(format!("Select connection point for end {}", end_name(end)), Accept::POINT).base(v2(at)),
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -623,10 +612,7 @@ impl Interactive for Link {
             (false, true) => LOOSE_ACI,
             (false, false) => return Vec::new(),
         };
-        [RING_PX - 1.0, RING_PX, RING_PX + 1.0]
-            .into_iter()
-            .map(|d| preview_entity(s, ring_kind(at, d, px), aci))
-            .collect()
+        [RING_PX - 1.0, RING_PX, RING_PX + 1.0].into_iter().map(|d| preview_entity(s, ring_kind(at, d, px), aci)).collect()
     }
 }
 
@@ -689,12 +675,7 @@ impl Convert {
                 let changed: Vec<Handle> = if self.removing {
                     hs.iter().copied().filter(|h| self.members.contains(h)).collect()
                 } else {
-                    hs.iter()
-                        .copied()
-                        .filter(|h| !self.members.contains(h))
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect()
+                    hs.iter().copied().filter(|h| !self.members.contains(h)).collect::<BTreeSet<_>>().into_iter().collect()
                 };
                 if !self.removing && self.picked.len().saturating_add(changed.len()) > MAX_HANDLES {
                     return Err(other(format!("At most {MAX_HANDLES} objects can be converted at once.")));
@@ -749,10 +730,7 @@ impl Interactive for Convert {
         })
     }
     fn prompt(&self, _s: &Session) -> Prompt {
-        Prompt::new(
-            if self.removing { "Remove objects" } else { "Select objects to convert to a component" },
-            Accept::SELECT,
-        )
+        Prompt::new(if self.removing { "Remove objects" } else { "Select objects to convert to a component" }, Accept::SELECT)
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
@@ -825,8 +803,7 @@ impl CableSlash {
                 // Refused too (design 004 §5.2: red whenever the slash would be refused).
                 ("-> no wires".to_string(), true)
             } else if others > 0 {
-                let objects =
-                    if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
+                let objects = if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
                 (format!("-> {}, {objects} ignored", slash::wires(n)), false)
             } else {
                 (format!("-> {}", slash::wires(n)), false)
@@ -927,9 +904,7 @@ impl Interactive for CableSlash {
             return Vec::new();
         }
         let Some(look) = Self::look(s, a, pt(cursor)) else { return Vec::new() };
-        let ring = |at: &Pt, aci: u8| {
-            [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci))
-        };
+        let ring = |at: &Pt, aci: u8| [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci));
         let mut out: Vec<Entity> = look.join.iter().flat_map(|at| ring(at, ATTACHED_ACI)).collect();
         out.extend(look.block.iter().flat_map(|at| ring(at, REFUSE_ACI)));
         let at = Pt::new(cursor.x + 10.0 * px, cursor.y + 10.0 * px);
@@ -1111,11 +1086,7 @@ impl CableCore {
                 _ => return Err(CORE_NOT_WIRE.into()),
             };
             let k = doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)?;
-            let core = doc
-                .cables
-                .get(&k)
-                .and_then(|c| c.members.iter().find(|m| m.conductor == w))
-                .and_then(|m| m.core.clone());
+            let core = doc.cables.get(&k).and_then(|c| c.members.iter().find(|m| m.conductor == w)).and_then(|m| m.core.clone());
             Ok((w, slash::wire_name(doc, w), core))
         })
         .map_err(other)
@@ -1192,9 +1163,7 @@ impl Interactive for CableCore {
     /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
     fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
-        let route = read(s, |p, page| {
-            Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim))
-        });
+        let route = read(s, |p, page| Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim)));
         match route {
             Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
             _ => Vec::new(),

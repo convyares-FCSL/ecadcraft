@@ -80,12 +80,8 @@ fn vary(op: &Op, r: &mut Lcg) -> Op {
             other => other.inverse(),
         },
         _ => match op.clone() {
-            Op::SetProperty { object, key, before, after } => {
-                Op::SetProperty { object, key, before: after, after: before }
-            }
-            Op::AttachEnd { conductor, end, before, after } => {
-                Op::AttachEnd { conductor, end, before: after, after: before }
-            }
+            Op::SetProperty { object, key, before, after } => Op::SetProperty { object, key, before: after, after: before },
+            Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
             other => other,
         },
     }
@@ -267,54 +263,30 @@ fn damaged_files_open_read_only_at_the_last_good_transaction_with_the_same_repor
                 "conductor end to a missing terminal",
                 vec![
                     Op::CreateConductor { id: ConductorId(0xb1), conductor: Conductor::default() },
-                    Op::AttachEnd {
-                        conductor: ConductorId(0xb1),
-                        end: End::A,
-                        before: None,
-                        after: Some(TerminalId(0xdead)),
-                    },
+                    Op::AttachEnd { conductor: ConductorId(0xb1), end: End::A, before: None, after: Some(TerminalId(0xdead)) },
                 ],
             ),
             (
                 "cable member that is not a conductor",
                 vec![
                     Op::CreateCable { id: CableId(0xc1), cable: Cable::default() },
-                    Op::AddCableMember {
-                        cable: CableId(0xc1),
-                        index: 0,
-                        member: CableMember { conductor: ConductorId(0xdead), core: None },
-                    },
+                    Op::AddCableMember { cable: CableId(0xc1), index: 0, member: CableMember { conductor: ConductorId(0xdead), core: None } },
                 ],
             ),
             (
                 "existing cable member removed at the wrong index",
                 if doc.cables.contains_key(&cable) {
-                    vec![Op::RemoveCableMember {
-                        cable,
-                        index: 5,
-                        member: CableMember { conductor: w, core: Some("1".into()) },
-                    }]
+                    vec![Op::RemoveCableMember { cable, index: 5, member: CableMember { conductor: w, core: Some("1".into()) } }]
                 } else {
                     vec![Op::RemoveLayer { id: LayerId(0xdead), layer: Layer { name: "0".into() } }]
                 },
             ),
         ];
         if doc.items.values().any(|i| i.page == page) {
-            bad_ops.push((
-                "removes the only page under its items",
-                vec![Op::RemovePage { id: page, page: doc.pages[&page].clone(), index: 0 }],
-            ));
+            bad_ops.push(("removes the only page under its items", vec![Op::RemovePage { id: page, page: doc.pages[&page].clone(), index: 0 }]));
         }
         for (name, ops) in bad_ops {
-            let tx = Transaction {
-                id: TxId(0xdead),
-                seq,
-                author: Author::User,
-                label: "bad".into(),
-                kind: TxKind::Edit,
-                time_ms: None,
-                ops,
-            };
+            let tx = Transaction { id: TxId(0xdead), seq, author: Author::User, label: "bad".into(), kind: TxKind::Edit, time_ms: None, ops };
             let damaged = with_tx(&bytes, n, &tx);
             let o = open_project(&damaged, SEED).unwrap();
             assert_eq!(o.report.access, Access::ReadOnly, "{name} at {n}");
@@ -324,17 +296,10 @@ fn damaged_files_open_read_only_at_the_last_good_transaction_with_the_same_repor
             assert_eq!(doc_bytes(o.ledger.document()), doc_bytes(prior.document()), "{name} at {n}");
             assert_queries_fresh(o.ledger.document(), name);
             let Outcome::Corrupt(c) = &o.report.outcome else { panic!("{name} at {n}: {:?}", o.report.outcome) };
-            reports +=
-                &format!("{name} at {n}: {:?} seq={:?} detail={}\n{}\n", c.check, c.seq, c.detail, o.report.describe());
+            reports += &format!("{name} at {n}: {:?} seq={:?} detail={}\n{}\n", c.check, c.seq, c.detail, o.report.describe());
             // The read-only ledger can still be edited in memory and saved as a copy.
             let mut ledger = o.ledger;
-            ledger
-                .commit(
-                    Author::User,
-                    "rescue",
-                    vec![Op::AddLayer { id: LayerId(0x5a), layer: Layer { name: "r".into() } }],
-                )
-                .unwrap();
+            ledger.commit(Author::User, "rescue", vec![Op::AddLayer { id: LayerId(0x5a), layer: Layer { name: "r".into() } }]).unwrap();
             assert_queries_fresh(ledger.document(), "rescued");
         }
     }
@@ -376,11 +341,7 @@ fn every_recorded_op_and_its_inverse_fail_or_succeed_as_on_dev_at_op_3() {
                 let before = doc_bytes(l.document());
                 let before_q = queries(l.document());
                 let r = l.commit_at(Author::User, "probe", ops, Some(1));
-                out += &format!(
-                    "{i} {} {kind} {variant}: {:?}\n",
-                    op.name(),
-                    r.as_ref().map(|_| ()).map_err(|e| e.to_string())
-                );
+                out += &format!("{i} {} {kind} {variant}: {:?}\n", op.name(), r.as_ref().map(|_| ()).map_err(|e| e.to_string()));
                 if r.is_err() {
                     assert_eq!(doc_bytes(l.document()), before, "{i} {kind} {variant}: rolled back");
                     assert_eq!(queries(l.document()), before_q, "{i} {kind} {variant}: indexes rolled back");
@@ -472,27 +433,14 @@ fn intermediate_states_may_break_invariants_and_later_ops_see_earlier_ones() {
     // Op 1 adds an item on a page that only op 2 creates.
     let (p2, item): (PageId, ItemId) = (f.ids.fresh(), f.ids.fresh());
     let ops = vec![
-        Op::AddItem {
-            id: item,
-            item: Item {
-                page: p2,
-                style: style(layer),
-                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(1.0, 2.0) }),
-            },
-        },
+        Op::AddItem { id: item, item: Item { page: p2, style: style(layer), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(1.0, 2.0) }) } },
         Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
     ];
     f.commit("forward reference", ops);
     assert!(f.ledger.document().items.contains_key(&item));
     // Rename a page with items on it: remove it, then add it back with a new title.
     let old = f.ledger.document().pages[&page].clone();
-    f.commit(
-        "rename",
-        vec![
-            Op::RemovePage { id: page, page: old, index: 0 },
-            Op::AddPage { id: page, page: Page::new("renamed"), index: 0 },
-        ],
-    );
+    f.commit("rename", vec![Op::RemovePage { id: page, page: old, index: 0 }, Op::AddPage { id: page, page: Page::new("renamed"), index: 0 }]);
     assert_eq!(f.ledger.document().pages[&page].title, "renamed");
     // Op 2 and later use IDs that op 1 created.
     let (w, cable): (ConductorId, CableId) = (f.ids.fresh(), f.ids.fresh());
@@ -504,12 +452,7 @@ fn intermediate_states_may_break_invariants_and_later_ops_see_earlier_ones() {
             Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t) },
             Op::CreateCable { id: cable, cable: Cable::default() },
             Op::AddCableMember { cable, index: 0, member: CableMember { conductor: w, core: None } },
-            Op::SetProperty {
-                object: ObjectRef::Cable(cable),
-                key: "type".into(),
-                before: None,
-                after: Some("x".into()),
-            },
+            Op::SetProperty { object: ObjectRef::Cable(cable), key: "type".into(), before: None, after: Some("x".into()) },
         ],
     );
     assert_eq!(f.ledger.document().cables_of(w), vec![cable]);

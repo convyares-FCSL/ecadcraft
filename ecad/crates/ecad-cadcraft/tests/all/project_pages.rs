@@ -128,8 +128,7 @@ fn a_project_handle_only_works_with_its_own_session() {
 fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     ecad_cadcraft::install();
     let mut s = cadcraft_engine::Session::empty();
-    let project =
-        ecad_cadcraft::Project::create_with(&mut s, "Trial", 9, ecad_cadcraft::Persistence::Unavailable).unwrap();
+    let project = ecad_cadcraft::Project::create_with(&mut s, "Trial", 9, ecad_cadcraft::Persistence::Unavailable).unwrap();
     // A new, untouched project has nothing to lose.
     assert!(!s.doc_unsaved(0) && !s.close_needs_prompt(0));
     s.execute("wire", &json!({"points": [[0, 0], [30, 0]]})).unwrap();
@@ -144,13 +143,7 @@ fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     }
     assert!(!target.exists() && !dir.exists(), "no file or folder was written");
     let (persisted, stored, events) = project
-        .read(&mut s, |p, _| {
-            (
-                p.ledger.persisted(),
-                p.store.medium().read_all().unwrap().len(),
-                p.events.count(EventKind::SaveUnavailable),
-            )
-        })
+        .read(&mut s, |p, _| (p.ledger.persisted(), p.store.medium().read_all().unwrap().len(), p.events.count(EventKind::SaveUnavailable)))
         .unwrap();
     assert_eq!((persisted, stored, events), (0, 0, 2), "not persisted, nothing stored, both reported");
     // Undo back to the start still counts as changed: the history moved.

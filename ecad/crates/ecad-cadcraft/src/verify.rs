@@ -43,10 +43,8 @@ impl Verification {
 
     /// One line for the event log.
     pub fn summary(&self) -> String {
-        let counts = format!(
-            "{} items, {} connection points, {} groups, {} attached ends",
-            self.items, self.terminals, self.groups, self.attached_ends
-        );
+        let counts =
+            format!("{} items, {} connection points, {} groups, {} attached ends", self.items, self.terminals, self.groups, self.attached_ends);
         match self.problems.first() {
             None => format!("rebuilt page agrees with the document: {counts}"),
             Some(p) => format!("{} problems ({counts}); first: {p}", self.problems.len()),
@@ -95,14 +93,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
-pub fn verify_page_with(
-    doc: &Document,
-    page: PageId,
-    drawing: &Drawing,
-    map: &HandleMap,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
-) -> Verification {
+pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
@@ -217,9 +208,7 @@ pub fn verify_page_with(
                     v.terminals += 1;
                     match map.marker(*rid, *t).and_then(|h| entities.get(&h)).and_then(|e| marker_position(e)) {
                         Some(p) if near(p, *at) => {}
-                        _ => problems.push(format!(
-                            "connection point {t} of representation {rid} is not marked at its position"
-                        )),
+                        _ => problems.push(format!("connection point {t} of representation {rid} is not marked at its position")),
                     }
                 }
             }
@@ -231,18 +220,13 @@ pub fn verify_page_with(
                     problems.push(format!("symbol of representation {rid} is not an insert of its definition's block"));
                     continue;
                 }
-                let want: Vec<Pt> = ecad_model::derive::terminal_positions(doc, page)
-                    .into_iter()
-                    .filter(|(_, rep, _)| rep == rid)
-                    .map(|(_, _, p)| p)
-                    .collect();
+                let want: Vec<Pt> =
+                    ecad_model::derive::terminal_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
                 let got = block_terminals(drawing, e);
                 v.terminals += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.
                 if !want.iter().all(|w| got.iter().any(|g| near(*g, *w))) {
-                    problems.push(format!(
-                        "symbol of representation {rid} does not show its connection points where the document puts them"
-                    ));
+                    problems.push(format!("symbol of representation {rid} does not show its connection points where the document puts them"));
                 }
             }
         }
@@ -257,8 +241,7 @@ pub fn verify_page_with(
             problems.push(format!("block {name} has no definition in the document"));
             continue;
         };
-        let graphics: Vec<EntityKind> =
-            b.entities.iter().filter(|e| marker_position(e).is_none()).map(|e| e.kind.clone()).collect();
+        let graphics: Vec<EntityKind> = b.entities.iter().filter(|e| marker_position(e).is_none()).map(|e| e.kind.clone()).collect();
         let want: Vec<EntityKind> = def.graphics.iter().map(kind_for_primitive).collect();
         if graphics != want {
             problems.push(format!("block {name} does not show its definition's graphics"));
@@ -270,12 +253,8 @@ pub fn verify_page_with(
     }
 
     // 5. Groups: each drawn component with several parts is one group of exactly those parts.
-    let groups: HashMap<&str, BTreeSet<Handle>> = drawing
-        .groups
-        .iter()
-        .filter(|g| g.name.starts_with(ECAD_PREFIX))
-        .map(|g| (g.name.as_str(), g.members.iter().copied().collect()))
-        .collect();
+    let groups: HashMap<&str, BTreeSet<Handle>> =
+        drawing.groups.iter().filter(|g| g.name.starts_with(ECAD_PREFIX)).map(|g| (g.name.as_str(), g.members.iter().copied().collect())).collect();
     let mut wanted_groups = 0;
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: BTreeSet<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();

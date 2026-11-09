@@ -56,11 +56,8 @@ fn check_shape(g: &Generated, doc: &Document) {
         let [a, b] = c.references;
         let of = |rep| derived.iter().find(|r| r.reference == rep).expect("derived");
         assert_eq!((of(a).partners.as_slice(), of(b).partners.as_slice()), ([b].as_slice(), [a].as_slice()));
-        let pages: BTreeSet<_> = doc
-            .representations_of(Subject::Cable(c.cable))
-            .filter(|(_, r)| r.role == REFERENCE_ROLE)
-            .map(|(_, r)| r.page)
-            .collect();
+        let pages: BTreeSet<_> =
+            doc.representations_of(Subject::Cable(c.cable)).filter(|(_, r)| r.role == REFERENCE_ROLE).map(|(_, r)| r.page).collect();
         assert_eq!(pages, BTreeSet::from([c.from, c.to]), "a reference end on each page");
         for (i, rep) in c.references.iter().enumerate() {
             let r = doc.representations.get(rep).unwrap();
@@ -68,10 +65,7 @@ fn check_shape(g: &Generated, doc: &Document) {
         }
         for m in &doc.cables.get(&c.cable).unwrap().members {
             for page in [c.from, c.to] {
-                assert!(
-                    ecad_model::derive::route_on_page(doc, m.conductor, page).is_some(),
-                    "a continued member is drawn on both pages"
-                );
+                assert!(ecad_model::derive::route_on_page(doc, m.conductor, page).is_some(), "a continued member is drawn on both pages");
             }
         }
     }
@@ -130,13 +124,7 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     let v2 = dir.join("tiny.v2.ecad");
     ecad_bench::v2::convert(&path, &v2).unwrap();
     let mut s = cadcraft_engine::Session::empty();
-    let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
-        &mut s,
-        v2.to_str().unwrap(),
-        9,
-        ecad_cadcraft::views::Settings::none(),
-    )
-    .unwrap();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_cadcraft::views::Settings::none()).unwrap();
     for page in &g.pages {
         project.open_page(&mut s, *page).unwrap();
         assert_eq!(project.read(&mut s, |p, _| p.active_page()).unwrap(), Some(*page));

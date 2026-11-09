@@ -269,11 +269,7 @@ fn ac1_ten_mixed_switches_leave_document_log_head_ids_and_nets_unchanged() {
             }
             // Pickfirst: the slash (or a fan line) selected, then the command.
             _ => {
-                let h = if was_fan {
-                    fan_handles(&mut g.h, g.page)[0]
-                } else {
-                    g.h.p(|p| p.pages[&g.page].map.item(g.slash)).unwrap()
-                };
+                let h = if was_fan { fan_handles(&mut g.h, g.page)[0] } else { g.h.p(|p| p.pages[&g.page].map.item(g.slash)).unwrap() };
                 g.h.s.set_selection(vec![h]);
                 g.h.s.start("cableview").unwrap();
                 assert!(g.h.s.running.is_none(), "a selection switches at once and ends the command");
@@ -366,8 +362,8 @@ fn ac2_switching_never_touches_the_ecad_file_and_saves_are_view_independent() {
     }
     for (name, b) in [("fan", &fan), ("trad", &trad), ("g", &std::fs::read(&path).unwrap())] {
         let mut s = Session::empty();
-        let (handle, _) = ProjectHandle::open_file_in(&mut s, &dir.path(&format!("{name}.ecad")), 3, Settings::none())
-            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let (handle, _) =
+            ProjectHandle::open_file_in(&mut s, &dir.path(&format!("{name}.ecad")), 3, Settings::none()).unwrap_or_else(|e| panic!("{name}: {e}"));
         let mut h = H { s, project: handle, trail: Vec::new() };
         assert_eq!(h.doc(), doc, "{name}: the document");
         assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log, "{name}: the log");
@@ -386,13 +382,7 @@ fn ac2_views_survive_reopen_through_ecad_settings_dir() {
     let work = Tmp::new("env-work");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args([
-            "--exact",
-            "cable_view_tester_contracts::child_reopen_through_env",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
+        .args(["--exact", "cable_view_tester_contracts::child_reopen_through_env", "--ignored", "--nocapture", "--test-threads=1"])
         .env("ECAD_SETTINGS_DIR", &settings.0)
         .env("APPDATA", &decoy.0)
         .env("HOME", &decoy.0)
@@ -427,8 +417,7 @@ fn child_reopen_through_env() {
     for y in [30, 35, 40] {
         g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
     }
-    let c2: CableId =
-        id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
+    let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     let path = work.join("two.ecad").display().to_string();
     g.h.run("saveas", json!({"path": path})).unwrap();
     assert_eq!(set(&mut g.h, g.c1, "fan")["remembered"], true);
@@ -484,13 +473,7 @@ fn child_reopen_through_env() {
 fn ac2_no_settings_folder_switches_and_says_so_once() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args([
-            "--exact",
-            "cable_view_tester_contracts::child_no_settings_folder",
-            "--ignored",
-            "--nocapture",
-            "--test-threads=1",
-        ])
+        .args(["--exact", "cable_view_tester_contracts::child_no_settings_folder", "--ignored", "--nocapture", "--test-threads=1"])
         .env_remove("ECAD_SETTINGS_DIR")
         .env_remove("APPDATA")
         .env_remove("HOME")
@@ -560,12 +543,7 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
             view: "traditional",
             message: true,
         },
-        Hostile {
-            name: "empty",
-            make: |d, _, _| std::fs::write(file_in(d), b"").unwrap(),
-            view: "traditional",
-            message: true,
-        },
+        Hostile { name: "empty", make: |d, _, _| std::fs::write(file_in(d), b"").unwrap(), view: "traditional", message: true },
         Hostile {
             name: "truncated",
             make: |d, p, c| {
@@ -575,12 +553,7 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
             view: "traditional",
             message: true,
         },
-        Hostile {
-            name: "top-level array",
-            make: |d, _, _| std::fs::write(file_in(d), b"[1,2,3]").unwrap(),
-            view: "traditional",
-            message: true,
-        },
+        Hostile { name: "top-level array", make: |d, _, _| std::fs::write(file_in(d), b"[1,2,3]").unwrap(), view: "traditional", message: true },
         Hostile {
             name: "other format",
             make: |d, p, c| std::fs::write(file_in(d), valid(p, c).replace("views/1", "views/2")).unwrap(),
@@ -625,9 +598,7 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
         },
         Hostile {
             name: "CRLF (edited on Windows)",
-            make: |d, p, c| {
-                std::fs::write(file_in(d), valid(p, c).replace(',', ",\r\n").replace('\n', "\r\n")).unwrap()
-            },
+            make: |d, p, c| std::fs::write(file_in(d), valid(p, c).replace(',', ",\r\n").replace('\n', "\r\n")).unwrap(),
             view: "fan",
             message: false,
         },
@@ -665,14 +636,9 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
         let settings = Tmp::new("hostile-settings");
         (case.make)(&settings.0, &project, &c1);
         let mut s = Session::empty();
-        let (handle, summary) = ProjectHandle::open_file_in(&mut s, &path, 5, Settings::at(&settings.0))
-            .unwrap_or_else(|e| panic!("{}: open failed: {e}", case.name));
-        assert_eq!(
-            summary.matches(views::UNREADABLE).count(),
-            usize::from(case.message),
-            "{}: open summary {summary:?}",
-            case.name
-        );
+        let (handle, summary) =
+            ProjectHandle::open_file_in(&mut s, &path, 5, Settings::at(&settings.0)).unwrap_or_else(|e| panic!("{}: open failed: {e}", case.name));
+        assert_eq!(summary.matches(views::UNREADABLE).count(), usize::from(case.message), "{}: open summary {summary:?}", case.name);
         let mut h = H { s, project: handle, trail: Vec::new() };
         assert_eq!(h.doc(), doc, "{}", case.name);
         assert_eq!(view_of(&mut h, g.c1), case.view, "{}", case.name);
@@ -762,9 +728,7 @@ fn ac2_writes_keep_other_projects_and_drop_unknown_cables() {
     let project = g.h.p(|p| p.id).hex();
     std::fs::write(
         file_in(&settings.0),
-        format!(
-            r#"{{"format":"ecad-cable-views/1","projects":{{"{other}":{{"fan":["{stale}"]}},"{project}":{{"fan":["{stale}"]}}}}}}"#
-        ),
+        format!(r#"{{"format":"ecad-cable-views/1","projects":{{"{other}":{{"fan":["{stale}"]}},"{project}":{{"fan":["{stale}"]}}}}}}"#),
     )
     .unwrap();
     g.h.cfg(|p| p.settings = Settings::at(&settings.0));
@@ -787,9 +751,7 @@ fn parallel_cable(h: &mut H, y0: f64, n: usize, gap: f64) -> CableId {
         let y = y0 + i as f64 * gap;
         h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
-    let r = h
-        .run("cableslash", json!({"from": [20.0, y0 - gap / 2.0], "to": [20.0, y0 + (n as f64 - 0.5) * gap]}))
-        .unwrap();
+    let r = h.run("cableslash", json!({"from": [20.0, y0 - gap / 2.0], "to": [20.0, y0 + (n as f64 - 0.5) * gap]})).unwrap();
     assert_eq!(r["conductors"].as_array().unwrap().len(), n);
     id(&r, "cable")
 }
@@ -892,8 +854,7 @@ fn ac3_right_to_left_and_bent_references_and_loose_ends() {
     // A bent reference (the middle wire): (0,25)-(30,25)-(30,40)-(60,40); L = 75.
     let mut h = H::new(SEED + 4);
     let page = h.first_page();
-    for pts in [json!([[0, 20], [60, 20]]), json!([[0, 25], [30, 25], [30, 40], [60, 40]]), json!([[0, 30], [60, 30]])]
-    {
+    for pts in [json!([[0, 20], [60, 20]]), json!([[0, 25], [30, 25], [30, 40], [60, 40]]), json!([[0, 30], [60, 30]])] {
         h.run("wire", json!({ "points": pts })).unwrap();
     }
     let k: CableId = id(&h.run("cableslash", json!({"from": [10, 17], "to": [10, 33]})).unwrap(), "cable");
@@ -1016,14 +977,7 @@ fn ac3_degenerate_reference_routes_fall_back_without_panic() {
         }
         // The projection with the views never panics either.
         let set = BTreeSet::from([g.c1]);
-        let r = ecad_cadcraft::project_page_with(
-            &d,
-            g.page,
-            &cadcraft_engine::doc::Drawing::new_metric(),
-            &Default::default(),
-            &set,
-            1e-6,
-        );
+        let r = ecad_cadcraft::project_page_with(&d, g.page, &cadcraft_engine::doc::Drawing::new_metric(), &Default::default(), &set, 1e-6);
         if let Ok((_, map)) = r {
             assert_eq!(map.fan_handles().next().is_some(), !fails, "{name}");
         }
@@ -1116,10 +1070,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
                 })
         })
         .expect("trunk");
-    let fan_line = *fans
-        .iter()
-        .find(|h| map.core_of(**h).is_some() && es.iter().any(|e| e.handle == **h && path_of(e).len() == 2))
-        .expect("a tail");
+    let fan_line = *fans.iter().find(|h| map.core_of(**h).is_some() && es.iter().any(|e| e.handle == **h && path_of(e).len() == 2)).expect("a tail");
     let before_plain = g.h.lines_on(g.page);
     g.h.s.cmdline("line 0,40 60,40").unwrap();
     g.h.s.input(Input::Enter).unwrap();
@@ -1154,10 +1105,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
         let r = g.h.run(cmd, params.clone());
         outcomes.push(format!("{cmd} {params}: {r:?}"));
         match &r {
-            Err(e) => assert!(
-                e.contains(FAN_REFUSED) || e.contains(views::LAYER_RESERVED),
-                "{cmd} {params}: refused for another reason: {e}"
-            ),
+            Err(e) => assert!(e.contains(FAN_REFUSED) || e.contains(views::LAYER_RESERVED), "{cmd} {params}: refused for another reason: {e}"),
             Ok(v) => {
                 // A command that found nothing to change (e.g. explode of a plain line) may succeed,
                 // but only if the drawing is unchanged.
@@ -1426,16 +1374,14 @@ fn round2_m3_two_windows() {
     for y in [30, 35, 40] {
         g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
     }
-    let c2: CableId =
-        id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
+    let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     g.h.cfg(|pr| {
         pr.persistence = Persistence::File;
         pr.settings = Settings::at(&settings.0);
     });
     g.h.run("saveas", json!({"path": work.path("m3")})).unwrap();
     let mut s2 = Session::empty();
-    let (h2, summary) =
-        ProjectHandle::open_file_in(&mut s2, &work.path("m3.ecad"), 6, Settings::at(&settings.0)).unwrap();
+    let (h2, summary) = ProjectHandle::open_file_in(&mut s2, &work.path("m3.ecad"), 6, Settings::at(&settings.0)).unwrap();
     assert!(summary.contains("read-only"), "{summary}");
     let mut w2 = H { s: s2, project: h2, trail: Vec::new() };
     // Window 2 switches C2; afterwards (not at the same moment) window 1 switches C1.
@@ -1444,10 +1390,7 @@ fn round2_m3_two_windows() {
     let project = g.h.p(|pr| pr.id);
     let file = Settings::at(&settings.0).load(project).fan;
     assert!(file.contains(&g.c1));
-    eprintln!(
-        "same project, one switch in each window, one after the other: C2 kept in the file: {}",
-        file.contains(&c2)
-    );
+    eprintln!("same project, one switch in each window, one after the other: C2 kept in the file: {}", file.contains(&c2));
     // Two different projects one after the other: both kept.
     let mut other = fixture_on(H::new(SEED + 9));
     other.h.cfg(|pr| pr.settings = Settings::at(&settings.0));
@@ -1473,10 +1416,7 @@ fn round2_m5_selection_with_a_failure_carries_on() {
     let slash_handles = |h: &mut H| -> Vec<Handle> {
         let doc = h.doc();
         let page = h.first_page();
-        let items: Vec<ItemId> = cables
-            .iter()
-            .flat_map(|k| ecad_cadcraft::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0))
-            .collect();
+        let items: Vec<ItemId> = cables.iter().flat_map(|k| ecad_cadcraft::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0)).collect();
         items.into_iter().filter_map(|i| h.p(|p| p.pages[&page].map.item(i))).collect()
     };
     let before = snap(&mut g.h);

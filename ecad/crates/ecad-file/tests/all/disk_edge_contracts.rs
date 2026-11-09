@@ -26,10 +26,7 @@ impl TempDir {
         self.0.join(name)
     }
     fn names(&self) -> Vec<String> {
-        let mut v: Vec<String> = std::fs::read_dir(&self.0)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
+        let mut v: Vec<String> = std::fs::read_dir(&self.0).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         v.sort();
         v
     }
@@ -204,11 +201,7 @@ impl<'a> NoAddFolder<'a> {
 impl Drop for NoAddFolder<'_> {
     fn drop(&mut self) {
         if cfg!(windows) {
-            let who = format!(
-                "{}\\{}",
-                std::env::var("USERDOMAIN").unwrap_or_default(),
-                std::env::var("USERNAME").unwrap_or_default()
-            );
+            let who = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
             let _ = Command::new("icacls").arg(self.0).args(["/remove:d", &who]).output();
         } else {
             let _ = Command::new("chmod").arg("755").arg(self.0).output();
@@ -251,11 +244,8 @@ fn windows_path_spellings_reach_the_same_project() {
     let (mut project, _) = create(&p, &mut ledger);
     edit(&mut ledger, "2");
     // Save As to the same file spelled differently is a plain Save, not a second lock.
-    let other = if cfg!(windows) {
-        PathBuf::from(p.display().to_string().to_uppercase().replace('\\', "/"))
-    } else {
-        d.0.join(".").join("My Project.ecad")
-    };
+    let other =
+        if cfg!(windows) { PathBuf::from(p.display().to_string().to_uppercase().replace('\\', "/")) } else { d.0.join(".").join("My Project.ecad") };
     assert_eq!(project.save_as(&other, &mut ledger, None, WRITER).unwrap(), Durability::Confirmed);
     assert_eq!(project.path(), p, "still bound to the same path");
     drop(project);
@@ -297,8 +287,7 @@ fn probe_an_unverified_file_system() {
 fn deny_read(file: &Path, deny: bool) -> bool {
     if cfg!(windows) {
         let who = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap(), std::env::var("USERNAME").unwrap());
-        let args: Vec<String> =
-            if deny { vec!["/deny".into(), format!("{who}:(RD)")] } else { vec!["/remove:d".into(), who] };
+        let args: Vec<String> = if deny { vec!["/deny".into(), format!("{who}:(RD)")] } else { vec!["/remove:d".into(), who] };
         let out = Command::new("icacls").arg(file).args(&args).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     } else {
@@ -360,10 +349,8 @@ fn another_process_cannot_hold_the_open_project_exclusively() {
     let mut ledger = fixture().ledger;
     let (mut project, _) = create(&p, &mut ledger);
     let try_exclusive = || {
-        let script = format!(
-            "try {{ $f = [System.IO.File]::Open('{}', 'Open', 'Read', 'None'); $f.Close(); 'opened' }} catch {{ 'refused' }}",
-            p.display()
-        );
+        let script =
+            format!("try {{ $f = [System.IO.File]::Open('{}', 'Open', 'Read', 'None'); $f.Close(); 'opened' }} catch {{ 'refused' }}", p.display());
         let out = Command::new("powershell").args(["-NoProfile", "-Command", &script]).output().unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     };

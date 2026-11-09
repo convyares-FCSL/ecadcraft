@@ -124,8 +124,8 @@ pub const HOME_UNKNOWN: &str = "the home folder is not known, so ~ cannot be use
 /// Device names Windows reserves in every folder (`CON.ecad` is the console, not a file). Refused
 /// on every platform, so that a project's file name works everywhere.
 const RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
-    "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+    "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// The user's home folder (`std::env::home_dir`: on Windows the user profile, whether or not
@@ -182,9 +182,7 @@ pub fn normalize_with(path: &str, home: Option<&std::path::Path>) -> Result<Stri
         && drive.is_ascii_alphabetic()
         && !chars.next().is_some_and(|c| c == '/' || c == '\\')
     {
-        return Err(format!(
-            "{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"
-        ));
+        return Err(format!("{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"));
     }
     let full = expand_home(p, home)?;
     let p = full.to_str().ok_or_else(|| format!("{} is not a valid Unicode path", full.display()))?;
@@ -238,8 +236,7 @@ impl Binding {
             return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
         }
         not_a_project(path)?;
-        let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer)
-            .map_err(|e| e.to_string())?;
+        let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
         let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
@@ -261,8 +258,7 @@ impl Binding {
         if let Some(out) = needs_conversion(path) {
             return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
         }
-        let o = ecad_file::v2::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer)
-            .map_err(|e| e.to_string())?;
+        let o = ecad_file::v2::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
         let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
@@ -283,11 +279,7 @@ impl Binding {
     /// Where the file stands.
     pub fn status(&self) -> FileStatus {
         let Some(d) = &self.disk else { return FileStatus::default() };
-        FileStatus {
-            path: Some(d.path().display().to_string()),
-            read_only: d.read_only().map(ToString::to_string),
-            unconfirmed: d.unconfirmed(),
-        }
+        FileStatus { path: Some(d.path().display().to_string()), read_only: d.read_only().map(ToString::to_string), unconfirmed: d.unconfirmed() }
     }
 
     /// Save to the bound file.
@@ -304,22 +296,15 @@ impl Binding {
     /// # Errors
     /// The file could not be written; the previous binding is kept.
     pub(crate) fn save_as(
-        &mut self,
-        path: &str,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        writer: &str,
-        created_ms: Option<u64>,
+        &mut self, path: &str, project: ProjectId, ledger: &mut Ledger, writer: &str, created_ms: Option<u64>,
     ) -> Result<Written, String> {
         let p = std::path::Path::new(path);
         let r = match &mut self.disk {
             Some(d) => d.save_as(p, ledger, created_ms, writer),
-            None => ecad_file::v2::disk::DiskProjectV2::create(p, project, ledger, None, created_ms, writer).map(
-                |(d, unconfirmed)| {
-                    self.disk = Some(Box::new(d));
-                    unconfirmed
-                },
-            ),
+            None => ecad_file::v2::disk::DiskProjectV2::create(p, project, ledger, None, created_ms, writer).map(|(d, unconfirmed)| {
+                self.disk = Some(Box::new(d));
+                unconfirmed
+            }),
         };
         match r {
             Ok(None) => Ok(Written::Confirmed),
@@ -411,12 +396,7 @@ impl Binding {
     }
 
     pub(crate) fn save_as(
-        &mut self,
-        _path: &str,
-        _project: ProjectId,
-        _ledger: &mut Ledger,
-        _writer: &str,
-        _created_ms: Option<u64>,
+        &mut self, _path: &str, _project: ProjectId, _ledger: &mut Ledger, _writer: &str, _created_ms: Option<u64>,
     ) -> Result<Written, String> {
         Err(NO_FILES.into())
     }

@@ -76,11 +76,8 @@ fn fixture() -> G {
     let page = h.first_page();
     component(&mut h, page, "line -10,-5 0,-5 0,15 -10,15 c", 0.0);
     component(&mut h, page, "line 60,-5 70,-5 70,15 60,15 c", 60.0);
-    let wires = [
-        wire(&mut h, json!([[0, 0], [60, 0]]), "W0"),
-        wire(&mut h, json!([[0, 5], [60, 5]]), "W5"),
-        wire(&mut h, json!([[0, 10], [60, 10]]), "W10"),
-    ];
+    let wires =
+        [wire(&mut h, json!([[0, 0], [60, 0]]), "W0"), wire(&mut h, json!([[0, 5], [60, 5]]), "W5"), wire(&mut h, json!([[0, 10], [60, 10]]), "W10")];
     let d = h.doc();
     assert!(wires.iter().all(|w| d.conductors[w].ends.iter().all(Option::is_some)), "attached at both ends");
     let r = h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap();
@@ -342,11 +339,7 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
         .components
         .keys()
         .copied()
-        .find(|c| {
-            ecad_model::derive::terminal_positions(&doc, g.page)
-                .iter()
-                .any(|(t, _, at)| doc.terminals[t].component == *c && at.x > 30.0)
-        })
+        .find(|c| ecad_model::derive::terminal_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].component == *c && at.x > 30.0))
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);
     g.h.run("move", json!({"handles": handles, "delta": [10, 0]})).unwrap();
@@ -369,8 +362,7 @@ fn views_are_remembered_per_cable_across_reopen() {
     for (y, tag) in [(30, "W30"), (35, "W35"), (40, "W40")] {
         wire(&mut g.h, json!([[0, y], [60, y]]), tag);
     }
-    let c2: CableId =
-        id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
+    let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     g.h.cfg(|p| {
         p.persistence = Persistence::File;
         p.settings = Settings::at(&settings.0);
@@ -425,8 +417,7 @@ fn an_unreadable_settings_file_starts_traditional() {
     let file = settings.0.join(views::FILE_NAME);
     std::fs::write(&file, [0xff, 0x00, 0x7b, 0x22, 0xfe]).unwrap();
     let mut s = Session::empty();
-    let (handle, summary) =
-        ProjectHandle::open_file_in(&mut s, &dir.path("g.ecad"), 9, Settings::at(&settings.0)).unwrap();
+    let (handle, summary) = ProjectHandle::open_file_in(&mut s, &dir.path("g.ecad"), 9, Settings::at(&settings.0)).unwrap();
     assert_eq!(summary.matches(views::UNREADABLE).count(), 1, "{summary}");
     let mut h = H { s, project: handle, trail: Vec::new() };
     assert_eq!(views_of(&mut h)[g.c1.hex()], "traditional");
@@ -483,19 +474,11 @@ fn fans_of_many_shapes_draw_sensibly() {
     assert_eq!(tail_count, 2 * 2 + 2 * 20, "{paths:?}");
     // Loose ends keep their grey squares, at the end of a fan line.
     let uid = uid(&mut h, page);
-    let squares: Vec<Pt> = h
-        .p(|p| overlay_marks(p, uid))
-        .into_iter()
-        .filter(|m| m.shape == MarkShape::Square)
-        .map(|m| Pt::new(m.at.x, m.at.y))
-        .collect();
+    let squares: Vec<Pt> =
+        h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| Pt::new(m.at.x, m.at.y)).collect();
     assert_eq!(squares.len(), 2 * 22);
     for q in &squares {
-        assert!(
-            paths
-                .iter()
-                .any(|p| p.first().is_some_and(|a| a.near(*q, 1e-9)) || p.last().is_some_and(|b| b.near(*q, 1e-9)))
-        );
+        assert!(paths.iter().any(|p| p.first().is_some_and(|a| a.near(*q, 1e-9)) || p.last().is_some_and(|b| b.near(*q, 1e-9))));
     }
     // Different routes: one with bends, the reference drawn right to left.
     h.run("wire", json!({"points": [[0, 300], [60, 300]]})).unwrap();
@@ -559,15 +542,7 @@ fn hovering_a_fan_line_shows_the_cable() {
     let lines = g.h.p(|p| hover_lines(p, uid, h)).unwrap();
     assert_eq!(
         lines,
-        [
-            "Cable C1".to_string(),
-            format!("id {}", g.c1.hex()),
-            "View: fan".into(),
-            "Wires: 3".into(),
-            "  W0".into(),
-            "  W5".into(),
-            "  W10".into()
-        ]
+        ["Cable C1".to_string(), format!("id {}", g.c1.hex()), "View: fan".into(), "Wires: 3".into(), "  W0".into(), "  W5".into(), "  W10".into()]
     );
 }
 
@@ -631,9 +606,7 @@ fn the_json_form() {
     let e = |h: &mut H, p: Value| h.run("cableview", p).unwrap_err();
     assert!(e(&mut g.h, json!({"cable": "zz"})).contains("`cable` (hex id) is required"));
     assert!(e(&mut g.h, json!({"cable": "1234"})).contains("no such cable"));
-    assert!(
-        e(&mut g.h, json!({"cable": g.c1.hex(), "view": "both"})).contains(r#"`view` must be "traditional" or "fan""#)
-    );
+    assert!(e(&mut g.h, json!({"cable": g.c1.hex(), "view": "both"})).contains(r#"`view` must be "traditional" or "fan""#));
     assert!(e(&mut g.h, json!({"cable": g.c1.hex(), "view": 3})).contains(r#"`view` must be "traditional" or "fan""#));
     assert!(e(&mut g.h, json!({"view": "fan"})).contains("`view` needs `cable`"));
     assert_eq!(views_of(&mut g.h), json!({ g.c1.hex(): "traditional" }));
@@ -659,12 +632,7 @@ fn the_json_form() {
 /// A settings file with `n` other projects, each listing one cable, last used at `used + i`.
 fn crowded(n: usize, used: u64) -> Value {
     let projects: serde_json::Map<String, Value> = (0..n)
-        .map(|i| {
-            (
-                format!("{:032x}", 0xabc0_0000_u128 + i as u128),
-                json!({"fan": [format!("{:032x}", i + 1)], "used": used + i as u64}),
-            )
-        })
+        .map(|i| (format!("{:032x}", 0xabc0_0000_u128 + i as u128), json!({"fan": [format!("{:032x}", i + 1)], "used": used + i as u64})))
         .collect();
     json!({"format": views::FORMAT, "projects": projects})
 }

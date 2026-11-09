@@ -23,8 +23,7 @@ const AGENT: &str = "cable-agent";
 const SEED: u64 = 0x0E_CAD0_0910;
 
 /// The commands of briefs 009 and 010.
-const COMMANDS: &[&str] =
-    &["cablecore", "cablefan", "cableref", "cablecontinue", "cablegoto", "cablerefs", "renamepage", "movepage"];
+const COMMANDS: &[&str] = &["cablecore", "cablefan", "cableref", "cablecontinue", "cablegoto", "cablerefs", "renamepage", "movepage"];
 
 struct Client {
     s: EcadMcp,
@@ -34,15 +33,10 @@ struct Client {
 impl Client {
     fn new(s: EcadMcp) -> Self {
         let mut c = Client { s, next: 1 };
-        let r = c.request(
-            "initialize",
-            json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}),
-        );
+        let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
         assert!(c.s.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none()))
-            .unwrap()
-            .unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
         c
     }
 
@@ -163,9 +157,7 @@ fn field(doc: &Document) -> PageId {
 fn fill(doc: &Document, v: &Value) -> Value {
     match v {
         Value::String(s) => {
-            let reference = |page: PageId| {
-                cable_references(doc).into_iter().find(|r| r.page == page).expect("a reference").reference.hex()
-            };
+            let reference = |page: PageId| cable_references(doc).into_iter().find(|r| r.page == page).expect("a reference").reference.hex();
             let c1 = || *doc.cables.keys().next().expect("a cable");
             match s.as_str() {
                 "<supply>" => Value::String(supply(doc).hex()),
@@ -287,9 +279,7 @@ fn each_change_through_mcp_records_the_json_forms_transaction_as_the_agent_and_u
     }
     // Every changing command of the two briefs took part in the comparison.
     let labels: Vec<&str> = agent.iter().map(|t| t.label.as_str()).collect();
-    for label in
-        ["Core labels", "Core label", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"]
-    {
+    for label in ["Core labels", "Core label", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"] {
         assert!(labels.contains(&label), "{label} missing from {labels:?}");
     }
 
@@ -333,11 +323,7 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
         ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable C1 already has a reference on this page."),
         ("cableref", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
-        (
-            "cablecontinue",
-            json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}),
-            "Cable C1 already continues to another page",
-        ),
+        ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable C1 already continues to another page"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": "<w0>"}), "no such reference"),
         ("cablerefs", json!({"cable": "nope"}), "`cable` (hex id) is required"),

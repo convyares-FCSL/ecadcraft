@@ -17,8 +17,8 @@ use ecad_cadcraft::debug::{ObjectId, used_by};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
 use ecad_model::{
-    Author, CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, Transaction,
+    Author, CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    Transaction,
 };
 use serde_json::{Value, json};
 
@@ -90,10 +90,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert_eq!(tx.label, "Cable slash");
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
-    assert_eq!(
-        names,
-        ["CreateCable", "AddCableMember", "AddCableMember", "AddCableMember", "AddItem", "LinkRepresentation"]
-    );
+    assert_eq!(names, ["CreateCable", "AddCableMember", "AddCableMember", "AddCableMember", "AddItem", "LinkRepresentation"]);
     let k: CableId = id(&r, "cable");
     let d = f.h.doc();
     let cable = &d.cables[&k];
@@ -119,10 +116,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert_eq!((rep.form, rep.role.as_str(), rep.page), (Form::Drawn, "slash", f.page));
     assert_eq!(rep.items, vec![item]);
     assert!(rep.connection_points.is_empty());
-    assert_eq!(
-        d.items[&item].kind,
-        ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) })
-    );
+    assert_eq!(d.items[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));
     let route = ecad_model::derive::route_on_page(&d, f.w0, f.page).unwrap().0;
     assert_eq!(d.items[&item].style, d.items[&route].style, "the same style as a new wire (O4)");
 }
@@ -161,15 +155,10 @@ fn the_interactive_form_records_the_json_forms_transaction() {
     let cursor = Vec2::new(32.0, 18.0);
     h.s.cursor = cursor;
     let preview = h.s.preview(cursor);
-    let green_rings = preview
-        .iter()
-        .filter(|e| matches!(e.kind, EntityKind::Circle(_)) && e.common.color == CColor::Index(3))
-        .count();
+    let green_rings = preview.iter().filter(|e| matches!(e.kind, EntityKind::Circle(_)) && e.common.color == CColor::Index(3)).count();
     assert_eq!(green_rings, 9, "three bold rings (three circles each)");
     assert!(
-        preview
-            .iter()
-            .any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "-> 3 wires, 1 other object ignored")),
+        preview.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "-> 3 wires, 1 other object ignored")),
         "the count shows before the click"
     );
     assert!(preview.iter().any(|e| matches!(e.kind, EntityKind::Line(_))), "the rubber band");
@@ -272,13 +261,7 @@ fn the_crossing_rules() {
         ("C1 crossing the inside", none, (28.0, -3.0), (32.0, 18.0), Ok((vec!["W0", "W5", "W10"], vec![]))),
         ("C2 through a bend", bend, (7.0, 23.0), (13.0, 17.0), Ok((vec!["B"], vec![]))),
         ("C3 a slash end on the inside", none, (20.0, 0.0), (20.0, -10.0), Ok((vec!["W0"], vec![]))),
-        (
-            "C4 only a wire end",
-            none,
-            (60.0, -2.0),
-            (60.0, 2.0),
-            Err("The slash crosses no wires; nothing was created."),
-        ),
+        ("C4 only a wire end", none, (60.0, -2.0), (60.0, 2.0), Err("The slash crosses no wires; nothing was created.")),
         ("C4 an end among crossings", none, (28.0, -3.0), (60.0, 10.0), Ok((vec!["W0", "W5"], vec!["W10"]))),
         ("C5 along a wire", none, (10.0, 0.0), (20.0, 0.0), Err("The slash crosses no wires; nothing was created.")),
         ("C6 one wire crossed twice", u_shape, (-5.0, 45.0), (25.0, 45.0), Ok((vec!["U"], vec![]))),
@@ -321,15 +304,9 @@ fn refusals_write_nothing_and_say_why() {
         (
             "a wire already in a cable",
             json!({"from": [40, 3], "to": [40, 7]}),
-            format!(
-                "Wire W5 is already in cable {cable_short}…; a wire can be in only one cable. Nothing was created."
-            ),
+            format!("Wire W5 is already in cable {cable_short}…; a wire can be in only one cable. Nothing was created."),
         ),
-        (
-            "empty space",
-            json!({"from": [100, 100], "to": [110, 110]}),
-            "The slash crosses no wires; nothing was created.".into(),
-        ),
+        ("empty space", json!({"from": [100, 100], "to": [110, 110]}), "The slash crosses no wires; nothing was created.".into()),
         (
             "the plain line only",
             json!({"from": [10, 13], "to": [10, 17]}),
@@ -373,20 +350,14 @@ fn refusals_write_nothing_and_say_why() {
     assert!(preview.iter().any(|e| matches!(&e.kind, EntityKind::Text(t)
         if t.value == "-> refused: 1 wire already in a cable")
         && e.common.color == CColor::Index(1)));
-    let red_rings = preview
-        .iter()
-        .filter(|e| matches!(e.kind, EntityKind::Circle(_)) && e.common.color == CColor::Index(1))
-        .count();
+    let red_rings = preview.iter().filter(|e| matches!(e.kind, EntityKind::Circle(_)) && e.common.color == CColor::Index(1)).count();
     assert_eq!(red_rings, 3, "one bold red ring on W5");
     // No wires is a refusal too: red text (design §5.2).
     // From the first point (40,3) to (45,4): between W0 and W5, crossing nothing.
     let empty = Vec2::new(45.0, 4.0);
     f.h.s.cursor = empty;
     let preview = f.h.s.preview(empty);
-    assert!(
-        preview.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "-> no wires")
-            && e.common.color == CColor::Index(1))
-    );
+    assert!(preview.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "-> no wires") && e.common.color == CColor::Index(1)));
     f.h.s.cancel();
     assert_eq!(members(&mut f.h, cable), vec![f.w0, f.w5, f.w10]);
 }
@@ -398,9 +369,7 @@ fn cableadd_refuses_a_wire_already_in_a_cable() {
     let r = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     let cable: CableId = id(&r, "cable");
     let head = f.h.head();
-    for params in
-        [json!({"conductors": [f.w5.hex()], "tag": "-W2"}), json!({"cable": cable.hex(), "conductors": [f.w5.hex()]})]
-    {
+    for params in [json!({"conductors": [f.w5.hex()], "tag": "-W2"}), json!({"cable": cable.hex(), "conductors": [f.w5.hex()]})] {
         let e = f.h.run("cableadd", params).expect_err("refused");
         assert!(e.contains("Wire W5 is already in cable") && e.contains("Nothing was changed."), "{e}");
         assert_eq!(f.h.head(), head);
@@ -420,8 +389,7 @@ fn cableadd_refuses_a_wire_already_in_a_cable() {
 fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     let mut f = fixture();
     let r = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
-    let (k, item, rid): (CableId, ItemId, RepresentationId) =
-        (id(&r, "cable"), id(&r, "item"), id(&r, "representation"));
+    let (k, item, rid): (CableId, ItemId, RepresentationId) = (id(&r, "cable"), id(&r, "item"), id(&r, "representation"));
     let handle = f.h.handle_of(f.page, item);
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let d = f.h.doc();
@@ -439,11 +407,7 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "the slash goes with it");
     assert_eq!(d.conductors, before.conductors, "every conductor stays");
     for c in [f.w0, f.w5, f.w10] {
-        assert_eq!(
-            ecad_model::derive::route_on_page(&d, c, f.page),
-            ecad_model::derive::route_on_page(&before, c, f.page),
-            "routes unchanged"
-        );
+        assert_eq!(ecad_model::derive::route_on_page(&d, c, f.page), ecad_model::derive::route_on_page(&before, c, f.page), "routes unchanged");
     }
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
@@ -474,11 +438,7 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     };
     let got = dots(&mut f.h);
     assert_eq!(got.len(), 3, "{got:?}");
-    for want in [
-        Pt::new(28.0 + 4.0 * 3.0 / 21.0, 0.0),
-        Pt::new(28.0 + 4.0 * 8.0 / 21.0, 5.0),
-        Pt::new(28.0 + 4.0 * 13.0 / 21.0, 10.0),
-    ] {
+    for want in [Pt::new(28.0 + 4.0 * 3.0 / 21.0, 0.0), Pt::new(28.0 + 4.0 * 8.0 / 21.0, 5.0), Pt::new(28.0 + 4.0 * 13.0 / 21.0, 10.0)] {
         assert!(got.iter().any(|p| p.near(want, 1e-9)), "dot at {want:?} in {got:?}");
     }
     let slash_handle = f.h.handle_of(f.page, item);
@@ -507,12 +467,7 @@ fn the_debugger_trail_goes_from_cable_to_its_wires_in_order() {
     let d = f.h.doc();
     assert_eq!(
         used_by(&d, ObjectId::Cable(k)),
-        vec![
-            ObjectId::Conductor(f.w10),
-            ObjectId::Conductor(f.w5),
-            ObjectId::Conductor(f.w0),
-            ObjectId::Representation(rid)
-        ]
+        vec![ObjectId::Conductor(f.w10), ObjectId::Conductor(f.w5), ObjectId::Conductor(f.w0), ObjectId::Representation(rid)]
     );
 }
 
@@ -535,11 +490,7 @@ fn wires_at(h: &mut H, xs: &[f64]) {
             ops.push(Op::CreateConductor { id: c, conductor: Default::default() });
             ops.push(Op::AddItem {
                 id: item,
-                item: Item {
-                    page,
-                    style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, -1.0), b: Pt::new(x, 1.0) }),
-                },
+                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, -1.0), b: Pt::new(x, 1.0) }) },
             });
             ops.push(Op::LinkRepresentation {
                 id: r,
@@ -565,8 +516,7 @@ fn hostile_slashes_never_panic() {
     let mut h = H::new(SEED);
     many_wires(&mut h, MAX_CABLE_MEMBERS + 1);
     let head = h.head();
-    let e =
-        h.s.execute("cableslash", &json!({"from": [-1, 0], "to": [MAX_CABLE_MEMBERS as f64 + 1.0, 0]})).unwrap_err();
+    let e = h.s.execute("cableslash", &json!({"from": [-1, 0], "to": [MAX_CABLE_MEMBERS as f64 + 1.0, 0]})).unwrap_err();
     assert!(e.to_string().contains("The slash crosses more than 10000 wires; nothing was created."), "{e}");
     assert_eq!(h.head(), head);
     // One fewer: the last wire is outside the slash.
@@ -589,9 +539,7 @@ fn hostile_slashes_never_panic() {
     let _ = f.h.run("cableslash", json!({"from": [0, 0], "to": [1e-300, 0]}));
     f.h.s.start("cableslash").unwrap();
     click(&mut f.h, -1e12, -1e12);
-    for cursor in
-        [Vec2::new(1e12, 1e12), Vec2::new(f64::NAN, 0.0), Vec2::new(f64::INFINITY, 1.0), Vec2::new(-1e12, -1e12)]
-    {
+    for cursor in [Vec2::new(1e12, 1e12), Vec2::new(f64::NAN, 0.0), Vec2::new(f64::INFINITY, 1.0), Vec2::new(-1e12, -1e12)] {
         f.h.s.cursor = cursor;
         let _ = f.h.s.preview(cursor);
     }

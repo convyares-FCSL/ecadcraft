@@ -168,10 +168,7 @@ pub fn verify(store: &Store) -> VerifyReport {
                     if let Some(m) = meta
                         && m.tag_high != high
                     {
-                        fail(
-                            &mut rep,
-                            format!("{}: the tag numbers of {:?} differ from the history's", b.name, v.name),
-                        );
+                        fail(&mut rep, format!("{}: the tag numbers of {:?} differ from the history's", b.name, v.name));
                     }
                 }
                 Ok(_) => fail(&mut rep, format!("{}: the snapshot of {:?} DIFFERS from the replay", b.name, v.name)),
@@ -187,29 +184,19 @@ pub fn verify(store: &Store) -> VerifyReport {
                 fail(&mut rep, format!("{}: the undo stacks of {:?} differ from the replay", b.name, v.name));
             }
             if v.kind != VersionKind::Auto && named.get(&v.name) != Some(&&v.point.seq) {
-                fail(
-                    &mut rep,
-                    format!("{}: version {:?} is not named at {} in the history", b.name, v.name, v.point.seq),
-                );
+                fail(&mut rep, format!("{}: version {:?} is not named at {} in the history", b.name, v.name, v.point.seq));
             }
         }
         let rows_named = versions.iter().filter(|v| v.kind != VersionKind::Auto).count();
         if rows_named != named.len() {
-            fail(
-                &mut rep,
-                format!("{}: {} version rows, {} versions named in the history", b.name, rows_named, named.len()),
-            );
+            fail(&mut rep, format!("{}: {} version rows, {} versions named in the history", b.name, rows_named, named.len()));
         }
         rep.lines.push(format!("{}: {} snapshot(s) equal the replay at their points", b.name, rep.snapshots));
     }
     match r.chunk_list() {
         Ok(all) => {
             rep.unreferenced_chunks = all.iter().filter(|(h, _, _)| !referenced.contains(h)).count();
-            rep.lines.push(format!(
-                "{} chunk(s), {} not referenced by any version (removed by compaction)",
-                all.len(),
-                rep.unreferenced_chunks
-            ));
+            rep.lines.push(format!("{} chunk(s), {} not referenced by any version (removed by compaction)", all.len(), rep.unreferenced_chunks));
         }
         Err(e) => fail(&mut rep, format!("chunks: {e}")),
     }

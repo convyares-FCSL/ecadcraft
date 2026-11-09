@@ -16,11 +16,7 @@ use ecad_model::derive::terminal_positions;
 use ecad_model::{ComponentId, Document, PageId, Subject};
 
 fn page_items(doc: &Document, page: PageId) -> BTreeMap<String, String> {
-    doc.items
-        .iter()
-        .filter(|(_, it)| it.page == page)
-        .map(|(id, it)| (format!("{id:?}"), format!("{:?}", it.kind)))
-        .collect()
+    doc.items.iter().filter(|(_, it)| it.page == page).map(|(id, it)| (format!("{id:?}"), format!("{:?}", it.kind))).collect()
 }
 
 fn ends(doc: &Document) -> BTreeMap<String, String> {
@@ -66,9 +62,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
     std::fs::copy(&path, &copy).unwrap();
     let mut s = Session::empty();
     s.viewport_px = (1280.0, 800.0);
-    let (project, _) =
-        ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none())
-            .unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
 
     // Components on page 1 with at least one wire attached, with their symbol handle and the
     // position of their first terminal.
@@ -86,8 +80,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 if r.items.first() != Some(&item) {
                     continue;
                 }
-                let terms: Vec<_> =
-                    pos.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component == c)).collect();
+                let terms: Vec<_> = pos.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.component == c)).collect();
                 let wired: usize = terms.iter().map(|(t, _, _)| doc.ends_at(*t).len()).sum();
                 if wired == 0 {
                     continue;
@@ -102,8 +95,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
     assert!(picks.len() >= 3, "too few wired components on page 1: {} (page {page:?})", picks.len());
 
     let mut text = String::new();
-    let doc_of =
-        |project: &ProjectHandle, s: &mut Session| project.read(s, |p, _| p.ledger.document().clone()).unwrap();
+    let doc_of = |project: &ProjectHandle, s: &mut Session| project.read(s, |p, _| p.ledger.document().clone()).unwrap();
     // Three components, each moved by two deltas (one short, one past a neighbour).
     let chosen: Vec<_> = [0, picks.len() / 2, picks.len() - 1].into_iter().map(|i| picks[i]).collect();
     for (h, comp, at, wired) in chosen {
@@ -132,8 +124,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
                     (l.as_ref().map(|t| format!("{:#?}", t.ops)), l.map(|t| t.label), p.ledger.head())
                 })
                 .unwrap();
-            writeln!(text, "=== component {comp:?} (symbol {}, {wired} wire ends) moved by {delta:?}", h.hex())
-                .unwrap();
+            writeln!(text, "=== component {comp:?} (symbol {}, {wired} wire ends) moved by {delta:?}", h.hex()).unwrap();
             writeln!(text, "prompts: {prompts:?}").unwrap();
             writeln!(text, "head {head} -> {head_after}, label {label:?}").unwrap();
             let (ib, ia) = (page_items(&before, page), page_items(&after, page));
@@ -204,9 +195,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
             s.cursor = to;
             s.input(Input::Point(to)).unwrap();
             let after = doc_of(&project, &mut s);
-            let (ops, head_after) = project
-                .read(&mut s, |p, _| (p.ledger.log().last().map(|t| format!("{:#?}", t.ops)), p.ledger.head()))
-                .unwrap();
+            let (ops, head_after) = project.read(&mut s, |p, _| (p.ledger.log().last().map(|t| format!("{:#?}", t.ops)), p.ledger.head())).unwrap();
             writeln!(text, "=== {mode}-window move of {first:?} by {delta:?} (selection {picked})").unwrap();
             writeln!(text, "prompts: {prompts:?}").unwrap();
             writeln!(text, "head {head} -> {head_after}").unwrap();
@@ -229,15 +218,12 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 let Subject::Conductor(c) = r.subject else { continue };
                 let Some(cond) = doc.conductors.get(&c) else { continue };
-                let attached =
-                    cond.ends.iter().flatten().any(|t| doc.terminals.get(t).is_some_and(|x| x.component == first));
+                let attached = cond.ends.iter().flatten().any(|t| doc.terminals.get(t).is_some_and(|x| x.component == first));
                 if !attached {
                     continue;
                 }
-                if let Some(ecad_model::Item {
-                    kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }),
-                    ..
-                }) = doc.items.get(&item)
+                if let Some(ecad_model::Item { kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }), .. }) =
+                    doc.items.get(&item)
                 {
                     out.push((e.handle, vertices.clone()));
                 }
@@ -259,12 +245,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
     let (h, v) = &routes[0];
     let last = v.len() - 1;
     grips.push((format!("M3 end {last} of {} onto a terminal", h.hex()), *h, 2 * last, other_terminal));
-    grips.push((
-        format!("M3 end {last} of {} into free space", h.hex()),
-        *h,
-        2 * last,
-        [v[last].x + 3.0, v[last].y - 9.0],
-    ));
+    grips.push((format!("M3 end {last} of {} into free space", h.hex()), *h, 2 * last, [v[last].x + 3.0, v[last].y - 9.0]));
     grips.push((format!("M3 end 0 of {} onto a terminal", h.hex()), *h, 0, other_terminal));
     grips.push((format!("M3 end 0 of {} into free space", h.hex()), *h, 0, [v[0].x - 7.5, v[0].y + 2.5]));
     for (name, h, index, to) in grips {
@@ -272,11 +253,8 @@ fn move_components_with_wires_on_the_kept_small_project() {
         let head = project.read(&mut s, |p, _| p.ledger.head()).unwrap();
         let r = s.execute("grip.stretch", &serde_json::json!({"handle": h.hex(), "index": index, "to": to}));
         let after = doc_of(&project, &mut s);
-        let (ops, head_after) = project
-            .read(&mut s, |p, _| (p.ledger.log().last().map(|t| format!("{:#?}", t.ops)), p.ledger.head()))
-            .unwrap();
-        writeln!(text, "=== grip {name} to {to:?}: {}", if r.is_ok() { "ok".to_string() } else { format!("{r:?}") })
-            .unwrap();
+        let (ops, head_after) = project.read(&mut s, |p, _| (p.ledger.log().last().map(|t| format!("{:#?}", t.ops)), p.ledger.head())).unwrap();
+        writeln!(text, "=== grip {name} to {to:?}: {}", if r.is_ok() { "ok".to_string() } else { format!("{r:?}") }).unwrap();
         writeln!(text, "head {head} -> {head_after}").unwrap();
         diff(&mut text, &before, &after, page);
         if head_after != head {

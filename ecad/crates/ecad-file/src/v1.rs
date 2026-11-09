@@ -8,10 +8,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model as m;
-use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
-    TerminalId, TxId,
-};
+use ecad_model::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, TxId};
 use serde::{Deserialize, Serialize};
 
 /// A point `[x, y]`.
@@ -676,9 +673,7 @@ impl From<&m::Primitive> for Primitive {
             m::Primitive::Polyline { vertices, closed } => {
                 Primitive::Polyline { vertices: vertices.iter().copied().map(pt).collect(), closed: *closed }
             }
-            m::Primitive::Arc { center, radius, start, end } => {
-                Primitive::Arc { center: pt(*center), radius: *radius, start: *start, end: *end }
-            }
+            m::Primitive::Arc { center, radius, start, end } => Primitive::Arc { center: pt(*center), radius: *radius, start: *start, end: *end },
             m::Primitive::Circle { center, radius } => Primitive::Circle { center: pt(*center), radius: *radius },
             m::Primitive::Text { at, height, rotation, value } => {
                 Primitive::Text { at: pt(*at), height: *height, rotation: *rotation, value: value.clone() }
@@ -774,11 +769,7 @@ impl From<&m::Definition> for Definition {
                 content_hash: o.content_hash,
             }),
             graphics: d.graphics.iter().map(Into::into).collect(),
-            terminals: d
-                .terminals
-                .iter()
-                .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) })
-                .collect(),
+            terminals: d.terminals.iter().map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) }).collect(),
             bridges: d.bridges.clone(),
         }
     }
@@ -847,18 +838,14 @@ impl From<&m::Op> for Op {
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
-            m::Op::ModifyItem { id, before, after } => {
-                Op::ModifyItem { id: *id, before: before.into(), after: after.into() }
-            }
+            m::Op::ModifyItem { id, before, after } => Op::ModifyItem { id: *id, before: before.into(), after: after.into() },
             m::Op::RemoveItem { id, item } => Op::RemoveItem { id: *id, item: item.into() },
             m::Op::CreateComponent { id, component } => Op::CreateComponent { id: *id, component: component.into() },
             m::Op::DeleteComponent { id, component } => Op::DeleteComponent { id: *id, component: component.into() },
             m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
             m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
-            m::Op::ModifyRepresentation { id, before, after } => {
-                Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() }
-            }
+            m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
             m::Op::CreateConductor { id, conductor } => Op::CreateConductor { id: *id, conductor: conductor.into() },
             m::Op::DeleteConductor { id, conductor } => Op::DeleteConductor { id: *id, conductor: conductor.into() },
@@ -867,33 +854,19 @@ impl From<&m::Op> for Op {
             }
             m::Op::CreateCable { id, cable } => Op::CreateCable { id: *id, cable: cable.into() },
             m::Op::DeleteCable { id, cable } => Op::DeleteCable { id: *id, cable: cable.into() },
-            m::Op::AddCableMember { cable, index, member } => {
-                Op::AddCableMember { cable: *cable, index: ix(*index), member: member.into() }
-            }
-            m::Op::RemoveCableMember { cable, index, member } => {
-                Op::RemoveCableMember { cable: *cable, index: ix(*index), member: member.into() }
-            }
+            m::Op::AddCableMember { cable, index, member } => Op::AddCableMember { cable: *cable, index: ix(*index), member: member.into() },
+            m::Op::RemoveCableMember { cable, index, member } => Op::RemoveCableMember { cable: *cable, index: ix(*index), member: member.into() },
             m::Op::SetProperty { object: o, key, before, after } => {
                 Op::SetProperty { object: object(*o), key: key.clone(), before: before.clone(), after: after.clone() }
             }
             m::Op::EmbedDefinition { id, definition } => Op::EmbedDefinition { id: *id, definition: definition.into() },
-            m::Op::RemoveDefinition { id, definition } => {
-                Op::RemoveDefinition { id: *id, definition: definition.into() }
-            }
-            m::Op::SetProjectSettings { before, after } => {
-                Op::SetProjectSettings { before: before.into(), after: after.into() }
-            }
+            m::Op::RemoveDefinition { id, definition } => Op::RemoveDefinition { id: *id, definition: definition.into() },
+            m::Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: before.into(), after: after.into() },
             m::Op::NameVersion { name, at } => Op::NameVersion { name: name.clone(), at: *at },
             m::Op::UnnameVersion { name, at } => Op::UnnameVersion { name: name.clone(), at: *at },
-            m::Op::AddFolder { id, folder, index } => {
-                Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) }
-            }
-            m::Op::RemoveFolder { id, folder, index } => {
-                Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) }
-            }
-            m::Op::ModifyFolder { id, before, after } => {
-                Op::ModifyFolder { id: *id, before: before.into(), after: after.into() }
-            }
+            m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
+            m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
+            m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
         }
     }
 }
@@ -942,16 +915,10 @@ impl From<Primitive> for m::Primitive {
     fn from(p: Primitive) -> Self {
         match p {
             Primitive::Line { a, b } => m::Primitive::Line { a: mpt(a), b: mpt(b) },
-            Primitive::Polyline { vertices, closed } => {
-                m::Primitive::Polyline { vertices: vertices.into_iter().map(mpt).collect(), closed }
-            }
-            Primitive::Arc { center, radius, start, end } => {
-                m::Primitive::Arc { center: mpt(center), radius, start, end }
-            }
+            Primitive::Polyline { vertices, closed } => m::Primitive::Polyline { vertices: vertices.into_iter().map(mpt).collect(), closed },
+            Primitive::Arc { center, radius, start, end } => m::Primitive::Arc { center: mpt(center), radius, start, end },
             Primitive::Circle { center, radius } => m::Primitive::Circle { center: mpt(center), radius },
-            Primitive::Text { at, height, rotation, value } => {
-                m::Primitive::Text { at: mpt(at), height, rotation, value }
-            }
+            Primitive::Text { at, height, rotation, value } => m::Primitive::Text { at: mpt(at), height, rotation, value },
             Primitive::Point { at } => m::Primitive::Point { at: mpt(at) },
         }
     }
@@ -973,12 +940,7 @@ impl From<Item> for m::Item {
         };
         m::Item {
             page: i.page,
-            style: m::Style {
-                layer: i.style.layer,
-                color: i.style.color.into(),
-                linetype: i.style.linetype,
-                lineweight: i.style.lineweight,
-            },
+            style: m::Style { layer: i.style.layer, color: i.style.color.into(), linetype: i.style.linetype, lineweight: i.style.lineweight },
             kind,
         }
     }
@@ -1052,11 +1014,7 @@ impl From<Definition> for m::Definition {
                 content_hash: o.content_hash,
             }),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d
-                .terminals
-                .into_iter()
-                .map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) })
-                .collect(),
+            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) }).collect(),
             bridges: d.bridges,
         }
     }
@@ -1101,49 +1059,31 @@ impl TryFrom<Op> for m::Op {
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
-            Op::ModifyItem { id, before, after } => {
-                m::Op::ModifyItem { id, before: before.into(), after: after.into() }
-            }
+            Op::ModifyItem { id, before, after } => m::Op::ModifyItem { id, before: before.into(), after: after.into() },
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
             Op::CreateComponent { id, component } => m::Op::CreateComponent { id, component: component.into() },
             Op::DeleteComponent { id, component } => m::Op::DeleteComponent { id, component: component.into() },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
-            Op::ModifyRepresentation { id, before, after } => {
-                m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() }
-            }
+            Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },
             Op::CreateConductor { id, conductor } => m::Op::CreateConductor { id, conductor: conductor.into() },
             Op::DeleteConductor { id, conductor } => m::Op::DeleteConductor { id, conductor: conductor.into() },
-            Op::AttachEnd { conductor, end, before, after } => {
-                m::Op::AttachEnd { conductor, end: mend(end), before, after }
-            }
+            Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
-            Op::AddCableMember { cable, index: i, member } => {
-                m::Op::AddCableMember { cable, index: index(i)?, member: member.into() }
-            }
-            Op::RemoveCableMember { cable, index: i, member } => {
-                m::Op::RemoveCableMember { cable, index: index(i)?, member: member.into() }
-            }
-            Op::SetProperty { object, key, before, after } => {
-                m::Op::SetProperty { object: mobject(object), key, before, after }
-            }
+            Op::AddCableMember { cable, index: i, member } => m::Op::AddCableMember { cable, index: index(i)?, member: member.into() },
+            Op::RemoveCableMember { cable, index: i, member } => m::Op::RemoveCableMember { cable, index: index(i)?, member: member.into() },
+            Op::SetProperty { object, key, before, after } => m::Op::SetProperty { object: mobject(object), key, before, after },
             Op::EmbedDefinition { id, definition } => m::Op::EmbedDefinition { id, definition: definition.into() },
             Op::RemoveDefinition { id, definition } => m::Op::RemoveDefinition { id, definition: definition.into() },
-            Op::SetProjectSettings { before, after } => {
-                m::Op::SetProjectSettings { before: before.into(), after: after.into() }
-            }
+            Op::SetProjectSettings { before, after } => m::Op::SetProjectSettings { before: before.into(), after: after.into() },
             Op::NameVersion { name, at } => m::Op::NameVersion { name, at },
             Op::UnnameVersion { name, at } => m::Op::UnnameVersion { name, at },
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
-            Op::RemoveFolder { id, folder, index: i } => {
-                m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? }
-            }
-            Op::ModifyFolder { id, before, after } => {
-                m::Op::ModifyFolder { id, before: before.into(), after: after.into() }
-            }
+            Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
+            Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },
         })
     }
 }

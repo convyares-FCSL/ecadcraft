@@ -33,9 +33,7 @@ pub enum DiskErrorV2 {
     BeforeReplacement { step: &'static str, error: String },
     #[error("written, but the system could not confirm the change is durable ({0}); save again")]
     Unconfirmed(String),
-    #[error(
-        "not saved: the file at {0} was replaced, moved or removed by something else; nothing was written; use Save As"
-    )]
+    #[error("not saved: the file at {0} was replaced, moved or removed by something else; nothing was written; use Save As")]
     Replaced(String),
     #[error("not saved: could not check that {path} is still the file this project opened ({error}); try again")]
     CannotCheck { path: String, error: String },
@@ -113,16 +111,10 @@ impl DiskProjectV2 {
         if !path.is_file() {
             return Err(open_err("there is no file there".into()));
         }
-        let attempt = if reading {
-            Ok(LockAttempt::HeldByOther { holder: None })
-        } else {
-            WriterLock::try_acquire(path, &holder_record(writer))
-        };
+        let attempt = if reading { Ok(LockAttempt::HeldByOther { holder: None }) } else { WriterLock::try_acquire(path, &holder_record(writer)) };
         let (mut lock, mut read_only, reclaimed) = match attempt {
             Ok(LockAttempt::Acquired { lock, leftover }) => (Some(lock), None, leftover),
-            Ok(LockAttempt::HeldByOther { .. }) if reading => {
-                (None, Some(ReadOnly::NotWritable("it was opened for reading only".into())), None)
-            }
+            Ok(LockAttempt::HeldByOther { .. }) if reading => (None, Some(ReadOnly::NotWritable("it was opened for reading only".into())), None),
             Ok(LockAttempt::HeldByOther { holder }) => (None, Some(ReadOnly::Locked { holder }), None),
             Err(e) => (None, Some(ReadOnly::NoLock(e.to_string())), None),
         };
@@ -144,14 +136,12 @@ impl DiskProjectV2 {
         let identity = match disk::retry_transient(|| FileIdentity::at(path)) {
             Ok(id) => Some(id),
             Err(e) => {
-                read_only = read_only.or(Some(ReadOnly::NotWritable(format!(
-                    "its identity could not be read ({e}), so a replacement could not be noticed"
-                ))));
+                read_only =
+                    read_only.or(Some(ReadOnly::NotWritable(format!("its identity could not be read ({e}), so a replacement could not be noticed"))));
                 None
             }
         };
-        let OpenedV2 { mut project, ledger, report } =
-            ProjectV2::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
+        let OpenedV2 { mut project, ledger, report } = ProjectV2::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
         if report.damage.is_some() {
             read_only = read_only.or(Some(ReadOnly::Damaged));
         }
@@ -171,12 +161,7 @@ impl DiskProjectV2 {
     /// [`DiskErrorV2::TargetLocked`]; [`DiskErrorV2::BeforeReplacement`] when a step before the
     /// rename failed (an existing file at `path` is unchanged; the temporary file is removed).
     pub fn create(
-        path: &Path,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        from: Option<&ProjectV2>,
-        created_ms: Option<u64>,
-        writer: &str,
+        path: &Path, project: ProjectId, ledger: &mut Ledger, from: Option<&ProjectV2>, created_ms: Option<u64>, writer: &str,
     ) -> Result<(Self, Option<String>), DiskErrorV2> {
         let before = |step: &'static str, error: String| DiskErrorV2::BeforeReplacement { step, error };
         let lock = match WriterLock::try_acquire(path, &holder_record(writer)) {
@@ -208,8 +193,7 @@ impl DiskProjectV2 {
                     let (p, _) = ProjectV2::create(store, project, ledger, None, None, created_ms, writer, every)
                         .map_err(|e| before("writing the temporary file", e.to_string()))?;
                     drop(p);
-                    store =
-                        Store::open(&temp, true).map_err(|e| before("reopening the temporary file", e.to_string()))?;
+                    store = Store::open(&temp, true).map_err(|e| before("reopening the temporary file", e.to_string()))?;
                     store.compact().map_err(|e| before("compacting the temporary file", e.to_string()))?;
                 }
             }
@@ -222,21 +206,13 @@ impl DiskProjectV2 {
         }
         let synced = disk::sync_dir(&disk::parent_dir(path));
         let store = Store::open(path, true).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
-        let OpenedV2 { project: opened, .. } =
-            ProjectV2::open(store, 0, writer).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
+        let OpenedV2 { project: opened, .. } = ProjectV2::open(store, 0, writer).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
         let identity = disk::retry_transient(|| FileIdentity::at(path)).ok();
         // The history before the ledger's base is now read from the new file.
         if from.is_some() {
             ledger.set_history(opened.history());
         }
-        let mut me = Self {
-            path: path.to_path_buf(),
-            project: opened,
-            lock: Some(lock),
-            identity,
-            read_only: None,
-            unconfirmed: false,
-        };
+        let mut me = Self { path: path.to_path_buf(), project: opened, lock: Some(lock), identity, read_only: None, unconfirmed: false };
         if let Err(e) = synced {
             // Bound to the new file, but nothing is acknowledged: the next Save confirms it.
             me.unconfirmed = true;
@@ -273,9 +249,7 @@ impl DiskProjectV2 {
         }
         if self.unconfirmed {
             disk::sync_dir(&disk::parent_dir(&self.path)).map_err(|e| {
-                DiskErrorV2::Unconfirmed(format!(
-                    "the earlier Save As is still not confirmed durable ({e}); the new changes were not written"
-                ))
+                DiskErrorV2::Unconfirmed(format!("the earlier Save As is still not confirmed durable ({e}); the new changes were not written"))
             })?;
             self.unconfirmed = false;
             let head = self.project.head().0;
@@ -292,19 +266,12 @@ impl DiskProjectV2 {
     ///
     /// # Errors
     /// As [`DiskProjectV2::create`]; the project then stays bound to its previous file.
-    pub fn save_as(
-        &mut self,
-        path: &Path,
-        ledger: &mut Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-    ) -> Result<Option<String>, DiskErrorV2> {
+    pub fn save_as(&mut self, path: &Path, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str) -> Result<Option<String>, DiskErrorV2> {
         if same_file(path, &self.path) {
             self.save(ledger)?;
             return Ok(None);
         }
-        let (next, unconfirmed) =
-            Self::create(path, self.project.project_id(), ledger, Some(&self.project), created_ms, writer)?;
+        let (next, unconfirmed) = Self::create(path, self.project.project_id(), ledger, Some(&self.project), created_ms, writer)?;
         *self = next;
         Ok(unconfirmed)
     }

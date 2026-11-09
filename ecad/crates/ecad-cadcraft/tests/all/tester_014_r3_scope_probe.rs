@@ -75,16 +75,9 @@ fn connected(seed: u64) -> R {
         h.run("setprop", json!({"conductor": c.hex(), "key": "tag", "value": format!("W{y}")})).unwrap();
         w.push(c);
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
-    let k2 = component(
-        &mut h,
-        field,
-        "line 100,-5 110,-5 110,15 100,15 c",
-        [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)],
-        "K2",
-    );
+    let k2 = component(&mut h, field, "line 100,-5 110,-5 110,15 100,15 c", [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)], "K2");
     h.activate(supply);
     let _ = h.s.zoom_extents();
     h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
@@ -139,8 +132,7 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
         let n_log = r.h.s.log.len();
         // Ends attached to a terminal not shown on this page before the edit.
         let doc0 = r.h.doc();
-        let here: std::collections::BTreeSet<TerminalId> =
-            terminal_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
+        let here: std::collections::BTreeSet<TerminalId> = terminal_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
         let elsewhere: Vec<(ConductorId, End, TerminalId)> =
             r.w.iter()
                 .flat_map(|c| [End::A, End::B].map(|e| (*c, e)))
@@ -216,10 +208,7 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
             }
             7 => {
                 let Some((h, pts)) = route(&mut r.h, page, r.w[wi]) else { continue };
-                let _ = r.h.run(
-                    "rotate",
-                    json!({"handles": [h.hex()], "base": [pts[0].x, pts[0].y], "angle": 90.0 * (1 + rng.below(3)) as f64}),
-                );
+                let _ = r.h.run("rotate", json!({"handles": [h.hex()], "base": [pts[0].x, pts[0].y], "angle": 90.0 * (1 + rng.below(3)) as f64}));
                 "rotate route"
             }
             _ => {

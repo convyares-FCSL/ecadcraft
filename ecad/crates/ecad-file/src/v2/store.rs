@@ -11,14 +11,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use redb::{
-    Builder, ConcurrencyMode, Database, ReadOnlyDatabase, ReadTransaction, ReadableDatabase, ReadableTable,
-    ReadableTableMetadata, StorageBackend, TableDefinition, TableHandle, WriteTransaction,
+    Builder, ConcurrencyMode, Database, ReadOnlyDatabase, ReadTransaction, ReadableDatabase, ReadableTable, ReadableTableMetadata, StorageBackend,
+    TableDefinition, TableHandle, WriteTransaction,
 };
 
 use super::pack;
 use super::schema::{
-    ASSETS, BRANCHES, BranchId, BranchRecord, CHUNKS, META, META_NAMES, TRANSACTIONS, VERSIONS, VersionKind,
-    VersionRecord, asset_hash, asset_value, key_seq, split_tx_value, tx_key, tx_value, version_key,
+    ASSETS, BRANCHES, BranchId, BranchRecord, CHUNKS, META, META_NAMES, TRANSACTIONS, VERSIONS, VersionKind, VersionRecord, asset_hash, asset_value,
+    key_seq, split_tx_value, tx_key, tx_value, version_key,
 };
 use crate::chain::Hash;
 
@@ -147,11 +147,7 @@ impl Store {
         let path = path.to_path_buf();
         Box::new(move || {
             let b = builder(&Arc::new(AtomicBool::new(false)));
-            Ok(if writable {
-                Db::Writable(b.open(&path).map_err(open_err)?)
-            } else {
-                Db::ReadOnly(b.open_read_only(&path).map_err(open_err)?)
-            })
+            Ok(if writable { Db::Writable(b.open(&path).map_err(open_err)?) } else { Db::ReadOnly(b.open_read_only(&path).map_err(open_err)?) })
         })
     }
 
@@ -163,11 +159,7 @@ impl Store {
     pub fn open(path: &std::path::Path, writable: bool) -> Result<Self, StoreError> {
         let flag = Arc::new(AtomicBool::new(false));
         let b = builder(&flag);
-        let db = if writable {
-            Db::Writable(b.open(path).map_err(open_err)?)
-        } else {
-            Db::ReadOnly(b.open_read_only(path).map_err(open_err)?)
-        };
+        let db = if writable { Db::Writable(b.open(path).map_err(open_err)?) } else { Db::ReadOnly(b.open_read_only(path).map_err(open_err)?) };
         Ok(Self::new(db, Self::reopen_path(path, writable), flag.load(Ordering::SeqCst)))
     }
 
@@ -207,8 +199,7 @@ impl Store {
         let seen = flag.clone();
         b.set_repair_callback(move |_| seen.store(true, Ordering::SeqCst));
         let db = b.create_with_backend(backend).map_err(open_err)?;
-        let reopen: Reopen =
-            Box::new(|| Err(StoreError::Engine("a database held in memory cannot be reopened".into())));
+        let reopen: Reopen = Box::new(|| Err(StoreError::Engine("a database held in memory cannot be reopened".into())));
         let me = Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst));
         me.init()?;
         Ok(me)
@@ -332,10 +323,7 @@ pub struct Reader {
     txn: ReadTransaction,
 }
 
-fn table_stat<K: redb::Key + 'static, V: redb::Value + 'static>(
-    txn: &ReadTransaction,
-    def: TableDefinition<K, V>,
-) -> Result<TableStat, StoreError> {
+fn table_stat<K: redb::Key + 'static, V: redb::Value + 'static>(txn: &ReadTransaction, def: TableDefinition<K, V>) -> Result<TableStat, StoreError> {
     let name = TABLES.into_iter().find(|n| *n == def.name()).unwrap_or("?");
     let t = txn.open_table(def).map_err(engine)?;
     let s = t.stats().map_err(engine)?;
@@ -381,8 +369,7 @@ impl Reader {
         let mut out = Vec::new();
         for row in t.iter().map_err(engine)? {
             let (k, v) = row.map_err(engine)?;
-            let rec: BranchRecord =
-                serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))?;
+            let rec: BranchRecord = serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))?;
             out.push((BranchId(k.value()), rec));
         }
         Ok(out)
@@ -413,11 +400,7 @@ impl Reader {
     ///
     /// # Errors
     /// As [`Reader::tx`].
-    pub fn tx_range(
-        &self,
-        branch: BranchId,
-        seqs: RangeInclusive<u64>,
-    ) -> Result<Vec<(u64, u8, Hash, Vec<u8>)>, StoreError> {
+    pub fn tx_range(&self, branch: BranchId, seqs: RangeInclusive<u64>) -> Result<Vec<(u64, u8, Hash, Vec<u8>)>, StoreError> {
         let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
         let mut out = Vec::new();
         if seqs.is_empty() {
@@ -458,12 +441,7 @@ impl Reader {
     ///
     /// # Errors
     /// The engine failed, or the row does not decode.
-    pub fn version(
-        &self,
-        branch: BranchId,
-        kind: VersionKind,
-        name: &str,
-    ) -> Result<Option<VersionRecord>, StoreError> {
+    pub fn version(&self, branch: BranchId, kind: VersionKind, name: &str) -> Result<Option<VersionRecord>, StoreError> {
         let t = self.txn.open_table(VERSIONS).map_err(engine)?;
         let Some(v) = t.get(version_key(branch, kind, name).as_slice()).map_err(engine)? else { return Ok(None) };
         serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
@@ -499,9 +477,7 @@ impl Reader {
         match r.next_back() {
             Some(row) => {
                 let (_, v) = row.map_err(engine)?;
-                serde_json::from_slice(v.value())
-                    .map(Some)
-                    .map_err(|e| StoreError::Damaged(format!("version row: {e}")))
+                serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
             }
             None => Ok(None),
         }
@@ -524,9 +500,7 @@ impl Reader {
     /// # Errors
     /// Missing, damaged, or not matching its hash.
     pub fn chunk_body(&self, hash: &Hash) -> Result<Vec<u8>, StoreError> {
-        let (flag, body) = self
-            .chunk(hash)?
-            .ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
+        let (flag, body) = self.chunk(hash)?.ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
         let body = pack::unpack(flag, &body).map_err(StoreError::Damaged)?;
         if super::schema::chunk_hash(&body) != *hash {
             return Err(StoreError::Damaged(format!("chunk {} does not match its hash", crate::chain::hex(hash))));
@@ -579,10 +553,7 @@ impl Reader {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn raw_rows(
-        &self,
-        mut each: impl FnMut(&'static str, &[u8], &[u8]) -> Result<(), String>,
-    ) -> Result<(), StoreError> {
+    pub fn raw_rows(&self, mut each: impl FnMut(&'static str, &[u8], &[u8]) -> Result<(), String>) -> Result<(), StoreError> {
         let err = StoreError::Engine;
         {
             let t = self.txn.open_table(META).map_err(engine)?;
@@ -672,9 +643,7 @@ impl Writer {
             }
         };
         if last.checked_add(1) != Some(seq) {
-            return Err(StoreError::Refused(format!(
-                "transaction {seq} does not follow the branch's last stored transaction {last}"
-            )));
+            return Err(StoreError::Refused(format!("transaction {seq} does not follow the branch's last stored transaction {last}")));
         }
         let (flag, body) = pack::pack(record);
         let value = tx_value(flag, chain, &body);
@@ -763,11 +732,7 @@ impl Writer {
         let mut chunks = self.txn.open_table(CHUNKS).map_err(engine)?;
         let mut assets = self.txn.open_table(ASSETS).map_err(engine)?;
         let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, String> {
-            if k.len() == n {
-                Ok(k.to_vec())
-            } else {
-                Err(format!("a key of {} bytes where {n} were expected", k.len()))
-            }
+            if k.len() == n { Ok(k.to_vec()) } else { Err(format!("a key of {} bytes where {n} were expected", k.len())) }
         };
         from.raw_rows(|table, k, v| {
             bytes += (k.len() + v.len()) as u64;

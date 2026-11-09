@@ -96,14 +96,7 @@ pub const PRESETS: [(&str, u32, u32, u32, u32); 4] =
 impl Default for SheetSpec {
     /// A3 landscape, columns `A`–`H`, rows `1`–`6` (design 019 §3.1).
     fn default() -> Self {
-        SheetSpec {
-            width: 420,
-            height: 297,
-            columns: 8,
-            rows: 6,
-            column_labels: GridLabels::Letters,
-            row_labels: GridLabels::Numbers,
-        }
+        SheetSpec { width: 420, height: 297, columns: 8, rows: 6, column_labels: GridLabels::Letters, row_labels: GridLabels::Numbers }
     }
 }
 
@@ -436,8 +429,7 @@ mod tests {
         assert_eq!(g.column_of(f64::NAN), None);
         assert_eq!(letters(27), "AA");
         // Counted from the bottom-right instead: the same point is in column F, row 3.
-        let br =
-            Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
+        let br = Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
         assert_eq!((br.column_of(130.0), br.row_of(120.0)), (Some(6), Some(3)));
     }
 }

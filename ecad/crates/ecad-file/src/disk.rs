@@ -75,8 +75,7 @@ pub enum ReadOnly {
 
 /// Added wherever another session is said to be editing a file: the lock of a session that has
 /// just ended (or was killed) can take a moment to be released, notably on Windows.
-pub const JUST_ENDED: &str =
-    "if that session has just ended, it may take a moment to release the file; try again shortly";
+pub const JUST_ENDED: &str = "if that session has just ended, it may take a moment to release the file; try again shortly";
 
 impl std::fmt::Display for ReadOnly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -119,9 +118,7 @@ pub enum DiskError {
 save again, or use Save As to a folder that can be flushed"
     )]
     NotConfirmed(String),
-    #[error(
-        "not saved: could not check that {path} is still the file this project opened ({error}); nothing was written; try again"
-    )]
+    #[error("not saved: could not check that {path} is still the file this project opened ({error}); nothing was written; try again")]
     CannotCheck { path: String, error: String },
     #[error("not saved: this project was opened read-only because {0}; use Save As to save a copy")]
     ReadOnly(ReadOnly),
@@ -130,9 +127,7 @@ save again, or use Save As to a folder that can be flushed"
 the file was not changed"
     )]
     PreserveFailed { path: String, error: String },
-    #[error(
-        "not saved: the file at {0} was replaced, moved or removed by something else; nothing was written; use Save As"
-    )]
+    #[error("not saved: the file at {0} was replaced, moved or removed by something else; nothing was written; use Save As")]
     Replaced(String),
     #[error("not saved: {0}")]
     Save(#[from] SaveError),
@@ -247,12 +242,7 @@ impl DiskProject {
     /// [`DiskError::BeforeReplacement`] when a step before the rename failed (any existing file at
     /// `path` is unchanged and the temporary file is removed).
     pub fn create(
-        path: &Path,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-        mut faults: StepFaults,
+        path: &Path, project: ProjectId, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str, mut faults: StepFaults,
     ) -> Result<(Self, Durability), DiskError> {
         Self::create_with(path, project, ledger, created_ms, writer, &mut faults).map(|(mut me, d)| {
             me.faults = faults;
@@ -262,12 +252,7 @@ impl DiskProject {
 
     /// [`DiskProject::create`] using (and consuming) `faults`.
     fn create_with(
-        path: &Path,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-        faults: &mut StepFaults,
+        path: &Path, project: ProjectId, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str, faults: &mut StepFaults,
     ) -> Result<(Self, Durability), DiskError> {
         let lock = match WriterLock::try_acquire(path, &holder_record(writer)) {
             Ok(LockAttempt::Acquired { lock, .. }) => lock,
@@ -275,11 +260,7 @@ impl DiskProject {
                 return Err(DiskError::TargetLocked { path: show(path), holder: holder_text(holder.as_deref()) });
             }
             Err(e) => {
-                return Err(DiskError::BeforeReplacement {
-                    step: "taking the file's writer lock",
-                    error: e.to_string(),
-                    cleanup: String::new(),
-                });
+                return Err(DiskError::BeforeReplacement { step: "taking the file's writer lock", error: e.to_string(), cleanup: String::new() });
             }
         };
         let (file, durability) = write_and_replace(path, project, ledger, created_ms, writer, faults)?;
@@ -293,16 +274,7 @@ impl DiskProject {
             Err(e) => (None, Some(no_identity(&e)), None),
         };
         let unconfirmed = durability != Durability::Confirmed;
-        let me = Self {
-            path: path.to_path_buf(),
-            file,
-            lock,
-            read_only,
-            identity,
-            unconfirmed,
-            preserved: None,
-            faults: StepFaults::default(),
-        };
+        let me = Self { path: path.to_path_buf(), file, lock, read_only, identity, unconfirmed, preserved: None, faults: StepFaults::default() };
         Ok((me, durability))
     }
 
@@ -344,16 +316,8 @@ impl DiskProject {
         };
         let (file, ledger, report) = ProjectFile::open(medium, seed).map_err(|e: OpenError| open_err(e.to_string()))?;
         let read_only = read_only.or((report.access == Access::ReadOnly).then_some(ReadOnly::Damaged));
-        let project = Self {
-            path: path.to_path_buf(),
-            file,
-            lock,
-            read_only,
-            identity,
-            unconfirmed: false,
-            preserved: None,
-            faults: StepFaults::default(),
-        };
+        let project =
+            Self { path: path.to_path_buf(), file, lock, read_only, identity, unconfirmed: false, preserved: None, faults: StepFaults::default() };
         Ok(OpenedDisk { project, ledger, report, reclaimed_lock })
     }
 
@@ -390,24 +354,12 @@ impl DiskProject {
     ///
     /// # Errors
     /// As [`DiskProject::create`]; the project then stays bound to its previous file and lock.
-    pub fn save_as(
-        &mut self,
-        path: &Path,
-        ledger: &mut Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-    ) -> Result<Durability, DiskError> {
+    pub fn save_as(&mut self, path: &Path, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str) -> Result<Durability, DiskError> {
         if same_file(path, &self.path) {
             self.save(ledger)?;
-            return Ok(if self.unconfirmed {
-                Durability::Unconfirmed("not yet confirmed".into())
-            } else {
-                Durability::Confirmed
-            });
+            return Ok(if self.unconfirmed { Durability::Unconfirmed("not yet confirmed".into()) } else { Durability::Confirmed });
         }
-        let id = self
-            .project_id()
-            .ok_or_else(|| DiskError::Open { path: show(&self.path), error: "the file has no project ID".into() })?;
+        let id = self.project_id().ok_or_else(|| DiskError::Open { path: show(&self.path), error: "the file has no project ID".into() })?;
         let (mut next, durability) = Self::create_with(path, id, ledger, created_ms, writer, &mut self.faults)?;
         next.faults = std::mem::take(&mut self.faults);
         // Replacing `self` releases the previous file's lock, only now.
@@ -495,21 +447,11 @@ impl DiskProject {
 
 /// Steps (b)-(f) of Save As (§20.5): temporary file, write and flush, rename, folder flush.
 fn write_and_replace(
-    path: &Path,
-    project: ProjectId,
-    ledger: &Ledger,
-    created_ms: Option<u64>,
-    writer: &str,
-    faults: &mut StepFaults,
+    path: &Path, project: ProjectId, ledger: &Ledger, created_ms: Option<u64>, writer: &str, faults: &mut StepFaults,
 ) -> Result<(ProjectFile<FileMedium>, Durability), DiskError> {
-    let before =
-        |step: &'static str, error: String, cleanup: String| DiskError::BeforeReplacement { step, error, cleanup };
+    let before = |step: &'static str, error: String, cleanup: String| DiskError::BeforeReplacement { step, error, cleanup };
     let temp = disk::temp_path(path);
-    let created = if std::mem::take(&mut faults.fail_temp_create) {
-        Err(injected("temporary file creation"))
-    } else {
-        FileMedium::create_new(&temp)
-    };
+    let created = if std::mem::take(&mut faults.fail_temp_create) { Err(injected("temporary file creation")) } else { FileMedium::create_new(&temp) };
     let mut medium = created.map_err(|e| before("creating the temporary file", e.to_string(), String::new()))?;
     medium.faults.partial_append = faults.temp_partial_append.take();
     medium.faults.fail_next_flush = std::mem::take(&mut faults.fail_temp_flush);
@@ -523,8 +465,7 @@ fn write_and_replace(
             return Err(before(step, e.to_string(), clean_up(&temp)));
         }
     };
-    let renamed =
-        if std::mem::take(&mut faults.fail_rename) { Err(injected("rename")) } else { disk::replace(&temp, path) };
+    let renamed = if std::mem::take(&mut faults.fail_rename) { Err(injected("rename")) } else { disk::replace(&temp, path) };
     if let Err(e) = renamed {
         drop(file);
         return Err(before("replacing the file", e.to_string(), clean_up(&temp)));

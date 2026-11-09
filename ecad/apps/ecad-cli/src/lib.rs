@@ -9,14 +9,7 @@
 //!   `verify`, and `export-jsonl [--with-raw] [--out <file>]`.
 //!
 //! Excluded: anything that changes a version 2 file.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io::Write;
 use std::path::Path;
@@ -127,8 +120,7 @@ pub fn ecadinspect(args: &[String], out: &mut dyn Write) -> Result<(), String> {
                     if Path::new(dest).exists() {
                         return Err(format!("{dest} already exists; it is never overwritten"));
                     }
-                    let mut f =
-                        std::io::BufWriter::new(std::fs::File::create_new(dest).map_err(|e| format!("{dest}: {e}"))?);
+                    let mut f = std::io::BufWriter::new(std::fs::File::create_new(dest).map_err(|e| format!("{dest}: {e}"))?);
                     let n = inspect::export_jsonl(&store, with_raw, &mut f)?;
                     f.flush().map_err(|e| e.to_string())?;
                     n

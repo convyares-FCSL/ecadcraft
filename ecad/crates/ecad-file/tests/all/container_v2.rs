@@ -153,16 +153,8 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     f.commit("Name", vec![Op::NameVersion { name: "Before".into(), at }]);
     edits(&mut f, 2);
     let at2 = f.ledger.head();
-    let set = |key: &str, after: &str| Op::SetProperty {
-        object: ObjectRef::Project,
-        key: key.into(),
-        before: None,
-        after: Some(after.into()),
-    };
-    f.commit(
-        "Rev fields",
-        vec![set("rev.1.rev", "A"), set("rev.1.description", "First issue"), set("rev.1.drawn", "CV")],
-    );
+    let set = |key: &str, after: &str| Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: None, after: Some(after.into()) };
+    f.commit("Rev fields", vec![set("rev.1.rev", "A"), set("rev.1.description", "First issue"), set("rev.1.drawn", "CV")]);
     let at3 = f.ledger.head();
     f.commit("Issue", vec![set("rev.1.issued", "Rev A"), Op::NameVersion { name: "Rev A".into(), at: at3 }]);
     edits(&mut f, 2);
@@ -289,15 +281,7 @@ fn undo_below_the_recorded_stack_top_reads_the_history_once() {
     let mut f = fixture();
     let first = f.ledger.head();
     for i in 0..1_100 {
-        f.commit(
-            "Property",
-            vec![Op::SetProperty {
-                object: ObjectRef::Project,
-                key: format!("k{i}"),
-                before: None,
-                after: Some("v".into()),
-            }],
-        );
+        f.commit("Property", vec![Op::SetProperty { object: ObjectRef::Project, key: format!("k{i}"), before: None, after: Some("v".into()) }]);
     }
     let p = dir.path("p.ecad");
     let proj = create(&p, &f.ledger, 2_000);
@@ -421,15 +405,7 @@ fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
 fn deep(dir: &TempDir, n: usize) -> (PathBuf, Ledger) {
     let mut f = fixture();
     for i in 0..n {
-        f.commit(
-            "Property",
-            vec![Op::SetProperty {
-                object: ObjectRef::Project,
-                key: format!("k{i}"),
-                before: None,
-                after: Some("v".into()),
-            }],
-        );
+        f.commit("Property", vec![Op::SetProperty { object: ObjectRef::Project, key: format!("k{i}"), before: None, after: Some("v".into()) }]);
     }
     let p = dir.path("p.ecad");
     create(&p, &f.ledger, 2_000);
@@ -495,8 +471,8 @@ fn crafted_stack_records_open_read_only_from_the_root() {
         let dir = TempDir::new("crafted-stack");
         let (p, reference) = deep(&dir, 20);
         craft_head_record(&p, reference.head(), craft);
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER)
-            .unwrap_or_else(|e| panic!("{what}: refused the whole project: {e}"));
+        let o =
+            ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap_or_else(|e| panic!("{what}: refused the whole project: {e}"));
         assert!(o.report.damage.is_some(), "{what}: no damage reported");
         assert!(o.project.read_only().is_some(), "{what}: not read-only");
         assert_eq!(o.ledger.document(), reference.document(), "{what}");

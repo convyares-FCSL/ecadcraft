@@ -110,13 +110,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
             };
             for (end, at) in [(End::A, a), (End::B, b)] {
                 let Some(t) = c.end(end) else { continue };
-                let shown: Vec<Pt> = positions
-                    .get(&r.page)
-                    .into_iter()
-                    .flatten()
-                    .filter(|(pt, _, _)| *pt == t)
-                    .map(|(_, _, p)| *p)
-                    .collect();
+                let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
                 if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
                     let terminal_at = shown.first().copied().unwrap_or_default();
                     out.push(Mismatch { conductor: *cid, end, terminal: t, page: r.page, route_end: at, terminal_at });
@@ -251,13 +245,7 @@ impl Place {
 /// is not finite.
 pub fn place_on(grid: &Grid, page_label: &str, at: Pt) -> Option<Place> {
     let (column, row) = (grid.column_of(at.x)?, grid.row_of(at.y)?);
-    Some(Place {
-        page: page_label.to_string(),
-        column,
-        row,
-        column_label: grid.column_label(column),
-        row_label: grid.row_label(row),
-    })
+    Some(Place { page: page_label.to_string(), column, row, column_label: grid.column_label(column), row_label: grid.row_label(row) })
 }
 
 /// One cable reference end, with everything it says derived from the document (design 010 §6,
@@ -401,12 +389,8 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
             continue;
         }
         let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
-        let ends: Vec<(Pt, Pt)> = members
-            .iter()
-            .filter_map(|m| {
-                *routes.entry((m.conductor, r.page)).or_insert_with(|| route_ends_on(doc, m.conductor, r.page))
-            })
-            .collect();
+        let ends: Vec<(Pt, Pt)> =
+            members.iter().filter_map(|m| *routes.entry((m.conductor, r.page)).or_insert_with(|| route_ends_on(doc, m.conductor, r.page))).collect();
         here.insert((cable, r.page), ends);
     }
     let mut out: Vec<CableReference> = Vec::with_capacity(refs.len());
@@ -429,8 +413,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
         }
         let len = sx.hypot(sy);
         let text_dir = if len.is_finite() && len > 0.0 { Pt::new(-sx / len, -sy / len) } else { Pt::new(1.0, 0.0) };
-        let (grid, number) =
-            pages.entry(r.page).or_insert_with(|| (Grid::of(doc, r.page), book.number(doc, r.page))).clone();
+        let (grid, number) = pages.entry(r.page).or_insert_with(|| (Grid::of(doc, r.page), book.number(doc, r.page))).clone();
         let place = at.and_then(|p| place_on(&grid, &number, p));
         out.push(CableReference {
             reference: *rid,

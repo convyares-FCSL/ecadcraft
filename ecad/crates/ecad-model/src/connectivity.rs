@@ -140,11 +140,7 @@ impl NetData {
 
     /// The members, sorted, as a comparable value.
     fn members(&self) -> (Vec<TerminalId>, Vec<ConductorId>, Vec<String>) {
-        (
-            self.terminals.iter().copied().collect(),
-            self.conductors.iter().copied().collect(),
-            self.names.iter().cloned().collect(),
-        )
+        (self.terminals.iter().copied().collect(), self.conductors.iter().copied().collect(), self.names.iter().cloned().collect())
     }
 
     /// The conductor with the lowest ID (nets are ordered by it).
@@ -189,17 +185,9 @@ pub struct Connectivity {
 
 impl std::fmt::Debug for Connectivity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut nets: Vec<_> = self
-            .nets
-            .values()
-            .map(|n| (n.members(), n.numbers.clone(), n.fixed.clone(), n.potentials.clone()))
-            .collect();
+        let mut nets: Vec<_> = self.nets.values().map(|n| (n.members(), n.numbers.clone(), n.fixed.clone(), n.potentials.clone())).collect();
         nets.sort();
-        f.debug_struct("Connectivity")
-            .field("nets", &nets)
-            .field("seqs", &self.seqs)
-            .field("unsettled", &self.suspect.len())
-            .finish()
+        f.debug_struct("Connectivity").field("nets", &nets).field("seqs", &self.seqs).field("unsettled", &self.suspect.len()).finish()
     }
 }
 
@@ -222,9 +210,7 @@ fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
 fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let Some(key) = term.key.as_deref() else { return Vec::new() };
-    let Some(def) =
-        doc.components.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d))
-    else {
+    let Some(def) = doc.components.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
         return Vec::new();
     };
     if def.bridges.is_empty() {
@@ -234,10 +220,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     if keys.is_empty() {
         return Vec::new();
     }
-    doc.terminals_of(term.component)
-        .filter(|(id, x)| *id != t && x.key.as_deref().is_some_and(|k| keys.contains(k)))
-        .map(|(id, _)| id)
-        .collect()
+    doc.terminals_of(term.component).filter(|(id, x)| *id != t && x.key.as_deref().is_some_and(|k| keys.contains(k))).map(|(id, _)| id).collect()
 }
 
 /// About how many edges `node` has, read from the indexes without listing them.
@@ -482,8 +465,7 @@ impl Connectivity {
     /// is suspect, with the node's neighbours as the frontier.
     fn remove(&mut self, doc: &Document, doc_props: Option<&Properties>, node: &Node) {
         let Some(id) = self.node_net.get(node).copied() else { return };
-        let around: Vec<Node> =
-            neighbors(doc, node).into_iter().filter(|m| m != node && self.node_net.get(m) == Some(&id)).collect();
+        let around: Vec<Node> = neighbors(doc, node).into_iter().filter(|m| m != node && self.node_net.get(m) == Some(&id)).collect();
         self.node_net.remove(node);
         if let Some(props) = doc_props {
             let con = Contribution::of(props);
@@ -554,12 +536,8 @@ impl Connectivity {
                     self.cut_around(doc, &t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. }
-                if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL =>
-            {
-                if let (Some(net), Some(c)) =
-                    (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id))
-                {
+            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. } if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL => {
+                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id)) {
                     let con = Contribution::of(&c.properties);
                     self.contribute(net, &con, false);
                     self.count_seq(&con, false);
@@ -615,12 +593,8 @@ impl Connectivity {
                     self.ensure(doc, t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. }
-                if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL =>
-            {
-                if let (Some(net), Some(c)) =
-                    (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id))
-                {
+            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. } if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL => {
+                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id)) {
                     let con = Contribution::of(&c.properties);
                     self.contribute(net, &con, true);
                     self.count_seq(&con, true);
@@ -658,8 +632,7 @@ impl Connectivity {
                 continue;
             }
             let mut seen = BTreeSet::new();
-            let frontier: Vec<Node> =
-                frontier.into_iter().filter(|n| self.node_net.get(n) == Some(&id) && seen.insert(n.clone())).collect();
+            let frontier: Vec<Node> = frontier.into_iter().filter(|n| self.node_net.get(n) == Some(&id) && seen.insert(n.clone())).collect();
             if frontier.len() < 2 {
                 continue;
             }
@@ -700,8 +673,7 @@ impl Connectivity {
         loop {
             // The running searches; the one with the least done and the cheapest next node takes the
             // next step, so a part of one wire runs out before a hub of many is opened.
-            let running: Vec<usize> =
-                (0..k).filter(|i| parent.get(*i) == Some(i) && !done.get(*i).copied().unwrap_or(true)).collect();
+            let running: Vec<usize> = (0..k).filter(|i| parent.get(*i) == Some(i) && !done.get(*i).copied().unwrap_or(true)).collect();
             if running.len() <= 1 {
                 break;
             }
@@ -736,11 +708,7 @@ impl Connectivity {
                         }
                         // They met: one part. The smaller search moves into the larger.
                         let (small, large) =
-                            if members.get(me).map_or(0, Vec::len) < members.get(other).map_or(0, Vec::len) {
-                                (me, other)
-                            } else {
-                                (other, me)
-                            };
+                            if members.get(me).map_or(0, Vec::len) < members.get(other).map_or(0, Vec::len) { (me, other) } else { (other, me) };
                         let q = queues.get_mut(small).map(std::mem::take).unwrap_or_default();
                         let v = members.get_mut(small).map(std::mem::take).unwrap_or_default();
                         if let (Some(lq), Some(lv)) = (queues.get_mut(large), members.get_mut(large)) {
@@ -918,11 +886,7 @@ impl Connectivity {
             return Some("the nets have different members".into());
         }
         let counts = |c: &Connectivity| {
-            let mut v: Vec<_> = c
-                .nets
-                .values()
-                .map(|n| (n.members(), n.numbers.clone(), n.fixed.clone(), n.potentials.clone()))
-                .collect();
+            let mut v: Vec<_> = c.nets.values().map(|n| (n.members(), n.numbers.clone(), n.fixed.clone(), n.potentials.clone())).collect();
             v.sort();
             v
         };
@@ -933,8 +897,7 @@ impl Connectivity {
             c.by_number
                 .iter()
                 .map(|(k, m)| {
-                    let mut v: Vec<_> =
-                        m.iter().filter_map(|(n, x)| c.nets.get(n).map(|d| (d.members(), *x))).collect();
+                    let mut v: Vec<_> = m.iter().filter_map(|(n, x)| c.nets.get(n).map(|d| (d.members(), *x))).collect();
                     v.sort();
                     (k.clone(), v)
                 })

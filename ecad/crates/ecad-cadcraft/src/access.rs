@@ -113,12 +113,7 @@ impl ProjectHandle {
     /// [`BUSY`] or [`NOT_ATTACHED`], a refused transaction, or a read-only project.
     #[cfg(feature = "test-ops")]
     #[doc(hidden)]
-    pub fn apply_ops(
-        &self,
-        s: &mut Session,
-        label: &str,
-        ops: Vec<ecad_model::Op>,
-    ) -> Result<ecad_model::TxId, String> {
+    pub fn apply_ops(&self, s: &mut Session, label: &str, ops: Vec<ecad_model::Op>) -> Result<ecad_model::TxId, String> {
         self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops)
     }
 
@@ -154,10 +149,7 @@ impl ProjectHandle {
     /// [`BUSY`] or [`NOT_ATTACHED`], as for [`ProjectHandle::read`]. A busy project is never
     /// waited for: the caller keeps its previous snapshot.
     pub fn debug_snapshot(
-        &self,
-        s: &mut Session,
-        known: Option<&crate::debug::SnapshotKey>,
-        have: crate::debug::TxCursor,
+        &self, s: &mut Session, known: Option<&crate::debug::SnapshotKey>, have: crate::debug::TxCursor,
     ) -> Result<Option<crate::debug::DebugSnapshot>, String> {
         let p = self.lock(s)?;
         let pg = PagesRef(s);
@@ -200,12 +192,7 @@ impl ProjectHandle {
     ///
     /// # Errors
     /// As [`ProjectHandle::open_file`].
-    pub fn open_file_in(
-        s: &mut Session,
-        path: &str,
-        seed: u64,
-        settings: crate::views::Settings,
-    ) -> Result<(Self, String), String> {
+    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings) -> Result<(Self, String), String> {
         Project::open_file_in(s, path, seed, settings)
     }
 
@@ -298,20 +285,14 @@ impl PagesRef<'_> {
     /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| {
-                d.space(&Space::Model)
-                    .map(|m| m.iter().filter(|e| e.common.layer != crate::frame::LAYER).cloned().collect())
-            })
+            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer != crate::frame::LAYER).cloned().collect()))
             .unwrap_or_default()
     }
 
     /// The sheet frame's entities of `page`'s drawing (brief 019).
     pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| {
-                d.space(&Space::Model)
-                    .map(|m| m.iter().filter(|e| e.common.layer == crate::frame::LAYER).cloned().collect())
-            })
+            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == crate::frame::LAYER).cloned().collect()))
             .unwrap_or_default()
     }
 

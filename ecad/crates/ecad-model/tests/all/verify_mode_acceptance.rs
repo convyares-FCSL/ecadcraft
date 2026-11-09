@@ -61,10 +61,7 @@ fn run_child(switch: Option<&str>) -> String {
     let out = cmd.output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     // The harness prints "test child_probe ... " without a newline before the test's own output.
-    stdout
-        .lines()
-        .find_map(|l| l.find("VERDICT=").map(|i| l[i..].to_string()))
-        .unwrap_or_else(|| format!("VERDICT=missing: {stdout}"))
+    stdout.lines().find_map(|l| l.find("VERDICT=").map(|i| l[i..].to_string())).unwrap_or_else(|| format!("VERDICT=missing: {stdout}"))
 }
 
 #[test]
@@ -106,8 +103,7 @@ fn replay_verified_runs_the_full_check_in_any_build() {
 #[test]
 fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let mut l = Ledger::new(7);
-    let (page, layer, c, t1, t2, w, cable) =
-        (PageId(1), LayerId(2), ComponentId(3), TerminalId(4), TerminalId(5), ConductorId(6), CableId(7));
+    let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), ComponentId(3), TerminalId(4), TerminalId(5), ConductorId(6), CableId(7));
     l.commit(
         Author::User,
         "setup",

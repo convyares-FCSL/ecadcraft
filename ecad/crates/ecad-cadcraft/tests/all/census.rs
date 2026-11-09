@@ -12,8 +12,7 @@ use common::{H, pts};
 use serde_json::{Value, json};
 
 /// Commands that leave the page (open, close, new documents, quit) are not about the boundary.
-const SKIP: &[&str] =
-    &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
+const SKIP: &[&str] = &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
 
 fn fixture() -> H {
     let mut h = H::new(5);
@@ -64,9 +63,7 @@ fn every_command_leaves_the_project_consistent() {
             broken.push(id);
         }
     }
-    let mut md = String::from(
-        "# Command census\n\nEvery CADCraft command's JSON form with default parameters on an ECAD page.\n\n",
-    );
+    let mut md = String::from("# Command census\n\nEvery CADCraft command's JSON form with default parameters on an ECAD page.\n\n");
     for (class, list) in &rows {
         md.push_str(&format!("## {class} ({})\n\n{}\n\n", list.len(), list.join(", ")));
     }
@@ -75,8 +72,9 @@ fn every_command_leaves_the_project_consistent() {
     }
     println!("{md}");
     assert!(
-        ours.iter().all(|o| cadcraft_engine::find_command(o)
-            .is_some_and(|c| ecad_cadcraft::commands::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
+        ours.iter()
+            .all(|o| cadcraft_engine::find_command(o)
+                .is_some_and(|c| ecad_cadcraft::commands::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
         "an ECAD command id is shadowed by a built-in"
     );
     assert!(broken.is_empty(), "checks failed after: {broken:?}");

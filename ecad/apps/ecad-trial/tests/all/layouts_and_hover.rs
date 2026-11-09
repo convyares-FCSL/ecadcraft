@@ -54,12 +54,7 @@ mod hover_and_marks {
     fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
         pointer_to(h, at);
         for pressed in [true, false] {
-            h.event(Event::PointerButton {
-                pos: at,
-                button: PointerButton::Primary,
-                pressed,
-                modifiers: Modifiers::NONE,
-            });
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
         }
         h.run_steps(2);
     }
@@ -108,8 +103,7 @@ mod hover_and_marks {
     fn scene(h: &mut Harness<'static, Trial>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> =
-            model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let edge = |x: f64| {
             model
@@ -141,11 +135,9 @@ mod hover_and_marks {
         assert_eq!(terms.len(), 6, "{terms:?}");
         h.state_mut().cad.session.set_selection(Vec::new());
         let mut wrong = Vec::new();
-        for (zoom, p1, p2) in [
-            ("near", [-10.0, -20.0], [130.0, 80.0]),
-            ("far", [-400.0, -300.0], [500.0, 400.0]),
-            ("deep", [85.0, -5.0], [95.0, 5.0]),
-        ] {
+        for (zoom, p1, p2) in
+            [("near", [-10.0, -20.0], [130.0, 80.0]), ("far", [-400.0, -300.0], [500.0, 400.0]), ("deep", [85.0, -5.0], [95.0, 5.0])]
+        {
             zoom_window(&mut h, p1, p2);
             for (label, x, y) in &terms {
                 let at = screen(&h, *x, *y);
@@ -156,11 +148,7 @@ mod hover_and_marks {
                     pointer_to(&mut h, at + off);
                     let got = first_hover_line(&h).unwrap_or_default();
                     // Far out, several terminals fall inside one aperture: any terminal is right.
-                    let good = if zoom == "far" {
-                        got.starts_with("Connection point ")
-                    } else {
-                        got == format!("Connection point {label}")
-                    };
+                    let good = if zoom == "far" { got.starts_with("Connection point ") } else { got == format!("Connection point {label}") };
                     if !good {
                         wrong.push(format!("{zoom}: {label} at {x},{y} +{off:?}: {got:?}"));
                     }
@@ -200,11 +188,7 @@ mod hover_and_marks {
         // "before" and the "after" ring checks.
         let rect = h.state().cad.canvas.rect.unwrap();
         let on_screen = terms.iter().filter(|(_, x, y)| rect.contains(screen(&h, *x, *y))).count();
-        eprintln!(
-            "default view: {on_screen} of {} terminals on screen, {} rings painted",
-            terms.len(),
-            cyan_rings(&h).len()
-        );
+        eprintln!("default view: {on_screen} of {} terminals on screen, {} rings painted", terms.len(), cyan_rings(&h).len());
         zoom_window(&mut h, [-10.0, -20.0], [130.0, 80.0]);
         assert_eq!(cyan_rings(&h).len(), 6, "the six rings in model space before switching");
         to_layout(&mut h, "Layout1");
@@ -297,12 +281,8 @@ mod hover_and_marks {
         // Where did a wire clicked on the paper sheet go? Report it, then check the project is sound.
         let d = doc(&mut h);
         let page = d.page_order[0];
-        let routes: Vec<String> = d
-            .conductors
-            .keys()
-            .filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page))
-            .map(|(_, r)| format!("{r:?}"))
-            .collect();
+        let routes: Vec<String> =
+            d.conductors.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
         let paper: usize = h.state().cad.session.doc().unwrap().layouts.iter().map(|l| l.entities.len()).sum();
         eprintln!("wire in paper space: head {} -> {after}; routes {routes:?}; paper {paper}", before.0);
         let t = h.state_mut();
@@ -368,12 +348,7 @@ mod layout_refusals {
     fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
         pointer_to(h, at);
         for pressed in [true, false] {
-            h.event(Event::PointerButton {
-                pos: at,
-                button: PointerButton::Primary,
-                pressed,
-                modifiers: Modifiers::NONE,
-            });
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
         }
         h.run_steps(2);
     }
@@ -423,8 +398,7 @@ mod layout_refusals {
     fn scene(h: &mut Harness<'static, Trial>) {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> =
-            model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
@@ -471,17 +445,8 @@ mod layout_refusals {
             }
             esc(&mut h);
         }
-        let all: Vec<_> = h
-            .state()
-            .cad
-            .session
-            .doc()
-            .unwrap()
-            .model
-            .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-            .map(|e| e.handle)
-            .collect();
+        let all: Vec<_> =
+            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
         h.state_mut().cad.session.set_selection(all);
         button(&mut h, "Convert to Component");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
@@ -589,9 +554,7 @@ mod layout_refusals {
                 view_height: 90.0,
                 ..Viewport::default()
             };
-            std::sync::Arc::make_mut(&mut st.doc)
-                .add(&Space::Paper("Layout1".into()), Common::default(), EntityKind::Viewport(vp))
-                .unwrap();
+            std::sync::Arc::make_mut(&mut st.doc).add(&Space::Paper("Layout1".into()), Common::default(), EntityKind::Viewport(vp)).unwrap();
             st.revision += 1;
             let now = st.doc.clone();
             let p = t.project().unwrap().clone();
@@ -637,10 +600,7 @@ mod layout_refusals {
             let p = screen(&h, x, y);
             pointer_to(&mut h, p);
             let first = h.state().hover_lines().and_then(|l| l.first().cloned()).unwrap_or_default();
-            assert!(
-                !first.starts_with("Connection point"),
-                "a terminal tooltip inside the viewport at {x},{y}: {first}"
-            );
+            assert!(!first.starts_with("Connection point"), "a terminal tooltip inside the viewport at {x},{y}: {first}");
         }
         assert!((head(&mut h), doc(&mut h)) == before, "something was recorded in the viewport");
     }

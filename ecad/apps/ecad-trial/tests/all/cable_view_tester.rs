@@ -95,11 +95,7 @@ fn views_of(h: &mut Harness<'static, Trial>) -> Value {
 
 fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .filter(|e| e.common.layer == views::LAYER)
-        .count()
+    d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
 }
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
@@ -132,16 +128,8 @@ fn ok(h: &mut Harness<'static, Trial>, line: &str) {
 /// A drawn component: a closed rectangle typed, selected, converted (JSON form), three terminals.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle)
-        .collect();
+    let before: Vec<_> =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -206,9 +194,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -221,19 +207,12 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -252,10 +231,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -286,9 +262,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -335,10 +309,7 @@ fn the_cable_view_entry_is_in_wiring_after_cable_slash() {
     let tool = tools::TOOLS.iter().find(|t| t.id == "ecad.cableview").expect("ecad.cableview");
     assert_eq!(tool.label, "Cable View");
     assert_eq!(tool.group, "Wiring");
-    assert_eq!(
-        tool.tooltip,
-        "Click a cable to switch it between traditional and fan view (changes nothing in the project)"
-    );
+    assert_eq!(tool.tooltip, "Click a cable to switch it between traditional and fan view (changes nothing in the project)");
     assert!(matches!(tool.kind, tools::Kind::Start("cableview")));
     let tab = tools::tab();
     let wiring = tab.groups.iter().find(|g| g.name == "Wiring").expect("Wiring group");
@@ -392,12 +363,7 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     let empty = screen(&h, 30.0, 30.0);
     click(&mut h, empty);
     assert!(
-        h.state()
-            .cad
-            .session
-            .log
-            .last()
-            .is_some_and(|l| l.contains("Nothing there. Click a cable slash, a fan or a wire in a cable.")),
+        h.state().cad.session.log.last().is_some_and(|l| l.contains("Nothing there. Click a cable slash, a fan or a wire in a cable.")),
         "{:?}",
         h.state().cad.session.log.last()
     );

@@ -235,13 +235,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Show the project's IDs and history at the command line (read-only; runs now)",
         kind: Kind::Run("ecadinspect"),
     },
-    Tool {
-        id: "ecad.dev.debugger",
-        group: DEV_GROUP,
-        label: "Debugger",
-        tooltip: "Open or close the read-only debugger panel",
-        kind: Kind::Trial,
-    },
+    Tool { id: "ecad.dev.debugger", group: DEV_GROUP, label: "Debugger", tooltip: "Open or close the read-only debugger panel", kind: Kind::Trial },
     Tool {
         id: "ecad.dev.snapshot",
         group: DEV_GROUP,
@@ -320,9 +314,8 @@ impl Picked {
         for h in handles.iter().take(MAX_PICKED) {
             match map.and_then(|m| m.get(*h)) {
                 Some(Mapped::Item(i)) => {
-                    let index = index.get_or_insert_with(|| {
-                        doc.representations.values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect()
-                    });
+                    let index =
+                        index.get_or_insert_with(|| doc.representations.values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect());
                     if let Some(s) = index.get(&i) {
                         subjects.insert(*s);
                     }
@@ -356,14 +349,8 @@ impl Picked {
             page: p.page_of(uid),
             truncated: handles.len() > MAX_PICKED,
             handles,
-            components: subjects
-                .iter()
-                .filter_map(|s| if let Subject::Component(c) = s { Some(*c) } else { None })
-                .collect(),
-            conductors: subjects
-                .iter()
-                .filter_map(|s| if let Subject::Conductor(c) = s { Some(*c) } else { None })
-                .collect(),
+            components: subjects.iter().filter_map(|s| if let Subject::Component(c) = s { Some(*c) } else { None }).collect(),
+            conductors: subjects.iter().filter_map(|s| if let Subject::Conductor(c) = s { Some(*c) } else { None }).collect(),
             cables: subjects.iter().filter_map(|s| if let Subject::Cable(c) = s { Some(*c) } else { None }).collect(),
             terminals: terminals.into_iter().collect(),
         }

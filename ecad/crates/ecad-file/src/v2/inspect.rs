@@ -31,13 +31,9 @@ fn flag_name(f: u8) -> &'static str {
 /// The file cannot be read.
 pub fn tables(store: &Store) -> Result<String, StoreError> {
     let r = store.reader()?;
-    let mut s =
-        format!("{:<13} {:>10} {:>14} {:>12} {:>12}\n", "table", "rows", "stored bytes", "metadata", "fragmented");
+    let mut s = format!("{:<13} {:>10} {:>14} {:>12} {:>12}\n", "table", "rows", "stored bytes", "metadata", "fragmented");
     for t in r.stats()? {
-        s.push_str(&format!(
-            "{:<13} {:>10} {:>14} {:>12} {:>12}\n",
-            t.name, t.rows, t.stored_bytes, t.metadata_bytes, t.fragmented_bytes
-        ));
+        s.push_str(&format!("{:<13} {:>10} {:>14} {:>12} {:>12}\n", t.name, t.rows, t.stored_bytes, t.metadata_bytes, t.fragmented_bytes));
     }
     s.push_str("\nmeta:\n");
     for (k, v) in r.meta_all()? {
@@ -147,12 +143,7 @@ pub fn chunk(store: &Store, hash: &str) -> Result<String, StoreError> {
         .ok()
         .and_then(|v| serde_json::to_string_pretty(&v).ok())
         .unwrap_or_else(|| String::from_utf8_lossy(&body).into_owned());
-    Ok(format!(
-        "chunk {hash}: {} stored bytes ({}), {} bytes uncompressed, hash verified\n{pretty}\n",
-        stored.len() + 1,
-        flag_name(flag),
-        body.len()
-    ))
+    Ok(format!("chunk {hash}: {} stored bytes ({}), {} bytes uncompressed, hash verified\n{pretty}\n", stored.len() + 1, flag_name(flag), body.len()))
 }
 
 /// Write the whole history as a version 1 style JSON Lines file to `out` (EEP-0005; brief 021):
@@ -219,9 +210,7 @@ pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Resul
 
 /// A stored value's flag and readable form, by table.
 fn decode_raw(table: &str, value: &[u8]) -> Result<(Option<u8>, Value), String> {
-    let json_of = |b: &[u8]| {
-        serde_json::from_slice::<Value>(b).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(b).into()))
-    };
+    let json_of = |b: &[u8]| serde_json::from_slice::<Value>(b).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(b).into()));
     Ok(match table {
         "meta" | "branches" | "versions" => (None, json_of(value)),
         "transactions" => {

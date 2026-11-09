@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use cadcraft_engine::Session;
 use common::{H, small_project};
 use ecad_cadcraft::debug::{
-    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_branches, read_row, read_storage,
-    resolve, state_at, touches, verify_projection, verify_replay, verify_store,
+    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_branches, read_row, read_storage, resolve, state_at, touches,
+    verify_projection, verify_replay, verify_store,
 };
 use ecad_cadcraft::{BUSY, Mapped, Persistence};
 use ecad_model::{Subject, Transaction};
@@ -102,20 +102,9 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     // → the transactions that touched them, with before/after values.
     let ids: BTreeSet<ObjectId> = r.ids.iter().copied().collect();
     let touching: Vec<u64> = panel.log.iter().filter(|t| touches(t, &ids)).map(|t| t.seq).collect();
-    let wire_seq = panel
-        .log
-        .iter()
-        .find(|t| t.ops.iter().any(|o| matches!(o, ecad_model::Op::CreateConductor { id, .. } if *id == w)))
-        .unwrap()
-        .seq;
+    let wire_seq = panel.log.iter().find(|t| t.ops.iter().any(|o| matches!(o, ecad_model::Op::CreateConductor { id, .. } if *id == w))).unwrap().seq;
     assert!(touching.contains(&wire_seq), "{touching:?}");
-    let attach = panel
-        .tx(wire_seq)
-        .ops
-        .iter()
-        .map(op_view)
-        .find(|v| v.name == "AttachEnd")
-        .expect("the wire transaction attaches its ends");
+    let attach = panel.tx(wire_seq).ops.iter().map(op_view).find(|v| v.name == "AttachEnd").expect("the wire transaction attaches its ends");
     assert_eq!(attach.targets[0], ObjectId::Conductor(w));
     assert!(attach.before.as_ref().unwrap()["terminal"].is_null());
     assert!(attach.after.as_ref().unwrap()["terminal"].is_string());
@@ -196,10 +185,7 @@ fn a_busy_project_is_not_waited_for() {
     let other = h.project.clone();
     let r = h.cfg(|_held| {
         let mut elsewhere = Session::empty();
-        (
-            other.debug_snapshot(&mut elsewhere, None, TxCursor::default()).err(),
-            other.debug_projection_inputs(&mut elsewhere).err(),
-        )
+        (other.debug_snapshot(&mut elsewhere, None, TxCursor::default()).err(), other.debug_projection_inputs(&mut elsewhere).err())
     });
     assert_eq!(r, (Some(BUSY.to_string()), Some(BUSY.to_string())));
 }

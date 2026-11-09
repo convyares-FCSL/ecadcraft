@@ -8,9 +8,7 @@ use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
 
-use cadcraft_engine::doc::{
-    Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Lineweight, Text,
-};
+use cadcraft_engine::doc::{Block, Common, Drawing, Entity, EntityKind, EntityStore, Group, Handle, Layer as CLayer, Lineweight, Text};
 use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
@@ -18,8 +16,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger,
-    LengthUnit, Op, Page, PageId, ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
+    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryMedium;
 use serde_json::{Value, json};
@@ -105,15 +103,7 @@ impl HandleMap {
     }
     /// A computed part of `cable`'s drawing (brief 009): `fan` when the cable is drawn as a fan on
     /// this page; the member (`core`) and the reference end it belongs to.
-    pub fn insert_part(
-        &mut self,
-        cable: CableId,
-        index: u32,
-        h: Handle,
-        fan: bool,
-        core: Option<ConductorId>,
-        reference: Option<RepresentationId>,
-    ) {
+    pub fn insert_part(&mut self, cable: CableId, index: u32, h: Handle, fan: bool, core: Option<ConductorId>, reference: Option<RepresentationId>) {
         self.insert_fan(cable, index, h);
         if fan {
             self.fan_cables.insert(cable);
@@ -203,13 +193,7 @@ impl HandleMap {
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
         self.by_handle.len()
-            == self.items.len()
-                + self.markers.len()
-                + self.fans.len()
-                + self.refs.len()
-                + self.tags.len()
-                + self.labels.len()
-                + self.frame.len()
+            == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len() + self.tags.len() + self.labels.len() + self.frame.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
@@ -334,14 +318,8 @@ pub struct Change {
 /// moved, a page's properties (number, folder), folder ops. Every other op changes nothing there.
 pub fn tree_touched(ops: &[Op]) -> bool {
     ops.iter().any(|op| {
-        matches!(
-            op,
-            Op::AddPage { .. }
-                | Op::RemovePage { .. }
-                | Op::AddFolder { .. }
-                | Op::RemoveFolder { .. }
-                | Op::ModifyFolder { .. }
-        ) || matches!(op, Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
+        matches!(op, Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. })
+            || matches!(op, Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
             if key == ecad_model::book::NUMBER_KEY || key == ecad_model::book::FOLDER_KEY)
     })
 }
@@ -424,9 +402,7 @@ impl MemoryStore {
     /// file); later saves append with retry (§20.5). Returns the persisted `seq`.
     fn save(&mut self, project: ProjectId, ledger: &mut Ledger, writer: &str) -> Result<u64, String> {
         match self {
-            MemoryStore::Written(f) => {
-                f.save(ledger).map_err(|e| e.to_string()).map(|_: SaveOutcome| ledger.persisted())
-            }
+            MemoryStore::Written(f) => f.save(ledger).map_err(|e| e.to_string()).map(|_: SaveOutcome| ledger.persisted()),
             MemoryStore::Unwritten(m) => {
                 let medium = std::mem::take(m);
                 let f = ProjectFile::create(medium, project, ledger, now_ms(), writer).map_err(|e| e.to_string())?;
@@ -604,31 +580,21 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
             [a, b] => kind_for_primitive(&Primitive::Line { a: *a, b: *b }),
             _ => kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: false }),
         },
-        Shape::Path { points, closed } => {
-            kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: *closed })
-        }
+        Shape::Path { points, closed } => kind_for_primitive(&Primitive::Polyline { vertices: points.clone(), closed: *closed }),
         Shape::Arc { center, radius, start, end } => {
             kind_for_primitive(&Primitive::Arc { center: *center, radius: *radius, start: *start, end: *end })
         }
-        Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
-            at: *at,
-            height: LABEL_HEIGHT,
-            rotation: *rotation,
-            value: value.clone(),
-        }),
+        Shape::Text { at, rotation, value } => {
+            kind_for_primitive(&Primitive::Text { at: *at, height: LABEL_HEIGHT, rotation: *rotation, value: value.clone() })
+        }
     };
     let lineweight = match part.weight {
         Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
         Weight::Wire => Lineweight::Mm100(crate::look::WIRE_WEIGHT),
         Weight::Text => Lineweight::ByLayer,
     };
-    let color =
-        part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
-    Entity {
-        handle,
-        common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() },
-        kind,
-    }
+    let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
+    Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind }
 }
 
 pub(crate) fn base_drawing() -> Drawing {
@@ -641,18 +607,16 @@ pub(crate) fn base_drawing() -> Drawing {
     }
     // The starter symbols' terminals lie on a 5 mm grid (design 018 §4, `ecad.symbol-grid`): snap
     // and grid spacing of an ECAD page follow it.
-    let grid = cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(
-        crate::symbols::SYMBOL_GRID_MM,
-        crate::symbols::SYMBOL_GRID_MM,
-        0.0,
-    ));
+    let grid =
+        cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(crate::symbols::SYMBOL_GRID_MM, crate::symbols::SYMBOL_GRID_MM, 0.0));
     d.header.set("SNAPUNIT", grid.clone());
     d.header.set("GRIDUNIT", grid);
     d
 }
 
 /// The label an unavailable page shows instead of its drawing.
-pub const PLACEHOLDER_TEXT: &str = "PAGE UNAVAILABLE: its drawing could not be rebuilt. The project is intact and can be saved. Close this page and reopen it.";
+pub const PLACEHOLDER_TEXT: &str =
+    "PAGE UNAVAILABLE: its drawing could not be rebuilt. The project is intact and can be saved. Close this page and reopen it.";
 /// Appended to an unavailable page's title.
 pub const UNAVAILABLE_SUFFIX: &str = " [unavailable]";
 
@@ -673,11 +637,7 @@ fn placeholder_drawing() -> Drawing {
         valign: Default::default(),
     };
     let mut store = EntityStore::new();
-    store.push(Entity {
-        handle,
-        common: Common { layer: "0".into(), ..Common::default() },
-        kind: EntityKind::Text(text),
-    });
+    store.push(Entity { handle, common: Common { layer: "0".into(), ..Common::default() }, kind: EntityKind::Text(text) });
     d.model = store;
     d
 }
@@ -687,12 +647,7 @@ fn placeholder_drawing() -> Drawing {
 ///
 /// # Errors
 /// An item that cannot be drawn (missing layer or definition).
-pub fn project_page(
-    doc: &Document,
-    page: PageId,
-    base: &Drawing,
-    prev: &HandleMap,
-) -> Result<(Drawing, HandleMap), String> {
+pub fn project_page(doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
     project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0)
 }
 
@@ -705,12 +660,7 @@ pub fn project_page(
 /// # Errors
 /// As [`project_page`].
 pub fn project_page_with(
-    doc: &Document,
-    page: PageId,
-    base: &Drawing,
-    prev: &HandleMap,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64,
 ) -> Result<(Drawing, HandleMap), String> {
     let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
     project_page_framed(doc, page, base, prev, fan, tol, &crate::frame::parts(&input))
@@ -722,13 +672,7 @@ pub fn project_page_with(
 /// # Errors
 /// As [`project_page`].
 pub fn project_page_framed(
-    doc: &Document,
-    page: PageId,
-    base: &Drawing,
-    prev: &HandleMap,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
-    frame: &[crate::frame::Part],
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
@@ -768,9 +712,7 @@ pub fn project_page_framed(
             ItemKind::Primitive(_) => None,
         })
         .collect();
-    d.blocks.retain(|name, _| {
-        !name.starts_with(ECAD_PREFIX) || crate::convert::definition_of_block(name).is_some_and(|id| used.contains(&id))
-    });
+    d.blocks.retain(|name, _| !name.starts_with(ECAD_PREFIX) || crate::convert::definition_of_block(name).is_some_and(|id| used.contains(&id)));
     for def_id in &used {
         let name = block_name(*def_id);
         if d.blocks.contains_key(&name) {
@@ -780,11 +722,7 @@ pub fn project_page_framed(
         let mut b = Block::new(&name);
         for g in &def.graphics {
             let h = d.new_handle();
-            let common = cadcraft_engine::doc::Common {
-                layer: "0".into(),
-                color: cadcraft_engine::doc::color::Color::ByBlock,
-                ..Default::default()
-            };
+            let common = cadcraft_engine::doc::Common { layer: "0".into(), color: cadcraft_engine::doc::color::Color::ByBlock, ..Default::default() };
             b.entities.push(Entity { handle: h, common, kind: kind_for_primitive(g) });
         }
         for t in &def.terminals {
@@ -813,12 +751,7 @@ pub fn project_page_framed(
             members.push(h);
         }
         if matches!(r.subject, Subject::Component(_)) && members.len() > 1 {
-            groups.push(Group {
-                name: format!("{ECAD_PREFIX}{:032x}", rid.0),
-                description: String::new(),
-                selectable: true,
-                members,
-            });
+            groups.push(Group { name: format!("{ECAD_PREFIX}{:032x}", rid.0), description: String::new(), selectable: true, members });
         }
     }
     for (k, f) in &fans {
@@ -886,12 +819,7 @@ impl Project {
     ///
     /// # Errors
     /// Projection failure (not expected for an empty project).
-    pub fn create_with(
-        s: &mut Session,
-        name: &str,
-        seed: u64,
-        persistence: Persistence,
-    ) -> Result<ProjectHandle, String> {
+    pub fn create_with(s: &mut Session, name: &str, seed: u64, persistence: Persistence) -> Result<ProjectHandle, String> {
         let mut ids = IdAllocator::seeded(seed);
         let mut ledger = Ledger::new(seed.rotate_left(32));
         let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
@@ -978,20 +906,13 @@ impl Project {
     ///
     /// # Errors
     /// The file has no valid, supported header, or the project cannot be shown.
-    pub(crate) fn open_from(
-        s: &mut Session,
-        name: &str,
-        medium: MemoryMedium,
-        seed: u64,
-    ) -> Result<ProjectHandle, String> {
+    pub(crate) fn open_from(s: &mut Session, name: &str, medium: MemoryMedium, seed: u64) -> Result<ProjectHandle, String> {
         let (file, ledger, report) = ProjectFile::open(medium, seed).map_err(|e| e.to_string())?;
         let id = file.header().project_id.ok_or("the file has no project ID")?;
-        let default_layer =
-            ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
         // A fresh ID stream even when the caller reuses the creation seed.
-        let ids =
-            IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
+        let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
@@ -1065,12 +986,7 @@ impl Project {
     ///
     /// # Errors
     /// As [`Project::open_file`].
-    pub fn open_file_in(
-        s: &mut Session,
-        path: &str,
-        seed: u64,
-        settings: crate::views::Settings,
-    ) -> Result<(ProjectHandle, String), String> {
+    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings) -> Result<(ProjectHandle, String), String> {
         Self::open_file_with(s, path, seed, settings, false)
     }
 
@@ -1080,25 +996,16 @@ impl Project {
     /// # Errors
     /// As [`Project::open_file`].
     pub fn open_file_with(
-        s: &mut Session,
-        path: &str,
-        seed: u64,
-        settings: crate::views::Settings,
-        reading: bool,
+        s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings, reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path)?;
-        let mut o = if reading {
-            crate::file::Binding::open_read_only(&path, seed, &writer())?
-        } else {
-            crate::file::Binding::open(&path, seed, &writer())?
-        };
+        let mut o =
+            if reading { crate::file::Binding::open_read_only(&path, seed, &writer())? } else { crate::file::Binding::open(&path, seed, &writer())? };
         let ledger = o.ledger;
-        let default_layer =
-            ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
         // A fresh ID stream for this session, never reissuing the file's IDs.
-        let ids =
-            IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
+        let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
         let mut summary = vec![format!("Opened {path} at transaction {}.", ledger.head())];
         if o.report.damage.is_some() || o.report.repaired {
@@ -1117,8 +1024,7 @@ impl Project {
         if loaded.unreadable {
             summary.push(crate::views::UNREADABLE.into());
         }
-        let views: BTreeSet<CableId> =
-            loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
+        let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
         let summary = summary.join("\n");
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
@@ -1232,13 +1138,7 @@ impl Project {
         let result = match r {
             Ok(()) => {
                 let n = self.ledger.persisted();
-                self.events.record(
-                    EventKind::Saved,
-                    Some(what),
-                    head,
-                    None,
-                    format!("{shown} through transaction {n}"),
-                );
+                self.events.record(EventKind::Saved, Some(what), head, None, format!("{shown} through transaction {n}"));
                 Ok(json!({"saved": true, "persisted": n, "path": shown}))
             }
             Err(e) => {
@@ -1464,10 +1364,7 @@ impl Project {
     /// so reads (prompts, previews, pick lists) never read the log. The Pages tree's version moves
     /// only with a change of its update map (`tree`, brief 019, or pages added or removed).
     fn record_change(
-        &mut self,
-        pages: Option<BTreeSet<PageId>>,
-        devices: crate::device_list::DeviceTouch,
-        props: Option<BTreeSet<ecad_model::ObjectRef>>,
+        &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
     ) {
         self.goto_ring = None;
@@ -1578,8 +1475,7 @@ impl Project {
     /// becomes unavailable (PROJ-02).
     pub(crate) fn refresh_pages(&mut self, pg: &mut Pages<'_>, command: Option<&str>) {
         // An unavailable page stays a placeholder until it is closed and reopened.
-        let pages: Vec<PageId> =
-            self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
+        let pages: Vec<PageId> = self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
         for page in pages {
             self.refresh_page(pg, page, command, None, false);
         }
@@ -1591,12 +1487,7 @@ impl Project {
     /// `recovery` marks a reprojection with fresh handles (owner recovery); it and any rebuild are
     /// checked by [`verify_page`] instead, which does not rely on handle numbers.
     pub(crate) fn refresh_page(
-        &mut self,
-        pg: &mut Pages<'_>,
-        page: PageId,
-        command: Option<&str>,
-        committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>,
-        recovery: bool,
+        &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
@@ -1605,11 +1496,7 @@ impl Project {
         let base = committed.map(|(d, _)| d.clone()).or(current).unwrap_or_else(|| Arc::new(base_drawing()));
         let prev = view.map.clone();
         let head = self.ledger.head();
-        let first = if self.take_projection_fault() {
-            Err("injected projection failure".to_string())
-        } else {
-            self.project(page, &base, &prev)
-        };
+        let first = if self.take_projection_fault() { Err("injected projection failure".to_string()) } else { self.project(page, &base, &prev) };
         // Only a normal projection keeps the engine's handles, so only then is fidelity comparable.
         let normal = first.is_ok();
         let result = match first {
@@ -1623,13 +1510,7 @@ impl Project {
                     self.project(page, &base_drawing(), &HandleMap::default())
                 };
                 match &rebuilt {
-                    Ok(_) => self.events.record(
-                        EventKind::ProjectionRebuilt,
-                        command,
-                        head,
-                        Some(page),
-                        "drawing and map rebuilt from the document",
-                    ),
+                    Ok(_) => self.events.record(EventKind::ProjectionRebuilt, command, head, Some(page), "drawing and map rebuilt from the document"),
                     Err(e) => self.events.record(EventKind::PageUnavailable, command, head, Some(page), e.clone()),
                 }
                 rebuilt
@@ -1644,13 +1525,7 @@ impl Project {
                     Ok((d, map))
                 } else {
                     self.events.record(EventKind::RecoveryVerificationFailed, command, head, Some(page), v.summary());
-                    self.events.record(
-                        EventKind::PageUnavailable,
-                        command,
-                        head,
-                        Some(page),
-                        "rebuilt page did not verify",
-                    );
+                    self.events.record(EventKind::PageUnavailable, command, head, Some(page), "rebuilt page did not verify");
                     Err(v.summary())
                 }
             }
@@ -1683,10 +1558,7 @@ impl Project {
                         );
                     }
                 }
-                let changed = st.doc.model != d.model
-                    || st.doc.groups != d.groups
-                    || st.doc.blocks != d.blocks
-                    || st.doc.layers != d.layers;
+                let changed = st.doc.model != d.model || st.doc.groups != d.groups || st.doc.blocks != d.blocks || st.doc.layers != d.layers;
                 if changed {
                     let keep: BTreeSet<Handle> = map.handles().collect();
                     st.selection.retain(|h| keep.contains(h));
@@ -1735,13 +1607,7 @@ impl Project {
     ///
     /// # Errors
     /// Validation failure; nothing changes.
-    pub(crate) fn apply_edit(
-        &mut self,
-        pg: &mut Pages<'_>,
-        command: &str,
-        label: &str,
-        ops: Vec<Op>,
-    ) -> Result<ecad_model::TxId, String> {
+    pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, String> {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
@@ -1761,25 +1627,17 @@ impl Project {
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
-        let tx = self
-            .ledger
-            .commit_extended(self.author.clone(), label, ops, now_ms(), ecad_model::wiring::assign)
-            .map_err(|e| {
-                self.frame_stale = frame_before;
-                self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
-                e.to_string()
-            })?;
+        let tx = self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), ecad_model::wiring::assign).map_err(|e| {
+            self.frame_stale = frame_before;
+            self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
+            e.to_string()
+        })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
-        self.record_change(
-            touched(touched(pages, refs_before.pages_changed(&refs_after)), numbered),
-            devices,
-            props,
-            tree,
-        );
+        self.record_change(touched(touched(pages, refs_before.pages_changed(&refs_after)), numbered), devices, props, tree);
         self.redraw_window(pg, Some(command));
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
@@ -1806,11 +1664,7 @@ impl Project {
 
     /// `props` with the conductors the numbering pass of the last transaction renumbered (its ops
     /// after the first `n`): the Properties view of a wire reads its number (brief 022).
-    fn with_numbered(
-        &self,
-        props: Option<BTreeSet<ecad_model::ObjectRef>>,
-        n: usize,
-    ) -> Option<BTreeSet<ecad_model::ObjectRef>> {
+    fn with_numbered(&self, props: Option<BTreeSet<ecad_model::ObjectRef>>, n: usize) -> Option<BTreeSet<ecad_model::ObjectRef>> {
         let mut props = props?;
         let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
         for op in extra {
@@ -1871,11 +1725,7 @@ impl Project {
                 }
             })
             .collect();
-        LiveFacts {
-            pages,
-            upstream: Some(crate::UPSTREAM_COMMIT.into()),
-            persistence: Some(self.file_facts().to_json()),
-        }
+        LiveFacts { pages, upstream: Some(crate::UPSTREAM_COMMIT.into()), persistence: Some(self.file_facts().to_json()) }
     }
 
     /// A JSON snapshot (live when `at` is `None`).
@@ -1884,16 +1734,11 @@ impl Project {
     /// See [`ecad_inspect::snapshot`].
     pub fn snapshot(&self, pg: &PagesRef<'_>, at: Option<u64>) -> Result<Value, String> {
         let facts = self.live_facts(pg);
-        ecad_inspect::snapshot(&self.name, &self.ledger, at, &self.events, at.is_none().then_some(&facts))
-            .map_err(|e| e.to_string())
+        ecad_inspect::snapshot(&self.name, &self.ledger, at, &self.events, at.is_none().then_some(&facts)).map_err(|e| e.to_string())
     }
 
     /// Positions of attached route ends that follow the dragged terminals (drag preview, M2).
-    fn following_routes(
-        &self,
-        page: PageId,
-        moved: &dyn Fn(TerminalId) -> Option<Pt>,
-    ) -> Vec<cadcraft_engine::doc::EntityKind> {
+    fn following_routes(&self, page: PageId, moved: &dyn Fn(TerminalId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
         let doc = self.ledger.document();
         let mut out = Vec::new();
         for (cid, c) in &doc.conductors {
@@ -1921,8 +1766,7 @@ impl Project {
 fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTreeSet<Handle>) -> Vec<Handle> {
     let a: HashMap<Handle, &Arc<Entity>> = committed.model.iter().map(|e| (e.handle, e)).collect();
     let b: HashMap<Handle, &Arc<Entity>> = projected.model.iter().map(|e| (e.handle, e)).collect();
-    let mut out: Vec<Handle> =
-        a.iter().filter(|(h, e)| !amended.contains(h) && b.get(h).is_none_or(|x| x != *e)).map(|(h, _)| *h).collect();
+    let mut out: Vec<Handle> = a.iter().filter(|(h, e)| !amended.contains(h) && b.get(h).is_none_or(|x| x != *e)).map(|(h, _)| *h).collect();
     out.extend(b.keys().filter(|h| !a.contains_key(h) && !amended.contains(h)));
     out.sort();
     out
@@ -1931,13 +1775,11 @@ fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTree
 /// Commands refused on ECAD pages before they start (owner decision, 2026-10-31, brief 007): the
 /// Block Editor and in-place reference editing swap or rewrite the page drawing and its blocks
 /// outside the commit gate, and APPLOAD and LISP evaluate LISP (see [`LISP_REFUSED`]).
-pub const REFUSED_COMMANDS: &[&str] =
-    &["bedit", "bsave", "bsaveas", "bclose", "refedit", "refset", "refclose", "appload", "lisp"];
+pub const REFUSED_COMMANDS: &[&str] = &["bedit", "bsave", "bsaveas", "bclose", "refedit", "refset", "refclose", "appload", "lisp"];
 
 /// Why LISP is refused on ECAD pages: its built-ins change the drawing outside any command, and a
 /// routine keeps an undo step of its own.
-pub const LISP_REFUSED: &str =
-    "LISP is not available on ECAD pages: it changes the drawing outside the commands ECAD records";
+pub const LISP_REFUSED: &str = "LISP is not available on ECAD pages: it changes the drawing outside the commands ECAD records";
 
 impl DocumentOwner for Project {
     fn refuse_start(&self, _s: &Session, uid: u64, start: Start<'_>) -> Option<String> {
@@ -1945,10 +1787,9 @@ impl DocumentOwner for Project {
         match start {
             Start::Lisp => Some(LISP_REFUSED.into()),
             Start::Command("appload" | "lisp") => Some(LISP_REFUSED.into()),
-            Start::Command(id) if REFUSED_COMMANDS.contains(&id) => Some(format!(
-                "{} is not available on ECAD pages: it edits blocks outside the commands ECAD records",
-                id.to_ascii_uppercase()
-            )),
+            Start::Command(id) if REFUSED_COMMANDS.contains(&id) => {
+                Some(format!("{} is not available on ECAD pages: it edits blocks outside the commands ECAD records", id.to_ascii_uppercase()))
+            }
             Start::Command(_) => None,
         }
     }
@@ -1966,22 +1807,12 @@ impl DocumentOwner for Project {
         {
             self.clips.insert(
                 clip.serial,
-                ClipSnapshot {
-                    doc: self.ledger.document().clone(),
-                    page,
-                    map: self.pages.get(&page).map(|v| v.map.clone()).unwrap_or_default(),
-                },
+                ClipSnapshot { doc: self.ledger.document().clone(), page, map: self.pages.get(&page).map(|v| v.map.clone()).unwrap_or_default() },
             );
             while self.clips.len() > 8 {
                 self.clips.pop_first();
             }
-            self.events.record(
-                EventKind::ClipboardCaptured,
-                Some(c.command),
-                head,
-                Some(page),
-                format!("{} objects", clip.handles.len()),
-            );
+            self.events.record(EventKind::ClipboardCaptured, Some(c.command), head, Some(page), format!("{} objects", clip.handles.len()));
         }
         let Some(st) = pg.doc(c.uid) else { return Verdict::Accept };
         let now = st.doc.clone();
@@ -2040,9 +1871,7 @@ impl DocumentOwner for Project {
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let n = t.ops.len();
         // The numbering pass (brief 022) extends the same transaction.
-        if let Err(e) =
-            self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign)
-        {
+        if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -2088,13 +1917,7 @@ impl DocumentOwner for Project {
         self.history(&mut Pages(s), false)
     }
 
-    fn save(
-        &mut self,
-        s: &mut Session,
-        _uid: u64,
-        path: Option<&str>,
-        save_as: bool,
-    ) -> cadcraft_engine::Result<Value> {
+    fn save(&mut self, s: &mut Session, _uid: u64, path: Option<&str>, save_as: bool) -> cadcraft_engine::Result<Value> {
         let pg = &mut Pages(s);
         let head = self.ledger.head();
         if self.persistence == Persistence::File {
@@ -2173,12 +1996,9 @@ impl DocumentOwner for Project {
         for (t, rep, at) in ecad_model::derive::terminal_positions(doc, page) {
             let carried = match doc.representations.get(&rep).map(|r| r.form) {
                 Some(Form::Drawn) => view.map.marker(rep, t).is_some_and(|h| dragged.contains(&h)),
-                Some(Form::Symbol) => doc
-                    .representations
-                    .get(&rep)
-                    .and_then(|r| r.items.first())
-                    .and_then(|i| view.map.item(*i))
-                    .is_some_and(|h| dragged.contains(&h)),
+                Some(Form::Symbol) => {
+                    doc.representations.get(&rep).and_then(|r| r.items.first()).and_then(|i| view.map.item(*i)).is_some_and(|h| dragged.contains(&h))
+                }
                 None => false,
             };
             if carried {
@@ -2221,13 +2041,7 @@ impl DocumentOwner for Project {
             self.refresh_page(pg, page, None, None, true);
         }
         self.sync_saved(pg);
-        self.events.record(
-            EventKind::Recovered,
-            None,
-            self.ledger.head(),
-            None,
-            "owner callback failed; pages rebuilt from the document",
-        );
+        self.events.record(EventKind::Recovered, None, self.ledger.head(), None, "owner callback failed; pages rebuilt from the document");
     }
 
     fn label(&self) -> String {
@@ -2273,11 +2087,7 @@ impl Project {
         }
         self.issue_undo_question = None;
         self.note_frame_ops(&ops);
-        let r = if undo {
-            self.ledger.undo_at(self.author.clone(), now_ms())
-        } else {
-            self.ledger.redo_at(self.author.clone(), now_ms())
-        };
+        let r = if undo { self.ledger.undo_at(self.author.clone(), now_ms()) } else { self.ledger.redo_at(self.author.clone(), now_ms()) };
         match r {
             Ok(_) => {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
@@ -2286,12 +2096,7 @@ impl Project {
                 let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
                 self.update_checks(checks);
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
-                let target = front_after_history(
-                    &order_before,
-                    &self.ledger.document().page_order,
-                    Some(&drawn),
-                    self.active_page(),
-                );
+                let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
                 self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props, tree);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
@@ -2355,9 +2160,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.
             // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
-                if key == ecad_model::book::FOLDER_KEY =>
-            {
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
                 return None;
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } => {
@@ -2365,8 +2168,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 // The page before it in book order shows its number in its Next box.
                 if key == ecad_model::book::NUMBER_KEY {
                     let book = ecad_model::book::Book::of(doc);
-                    if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i))
-                    {
+                    if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
                         out.insert(*prev);
                     }
                 }
@@ -2423,12 +2225,7 @@ pub(crate) fn pages_named(ops: &[Op]) -> BTreeSet<PageId> {
 /// otherwise, when it changed pages that do not include the active page, the first of them in
 /// page order. Rename and move (a page removed and added again) stay; so does a change that could
 /// be on any page (`touched` `None`), and reference texts changing elsewhere never switch.
-pub(crate) fn front_after_history(
-    before: &[PageId],
-    after: &[PageId],
-    touched: Option<&BTreeSet<PageId>>,
-    active: Option<PageId>,
-) -> Option<PageId> {
+pub(crate) fn front_after_history(before: &[PageId], after: &[PageId], touched: Option<&BTreeSet<PageId>>, active: Option<PageId>) -> Option<PageId> {
     if let Some(added) = after.iter().find(|p| !before.contains(p)) {
         return Some(*added);
     }

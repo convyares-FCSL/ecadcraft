@@ -26,10 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::connectivity::{
-    self, CONTINUATION, KIND, NAME, NetData, NetId, Node, POTENTIAL, WIRE_NUMBER, WIRE_NUMBER_FIXED, name_key,
-    split_number,
-};
+use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetId, Node, POTENTIAL, WIRE_NUMBER, WIRE_NUMBER_FIXED, name_key, split_number};
 use crate::doc::{Document, Subject};
 use crate::id::{ConductorId, PageId};
 use crate::op::{ObjectRef, Op};
@@ -179,13 +176,7 @@ pub const DEFAULT_DIGITS: u8 = 2;
 pub const MAX_DIGITS: u8 = 6;
 
 fn row(name: &str, prefix: &str, numbered: bool, colour: &str, cross_section: &str) -> PotentialDef {
-    PotentialDef {
-        name: name.into(),
-        prefix: prefix.into(),
-        numbered,
-        colour: colour.into(),
-        cross_section: cross_section.into(),
-    }
+    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, colour: colour.into(), cross_section: cross_section.into() }
 }
 
 /// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10).
@@ -308,10 +299,7 @@ pub fn net_fixed(net: &NetData) -> bool {
 
 /// The number carried by most conductors; a tie goes to the lower sequence, then text order.
 fn best_number(numbers: &BTreeMap<String, u32>) -> Option<String> {
-    numbers
-        .iter()
-        .max_by(|a, b| a.1.cmp(b.1).then_with(|| seq_of(b.0).cmp(&seq_of(a.0))).then_with(|| b.0.cmp(a.0)))
-        .map(|(k, _)| k.clone())
+    numbers.iter().max_by(|a, b| a.1.cmp(b.1).then_with(|| seq_of(b.0).cmp(&seq_of(a.0))).then_with(|| b.0.cmp(a.0))).map(|(k, _)| k.clone())
 }
 
 fn seq_of(number: &str) -> u64 {
@@ -323,11 +311,7 @@ fn has_prefix(doc: &Document, number: &str, prefix: &str) -> bool {
     if !number.starts_with(prefix) {
         return false;
     }
-    !doc.settings
-        .wiring
-        .potentials
-        .iter()
-        .any(|p| p.prefix.len() > prefix.len() && !p.prefix.is_empty() && number.starts_with(p.prefix.as_str()))
+    !doc.settings.wiring.potentials.iter().any(|p| p.prefix.len() > prefix.len() && !p.prefix.is_empty() && number.starts_with(p.prefix.as_str()))
 }
 
 /// Where `at` lies on `page` (brief 019): the page's shown number and its frame's column and row.
@@ -399,12 +383,7 @@ pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Ve
         let object = ObjectRef::Conductor(*c);
         let cur = cond.properties.get(WIRE_NUMBER);
         if cur.map(String::as_str) != Some(number) {
-            ops.push(Op::SetProperty {
-                object,
-                key: WIRE_NUMBER.into(),
-                before: cur.cloned(),
-                after: Some(number.to_string()),
-            });
+            ops.push(Op::SetProperty { object, key: WIRE_NUMBER.into(), before: cur.cloned(), after: Some(number.to_string()) });
         }
         let flag = cond.properties.get(WIRE_NUMBER_FIXED);
         let want = fixed.then(|| "yes".to_string());
@@ -513,9 +492,7 @@ fn keeps(doc: &Document, id: NetId, number: &str) -> bool {
     let conn = doc.connectivity();
     let Some(me) = conn.net(id) else { return true };
     let mine = net_rank(me, number);
-    conn.nets_numbered(number)
-        .filter(|(n, _)| *n != id)
-        .all(|(n, _)| conn.net(n).is_none_or(|o| net_rank(o, number) < mine))
+    conn.nets_numbered(number).filter(|(n, _)| *n != id).all(|(n, _)| conn.net(n).is_none_or(|o| net_rank(o, number) < mine))
 }
 
 /// The numbering pass (design 022 §5.1): `SetProperty` ops numbering the nets `ops` touched in
@@ -545,13 +522,7 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
 }
 
 /// The number net `id` should carry, and whether fixed; `None` to leave it as it is.
-fn decide(
-    doc: &Document,
-    id: NetId,
-    net: &NetData,
-    potential_changed: bool,
-    alloc: &mut Allocator,
-) -> Option<(String, bool)> {
+fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
     if net.conductors.is_empty() {
         return None;
     }
@@ -718,14 +689,9 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
     let mut words = vec![number.clone().unwrap_or_else(|| "?".into())];
     if doc.cables_of(c).is_empty() {
         let pot = net.map(|(_, n)| net_potential(doc, n));
-        let cs =
-            cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour = cond
-            .properties
-            .get(COLOUR)
-            .cloned()
-            .or_else(|| pot.as_ref().and_then(|p| p.colour.clone()))
-            .map(|c| doc.settings.wiring.colour(&c));
+        let cs = cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
+        let colour =
+            cond.properties.get(COLOUR).cloned().or_else(|| pot.as_ref().and_then(|p| p.colour.clone())).map(|c| doc.settings.wiring.colour(&c));
         words.extend(cs);
         words.extend(colour);
     }

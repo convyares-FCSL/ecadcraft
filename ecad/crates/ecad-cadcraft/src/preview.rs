@@ -115,8 +115,7 @@ pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) ->
     if !doc.pages.contains_key(&page) {
         return Err("That page is not in this revision.".into());
     }
-    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol)
-        .map(|(d, _)| d)
+    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol).map(|(d, _)| d)
 }
 
 /// Rasterise `drawing` at `view` into an image of `width` × `height` pixels on `background`, with
@@ -124,14 +123,7 @@ pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) ->
 ///
 /// # Errors
 /// An unusable view or image size (0, or above 4096 pixels a side).
-pub fn rasterise(
-    drawing: &Drawing,
-    view: PreviewView,
-    width: u32,
-    height: u32,
-    background: [u8; 3],
-    px_per_mm: f32,
-) -> Result<PreviewImage, String> {
+pub fn rasterise(drawing: &Drawing, view: PreviewView, width: u32, height: u32, background: [u8; 3], px_per_mm: f32) -> Result<PreviewImage, String> {
     if !(1..=4096).contains(&width) || !(1..=4096).contains(&height) || !view.usable() {
         return Err("the preview cannot be drawn at this size or view".into());
     }
@@ -164,9 +156,7 @@ pub fn selected_reference(p: &Project, uid: u64, handles: &[cadcraft_engine::doc
     let doc = p.ledger.document();
     handles.iter().find_map(|h| match map.get(*h)? {
         crate::project::Mapped::RefText(r) => Some(r),
-        crate::project::Mapped::Item(i) => {
-            doc.representation_of_item(i).filter(|(_, r)| crate::references::is_reference(r)).map(|(id, _)| id)
-        }
+        crate::project::Mapped::Item(i) => doc.representation_of_item(i).filter(|(_, r)| crate::references::is_reference(r)).map(|(id, _)| id),
         _ => None,
     })
 }

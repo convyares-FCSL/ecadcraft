@@ -6,9 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ecad_trial::Trial;
 use std::path::{Path, PathBuf};
 
-use ecad_trial::startup::{
-    Adapter, Origin, StartupTiming, Step, auxv_clock_ticks, enabled, preferred_folder, process_age, process_age_from,
-};
+use ecad_trial::startup::{Adapter, Origin, StartupTiming, Step, auxv_clock_ticks, enabled, preferred_folder, process_age, process_age_from};
 
 /// A fresh temp folder, removed when dropped (also when an assertion fails).
 struct TempDir(PathBuf);
@@ -119,11 +117,7 @@ fn the_json_file_holds_every_mark_and_the_adapter() {
     for step in Step::ALL {
         t.mark(step);
     }
-    t.set_adapter(Adapter {
-        backend: "Vulkan".into(),
-        name: "Test GPU \"1\"".into(),
-        device_type: "IntegratedGpu".into(),
-    });
+    t.set_adapter(Adapter { backend: "Vulkan".into(), name: "Test GPU \"1\"".into(), device_type: "IntegratedGpu".into() });
     assert!(t.adapter_line().contains("backend Vulkan"), "{}", t.adapter_line());
     assert!(t.adapter_line().contains("IntegratedGpu"), "{}", t.adapter_line());
     assert!(t.complete());

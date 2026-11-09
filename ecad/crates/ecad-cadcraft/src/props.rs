@@ -48,15 +48,7 @@ pub struct Row {
 
 impl Row {
     fn ro(key: &str, label: &str, value: String) -> Row {
-        Row {
-            key: key.into(),
-            label: label.into(),
-            value,
-            editable: false,
-            inherited: false,
-            varies: false,
-            choices: Vec::new(),
-        }
+        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new() }
     }
     fn rw(key: &str, label: &str, value: String) -> Row {
         Row { editable: true, ..Row::ro(key, label, value) }
@@ -110,24 +102,11 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                 out.insert(ObjectRef::Conductor(*id));
                 // The devices at its ends: a wire's net (brief 022) is shown through them.
-                out.extend(
-                    conductor
-                        .ends
-                        .iter()
-                        .flatten()
-                        .filter_map(|t| doc.terminals.get(t))
-                        .map(|t| ObjectRef::Component(t.component)),
-                );
+                out.extend(conductor.ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)));
             }
             Op::AttachEnd { conductor: id, before, after, .. } => {
                 out.insert(ObjectRef::Conductor(*id));
-                out.extend(
-                    [before, after]
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|t| doc.terminals.get(t))
-                        .map(|t| ObjectRef::Component(t.component)),
-                );
+                out.extend([before, after].into_iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)));
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(ObjectRef::Cable(*id));
@@ -152,8 +131,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
                 out.insert(ObjectRef::Project);
             }
-            Op::EmbedDefinition { .. } | Op::RemoveDefinition { .. } | Op::AddLayer { .. } | Op::RemoveLayer { .. } => {
-            }
+            Op::EmbedDefinition { .. } | Op::RemoveDefinition { .. } | Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
             Op::AddPage { .. }
             | Op::RemovePage { .. }
             | Op::AddFolder { .. }
@@ -282,17 +260,13 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // From and To name each end's device and connection point: a renamed device, or a
         // connection point added or removed, changes them.
         let ends = doc.conductors.get(w).map(|c| c.ends).unwrap_or([None, None]);
-        v.deps.extend(
-            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
-        );
+        v.deps.extend(ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)));
         // Brief 022: the number, potential and Net block read the whole net: its conductors and
         // the devices (junctions and continuations included) at its connection points.
         let conn = doc.connectivity();
         if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {
             v.deps.extend(net.conductors.iter().map(|c| ObjectRef::Conductor(*c)));
-            v.deps.extend(
-                net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
-            );
+            v.deps.extend(net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)));
         }
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
@@ -333,10 +307,7 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let pg = doc.pages.get(&page);
     let prop = |k: &str| pg.and_then(|x| x.properties.get(k)).cloned();
     let number = book.number(doc, page);
-    let mut rows = vec![
-        Row::rw(NUMBER_KEY, "Number", number.clone()),
-        Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default()),
-    ];
+    let mut rows = vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default())];
     let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     let path = crate::sheet_cmds::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
@@ -345,8 +316,7 @@ fn page_section(doc: &Document, page: PageId) -> Section {
             Some(v) => Row::rw(key, label, v),
             None => {
                 let inherited = doc.properties.get(key).cloned();
-                let mut r =
-                    Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
+                let mut r = Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
                 r.inherited = inherited.is_some();
                 r
             }
@@ -364,29 +334,16 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     );
     sheet.choices = sheet_choices(doc);
     rows.push(sheet);
-    Section {
-        title: format!("ECAD · PAGE {number}"),
-        kind: "page",
-        target: Some(Target::Page(page)),
-        rows,
-        note: None,
-        buttons: Vec::new(),
-    }
+    Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
 }
 
-fn device_section(
-    doc: &Document,
-    devices: &BTreeSet<ComponentId>,
-    symbol: Option<ecad_model::RepresentationId>,
-) -> Section {
+fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
-        let values: BTreeSet<Option<&String>> =
-            devices.iter().map(|c| doc.components.get(c).and_then(|x| x.properties.get(key))).collect();
+        let values: BTreeSet<Option<&String>> = devices.iter().map(|c| doc.components.get(c).and_then(|x| x.properties.get(key))).collect();
         let varies = values.len() > 1;
-        let value =
-            if varies { "*varies*".into() } else { values.into_iter().next().flatten().cloned().unwrap_or_default() };
+        let value = if varies { "*varies*".into() } else { values.into_iter().next().flatten().cloned().unwrap_or_default() };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
         rows.push(r);
@@ -448,12 +405,7 @@ fn end_words(doc: &Document, w: ConductorId, end: End) -> String {
 }
 
 fn free_rows(props: Option<&ecad_model::Properties>, skip: &[&str]) -> Vec<Row> {
-    props
-        .into_iter()
-        .flatten()
-        .filter(|(k, _)| !skip.contains(&k.as_str()))
-        .map(|(k, v)| Row::rw(k, k, v.clone()))
-        .collect()
+    props.into_iter().flatten().filter(|(k, _)| !skip.contains(&k.as_str())).map(|(k, v)| Row::rw(k, k, v.clone())).collect()
 }
 
 /// Brief 022's rows of the wire section (design 022 §9): Wire number, Fixed, Potential,
@@ -468,11 +420,7 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
         Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::net_number(doc, net).unwrap_or_else(|| "?".into())),
         Row {
             choices: vec!["yes".into(), "no".into()],
-            ..Row::rw(
-                ecad_model::connectivity::WIRE_NUMBER_FIXED,
-                "Fixed",
-                if wiring::net_fixed(net) { "yes" } else { "no" }.into(),
-            )
+            ..Row::rw(ecad_model::connectivity::WIRE_NUMBER_FIXED, "Fixed", if wiring::net_fixed(net) { "yes" } else { "no" }.into())
         },
     ];
     let mut potential = Row::rw(wiring::POTENTIAL_KEY, "Potential", pot.name.clone().unwrap_or_default());
@@ -482,9 +430,7 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
         potential.inherited = true;
     }
     top.push(potential);
-    for (key, label, default) in
-        [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)]
-    {
+    for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)] {
         let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };
         let stored = props.and_then(|p| p.get(key)).cloned();
         let mut row = Row::rw(key, label, stored.as_deref().map(shown).unwrap_or_default());
@@ -502,8 +448,7 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
     let mut pages: Vec<String> = Vec::new();
     let mut seen = BTreeSet::new();
     for page in &doc.page_order {
-        let on =
-            net.conductors.iter().any(|c| doc.representations_of(Subject::Conductor(*c)).any(|(_, r)| r.page == *page));
+        let on = net.conductors.iter().any(|c| doc.representations_of(Subject::Conductor(*c)).any(|(_, r)| r.page == *page));
         if on && seen.insert(*page) {
             pages.push(ecad_model::book::page_number(doc, *page));
         }
@@ -522,19 +467,14 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
     for t in &net.terminals {
         if let Some(x) = doc.terminals.get(t)
             && crate::wires::kind_of(doc, x.component) == Some(ecad_model::connectivity::CONTINUATION)
-            && let Some(name) =
-                doc.components.get(&x.component).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
+            && let Some(name) = doc.components.get(&x.component).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
         {
             *names.entry(name.clone()).or_default() += 1;
         }
     }
     let mut block = vec![
         Row::ro("net", "Net", summary),
-        Row::ro(
-            "points",
-            "Points",
-            if points.is_empty() { "none".into() } else { crate::wires::first_words(&points, 8) },
-        ),
+        Row::ro("points", "Points", if points.is_empty() { "none".into() } else { crate::wires::first_words(&points, 8) }),
     ];
     if !names.is_empty() {
         let words: Vec<String> = names.iter().map(|(k, v)| format!("{k} \u{d7}{v}")).collect();
@@ -564,14 +504,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
         ],
     ));
     rows.extend(net);
-    Section {
-        title: "ECAD · WIRE".into(),
-        kind: "wire",
-        target: Some(Target::Conductor(w)),
-        rows,
-        note: None,
-        buttons: Vec::new(),
-    }
+    Section { title: "ECAD · WIRE".into(), kind: "wire", target: Some(Target::Conductor(w)), rows, note: None, buttons: Vec::new() }
 }
 
 fn cable_section(doc: &Document, k: CableId) -> Section {
@@ -609,14 +542,7 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
         Row::ro("others", "Other ends", if others.is_empty() { "none".into() } else { others.join(", ") }),
     ];
-    Section {
-        title: "ECAD · CABLE REFERENCE".into(),
-        kind: "reference",
-        target: None,
-        rows,
-        note: None,
-        buttons: vec![format!("goto:{}", r.hex())],
-    }
+    Section { title: "ECAD · CABLE REFERENCE".into(), kind: "reference", target: None, rows, note: None, buttons: vec![format!("goto:{}", r.hex())] }
 }
 
 /// The command line (JSON form) that writes `value` to row `key` of `target`; `None` for `null`
@@ -627,9 +553,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
             m.insert("page".into(), p.hex().into());
-            let v = if key == ecad_model::sheet::SHEET_KEY
-                && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project"))
-            {
+            let v = if key == ecad_model::sheet::SHEET_KEY && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project")) {
                 serde_json::Value::Null
             } else {
                 v
@@ -642,17 +566,10 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
             m.insert(key.into(), v);
             ("projectprops", serde_json::Value::Object(m))
         }
-        Target::Devices(cs) if cs.len() == 1 => {
-            ("setprop", serde_json::json!({"component": cs.first().map(|c| c.hex()), "key": key, "value": v}))
-        }
-        Target::Devices(cs) => (
-            "setprop",
-            serde_json::json!({"components": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v}),
-        ),
+        Target::Devices(cs) if cs.len() == 1 => ("setprop", serde_json::json!({"component": cs.first().map(|c| c.hex()), "key": key, "value": v})),
+        Target::Devices(cs) => ("setprop", serde_json::json!({"components": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         // Brief 022: the number and the potential belong to the whole net.
-        Target::Conductor(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => {
-            ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v}))
-        }
+        Target::Conductor(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
         Target::Conductor(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
             let fixed = value.is_some_and(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "yes" | "y" | "true"));
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))
