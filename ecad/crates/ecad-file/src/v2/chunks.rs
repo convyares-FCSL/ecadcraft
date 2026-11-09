@@ -392,6 +392,125 @@ fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32
     }
 }
 
+/// One chunk, parsed and checked on its own (every object in the chunk its key names).
+enum Parsed {
+    Meta(ModelMeta),
+    Project(ProjectChunk),
+    Page(PageId, PageChunk),
+    Layer(BTreeMap<LayerId, Layer>),
+    Component(BTreeMap<ComponentId, Component>),
+    Terminal(BTreeMap<TerminalId, Terminal>),
+    Conductor(BTreeMap<ConductorId, Conductor>),
+    Cable(BTreeMap<CableId, Cable>),
+    Definition(BTreeMap<DefinitionId, Definition>),
+}
+
+/// A model chunk's objects, checked to belong in bucket `b` of `count`.
+fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>(
+    body: &[u8],
+    key: &str,
+    b: u32,
+    count: u32,
+) -> Result<BTreeMap<K, V>, String> {
+    let m: BTreeMap<K, V> = serde_json::from_slice(body).map_err(|e| format!("chunk {key}: {e}"))?;
+    check_bucket(&m, key, b, count)?;
+    Ok(m)
+}
+
+fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String> {
+    let json = |e: serde_json::Error| format!("chunk {key}: {e}");
+    if key == META_KEY {
+        return serde_json::from_slice(body).map(Parsed::Meta).map_err(json);
+    }
+    if key == PROJECT_KEY {
+        return serde_json::from_slice(body).map(Parsed::Project).map_err(json);
+    }
+    if let Some(hex) = key.strip_prefix("page:") {
+        let id = PageId::parse(hex).ok_or_else(|| format!("chunk key {key:?} names no page"))?;
+        let p: PageChunk = serde_json::from_slice(body).map_err(json)?;
+        if let Some((i, _)) = p.items.iter().find(|(_, it)| it.page != id) {
+            return Err(format!("item {i} is in the chunk of page {id} but on another page"));
+        }
+        if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
+            return Err(format!("representation {r} is in the chunk of page {id} but on another page"));
+        }
+        return Ok(Parsed::Page(id, p));
+    }
+    let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) else {
+        return Err(format!("unknown chunk key {key:?}"));
+    };
+    let b: u32 = b.parse().map_err(|_| format!("chunk key {key:?} has no bucket number"))?;
+    let count = set.buckets.get(kind).copied().ok_or_else(|| format!("chunk {key}: unknown kind"))?;
+    Ok(match kind {
+        "layer" => Parsed::Layer(typed(body, key, b, count)?),
+        "component" => Parsed::Component(typed(body, key, b, count)?),
+        "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
+        "conductor" => Parsed::Conductor(typed(body, key, b, count)?),
+        "cable" => Parsed::Cable(typed(body, key, b, count)?),
+        "definition" => Parsed::Definition(typed(body, key, b, count)?),
+        other => return Err(format!("chunk {key}: unknown kind {other}")),
+    })
+}
+
+/// `f` over `items`, on up to 8 threads where the platform has them (results in the order of
+/// `items`); on one thread on wasm. A share whose thread cannot start is left out.
+fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
+    let threads = if cfg!(target_arch = "wasm32") {
+        1
+    } else {
+        std::thread::available_parallelism().map_or(1, std::num::NonZero::get).clamp(1, 8)
+    };
+    if threads == 1 || items.len() < 2 {
+        return items.into_iter().map(f).collect();
+    }
+    let mut groups: Vec<Vec<(usize, T)>> = (0..threads).map(|_| Vec::new()).collect();
+    for (i, item) in items.into_iter().enumerate() {
+        if let Some(g) = groups.get_mut(i % threads) {
+            g.push((i, item));
+        }
+    }
+    let f = &f;
+    let mut out: Vec<(usize, R)> = std::thread::scope(|scope| {
+        // A share whose thread cannot be started is missing from the result: the caller reports
+        // it (never a panic).
+        let handles: Vec<_> = groups
+            .into_iter()
+            .filter_map(|group| {
+                let run = move || group.into_iter().map(|(i, t)| (i, f(t))).collect::<Vec<_>>();
+                std::thread::Builder::new().spawn_scoped(scope, run).ok()
+            })
+            .collect();
+        handles.into_iter().filter_map(|h| h.join().ok()).flatten().collect()
+    });
+    out.sort_by_key(|(i, _)| *i);
+    out.into_iter().map(|(_, r)| r).collect()
+}
+
+/// The document a chunk set describes, from its chunks as stored (key, hash, flag, stored body):
+/// each is decompressed, checked against its hash and parsed in parallel where threads exist,
+/// then merged.
+///
+/// # Errors
+/// As [`assemble`], a chunk that does not decompress or match its hash, or a chunk that could
+/// not be read (a worker thread could not start).
+pub fn assemble_stored(
+    set: &ChunkSet,
+    stored: Vec<(String, Hash, u8, Vec<u8>)>,
+) -> Result<(Document, Option<ModelMeta>), String> {
+    let n = stored.len();
+    let parsed = par_map(stored, |(key, hash, flag, body)| {
+        let body = super::pack::unpack(flag, &body)?;
+        if chunk_hash(&body) != hash {
+            return Err(format!("chunk {key} does not match its hash"));
+        }
+        parse_chunk(set, &key, &body)
+    });
+    if parsed.len() != n {
+        return Err("a chunk could not be read: a worker thread did not start; open the project again".into());
+    }
+    merge_parsed(parsed)
+}
+
 /// The document a chunk set describes, from its chunks' uncompressed bodies (key, body).
 ///
 /// # Semantics
@@ -399,83 +518,41 @@ fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32
 /// and the set must hold the project chunk. The document's derived index is not built here.
 ///
 /// # Errors
-/// A chunk that does not parse, an object in the wrong chunk or in two chunks, or a missing project
-/// chunk.
+/// A chunk that does not parse, an object in the wrong chunk or in two chunks, or a missing
+/// project chunk.
 pub fn assemble(set: &ChunkSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
+    merge_parsed(bodies.iter().map(|(k, b)| parse_chunk(set, k, b)).collect())
+}
+
+fn merge_parsed(parsed: Vec<Result<Parsed, String>>) -> Result<(Document, Option<ModelMeta>), String> {
     let mut doc = Document::default();
     let mut project = false;
     let mut meta = None;
-    for (key, body) in bodies {
-        if key == META_KEY {
-            meta = Some(serde_json::from_slice::<ModelMeta>(&body).map_err(|e| format!("chunk {key}: {e}"))?);
-        } else if key == PROJECT_KEY {
-            let p: ProjectChunk = serde_json::from_slice(&body).map_err(|e| format!("chunk {key}: {e}"))?;
-            doc.page_order = p.page_order;
-            doc.settings = p.settings;
-            doc.versions = p.versions;
-            doc.properties = p.properties;
-            doc.folders = p.folders;
-            doc.folder_order = p.folder_order;
-            project = true;
-        } else if let Some(hex) = key.strip_prefix("page:") {
-            let id = PageId::parse(hex).ok_or_else(|| format!("chunk key {key:?} names no page"))?;
-            let p: PageChunk = serde_json::from_slice(&body).map_err(|e| format!("chunk {key}: {e}"))?;
-            if let Some((i, _)) = p.items.iter().find(|(_, it)| it.page != id) {
-                return Err(format!("item {i} is in the chunk of page {id} but on another page"));
+    for p in parsed {
+        match p? {
+            Parsed::Meta(m) => meta = Some(m),
+            Parsed::Project(p) => {
+                doc.page_order = p.page_order;
+                doc.settings = p.settings;
+                doc.versions = p.versions;
+                doc.properties = p.properties;
+                doc.folders = p.folders;
+                doc.folder_order = p.folder_order;
+                project = true;
             }
-            if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
-                return Err(format!("representation {r} is in the chunk of page {id} but on another page"));
+            Parsed::Page(id, p) => {
+                if doc.pages.insert(id, p.page).is_some() {
+                    return Err(format!("page {id} is in two chunks"));
+                }
+                merge(&mut doc.items, p.items, "item")?;
+                merge(&mut doc.representations, p.representations, "representation")?;
             }
-            if doc.pages.insert(id, p.page).is_some() {
-                return Err(format!("page {id} is in two chunks"));
-            }
-            merge(&mut doc.items, p.items, "item")?;
-            merge(&mut doc.representations, p.representations, "representation")?;
-        } else if let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) {
-            let b: u32 = b.parse().map_err(|_| format!("chunk key {key:?} has no bucket number"))?;
-            let count = set.buckets.get(kind).copied().ok_or_else(|| format!("chunk {key}: unknown kind"))?;
-            let parse = |what: &str| format!("chunk {key} ({what})");
-            match kind {
-                "layer" => {
-                    let m: BTreeMap<LayerId, Layer> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.layers, m, "layer")?;
-                }
-                "component" => {
-                    let m: BTreeMap<ComponentId, Component> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.components, m, "component")?;
-                }
-                "terminal" => {
-                    let m: BTreeMap<TerminalId, Terminal> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.terminals, m, "terminal")?;
-                }
-                "conductor" => {
-                    let m: BTreeMap<ConductorId, Conductor> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.conductors, m, "conductor")?;
-                }
-                "cable" => {
-                    let m: BTreeMap<CableId, Cable> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.cables, m, "cable")?;
-                }
-                "definition" => {
-                    let m: BTreeMap<DefinitionId, Definition> =
-                        serde_json::from_slice(&body).map_err(|e| parse(&e.to_string()))?;
-                    check_bucket(&m, &key, b, count)?;
-                    merge(&mut doc.definitions, m, "definition")?;
-                }
-                other => return Err(format!("chunk {key}: unknown kind {other}")),
-            }
-        } else {
-            return Err(format!("unknown chunk key {key:?}"));
+            Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
+            Parsed::Component(m) => merge(&mut doc.components, m, "component")?,
+            Parsed::Terminal(m) => merge(&mut doc.terminals, m, "terminal")?,
+            Parsed::Conductor(m) => merge(&mut doc.conductors, m, "conductor")?,
+            Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
+            Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,
         }
     }
     if !project {

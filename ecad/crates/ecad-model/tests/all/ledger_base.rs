@@ -61,8 +61,16 @@ fn based_capped(l: &Ledger, at: u64, cap: usize) -> (Ledger, Arc<Store>) {
         (s[hidden..].to_vec(), hidden as u64)
     };
     let ((undo, undo_hidden), (redo, redo_hidden)) = (top(undo), top(redo));
-    let base =
-        Base { seq: at, doc: prefix.document().clone(), undo, redo, undo_hidden, redo_hidden, history: store.clone() };
+    let base = Base {
+        seq: at,
+        doc: prefix.document().clone(),
+        undo,
+        redo,
+        undo_hidden,
+        redo_hidden,
+        indexed: false,
+        history: store.clone(),
+    };
     let (b, failure) = Ledger::from_base(base, l.log()[at as usize..].to_vec(), 1).unwrap();
     assert!(failure.is_none(), "{failure:?}");
     (b, store)
@@ -130,8 +138,16 @@ fn inconsistent_snapshot_stacks_are_refused() {
     let reference = full();
     let store = Arc::new(Store { log: reference.log().to_vec(), reads: AtomicUsize::new(0), fail: Mutex::new(false) });
     let (undo, _) = reference.stacks();
-    let bad =
-        Base { seq: 3, doc: Document::default(), undo, redo: vec![], undo_hidden: 0, redo_hidden: 0, history: store };
+    let bad = Base {
+        seq: 3,
+        doc: Document::default(),
+        undo,
+        redo: vec![],
+        undo_hidden: 0,
+        redo_hidden: 0,
+        indexed: false,
+        history: store,
+    };
     assert!(matches!(Ledger::from_base(bad, vec![], 1), Err(ModelError::CorruptLog(_))));
 }
 

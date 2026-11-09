@@ -27,6 +27,17 @@ fn main() -> ExitCode {
             }
         };
     }
+    if let [flag, file] = args.as_slice()
+        && flag == "--probe"
+    {
+        return match ecad_bench::v2::probe(std::path::Path::new(file)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match ecad_bench::main_with(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

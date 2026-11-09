@@ -37,6 +37,11 @@ pub struct MeasuredV2 {
     pub stored_x10: u64,
     /// The ×10 file's size after engine compaction (as Save As writes it).
     pub compacted_x10: u64,
+    /// On the ×10 file: the first undo that reaches below the 1 024 stack entries the snapshot
+    /// recorded, which reads the whole stacks from the history once (EEP-0005 §5.5).
+    pub undo_past_cap_ms: f64,
+    /// The undos before it, median.
+    pub undo_ms: f64,
 }
 
 fn ms(since: Instant) -> f64 {
@@ -154,6 +159,30 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         x10_ms.push(ms(t));
         drop(o);
     }
+    // Undo past the recorded stack top: 1 024 undos read nothing; the next one reads the history
+    // once.
+    let (undo_past_cap_ms, undo_ms) = {
+        let mut o = open(&copy)?;
+        // Undo until a step reads the whole stacks (the ones the snapshot recorded, 1 024 at most,
+        // and the tail's are in memory): time that step, and the others.
+        let held = o.ledger.stacks().0.len();
+        let mut each = Vec::with_capacity(held + 1);
+        let mut past = None;
+        for _ in 0..=held {
+            let before = o.ledger.stack_rebuilds();
+            let t = Instant::now();
+            o.ledger.undo(Author::User).map_err(|e| e.to_string())?;
+            let took = ms(t);
+            if o.ledger.stack_rebuilds() > before {
+                past = Some(took);
+                break;
+            }
+            each.push(took);
+        }
+        let past = past.ok_or("no undo reached below the recorded stack top")?;
+        (past, median(&mut each))
+    };
+    crate::measure::release_lock_file(&copy);
     let stored_x10 = ecad_file::v2::Store::open(&copy, false)
         .and_then(|s| s.reader())
         .and_then(|r| r.stats())
@@ -177,6 +206,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         bytes_x10,
         stored_x10,
         compacted_x10,
+        undo_past_cap_ms,
+        undo_ms,
     })
 }
 
@@ -356,4 +387,32 @@ pub fn growth(path: &Path, batches: u64) -> Result<(), String> {
 
 fn mb(b: u64) -> f64 {
     b as f64 / 1_048_576.0
+}
+
+/// A probe (developer use, `ecad-bench --probe <file.v2.ecad>`): open a copy three times, then
+/// save ten one-wire edits, printing each time.
+///
+/// # Errors
+/// Opening or saving failed.
+pub fn probe(path: &Path) -> Result<(), String> {
+    let copy = path.with_extension("probe.ecad");
+    copy_file(path, &copy)?;
+    for _ in 0..3 {
+        let t = Instant::now();
+        let o = open(&copy)?;
+        eprintln!("open {:.1} ms (base {}, tail {})", ms(t), o.ledger.base(), o.ledger.log().len());
+        drop(o);
+    }
+    let mut o = open(&copy)?;
+    let mut ids = IdAllocator::seeded(EDIT_SEED ^ 7);
+    for i in 0..10 {
+        let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-probe-{i}"))?;
+        o.ledger.commit(Author::User, "Wire", ops).map_err(|e| e.to_string())?;
+        let t = Instant::now();
+        o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
+        eprintln!("save {:.2} ms", ms(t));
+    }
+    drop(o);
+    crate::measure::remove(&copy);
+    Ok(())
 }

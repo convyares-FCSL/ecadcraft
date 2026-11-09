@@ -246,11 +246,15 @@ fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<
 /// Read a snapshot's document and its `model:meta`: every chunk, each checked against its hash.
 fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<ModelMeta>), String> {
     let set = ChunkSet::from_record(&v.chunks)?;
-    let mut bodies = Vec::with_capacity(set.chunks.len());
+    let mut stored = Vec::with_capacity(set.chunks.len());
     for (key, hash) in &set.chunks {
-        bodies.push((key.clone(), r.chunk_body(hash).map_err(|e| e.to_string())?));
+        let (flag, body) = r
+            .chunk(hash)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("chunk {} is missing", chain::hex(hash)))?;
+        stored.push((key.clone(), *hash, flag, body));
     }
-    chunks::assemble(&set, bodies)
+    chunks::assemble_stored(&set, stored)
 }
 
 /// Rows `from..=to` of `branch`, decoded and chain-checked from `prev`. Stops at the first bad
@@ -338,6 +342,61 @@ impl History for StoreHistory {
             Some(d) => Err(ModelError::CorruptLog(format!("transaction {:?}: {}", d.seq, d.detail))),
             None => Ok(txs),
         }
+    }
+
+    /// Only each row's `seq`, `id`, `kind` and `prev` are decoded (its record still checked
+    /// against its chain value): the ops are skipped, so reading a long history once is quick.
+    fn stacks_at(&self, seq: u64) -> ecad_model::Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+        #[derive(serde::Deserialize)]
+        struct Head {
+            seq: u64,
+            id: TxId,
+            kind: crate::v1::TxKind,
+            prev: String,
+        }
+        let bad = |m: String| ModelError::CorruptLog(m);
+        let r = self.read()?;
+        let (mut undo, mut redo): (Vec<(u64, TxId)>, Vec<(u64, TxId)>) = (Vec::new(), Vec::new());
+        let mut prev = self.seed;
+        let mut from = 1;
+        while from <= seq {
+            let to = seq.min(from + 4_095);
+            let rows = r.tx_range(self.branch, from..=to).map_err(|e| bad(e.to_string()))?;
+            if rows.len() as u64 != to - from + 1 {
+                return Err(bad(format!("transactions {from} to {to} are not all stored")));
+            }
+            for (q, flag, stored, body) in rows {
+                let record = pack::unpack(flag, &body).map_err(bad)?;
+                if chain::tx_hash(&record) != stored {
+                    return Err(bad(format!("transaction {q} does not match its chain value")));
+                }
+                let h: Head = serde_json::from_slice(&record).map_err(|e| bad(format!("transaction {q}: {e}")))?;
+                if h.seq != q || chain::parse_hex(&h.prev) != Some(prev) {
+                    return Err(bad(format!("transaction {q} does not follow the one before")));
+                }
+                prev = stored;
+                match h.kind {
+                    crate::v1::TxKind::Edit => {
+                        undo.push((q, h.id));
+                        redo.clear();
+                    }
+                    crate::v1::TxKind::Undo(of) => {
+                        if undo.pop().map(|t| t.1) != Some(of) {
+                            return Err(bad(format!("undo {q} does not undo the latest step")));
+                        }
+                        redo.push((q, h.id));
+                    }
+                    crate::v1::TxKind::Redo(of) => {
+                        if redo.pop().map(|t| t.1) != Some(of) {
+                            return Err(bad(format!("redo {q} does not redo the latest undo")));
+                        }
+                        undo.push((q, h.id));
+                    }
+                }
+            }
+            from = to + 1;
+        }
+        Ok((undo, redo))
     }
 
     fn state_at(&self, seq: u64) -> ecad_model::Result<Document> {
@@ -580,6 +639,7 @@ impl ProjectV2 {
             redo: stacks.redo.clone(),
             undo_hidden: stacks.undo_hidden,
             redo_hidden: stacks.redo_hidden,
+            indexed: true,
             history,
         };
         let tail_len = tail.len() as u64;

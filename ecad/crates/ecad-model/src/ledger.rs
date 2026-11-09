@@ -244,6 +244,8 @@ pub struct Base {
     /// How many entries lie below `undo` and `redo` (0 when they are whole).
     pub undo_hidden: u64,
     pub redo_hidden: u64,
+    /// `doc`'s derived index is already built (it is built here otherwise).
+    pub indexed: bool,
     pub history: Arc<dyn History>,
 }
 
@@ -612,7 +614,7 @@ impl Ledger {
     /// [`ModelError::CorruptLog`] when the base's stacks are inconsistent (an entry at 0 or after
     /// the base, or out of order) or their tops cannot be read from the history.
     pub fn from_base(base: Base, tail: Vec<Transaction>, seed: u64) -> Result<(Self, Option<(usize, ModelError)>)> {
-        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, history } = base;
+        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, history } = base;
         for stack in [&undo, &redo] {
             let bad_entry = stack.iter().any(|(s, _)| *s == 0 || *s > seq);
             let unordered = stack.windows(2).any(|w| matches!(w, [a, b] if a.0 >= b.0));
@@ -622,7 +624,9 @@ impl Ledger {
                 )));
             }
         }
-        doc.rebuild_index();
+        if !indexed {
+            doc.rebuild_index();
+        }
         let mut me = Self {
             doc,
             log: Vec::new(),
