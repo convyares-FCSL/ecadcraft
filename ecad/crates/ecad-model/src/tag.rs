@@ -57,6 +57,38 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
     Some((letters.to_ascii_uppercase(), n))
 }
 
+/// The highest number each tag prefix has had in a history (brief 018: the next automatic number
+/// is the highest + 1, so a deleted tag is never given again). Version 2 snapshots carry it
+/// (brief 021, the `model:meta` chunk), so a project opened from a snapshot keeps it.
+pub type HighWater = std::collections::BTreeMap<String, u64>;
+
+/// Count tag `t` in `high`.
+pub fn note(high: &mut HighWater, t: &str) {
+    if let Some((prefix, n)) = parse(t) {
+        let e = high.entry(prefix).or_insert(0);
+        *e = (*e).max(n);
+    }
+}
+
+/// Count every tag `ops` write or remove (undone ones included).
+pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
+    for op in ops {
+        match op {
+            crate::Op::CreateComponent { component, .. } | crate::Op::DeleteComponent { component, .. } => {
+                if let Some(t) = component.properties.get(TAG_KEY) {
+                    note(high, t);
+                }
+            }
+            crate::Op::SetProperty { key, before, after, .. } if key == TAG_KEY => {
+                for t in before.iter().chain(after) {
+                    note(high, t);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The identity of a tag: equal keys are the same tag.
 ///
 /// # Example

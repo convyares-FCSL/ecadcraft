@@ -24,15 +24,15 @@ pub struct VerifyReport {
     pub unreferenced_parts: usize,
 }
 
-fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<Document, String> {
+fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<parts::ModelMeta>), String> {
     let set = PartSet::from_record(&v.parts)?;
     let mut bodies = Vec::new();
     for (k, h) in &set.parts {
         bodies.push((k.clone(), r.part_body(h).map_err(|e| e.to_string())?));
     }
-    let mut d = parts::assemble(&set, bodies)?;
+    let (mut d, meta) = parts::assemble(&set, bodies)?;
     d.rebuild_index();
-    Ok(d)
+    Ok((d, meta))
 }
 
 /// Verify the whole file.
@@ -124,6 +124,7 @@ pub fn verify(store: &Store) -> VerifyReport {
         versions.sort_by_key(|v| v.point.seq);
         let named: BTreeMap<&String, &u64> = ledger.document().versions.iter().collect();
         let mut doc = Document::default();
+        let mut high = ecad_model::tag::HighWater::new();
         let mut done = 0u64;
         let mut stacks: (Vec<(u64, TxId)>, Vec<(u64, TxId)>) = (Vec::new(), Vec::new());
         for v in &versions {
@@ -134,6 +135,7 @@ pub fn verify(store: &Store) -> VerifyReport {
             for tx in ledger.log().iter().skip(done as usize).take((v.point.seq - done) as usize) {
                 for op in &tx.ops {
                     let _ = op.apply(&mut doc);
+                    ecad_model::tag::note_ops(&mut high, std::slice::from_ref(op));
                 }
                 match tx.kind {
                     TxKind::Edit => {
@@ -160,7 +162,18 @@ pub fn verify(store: &Store) -> VerifyReport {
                 }
             }
             match snapshot_doc(&r, v) {
-                Ok(d) if d == doc => rep.snapshots += 1,
+                Ok((d, meta)) if d == doc => {
+                    rep.snapshots += 1;
+                    // `model:meta` is a cache: it must equal what the history gives.
+                    if let Some(m) = meta
+                        && m.tag_high != high
+                    {
+                        fail(
+                            &mut rep,
+                            format!("{}: the tag numbers of {:?} differ from the history's", b.name, v.name),
+                        );
+                    }
+                }
                 Ok(_) => fail(&mut rep, format!("{}: the snapshot of {:?} DIFFERS from the replay", b.name, v.name)),
                 Err(e) => fail(&mut rep, format!("{}: the snapshot of {:?}: {e}", b.name, v.name)),
             }

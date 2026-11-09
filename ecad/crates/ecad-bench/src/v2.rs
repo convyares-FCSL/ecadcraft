@@ -33,6 +33,10 @@ pub struct MeasuredV2 {
     pub crash_open_ms: f64,
     pub open_x10_ms: f64,
     pub bytes_x10: u64,
+    /// Bytes redb holds in rows (keys and values) after the ×10 growth.
+    pub stored_x10: u64,
+    /// The ×10 file's size after engine compaction (as Save As writes it).
+    pub compacted_x10: u64,
 }
 
 fn ms(since: Instant) -> f64 {
@@ -150,6 +154,17 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         x10_ms.push(ms(t));
         drop(o);
     }
+    let stored_x10 = ecad_file::v2::Store::open(&copy, false)
+        .and_then(|s| s.reader())
+        .and_then(|r| r.stats())
+        .map(|t| t.iter().map(|t| t.stored_bytes).sum())
+        .map_err(|e| e.to_string())?;
+    let compacted_x10 = {
+        let mut s = ecad_file::v2::Store::open(&copy, true).map_err(|e| e.to_string())?;
+        s.compact().map_err(|e| e.to_string())?;
+        drop(s);
+        std::fs::metadata(&copy).map_or(0, |m| m.len())
+    };
     crate::measure::remove(&copy);
 
     Ok(MeasuredV2 {
@@ -160,6 +175,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         crash_open_ms: median(&mut crash_ms),
         open_x10_ms: median(&mut x10_ms),
         bytes_x10,
+        stored_x10,
+        compacted_x10,
     })
 }
 
@@ -273,4 +290,70 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         });
     }
     Ok(Compression { raw_rows, raw_parts, codecs })
+}
+
+/// A growth probe (developer use, `ecad-bench --growth <file.v2.ecad> <batches>`): append
+/// `batches` saves of 1 000 property changes to a copy of `path`, printing the file size, the
+/// bytes each table stores and the size after compaction every tenth batch.
+///
+/// # Errors
+/// Opening, saving or reading failed.
+pub fn growth(path: &Path, batches: u64) -> Result<(), String> {
+    let copy = path.with_extension("growth.ecad");
+    copy_file(path, &copy)?;
+    let mut o = open(&copy)?;
+    let size = |p: &Path| std::fs::metadata(p).map_or(0, |m| m.len());
+    let mut flip = false;
+    for b in 1..=batches {
+        for _ in 0..1_000 {
+            let before = o.ledger.document().properties.get("bench.growth").cloned();
+            let after = if flip { "a" } else { "b" };
+            flip = !flip;
+            let ops = vec![Op::SetProperty {
+                object: ObjectRef::Project,
+                key: "bench.growth".into(),
+                before,
+                after: Some(after.into()),
+            }];
+            o.ledger.commit(Author::User, "growth", ops).map_err(|e| e.to_string())?;
+        }
+        let t = Instant::now();
+        let s = o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
+        if b % 10 == 0 || b == batches {
+            let r = o.project.project().store().reader().map_err(|e| e.to_string())?;
+            let stats = r.stats().map_err(|e| e.to_string())?;
+            let tables: Vec<String> = stats
+                .iter()
+                .map(|t| {
+                    format!(
+                        "{} {} rows {:.1} MB (+{:.1} meta, {:.1} frag)",
+                        t.name,
+                        t.rows,
+                        mb(t.stored_bytes),
+                        mb(t.metadata_bytes),
+                        mb(t.fragmented_bytes)
+                    )
+                })
+                .collect();
+            eprintln!(
+                "batch {b}: head {}, save {:.1} ms ({} snapshots), file {:.1} MB; {}",
+                o.ledger.head(),
+                ms(t),
+                s.snapshots,
+                mb(size(&copy)),
+                tables.join("; ")
+            );
+        }
+    }
+    drop(o);
+    let mut st = ecad_file::v2::Store::open(&copy, true).map_err(|e| e.to_string())?;
+    st.compact().map_err(|e| e.to_string())?;
+    drop(st);
+    eprintln!("compacted: {:.1} MB", mb(size(&copy)));
+    crate::measure::remove(&copy);
+    Ok(())
+}
+
+fn mb(b: u64) -> f64 {
+    b as f64 / 1_048_576.0
 }

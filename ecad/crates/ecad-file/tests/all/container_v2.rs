@@ -189,7 +189,7 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
         let v = reader.version(o.project.branch(), kind, name).unwrap().unwrap();
         let set = ecad_file::v2::parts::PartSet::from_record(&v.parts).unwrap();
         let bodies = set.parts.iter().map(|(k, h)| (k.clone(), reader.part_body(h).unwrap())).collect::<Vec<_>>();
-        let mut doc = ecad_file::v2::parts::assemble(&set, bodies).unwrap();
+        let (mut doc, _) = ecad_file::v2::parts::assemble(&set, bodies).unwrap();
         doc.rebuild_index();
         assert_eq!(doc, f.ledger.state_at(seq).unwrap(), "{name}");
     }

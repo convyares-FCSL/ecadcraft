@@ -14,6 +14,19 @@ fn main() -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
+    if let [flag, file, n] = args.as_slice()
+        && flag == "--growth"
+    {
+        let r =
+            n.parse().map_err(|e| format!("{e}")).and_then(|n| ecad_bench::v2::growth(std::path::Path::new(file), n));
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match ecad_bench::main_with(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

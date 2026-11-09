@@ -18,7 +18,7 @@ use ecad_model::{Base, Document, History, Ledger, ModelError, ObjectRef, Op, Pro
 use serde_json::{Value, json};
 
 use super::pack;
-use super::parts::{self, Dirty, PartSet};
+use super::parts::{self, Dirty, ModelMeta, PartSet};
 use super::schema::{
     BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME,
     META_NAMES, Point, Release, SNAPSHOT_EVERY_RANGE, SnapshotRef, VersionKind, VersionRecord, auto_name,
@@ -26,6 +26,7 @@ use super::schema::{
 use super::store::{Reader, Store, StoreError};
 use crate::chain::{self, ChainKind, Hash};
 use crate::record::{self, SCHEMA_VERSION};
+use ecad_model::tag::HighWater;
 
 /// Why a version 2 file could not be opened at all.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -184,8 +185,29 @@ fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, String> {
         .collect()
 }
 
-/// Read a snapshot's document: every part, each checked against its hash.
-fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<Document, String> {
+/// The tag high-water mark of rows `1..=upto` of `branch`, read from the file: for a snapshot
+/// written without `model:meta`, and for a point before the ledger's base.
+fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<HighWater, String> {
+    let mut high = HighWater::new();
+    let mut from = 1;
+    let mut prev = seed;
+    while from <= upto {
+        let to = upto.min(from + 4_095);
+        let (txs, last, damage) = read_rows(r, branch, from, to, prev).map_err(|e| e.to_string())?;
+        if let Some(d) = damage {
+            return Err(format!("transaction {:?}: {}", d.seq, d.detail));
+        }
+        for tx in &txs {
+            ecad_model::tag::note_ops(&mut high, &tx.ops);
+        }
+        prev = last;
+        from = to + 1;
+    }
+    Ok(high)
+}
+
+/// Read a snapshot's document and its `model:meta`: every part, each checked against its hash.
+fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<ModelMeta>), String> {
     let set = PartSet::from_record(&v.parts)?;
     let mut bodies = Vec::with_capacity(set.parts.len());
     for (key, hash) in &set.parts {
@@ -294,7 +316,7 @@ impl History for StoreHistory {
             }
         }
         let (mut doc, from, prev) = match &best {
-            Some(v) => (load_snapshot(&r, v).map_err(err)?, v.point.seq, v.point.hash().map_err(err)?),
+            Some(v) => (load_snapshot(&r, v).map_err(err)?.0, v.point.seq, v.point.hash().map_err(err)?),
             None => (Document::default(), 0, self.seed),
         };
         let (txs, _, damage) = read_rows(&r, self.branch, from + 1, seq, prev).map_err(|e| err(e.to_string()))?;
@@ -329,6 +351,8 @@ pub struct ProjectV2 {
     head: (u64, Hash),
     cache: Cache,
     snap: Snap,
+    /// The tag high-water mark at `base_seq`.
+    base_tag_high: HighWater,
     /// The `versions` row of the snapshot opened from or last written (`None`: the root).
     snap_ref: Option<SnapshotRef>,
     /// The undo and redo stacks at the ledger's base (the snapshot opened from).
@@ -339,6 +363,8 @@ pub struct ProjectV2 {
     link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
     last_save: Option<SavedV2>,
+    /// `meta.writer` names this build already (written by the first save of a session).
+    wrote_writer: bool,
 }
 
 /// A project opened from a version 2 database.
@@ -453,8 +479,8 @@ impl ProjectV2 {
         if let Some(s) = latest {
             match r.version(branch, s.kind, &s.name)? {
                 Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
-                    Ok(doc) => {
-                        loaded = Some((v, doc));
+                    Ok((doc, meta)) => {
+                        loaded = Some((v, doc, meta));
                         snap_ref = Some(s.clone());
                     }
                     Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
@@ -465,8 +491,10 @@ impl ProjectV2 {
                 }
             }
         }
+        let mut snap_meta = None;
         let (snap_seq, snap_chain, doc, stacks, set) = match loaded {
-            Some((v, doc)) => {
+            Some((v, doc, meta)) => {
+                snap_meta = meta;
                 let chain = v.point.hash().map_err(OpenErrorV2::Damaged)?;
                 let undo = stacks_from_record(&v.undo).map_err(OpenErrorV2::Damaged)?;
                 let redo = stacks_from_record(&v.redo).map_err(OpenErrorV2::Damaged)?;
@@ -482,6 +510,13 @@ impl ProjectV2 {
                 detail: "the snapshot's point does not match its transaction".into(),
             }));
         }
+        // The tag high-water mark at the snapshot: carried by `model:meta`; a snapshot written
+        // without it is scanned once (a cache, rebuilt from the history).
+        let base_tag_high = match snap_meta {
+            Some(m) => m.tag_high,
+            None if snap_seq > 0 => scan_tag_high(&r, branch, snap_seq, seed_chain).unwrap_or_default(),
+            None => HighWater::new(),
+        };
         let to = head.min(last);
         let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq + 1, to, snap_chain)?;
         drop(r);
@@ -519,6 +554,7 @@ impl ProjectV2 {
             head: (verified, verified_chain),
             cache: facts.cache,
             snap: Snap { seq: snap_seq, set },
+            base_tag_high,
             snap_ref,
             base_stacks: stacks,
             base_seq: snap_seq,
@@ -527,6 +563,7 @@ impl ProjectV2 {
             link_v1: facts.link_v1,
             created_ms: facts.created_ms,
             last_save: None,
+            wrote_writer: false,
         };
         Ok(OpenedV2 { project, ledger, report })
     }
@@ -584,6 +621,7 @@ impl ProjectV2 {
         let mut snap = Snap { seq: 0, set: PartSet::default() };
         let mut first = true;
         let mut latest: Option<SnapshotRef> = None;
+        let mut high = HighWater::new();
         for (at, kind, name) in points {
             let range = ledger.log().get(done as usize..at as usize).unwrap_or_default();
             let mut dirty = Dirty::default();
@@ -592,12 +630,17 @@ impl ProjectV2 {
                     op.apply(&mut doc).map_err(|e| SaveErrorV2::Encode(format!("replaying {}: {e}", tx.seq)))?;
                 }
                 dirty.add_ops(&tx.ops);
+                ecad_model::tag::note_ops(&mut high, &tx.ops);
             }
             advance_stacks(&mut stacks, range);
             done = at;
-            let (set, new) =
-                if first { parts::build_full(&doc) } else { parts::build_incremental(&doc, &snap.set, &dirty) }
-                    .map_err(SaveErrorV2::Encode)?;
+            let meta = ModelMeta { tag_high: high.clone() };
+            let (set, new) = if first {
+                parts::build_full(&doc, &meta)
+            } else {
+                parts::build_incremental(&doc, &snap.set, &dirty, &meta)
+            }
+            .map_err(SaveErrorV2::Encode)?;
             first = false;
             for p in &new {
                 let n = w.put_part(&p.hash, &p.body)?;
@@ -657,6 +700,7 @@ impl ProjectV2 {
             head,
             cache,
             snap: snap.clone(),
+            base_tag_high: HighWater::new(),
             snap_ref: latest,
             base_stacks: (Vec::new(), Vec::new()),
             base_seq: 0,
@@ -665,6 +709,7 @@ impl ProjectV2 {
             link_v1: link,
             created_ms,
             last_save: Some(saved.clone()),
+            wrote_writer: true,
         };
         Ok((me, saved))
     }
@@ -696,10 +741,10 @@ impl ProjectV2 {
         let start = usize::try_from(head - ledger.base()).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
         let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
         let mut w = self.store.writer()?;
-        // Another writer cannot exist (locks); check anyway, it costs one row read.
+        // Another writer cannot exist (locks); check anyway, inside this write transaction: one
+        // row read.
         {
-            let r = self.store.reader()?;
-            match r.branch(self.branch)? {
+            match w.branch(self.branch)? {
                 Some(b) if b.head.seq == head && b.head.hash().ok() == Some(prev) => {}
                 Some(b) => return Err(SaveErrorV2::ExternalChange(format!("the branch head is now {}", b.head.seq))),
                 None => return Err(SaveErrorV2::ExternalChange("the branch is gone".into())),
@@ -772,7 +817,9 @@ impl ProjectV2 {
                 release_line: true,
             },
         )?;
-        w.set_meta("writer", &json!(self.writer))?;
+        if !self.wrote_writer {
+            w.set_meta("writer", &json!(self.writer))?;
+        }
         if cache != self.cache {
             w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         }
@@ -783,6 +830,7 @@ impl ProjectV2 {
         self.cache = cache;
         ledger.mark_persisted(end).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
         self.last_save = Some(saved.clone());
+        self.wrote_writer = true;
         Ok(saved)
     }
 
@@ -818,6 +866,7 @@ impl ProjectV2 {
     ) -> Result<(), SaveErrorV2> {
         let enc = SaveErrorV2::Encode;
         let base = ledger.base();
+        let meta = ModelMeta { tag_high: self.tag_high_at(ledger, at)? };
         let (lo, hi) = (at.min(snap.seq), at.max(snap.seq));
         let in_memory = lo >= base;
         let built = if in_memory {
@@ -836,15 +885,15 @@ impl ProjectV2 {
                 .collect();
             let prev = snap.set.clone();
             if undo_after.is_empty() {
-                parts::build_incremental(ledger.document(), &prev, &dirty)
+                parts::build_incremental(ledger.document(), &prev, &dirty, &meta)
             } else {
                 ledger
-                    .with_applied(&undo_after, |d| parts::build_incremental(d, &prev, &dirty))
+                    .with_applied(&undo_after, |d| parts::build_incremental(d, &prev, &dirty, &meta))
                     .map_err(|e| enc(e.to_string()))?
             }
         } else {
             let doc = ledger.state_at(at).map_err(|e| enc(e.to_string()))?;
-            parts::build_full(&doc)
+            parts::build_full(&doc, &meta)
         }
         .map_err(enc)?;
         let (set, new) = built;
@@ -919,6 +968,28 @@ impl ProjectV2 {
         }
         w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         Ok(())
+    }
+
+    /// The tag high-water mark at `at`: from the one at the snapshot this project was opened from
+    /// and the transactions after it in memory, or (for an earlier point) read from the file.
+    fn tag_high_at(&self, ledger: &Ledger, at: u64) -> Result<HighWater, SaveErrorV2> {
+        if at >= self.base_seq && self.base_seq >= ledger.base() {
+            let mut high = self.base_tag_high.clone();
+            for seq in self.base_seq + 1..=at {
+                if let Some(tx) = ledger.transaction(seq) {
+                    ecad_model::tag::note_ops(&mut high, &tx.ops);
+                }
+            }
+            return Ok(high);
+        }
+        let r = self.store.reader()?;
+        scan_tag_high(&r, self.branch, at, chain::seed(ChainKind::Project, self.project.0)).map_err(SaveErrorV2::Encode)
+    }
+
+    /// The tag high-water mark at the snapshot this project was opened from (brief 018: the next
+    /// automatic number is the highest + 1); the transactions after it add to it.
+    pub fn base_tag_high(&self) -> &HighWater {
+        &self.base_tag_high
     }
 
     /// A reader of this file's history, for a ledger based on one of its snapshots.

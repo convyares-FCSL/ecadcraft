@@ -523,6 +523,16 @@ impl Writer {
         Ok(())
     }
 
+    /// A branch row, as this transaction sees it.
+    ///
+    /// # Errors
+    /// The engine failed, or the row does not decode.
+    pub fn branch(&self, id: BranchId) -> Result<Option<BranchRecord>, StoreError> {
+        let t = self.txn.open_table(BRANCHES).map_err(engine)?;
+        let Some(v) = t.get(id.0).map_err(engine)? else { return Ok(None) };
+        serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))
+    }
+
     /// Put a branch row (a new branch, or its new head or status).
     ///
     /// # Errors

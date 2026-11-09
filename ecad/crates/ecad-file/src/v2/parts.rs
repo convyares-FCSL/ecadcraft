@@ -30,6 +30,18 @@ use crate::chain::{self, Hash};
 pub const CHUNK: usize = 1_024;
 /// The part holding project-wide state.
 pub const PROJECT_KEY: &str = "model:project";
+/// The part holding state derived from the history that a snapshot must carry (overseer answer
+/// C, 2026-11-08): a cache, rebuilt by Verify from the history.
+pub const META_KEY: &str = "model:meta";
+
+/// What `model:meta` holds.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelMeta {
+    /// The highest number each tag prefix has had up to the snapshot's point, deleted and
+    /// undone tags included (brief 018).
+    pub tag_high: ecad_model::tag::HighWater,
+}
 /// Most buckets a kind may have (a bound on hostile files).
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
@@ -52,14 +64,21 @@ pub fn bucket_count(n: usize) -> u32 {
     u32::try_from(chunks.next_power_of_two()).unwrap_or(MAX_BUCKETS).min(MAX_BUCKETS)
 }
 
-/// The bucket of object `id` among `count` buckets (a power of two).
-pub fn bucket(id: u128, count: u32) -> u32 {
+/// `mix(id)`, part of the file format (EEP-0005 §3.5, overseer answer A): never changes with a
+/// crate version. The 128-bit ID's two 64-bit halves XORed, then the SplitMix64 finaliser
+/// (add `0x9E3779B97F4A7C15`; `z ^= z >> 30; z *= 0xBF58476D1CE4E5B9; z ^= z >> 27;
+/// z *= 0x94D049BB133111EB; z ^= z >> 31`, all wrapping, 64-bit).
+pub fn mix(id: u128) -> u64 {
     let mut z = (id as u64) ^ ((id >> 64) as u64);
     z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^= z >> 31;
-    (z & u64::from(count.max(1) - 1)) as u32
+    z ^ (z >> 31)
+}
+
+/// The bucket of object `id` among `count` buckets (a power of two): `mix(id) mod count`.
+pub fn bucket(id: u128, count: u32) -> u32 {
+    (mix(id) & u64::from(count.max(1) - 1)) as u32
 }
 
 /// An object ID as its 128-bit value.
@@ -97,7 +116,7 @@ impl PartSet {
                 }
                 let n = set.buckets.entry(kind.to_string()).or_insert(0);
                 *n = (*n).max(b + 1);
-            } else if k != PROJECT_KEY && !k.starts_with("page:") {
+            } else if k != PROJECT_KEY && k != META_KEY && !k.starts_with("page:") {
                 return Err(format!("unknown part key {k:?}"));
             }
             set.parts.insert(k.clone(), hash);
@@ -282,12 +301,12 @@ fn project_part(doc: &Document) -> Result<NewPart, String> {
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_full(doc: &Document) -> Result<(PartSet, Vec<NewPart>), String> {
+pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(PartSet, Vec<NewPart>), String> {
     let mut dirty = Dirty { pages: doc.pages.keys().copied().collect(), objects: BTreeMap::new() };
     for kind in KINDS {
         dirty.objects.insert(kind, BTreeSet::new());
     }
-    build(doc, &PartSet::default(), &dirty, true)
+    build(doc, &PartSet::default(), &dirty, true, meta)
 }
 
 /// The part set of `doc`, given `prev` (the part set of a state that differs from `doc` only in
@@ -296,11 +315,22 @@ pub fn build_full(doc: &Document) -> Result<(PartSet, Vec<NewPart>), String> {
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_incremental(doc: &Document, prev: &PartSet, dirty: &Dirty) -> Result<(PartSet, Vec<NewPart>), String> {
-    build(doc, prev, dirty, false)
+pub fn build_incremental(
+    doc: &Document,
+    prev: &PartSet,
+    dirty: &Dirty,
+    meta: &ModelMeta,
+) -> Result<(PartSet, Vec<NewPart>), String> {
+    build(doc, prev, dirty, false, meta)
 }
 
-fn build(doc: &Document, prev: &PartSet, dirty: &Dirty, full: bool) -> Result<(PartSet, Vec<NewPart>), String> {
+fn build(
+    doc: &Document,
+    prev: &PartSet,
+    dirty: &Dirty,
+    full: bool,
+    meta: &ModelMeta,
+) -> Result<(PartSet, Vec<NewPart>), String> {
     let mut set = prev.clone();
     let mut new = Vec::new();
     let mut put = |set: &mut PartSet, key: String, part: NewPart| {
@@ -310,6 +340,7 @@ fn build(doc: &Document, prev: &PartSet, dirty: &Dirty, full: bool) -> Result<(P
         set.parts.insert(key, part.hash);
     };
     put(&mut set, PROJECT_KEY.into(), project_part(doc)?);
+    put(&mut set, META_KEY.into(), encode(meta)?);
     // Pages: rebuild the touched ones; drop the parts of pages that no longer exist.
     for (id, part) in page_parts(doc, &dirty.pages)? {
         put(&mut set, page_key(id), part);
@@ -370,11 +401,14 @@ fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32
 /// # Errors
 /// A part that does not parse, an object in the wrong part or in two parts, or a missing project
 /// part.
-pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<Document, String> {
+pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
     let mut doc = Document::default();
     let mut project = false;
+    let mut meta = None;
     for (key, body) in bodies {
-        if key == PROJECT_KEY {
+        if key == META_KEY {
+            meta = Some(serde_json::from_slice::<ModelMeta>(&body).map_err(|e| format!("part {key}: {e}"))?);
+        } else if key == PROJECT_KEY {
             let p: ProjectPart = serde_json::from_slice(&body).map_err(|e| format!("part {key}: {e}"))?;
             doc.page_order = p.page_order;
             doc.settings = p.settings;
@@ -453,7 +487,7 @@ pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<Documen
     if ordered != parted || ordered.len() != doc.page_order.len() {
         return Err("the snapshot's page order does not match its page parts".into());
     }
-    Ok(doc)
+    Ok((doc, meta))
 }
 
 #[cfg(test)]
@@ -478,5 +512,33 @@ mod tests {
             counts[bucket(1_000_000 + id, 8) as usize] += 1;
         }
         assert!(counts.iter().all(|c| (800..1_200).contains(c)), "{counts:?}");
+        // The function is part of the format: fixed values.
+        assert_eq!(mix(0), 0xE220_A839_7B1D_CDAF);
+        assert_eq!(mix(1), 0x910A_2DEC_8902_5CC1);
+    }
+
+    #[test]
+    fn one_insert_rewrites_one_chunk() {
+        use ecad_model::{Component, ComponentId, Document, Op};
+        let mut doc = Document::default();
+        for i in 0..5_000u128 {
+            ecad_model::Op::CreateComponent { id: ComponentId(0x1000 + i * 7), component: Component::default() }
+                .apply(&mut doc)
+                .unwrap();
+        }
+        let meta = ModelMeta::default();
+        let (set, _) = build_full(&doc, &meta).unwrap();
+        assert_eq!(set.buckets.get("component"), Some(&8));
+        let add = Op::CreateComponent { id: ComponentId(0x9_9999), component: Component::default() };
+        add.apply(&mut doc).unwrap();
+        let mut dirty = Dirty::default();
+        dirty.add_ops(std::slice::from_ref(&add));
+        let (next, new) = build_incremental(&doc, &set, &dirty, &meta).unwrap();
+        assert_eq!(new.len(), 1, "one chunk written");
+        let changed: Vec<_> =
+            next.parts.iter().filter(|(k, h)| set.parts.get(*k) != Some(*h)).map(|(k, _)| k).collect();
+        assert_eq!(changed, vec![&model_key("component", bucket(0x9_9999, 8))]);
+        // The same set as building everything again.
+        assert_eq!(next, build_full(&doc, &meta).unwrap().0);
     }
 }

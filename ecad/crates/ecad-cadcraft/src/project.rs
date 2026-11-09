@@ -1037,7 +1037,7 @@ impl Project {
         reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path)?;
-        let o = if reading {
+        let mut o = if reading {
             crate::file::Binding::open_read_only(&path, seed, &writer())?
         } else {
             crate::file::Binding::open(&path, seed, &writer())?
@@ -1099,7 +1099,7 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::default(),
+            tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
             page_list_version: 0,
             last_placed: None,
             frame: None,

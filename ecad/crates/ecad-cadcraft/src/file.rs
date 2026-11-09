@@ -46,6 +46,8 @@ pub struct Opened {
     pub project: ProjectId,
     /// A lock file left by a session that ended without releasing it, reclaimed: its record.
     pub reclaimed_lock: Option<String>,
+    /// The tag high-water mark at the snapshot the ledger starts from (brief 021).
+    pub tag_high: ecad_model::tag::HighWater,
 }
 
 /// The file a project is bound to, holding its writer lock while bound.
@@ -241,12 +243,14 @@ impl Binding {
         let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer)
             .map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
+        let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
             binding: Binding { disk: Some(Box::new(o.project)) },
             ledger: o.ledger,
             report: o.report,
             project,
             reclaimed_lock: o.reclaimed_lock,
+            tag_high,
         })
     }
 
@@ -261,12 +265,14 @@ impl Binding {
         let o = ecad_file::v2::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer)
             .map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
+        let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
             binding: Binding { disk: Some(Box::new(o.project)) },
             ledger: o.ledger,
             report: o.report,
             project,
             reclaimed_lock: o.reclaimed_lock,
+            tag_high,
         })
     }
 
