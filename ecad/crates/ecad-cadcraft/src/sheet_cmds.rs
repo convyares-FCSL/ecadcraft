@@ -51,7 +51,8 @@ clears; no fields: the current values, read only)",
             .params(
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
 page_number_step?: n, reference_style?: \"page-column-row\"|\"page-column\", tag_padding?: 1..6, \
-tag_prefixes?: {symbol: prefix|null}, props?: {key: value|null}} (one transaction; no fields: everything, read only)",
+tag_prefixes?: {symbol: prefix|null}, colour_style?: \"iec\"|\"three-letter\", label_height?: mm, \
+props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             )
             .noundo(),
         CommandSpec::new("newfolder", "New Folder", run_newfolder).params("{name, parent?: id|null}").noundo(),
@@ -656,6 +657,9 @@ pub fn project_json(doc: &Document) -> Value {
     v["reference_style"] = json!(style_word(doc.settings.reference_style));
     v["tag_padding"] = json!(crate::devices::padding(doc));
     v["tag_prefixes"] = Value::Object(crate::device_cmds::prefixes_json(doc));
+    // Brief 022: the wiring settings the Project settings popout edits.
+    v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
+    v["label_height"] = json!(doc.settings.wiring.label_height());
     v["revisions"] = Value::Array(revs);
     v["pending_rev"] = json!(revisions::pending_rev(doc));
     v
@@ -705,6 +709,19 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         let (padding, prefixes) = crate::device_cmds::tag_settings_params(params, "tag_padding", "tag_prefixes")?;
         crate::device_cmds::apply_tag_settings(&mut settings, padding, prefixes);
+        // Brief 022 fix round: how label colours are written, and the label height.
+        if let Some(v) = params.get("colour_style").filter(|v| !v.is_null()) {
+            settings.wiring.colour_style = v
+                .as_str()
+                .and_then(ecad_model::wiring::ColourStyle::parse)
+                .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+        }
+        if let Some(v) = params.get("label_height").filter(|v| !v.is_null()) {
+            settings.wiring.label_height = v
+                .as_f64()
+                .filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x))
+                .ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+        }
         if settings != doc.settings {
             ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
         }

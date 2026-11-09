@@ -17,6 +17,7 @@ that new briefs know which branch they belong to. The owner corrects it when a g
 | Usability: ECAD tools by mouse | `feature/usability` | 008 | In `dev` |
 | Agent access (MCP) | `feature/agent-access` | 011 | In `dev` |
 | Performance and the project file | `feature/performance` | 012, 013, 014, 015 | In `dev` |
+| Connectivity and wire numbers: nets, numbering, labels, checks | `feature/connectivity` | 022 | PR #43 into `dev` (review fixes pushed); not merged |
 | Libraries and components | `feature/components` | 006 (contract only) | Stage 3 not started; first step below |
 | Project manager: pages, then cables, components | `feature/project-manager` | 016 | Brief approved; after the upstream sync |
 

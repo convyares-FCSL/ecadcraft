@@ -35,6 +35,9 @@ pub enum Kind {
     Plc { letter: char },
     /// Fixed labels from the definition. `exclusive`: a device holds at most one of these.
     Fixed { exclusive: bool },
+    /// A tagless component of its own, never part of a device: a junction or a continuation
+    /// (brief 022, FP4).
+    Tagless,
 }
 
 /// One starter symbol in the catalogue.
@@ -72,6 +75,7 @@ impl Starter {
 
     fn build(&self) -> Result<Definition, String> {
         let mut d = Definition {
+            bridges: Vec::new(),
             name: self.name.into(),
             origin: None,
             graphics: graphics(self.key),
@@ -250,6 +254,22 @@ pub const STARTERS: &[Starter] = &[
         prefix: "A",
         kind: Kind::Plc { letter: 'Q' },
         id: def_id(18),
+    },
+    Starter {
+        key: "junction",
+        name: "Junction",
+        aliases: &["junction", "dot", "tee"],
+        prefix: "",
+        kind: Kind::Tagless,
+        id: def_id(19),
+    },
+    Starter {
+        key: "continuation",
+        name: "Continuation",
+        aliases: &["continuation", "arrow", "potential", "link"],
+        prefix: "",
+        kind: Kind::Tagless,
+        id: def_id(20),
     },
 ];
 
@@ -459,6 +479,11 @@ fn graphics(key: &str) -> Vec<Primitive> {
             ]
         }
         "terminal" => vec![circle((0.0, 0.0), 1.5)],
+        // A filled dot (`ecad.junction-size`): concentric circles, so it reads as filled at any
+        // lineweight setting (design 022 §3.1).
+        "junction" => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
+        // An arrow pointing away from its wire (design 022 §3.2).
+        "continuation" => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         "di" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
         "do" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DO"), line((0.0, -2.5), (0.0, -10.0))],
         _ => Vec::new(),
@@ -489,6 +514,8 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         "motor1" => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         "trafo" => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
         "terminal" => vec![t("1", 0.0, 0.0)],
+        // No label: a junction or continuation shows no connection point name.
+        "junction" | "continuation" => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
         "di" => vec![t("I0.0", 0.0, 10.0)],
         "do" => vec![t("Q0.0", 0.0, -10.0)],
         _ => Vec::new(),
@@ -556,7 +583,8 @@ mod tests {
             bare.origin = None;
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
-        assert_eq!(STARTERS.len(), 18);
+        // 18 symbols (brief 018) and the junction and continuation (brief 022).
+        assert_eq!(STARTERS.len(), 20);
     }
 
     #[test]
@@ -567,7 +595,7 @@ mod tests {
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3"]);
         assert_eq!(keys("fuse"), ["fuse"]);
         assert!(keys("xyz").is_empty());
-        assert_eq!(keys("").len(), 18);
+        assert_eq!(keys("").len(), 20);
         assert!(keys(&"z".repeat(10_000)).is_empty());
     }
 }

@@ -34,6 +34,10 @@ pub const READ_COMMANDS: &[&str] = &[
     "symbols",
     "devices",
     "deviceprops",
+    // Nets, wire numbers and checks (brief 022): listing them reads the project.
+    "nets",
+    "net",
+    "checks",
     // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",
     "closerevision",

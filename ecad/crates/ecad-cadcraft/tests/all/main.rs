@@ -27,3 +27,4 @@ mod sheets_contracts;
 mod terminal_name_contracts;
 mod tester_014_r3_scope_probe;
 mod upstream_sync_contracts;
+mod wiring_contracts;

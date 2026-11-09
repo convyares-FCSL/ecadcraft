@@ -14,6 +14,8 @@
 //! - [`ledger`]: transactions applied in place with rollback, linear project-wide undo/redo
 //!   derived from the log, unsaved state.
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
+//! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
+//! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -24,6 +26,7 @@
 )]
 
 pub mod book;
+pub mod connectivity;
 pub mod derive;
 pub mod doc;
 pub mod error;
@@ -35,7 +38,9 @@ pub mod ledger;
 pub mod op;
 pub mod sheet;
 pub mod tag;
+pub mod wiring;
 
+pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
     Cable, CableMember, Color, Component, Conductor, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING,
     Definition, Document, End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive,

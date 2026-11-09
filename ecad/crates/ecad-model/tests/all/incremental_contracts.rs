@@ -88,6 +88,7 @@ fn base() -> Base {
     let layer_v = Layer { name: "0".into() };
     let def = ids.fresh();
     let def_v = Definition {
+        bridges: Vec::new(),
         name: "K".into(),
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
@@ -651,6 +652,7 @@ impl Gen {
         }
         let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
         Definition {
+            bridges: Vec::new(),
             name: "d".into(),
             origin: None,
             graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: r }],

@@ -16,7 +16,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 23] = [
+const COLUMNS: [(&str, &str); 27] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -35,6 +35,10 @@ const COLUMNS: [(&str, &str); 23] = [
     ("place_ms", "place ms"),
     ("join_ms", "join ms"),
     ("tag_ms", "tag ms"),
+    ("nets_ms", "nets ms"),
+    ("netupd_ms", "netupd ms"),
+    ("netcut_ms", "netcut ms"),
+    ("rail_ms", "rail ms"),
     ("pnum_ms", "pnum ms"),
     ("frame_ms", "frame ms"),
     ("tbupd_ms", "tbupd ms"),
@@ -42,7 +46,7 @@ const COLUMNS: [(&str, &str); 23] = [
     ("revopen_ms", "revopen ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 23] {
+fn values(m: &Measured) -> [Option<f64>; 27] {
     [
         Some(m.open_ms),
         Some(m.derive_ms),
@@ -62,6 +66,10 @@ fn values(m: &Measured) -> [Option<f64>; 23] {
         Some(m.place_ms),
         Some(m.join_ms),
         Some(m.tag_ms),
+        Some(m.nets_ms),
+        Some(m.netupd_ms),
+        Some(m.netcut_ms),
+        Some(m.rail_ms),
         Some(m.pnum_ms),
         Some(m.frame_ms),
         Some(m.tbupd_ms),
@@ -85,7 +93,8 @@ fn mb(bytes: u64) -> f64 {
 /// The plain table.
 pub fn table(rows: &[Row], runs: usize) -> String {
     let mut out = format!(
-        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9} {:>11} {:>8} {:>10} {:>9} {:>8} {:>7} {:>8} {:>9} {:>9} {:>14} {:>11}\n",
+        "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9} {:>11} {:>8} {:>10} {:>9} {:>8} {:>7} {:>8} {:>10} {:>10} {:>8} {:>8} {:>9} {:>9} {:>14} {:>11}
+",
         "tier",
         "history",
         "file MB",
@@ -108,6 +117,10 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         "place ms",
         "join ms",
         "tag ms",
+        "nets ms",
+        "netupd ms",
+        "netcut ms",
+        "rail ms",
         "pnum ms",
         "frame ms",
         "tbupd ms",
@@ -117,7 +130,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
     for r in rows {
         let m = &r.measured;
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+            "{:<8} {:<8} {:>9.2} {:>8} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}
+",
             r.tier,
             r.variant,
             mb(m.bytes),
@@ -140,6 +154,10 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             cell(Some(m.place_ms), 9, 2),
             cell(Some(m.join_ms), 8, 2),
             cell(Some(m.tag_ms), 7, 2),
+            cell(Some(m.nets_ms), 8, 2),
+            cell(Some(m.netupd_ms), 10, 3),
+            cell(Some(m.netcut_ms), 10, 3),
+            cell(Some(m.rail_ms), 8, 3),
             cell(Some(m.pnum_ms), 8, 2),
             cell(Some(m.frame_ms), 9, 3),
             cell(Some(m.tbupd_ms), 9, 2),
@@ -155,7 +173,12 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          rasterise a page at 480 x 320; panel: rebuild the Project panel's rows after one renamepage; \
          each a median over up to 10 pages spread over the project. Targets (design 016): switch <= 5 ms \
          and preview <= 15 ms on large. devices: rebuild the Devices tab's list; goto: show a device symbol's page and select it; devupd: bring the list up to date after one device property edit. place, join and tag (brief 018): a starter coil placed as a \
-         new device, a NO contact added to it, and its tag renamed. pnum, frame, tbupd, gridchange and \
+         new device, a NO contact added to it, and its tag renamed. nets (brief 022): build the nets from scratch, \
+         as on open (target <= 100 ms on large); netupd: one wire attached at both ends committed with the \
+         numbering pass, Checks and page 1's labels updated, then undone (target about 1 ms, <= 2 ms); netcut: \
+         delete one conductor of the largest net (target <= 5 ms); rail: the same on a synthetic net of 25,000 \
+         conductors round one point (a 0V rail), which the generated tiers do not have. \
+         pnum, frame, tbupd, gridchange and \
          revopen (brief 019): renumber page 2 with its references refreshed; work out one page's frame \
          and title block; change the project title; change the grid (A3 and A2 in turn); open Rev A \
          read-only. Peak memory is not measured.\n"
@@ -247,6 +270,11 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "place_ms": m.place_ms,
                 "join_ms": m.join_ms,
                 "tag_ms": m.tag_ms,
+                "nets_ms": m.nets_ms,
+                "netupd_ms": m.netupd_ms,
+                "netcut_ms": m.netcut_ms,
+                "netcut_size": m.netcut_size,
+                "rail_ms": m.rail_ms,
                 "pnum_ms": m.pnum_ms,
                 "frame_ms": m.frame_ms,
                 "tbupd_ms": m.tbupd_ms,

@@ -29,3 +29,5 @@ ecad-store = { workspace = true }
 ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
+# Brief 022: the UI test of the Checks tab opens the demo project, built as `cargo xtask demo` builds it.
+ecad-mcp = { path = "../ecad-mcp" }

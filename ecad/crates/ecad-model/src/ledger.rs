@@ -226,7 +226,8 @@ mod hooks {
 /// possible either, `health.broken` is set. Nothing here panics, as it may run during unwinding.
 struct Journal<'a> {
     doc: &'a mut Document,
-    ops: &'a [Op],
+    /// Borrowed, unless a numbering pass extended the transaction (brief 022).
+    ops: std::borrow::Cow<'a, [Op]>,
     applied: usize,
     /// The committed transactions whose replay gives the state before this one; `None` when the
     /// caller discards the document on error.
@@ -237,22 +238,44 @@ struct Journal<'a> {
 
 impl<'a> Journal<'a> {
     fn new(doc: &'a mut Document, ops: &'a [Op], history: Option<&'a [Transaction]>, health: &'a mut Health) -> Self {
-        Self { doc, ops, applied: 0, history, health, open: true }
+        Self { doc, ops: std::borrow::Cow::Borrowed(ops), applied: 0, history, health, open: true }
     }
 
     /// Apply every op in order; what they touched.
     fn apply(&mut self) -> Result<Touched> {
         let mut touched = Touched::default();
-        for op in self.ops {
-            #[cfg(test)]
-            hooks::maybe_panic(self.applied);
-            op.apply(self.doc)?;
-            touched.add(op);
-            self.applied += 1;
-        }
-        #[cfg(test)]
-        hooks::maybe_panic(self.applied);
+        self.apply_rest(&mut touched)?;
         Ok(touched)
+    }
+
+    /// Append `more` ops to the transaction (the numbering pass, brief 022) and apply them.
+    fn extend(&mut self, more: Vec<Op>, touched: &mut Touched) -> Result<()> {
+        if more.is_empty() {
+            return Ok(());
+        }
+        self.ops.to_mut().extend(more);
+        self.apply_rest(touched)
+    }
+
+    /// Apply the ops not applied yet, in order, adding what they touch to `touched`; the nets are
+    /// settled once at the end (brief 022).
+    fn apply_rest(&mut self, touched: &mut Touched) -> Result<()> {
+        // Disjoint borrows: the ops stay in place, so a panic part-way still rolls them back.
+        let Journal { doc, ops, applied, .. } = self;
+        for op in ops.get(*applied..).unwrap_or(&[]) {
+            #[cfg(test)]
+            hooks::maybe_panic(*applied);
+            if let Err(e) = op.apply_unsettled(doc, true) {
+                crate::op::settle(doc);
+                return Err(e);
+            }
+            touched.add(op);
+            *applied += 1;
+        }
+        crate::op::settle(doc);
+        #[cfg(test)]
+        hooks::maybe_panic(*applied);
+        Ok(())
     }
 
     /// Keep the applied ops.
@@ -267,7 +290,8 @@ impl<'a> Journal<'a> {
             return None;
         }
         self.open = false;
-        let applied = self.ops.get(..self.applied).unwrap_or(&[]);
+        let ops = std::mem::take(&mut self.ops);
+        let applied = ops.get(..self.applied).unwrap_or(&[]);
         self.applied = 0;
         let mut failed = None;
         for op in applied.iter().rev() {
@@ -281,6 +305,7 @@ impl<'a> Journal<'a> {
                 break;
             }
         }
+        crate::op::settle(self.doc);
         let failed = failed?;
         let repaired = match self.history.map(restore) {
             Some(Some(doc)) => {
@@ -350,6 +375,42 @@ fn apply_tx(
     debug_assert!(rollback_failure.is_none(), "{rollback_failure:?}");
     debug_assert!(disagreement.is_none(), "{disagreement:?}");
     result
+}
+
+/// [`apply_tx`] with a numbering pass (brief 022): after `ops`, `extend` sees the document and
+/// returns more ops for the same transaction, applied before the end state is checked. Returns
+/// those extra ops.
+fn apply_tx_extended(
+    doc: &mut Document,
+    ops: &[Op],
+    verify: bool,
+    history: Option<&[Transaction]>,
+    health: &mut Health,
+    extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
+    then: impl FnOnce() -> Result<()>,
+) -> Result<Vec<Op>> {
+    let mut journal = Journal::new(doc, ops, history, health);
+    let mut touched = Touched::default();
+    let mut more = Vec::new();
+    let applied = journal.apply_rest(&mut touched).and_then(|()| {
+        more = extend(journal.doc, ops);
+        journal.extend(more.clone(), &mut touched)
+    });
+    let (result, disagreement) = match applied {
+        Ok(()) => validate(journal.doc, &touched, verify),
+        Err(e) => (Err(e), None),
+    };
+    let result = result.and_then(|()| then());
+    let rollback_failure = match result {
+        Ok(()) => {
+            journal.commit();
+            None
+        }
+        Err(_) => journal.roll_back(),
+    };
+    debug_assert!(rollback_failure.is_none(), "{rollback_failure:?}");
+    debug_assert!(disagreement.is_none(), "{disagreement:?}");
+    result.map(|()| more)
 }
 
 /// Apply `ops` to `doc` in place, check the end state as [`apply_tx`] does, run `read` on it, and
@@ -666,6 +727,42 @@ impl Ledger {
             return Err(ModelError::Empty);
         }
         self.append(author, label.to_string(), TxKind::Edit, ops, time_ms)
+    }
+
+    /// [`Ledger::commit_at`] with a pass that extends the transaction (brief 022's numbering
+    /// pass): after `ops` are applied, `extend` sees the document as they left it (no copy) and
+    /// returns more ops, recorded in the same transaction after `ops`, so one undo undoes both.
+    ///
+    /// # Errors
+    /// As [`Ledger::commit`]; the extra ops are checked like any other.
+    pub fn commit_extended(
+        &mut self,
+        author: Author,
+        label: &str,
+        ops: Vec<Op>,
+        time_ms: Option<u64>,
+        extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
+    ) -> Result<TxId> {
+        if ops.is_empty() {
+            return Err(ModelError::Empty);
+        }
+        if self.health.broken {
+            return Err(ModelError::CorruptLog(
+                "the document could not be restored after a failed rollback; reopen the project".into(),
+            ));
+        }
+        let seq = self.head() + 1;
+        check_bookmarks(&ops, seq)?;
+        let kind = TxKind::Edit;
+        let (stacks, log) = (&self.stacks, &self.log);
+        let admit = || stacks.admit_kind(log, kind, "the new transaction");
+        let more = apply_tx_extended(&mut self.doc, &ops, self.verify, Some(log), &mut self.health, extend, admit)?;
+        let mut ops = ops;
+        ops.extend(more);
+        let id: TxId = self.ids.fresh();
+        self.log.push(Transaction { id, seq, author, label: label.to_string(), kind, time_ms, ops });
+        self.stacks.push(&self.log, self.log.len() - 1);
+        Ok(id)
     }
 
     fn append(

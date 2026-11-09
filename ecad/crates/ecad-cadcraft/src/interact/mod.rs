@@ -22,6 +22,7 @@
 mod devices;
 mod forms;
 mod refs;
+mod wiring_forms;
 
 use std::collections::BTreeSet;
 
@@ -43,6 +44,7 @@ use crate::views::{FanOnPage, View, fan_on_page};
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
+pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -432,6 +434,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         stroke: crate::references::BOLD_PX,
         color: if m.orphan { ORPHAN_RGB } else { CABLE_RGB },
     }));
+    // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
+    if let Some((pg, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
+        let _ = pg;
+        let color = match sev {
+            crate::checks::Severity::Error => Rgb(0xFF, 0x00, 0x00),
+            crate::checks::Severity::Warning => Rgb(0xFF, 0xFF, 0x00),
+            crate::checks::Severity::Info => Rgb(0xA0, 0xA0, 0xA0),
+        };
+        out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
+    }
     out
 }
 
@@ -463,6 +475,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             Subject::Component(c) => crate::devices::hover_lines(doc, c, r),
             _ => return None,
         },
+        // A conductor label (brief 022): its wire's lens.
+        Mapped::Label(w) => wire_lines(doc, w, page),
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
@@ -686,6 +700,14 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     }
     for end in End::BOTH {
         lines.push(match conductor.and_then(|x| x.end(end)) {
+            // A junction or a continuation (brief 022) is named by what it is.
+            Some(t) if doc.terminals.get(&t).is_some_and(|x| crate::wires::kind_of(doc, x.component).is_some()) => {
+                let words = crate::wires::point_words(doc, t);
+                match words.strip_prefix('\u{2192}') {
+                    Some(name) => format!("End {end:?}: continuation {name}"),
+                    None => format!("End {end:?}: {words}"),
+                }
+            }
             Some(t) => {
                 let of = doc
                     .terminals
@@ -710,6 +732,9 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     if !others.is_empty() {
         lines.push(format!("Also drawn on {}", others.join(", ")));
     }
+    // Brief 022: the wire's number, potential, label and net (the Properties panel's facts until
+    // 019's panel is merged).
+    lines.extend(crate::wires::hover_lines(doc, w));
     lines
 }
 
@@ -720,7 +745,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let doc = p.ledger.document();
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
-        Some(Mapped::Marker(..) | Mapped::Tag(_)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),

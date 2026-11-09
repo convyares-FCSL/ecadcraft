@@ -345,6 +345,9 @@ pub struct ProjectSettings {
     /// The project's own tag prefix per starter symbol key (`"coil" → "KA"`), overriding the
     /// built-in IEC 81346 default. Empty by default.
     pub tag_prefixes: BTreeMap<String, String>,
+    /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
+    /// the file while it holds [`WiringSettings::default`].
+    pub wiring: crate::wiring::WiringSettings,
     /// The project's sheet: size and grid of every page's frame unless a page sets its own
     /// (brief 019, decision FP2). A3 landscape, `A`–`H` by `1`–`6` by default.
     pub sheet: crate::sheet::SheetSpec,
@@ -378,6 +381,7 @@ impl Default for ProjectSettings {
             length_unit: LengthUnit::default(),
             tag_padding: DEFAULT_TAG_PADDING,
             tag_prefixes: BTreeMap::new(),
+            wiring: crate::wiring::WiringSettings::default(),
             sheet: crate::sheet::SheetSpec::default(),
             page_number_step: DEFAULT_PAGE_NUMBER_STEP,
             reference_style: ReferenceStyle::default(),
@@ -400,6 +404,22 @@ pub struct Definition {
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub terminals: Vec<TerminalDef>,
+    /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
+    /// group is on one net. Empty for almost every definition, and then left out of the file so
+    /// existing content hashes do not change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridges: Vec<Vec<String>>,
+}
+
+impl Definition {
+    /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
+    pub fn bridged_with<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.bridges
+            .iter()
+            .filter(move |g| g.iter().any(|k| k == key))
+            .flat_map(|g| g.iter().map(String::as_str))
+            .filter(move |k| *k != key)
+    }
 }
 
 /// The authoritative document: everything stored, nothing derived.
@@ -443,6 +463,9 @@ pub struct Document {
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
+    /// Derived nets (brief 022), kept by [`crate::Op::apply`]; never serialised.
+    #[serde(skip)]
+    pub(crate) conn: crate::connectivity::Connectivity,
 }
 
 /// The serialised form of [`Document`]: its stored fields, without the derived index.
@@ -504,6 +527,7 @@ impl From<DocumentData> for Document {
             folders,
             folder_order,
             index: Index::default(),
+            conn: crate::connectivity::Connectivity::default(),
         };
         doc.rebuild_index();
         doc
@@ -530,6 +554,7 @@ impl PartialEq for Document {
             folders,
             folder_order,
             index: _,
+            conn: _,
         } = self;
         *pages == other.pages
             && *page_order == other.page_order
@@ -557,6 +582,7 @@ impl Document {
     /// current on its own.
     pub fn rebuild_index(&mut self) {
         self.index = Index::build(self);
+        self.conn = crate::connectivity::Connectivity::build(self);
     }
 
     /// Whether the kept index equals one rebuilt from the stored objects.
@@ -564,11 +590,35 @@ impl Document {
     /// # Errors
     /// [`ModelError::Invariant`] when the index is stale.
     pub fn check_index(&self) -> Result<()> {
-        if self.index == Index::build(self) {
-            Ok(())
-        } else {
-            Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()))
+        if self.index != Index::build(self) {
+            return Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()));
         }
+        // The kept nets (brief 022) are derived the same way: they must equal a fresh build.
+        if let Some(diff) = self.conn.differs_from(&crate::connectivity::Connectivity::build(self)) {
+            return Err(ModelError::Invariant(format!("the kept nets differ from a fresh build: {diff}")));
+        }
+        Ok(())
+    }
+
+    /// The nets, kept up to date by every op (brief 022).
+    pub fn connectivity(&self) -> &crate::connectivity::Connectivity {
+        &self.conn
+    }
+
+    /// Continuation components whose name has the key `key` ([`crate::connectivity::name_key`]),
+    /// in ID order, through the name index.
+    pub fn continuations_named(&self, key: &str) -> Vec<ComponentId> {
+        referrers(&self.index.continuations, &key.to_string()).collect()
+    }
+
+    /// Every continuation name key and its components, through the name index.
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+        self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
+    /// Components made from `definition`, in ID order.
+    pub fn components_using(&self, definition: DefinitionId) -> Vec<ComponentId> {
+        referrers(&self.index.definition_components, &definition).collect()
     }
 
     /// The representation an item belongs to, if any (DOC-05 allows at most one).
@@ -590,6 +640,11 @@ impl Document {
     /// Terminals of `component`, in ID order.
     pub fn terminals_of(&self, component: ComponentId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
         referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
+    }
+
+    /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
+    pub fn has_ends(&self, terminal: TerminalId) -> bool {
+        self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
     }
 
     /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
