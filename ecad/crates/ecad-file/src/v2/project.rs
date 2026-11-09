@@ -479,9 +479,21 @@ impl ProjectV2 {
         if let Some(s) = latest {
             match r.version(branch, s.kind, &s.name)? {
                 Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
-                    Ok((doc, meta)) => {
-                        loaded = Some((v, doc, meta));
-                        snap_ref = Some(s.clone());
+                    Ok((mut doc, meta)) => {
+                        // A snapshot is checked like a replayed document: every invariant holds.
+                        doc.rebuild_index();
+                        match doc.check() {
+                            Ok(()) => {
+                                loaded = Some((v, doc, meta));
+                                snap_ref = Some(s.clone());
+                            }
+                            Err(e) => {
+                                damage = damage.or(Some(DamageV2 {
+                                    seq: Some(s.seq),
+                                    detail: format!("snapshot breaks an invariant: {e}"),
+                                }))
+                            }
+                        }
                     }
                     Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
                 },
