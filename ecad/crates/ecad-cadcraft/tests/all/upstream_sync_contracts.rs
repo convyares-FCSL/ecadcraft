@@ -153,7 +153,14 @@ fn block_editor_on_the_current_drawing_is_recorded_or_refused() {
     let mut log = Vec::new();
     log.push(trace(&mut h, "bedit", json!({"name": "<Current Drawing>"})));
     if h.s.state().is_ok_and(|st| st.block_edit.is_some()) {
-        let all: Vec<_> = h.s.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+        let all: Vec<_> =
+            h.s.doc()
+                .unwrap()
+                .model
+                .iter()
+                .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+                .map(|e| e.handle.hex())
+                .collect();
         log.push(trace(&mut h, "erase", json!({"handles": all})));
         log.push(trace(&mut h, "bclose", json!({"save": true})));
     }

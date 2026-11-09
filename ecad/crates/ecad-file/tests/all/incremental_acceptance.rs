@@ -164,7 +164,7 @@ fn undo_and_redo_across_many_steps_survive_save_and_reopen() {
     for i in 0..30 {
         let id: PageId = f.ids.fresh();
         pages.push(id);
-        f.commit("page", vec![Op::AddPage { id, page: Page { title: format!("p{i}") }, index: 1 }]);
+        f.commit("page", vec![Op::AddPage { id, page: Page::new(format!("p{i}")), index: 1 }]);
     }
     let full = f.ledger.document().clone();
     let mut undone = 0;
@@ -243,15 +243,15 @@ fn damaged_files_open_read_only_at_the_last_good_transaction_with_the_same_repor
             (
                 "fails at op 3 (precondition)",
                 vec![
-                    Op::AddPage { id: PageId(0xa1), page: Page { title: "x".into() }, index: 0 },
+                    Op::AddPage { id: PageId(0xa1), page: Page::new("x"), index: 0 },
                     Op::AddLayer { id: LayerId(0xa2), layer: Layer { name: "x".into() } },
-                    Op::AddPage { id: PageId(0xa3), page: Page { title: "y".into() }, index: 99 },
+                    Op::AddPage { id: PageId(0xa3), page: Page::new("y"), index: 99 },
                 ],
             ),
             (
                 "end state breaks an invariant after three ops",
                 vec![
-                    Op::AddPage { id: PageId(0xa1), page: Page { title: "x".into() }, index: 0 },
+                    Op::AddPage { id: PageId(0xa1), page: Page::new("x"), index: 0 },
                     Op::AddLayer { id: LayerId(0xa2), layer: Layer { name: "x".into() } },
                     Op::AddItem {
                         id: ItemId(0xa4),
@@ -362,7 +362,7 @@ fn every_recorded_op_and_its_inverse_fail_or_succeed_as_on_dev_at_op_3() {
             ];
             let extra = vec![
                 Op::AddCableMember { cable, index: 1, member: CableMember { conductor: w, core: Some("2".into()) } },
-                Op::AddPage { id: PageId(0x8800 + i as u128), page: Page { title: "z".into() }, index: 0 },
+                Op::AddPage { id: PageId(0x8800 + i as u128), page: Page::new("z"), index: 0 },
             ];
             for (variant, ops) in [
                 ("conductor first", ops.clone()),
@@ -480,7 +480,7 @@ fn intermediate_states_may_break_invariants_and_later_ops_see_earlier_ones() {
                 kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(1.0, 2.0) }),
             },
         },
-        Op::AddPage { id: p2, page: Page { title: "2".into() }, index: 1 },
+        Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
     ];
     f.commit("forward reference", ops);
     assert!(f.ledger.document().items.contains_key(&item));
@@ -490,7 +490,7 @@ fn intermediate_states_may_break_invariants_and_later_ops_see_earlier_ones() {
         "rename",
         vec![
             Op::RemovePage { id: page, page: old, index: 0 },
-            Op::AddPage { id: page, page: Page { title: "renamed".into() }, index: 0 },
+            Op::AddPage { id: page, page: Page::new("renamed"), index: 0 },
         ],
     );
     assert_eq!(f.ledger.document().pages[&page].title, "renamed");

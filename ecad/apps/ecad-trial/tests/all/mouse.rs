@@ -82,8 +82,9 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     assert!(h.state_mut().submit_command("line 0,0 40,0 40,20 0,20 c").is_none());
     h.state_mut().cad.run("zoom", json!({"mode": "window", "p1": [-20, -40], "p2": [130, 50]})).unwrap();
     h.run_steps(3);
-    // Window selection around the rectangle, from top left to bottom right.
-    let (a, b) = (screen(h, -10.0, 30.0), screen(h, 50.0, -10.0));
+    // Window selection around the rectangle, from top left to bottom right (starting off the
+    // sheet's paper edge at x = -10, brief 019).
+    let (a, b) = (screen(h, -15.0, 30.0), screen(h, 50.0, -10.0));
     click(h, a);
     click(h, b);
     assert_eq!(h.state().cad.session.selection().len(), 4, "the four lines are selected");

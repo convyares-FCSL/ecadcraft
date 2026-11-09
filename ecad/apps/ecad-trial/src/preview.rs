@@ -66,6 +66,9 @@ pub struct Preview {
     pub error: Option<String>,
     /// Position the window opens at (the top-right of the drawing area).
     open_at: Option<egui::Pos2>,
+    /// Brief 019: a page of an issued revision opened read-only, and its name (`Rev A`): drawn
+    /// once from that frozen copy, never from the live project.
+    pub revision: Option<(Arc<ecad_model::Document>, String)>,
 }
 
 impl Preview {
@@ -86,6 +89,7 @@ impl Preview {
             draws: 0,
             error: None,
             open_at: None,
+            revision: None,
         }
     }
 
@@ -105,6 +109,29 @@ impl Preview {
     /// `false` when the page no longer exists.
     pub fn update(&mut self, project: &ProjectHandle, s: &mut cadcraft_engine::Session) -> bool {
         let page = self.page;
+        if let Some((doc, name)) = self.revision.clone() {
+            // A frozen copy: projected once.
+            if self.drawing.is_none() && self.error.is_none() {
+                let tol = project.read(s, |p, _| p.tolerance).unwrap_or(1e-6);
+                self.title = format!(
+                    "{name} · page {}: {}",
+                    ecad_cadcraft::references::page_number(&doc, page),
+                    doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
+                );
+                match ecad_cadcraft::preview::preview_drawing_of(&doc, page, tol) {
+                    Ok(d) => {
+                        if self.view.height <= 0.0 {
+                            self.view = PreviewView::extents(&d, self.size[0], self.size[1]);
+                        }
+                        self.drawing = Some(Arc::new(d));
+                        self.projections += 1;
+                        self.drawn = None;
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+            return true;
+        }
         let since = self.projected_at;
         // One short read: the change count, whether anything since touches this page, and (only
         // then) the projection and the title.
@@ -211,9 +238,12 @@ impl Preview {
                     if close.clicked() {
                         action = Some(Action::Close);
                     }
-                    let open = ui.small_button(OPEN_PAGE).on_hover_text("Make this page the active page");
-                    if open.clicked() {
-                        action = Some(Action::Open(self.page, self.view));
+                    // A revision's page is read-only: it cannot become the active page.
+                    if self.revision.is_none() {
+                        let open = ui.small_button(OPEN_PAGE).on_hover_text("Make this page the active page");
+                        if open.clicked() {
+                            action = Some(Action::Open(self.page, self.view));
+                        }
                     }
                 });
             });

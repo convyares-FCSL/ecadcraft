@@ -792,6 +792,10 @@ fn properties_header(app: &mut CadApp, ui: &mut egui::Ui) {
 pub(crate) fn properties_section(app: &mut CadApp, ui: &mut egui::Ui) {
     let t = Tokens::get();
     properties_header(app, ui);
+    // ECAD-SEAM(owner): the embedding application's own section, under the header.
+    if let Some(section) = app.owner_properties.as_mut() {
+        section(ui);
+    }
     let sel = app.session.selection();
     let Ok(d) = app.session.doc() else { return };
     ui.add_space(4.0);

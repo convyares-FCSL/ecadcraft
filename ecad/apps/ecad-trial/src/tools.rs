@@ -322,7 +322,8 @@ impl Picked {
                         subjects.insert(r.subject);
                     }
                 }
-                None => {}
+                // The sheet frame (brief 019) names nothing.
+                Some(Mapped::Frame(_)) | None => {}
             }
         }
         Picked {

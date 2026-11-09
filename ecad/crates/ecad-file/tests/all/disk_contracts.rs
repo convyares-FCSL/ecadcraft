@@ -43,7 +43,7 @@ impl Drop for TempDir {
 fn edit(ledger: &mut Ledger, title: &str) {
     let id = PageId(0x2000 + ledger.head() as u128);
     let index = ledger.document().page_order.len();
-    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page { title: title.into() }, index }]).unwrap();
+    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page::new(title), index }]).unwrap();
 }
 
 fn create(

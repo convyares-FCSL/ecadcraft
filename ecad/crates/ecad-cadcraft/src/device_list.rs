@@ -7,7 +7,9 @@
 //!
 //! Excluded: cables, terminals and wires; editing.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+
+use ecad_model::book::Book;
 
 use cadcraft_engine::doc::Handle;
 use ecad_model::{ComponentId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
@@ -22,8 +24,11 @@ pub struct SymbolEntry {
     pub page: PageId,
     /// The page's number as shown ([`crate::references::page_number`]).
     pub page_number: String,
-    /// Its column (`ecad.column-width` grid), when it can be located.
+    /// Its frame column and row (brief 019), when it can be located.
     pub column: Option<u32>,
+    pub row: Option<u32>,
+    /// Where it is, in the project's reference style (`105-C-4`), or `?`.
+    pub place: String,
     /// `NO contact`, `Contactor / relay coil`, or `drawn` for a converted outline.
     pub name: String,
 }
@@ -81,6 +86,22 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
     };
     let mut pages = false;
     let mut settings = false;
+    // Pages whose book position changes (worked out once, only for ops that can move pages): only
+    // their symbols' places and order may differ; a rename in place or an append moves none.
+    let mut extra: BTreeSet<ComponentId> = BTreeSet::new();
+    let mut moved = false;
+    let mut moved_pages = |t: &mut BTreeSet<ComponentId>| {
+        if std::mem::replace(&mut moved, true) {
+            return;
+        }
+        for p in ecad_model::book::positions_changed(doc, ops) {
+            for (_, r) in doc.representations_on(p) {
+                if let Subject::Component(c) = r.subject {
+                    t.insert(c);
+                }
+            }
+        }
+    };
     for op in ops {
         match op {
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => component(&Subject::Component(*id)),
@@ -95,11 +116,33 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                     component(&r.subject);
                 }
             }
-            Op::AddPage { .. } | Op::RemovePage { .. } => pages = true,
-            Op::SetProjectSettings { .. } => settings = true,
+            Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
+            // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
+            // order (folders) or the project's grid may change every place.
+            Op::SetProperty { object: ObjectRef::Page(pg), key, .. }
+                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+            {
+                for (_, r) in doc.representations_on(*pg) {
+                    component(&r.subject);
+                }
+            }
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
+                moved_pages(&mut extra)
+            }
+            Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
+            Op::SetProjectSettings { before, after } => {
+                settings = true;
+                if before.sheet != after.sheet
+                    || before.length_unit != after.length_unit
+                    || before.reference_style != after.reference_style
+                {
+                    pages = true;
+                }
+            }
             _ => {}
         }
     }
+    t.components.extend(extra);
     t.pages = pages;
     t.settings = settings;
     t
@@ -114,8 +157,7 @@ pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
         None if doc.representations_of(Subject::Component(c)).next().is_none() => return None,
         None => None,
     };
-    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    Some(entry(doc, c, prefix, ecad_model::derive::column_width(doc), &order))
+    Some(entry(doc, c, prefix, &Book::of(doc)))
 }
 
 /// The order of the list: tagged devices by prefix, number, tag; then those without a tag.
@@ -129,16 +171,47 @@ pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, ComponentId) {
     }
 }
 
-/// Set the page numbers of every listed symbol again (pages were added, removed or moved): no
-/// other part of the list depends on the page order.
+/// Set the place of every listed symbol again (pages were added, removed or moved, or the grid
+/// changed): no other part of the list depends on the page order or the grid. Reads each listed
+/// symbol's own representation; never scans the document.
 pub fn renumber(doc: &Document, entries: &mut [DeviceEntry]) {
-    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    let book = Book::of(doc);
     for e in entries {
         for s in &mut e.symbols {
-            s.page_number = order.get(&s.page).map_or_else(|| "?".into(), usize::to_string);
+            if let Some(r) = doc.representations.get(&s.rep) {
+                let (_, fresh) = symbol_entry(doc, &book, s.rep, r, s.name.clone());
+                *s = fresh;
+            }
         }
-        e.symbols.sort_by_key(|s| (order.get(&s.page).copied().unwrap_or(usize::MAX), s.column, s.rep));
+        e.symbols.sort_by_key(|s| (book.position(s.page).unwrap_or(usize::MAX), s.column, s.rep));
     }
+}
+
+/// One symbol row: its book position (for sorting) and the row.
+fn symbol_entry(
+    doc: &Document,
+    book: &Book,
+    rid: RepresentationId,
+    r: &ecad_model::Representation,
+    name: String,
+) -> (usize, SymbolEntry) {
+    let page_number = book.number(doc, r.page);
+    let grid = ecad_model::sheet::Grid::of(doc, r.page);
+    let place = position(doc, r).and_then(|p| ecad_model::derive::place_on(&grid, &page_number, p));
+    let style = doc.settings.reference_style;
+    let n = book.position(r.page).unwrap_or(usize::MAX);
+    (
+        n,
+        SymbolEntry {
+            rep: rid,
+            page: r.page,
+            page_number,
+            column: place.as_ref().map(|p| p.column),
+            row: place.as_ref().map(|p| p.row),
+            place: place.map_or_else(|| ecad_model::derive::unlocated(style).to_string(), |p| p.text(style)),
+            name,
+        },
+    )
 }
 
 /// The group a component without a tag is listed under.
@@ -162,8 +235,7 @@ pub fn matches(e: &DeviceEntry, q: &str) -> bool {
 /// Every device of `doc` matching `filter`: tagged ones by prefix, then number (from the tag
 /// index), then the components without a tag that are drawn somewhere.
 pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
-    let width = ecad_model::derive::column_width(doc);
-    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let book = Book::of(doc);
     let mut tagged: Vec<((String, u64, String), ComponentId)> = doc
         .tagged()
         .filter_map(|(_, c)| {
@@ -183,23 +255,16 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .into_iter()
         .map(|((p, _, _), c)| (Some(p), c))
         .chain(untagged.map(|c| (None, c)))
-        .map(|(prefix, c)| entry(doc, c, prefix, width, &order))
+        .map(|(prefix, c)| entry(doc, c, prefix, &book))
         .filter(|e| matches(e, filter))
         .collect()
 }
 
-fn entry(
-    doc: &Document,
-    c: ComponentId,
-    prefix: Option<String>,
-    width: f64,
-    order: &HashMap<PageId, usize>,
-) -> DeviceEntry {
+fn entry(doc: &Document, c: ComponentId, prefix: Option<String>, book: &Book) -> DeviceEntry {
     let props = doc.components.get(&c).map(|x| &x.properties);
     let mut symbols: Vec<(usize, Option<u32>, SymbolEntry)> = doc
         .representations_of(Subject::Component(c))
         .map(|(rid, r)| {
-            let column = position(doc, r).and_then(|p| ecad_model::derive::column_of(p.x, width));
             let name = devices::rep_starter(doc, r).map(|s| s.name.to_string()).unwrap_or_else(|| {
                 r.items
                     .first()
@@ -210,10 +275,8 @@ fn entry(
                     })
                     .unwrap_or_else(|| "drawn".into())
             });
-            let n = order.get(&r.page).copied().unwrap_or(usize::MAX);
-            let page_number =
-                n.checked_add(1).filter(|_| n != usize::MAX).map_or_else(|| "?".into(), |n| n.to_string());
-            (n, column, SymbolEntry { rep: rid, page: r.page, page_number, column, name })
+            let (n, entry) = symbol_entry(doc, book, rid, r, name);
+            (n, entry.column, entry)
         })
         .collect();
     symbols.sort_by_key(|(n, col, s)| (*n, *col, s.rep));

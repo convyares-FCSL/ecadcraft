@@ -844,3 +844,104 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     r.exec("symbols", json!({}));
     r.exec("devices", json!({}));
 }
+
+// ---------- brief 019: sheets, properties, folders, revisions ----------
+
+/// Brief 019 (design 019 §12, check I): every new or changed write command through `execute`
+/// records one transaction as the agent and is refused with writes off; `openrevision` and the
+/// no-field forms of `pageprops` and `projectprops` read with writes off and record nothing.
+#[test]
+fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
+    let mut c = writer();
+    let page = c.doc().page_order[0].hex();
+    let steps: Vec<(&str, Value)> = vec![
+        ("pageprops", json!({"number": "100", "title": "Supply"})),
+        ("projectprops", json!({"title": "Panel 7", "customer": "ACME", "props": {"site": "Leeds"}})),
+        // Project settings (fix round): sheet, reference style, page-number step and tag settings.
+        (
+            "projectprops",
+            json!({"sheet": "A2", "reference_style": "page-column", "page_number_step": 5, "tag_padding": 3}),
+        ),
+        ("newfolder", json!({"name": "Schematic layouts"})),
+    ];
+    for (cmd, params) in steps {
+        let before = c.log().len();
+        c.exec(cmd, params);
+        let log = c.log();
+        assert_eq!(log.len(), before + 1, "{cmd}: one transaction");
+        assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()), "{cmd}");
+    }
+    let folder = c.doc().folder_order[0].hex();
+    let more: Vec<(&str, Value)> = vec![
+        ("newfolder", json!({"name": "Spare", "parent": folder})),
+        ("renamefolder", json!({"folder": folder, "name": "Layouts"})),
+        ("newpage", json!({"title": "Field", "number": "105", "folder": folder})),
+        ("movepage", json!({"page": page, "folder": folder})),
+        ("revision", json!({"description": "First issue", "drawn": "CVA"})),
+        ("issuerevision", json!({})),
+    ];
+    for (cmd, params) in more {
+        let before = c.log().len();
+        c.exec(cmd, params);
+        let log = c.log();
+        assert_eq!(log.len(), before + 1, "{cmd}: one transaction");
+        assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()), "{cmd}");
+    }
+    let spare = c.doc().folder_order[1].hex();
+    for (cmd, params) in
+        [("movefolder", json!({"folder": spare, "parent": null})), ("deletefolder", json!({"folder": spare}))]
+    {
+        let before = c.log().len();
+        c.exec(cmd, params);
+        assert_eq!(c.log().len(), before + 1, "{cmd}");
+    }
+    assert_eq!(c.exec("openrevision", json!({"rev": "A"}))["rev"], json!("A"));
+    // Review W4: a plain undo by the agent across the issue is refused with the question; the
+    // agent confirms with `undoissue`, recorded as the agent.
+    c.exec("revision", json!({"description": "Second issue", "drawn": "CVA"}));
+    c.exec("issuerevision", json!({}));
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "u", "params": {}}));
+    assert!(m.contains("Undo the issue?"), "{m}");
+    assert_eq!(c.log().len(), before, "nothing undone");
+    c.exec("undoissue", json!({}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
+    assert!(!c.doc().versions.contains_key("Rev B") && c.doc().versions.contains_key("Rev A"));
+    // `setprop {components}`: two devices in one transaction, as the agent.
+    let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
+    let b = c.exec("place", json!({"symbol": "coil", "at": [250, 200]}))["component"].clone();
+    let before = c.log().len();
+    let v = c.exec("setprop", json!({"components": [a, b], "key": "maker", "value": "Generic"}));
+    assert_eq!(v["devices"], json!(2));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1, "one transaction for both");
+    assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
+    assert_eq!(c.exec("pageprops", json!({"page": page}))["number"], json!("100"));
+
+    // Writes off: every write refused, the reads work and record nothing.
+    let mut r = reader();
+    let before = r.log();
+    let page = r.doc().page_order[0].hex();
+    for (cmd, params) in [
+        ("pageprops", json!({"number": "7"})),
+        ("projectprops", json!({"title": "x"})),
+        ("newfolder", json!({"name": "x"})),
+        ("renamefolder", json!({"folder": "1", "name": "x"})),
+        ("movefolder", json!({"folder": "1", "parent": null})),
+        ("deletefolder", json!({"folder": "1"})),
+        ("movepage", json!({"page": page, "folder": null})),
+        ("newpage", json!({"title": "x", "number": "9"})),
+        ("revision", json!({"description": "x"})),
+        ("issuerevision", json!({})),
+        ("undoissue", json!({})),
+        ("setprop", json!({"components": ["1", "2"], "key": "maker", "value": "x"})),
+    ] {
+        let m = r.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+    }
+    assert_eq!(r.exec("pageprops", json!({"page": page}))["number"], json!("1"));
+    assert!(r.exec("projectprops", json!({}))["revisions"].is_array());
+    assert_eq!(r.log(), before, "reads record nothing");
+}

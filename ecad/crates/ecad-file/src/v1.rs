@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId,
-    TxId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
+    TerminalId, TxId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,44 @@ fn mpt(p: Pt) -> m::Pt {
 #[serde(deny_unknown_fields)]
 pub struct Page {
     pub title: String,
+    /// Brief 019 (decision FP1): left out while empty, so a page without properties is written
+    /// exactly as before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, String>,
+}
+
+/// A folder of pages (brief 019, decision FP3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Folder {
+    pub name: String,
+    pub parent: Option<FolderId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GridLabels {
+    Letters,
+    Numbers,
+}
+
+/// A sheet (brief 019, decision FP2), in whole millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SheetSpec {
+    pub width: u32,
+    pub height: u32,
+    pub columns: u32,
+    pub rows: u32,
+    pub column_labels: GridLabels,
+    pub row_labels: GridLabels,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceStyle {
+    PageColumnRow,
+    PageColumn,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -217,6 +255,79 @@ pub struct ProjectSettings {
     pub tag_padding: u8,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tag_prefixes: BTreeMap<String, String>,
+    /// Brief 019 (decision FP2): left out at the default A3 sheet.
+    #[serde(default = "default_sheet", skip_serializing_if = "is_default_sheet")]
+    pub sheet: SheetSpec,
+    /// Brief 019 (decision FP2): left out at the default step 1.
+    #[serde(default = "default_step", skip_serializing_if = "is_default_step")]
+    pub page_number_step: u32,
+    /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
+    #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
+    pub reference_style: ReferenceStyle,
+}
+
+fn default_sheet() -> SheetSpec {
+    (&m::SheetSpec::default()).into()
+}
+
+fn is_default_sheet(s: &SheetSpec) -> bool {
+    *s == default_sheet()
+}
+
+fn default_step() -> u32 {
+    m::DEFAULT_PAGE_NUMBER_STEP
+}
+
+fn is_default_step(s: &u32) -> bool {
+    *s == m::DEFAULT_PAGE_NUMBER_STEP
+}
+
+fn default_style() -> ReferenceStyle {
+    ReferenceStyle::PageColumnRow
+}
+
+fn is_default_style(s: &ReferenceStyle) -> bool {
+    *s == ReferenceStyle::PageColumnRow
+}
+
+fn labels(l: m::GridLabels) -> GridLabels {
+    match l {
+        m::GridLabels::Letters => GridLabels::Letters,
+        m::GridLabels::Numbers => GridLabels::Numbers,
+    }
+}
+
+fn mlabels(l: GridLabels) -> m::GridLabels {
+    match l {
+        GridLabels::Letters => m::GridLabels::Letters,
+        GridLabels::Numbers => m::GridLabels::Numbers,
+    }
+}
+
+impl From<&m::SheetSpec> for SheetSpec {
+    fn from(s: &m::SheetSpec) -> Self {
+        SheetSpec {
+            width: s.width,
+            height: s.height,
+            columns: s.columns,
+            rows: s.rows,
+            column_labels: labels(s.column_labels),
+            row_labels: labels(s.row_labels),
+        }
+    }
+}
+
+impl From<SheetSpec> for m::SheetSpec {
+    fn from(s: SheetSpec) -> Self {
+        m::SheetSpec {
+            width: s.width,
+            height: s.height,
+            columns: s.columns,
+            rows: s.rows,
+            column_labels: mlabels(s.column_labels),
+            row_labels: mlabels(s.row_labels),
+        }
+    }
 }
 
 fn default_padding() -> u8 {
@@ -233,6 +344,10 @@ pub enum ObjectRef {
     Component(ComponentId),
     Conductor(ConductorId),
     Cable(CableId),
+    /// Brief 019 (decision FP1).
+    Page(PageId),
+    /// Brief 019 (decision FP1).
+    Project,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -255,33 +370,140 @@ pub enum TxKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Op {
-    AddPage { id: PageId, page: Page, index: u64 },
-    RemovePage { id: PageId, page: Page, index: u64 },
-    AddLayer { id: LayerId, layer: Layer },
-    RemoveLayer { id: LayerId, layer: Layer },
-    AddItem { id: ItemId, item: Item },
-    ModifyItem { id: ItemId, before: Item, after: Item },
-    RemoveItem { id: ItemId, item: Item },
-    CreateComponent { id: ComponentId, component: Component },
-    DeleteComponent { id: ComponentId, component: Component },
-    AddTerminal { id: TerminalId, terminal: Terminal },
-    RemoveTerminal { id: TerminalId, terminal: Terminal },
-    LinkRepresentation { id: RepresentationId, rep: Representation },
-    ModifyRepresentation { id: RepresentationId, before: Representation, after: Representation },
-    UnlinkRepresentation { id: RepresentationId, rep: Representation },
-    CreateConductor { id: ConductorId, conductor: Conductor },
-    DeleteConductor { id: ConductorId, conductor: Conductor },
-    AttachEnd { conductor: ConductorId, end: End, before: Option<TerminalId>, after: Option<TerminalId> },
-    CreateCable { id: CableId, cable: Cable },
-    DeleteCable { id: CableId, cable: Cable },
-    AddCableMember { cable: CableId, index: u64, member: CableMember },
-    RemoveCableMember { cable: CableId, index: u64, member: CableMember },
-    SetProperty { object: ObjectRef, key: String, before: Option<String>, after: Option<String> },
-    EmbedDefinition { id: DefinitionId, definition: Definition },
-    RemoveDefinition { id: DefinitionId, definition: Definition },
-    SetProjectSettings { before: ProjectSettings, after: ProjectSettings },
-    NameVersion { name: String, at: u64 },
-    UnnameVersion { name: String, at: u64 },
+    AddPage {
+        id: PageId,
+        page: Page,
+        index: u64,
+    },
+    RemovePage {
+        id: PageId,
+        page: Page,
+        index: u64,
+    },
+    AddLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    RemoveLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    AddItem {
+        id: ItemId,
+        item: Item,
+    },
+    ModifyItem {
+        id: ItemId,
+        before: Item,
+        after: Item,
+    },
+    RemoveItem {
+        id: ItemId,
+        item: Item,
+    },
+    CreateComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    DeleteComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    AddTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    RemoveTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    LinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    ModifyRepresentation {
+        id: RepresentationId,
+        before: Representation,
+        after: Representation,
+    },
+    UnlinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    CreateConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    DeleteConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    AttachEnd {
+        conductor: ConductorId,
+        end: End,
+        before: Option<TerminalId>,
+        after: Option<TerminalId>,
+    },
+    CreateCable {
+        id: CableId,
+        cable: Cable,
+    },
+    DeleteCable {
+        id: CableId,
+        cable: Cable,
+    },
+    AddCableMember {
+        cable: CableId,
+        index: u64,
+        member: CableMember,
+    },
+    RemoveCableMember {
+        cable: CableId,
+        index: u64,
+        member: CableMember,
+    },
+    SetProperty {
+        object: ObjectRef,
+        key: String,
+        before: Option<String>,
+        after: Option<String>,
+    },
+    EmbedDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    RemoveDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    SetProjectSettings {
+        before: ProjectSettings,
+        after: ProjectSettings,
+    },
+    NameVersion {
+        name: String,
+        at: u64,
+    },
+    UnnameVersion {
+        name: String,
+        at: u64,
+    },
+    /// Brief 019 (decision FP3).
+    AddFolder {
+        id: FolderId,
+        folder: Folder,
+        index: u64,
+    },
+    RemoveFolder {
+        id: FolderId,
+        folder: Folder,
+        index: u64,
+    },
+    ModifyFolder {
+        id: FolderId,
+        before: Folder,
+        after: Folder,
+    },
 }
 
 /// The current version of every op in schema version 1.
@@ -421,6 +643,30 @@ impl From<&m::Definition> for Definition {
     }
 }
 
+impl From<&m::Page> for Page {
+    fn from(p: &m::Page) -> Self {
+        Page { title: p.title.clone(), properties: p.properties.clone() }
+    }
+}
+
+impl From<Page> for m::Page {
+    fn from(p: Page) -> Self {
+        m::Page { title: p.title, properties: p.properties }
+    }
+}
+
+impl From<&m::Folder> for Folder {
+    fn from(f: &m::Folder) -> Self {
+        Folder { name: f.name.clone(), parent: f.parent }
+    }
+}
+
+impl From<Folder> for m::Folder {
+    fn from(f: Folder) -> Self {
+        m::Folder { name: f.name, parent: f.parent }
+    }
+}
+
 impl From<&m::ProjectSettings> for ProjectSettings {
     fn from(s: &m::ProjectSettings) -> Self {
         ProjectSettings {
@@ -430,6 +676,12 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes.clone(),
+            sheet: (&s.sheet).into(),
+            page_number_step: s.page_number_step,
+            reference_style: match s.reference_style {
+                m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
+                m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
+            },
         }
     }
 }
@@ -439,6 +691,8 @@ fn object(o: m::ObjectRef) -> ObjectRef {
         m::ObjectRef::Component(c) => ObjectRef::Component(c),
         m::ObjectRef::Conductor(c) => ObjectRef::Conductor(c),
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
+        m::ObjectRef::Page(p) => ObjectRef::Page(p),
+        m::ObjectRef::Project => ObjectRef::Project,
     }
 }
 
@@ -446,12 +700,8 @@ impl From<&m::Op> for Op {
     fn from(op: &m::Op) -> Self {
         let ix = |i: usize| i as u64;
         match op {
-            m::Op::AddPage { id, page, index } => {
-                Op::AddPage { id: *id, page: Page { title: page.title.clone() }, index: ix(*index) }
-            }
-            m::Op::RemovePage { id, page, index } => {
-                Op::RemovePage { id: *id, page: Page { title: page.title.clone() }, index: ix(*index) }
-            }
+            m::Op::AddPage { id, page, index } => Op::AddPage { id: *id, page: page.into(), index: ix(*index) },
+            m::Op::RemovePage { id, page, index } => Op::RemovePage { id: *id, page: page.into(), index: ix(*index) },
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
@@ -493,6 +743,15 @@ impl From<&m::Op> for Op {
             }
             m::Op::NameVersion { name, at } => Op::NameVersion { name: name.clone(), at: *at },
             m::Op::UnnameVersion { name, at } => Op::UnnameVersion { name: name.clone(), at: *at },
+            m::Op::AddFolder { id, folder, index } => {
+                Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) }
+            }
+            m::Op::RemoveFolder { id, folder, index } => {
+                Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) }
+            }
+            m::Op::ModifyFolder { id, before, after } => {
+                Op::ModifyFolder { id: *id, before: before.into(), after: after.into() }
+            }
         }
     }
 }
@@ -669,6 +928,12 @@ impl From<ProjectSettings> for m::ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes,
+            sheet: s.sheet.into(),
+            page_number_step: s.page_number_step,
+            reference_style: match s.reference_style {
+                ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
+                ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
+            },
         }
     }
 }
@@ -678,6 +943,8 @@ fn mobject(o: ObjectRef) -> m::ObjectRef {
         ObjectRef::Component(c) => m::ObjectRef::Component(c),
         ObjectRef::Conductor(c) => m::ObjectRef::Conductor(c),
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
+        ObjectRef::Page(p) => m::ObjectRef::Page(p),
+        ObjectRef::Project => m::ObjectRef::Project,
     }
 }
 
@@ -685,12 +952,8 @@ impl TryFrom<Op> for m::Op {
     type Error = ConvertError;
     fn try_from(op: Op) -> Result<Self, ConvertError> {
         Ok(match op {
-            Op::AddPage { id, page, index: i } => {
-                m::Op::AddPage { id, page: m::Page { title: page.title }, index: index(i)? }
-            }
-            Op::RemovePage { id, page, index: i } => {
-                m::Op::RemovePage { id, page: m::Page { title: page.title }, index: index(i)? }
-            }
+            Op::AddPage { id, page, index: i } => m::Op::AddPage { id, page: page.into(), index: index(i)? },
+            Op::RemovePage { id, page, index: i } => m::Op::RemovePage { id, page: page.into(), index: index(i)? },
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
@@ -730,6 +993,13 @@ impl TryFrom<Op> for m::Op {
             }
             Op::NameVersion { name, at } => m::Op::NameVersion { name, at },
             Op::UnnameVersion { name, at } => m::Op::UnnameVersion { name, at },
+            Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
+            Op::RemoveFolder { id, folder, index: i } => {
+                m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? }
+            }
+            Op::ModifyFolder { id, before, after } => {
+                m::Op::ModifyFolder { id, before: before.into(), after: after.into() }
+            }
         })
     }
 }

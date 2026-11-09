@@ -95,7 +95,11 @@ fn views_of(h: &mut Harness<'static, Trial>) -> Value {
 
 fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer == views::LAYER).count()
+    d.model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer == views::LAYER)
+        .count()
 }
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
@@ -128,7 +132,16 @@ fn ok(h: &mut Harness<'static, Trial>, line: &str) {
 /// A drawn component: a closed rectangle typed, selected, converted (JSON form), three terminals.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let before: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -137,6 +150,7 @@ fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -158,10 +172,11 @@ fn fixture(h: &mut Harness<'static, Trial>) {
         r#"wire {"points":[[0,5],[60,5]]}"#,
         r#"wire {"points":[[0,10],[60,10]]}"#,
         r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#,
-        "zoom e",
     ] {
         ok(h, line);
     }
+    // The drawing, not the whole sheet (Zoom Extents fits the sheet, brief 019).
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(3);
 }

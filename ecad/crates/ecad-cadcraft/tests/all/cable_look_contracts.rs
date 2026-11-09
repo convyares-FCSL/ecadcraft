@@ -523,7 +523,7 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     let h_point = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, h_point)).unwrap();
     // Combined trial with 010: a reference end hovers with 010's lens (one source of hover text).
-    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  /?"), "{lines:?}");
+    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  ?"), "{lines:?}");
     // ERASE the reference point: both ends fan again; `u` brings it back.
     f.h.run("erase", json!({"handles": [h_point.hex()]})).unwrap();
     assert!(!f.h.doc().representations.contains_key(&rep));

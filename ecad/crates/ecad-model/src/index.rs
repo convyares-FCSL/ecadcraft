@@ -21,10 +21,11 @@
 use std::collections::BTreeMap;
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Document, End, Item, ItemKind, Representation, Subject, Terminal,
+    Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject,
+    Terminal,
 };
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
 };
 
 /// Whether a reference is being added or removed.
@@ -93,6 +94,10 @@ pub(crate) struct Index {
     pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
     /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
     pub(crate) tags: Multi<String, ComponentId>,
+    /// Folder → pages whose `folder` property names it (brief 019).
+    pub(crate) folder_pages: Multi<FolderId, PageId>,
+    /// Folder → folders whose parent it is (brief 019).
+    pub(crate) folder_children: Multi<FolderId, FolderId>,
 }
 
 impl Index {
@@ -117,7 +122,33 @@ impl Index {
         for (id, c) in &doc.cables {
             ix.cable(*id, c, Delta::Add);
         }
+        for (id, p) in &doc.pages {
+            ix.page(*id, p, Delta::Add);
+        }
+        for (id, f) in &doc.folders {
+            ix.folder(*id, f, Delta::Add);
+        }
         ix
+    }
+
+    pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
+        if let Some(f) = p.properties.get(crate::book::FOLDER_KEY) {
+            self.page_folder(id, f, delta);
+        }
+    }
+
+    /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
+    /// folder ID is indexed under no folder (the invariant check refuses it).
+    pub(crate) fn page_folder(&mut self, id: PageId, value: &str, delta: Delta) {
+        if let Some(f) = FolderId::parse(value) {
+            bump(&mut self.folder_pages, f, id, delta);
+        }
+    }
+
+    pub(crate) fn folder(&mut self, id: FolderId, f: &Folder, delta: Delta) {
+        if let Some(parent) = f.parent {
+            bump(&mut self.folder_children, parent, id, delta);
+        }
     }
 
     pub(crate) fn item(&mut self, id: ItemId, item: &Item, delta: Delta) {

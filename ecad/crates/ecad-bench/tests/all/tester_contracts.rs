@@ -80,6 +80,11 @@ fn row(variant: &str, open_ms: f64) -> Row {
             place_ms: 1.0,
             join_ms: 1.0,
             tag_ms: 0.5,
+            pnum_ms: 0.5,
+            frame_ms: 0.1,
+            tbupd_ms: 0.5,
+            gridchange_ms: 1.0,
+            revopen_ms: 10.0,
         },
     }
 }

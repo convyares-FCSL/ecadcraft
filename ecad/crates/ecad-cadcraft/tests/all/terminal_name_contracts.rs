@@ -45,10 +45,25 @@ fn edge(h: &H, x: f64) -> Handle {
 }
 
 fn rect(h: &mut H, x0: f64) -> ComponentId {
-    let before: Vec<Handle> = h.s.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let before: Vec<Handle> =
+        h.s.doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle)
+            .collect();
     h.cmdline(&format!("line {x0},0 {},0 {},20 {x0},20 c", x0 + 40.0, x0 + 40.0));
     let hs: Vec<String> =
-        h.s.doc().unwrap().model.iter().map(|e| e.handle).filter(|e| !before.contains(e)).map(|e| e.hex()).collect();
+        h.s.doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle)
+            .filter(|e| !before.contains(e))
+            .map(|e| e.hex())
+            .collect();
     let r = h.run("convertcomponent", json!({ "handles": hs })).unwrap();
     common::id(&r, "component")
 }

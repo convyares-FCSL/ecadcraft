@@ -45,7 +45,11 @@ fn unsaved(h: &mut Harness<'static, Trial>) -> u64 {
 fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
     let t = h.state_mut();
     let d = t.cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer == views::LAYER).count()
+    d.model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer == views::LAYER)
+        .count()
 }
 
 fn views_of(h: &mut Harness<'static, Trial>) -> Value {
@@ -73,7 +77,16 @@ fn prompt(h: &Harness<'static, Trial>) -> String {
 /// at x on y = 0, 5, 10 (JSON forms, the same path as the Command field).
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let before: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -82,6 +95,7 @@ fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())

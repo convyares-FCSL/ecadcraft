@@ -216,3 +216,54 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     assert_eq!(opened.ledger.document().settings, after);
     assert_eq!(opened.ledger.log(), f.ledger.log());
 }
+
+/// Brief 019 (FP1–FP3): page and project properties, folders and sheet settings are written and
+/// read back exactly; a page without properties and default settings are written as before.
+#[test]
+fn sheet_records_round_trip_and_defaults_are_left_out() {
+    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 })
+        .unwrap()
+        .to_string();
+    assert!(!plain.contains("properties"), "{plain}");
+    let defaults = ProjectSettings::default();
+    let line = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults })
+        .unwrap()
+        .to_string();
+    for k in ["sheet", "page_number_step", "reference_style"] {
+        assert!(!line.contains(k), "{k} in {line}");
+    }
+
+    let mut f = fixture();
+    let folder: FolderId = f.ids.fresh();
+    let before = f.ledger.document().settings.clone();
+    let mut after = before.clone();
+    after.sheet = SheetSpec::parse("A2 12x8 numbers letters").unwrap();
+    after.page_number_step = 5;
+    after.reference_style = ReferenceStyle::PageColumn;
+    let ops = vec![
+        Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
+        Op::SetProperty {
+            object: ObjectRef::Page(f.page),
+            key: "folder".into(),
+            before: None,
+            after: Some(folder.hex()),
+        },
+        Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
+        Op::SetProjectSettings { before, after: after.clone() },
+    ];
+    f.ledger.commit(Author::User, "Sheets", ops).unwrap();
+    let renamed = Folder { name: "Schematics".into(), parent: None };
+    let modify = Op::ModifyFolder {
+        id: folder,
+        before: Folder { name: "Layouts".into(), parent: None },
+        after: renamed.clone(),
+    };
+    f.ledger.commit(Author::User, "Rename folder", vec![modify]).unwrap();
+    let bytes = written(&mut f.ledger);
+    let opened = open_project(&bytes, SEED).unwrap();
+    assert_eq!(opened.report.outcome, Outcome::Clean);
+    assert_eq!(opened.ledger.log(), f.ledger.log());
+    assert_eq!(opened.ledger.document(), f.ledger.document());
+    assert_eq!(opened.ledger.document().settings, after);
+    assert_eq!(opened.ledger.document().folders[&folder], renamed);
+}

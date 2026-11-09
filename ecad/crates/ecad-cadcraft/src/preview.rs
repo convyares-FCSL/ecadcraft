@@ -106,6 +106,19 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
     project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &p.views, p.tolerance).map(|(d, _)| d)
 }
 
+/// Project `page` of `doc` (another state of a project, such as an issued revision, brief 019)
+/// into a fresh drawing with no cable views.
+///
+/// # Errors
+/// Unknown page, or an item that cannot be drawn.
+pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) -> Result<Drawing, String> {
+    if !doc.pages.contains_key(&page) {
+        return Err("That page is not in this revision.".into());
+    }
+    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol)
+        .map(|(d, _)| d)
+}
+
 /// Rasterise `drawing` at `view` into an image of `width` × `height` pixels on `background`, with
 /// lineweights at `px_per_mm` pixels per millimetre (0: hairlines only).
 ///
