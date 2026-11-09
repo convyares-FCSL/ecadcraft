@@ -688,6 +688,14 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     }
     for end in End::BOTH {
         lines.push(match conductor.and_then(|x| x.end(end)) {
+            // A junction or a continuation (brief 022) is named by what it is.
+            Some(t) if doc.terminals.get(&t).is_some_and(|x| crate::wires::kind_of(doc, x.component).is_some()) => {
+                let words = crate::wires::point_words(doc, t);
+                match words.strip_prefix('\u{2192}') {
+                    Some(name) => format!("End {end:?}: continuation {name}"),
+                    None => format!("End {end:?}: {words}"),
+                }
+            }
             Some(t) => {
                 let of = doc
                     .terminals

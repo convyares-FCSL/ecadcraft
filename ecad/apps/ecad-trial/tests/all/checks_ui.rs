@@ -104,6 +104,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert!(lines.iter().any(|l| l == "Wire number 0V-01"), "{lines:?}");
     // Quick start 5I step 2, word for word.
     for want in [
+        "End B: junction",
         "Potential 0V (continuation)",
         "Cross-section 0.5 (0V) \u{b7} Colour Blue (0V)",
         "Net 0V-01 \u{b7} 5 wires \u{b7} -G01:-, -H01:X2, -H02:X2, -K01:A2",
