@@ -140,6 +140,7 @@ impl Generated {
 fn coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {
+        bridges: Vec::new(),
         name: "Coil (bench)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline {

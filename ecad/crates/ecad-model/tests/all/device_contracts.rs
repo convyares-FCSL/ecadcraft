@@ -20,6 +20,7 @@ struct Fx {
 
 fn def(name: &str, keys: [&str; 2]) -> Definition {
     Definition {
+        bridges: Vec::new(),
         name: name.into(),
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 10.0), b: Pt::new(0.0, -10.0) }],

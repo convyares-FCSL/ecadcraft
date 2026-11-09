@@ -292,7 +292,10 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // round a labelled cable moves, copies or erases the rest, and the parts are drawn again from
     // the document. An edit of nothing but such parts is refused (brief 009 review S2).
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
-    let drawn = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k));
+    // Conductor labels (brief 022) are left out the same way: drawn again from the document.
+    let drawn = |map: &HandleMap, h: Handle| {
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_)))
+    };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
     let tag_text = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Tag(_)));
@@ -333,7 +336,16 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let skipped: BTreeSet<Handle> = skipped.into_iter().chain(framed).collect();
     if !skipped.is_empty() && skipped.len() == touched {
         let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
-        return Err(if tags_only { crate::devices::TAG_DERIVED } else { crate::views::DRAWN_REFUSED }.into());
+        let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
+        let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
+        return Err(if tags_only {
+            crate::devices::TAG_DERIVED
+        } else if labels_only {
+            crate::wires::LABEL_DERIVED
+        } else {
+            crate::views::DRAWN_REFUSED
+        }
+        .into());
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
     let mut erased_refs: Vec<RepresentationId> = Vec::new();
@@ -352,7 +364,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_)) if skipped.contains(h) => {}
+            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
@@ -407,7 +420,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_)) if skipped.contains(h) => {}
+            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}

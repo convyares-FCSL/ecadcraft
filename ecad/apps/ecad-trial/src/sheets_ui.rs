@@ -83,6 +83,12 @@ pub struct ProjectProps {
     prefixes_orig: Vec<(String, String)>,
     /// Starter symbol key → its prefix as the project uses it (`-K`).
     pub prefixes: Vec<(String, String)>,
+    colour_style_orig: String,
+    /// `iec` or `three-letter` (brief 022).
+    pub colour_style: String,
+    label_height_orig: String,
+    /// Wire label height, millimetres (brief 022).
+    pub label_height: String,
     pub read_only: bool,
     /// The command's refusal of the last OK.
     pub error: Option<String>,
@@ -129,6 +135,9 @@ impl ProjectProps {
         };
         let style = v.get("reference_style").and_then(Value::as_str).unwrap_or("page-column-row").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
+        let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
+        let label_height =
+            v.get("label_height").and_then(Value::as_f64).map_or_else(|| "1.8".to_string(), |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
             .get("tag_prefixes")
             .and_then(Value::as_object)
@@ -142,6 +151,10 @@ impl ProjectProps {
             padding,
             prefixes_orig: prefixes.clone(),
             prefixes,
+            colour_style_orig: colour_style.clone(),
+            colour_style,
+            label_height_orig: label_height.clone(),
+            label_height,
             orig: fields.clone(),
             fields,
             sheet_orig: sheet,
@@ -213,6 +226,19 @@ impl ProjectProps {
         }
         if !px.is_empty() {
             m.insert("tag_prefixes".into(), Value::Object(px));
+        }
+        if self.colour_style != self.colour_style_orig {
+            m.insert("colour_style".into(), Value::String(self.colour_style.clone()));
+        }
+        if self.label_height.trim() != self.label_height_orig {
+            let h: f64 = self
+                .label_height
+                .trim()
+                .parse()
+                .ok()
+                .filter(|h| ecad_model::wiring::LABEL_HEIGHTS.contains(h))
+                .ok_or_else(|| "Label height is 0.5 to 10 mm.".to_string())?;
+            m.insert("label_height".into(), json!(h));
         }
         let sheet = self.sheet()?;
         if sheet != self.sheet_orig {
@@ -390,6 +416,28 @@ impl ProjectProps {
                                     ui.end_row();
                                 }
                             }
+                        });
+                    });
+                    // Brief 022 (owner, 2026-11-09): wire label colours and size.
+                    ui.separator();
+                    ui.label(RichText::new("Wires").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Colours");
+                            for (word, shown, name) in [
+                                ("iec", "IEC  BN BU GNYE", "ecad.projectsettings.colours.iec"),
+                                ("three-letter", "BRN BLU GRN/YEL", "ecad.projectsettings.colours.three"),
+                            ] {
+                                if ui.radio(self.colour_style == word, shown).accessible_name(name).clicked() {
+                                    self.colour_style = word.to_string();
+                                }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Label height");
+                            ui.add(egui::TextEdit::singleline(&mut self.label_height).desired_width(40.0))
+                                .accessible_name("ecad.projectsettings.label_height");
+                            ui.label(RichText::new("mm").small());
                         });
                     });
                 }

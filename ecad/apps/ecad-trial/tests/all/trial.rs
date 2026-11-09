@@ -475,9 +475,10 @@ fn the_quick_start_trial_runs_headless() {
     assert!(t.pending_close().is_none() && t.cad.session.docs.is_empty() && t.project_open());
     t.show_page(p2).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1);
+    // The wire and its label (brief 022), not counting the sheet frame (brief 019).
     assert_eq!(
         t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
-        1,
+        2,
         "page 2's wire is drawn again"
     );
     t.show_page(page).unwrap();

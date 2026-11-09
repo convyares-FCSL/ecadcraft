@@ -44,6 +44,9 @@ pub enum Mapped {
     /// the symbol representation: computed, not an item. Erasing it erases its representation;
     /// other edits of it alone are refused.
     Tag(RepresentationId),
+    /// A conductor's derived label (brief 022): computed, not an item. Left out of an edit that
+    /// also touches other objects; an edit of it alone is refused.
+    Label(ConductorId),
     /// A line or text of the page's sheet frame or title block (brief 019), by its index among
     /// the frame's parts: computed, not an item. Every edit of it is refused.
     Frame(u32),
@@ -69,6 +72,8 @@ pub struct HandleMap {
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
     tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
+    /// Conductor labels (brief 022): route representation → (conductor, handle).
+    labels: BTreeMap<RepresentationId, (ConductorId, Handle)>,
     /// The sheet frame's parts (brief 019): index → handle.
     frame: BTreeMap<u32, Handle>,
 }
@@ -157,6 +162,18 @@ impl HandleMap {
     pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.tags.values().copied()
     }
+    /// The handle of a conductor label, by its route representation.
+    pub fn label(&self, rep: RepresentationId) -> Option<Handle> {
+        self.labels.get(&rep).map(|(_, h)| *h)
+    }
+    pub fn insert_label(&mut self, rep: RepresentationId, conductor: ConductorId, h: Handle) {
+        self.labels.insert(rep, (conductor, h));
+        self.by_handle.insert(h, Mapped::Label(conductor));
+    }
+    /// Every handle of a conductor label.
+    pub fn label_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.labels.values().map(|(_, h)| *h)
+    }
     /// The handle of frame part `index`.
     pub fn frame_part(&self, index: u32) -> Option<Handle> {
         self.frame.get(&index).copied()
@@ -191,12 +208,14 @@ impl HandleMap {
                 + self.fans.len()
                 + self.refs.len()
                 + self.tags.len()
+                + self.labels.len()
                 + self.frame.len()
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
             && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
             && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
+            && self.labels.values().all(|(c, h)| self.by_handle.get(h) == Some(&Mapped::Label(*c)))
             && self.frame.iter().all(|(i, h)| self.by_handle.get(h) == Some(&Mapped::Frame(*i)))
     }
 }
@@ -495,6 +514,16 @@ pub struct Project {
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
     pub(crate) last_placed: Option<(String, ComponentId)>,
+    /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
+    pub(crate) last_continuation: Option<String>,
+    /// The Wire tool's potential for new wires in this session; `None` is `auto` (design 022 §6).
+    pub wire_potential: Option<String>,
+    /// The Checks list (design 022 §8), built on its first show and then kept from each change's
+    /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
+    pub checks: Option<crate::checks::Checks>,
+    /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
+    /// next change. Display only, never recorded.
+    pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
     /// The active page's frame as last drawn (brief 019): page, what it showed, its parts. Kept
     /// until an op of the frame's update map ([`crate::frame::touches`]) or another page.
     frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
@@ -718,6 +747,11 @@ pub fn project_page_framed(
     if d.layer(crate::devices::TAG_LAYER).is_none() {
         d.layers.push(CLayer::new(crate::devices::TAG_LAYER));
     }
+    if d.layer(crate::wires::LABEL_LAYER).is_none() {
+        let mut l = CLayer::new(crate::wires::LABEL_LAYER);
+        l.color = cadcraft_engine::doc::color::Color::Index(crate::wires::LABEL_ACI);
+        d.layers.push(l);
+    }
     if d.layer(crate::frame::LAYER).is_none() {
         d.layers.push(crate::frame::layer());
     }
@@ -812,6 +846,14 @@ pub fn project_page_framed(
         ents.push(crate::devices::text_entity(&t, h));
         map.insert_tag_text(t.rep, t.of, h);
     }
+    // Conductor labels (brief 022): derived on every draw of the page, never stored.
+    // A cable in fan view hides its members' routes, and their labels with them (owner,
+    // 2026-11-09): display only, nothing is written.
+    for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
+        let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
+        ents.push(crate::wires::label_entity(&l, h));
+        map.insert_label(l.rep, l.conductor, h);
+    }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
     // The sheet frame and title block (brief 019): derived, never stored, and drawn first so
@@ -905,6 +947,10 @@ impl Project {
             tag_high: crate::devices::TagHigh::default(),
             page_list_version: 0,
             last_placed: None,
+            last_continuation: None,
+            wire_potential: None,
+            checks: None,
+            goto_ring: None,
             frame: None,
             frame_stale: false,
             frame_builds: 0,
@@ -979,6 +1025,10 @@ impl Project {
             tag_high: crate::devices::TagHigh::default(),
             page_list_version: 0,
             last_placed: None,
+            last_continuation: None,
+            wire_potential: None,
+            checks: None,
+            goto_ring: None,
             frame: None,
             frame_stale: false,
             frame_builds: 0,
@@ -1102,6 +1152,10 @@ impl Project {
             tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
             page_list_version: 0,
             last_placed: None,
+            last_continuation: None,
+            wire_potential: None,
+            checks: None,
+            goto_ring: None,
             frame: None,
             frame_stale: false,
             frame_builds: 0,
@@ -1416,6 +1470,7 @@ impl Project {
         props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
     ) {
+        self.goto_ring = None;
         self.tag_high.catch_up(&self.ledger);
         if devices.pages || tree {
             self.page_list_version += 1;
@@ -1615,6 +1670,8 @@ impl Project {
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
                     // Tag texts and terminal labels follow their symbols (brief 018).
                     amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
+                    // Conductor labels follow their routes and nets (brief 022).
+                    amended.extend(prev.label_handles().chain(map.label_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1699,21 +1756,83 @@ impl Project {
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
+        let n = ops.len();
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
-        let tx = self.ledger.commit_at(self.author.clone(), label, ops, now_ms()).map_err(|e| {
-            self.frame_stale = frame_before;
-            self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
-            e.to_string()
-        })?;
+        // The numbering pass (brief 022) extends the same transaction.
+        let tx = self
+            .ledger
+            .commit_extended(self.author.clone(), label, ops, now_ms(), ecad_model::wiring::assign)
+            .map_err(|e| {
+                self.frame_stale = frame_before;
+                self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
+                e.to_string()
+            })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props, tree);
+        let numbered = self.numbered_pages(n);
+        let props = self.with_numbered(props, n);
+        self.update_checks(checks);
+        self.record_change(
+            touched(touched(pages, refs_before.pages_changed(&refs_after)), numbered),
+            devices,
+            props,
+            tree,
+        );
         self.redraw_window(pg, Some(command));
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
         }
         Ok(tx)
+    }
+
+    /// Bring the kept Checks list (if shown once) in line with the last transaction, from its
+    /// ops only (design 022 §11); `scope` was worked out before it.
+    fn update_checks(&mut self, scope: Option<crate::checks::Scope>) {
+        let (Some(scope), Some(mut checks)) = (scope, self.checks.take()) else { return };
+        let ledger = &self.ledger;
+        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        checks.update(ledger.document(), ops, scope, self.tolerance);
+        self.checks = Some(checks);
+    }
+
+    /// The Checks list, built whole on its first show (design 022 §8) and kept after that.
+    pub fn checks(&mut self) -> &crate::checks::Checks {
+        let doc = self.ledger.document();
+        let tol = self.tolerance;
+        self.checks.get_or_insert_with(|| crate::checks::Checks::build(doc, tol))
+    }
+
+    /// `props` with the conductors the numbering pass of the last transaction renumbered (its ops
+    /// after the first `n`): the Properties view of a wire reads its number (brief 022).
+    fn with_numbered(
+        &self,
+        props: Option<BTreeSet<ecad_model::ObjectRef>>,
+        n: usize,
+    ) -> Option<BTreeSet<ecad_model::ObjectRef>> {
+        let mut props = props?;
+        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
+        for op in extra {
+            if let Op::SetProperty { object, .. } = op {
+                props.insert(*object);
+            }
+        }
+        Some(props)
+    }
+
+    /// The pages whose labels the numbering pass of the last transaction changed: the pages of
+    /// the conductors its ops (after the first `n`, the command's own) renumbered (brief 022).
+    fn numbered_pages(&self, n: usize) -> Option<BTreeSet<PageId>> {
+        let doc = self.ledger.document();
+        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
+        let mut out = BTreeSet::new();
+        for op in extra {
+            if let Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } = op {
+                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+            }
+        }
+        Some(out)
     }
 
     /// Restore the last projection of `page` after a refusal.
@@ -1918,7 +2037,12 @@ impl DocumentOwner for Project {
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        if let Err(e) = self.ledger.commit_at(self.author.clone(), &label, t.ops, now_ms()) {
+        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
+        let n = t.ops.len();
+        // The numbering pass (brief 022) extends the same transaction.
+        if let Err(e) =
+            self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign)
+        {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -1939,10 +2063,12 @@ impl DocumentOwner for Project {
         // the active page is drawn (brief 016); the change log says which other pages changed,
         // for a preview of one of them.
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
-        let changed = refs_before.pages_changed(&refs_after).map(|mut c| {
+        self.update_checks(checks);
+        let changed = touched(refs_before.pages_changed(&refs_after), self.numbered_pages(n)).map(|mut c| {
             c.insert(page);
             c
         });
+        let props = self.with_numbered(props, n);
         self.record_change(changed, devices, props, tree);
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);
@@ -2134,6 +2260,7 @@ impl Project {
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
             && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
@@ -2157,6 +2284,7 @@ impl Project {
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+                self.update_checks(checks);
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(
                     &order_before,
@@ -2214,6 +2342,12 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::AttachEnd { conductor, .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
             }
+            // A continuation's partners list it on their pages (brief 022): any page.
+            Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. }
+                if ecad_model::connectivity::continuation_key(&component.properties).is_some() =>
+            {
+                return None;
+            }
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
@@ -2237,9 +2371,19 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                     }
                 }
             }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages. A
+            // continuation's name is drawn beside its partners too (brief 022): any page.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), key, .. }
+                if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
+            {
+                return None;
+            }
             Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
+            // A conductor's label shows its properties (brief 022): its pages.
+            Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
+                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
             }
             _ => return None,
         }

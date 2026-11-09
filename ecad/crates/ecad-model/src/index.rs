@@ -94,6 +94,9 @@ pub(crate) struct Index {
     pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
     /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
     pub(crate) tags: Multi<String, ComponentId>,
+    /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
+    /// that name (brief 022).
+    pub(crate) continuations: Multi<String, ComponentId>,
     /// Folder → pages whose `folder` property names it (brief 019).
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
@@ -192,6 +195,14 @@ impl Index {
         if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
             self.tag(id, t, delta);
         }
+        if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
+            self.continuation(id, k, delta);
+        }
+    }
+
+    /// A continuation's name key is added or removed (brief 022).
+    pub(crate) fn continuation(&mut self, id: ComponentId, key: String, delta: Delta) {
+        bump(&mut self.continuations, key, id, delta);
     }
 
     /// A component's tag `tag` (its stored value) is added or removed.

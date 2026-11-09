@@ -945,3 +945,115 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     assert!(r.exec("projectprops", json!({}))["revisions"].is_array());
     assert_eq!(r.log(), before, "reads record nothing");
 }
+
+// ---------- brief 022: connectivity and wire numbers ----------
+
+/// Every brief 022 command through `execute`: each write is one transaction of the agent, the
+/// numbering pass inside it; with writes off every write is refused and the reads answer.
+#[test]
+fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
+    use ecad_model::{ObjectRef, Op};
+    let mut c = writer();
+    let one = |c: &mut Client, cmd: &str, params: Value| -> (Value, Transaction) {
+        let before = c.log().len();
+        let r = c.exec(cmd, params.clone());
+        let log = c.log();
+        assert_eq!(log.len(), before + 1, "{cmd} {params} records one transaction: {r}");
+        let t = log.last().unwrap().clone();
+        assert_eq!(t.author, Author::Agent(AGENT.into()), "{cmd}");
+        (r, t)
+    };
+    let sets = |t: &Transaction, key: &str| {
+        t.ops
+            .iter()
+            .filter(|op| matches!(op, Op::SetProperty { object: ObjectRef::Conductor(_), key: k, .. } if k == key))
+            .count()
+    };
+
+    // `wire` with a potential: the conductor's potential and its number in the same transaction.
+    let (r, t) = one(&mut c, "wire", json!({"points": [[0, 0], [60, 0]], "potential": "24V"}));
+    assert_eq!(r["number"], json!("24V-01"), "{r}");
+    assert_eq!(r["potential"], json!("24V"));
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateConductor { conductor, .. } if conductor.properties.get("potential").map(String::as_str) == Some("24V"))));
+    assert_eq!(sets(&t, "wire_number"), 1, "{:?}", t.ops);
+    let first = r["conductor"].as_str().unwrap().to_string();
+
+    // `junction`: a tagless component on the wire, which is split; both halves keep the number.
+    let (j, t) = one(&mut c, "junction", json!({"at": [30, 0]}));
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))));
+    let net = c.exec("net", json!({"conductor": j["conductor"]}));
+    assert_eq!(net["number"], json!("24V-01"));
+    assert_eq!(net["conductors"].as_array().unwrap().len(), 2);
+
+    // A wire ending on another wire's interior gets a junction in its own transaction.
+    let (r, _) = one(&mut c, "wire", json!({"points": [[45, 30], [45, 0]]}));
+    assert!(r["junctions"].is_array(), "{r}");
+    assert_eq!(r["number"], json!("24V-01"));
+
+    // `place` a continuation.
+    let (r, t) = one(&mut c, "place", json!({"symbol": "continuation", "at": [100, 0], "name": "0V"}));
+    assert_eq!(r["name"], json!("0V"));
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("name").map(String::as_str) == Some("0V"))));
+    let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
+    assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");
+    let zero = r["conductor"].as_str().unwrap().to_string();
+
+    // `wirenumber`: fixes the number on the whole net; a number another net uses offers choices.
+    let (r, t) = one(&mut c, "wirenumber", json!({"conductor": first, "value": "24V-50"}));
+    assert_eq!(r["fixed"], json!(true));
+    assert_eq!(sets(&t, "wire_number"), 4, "two halves, the auto-junction split, the T");
+    assert_eq!(sets(&t, "wire_number_fixed"), 4);
+    let before = c.log();
+    let m = c.refused("execute", json!({"command": "wirenumber", "params": {"conductor": zero, "value": "24V-50"}}));
+    assert!(m.contains("24V-50 is used by another net") && m.contains("\"swap\"") && m.contains("\"another\""), "{m}");
+    assert!(m.contains("not \"merge\": they carry different potentials"), "{m}");
+    assert_eq!(c.log(), before, "the refusal writes nothing");
+    let (r, _) = one(&mut c, "wirenumber", json!({"conductor": zero, "value": "24V-50", "conflict": "another"}));
+    assert_eq!(r["number"], json!("24V-51"));
+    let (r, _) = one(&mut c, "wirenumber", json!({"conductor": zero, "value": "24V-50", "conflict": "swap"}));
+    assert_eq!(r["swapped"], json!("24V-51"));
+    assert_eq!(c.exec("net", json!({"conductor": first}))["number"], json!("24V-51"));
+
+    // `potential` sets the whole net's potential.
+    let (r, t) = one(&mut c, "potential", json!({"conductor": zero, "value": "0V"}));
+    assert_eq!(r["potential"], json!("0V"));
+    assert_eq!(sets(&t, "potential"), 1);
+
+    // `wiresettings` and `renumberwires`.
+    let (r, t) = one(&mut c, "wiresettings", json!({"scheme": "page", "digits": 3}));
+    assert_eq!(r["scheme"], json!("page"));
+    assert!(matches!(t.ops.as_slice(), [Op::SetProjectSettings { .. }]));
+    c.exec("wirenumber", json!({"conductor": first, "value": null}));
+    c.exec("wirenumber", json!({"conductor": zero, "value": null}));
+    let (r, _) = one(&mut c, "renumberwires", json!({"scope": "all"}));
+    assert_eq!(r["renumbered"], json!(2), "{r}");
+    assert_eq!(c.exec("net", json!({"conductor": zero}))["number"], json!("0V-1.001"));
+
+    // Reads.
+    let nets = c.exec("nets", json!({}));
+    assert_eq!(nets["nets"].as_array().unwrap().len(), 2, "{nets}");
+    let checks = c.exec("checks", json!({}));
+    assert!(checks["checks"].as_array().unwrap().iter().any(|x| x["kind"] == json!("lonely-continuation")), "{checks}");
+
+    // Writes off: every brief 022 write is refused; nets, net and checks answer.
+    let mut r = reader();
+    let before = r.log();
+    for (cmd, params) in [
+        ("wire", json!({"points": [[0, 0], [10, 0]], "potential": "24V"})),
+        ("junction", json!({"at": [5, 0]})),
+        ("wirenumber", json!({"number": "01", "value": "X"})),
+        ("potential", json!({"conductor": "1", "value": "24V"})),
+        ("wiresettings", json!({"scheme": "page"})),
+        ("renumberwires", json!({})),
+        ("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})),
+    ] {
+        let m = r.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+    }
+    assert_eq!(r.log(), before);
+    r.exec("nets", json!({}));
+    r.exec("checks", json!({}));
+    let m = r.refused("execute", json!({"command": "net", "params": {"number": "24V-99"}}));
+    assert!(m.contains("no net has number 24V-99"), "{m}");
+    assert_eq!(r.log(), before);
+}

@@ -839,7 +839,8 @@ impl ProjectV2 {
     /// the version 1 records exactly as stored (canonical), so the chain is version 1's.
     ///
     /// # Errors
-    /// [`SaveErrorV2`]; nothing is committed.
+    /// [`SaveErrorV2`]; nothing is committed. `every` outside [`SNAPSHOT_EVERY_RANGE`] is refused
+    /// (an open would refuse the file).
     pub fn create(
         store: Store,
         project: ProjectId,
@@ -852,6 +853,12 @@ impl ProjectV2 {
     ) -> Result<(ProjectV2, SavedV2), SaveErrorV2> {
         if ledger.base() != 0 {
             return Err(SaveErrorV2::Encode("a new file needs the whole history in memory".into()));
+        }
+        if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&every) {
+            return Err(SaveErrorV2::Encode(format!(
+                "the snapshot interval must be between {} and {}",
+                SNAPSHOT_EVERY_RANGE.0, SNAPSHOT_EVERY_RANGE.1
+            )));
         }
         let store = Arc::new(store);
         let branch = BranchId::main_of(project.0);

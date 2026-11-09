@@ -362,3 +362,57 @@ fn the_backward_walk_finds_the_same_stack_entries_as_a_full_replay() {
         }
     }
 }
+
+/// Brief 022's format additions, `ProjectSettings.wiring` and `Definition.bridges`, survive the
+/// version 2 chunks (in a snapshot and in the tail) and the converter's replay check.
+#[test]
+fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
+    use ecad_file::ProjectFile;
+    use ecad_store::{Medium, MemoryMedium};
+    let dir = TempDir::new("wiring");
+    let mut f = fixture();
+    // In the tail: written by a save after the file was created.
+    let tail = dir.path("tail.ecad");
+    create(&tail, &f.ledger, 2_000);
+    let mut o = open(&tail);
+    let before = f.ledger.document().settings.clone();
+    let mut after = before.clone();
+    after.wiring.colour_style = ecad_model::wiring::ColourStyle::ThreeLetter;
+    after.wiring.label_height = 2.5;
+    let def: DefinitionId = f.ids.fresh();
+    let mut bridged = coil(2.0);
+    bridged.name = "Bridged".into();
+    bridged.bridges = vec![vec!["A1".into(), "A2".into()]];
+    let edits = [
+        ("Wiring", vec![Op::SetProjectSettings { before, after: after.clone() }]),
+        ("Embed", vec![Op::EmbedDefinition { id: def, definition: bridged.clone() }]),
+    ];
+    for (label, ops) in edits {
+        f.commit(label, ops.clone());
+        o.ledger.commit(Author::User, label, ops).unwrap();
+    }
+    o.project.save(&mut o.ledger).unwrap();
+    drop(o);
+    let expected = f.ledger.document().clone();
+    let check = |doc: &Document, how: &str| {
+        assert_eq!(doc, &expected, "{how}");
+        assert_eq!(doc.settings.wiring, after.wiring, "{how}: the wiring settings");
+        assert_eq!(doc.definitions.get(&def).map(|d| &d.bridges), Some(&bridged.bridges), "{how}: the bridges");
+    };
+    let o = open(&tail);
+    assert!(o.report.damage.is_none() && o.report.tail == 2, "{:?}", o.report);
+    check(o.ledger.document(), "tail");
+    // In the head snapshot.
+    let snap = dir.path("snap.ecad");
+    create(&snap, &f.ledger, 2_000);
+    let o = open(&snap);
+    assert_eq!(o.report.tail, 0);
+    check(o.ledger.document(), "snapshot");
+    // Converted from version 1, replay-verified.
+    let file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut f.ledger, Some(1), WRITER).unwrap();
+    let src = dir.path("v1.ecad");
+    std::fs::write(&src, file.medium().read_all().unwrap()).unwrap();
+    let out = dir.path("v1.v2.ecad");
+    ecad_file::v2::convert::convert_file(&src, Some(&out), WRITER).unwrap();
+    check(open(&out).ledger.document(), "converted");
+}

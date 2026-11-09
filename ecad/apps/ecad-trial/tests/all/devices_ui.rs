@@ -45,7 +45,9 @@ fn zoom(h: &mut H) {
 fn every_starter_symbol_on_one_page() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
-    for (i, s) in ecad_cadcraft::symbols::STARTERS.iter().enumerate() {
+    // The 18 device symbols; the junction and continuation (brief 022) are not devices.
+    let devices = ecad_cadcraft::symbols::STARTERS.iter().filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless);
+    for (i, s) in devices.enumerate() {
         let (x, y) = (60 * (i % 6), -60 * (i / 6) as i64);
         ok(&mut h, &format!(r#"place {{"symbol":"{}","at":[{x},{y}]}}"#, s.key));
     }

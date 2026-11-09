@@ -1166,11 +1166,14 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::RefText(rep) => r.representation = Some(rep),
         // A device's tag text or terminal label (brief 018) stands for its symbol representation.
         Mapped::Tag(rep) => r.representation = Some(rep),
+        // A conductor label (brief 022) stands for its conductor.
+        Mapped::Label(_) => {}
         // A line or text of the sheet frame (brief 019) stands for nothing stored.
         Mapped::Frame(_) => {}
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
+        Mapped::Label(c) => Some(Subject::Conductor(c)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {

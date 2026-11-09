@@ -512,8 +512,9 @@ mod tests {
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
-        // The demo's command list is embedded by ecad-mcp, which nothing depends on.
-        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp"]);
+        // The demo's command list is embedded by ecad-mcp; the trial's Checks UI test opens the demo
+        // through it (brief 022).
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp", "ecad-trial"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 

@@ -235,6 +235,10 @@ pub struct Definition {
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub terminals: Vec<TerminalDef>,
+    /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
+    /// a definition without bridges is written, and hashed, exactly as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridges: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -255,6 +259,10 @@ pub struct ProjectSettings {
     pub tag_padding: u8,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tag_prefixes: BTreeMap<String, String>,
+    /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
+    /// project that never changes them is written exactly as before.
+    #[serde(default, skip_serializing_if = "is_default_wiring")]
+    pub wiring: WiringSettings,
     /// Brief 019 (decision FP2): left out at the default A3 sheet.
     #[serde(default = "default_sheet", skip_serializing_if = "is_default_sheet")]
     pub sheet: SheetSpec,
@@ -264,6 +272,108 @@ pub struct ProjectSettings {
     /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
     #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
     pub reference_style: ReferenceStyle,
+}
+
+fn is_default_wiring(w: &WiringSettings) -> bool {
+    *w == WiringSettings::from(&m::wiring::WiringSettings::default())
+}
+
+/// How automatic wire numbers are made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Scheme {
+    #[serde(rename = "potential")]
+    Potential,
+    #[serde(rename = "page")]
+    Page,
+    #[serde(rename = "page-column")]
+    PageColumn,
+}
+
+/// One row of the potentials table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PotentialDef {
+    pub name: String,
+    pub prefix: String,
+    pub numbered: bool,
+    pub colour: String,
+    pub cross_section: String,
+}
+
+/// How label colours are written (brief 022 fix round).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColourStyle {
+    #[serde(rename = "iec")]
+    Iec,
+    #[serde(rename = "three-letter")]
+    ThreeLetter,
+}
+
+fn is_iec(s: &ColourStyle) -> bool {
+    *s == ColourStyle::Iec
+}
+
+fn iec() -> ColourStyle {
+    ColourStyle::Iec
+}
+
+fn default_label_height() -> f64 {
+    m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+fn is_default_label_height(h: &f64) -> bool {
+    *h == m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+/// Wiring settings (brief 022). `colour_style` and `label_height` (fix round, 2026-11-09) are left
+/// out at their defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WiringSettings {
+    pub scheme: Scheme,
+    pub digits: u8,
+    pub unclassified_prefix: String,
+    pub potentials: Vec<PotentialDef>,
+    #[serde(default = "iec", skip_serializing_if = "is_iec")]
+    pub colour_style: ColourStyle,
+    #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
+    pub label_height: f64,
+}
+
+impl Default for WiringSettings {
+    fn default() -> Self {
+        WiringSettings::from(&m::wiring::WiringSettings::default())
+    }
+}
+
+impl From<&m::wiring::WiringSettings> for WiringSettings {
+    fn from(w: &m::wiring::WiringSettings) -> Self {
+        WiringSettings {
+            scheme: match w.scheme {
+                m::wiring::Scheme::Potential => Scheme::Potential,
+                m::wiring::Scheme::Page => Scheme::Page,
+                m::wiring::Scheme::PageColumn => Scheme::PageColumn,
+            },
+            digits: w.digits,
+            unclassified_prefix: w.unclassified_prefix.clone(),
+            potentials: w
+                .potentials
+                .iter()
+                .map(|p| PotentialDef {
+                    name: p.name.clone(),
+                    prefix: p.prefix.clone(),
+                    numbered: p.numbered,
+                    colour: p.colour.clone(),
+                    cross_section: p.cross_section.clone(),
+                })
+                .collect(),
+            colour_style: match w.colour_style {
+                m::wiring::ColourStyle::Iec => ColourStyle::Iec,
+                m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
+        }
+    }
 }
 
 fn default_sheet() -> SheetSpec {
@@ -313,6 +423,36 @@ impl From<&m::SheetSpec> for SheetSpec {
             rows: s.rows,
             column_labels: labels(s.column_labels),
             row_labels: labels(s.row_labels),
+        }
+    }
+}
+
+impl From<WiringSettings> for m::wiring::WiringSettings {
+    fn from(w: WiringSettings) -> Self {
+        m::wiring::WiringSettings {
+            scheme: match w.scheme {
+                Scheme::Potential => m::wiring::Scheme::Potential,
+                Scheme::Page => m::wiring::Scheme::Page,
+                Scheme::PageColumn => m::wiring::Scheme::PageColumn,
+            },
+            digits: w.digits,
+            unclassified_prefix: w.unclassified_prefix,
+            potentials: w
+                .potentials
+                .into_iter()
+                .map(|p| m::wiring::PotentialDef {
+                    name: p.name,
+                    prefix: p.prefix,
+                    numbered: p.numbered,
+                    colour: p.colour,
+                    cross_section: p.cross_section,
+                })
+                .collect(),
+            colour_style: match w.colour_style {
+                ColourStyle::Iec => m::wiring::ColourStyle::Iec,
+                ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
         }
     }
 }
@@ -639,6 +779,7 @@ impl From<&m::Definition> for Definition {
                 .iter()
                 .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) })
                 .collect(),
+            bridges: d.bridges.clone(),
         }
     }
 }
@@ -676,6 +817,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes.clone(),
+            wiring: WiringSettings::from(&s.wiring),
             sheet: (&s.sheet).into(),
             page_number_step: s.page_number_step,
             reference_style: match s.reference_style {
@@ -915,6 +1057,7 @@ impl From<Definition> for m::Definition {
                 .into_iter()
                 .map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) })
                 .collect(),
+            bridges: d.bridges,
         }
     }
 }
@@ -928,6 +1071,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes,
+            wiring: s.wiring.into(),
             sheet: s.sheet.into(),
             page_number_step: s.page_number_step,
             reference_style: match s.reference_style {

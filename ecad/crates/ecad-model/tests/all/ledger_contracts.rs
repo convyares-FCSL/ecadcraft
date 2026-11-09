@@ -280,6 +280,7 @@ fn ids_serialise_as_exact_hex_strings() {
 fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
     let mut f = fixture();
     let def = |at: Pt, key2: &str| ecad_model::Definition {
+        bridges: Vec::new(),
         name: "d".into(),
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
@@ -307,7 +308,13 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
 #[test]
 fn a_symbol_must_show_its_components_own_definition() {
     let mut f = fixture();
-    let good = ecad_model::Definition { name: "d".into(), origin: None, graphics: vec![], terminals: vec![] };
+    let good = ecad_model::Definition {
+        bridges: Vec::new(),
+        name: "d".into(),
+        origin: None,
+        graphics: vec![],
+        terminals: vec![],
+    };
     let (d1, d2, c, i, r) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     let item = Item {
         page: f.page,

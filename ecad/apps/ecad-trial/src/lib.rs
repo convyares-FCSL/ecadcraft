@@ -53,6 +53,7 @@
     clippy::unreachable
 )]
 
+pub mod checks_panel;
 pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
@@ -1364,7 +1365,16 @@ impl Trial {
         }
         self.project_panel(ui);
         self.sync_props();
+        // Read before CADCraft's window takes the keys: Esc, or a click on the drawing area.
+        let ring_input = ui.ctx().input(|i| {
+            let esc = i.key_pressed(egui::Key::Escape);
+            let click = i.pointer.primary_clicked()
+                && self.cad.canvas.hover.is_none()
+                && i.pointer.interact_pos().is_some_and(|at| self.cad.canvas.rect.is_some_and(|r| r.contains(at)));
+            (esc, click)
+        });
         self.cad.ui(ui);
+        self.clear_goto_ring(ring_input);
         self.take_props();
         self.drop_frame_selection();
         self.handle_tools();
@@ -1556,6 +1566,12 @@ impl Trial {
                 panel.devices.sync(serial, p);
             }
         });
+        // The Checks tab's copy, only while it is shown (brief 022): the project builds its list
+        // on the first show and keeps it from each change; the copy follows its revision.
+        if self.panel.tab == project_panel::Tab::Checks {
+            let checks = &mut self.panel.checks;
+            let _ = p.configure(&mut self.cad.session, |p| checks.sync(serial, p));
+        }
         self.panel.previewed = self.preview.as_ref().map(|v| v.page);
     }
 
@@ -1681,6 +1697,17 @@ impl Trial {
             A::GotoSymbol(rep) => {
                 let _ = self.goto_symbol(rep);
             }
+            A::GotoCheck(check) => {
+                let _ = self.goto_check(&check);
+            }
+            A::AddJunction(page, at) => {
+                if self.show_page(page).is_ok() {
+                    let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
+                }
+            }
+            A::NumberThem => {
+                let _ = self.run_line(&format!("renumberwires {}", json!({"scope": "unnumbered"})));
+            }
             A::MoveInto { page, folder, index } => {
                 let mut v = json!({"page": page.hex(), "folder": folder.map(|f| f.hex())});
                 if let Some(i) = index {
@@ -1803,6 +1830,43 @@ impl Trial {
         }
         self.cad.session.set_selection(handles);
         Ok(())
+    }
+
+    /// The Checks tab's go to (design 022 §8): the row's page becomes the active page, the view is
+    /// centred on its point at the current zoom (kept between 60 and 600 mm high), its object is
+    /// selected, and a ring in the row's severity colour marks the point until the next change, Esc
+    /// or a click on empty space. Nothing is recorded.
+    ///
+    /// # Errors
+    /// No project, a row with no page, or a page that cannot be shown (echoed).
+    pub fn goto_check(&mut self, check: &ecad_cadcraft::checks::Check) -> Result<(), String> {
+        let p = self.project.clone().ok_or("no ECAD project is open")?;
+        let page = check.page.ok_or("that row is not on a page")?;
+        self.show_page(page)?;
+        let handles = p.configure(&mut self.cad.session, |p| {
+            p.goto_ring = check.at.map(|at| (page, at, check.severity()));
+            ecad_cadcraft::checks::handles_of(p, page, check.object)
+        })?;
+        if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height });
+        }
+        self.cad.session.set_selection(handles);
+        Ok(())
+    }
+
+    /// The go-to ring clears on Esc and on a click on empty space, i.e. a click on the drawing
+    /// area with no object under the pointer (owner, 2026-11-09); the next change or go-to clears
+    /// it too. The project is touched only on such a frame.
+    fn clear_goto_ring(&mut self, (esc, click): (bool, bool)) {
+        if !(esc || click) {
+            return;
+        }
+        if let Some(p) = self.project.clone()
+            && p.is_attached(&self.cad.session)
+        {
+            let _ = p.configure(&mut self.cad.session, |p| p.goto_ring = None);
+        }
     }
 
     /// Open the page name box for a new page, prefilled with its number (the panel's **+** and
