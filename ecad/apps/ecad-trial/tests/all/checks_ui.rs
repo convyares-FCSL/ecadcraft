@@ -113,6 +113,45 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     }
     save(&h, &deltas, "022-hover-wire.png");
 
+    // The same wire selected: the Properties palette's ECAD · WIRE section (brief 019's panel)
+    // shows its number, potential, label values and the Net block (design 022 §9).
+    let wire = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let w = doc
+                .conductors
+                .iter()
+                .find(|(c, _)| {
+                    ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("0V-01"))
+                        && ecad_model::derive::route_on_page(doc, **c, p2).is_some()
+                })
+                .map(|(c, _)| *c)
+                .unwrap();
+            let (item, _) = ecad_model::derive::route_on_page(doc, w, p2).unwrap();
+            p.pages[&p2].map.item(item).unwrap()
+        })
+        .unwrap()
+    };
+    h.state_mut().cad.session.set_selection(vec![wire]);
+    h.run_steps(4);
+    let rows: Vec<(String, String)> = h
+        .state()
+        .props
+        .lock()
+        .unwrap()
+        .view
+        .sections
+        .iter()
+        .flat_map(|s| s.rows.iter().map(|r| (r.label.clone(), r.value.clone())))
+        .collect();
+    assert!(rows.iter().any(|(l, v)| l == "Wire number" && v == "0V-01"), "{rows:?}");
+    assert!(rows.iter().any(|(l, v)| l == "Potential" && v == "0V (continuation)"), "{rows:?}");
+    save(&h, &deltas, "022-props-wire.png");
+    h.state_mut().cad.session.set_selection(Vec::new());
+    h.run_steps(2);
+
     // The Checks tab: -M01:PE, a click goes to page 3, centres it, selects the motor, rings PE.
     click(&mut h, checks_panel::CHECKS_TAB);
     assert_eq!(h.state().panel.tab, project_panel::Tab::Checks);

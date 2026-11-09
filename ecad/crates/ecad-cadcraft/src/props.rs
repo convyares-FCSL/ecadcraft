@@ -11,7 +11,7 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cadcraft_engine::doc::Handle;
 use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
@@ -107,8 +107,27 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                 out.insert(ObjectRef::Component(terminal.component));
             }
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => {
+            Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                 out.insert(ObjectRef::Conductor(*id));
+                // The devices at its ends: a wire's net (brief 022) is shown through them.
+                out.extend(
+                    conductor
+                        .ends
+                        .iter()
+                        .flatten()
+                        .filter_map(|t| doc.terminals.get(t))
+                        .map(|t| ObjectRef::Component(t.component)),
+                );
+            }
+            Op::AttachEnd { conductor: id, before, after, .. } => {
+                out.insert(ObjectRef::Conductor(*id));
+                out.extend(
+                    [before, after]
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|t| doc.terminals.get(t))
+                        .map(|t| ObjectRef::Component(t.component)),
+                );
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(ObjectRef::Cable(*id));
@@ -266,6 +285,15 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         v.deps.extend(
             ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
         );
+        // Brief 022: the number, potential and Net block read the whole net: its conductors and
+        // the devices (junctions and continuations included) at its connection points.
+        let conn = doc.connectivity();
+        if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {
+            v.deps.extend(net.conductors.iter().map(|c| ObjectRef::Conductor(*c)));
+            v.deps.extend(
+                net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
+            );
+        }
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Cable(*c));
@@ -413,13 +441,8 @@ fn device_section(
 
 fn end_words(doc: &Document, w: ConductorId, end: End) -> String {
     match doc.conductors.get(&w).and_then(|c| c.end(end)) {
-        Some(t) => {
-            let comp = doc.terminals.get(&t).map(|x| x.component);
-            let tag = comp
-                .and_then(|c| crate::devices::tag_of(doc, c).map(str::to_string))
-                .unwrap_or_else(|| comp.map(|c| c.short()).unwrap_or_default());
-            format!("{tag}:{}", crate::interact::terminal_name(doc, t))
-        }
+        // `-K01:A1` (design 019 §8.2); a junction or continuation by what it is (brief 022).
+        Some(t) => crate::wires::point_words(doc, t),
         None => "not connected".into(),
     }
 }
@@ -433,14 +456,110 @@ fn free_rows(props: Option<&ecad_model::Properties>, skip: &[&str]) -> Vec<Row> 
         .collect()
 }
 
+/// Brief 022's rows of the wire section (design 022 §9): Wire number, Fixed, Potential,
+/// Cross-section, Colour, and the read-only Net block.
+fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
+    use ecad_model::wiring;
+    let conn = doc.connectivity();
+    let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return (Vec::new(), Vec::new()) };
+    let props = doc.conductors.get(&w).map(|c| &c.properties);
+    let pot = wiring::net_potential(doc, net);
+    let mut top = vec![
+        Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::net_number(doc, net).unwrap_or_else(|| "?".into())),
+        Row {
+            choices: vec!["yes".into(), "no".into()],
+            ..Row::rw(
+                ecad_model::connectivity::WIRE_NUMBER_FIXED,
+                "Fixed",
+                if wiring::net_fixed(net) { "yes" } else { "no" }.into(),
+            )
+        },
+    ];
+    let mut potential = Row::rw(wiring::POTENTIAL_KEY, "Potential", pot.name.clone().unwrap_or_default());
+    potential.choices = doc.settings.wiring.potentials.iter().map(|p| p.name.clone()).collect();
+    if pot.from_continuation {
+        potential.value = format!("{} (continuation)", pot.name.clone().unwrap_or_default());
+        potential.inherited = true;
+    }
+    top.push(potential);
+    for (key, label, default) in
+        [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)]
+    {
+        let stored = props.and_then(|p| p.get(key)).cloned();
+        let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
+        if stored.is_none()
+            && let (Some(d), Some(p)) = (default, &pot.name)
+        {
+            row.value = format!("{d} ({p})");
+            row.inherited = true;
+        }
+        top.push(row);
+    }
+    let mut pages: Vec<String> = Vec::new();
+    let mut seen = BTreeSet::new();
+    for page in &doc.page_order {
+        let on =
+            net.conductors.iter().any(|c| doc.representations_of(Subject::Conductor(*c)).any(|(_, r)| r.page == *page));
+        if on && seen.insert(*page) {
+            pages.push(ecad_model::book::page_number(doc, *page));
+        }
+    }
+    let points = crate::wires::net_points(doc, net);
+    let n = net.conductors.len();
+    let summary = format!(
+        "{} \u{b7} {} connection point{} \u{b7} page{} {}",
+        if n == 1 { "1 wire".to_string() } else { format!("{n} wires") },
+        points.len(),
+        if points.len() == 1 { "" } else { "s" },
+        if pages.len() == 1 { "" } else { "s" },
+        pages.join(" ")
+    );
+    let mut names: BTreeMap<String, usize> = BTreeMap::new();
+    for t in &net.terminals {
+        if let Some(x) = doc.terminals.get(t)
+            && crate::wires::kind_of(doc, x.component) == Some(ecad_model::connectivity::CONTINUATION)
+            && let Some(name) =
+                doc.components.get(&x.component).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
+        {
+            *names.entry(name.clone()).or_default() += 1;
+        }
+    }
+    let mut block = vec![
+        Row::ro("net", "Net", summary),
+        Row::ro(
+            "points",
+            "Points",
+            if points.is_empty() { "none".into() } else { crate::wires::first_words(&points, 8) },
+        ),
+    ];
+    if !names.is_empty() {
+        let words: Vec<String> = names.iter().map(|(k, v)| format!("{k} \u{d7}{v}")).collect();
+        block.push(Row::ro("continuations", "Continuations", words.join(", ")));
+    }
+    (top, block)
+}
+
 fn wire_section(doc: &Document, w: ConductorId) -> Section {
     let props = doc.conductors.get(&w).map(|c| &c.properties);
-    let mut rows =
-        vec![Row::ro("from", "From", end_words(doc, w, End::A)), Row::ro("to", "To", end_words(doc, w, End::B))];
+    let (wiring, net) = wiring_rows(doc, w);
+    let mut rows = wiring;
+    rows.push(Row::ro("from", "From", end_words(doc, w, End::A)));
+    rows.push(Row::ro("to", "To", end_words(doc, w, End::B)));
     let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::views::cable_title(doc, k)).collect();
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
     rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default()));
-    rows.extend(free_rows(props, &["tag"]));
+    rows.extend(free_rows(
+        props,
+        &[
+            "tag",
+            ecad_model::wiring::WIRE_NUMBER_KEY,
+            ecad_model::connectivity::WIRE_NUMBER_FIXED,
+            ecad_model::wiring::POTENTIAL_KEY,
+            ecad_model::wiring::CROSS_SECTION,
+            ecad_model::wiring::COLOUR,
+        ],
+    ));
+    rows.extend(net);
     Section {
         title: "ECAD · WIRE".into(),
         kind: "wire",
@@ -526,6 +645,21 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
             "setprop",
             serde_json::json!({"components": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v}),
         ),
+        // Brief 022: the number and the potential belong to the whole net.
+        Target::Conductor(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => {
+            ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v}))
+        }
+        Target::Conductor(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
+            let fixed = value.is_some_and(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "yes" | "y" | "true"));
+            ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))
+        }
+        Target::Conductor(w) if key == ecad_model::wiring::POTENTIAL_KEY => {
+            let v = value
+                .map(|s| s.trim().trim_end_matches("(continuation)").trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map_or(serde_json::Value::Null, serde_json::Value::String);
+            ("potential", serde_json::json!({"conductor": w.hex(), "value": v}))
+        }
         Target::Conductor(w) => ("setprop", serde_json::json!({"conductor": w.hex(), "key": key, "value": v})),
         Target::Cable(k) => ("setprop", serde_json::json!({"cable": k.hex(), "key": key, "value": v})),
     };

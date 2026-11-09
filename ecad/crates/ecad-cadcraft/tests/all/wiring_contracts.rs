@@ -361,3 +361,70 @@ fn add_junction_joins_loose_ends_that_only_meet() {
     assert_eq!(doc.conductors.len(), 2, "nothing was split");
     assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
 }
+
+/// Design 022 §9 on brief 019's Properties panel: a wire's section shows its net's number, Fixed,
+/// Potential (from a continuation when it comes from one), Cross-section and Colour (the
+/// potential's defaults when unset) and the Net block; each edit is the command the panel sends;
+/// the view depends on the whole net, so a change elsewhere on it reaches it.
+#[test]
+fn a_wires_properties_show_and_edit_its_net() {
+    use ecad_cadcraft::props;
+    let mut h = H::new(0x22_07);
+    let page = h.first_page();
+    h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
+    terminal(&mut h, (60.0, 0.0), "X1");
+    let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
+    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({}));
+    let view = |h: &mut H, w: ConductorId| {
+        let route = h.route_handle(page, w);
+        h.p(|p| props::view(p, Some(page), &[route]))
+    };
+    let row = |v: &props::PropsView, key: &str| {
+        v.sections
+            .iter()
+            .flat_map(|s| s.rows.iter())
+            .find(|r| r.key == key)
+            .cloned()
+            .unwrap_or_else(|| panic!("{key}: {v:?}"))
+    };
+    let v = view(&mut h, a);
+    assert_eq!(row(&v, "wire_number").value, number(&h.doc(), a).unwrap());
+    assert_eq!(row(&v, "wire_number_fixed").value, "no");
+    let pot = row(&v, "potential");
+    assert!(pot.value == "24V (continuation)" && pot.inherited, "{pot:?}");
+    let cs = row(&v, "cross_section");
+    assert!(cs.value == "0.5 (24V)" && cs.inherited, "{cs:?}");
+    assert_eq!(row(&v, "colour").value, "Blue (24V)");
+    assert!(row(&v, "net").value.starts_with("1 wire"), "{v:?}");
+    let target = v.sections[0].target.clone().unwrap();
+    // Each edit through the line the panel sends.
+    let send = |h: &mut H, key: &str, value: Option<&str>| {
+        let line = props::edit_line(&target, key, value);
+        h.cmdline(&line);
+        line
+    };
+    let line = send(&mut h, "wire_number", Some("24V-77"));
+    assert!(line.starts_with("wirenumber "), "{line}");
+    assert_eq!(number(&h.doc(), a).as_deref(), Some("24V-77"));
+    assert_eq!(row(&view(&mut h, a), "wire_number_fixed").value, "yes");
+    assert!(send(&mut h, "wire_number_fixed", Some("no")).starts_with("wirenumber "));
+    assert_eq!(row(&view(&mut h, a), "wire_number_fixed").value, "no");
+    assert_eq!(number(&h.doc(), a).as_deref(), Some("24V-77"), "released, the number stays");
+    send(&mut h, "wire_number_fixed", Some("yes"));
+    assert_eq!(row(&view(&mut h, a), "wire_number_fixed").value, "yes");
+    assert!(send(&mut h, "potential", Some("0V")).starts_with("potential "));
+    assert_eq!(row(&view(&mut h, a), "potential").value, "0V");
+    send(&mut h, "colour", Some("Red"));
+    let c = row(&view(&mut h, a), "colour");
+    assert!(c.value == "Red" && !c.inherited, "{c:?}");
+    send(&mut h, "colour", None);
+    assert_eq!(row(&view(&mut h, a), "colour").value, "Blue (0V)", "empty returns to the default");
+    // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
+    let v = view(&mut h, a);
+    let n = h.p(|p| p.change_count());
+    h.run("place", json!({"symbol": "junction", "at": [30, 0]})).unwrap();
+    let touched = h.p(|p| p.props_changes_since(n)).unwrap();
+    assert!(touched.iter().any(|o| v.deps.contains(o)), "{touched:?}");
+    assert!(row(&view(&mut h, a), "net").value.starts_with("2 wires"));
+    let _ = b;
+}

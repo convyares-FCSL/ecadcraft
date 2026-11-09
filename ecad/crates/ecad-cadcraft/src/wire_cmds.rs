@@ -247,6 +247,27 @@ fn arrow_rotation(d: Pt) -> f64 {
 
 /// `wirenumber {conductor | number, value: string | null, conflict?: "swap" | "another" | "merge"}`.
 pub(crate) fn run_wirenumber(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    // `fixed` alone (the Properties panel's Fixed box): fix the net's current number, or release it.
+    if params.get("value").is_none()
+        && let Some(fixed) = params.get("fixed").and_then(Value::as_bool)
+    {
+        if !fixed {
+            let mut p = params.clone();
+            p["value"] = Value::Null;
+            return run_wirenumber(s, &p);
+        }
+        let current = with_project(s, |p, _, _| {
+            let doc = p.ledger.document();
+            let id = chosen_net(doc, params)?;
+            doc.connectivity()
+                .net(id)
+                .and_then(|n| wiring::net_number(doc, n))
+                .ok_or_else(|| "That net has no number to fix yet.".to_string())
+        })?;
+        let mut p = params.clone();
+        p["value"] = json!(current);
+        return run_wirenumber(s, &p);
+    }
     let value = match params.get("value") {
         Some(Value::Null) => None,
         Some(Value::String(v)) => Some(wiring::valid_number(v).map_err(err)?),

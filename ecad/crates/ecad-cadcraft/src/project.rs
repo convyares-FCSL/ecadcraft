@@ -1745,6 +1745,7 @@ impl Project {
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
         let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let numbered = self.numbered_pages(n);
+        let props = self.with_numbered(props, n);
         self.update_checks(checks);
         self.record_change(
             touched(touched(pages, refs_before.pages_changed(&refs_after)), numbered),
@@ -1774,6 +1775,23 @@ impl Project {
         let doc = self.ledger.document();
         let tol = self.tolerance;
         self.checks.get_or_insert_with(|| crate::checks::Checks::build(doc, tol))
+    }
+
+    /// `props` with the conductors the numbering pass of the last transaction renumbered (its ops
+    /// after the first `n`): the Properties view of a wire reads its number (brief 022).
+    fn with_numbered(
+        &self,
+        props: Option<BTreeSet<ecad_model::ObjectRef>>,
+        n: usize,
+    ) -> Option<BTreeSet<ecad_model::ObjectRef>> {
+        let mut props = props?;
+        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
+        for op in extra {
+            if let Op::SetProperty { object, .. } = op {
+                props.insert(*object);
+            }
+        }
+        Some(props)
     }
 
     /// The pages whose labels the numbering pass of the last transaction changed: the pages of
@@ -2023,6 +2041,7 @@ impl DocumentOwner for Project {
             c.insert(page);
             c
         });
+        let props = self.with_numbered(props, n);
         self.record_change(changed, devices, props, tree);
         if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
             pg.echo(line);

@@ -141,7 +141,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("wirenumber", "Fix Wire Number", crate::wire_cmds::run_wirenumber)
             .params(
-                "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} (fixes the net's number; null releases it; a number another net uses needs `conflict`)",
+                "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)",
             )
             .interactive(interact::wirenumber)
             .noundo(),

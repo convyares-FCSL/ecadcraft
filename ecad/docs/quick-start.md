@@ -853,8 +853,9 @@ round of 2026-11-08. Every write is one transaction: one `u` takes it back.
 ## 5I. Connectivity and wire numbers (by clicking)
 
 On the demo project (`cargo xtask demo`, then open `C:\dev\ecad-projects\demo.ecad`; on Linux
-`~/ecad-projects/demo.ecad`). Design 022. The Properties panel rows for wires come with brief 019;
-until then the same facts show when you hover a wire, and are changed with the tools below.
+`~/ecad-projects/demo.ecad`). Design 022. Select one wire to see its number, potential,
+cross-section, colour and its net in the **Properties** palette (`ECAD · WIRE`); hovering a wire
+shows the same facts.
 
 1. **Labels.** Show page 2 (**Motor control**). Expected: every wire is labelled beside it, e.g.
    `24V-04 0.5 Blue` on the three wires joining `-S02:14`, `-K01:14`, `-K01:A1` and the lamp's
@@ -877,9 +878,12 @@ until then the same facts show when you hover a wire, and are changed with the t
    dot and erase it. Open the **Checks** tab (PROJECT panel, beside **Devices**): a row
    `▲ Looks connected, no junction`. Click the row (the page centres on it with a yellow ring),
    then **Add junction**: the dot is back. `u` takes it away again.
-6. **Fix a number.** Click **Fix Wire Number**, click a 24V wire, type `24V-50`, Enter. Expected:
-   `Wire number 24V-50 fixed on the whole net.` and every wire of that net shows `24V-50`; hover
-   says `Wire number 24V-50 (fixed)`. Now fix another net to `24V-50`: it is never a dead end;
+6. **Fix a number.** Select a 24V wire. In **Properties** (`ECAD · WIRE`) click **Wire number**,
+   type `24V-50`, Enter (or click **Fix Wire Number**, click the wire, type it). Expected: every
+   wire of that net shows `24V-50` and **Fixed** says `yes`; setting **Fixed** to `no` keeps the
+   number as an automatic one. **Potential** and **Cross-section**/**Colour** are edited the same
+   way: Potential sets the whole net, the others this wire only; empty returns to the default shown
+   faint with its potential (`0.5 (24V)`). Now fix another net to `24V-50`: it is never a dead end;
    the prompt asks `24V-50 is used by another net. [Swap/Another/Merge] <Another>:`. Enter gives
    it the next free number (`24V-51`); `S` swaps the two numbers; `M` joins the nets with a pair
    of continuations named `24V-50` when that is electrically sensible, otherwise it says why (for
@@ -1338,8 +1342,8 @@ Your table of three clean runs goes here once you have run it.
 
 - **Connectivity and wire numbers (brief 022).** Labels are placed on each route's longest
   segment with no collision avoidance and cannot be dragged (owner answer Q11), so a label can
-  cross a tag or a reference text. The Properties panel rows for wires, junctions and
-  continuations wait for brief 019; until then hover and the tools show and change them. The go-to
+  cross a tag or a reference text. Properties shows wires only; junctions and continuations show as
+  devices without a tag (their own sections are later work). The go-to
   ring of the Checks tab clears at the next change or the next go-to, not at a click or Esc.
   Projects made before brief 022 open with no numbers (`?`); the Checks tab offers **Number them**,
   and any net an edit touches is numbered then. Wire numbers on cable core labels in fan view,
