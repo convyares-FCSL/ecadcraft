@@ -185,6 +185,27 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     };
     assert!(ring.is_some_and(|(pg, at, _)| pg == p3 && Some(at) == pe.check.at), "{ring:?}");
     save(&h, &deltas, "022-checks.png");
+    // The ring clears on Esc, and on a click on empty space (owner, 2026-11-09).
+    let ring_of = |h: &mut H| {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.goto_ring).unwrap()
+    };
+    h.key_press(eframe::egui::Key::Escape);
+    h.run_steps(3);
+    assert_eq!(ring_of(&mut h), None, "Esc clears the ring");
+    click(&mut h, &checks_panel::row_label(&pe));
+    assert!(ring_of(&mut h).is_some());
+    let empty = screen(&h, pe.check.at.unwrap().x + 40.0, pe.check.at.unwrap().y + 40.0);
+    pointer_to(&mut h, empty);
+    assert!(h.state().cad.canvas.hover.is_none(), "nothing under the pointer");
+    crate::mouse_tester::click(&mut h, empty);
+    h.run_steps(3);
+    assert_eq!(ring_of(&mut h), None, "a click on empty space clears the ring");
+    // The click started a selection window; Esc ends it.
+    h.key_press(eframe::egui::Key::Escape);
+    h.run_steps(3);
+    click(&mut h, &checks_panel::row_label(&pe));
 
     // A T without a junction on a new page: its row, then Add junction.
     ok(&mut h, r#"newpage {"title":"Tee"}"#);

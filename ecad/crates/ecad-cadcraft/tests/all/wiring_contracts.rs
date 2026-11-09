@@ -252,6 +252,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     assert_eq!(count(Kind::ThinJunction), 1, "{listing:#?}");
     assert_eq!(count(Kind::LonelyContinuation), 1, "{listing:#?}");
     assert_eq!(count(Kind::MixedPotentials), 1, "{listing:#?}");
+    assert_eq!(count(Kind::UnknownName), 0, "24V and 0V are in the table: {listing:#?}");
     assert_eq!(count(Kind::JoinsPotentials), 1, "{listing:#?}");
     assert_eq!(count(Kind::TwoFixed), 1, "{listing:#?}");
     assert_eq!(count(Kind::SharedNumber), 2, "{listing:#?}");
@@ -274,6 +275,55 @@ fn each_seeded_fault_appears_once_where_it_is() {
     assert!(ecad_cadcraft::checks::all(&h.doc(), 1e-6).iter().all(|c| c.kind != Kind::Unnumbered));
     h.cmdline("u");
     assert!(ecad_cadcraft::checks::all(&h.doc(), 1e-6).iter().any(|c| c.kind == Kind::Unnumbered));
+}
+
+/// Owner, 2026-11-09 (potential rule 2): only names in the potentials table give a net its
+/// potential. A continuation with any other name is placed (never refused) and shows on the Checks
+/// tab as a warning; a pair named for the net's own number (Merge the nets) does not; adding the
+/// name to the table clears the row. The kept list equals a fresh build at each step.
+#[test]
+fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
+    let mut h = H::new(0x22_09);
+    h.cfg(|p| {
+        p.checks();
+    });
+    let kept = |h: &mut H| {
+        h.cfg(|p| {
+            let doc = p.ledger.document().clone();
+            let kept = p.checks().clone();
+            assert_eq!(rows(&doc, &kept), rows(&doc, &Checks::build(&doc, p.tolerance)));
+            ecad_cadcraft::checks::all(&doc, p.tolerance)
+                .into_iter()
+                .filter(|c| c.kind == Kind::UnknownName)
+                .collect::<Vec<_>>()
+        })
+    };
+    terminal(&mut h, (0.0, 0.0), "X1");
+    wire(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
+    let r = h.run("place", json!({"symbol": "continuation", "at": [0, 30], "name": "Motor-run"})).unwrap();
+    assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
+    let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
+    assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
+    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Component(_)), "{r}");
+    assert!(row.page.is_some() && row.at.is_some());
+    // Names in the table are not rows: the net takes the potential.
+    terminal(&mut h, (100.0, 0.0), "X2");
+    wire(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
+    h.run("place", json!({"symbol": "continuation", "at": [100, 30], "name": "24V"})).unwrap();
+    assert_eq!(kept(&mut h).len(), 1);
+    // A continuation named for its net's own number (as Merge the nets places) is not a row.
+    terminal(&mut h, (200.0, 0.0), "X3");
+    let w3 = wire(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
+    h.run("wirenumber", json!({"conductor": w3.hex(), "value": "W-7"})).unwrap();
+    h.run("place", json!({"symbol": "continuation", "at": [200, 30], "name": "W-7"})).unwrap();
+    assert_eq!(kept(&mut h).len(), 1, "named for its own number");
+    // Add MOTOR-RUN to the table: the row goes; `u` brings it back.
+    let mut table: Vec<Value> = h.run("wiresettings", json!({})).unwrap()["potentials"].as_array().unwrap().clone();
+    table.push(json!({"name": "MOTOR-RUN", "prefix": "MR"}));
+    h.run("wiresettings", json!({"potentials": table})).unwrap();
+    assert!(kept(&mut h).is_empty());
+    h.cmdline("u");
+    assert_eq!(kept(&mut h).len(), 1);
 }
 
 /// Design 022 §11: the kept Checks list equals a fresh build after every step, and an edit that

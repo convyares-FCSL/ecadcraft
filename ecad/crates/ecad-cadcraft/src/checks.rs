@@ -86,10 +86,11 @@ pub enum Kind {
     LonelyContinuation,
     MixedPotentials,
     Unnumbered,
+    UnknownName,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 13] = [
+    pub const ALL: [Kind; 14] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -103,6 +104,7 @@ impl Kind {
         Kind::LonelyContinuation,
         Kind::MixedPotentials,
         Kind::Unnumbered,
+        Kind::UnknownName,
     ];
 
     /// The JSON name.
@@ -121,6 +123,7 @@ impl Kind {
             Kind::LonelyContinuation => "lonely-continuation",
             Kind::MixedPotentials => "mixed-potentials",
             Kind::Unnumbered => "unnumbered",
+            Kind::UnknownName => "unknown-name",
         }
     }
 
@@ -145,15 +148,19 @@ impl Kind {
             Kind::LonelyContinuation => "Continuation without partner",
             Kind::MixedPotentials => "Mixed potentials in one net",
             Kind::Unnumbered => "Unnumbered nets",
+            Kind::UnknownName => "Continuation name not a potential",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
             Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed => Severity::Error,
-            Kind::OpenEnd | Kind::LooseWire | Kind::LooksConnected | Kind::DrawnAway | Kind::SinglePoint => {
-                Severity::Warning
-            }
+            Kind::OpenEnd
+            | Kind::LooseWire
+            | Kind::LooksConnected
+            | Kind::DrawnAway
+            | Kind::SinglePoint
+            | Kind::UnknownName => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -537,6 +544,30 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
             which: net.potentials.keys().cloned().collect::<Vec<_>>().join(", "),
             fix: None,
         });
+    }
+    // A continuation name that is neither in the potentials table nor the net's own number (a
+    // pair placed by Merge the nets): a warning, never a refusal (owner, 2026-11-09). Only names
+    // in the table give a net its potential (design 022 §6 rule 2).
+    for key in &net.names {
+        let numbered = net.numbers.keys().any(|n| name_key(n) == *key);
+        if doc.settings.wiring.potential(key).is_some() || numbered {
+            continue;
+        }
+        let cont = net.terminals.iter().find_map(|t| {
+            let x = doc.terminals.get(t)?;
+            let c = doc.components.get(&x.component)?;
+            (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key))
+                .then_some((*t, x.component))
+        });
+        let (p, a, o, which) = match cont {
+            Some((t, c)) => {
+                let (p, a) = terminal_place(doc, t);
+                let name = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).cloned();
+                (p, a, Object::Component(c), name.unwrap_or_else(|| key.clone()))
+            }
+            None => (page, at, object, key.clone()),
+        };
+        out.push(Check { kind: Kind::UnknownName, page: p, at: a, object: o, which, fix: None });
     }
     out
 }

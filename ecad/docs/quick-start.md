@@ -894,7 +894,10 @@ shows the same facts.
 7. **Checks.** In the **Checks** tab: `· Connection point not connected 3-C-5 -M01:PE`, and three
    `· Continuation without partner` rows (`L1`, `L2`, `L3` on page 2: the supply side of the motor
    circuit is not drawn). Click the `-M01:PE` row. Expected: page 3 is shown, the motor centred
-   and selected, a grey ring on `PE`. **Show** lets you untick kinds of rows.
+   and selected, a grey ring on `PE`. Esc, or a click on empty space, takes the ring away. A
+   continuation whose name is not in the potentials table (say `MOTOR-RUN`) is placed as usual
+   and shows a yellow `Continuation name not a potential` row. **Show** lets you untick kinds of
+   rows.
 8. **Save, close and reopen** (section 7). Expected: the same numbers (they are stored on the
    wires, so they never change by themselves).
 
