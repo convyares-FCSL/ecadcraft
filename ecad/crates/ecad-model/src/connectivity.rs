@@ -240,6 +240,15 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
         .collect()
 }
 
+/// About how many edges `node` has, read from the indexes without listing them.
+fn degree(doc: &Document, node: &Node) -> usize {
+    match node {
+        Node::Terminal(t) => doc.index.terminal_ends.get(t).map_or(0, BTreeMap::len).saturating_add(2),
+        Node::Conductor(_) => 2,
+        Node::Name(k) => doc.index.continuations.get(k).map_or(0, BTreeMap::len),
+    }
+}
+
 /// The present nodes joined to `node` by one edge.
 fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = Vec::new();
@@ -689,13 +698,18 @@ impl Connectivity {
             }
         }
         loop {
-            // The running searches; the smallest takes the next step.
+            // The running searches; the one with the least done and the cheapest next node takes the
+            // next step, so a part of one wire runs out before a hub of many is opened.
             let running: Vec<usize> =
                 (0..k).filter(|i| parent.get(*i) == Some(i) && !done.get(*i).copied().unwrap_or(true)).collect();
             if running.len() <= 1 {
                 break;
             }
-            let Some(r) = running.iter().copied().min_by_key(|i| members.get(*i).map_or(0, Vec::len)) else { break };
+            let cost = |i: usize| {
+                let next = queues.get(i).and_then(VecDeque::front).map_or(0, |n| degree(doc, n));
+                members.get(i).map_or(0, Vec::len).saturating_add(next)
+            };
+            let Some(r) = running.iter().copied().min_by_key(|i| cost(*i)) else { break };
             let Some(n) = queues.get_mut(r).and_then(VecDeque::pop_front) else {
                 if let Some(d) = done.get_mut(r) {
                     *d = true;
