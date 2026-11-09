@@ -762,7 +762,8 @@ pub struct BranchRow {
     pub fork: Option<(String, u64)>,
 }
 
-/// The branches of a version 2 file (a few rows; read after each save).
+/// The branches of a version 2 file (a few rows and one key read each; read after each save, so
+/// its cost never depends on the history's length).
 ///
 /// # Errors
 /// The file cannot be read.
@@ -776,7 +777,9 @@ pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, Str
             status: format!("{:?}", b.status),
             head: b.head.seq,
             head_chain: b.head.chain.clone(),
-            rows: r.tx_count(id).map_err(|e| e.to_string())?,
+            // The last stored `seq`, one key read: a branch's rows run 1..=last without gaps, so
+            // it is the row count. Counting the rows would read the whole log after every save.
+            rows: r.last_seq(id).map_err(|e| e.to_string())?.unwrap_or(0),
             release_line: b.release_line,
             fork: b.parent.clone().zip(b.fork_point.as_ref().map(|f| f.seq)),
         });
