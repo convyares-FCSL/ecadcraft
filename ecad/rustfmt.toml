@@ -2,5 +2,5 @@
 max_width = 150
 fn_params_layout = "Compressed"
 use_small_heuristics = "Max"
-chain_width = 150
+# chain_width: "Max" already sets it to max_width (150)
 # where_single_line = true  # nightly-only; enable when stable
