@@ -1,7 +1,7 @@
 //! The redb database of a version 2 file, behind ECAD's append-only API (EEP-0005 §3).
 //!
 //! The only write paths are those of [`Writer`]: append a `transactions` row directly after a
-//! branch's last one, insert a part or asset that is not stored yet, and put or remove
+//! branch's last one, insert a chunk or asset that is not stored yet, and put or remove
 //! `branches`, `versions` and `meta` rows (only the names `meta` allows). No code path updates or
 //! deletes a `transactions` row. Every write of one save happens in one redb write transaction
 //! with quick-repair on (EEP-0005 §5.7), committed durably before [`Writer::commit`] returns.
@@ -17,7 +17,7 @@ use redb::{
 
 use super::pack;
 use super::schema::{
-    ASSETS, BRANCHES, BranchId, BranchRecord, META, META_NAMES, PARTS, TRANSACTIONS, VERSIONS, VersionKind,
+    ASSETS, BRANCHES, BranchId, BranchRecord, CHUNKS, META, META_NAMES, TRANSACTIONS, VERSIONS, VersionKind,
     VersionRecord, asset_hash, asset_value, key_seq, split_tx_value, tx_key, tx_value, version_key,
 };
 use crate::chain::Hash;
@@ -54,7 +54,7 @@ fn open_err(e: redb::DatabaseError) -> StoreError {
 }
 
 /// Every table, in schema order, by name.
-pub const TABLES: [&str; 6] = ["meta", "branches", "transactions", "versions", "parts", "assets"];
+pub const TABLES: [&str; 6] = ["meta", "branches", "transactions", "versions", "chunks", "assets"];
 
 enum Db {
     Writable(Database),
@@ -146,7 +146,7 @@ impl Store {
         txn.open_table(BRANCHES).map_err(engine)?;
         txn.open_table(TRANSACTIONS).map_err(engine)?;
         txn.open_table(VERSIONS).map_err(engine)?;
-        txn.open_table(PARTS).map_err(engine)?;
+        txn.open_table(CHUNKS).map_err(engine)?;
         txn.open_table(ASSETS).map_err(engine)?;
         txn.commit().map_err(engine)
     }
@@ -394,39 +394,39 @@ impl Reader {
         }
     }
 
-    /// A stored part: flag and body.
+    /// A stored chunk: flag and body.
     ///
     /// # Errors
     /// The engine failed, or the row is empty.
-    pub fn part(&self, hash: &Hash) -> Result<Option<(u8, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(PARTS).map_err(engine)?;
+    pub fn chunk(&self, hash: &Hash) -> Result<Option<(u8, Vec<u8>)>, StoreError> {
+        let t = self.txn.open_table(CHUNKS).map_err(engine)?;
         let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
         let v = v.value();
-        let flag = *v.first().ok_or_else(|| StoreError::Damaged("an empty part row".into()))?;
+        let flag = *v.first().ok_or_else(|| StoreError::Damaged("an empty chunk row".into()))?;
         Ok(Some((flag, v.get(1..).unwrap_or_default().to_vec())))
     }
 
-    /// A part's uncompressed body, checked against its hash.
+    /// A chunk's uncompressed body, checked against its hash.
     ///
     /// # Errors
     /// Missing, damaged, or not matching its hash.
-    pub fn part_body(&self, hash: &Hash) -> Result<Vec<u8>, StoreError> {
+    pub fn chunk_body(&self, hash: &Hash) -> Result<Vec<u8>, StoreError> {
         let (flag, body) = self
-            .part(hash)?
-            .ok_or_else(|| StoreError::Damaged(format!("part {} is missing", crate::chain::hex(hash))))?;
+            .chunk(hash)?
+            .ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
         let body = pack::unpack(flag, &body).map_err(StoreError::Damaged)?;
-        if super::schema::part_hash(&body) != *hash {
-            return Err(StoreError::Damaged(format!("part {} does not match its hash", crate::chain::hex(hash))));
+        if super::schema::chunk_hash(&body) != *hash {
+            return Err(StoreError::Damaged(format!("chunk {} does not match its hash", crate::chain::hex(hash))));
         }
         Ok(body)
     }
 
-    /// Every part's hash, flag and stored length.
+    /// Every chunk's hash, flag and stored length.
     ///
     /// # Errors
     /// The engine failed.
-    pub fn part_list(&self) -> Result<Vec<(Hash, u8, u64)>, StoreError> {
-        let t = self.txn.open_table(PARTS).map_err(engine)?;
+    pub fn chunk_list(&self) -> Result<Vec<(Hash, u8, u64)>, StoreError> {
+        let t = self.txn.open_table(CHUNKS).map_err(engine)?;
         let mut out = Vec::new();
         for row in t.iter().map_err(engine)? {
             let (k, v) = row.map_err(engine)?;
@@ -457,7 +457,7 @@ impl Reader {
             table_stat(&self.txn, BRANCHES)?,
             table_stat(&self.txn, TRANSACTIONS)?,
             table_stat(&self.txn, VERSIONS)?,
-            table_stat(&self.txn, PARTS)?,
+            table_stat(&self.txn, CHUNKS)?,
             table_stat(&self.txn, ASSETS)?,
         ])
     }
@@ -496,7 +496,7 @@ impl Reader {
                 each("versions", k.value(), v.value()).map_err(err)?;
             }
         }
-        fixed!(PARTS, "parts");
+        fixed!(CHUNKS, "chunks");
         fixed!(ASSETS, "assets");
         Ok(())
     }
@@ -569,16 +569,16 @@ impl Writer {
         Ok(value.len() as u64)
     }
 
-    /// Insert a part unless one with that hash is stored. Returns the bytes written (0 when it
+    /// Insert a chunk unless one with that hash is stored. Returns the bytes written (0 when it
     /// was already stored).
     ///
     /// # Errors
     /// [`StoreError::Refused`] when `hash` is not the hash of `body`; the engine failed.
-    pub fn put_part(&mut self, hash: &Hash, body: &[u8]) -> Result<u64, StoreError> {
-        if super::schema::part_hash(body) != *hash {
-            return Err(StoreError::Refused("a part's hash does not match its body".into()));
+    pub fn put_chunk(&mut self, hash: &Hash, body: &[u8]) -> Result<u64, StoreError> {
+        if super::schema::chunk_hash(body) != *hash {
+            return Err(StoreError::Refused("a chunk's hash does not match its body".into()));
         }
-        let mut t = self.txn.open_table(PARTS).map_err(engine)?;
+        let mut t = self.txn.open_table(CHUNKS).map_err(engine)?;
         if t.get(*hash).map_err(engine)?.is_some() {
             return Ok(0);
         }
@@ -615,7 +615,7 @@ impl Writer {
         Ok(())
     }
 
-    /// Remove a version row (a version unnamed by `UnnameVersion`). Its parts stay until
+    /// Remove a version row (a version unnamed by `UnnameVersion`). Its chunks stay until
     /// compaction.
     ///
     /// # Errors
@@ -647,7 +647,7 @@ impl Writer {
         let mut branches = self.txn.open_table(BRANCHES).map_err(engine)?;
         let mut txs = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
         let mut versions = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let mut parts = self.txn.open_table(PARTS).map_err(engine)?;
+        let mut chunks = self.txn.open_table(CHUNKS).map_err(engine)?;
         let mut assets = self.txn.open_table(ASSETS).map_err(engine)?;
         let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, String> {
             if k.len() == n {
@@ -692,10 +692,10 @@ impl Writer {
                 "versions" => {
                     versions.insert(k, v).map_err(e)?;
                 }
-                "parts" => {
+                "chunks" => {
                     let mut key = [0u8; 32];
                     key.copy_from_slice(&fixed(k, 32)?);
-                    parts.insert(key, v).map_err(e)?;
+                    chunks.insert(key, v).map_err(e)?;
                 }
                 "assets" => {
                     let mut key = [0u8; 32];
@@ -728,8 +728,8 @@ pub fn table_descriptions() -> [(&'static str, &'static str); 6] {
         ("meta", "container facts"),
         ("branches", "branch ID -> name, status, parent, fork point, head"),
         ("transactions", "(branch, seq) -> flag, chain value, record"),
-        ("versions", "(branch, kind, name) -> point, parts, release"),
-        ("parts", "part hash -> flag, body"),
+        ("versions", "(branch, kind, name) -> point, chunks, release"),
+        ("chunks", "chunk hash -> flag, body"),
         ("assets", "asset hash -> media type, bytes"),
     ]
 }

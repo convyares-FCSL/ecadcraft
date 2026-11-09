@@ -64,11 +64,15 @@ v1 file converts, and the file's structure is easy to see with our own tools.
 
 ## Later (owner, 2026-11-08), not in this brief
 
-- **HTML inspector: a raw/readable toggle.** For any record (a transaction row, part or asset),
+- **HTML inspector: a raw/readable toggle.** For any record (a transaction row, chunk or asset),
   switch between the human-readable decoded view and the raw stored form (compressed bytes as hex,
   with the table, key, size and compression), and back, read-only, never changing the file. To keep
   this cheap later, `export-jsonl` in this brief should be able to include each record's raw stored
   bytes alongside the decoded form (an option such as `--with-raw`).
+- **HTML inspector opens `.ecad` v2 directly via the wasm reader** (read-only), with the
+  raw/readable toggle (overseer, 2026-11-09). This brief keeps the way open: the v2 reader reads
+  through redb's `StorageBackend` (`Store::from_bytes` over an in-memory buffer), and `ecad-file`
+  with redb `=4.5.0` and `ruzstd` builds for `wasm32-unknown-unknown` (`cargo xtask wasm`).
 
 ## Not in this brief
 

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{Document, Ledger, TxId, TxKind};
 
-use super::parts::{self, PartSet};
+use super::chunks::{self, ChunkSet};
 use super::schema::{VersionKind, VersionRecord};
 use super::store::{Reader, Store};
 use crate::chain::{self, ChainKind, Hash};
@@ -20,17 +20,17 @@ pub struct VerifyReport {
     pub transactions: u64,
     /// Snapshots checked against the replay.
     pub snapshots: usize,
-    /// Parts no version references (garbage until compaction).
-    pub unreferenced_parts: usize,
+    /// Chunks no version references (garbage until compaction).
+    pub unreferenced_chunks: usize,
 }
 
-fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<parts::ModelMeta>), String> {
-    let set = PartSet::from_record(&v.parts)?;
+fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<chunks::ModelMeta>), String> {
+    let set = ChunkSet::from_record(&v.chunks)?;
     let mut bodies = Vec::new();
-    for (k, h) in &set.parts {
-        bodies.push((k.clone(), r.part_body(h).map_err(|e| e.to_string())?));
+    for (k, h) in &set.chunks {
+        bodies.push((k.clone(), r.chunk_body(h).map_err(|e| e.to_string())?));
     }
-    let (mut d, meta) = parts::assemble(&set, bodies)?;
+    let (mut d, meta) = chunks::assemble(&set, bodies)?;
     d.rebuild_index();
     Ok((d, meta))
 }
@@ -156,7 +156,7 @@ pub fn verify(store: &Store) -> VerifyReport {
             if chains.get(v.point.seq as usize).map(chain::hex) != Some(v.point.chain.clone()) {
                 fail(&mut rep, format!("{}: version {:?}: its chain value differs from the log's", b.name, v.name));
             }
-            for h in v.parts.values() {
+            for h in v.chunks.values() {
                 if let Some(h) = chain::parse_hex(h) {
                     referenced.insert(h);
                 }
@@ -204,16 +204,16 @@ pub fn verify(store: &Store) -> VerifyReport {
         }
         rep.lines.push(format!("{}: {} snapshot(s) equal the replay at their points", b.name, rep.snapshots));
     }
-    match r.part_list() {
+    match r.chunk_list() {
         Ok(all) => {
-            rep.unreferenced_parts = all.iter().filter(|(h, _, _)| !referenced.contains(h)).count();
+            rep.unreferenced_chunks = all.iter().filter(|(h, _, _)| !referenced.contains(h)).count();
             rep.lines.push(format!(
-                "{} part(s), {} not referenced by any version (removed by compaction)",
+                "{} chunk(s), {} not referenced by any version (removed by compaction)",
                 all.len(),
-                rep.unreferenced_parts
+                rep.unreferenced_chunks
             ));
         }
-        Err(e) => fail(&mut rep, format!("parts: {e}")),
+        Err(e) => fail(&mut rep, format!("chunks: {e}")),
     }
     if rep.ok {
         rep.lines.push("everything verifies".into());

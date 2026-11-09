@@ -187,9 +187,9 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     let reader = o.project.store().reader().unwrap();
     for (kind, name, seq) in [(VersionKind::User, "Before", at), (VersionKind::Revision, "Rev A", at3)] {
         let v = reader.version(o.project.branch(), kind, name).unwrap().unwrap();
-        let set = ecad_file::v2::parts::PartSet::from_record(&v.parts).unwrap();
-        let bodies = set.parts.iter().map(|(k, h)| (k.clone(), reader.part_body(h).unwrap())).collect::<Vec<_>>();
-        let (mut doc, _) = ecad_file::v2::parts::assemble(&set, bodies).unwrap();
+        let set = ecad_file::v2::chunks::ChunkSet::from_record(&v.chunks).unwrap();
+        let bodies = set.chunks.iter().map(|(k, h)| (k.clone(), reader.chunk_body(h).unwrap())).collect::<Vec<_>>();
+        let (mut doc, _) = ecad_file::v2::chunks::assemble(&set, bodies).unwrap();
         doc.rebuild_index();
         assert_eq!(doc, f.ledger.state_at(seq).unwrap(), "{name}");
     }
@@ -207,14 +207,14 @@ fn the_append_only_api_refuses_rewrites_and_unknown_meta() {
         assert!(matches!(w.append_tx(b, seq, &[0; 32], b"{}"), Err(StoreError::Refused(_))), "{seq}");
     }
     assert!(matches!(w.set_meta("title", &serde_json::json!("x")), Err(StoreError::Refused(_))));
-    assert!(matches!(w.put_part(&[1; 32], b"not this"), Err(StoreError::Refused(_))));
+    assert!(matches!(w.put_chunk(&[1; 32], b"not this"), Err(StoreError::Refused(_))));
     drop(w);
-    // A stored part is never replaced: putting it again writes nothing.
+    // A stored chunk is never replaced: putting it again writes nothing.
     let mut w = proj.store().writer().unwrap();
     let body = b"{\"x\":1}";
-    let h = schema::part_hash(body);
-    assert!(w.put_part(&h, body).unwrap() > 0);
-    assert_eq!(w.put_part(&h, body).unwrap(), 0);
+    let h = schema::chunk_hash(body);
+    assert!(w.put_chunk(&h, body).unwrap() > 0);
+    assert_eq!(w.put_chunk(&h, body).unwrap(), 0);
     let asset = w.put_asset("image/png", b"\x89PNG....").unwrap();
     assert_eq!(w.put_asset("image/png", b"\x89PNG....").unwrap(), asset);
     w.commit().unwrap();

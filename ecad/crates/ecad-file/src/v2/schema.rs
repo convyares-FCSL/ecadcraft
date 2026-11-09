@@ -6,7 +6,7 @@
 //! - A `transactions` value is `flag ‖ chain value (32 bytes) ‖ body`, the body being the
 //!   transaction's E2 canonical JSON record (codec `json/1`), compressed when smaller (flag, see
 //!   [`super::pack`]). The chain value is E2's `H(record)`, so it is also the next record's `prev`.
-//! - A `parts` value is `flag ‖ body`, keyed by [`part_hash`] of the uncompressed body.
+//! - A `chunks` value is `flag ‖ body`, keyed by [`chunk_hash`] of the uncompressed body.
 //! - An `assets` value is `media type length (u16 BE) ‖ media type ‖ bytes`, keyed by SHA-256 of
 //!   the bytes, stored as they are.
 
@@ -26,8 +26,8 @@ pub const BRANCHES: TableDefinition<[u8; 16], &[u8]> = TableDefinition::new("bra
 pub const TRANSACTIONS: TableDefinition<[u8; 24], &[u8]> = TableDefinition::new("transactions");
 /// `versions`: branch ID ‖ kind byte ‖ name (UTF-8) → [`VersionRecord`] as JSON.
 pub const VERSIONS: TableDefinition<&[u8], &[u8]> = TableDefinition::new("versions");
-/// `parts`: part hash → flag ‖ body.
-pub const PARTS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("parts");
+/// `chunks`: chunk hash → flag ‖ body.
+pub const CHUNKS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("chunks");
 /// `assets`: SHA-256 of the bytes → media type and bytes.
 pub const ASSETS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("assets");
 
@@ -35,7 +35,7 @@ pub const ASSETS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("asset
 pub const FORMAT_PROJECT: &str = "ecad-project";
 /// `meta.container_version`.
 pub const CONTAINER_VERSION: u64 = 2;
-/// `meta.codec`: rows and parts are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
+/// `meta.codec`: rows and chunks are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
 pub const CODEC: &str = "json/1";
 /// The `meta` names this build reads; any other is refused (EEP-0005 §3.1, strict reading).
 pub const META_NAMES: [&str; 9] =
@@ -180,15 +180,15 @@ pub struct Release {
     pub assets: Vec<String>,
 }
 
-/// A `versions` row: a point, the hashes of its parts, and what opening there needs.
+/// A `versions` row: a point, the hashes of its chunks, and what opening there needs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VersionRecord {
     pub kind: VersionKind,
     pub name: String,
     pub point: Point,
-    /// Part key → part hash (64 hex digits) of the state at `point`.
-    pub parts: BTreeMap<String, String>,
+    /// Chunk key → chunk hash (64 hex digits) of the state at `point`.
+    pub chunks: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<Release>,
     /// The undo and redo stacks at `point`: `[seq, transaction ID]`, oldest first
@@ -233,10 +233,10 @@ pub struct LinkV1 {
     pub source_schema: u64,
 }
 
-/// The content address of a part: `SHA-256("ecad-part/1\0" ‖ uncompressed body)`.
-pub fn part_hash(body: &[u8]) -> Hash {
+/// The content address of a chunk: `SHA-256("ecad-chunk/1\0" ‖ uncompressed body)`.
+pub fn chunk_hash(body: &[u8]) -> Hash {
     let mut h = Sha256::new();
-    h.update(b"ecad-part/1\0");
+    h.update(b"ecad-chunk/1\0");
     h.update(body);
     h.finalize().into()
 }
@@ -255,10 +255,10 @@ pub fn tx_value(flag: u8, chain: &Hash, body: &[u8]) -> Vec<u8> {
     v
 }
 
-/// The parts of a `transactions` value.
+/// The chunks of a `transactions` value.
 ///
 /// # Errors
-/// Shorter than its fixed part.
+/// Shorter than its fixed chunk.
 pub fn split_tx_value(v: &[u8]) -> Result<(u8, Hash, &[u8]), String> {
     let (Some(flag), Some(chain), Some(body)) = (v.first(), v.get(1..33), v.get(33..)) else {
         return Err(format!("a transaction row of {} bytes is too short", v.len()));

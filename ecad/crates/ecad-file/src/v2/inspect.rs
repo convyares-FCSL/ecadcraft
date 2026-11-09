@@ -1,5 +1,5 @@
 //! Seeing a version 2 file (brief 021 scope 7): readable views of its tables, branches, log,
-//! versions and parts, and `export-jsonl`, the full history as a version 1 style JSON Lines file
+//! versions and chunks, and `export-jsonl`, the full history as a version 1 style JSON Lines file
 //! that a version 1 reader opens. Reads only; never changes the file.
 
 use std::io::Write;
@@ -107,7 +107,7 @@ pub fn log(store: &Store, name: &str, last: u64) -> Result<String, StoreError> {
     Ok(s)
 }
 
-/// Every version row: kind, name, point, number of parts, release data.
+/// Every version row: kind, name, point, number of chunks, release data.
 ///
 /// # Errors
 /// The file cannot be read.
@@ -118,12 +118,12 @@ pub fn versions(store: &Store) -> Result<String, StoreError> {
         for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
             for v in r.versions(id, kind)? {
                 s.push_str(&format!(
-                    "{} {:?} {:?} at {} ({} parts, undo {} / redo {}){}\n",
+                    "{} {:?} {:?} at {} ({} chunks, undo {} / redo {}){}\n",
                     b.name,
                     v.kind,
                     v.name,
                     v.point.seq,
-                    v.parts.len(),
+                    v.chunks.len(),
                     v.undo.len(),
                     v.redo.len(),
                     v.release.as_ref().map_or(String::new(), |rel| format!(" release {:?}", rel.fields))
@@ -134,21 +134,21 @@ pub fn versions(store: &Store) -> Result<String, StoreError> {
     Ok(s)
 }
 
-/// One part, decompressed and pretty-printed, with its stored size and compression.
+/// One chunk, decompressed and pretty-printed, with its stored size and compression.
 ///
 /// # Errors
-/// The file cannot be read, the hash is malformed, or no such part is stored.
-pub fn part(store: &Store, hash: &str) -> Result<String, StoreError> {
-    let h = chain::parse_hex(hash).ok_or_else(|| StoreError::Damaged(format!("{hash:?} is not a part hash")))?;
+/// The file cannot be read, the hash is malformed, or no such chunk is stored.
+pub fn chunk(store: &Store, hash: &str) -> Result<String, StoreError> {
+    let h = chain::parse_hex(hash).ok_or_else(|| StoreError::Damaged(format!("{hash:?} is not a chunk hash")))?;
     let r = store.reader()?;
-    let (flag, stored) = r.part(&h)?.ok_or_else(|| StoreError::Damaged(format!("no part {hash}")))?;
-    let body = r.part_body(&h)?;
+    let (flag, stored) = r.chunk(&h)?.ok_or_else(|| StoreError::Damaged(format!("no chunk {hash}")))?;
+    let body = r.chunk_body(&h)?;
     let pretty = serde_json::from_slice::<Value>(&body)
         .ok()
         .and_then(|v| serde_json::to_string_pretty(&v).ok())
         .unwrap_or_else(|| String::from_utf8_lossy(&body).into_owned());
     Ok(format!(
-        "part {hash}: {} stored bytes ({}), {} bytes uncompressed, hash verified\n{pretty}\n",
+        "chunk {hash}: {} stored bytes ({}), {} bytes uncompressed, hash verified\n{pretty}\n",
         stored.len() + 1,
         flag_name(flag),
         body.len()
@@ -223,8 +223,8 @@ fn decode_raw(table: &str, value: &[u8]) -> Result<(Option<u8>, Value), String> 
             let record = pack::unpack(flag, body)?;
             (Some(flag), json!({"chain": chain::hex(&c), "record": json_of(&record)}))
         }
-        "parts" => {
-            let flag = *value.first().ok_or("an empty part row")?;
+        "chunks" => {
+            let flag = *value.first().ok_or("an empty chunk row")?;
             let body = pack::unpack(flag, value.get(1..).unwrap_or_default())?;
             (Some(flag), json_of(&body))
         }

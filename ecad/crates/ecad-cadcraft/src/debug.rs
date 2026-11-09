@@ -737,14 +737,14 @@ pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transa
 }
 
 /// What the Storage and Branches views read from a version 2 file, on request: table sizes, the
-/// file's size, branches and version rows (without their part maps).
+/// file's size, branches and version rows (without their chunk maps).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StorageRead {
     pub file_bytes: u64,
     pub tables: Vec<ecad_file::v2::TableStat>,
     /// Name, ID, status, head, rows, parent and fork point.
     pub branches: Vec<BranchRow>,
-    /// Branch name, kind, name, point and part count.
+    /// Branch name, kind, name, point and chunk count.
     pub versions: Vec<(String, String, String, u64, usize)>,
 }
 
@@ -799,7 +799,7 @@ pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result
             ecad_file::v2::schema::VersionKind::Auto,
         ] {
             for v in r.versions(id, kind).map_err(|e| e.to_string())? {
-                versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.parts.len()));
+                versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
             }
         }
     }

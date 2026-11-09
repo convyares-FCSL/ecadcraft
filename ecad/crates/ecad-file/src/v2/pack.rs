@@ -1,4 +1,4 @@
-//! Compression of stored rows and parts (EEP-0005 §4): Zstandard when it makes them smaller, with
+//! Compression of stored rows and chunks (EEP-0005 §4): Zstandard when it makes them smaller, with
 //! a flag byte saying which. Hashes and chain values are always over the uncompressed bytes.
 //!
 //! Zstandard is `ruzstd` (pure Rust; overseer, 2026-11-08), at its only implemented level,

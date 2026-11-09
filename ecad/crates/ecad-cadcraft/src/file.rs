@@ -68,7 +68,7 @@ pub struct StorageFacts {
     pub snapshot_seq: u64,
     /// Transactions between automatic snapshots.
     pub snapshot_every: u64,
-    /// What the last save wrote: first and last `seq`, bytes, parts and snapshots written.
+    /// What the last save wrote: first and last `seq`, bytes, chunks and snapshots written.
     pub last_save: Option<ecad_file::v2::SavedV2>,
     /// The version 1 history a converted file continues: its final hash and length.
     pub link_v1: Option<(String, u64)>,

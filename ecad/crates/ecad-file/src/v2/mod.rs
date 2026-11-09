@@ -2,21 +2,21 @@
 //!
 //! - [`schema`]: the tables, keys and records (EEP-0005 §3).
 //! - [`store`]: the database behind ECAD's append-only API.
-//! - [`pack`]: Zstandard compression of rows and parts (EEP-0005 §4).
-//! - [`parts`]: snapshot parts built from and assembled into a document (EEP-0005 §3.5).
+//! - [`pack`]: Zstandard compression of rows and chunks (EEP-0005 §4).
+//! - [`chunks`]: snapshot chunks built from and assembled into a document (EEP-0005 §3.5).
 //! - [`project`]: opening from the latest snapshot and saving (EEP-0005 §5–§6).
 //!
 //! Excluded in this brief: creating, switching and merging branches (the tables and fork
 //! records are in place), per-page lazy loading (phase 2), user-triggered history compaction,
 //! and the `bin/1` codec.
 
+pub mod chunks;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod convert;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod inspect;
 pub mod pack;
-pub mod parts;
 pub mod project;
 pub mod schema;
 pub mod store;

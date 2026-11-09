@@ -207,15 +207,15 @@ pub fn table(rows: &[Row], runs: usize) -> String {
     for r in rows {
         let Some(c) = &r.compression else { continue };
         out.push_str(&format!(
-            "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of parts uncompressed\n",
+            "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of chunks uncompressed\n",
             r.tier,
             r.variant,
             mb(c.raw_rows),
-            mb(c.raw_parts)
+            mb(c.raw_chunks)
         ));
         for k in &c.codecs {
             out.push_str(&format!(
-                "  {:<18} records {:>8.2} MB, parts {:>8.2} MB, compress {:>9.1} ms, decompress {:>9.1} ms\n",
+                "  {:<18} records {:>8.2} MB, chunks {:>8.2} MB, compress {:>9.1} ms, decompress {:>9.1} ms\n",
                 k.name,
                 mb(k.rows_bytes),
                 mb(k.parts_bytes),
@@ -329,7 +329,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "v2_compacted_x10": r.v2.as_ref().map(|v| v.compacted_x10),
                 "compression": r.compression.as_ref().map(|c| json!({
                     "raw_rows": c.raw_rows,
-                    "raw_parts": c.raw_parts,
+                    "raw_chunks": c.raw_chunks,
                     "codecs": c.codecs.iter().map(|k| json!({
                         "name": k.name, "rows_bytes": k.rows_bytes, "parts_bytes": k.parts_bytes,
                         "compress_ms": k.compress_ms, "decompress_ms": k.decompress_ms,

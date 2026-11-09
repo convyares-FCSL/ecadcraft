@@ -1,5 +1,5 @@
-//! Snapshot parts (EEP-0005 §3.5; overseer, 2026-11-08): the document split by key, each part
-//! the JSON of its objects, content-addressed by [`super::schema::part_hash`].
+//! Snapshot chunks (EEP-0005 §3.5; overseer, 2026-11-08): the document split by key, each chunk
+//! the JSON of its objects, content-addressed by [`super::schema::chunk_hash`].
 //!
 //! - `page:<PageId>`: the page, the items on it and the representations on it.
 //! - `model:project`: page order, settings, named versions, project properties, folders and
@@ -10,7 +10,7 @@
 //!   its ID modulo `B`. An edit therefore rewrites one chunk; all of a kind's chunks are rewritten
 //!   only when its count crosses a power of two.
 //!
-//! A part's JSON is serde's form of the model types (struct fields in declaration order, maps in
+//! A chunk's JSON is serde's form of the model types (struct fields in declaration order, maps in
 //! key order): deterministic for a build, so equal content dedupes. Building is incremental: only
 //! the keys a range of transactions touched ([`Dirty`]) are rebuilt; the rest keep their hashes.
 
@@ -23,14 +23,14 @@ use ecad_model::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::schema::part_hash;
+use super::schema::chunk_hash;
 use crate::chain::{self, Hash};
 
 /// Objects per model chunk, before bucketing (overseer, 2026-11-08).
 pub const CHUNK: usize = 1_024;
-/// The part holding project-wide state.
+/// The chunk holding project-wide state.
 pub const PROJECT_KEY: &str = "model:project";
-/// The part holding state derived from the history that a snapshot must carry (overseer answer
+/// The chunk holding state derived from the history that a snapshot must carry (overseer answer
 /// C, 2026-11-08): a cache, rebuilt by Verify from the history.
 pub const META_KEY: &str = "model:meta";
 
@@ -48,7 +48,7 @@ pub const MAX_BUCKETS: u32 = 1 << 20;
 /// The model kinds split into chunks, by their key name.
 pub const KINDS: [&str; 6] = ["layer", "component", "terminal", "conductor", "cable", "definition"];
 
-/// The key of page `id`'s part.
+/// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
     format!("page:{}", id.hex())
 }
@@ -91,35 +91,35 @@ macro_rules! raw_id {
 }
 raw_id!(LayerId, ComponentId, TerminalId, ConductorId, CableId, DefinitionId);
 
-/// A snapshot's part set: key → hash, and the bucket count of each model kind.
+/// A snapshot's chunk set: key → hash, and the bucket count of each model kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PartSet {
-    pub parts: BTreeMap<String, Hash>,
+pub struct ChunkSet {
+    pub chunks: BTreeMap<String, Hash>,
     pub buckets: BTreeMap<String, u32>,
 }
 
-impl PartSet {
-    /// The set named by a version row's `parts` (key → hex hash).
+impl ChunkSet {
+    /// The set named by a version row's `chunks` (key → hex hash).
     ///
     /// # Errors
     /// A malformed key or hash.
-    pub fn from_record(parts: &BTreeMap<String, String>) -> Result<Self, String> {
-        let mut set = PartSet::default();
-        for (k, h) in parts {
-            let hash = chain::parse_hex(h).ok_or_else(|| format!("part {k}: {h:?} is not a hash"))?;
+    pub fn from_record(chunks: &BTreeMap<String, String>) -> Result<Self, String> {
+        let mut set = ChunkSet::default();
+        for (k, h) in chunks {
+            let hash = chain::parse_hex(h).ok_or_else(|| format!("chunk {k}: {h:?} is not a hash"))?;
             if let Some(rest) = k.strip_prefix("model:")
                 && let Some((kind, b)) = rest.split_once(':')
             {
-                let b: u32 = b.parse().map_err(|_| format!("part key {k:?} has no bucket number"))?;
+                let b: u32 = b.parse().map_err(|_| format!("chunk key {k:?} has no bucket number"))?;
                 if !KINDS.contains(&kind) || b >= MAX_BUCKETS {
-                    return Err(format!("part key {k:?} is not a model chunk"));
+                    return Err(format!("chunk key {k:?} is not a model chunk"));
                 }
                 let n = set.buckets.entry(kind.to_string()).or_insert(0);
                 *n = (*n).max(b + 1);
             } else if k != PROJECT_KEY && k != META_KEY && !k.starts_with("page:") {
-                return Err(format!("unknown part key {k:?}"));
+                return Err(format!("unknown chunk key {k:?}"));
             }
-            set.parts.insert(k.clone(), hash);
+            set.chunks.insert(k.clone(), hash);
         }
         for (kind, n) in &mut set.buckets {
             if !n.is_power_of_two() {
@@ -131,11 +131,11 @@ impl PartSet {
 
     /// Key → hex hash, for a version row.
     pub fn to_record(&self) -> BTreeMap<String, String> {
-        self.parts.iter().map(|(k, h)| (k.clone(), chain::hex(h))).collect()
+        self.chunks.iter().map(|(k, h)| (k.clone(), chain::hex(h))).collect()
     }
 }
 
-/// What a range of transactions touched, by part.
+/// What a range of transactions touched, by chunk.
 #[derive(Debug, Clone, Default)]
 pub struct Dirty {
     pub pages: BTreeSet<PageId>,
@@ -182,7 +182,7 @@ impl Dirty {
 }
 
 #[derive(Serialize)]
-struct PagePartRef<'a> {
+struct PageChunkRef<'a> {
     page: &'a Page,
     items: BTreeMap<&'a ItemId, &'a Item>,
     representations: BTreeMap<&'a RepresentationId, &'a Representation>,
@@ -190,14 +190,14 @@ struct PagePartRef<'a> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PagePart {
+struct PageChunk {
     page: Page,
     items: BTreeMap<ItemId, Item>,
     representations: BTreeMap<RepresentationId, Representation>,
 }
 
 #[derive(Serialize)]
-struct ProjectPartRef<'a> {
+struct ProjectChunkRef<'a> {
     page_order: &'a Vec<PageId>,
     settings: &'a ProjectSettings,
     versions: &'a BTreeMap<String, u64>,
@@ -208,7 +208,7 @@ struct ProjectPartRef<'a> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProjectPart {
+struct ProjectChunk {
     page_order: Vec<PageId>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
@@ -217,20 +217,20 @@ struct ProjectPart {
     folder_order: Vec<FolderId>,
 }
 
-/// A part's bytes, ready to store (it may already be stored: parts are inserted only if absent).
+/// A chunk's bytes, ready to store (it may already be stored: chunks are inserted only if absent).
 #[derive(Debug, Clone)]
-pub struct NewPart {
+pub struct NewChunk {
     pub hash: Hash,
     pub body: Vec<u8>,
 }
 
-fn encode<T: Serialize>(v: &T) -> Result<NewPart, String> {
+fn encode<T: Serialize>(v: &T) -> Result<NewChunk, String> {
     let body = serde_json::to_vec(v).map_err(|e| e.to_string())?;
-    Ok(NewPart { hash: part_hash(&body), body })
+    Ok(NewChunk { hash: chunk_hash(&body), body })
 }
 
-/// The model kind `kind`'s objects in bucket `b` (of `count`) as a part.
-fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewPart, String> {
+/// The model kind `kind`'s objects in bucket `b` (of `count`) as a chunk.
+fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChunk, String> {
     fn pick<'a, K: RawId + 'a, V>(map: &'a BTreeMap<K, V>, b: u32, count: u32) -> BTreeMap<&'a K, &'a V> {
         map.iter().filter(|(k, _)| bucket(k.raw(), count) == b).collect()
     }
@@ -257,9 +257,9 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
     }
 }
 
-/// The parts of the pages in `pages` that exist in `doc` (one pass over items and
+/// The chunks of the pages in `pages` that exist in `doc` (one pass over items and
 /// representations).
-fn page_parts(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, NewPart)>, String> {
+fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, NewChunk)>, String> {
     let mut items: BTreeMap<PageId, BTreeMap<&ItemId, &Item>> = BTreeMap::new();
     let mut reps: BTreeMap<PageId, BTreeMap<&RepresentationId, &Representation>> = BTreeMap::new();
     let all = pages.len() == doc.pages.len();
@@ -276,18 +276,18 @@ fn page_parts(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, N
     let mut out = Vec::new();
     for id in pages {
         let Some(page) = doc.pages.get(id) else { continue };
-        let part = PagePartRef {
+        let chunk = PageChunkRef {
             page,
             items: items.remove(id).unwrap_or_default(),
             representations: reps.remove(id).unwrap_or_default(),
         };
-        out.push((*id, encode(&part)?));
+        out.push((*id, encode(&chunk)?));
     }
     Ok(out)
 }
 
-fn project_part(doc: &Document) -> Result<NewPart, String> {
-    encode(&ProjectPartRef {
+fn project_chunk(doc: &Document) -> Result<NewChunk, String> {
+    encode(&ProjectChunkRef {
         page_order: &doc.page_order,
         settings: &doc.settings,
         versions: &doc.versions,
@@ -297,64 +297,64 @@ fn project_part(doc: &Document) -> Result<NewPart, String> {
     })
 }
 
-/// Every part of `doc`: its part set and the parts' bytes.
+/// Every chunk of `doc`: its chunk set and the chunks' bytes.
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(PartSet, Vec<NewPart>), String> {
+pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
     let mut dirty = Dirty { pages: doc.pages.keys().copied().collect(), objects: BTreeMap::new() };
     for kind in KINDS {
         dirty.objects.insert(kind, BTreeSet::new());
     }
-    build(doc, &PartSet::default(), &dirty, true, meta)
+    build(doc, &ChunkSet::default(), &dirty, true, meta)
 }
 
-/// The part set of `doc`, given `prev` (the part set of a state that differs from `doc` only in
-/// what `dirty` names): only touched keys are rebuilt. Returns the new set and the parts it
+/// The chunk set of `doc`, given `prev` (the chunk set of a state that differs from `doc` only in
+/// what `dirty` names): only touched keys are rebuilt. Returns the new set and the chunks it
 /// names that `prev` does not.
 ///
 /// # Errors
 /// An object could not be encoded.
 pub fn build_incremental(
     doc: &Document,
-    prev: &PartSet,
+    prev: &ChunkSet,
     dirty: &Dirty,
     meta: &ModelMeta,
-) -> Result<(PartSet, Vec<NewPart>), String> {
+) -> Result<(ChunkSet, Vec<NewChunk>), String> {
     build(doc, prev, dirty, false, meta)
 }
 
 fn build(
     doc: &Document,
-    prev: &PartSet,
+    prev: &ChunkSet,
     dirty: &Dirty,
     full: bool,
     meta: &ModelMeta,
-) -> Result<(PartSet, Vec<NewPart>), String> {
+) -> Result<(ChunkSet, Vec<NewChunk>), String> {
     let mut set = prev.clone();
     let mut new = Vec::new();
-    let mut put = |set: &mut PartSet, key: String, part: NewPart| {
-        if set.parts.get(&key) != Some(&part.hash) {
-            new.push(part.clone());
+    let mut put = |set: &mut ChunkSet, key: String, chunk: NewChunk| {
+        if set.chunks.get(&key) != Some(&chunk.hash) {
+            new.push(chunk.clone());
         }
-        set.parts.insert(key, part.hash);
+        set.chunks.insert(key, chunk.hash);
     };
-    put(&mut set, PROJECT_KEY.into(), project_part(doc)?);
+    put(&mut set, PROJECT_KEY.into(), project_chunk(doc)?);
     put(&mut set, META_KEY.into(), encode(meta)?);
-    // Pages: rebuild the touched ones; drop the parts of pages that no longer exist.
-    for (id, part) in page_parts(doc, &dirty.pages)? {
-        put(&mut set, page_key(id), part);
+    // Pages: rebuild the touched ones; drop the chunks of pages that no longer exist.
+    for (id, chunk) in page_chunks(doc, &dirty.pages)? {
+        put(&mut set, page_key(id), chunk);
     }
     for id in &dirty.pages {
         if !doc.pages.contains_key(id) {
-            set.parts.remove(&page_key(*id));
+            set.chunks.remove(&page_key(*id));
         }
     }
     for kind in KINDS {
         let count = bucket_count(kind_len(doc, kind));
         let old = if full { 0 } else { prev.buckets.get(kind).copied().unwrap_or(0) };
         let rebuild: BTreeSet<u32> = if count != old {
-            set.parts.retain(|k, _| !k.starts_with(&format!("model:{kind}:")));
+            set.chunks.retain(|k, _| !k.starts_with(&format!("model:{kind}:")));
             (0..count).collect()
         } else {
             dirty.objects.get(kind).map(|ids| ids.iter().map(|id| bucket(*id, count)).collect()).unwrap_or_default()
@@ -378,7 +378,7 @@ fn merge<K: Ord + Copy + std::fmt::Display, V>(
 ) -> Result<(), String> {
     for (k, v) in from {
         if into.insert(k, v).is_some() {
-            return Err(format!("{what} {k} is in two parts"));
+            return Err(format!("{what} {k} is in two chunks"));
         }
     }
     Ok(())
@@ -387,29 +387,29 @@ fn merge<K: Ord + Copy + std::fmt::Display, V>(
 /// Check that every ID of a chunk belongs in it.
 fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32) -> Result<(), String> {
     match map.keys().find(|k| bucket(k.raw(), count) != b) {
-        Some(k) => Err(format!("{k} does not belong in part {key}")),
+        Some(k) => Err(format!("{k} does not belong in chunk {key}")),
         None => Ok(()),
     }
 }
 
-/// The document a part set describes, from its parts' uncompressed bodies (key, body).
+/// The document a chunk set describes, from its chunks' uncompressed bodies (key, body).
 ///
 /// # Semantics
-/// Every object must be in exactly the part its key says (its page's part, its kind's bucket),
-/// and the set must hold the project part. The document's derived index is not built here.
+/// Every object must be in exactly the chunk its key says (its page's chunk, its kind's bucket),
+/// and the set must hold the project chunk. The document's derived index is not built here.
 ///
 /// # Errors
-/// A part that does not parse, an object in the wrong part or in two parts, or a missing project
-/// part.
-pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
+/// A chunk that does not parse, an object in the wrong chunk or in two chunks, or a missing project
+/// chunk.
+pub fn assemble(set: &ChunkSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
     let mut doc = Document::default();
     let mut project = false;
     let mut meta = None;
     for (key, body) in bodies {
         if key == META_KEY {
-            meta = Some(serde_json::from_slice::<ModelMeta>(&body).map_err(|e| format!("part {key}: {e}"))?);
+            meta = Some(serde_json::from_slice::<ModelMeta>(&body).map_err(|e| format!("chunk {key}: {e}"))?);
         } else if key == PROJECT_KEY {
-            let p: ProjectPart = serde_json::from_slice(&body).map_err(|e| format!("part {key}: {e}"))?;
+            let p: ProjectChunk = serde_json::from_slice(&body).map_err(|e| format!("chunk {key}: {e}"))?;
             doc.page_order = p.page_order;
             doc.settings = p.settings;
             doc.versions = p.versions;
@@ -418,23 +418,23 @@ pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Docume
             doc.folder_order = p.folder_order;
             project = true;
         } else if let Some(hex) = key.strip_prefix("page:") {
-            let id = PageId::parse(hex).ok_or_else(|| format!("part key {key:?} names no page"))?;
-            let p: PagePart = serde_json::from_slice(&body).map_err(|e| format!("part {key}: {e}"))?;
+            let id = PageId::parse(hex).ok_or_else(|| format!("chunk key {key:?} names no page"))?;
+            let p: PageChunk = serde_json::from_slice(&body).map_err(|e| format!("chunk {key}: {e}"))?;
             if let Some((i, _)) = p.items.iter().find(|(_, it)| it.page != id) {
-                return Err(format!("item {i} is in the part of page {id} but on another page"));
+                return Err(format!("item {i} is in the chunk of page {id} but on another page"));
             }
             if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
-                return Err(format!("representation {r} is in the part of page {id} but on another page"));
+                return Err(format!("representation {r} is in the chunk of page {id} but on another page"));
             }
             if doc.pages.insert(id, p.page).is_some() {
-                return Err(format!("page {id} is in two parts"));
+                return Err(format!("page {id} is in two chunks"));
             }
             merge(&mut doc.items, p.items, "item")?;
             merge(&mut doc.representations, p.representations, "representation")?;
         } else if let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) {
-            let b: u32 = b.parse().map_err(|_| format!("part key {key:?} has no bucket number"))?;
-            let count = set.buckets.get(kind).copied().ok_or_else(|| format!("part {key}: unknown kind"))?;
-            let parse = |what: &str| format!("part {key} ({what})");
+            let b: u32 = b.parse().map_err(|_| format!("chunk key {key:?} has no bucket number"))?;
+            let count = set.buckets.get(kind).copied().ok_or_else(|| format!("chunk {key}: unknown kind"))?;
+            let parse = |what: &str| format!("chunk {key} ({what})");
             match kind {
                 "layer" => {
                     let m: BTreeMap<LayerId, Layer> =
@@ -472,20 +472,20 @@ pub fn assemble(set: &PartSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Docume
                     check_bucket(&m, &key, b, count)?;
                     merge(&mut doc.definitions, m, "definition")?;
                 }
-                other => return Err(format!("part {key}: unknown kind {other}")),
+                other => return Err(format!("chunk {key}: unknown kind {other}")),
             }
         } else {
-            return Err(format!("unknown part key {key:?}"));
+            return Err(format!("unknown chunk key {key:?}"));
         }
     }
     if !project {
-        return Err("the snapshot has no project part".into());
+        return Err("the snapshot has no project chunk".into());
     }
-    // Every page in the order has its part, and every part's page is in the order.
+    // Every page in the order has its chunk, and every chunk's page is in the order.
     let ordered: BTreeSet<PageId> = doc.page_order.iter().copied().collect();
-    let parted: BTreeSet<PageId> = doc.pages.keys().copied().collect();
-    if ordered != parted || ordered.len() != doc.page_order.len() {
-        return Err("the snapshot's page order does not match its page parts".into());
+    let chunked: BTreeSet<PageId> = doc.pages.keys().copied().collect();
+    if ordered != chunked || ordered.len() != doc.page_order.len() {
+        return Err("the snapshot's page order does not match its page chunks".into());
     }
     Ok((doc, meta))
 }
@@ -536,7 +536,7 @@ mod tests {
         let (next, new) = build_incremental(&doc, &set, &dirty, &meta).unwrap();
         assert_eq!(new.len(), 1, "one chunk written");
         let changed: Vec<_> =
-            next.parts.iter().filter(|(k, h)| set.parts.get(*k) != Some(*h)).map(|(k, _)| k).collect();
+            next.chunks.iter().filter(|(k, h)| set.chunks.get(*k) != Some(*h)).map(|(k, _)| k).collect();
         assert_eq!(changed, vec![&model_key("component", bucket(0x9_9999, 8))]);
         // The same set as building everything again.
         assert_eq!(next, build_full(&doc, &meta).unwrap().0);

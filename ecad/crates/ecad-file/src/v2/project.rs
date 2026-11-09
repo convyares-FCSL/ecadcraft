@@ -1,14 +1,14 @@
 //! A project in a version 2 file: opening from the latest snapshot and its tail, and saving
 //! (EEP-0005 §5–§6).
 //!
-//! - **Open** reads `meta`, the branch row and its head transaction, the latest snapshot's parts
+//! - **Open** reads `meta`, the branch row and its head transaction, the latest snapshot's chunks
 //!   (phase 1: the whole active snapshot, overseer 2026-11-08) and the transactions after it,
 //!   each checked against its chain value and replayed with every check. It never reads other
 //!   branches, older versions, transactions before the snapshot, or assets. Older transactions are
 //!   read on demand through [`StoreHistory`] (undo past the snapshot, `state_at`).
 //! - **Save** writes the pending transactions, the snapshots of any versions they name and of an
 //!   automatic snapshot every `cache.every` transactions, the branch head and `meta` in one redb
-//!   write transaction. Parts are built incrementally from the last snapshot ([`parts::Dirty`]).
+//!   write transaction. Chunks are built incrementally from the last snapshot ([`chunks::Dirty`]).
 //!   Nothing stored is read back to check it; its cost follows what is written.
 
 use std::collections::BTreeMap;
@@ -17,8 +17,8 @@ use std::sync::Arc;
 use ecad_model::{Base, Document, History, Ledger, ModelError, ObjectRef, Op, ProjectId, Transaction, TxId, TxKind};
 use serde_json::{Value, json};
 
+use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
-use super::parts::{self, Dirty, ModelMeta, PartSet};
 use super::schema::{
     BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME,
     META_NAMES, Point, Release, SNAPSHOT_EVERY_RANGE, SnapshotRef, VersionKind, VersionRecord, auto_name,
@@ -59,7 +59,7 @@ pub enum SaveErrorV2 {
 pub struct SavedV2 {
     pub first_seq: u64,
     pub last_seq: u64,
-    /// Bytes of new rows and parts (before redb's own overhead).
+    /// Bytes of new rows and chunks (before redb's own overhead).
     pub bytes: u64,
     pub parts_written: usize,
     /// Snapshots written (versions and automatic).
@@ -206,14 +206,14 @@ fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<
     Ok(high)
 }
 
-/// Read a snapshot's document and its `model:meta`: every part, each checked against its hash.
+/// Read a snapshot's document and its `model:meta`: every chunk, each checked against its hash.
 fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<ModelMeta>), String> {
-    let set = PartSet::from_record(&v.parts)?;
-    let mut bodies = Vec::with_capacity(set.parts.len());
-    for (key, hash) in &set.parts {
-        bodies.push((key.clone(), r.part_body(hash).map_err(|e| e.to_string())?));
+    let set = ChunkSet::from_record(&v.chunks)?;
+    let mut bodies = Vec::with_capacity(set.chunks.len());
+    for (key, hash) in &set.chunks {
+        bodies.push((key.clone(), r.chunk_body(hash).map_err(|e| e.to_string())?));
     }
-    parts::assemble(&set, bodies)
+    chunks::assemble(&set, bodies)
 }
 
 /// Rows `from..=to` of `branch`, decoded and chain-checked from `prev`. Stops at the first bad
@@ -338,7 +338,7 @@ impl History for StoreHistory {
 #[derive(Debug, Clone)]
 struct Snap {
     seq: u64,
-    set: PartSet,
+    set: ChunkSet,
 }
 
 /// A project bound to a version 2 database.
@@ -498,10 +498,10 @@ impl ProjectV2 {
                 let chain = v.point.hash().map_err(OpenErrorV2::Damaged)?;
                 let undo = stacks_from_record(&v.undo).map_err(OpenErrorV2::Damaged)?;
                 let redo = stacks_from_record(&v.redo).map_err(OpenErrorV2::Damaged)?;
-                let set = PartSet::from_record(&v.parts).map_err(OpenErrorV2::Damaged)?;
+                let set = ChunkSet::from_record(&v.chunks).map_err(OpenErrorV2::Damaged)?;
                 (v.point.seq, chain, doc, (undo, redo), set)
             }
-            None => (0, seed_chain, Document::default(), (Vec::new(), Vec::new()), PartSet::default()),
+            None => (0, seed_chain, Document::default(), (Vec::new(), Vec::new()), ChunkSet::default()),
         };
         // The snapshot's point must be the stored row's chain value.
         if snap_seq > 0 && r.tx(branch, snap_seq)?.map(|(_, c, _)| c) != Some(snap_chain) {
@@ -618,7 +618,7 @@ impl ProjectV2 {
         let mut doc = Document::default();
         let mut stacks = (Vec::new(), Vec::new());
         let mut done = 0u64;
-        let mut snap = Snap { seq: 0, set: PartSet::default() };
+        let mut snap = Snap { seq: 0, set: ChunkSet::default() };
         let mut first = true;
         let mut latest: Option<SnapshotRef> = None;
         let mut high = HighWater::new();
@@ -636,14 +636,14 @@ impl ProjectV2 {
             done = at;
             let meta = ModelMeta { tag_high: high.clone() };
             let (set, new) = if first {
-                parts::build_full(&doc, &meta)
+                chunks::build_full(&doc, &meta)
             } else {
-                parts::build_incremental(&doc, &snap.set, &dirty, &meta)
+                chunks::build_incremental(&doc, &snap.set, &dirty, &meta)
             }
             .map_err(SaveErrorV2::Encode)?;
             first = false;
             for p in &new {
-                let n = w.put_part(&p.hash, &p.body)?;
+                let n = w.put_chunk(&p.hash, &p.body)?;
                 saved.bytes += n;
                 saved.parts_written += usize::from(n > 0);
             }
@@ -655,7 +655,7 @@ impl ProjectV2 {
                     kind,
                     name: name.clone(),
                     point: Point::new(at, &chain),
-                    parts: set.to_record(),
+                    chunks: set.to_record(),
                     release,
                     undo: stacks_record(&stacks.0),
                     redo: stacks_record(&stacks.1),
@@ -885,20 +885,20 @@ impl ProjectV2 {
                 .collect();
             let prev = snap.set.clone();
             if undo_after.is_empty() {
-                parts::build_incremental(ledger.document(), &prev, &dirty, &meta)
+                chunks::build_incremental(ledger.document(), &prev, &dirty, &meta)
             } else {
                 ledger
-                    .with_applied(&undo_after, |d| parts::build_incremental(d, &prev, &dirty, &meta))
+                    .with_applied(&undo_after, |d| chunks::build_incremental(d, &prev, &dirty, &meta))
                     .map_err(|e| enc(e.to_string()))?
             }
         } else {
             let doc = ledger.state_at(at).map_err(|e| enc(e.to_string()))?;
-            parts::build_full(&doc, &meta)
+            chunks::build_full(&doc, &meta)
         }
         .map_err(enc)?;
         let (set, new) = built;
         for p in &new {
-            let n = w.put_part(&p.hash, &p.body)?;
+            let n = w.put_chunk(&p.hash, &p.body)?;
             saved.bytes += n;
             saved.parts_written += usize::from(n > 0);
         }
@@ -917,7 +917,7 @@ impl ProjectV2 {
                 kind,
                 name: name.to_string(),
                 point: Point::new(at, &chain),
-                parts: set.to_record(),
+                chunks: set.to_record(),
                 release,
                 undo: stacks_record(&stacks.0),
                 redo: stacks_record(&stacks.1),

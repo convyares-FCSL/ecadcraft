@@ -1,5 +1,5 @@
 //! `ecad upgrade` and `ecadinspect` (brief 021): the converter writes a new verified file and
-//! never touches the source; the views show the tables, branches, log, versions and parts;
+//! never touches the source; the views show the tables, branches, log, versions and chunks;
 //! `export-jsonl` round-trips into a version 1 history.
 
 use std::path::PathBuf;
@@ -120,7 +120,7 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
     let o = out.to_str().unwrap();
     run(ecad_cli::ecad, &["upgrade", src.to_str().unwrap(), "--out", o]).unwrap();
     let tables = run(ecad_cli::ecadinspect, &[o, "tables"]).unwrap();
-    for t in ["meta", "branches", "transactions", "versions", "parts", "assets", "link_v1", "json/1"] {
+    for t in ["meta", "branches", "transactions", "versions", "chunks", "assets", "link_v1", "json/1"] {
         assert!(tables.contains(t), "{t}: {tables}");
     }
     let branches = run(ecad_cli::ecadinspect, &[o, "branches"]).unwrap();
@@ -131,10 +131,10 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
     let versions = run(ecad_cli::ecadinspect, &[o, "versions"]).unwrap();
     assert!(versions.contains("\"Ten\"") && versions.contains("Auto"), "{versions}");
     let r = ecad_file::v2::Store::open(&out, false).unwrap();
-    let (hash, _, _) = r.reader().unwrap().part_list().unwrap()[0];
+    let (hash, _, _) = r.reader().unwrap().chunk_list().unwrap()[0];
     drop(r);
-    let part = run(ecad_cli::ecadinspect, &[o, "part", &ecad_file::chain::hex(&hash)]).unwrap();
-    assert!(part.contains("hash verified"), "{part}");
+    let chunk = run(ecad_cli::ecadinspect, &[o, "chunk", &ecad_file::chain::hex(&hash)]).unwrap();
+    assert!(chunk.contains("hash verified"), "{chunk}");
     let verify = run(ecad_cli::ecadinspect, &[o, "verify"]).unwrap();
     assert!(verify.trim_end().ends_with("OK"), "{verify}");
     // export-jsonl is a version 1 file with the same history and chain.
@@ -155,7 +155,7 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
         tables_seen.insert(v["table"].as_str().unwrap().to_string());
         assert!(v["stored"].as_str().is_some() && !v["decoded"].is_null(), "{line}");
     }
-    for t in ["meta", "branches", "transactions", "versions", "parts"] {
+    for t in ["meta", "branches", "transactions", "versions", "chunks"] {
         assert!(tables_seen.contains(t), "{t}");
     }
 }

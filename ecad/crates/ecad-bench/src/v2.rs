@@ -199,7 +199,7 @@ pub fn crash_save(path: &Path) -> Result<(), String> {
     std::process::exit(0)
 }
 
-/// Zstandard, compared (overseer, 2026-11-08): every transaction record and part of a version 2
+/// Zstandard, compared (overseer, 2026-11-08): every transaction record and chunk of a version 2
 /// file, decompressed, then compressed by each codec. Sizes in bytes, times in milliseconds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Codec {
@@ -210,16 +210,16 @@ pub struct Codec {
     pub decompress_ms: f64,
 }
 
-/// Raw bytes of the rows and parts, and the comparison.
+/// Raw bytes of the rows and chunks, and the comparison.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Compression {
     pub raw_rows: u64,
-    pub raw_parts: u64,
+    pub raw_chunks: u64,
     pub codecs: Vec<Codec>,
 }
 
 /// Compare `ruzstd` (level Fastest, the only one it implements) with the `zstd` crate at levels 1
-/// and 3 on the rows and parts of the version 2 file at `path`.
+/// and 3 on the rows and chunks of the version 2 file at `path`.
 ///
 /// # Errors
 /// The file cannot be read, or a codec failed.
@@ -227,16 +227,16 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     let store = ecad_file::v2::Store::open(path, false).map_err(|e| e.to_string())?;
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut rows = Vec::new();
-    let mut parts = Vec::new();
+    let mut chunks = Vec::new();
     r.raw_rows(|table, _, v| {
         match table {
             "transactions" => {
                 let (flag, _, body) = ecad_file::v2::schema::split_tx_value(v)?;
                 rows.push(ecad_file::v2::pack::unpack(flag, body)?);
             }
-            "parts" => {
-                let flag = *v.first().ok_or("empty part")?;
-                parts.push(ecad_file::v2::pack::unpack(flag, v.get(1..).unwrap_or_default())?);
+            "chunks" => {
+                let flag = *v.first().ok_or("empty chunk")?;
+                chunks.push(ecad_file::v2::pack::unpack(flag, v.get(1..).unwrap_or_default())?);
             }
             _ => {}
         }
@@ -246,7 +246,7 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     drop(r);
     drop(store);
     let raw_rows = rows.iter().map(|b| b.len() as u64).sum();
-    let raw_parts = parts.iter().map(|b| b.len() as u64).sum();
+    let raw_chunks = chunks.iter().map(|b| b.len() as u64).sum();
     let mut codecs = Vec::new();
     type Enc = fn(&[u8]) -> Result<Vec<u8>, String>;
     type Dec = fn(&[u8]) -> Result<Vec<u8>, String>;
@@ -270,10 +270,10 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     for (name, enc, dec) in all {
         let t = Instant::now();
         let z_rows: Vec<Vec<u8>> = rows.iter().map(|b| enc(b)).collect::<Result<_, _>>()?;
-        let z_parts: Vec<Vec<u8>> = parts.iter().map(|b| enc(b)).collect::<Result<_, _>>()?;
+        let z_chunks: Vec<Vec<u8>> = chunks.iter().map(|b| enc(b)).collect::<Result<_, _>>()?;
         let compress_ms = ms(t);
         let t = Instant::now();
-        for (z, raw) in z_rows.iter().zip(&rows).chain(z_parts.iter().zip(&parts)) {
+        for (z, raw) in z_rows.iter().zip(&rows).chain(z_chunks.iter().zip(&chunks)) {
             if dec(z)? != *raw {
                 return Err(format!("{name} did not round-trip"));
             }
@@ -284,12 +284,12 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         codecs.push(Codec {
             name,
             rows_bytes: size(&z_rows, &rows),
-            parts_bytes: size(&z_parts, &parts),
+            parts_bytes: size(&z_chunks, &chunks),
             compress_ms,
             decompress_ms,
         });
     }
-    Ok(Compression { raw_rows, raw_parts, codecs })
+    Ok(Compression { raw_rows, raw_chunks, codecs })
 }
 
 /// A growth probe (developer use, `ecad-bench --growth <file.v2.ecad> <batches>`): append

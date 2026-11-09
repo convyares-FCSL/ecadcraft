@@ -5,7 +5,7 @@
 //! - `ecad upgrade <file> [--out <file>]`: convert a version 1 project file to a new version 2
 //!   file (EEP-0003 §16.2 option a), verified by replaying both; the source is never changed.
 //! - `ecadinspect <file> <view>` (also `ecad inspect <file> <view>`): read-only views of a
-//!   version 2 file: `tables`, `branches`, `log <branch> [--last N]`, `versions`, `part <hash>`,
+//!   version 2 file: `tables`, `branches`, `log <branch> [--last N]`, `versions`, `chunk <hash>`,
 //!   `verify`, and `export-jsonl [--with-raw] [--out <file>]`.
 //!
 //! Excluded: anything that changes a version 2 file.
@@ -33,7 +33,7 @@ ecadinspect <file.ecad> <view>, where <view> is one of:
   branches                   branches, fork points and heads
   log <branch> [--last N]    the last N transactions (default 20), decompressed
   versions                   named versions, revisions and automatic snapshots
-  part <hash>                one snapshot part, decompressed
+  chunk <hash>                one snapshot chunk, decompressed
   verify                     replay from the root and check every snapshot (reads everything)
   export-jsonl [--with-raw] [--out <file>]
                              the whole history as a version 1 JSON Lines file (stdout by default);
@@ -116,7 +116,7 @@ pub fn ecadinspect(args: &[String], out: &mut dyn Write) -> Result<(), String> {
             p(inspect::log(&store, branch, n))?
         }
         ("versions", None) => p(inspect::versions(&store))?,
-        ("part", Some(hash)) => p(inspect::part(&store, hash))?,
+        ("chunk", Some(hash)) => p(inspect::chunk(&store, hash))?,
         ("verify", None) => {
             let v = ecad_file::v2::verify::verify(&store);
             format!("{}\n{}", v.lines.join("\n"), if v.ok { "OK" } else { "FAILED" })

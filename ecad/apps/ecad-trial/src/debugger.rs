@@ -757,7 +757,7 @@ impl Debugger {
                     || "none in this session".into(),
                     |l| {
                         format!(
-                            "transactions {}–{}, {} bytes, {} new parts, {} snapshots",
+                            "transactions {}–{}, {} bytes, {} new chunks, {} snapshots",
                             l.first_seq, l.last_seq, l.bytes, l.parts_written, l.snapshots
                         )
                     },
@@ -793,8 +793,8 @@ impl Debugger {
                         }
                     });
                     ui.label(format!("{} version rows:", r.versions.len()));
-                    for (b, kind, name, seq, parts) in r.versions.iter().rev().take(PAGE) {
-                        ui.label(format!("{b}: {kind} {name:?} at {seq} ({parts} parts)"));
+                    for (b, kind, name, seq, chunks) in r.versions.iter().rev().take(PAGE) {
+                        ui.label(format!("{b}: {kind} {name:?} at {seq} ({chunks} chunks)"));
                     }
                 }
                 Err(e) => {
@@ -1092,21 +1092,21 @@ fn state_color(state: RecordState, warn: Color32) -> Color32 {
 
 /// A resolved selection in words.
 fn describe(doc: &Document, r: &Resolved) -> String {
-    let mut parts = Vec::new();
+    let mut chunks = Vec::new();
     if let Some(i) = r.item {
-        parts.push(format!("item {}", i.short()));
+        chunks.push(format!("item {}", i.short()));
     }
     if let Some(t) = r.terminal {
-        parts.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
+        chunks.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
     }
     if let Some(rep) = r.representation {
-        parts.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));
+        chunks.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));
     }
     if let Some(s) = r.subject {
         let id = ObjectId::from(s);
-        parts.push(format!("{} {} {}", id.kind(), id.short(), debug::object_label(doc, id)));
+        chunks.push(format!("{} {} {}", id.kind(), id.short(), debug::object_label(doc, id)));
     }
-    if parts.is_empty() { "not found in the model".into() } else { parts.join(" → ") }
+    if chunks.is_empty() { "not found in the model".into() } else { chunks.join(" → ") }
 }
 
 /// Previous/next buttons for a list of `n` rows.

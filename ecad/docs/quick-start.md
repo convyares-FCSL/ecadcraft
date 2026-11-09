@@ -24,7 +24,7 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 one transaction in a few milliseconds and opening reads the latest snapshot and the changes after
 it, so both stay fast as the history grows. A version 1 file is **offered** for conversion when
 you open it (a new `<name>.v2.ecad`, the original untouched), or converted with `ecad upgrade`.
-`ecadinspect` shows a version 2 file's tables, branches, log, versions and parts, and exports the
+`ecadinspect` shows a version 2 file's tables, branches, log, versions and chunks, and exports the
 history as version 1 JSON Lines. The debugger gains **Storage** and **Branches** views. Sections
 7, 7B, 7C, 8 and "Measuring load time" describe it.
 - *Automated checks:* `ecad/crates/ecad-file/tests/all/container_v2.rs` (reopen, saves and
@@ -961,8 +961,8 @@ cargo run --release -p ecad-cli --bin ecadinspect -- ~/ecad-projects/demo.v2.eca
 Views: `tables` (rows and bytes per table, and `meta`), `branches` (each branch, its head and
 fork point; only `main` exists for now), `log main --last 20` (the newest transactions,
 decompressed, one JSON record each with its stored size), `versions` (named versions, issued
-revisions and the automatic snapshots taken every 2 000 transactions), `part <hash>` (one
-snapshot part, decompressed), `verify` (replays the whole history and checks every snapshot;
+revisions and the automatic snapshots taken every 2 000 transactions), `chunk <hash>` (one
+snapshot chunk, decompressed), `verify` (replays the whole history and checks every snapshot;
 reads everything), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
 Lines file: the HTML inspector and any version 1 reader open it). `export-jsonl --with-raw
 --out <file>` writes every stored row instead, with its raw bytes (hex) beside the readable form;
@@ -1224,7 +1224,7 @@ timings, for comparison. A second table follows:
 | open x10 ms | Open it after the history grew tenfold (property changes saved 1 000 at a time): it should stay within the run's noise of **v2 open**. |
 
 Below it, **Zstandard** compares the pure-Rust `ruzstd` the container uses with the `zstd` crate
-(levels 1 and 3) on the file's records and parts: compressed sizes and the time to compress and
+(levels 1 and 3) on the file's records and chunks: compressed sizes and the time to compress and
 decompress them all.
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
