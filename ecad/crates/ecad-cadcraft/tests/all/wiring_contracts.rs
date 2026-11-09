@@ -98,7 +98,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
     for l in &labels {
         let deg = l.rotation.to_degrees();
         assert!(deg > -90.0 - 1e-9 && deg <= 90.0 + 1e-9, "{deg}");
-        assert!(l.text.ends_with(" 0.5 Blue") && l.text.starts_with("24V-0"), "{}", l.text);
+        assert!(l.text.ends_with(" 0.5 BU") && l.text.starts_with("24V-0"), "{}", l.text);
     }
     // Vertical text reads bottom to top, to the left of the line.
     let up = labels.iter().find(|l| l.conductor == ws[1]).unwrap();
@@ -108,7 +108,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
     h.run("setprop", json!({"conductor": ws[0].hex(), "key": "cross_section", "value": "18 AWG"})).unwrap();
     let doc = h.doc();
     let l = wires::labels_on_page(&doc, page).into_iter().find(|l| l.conductor == ws[0]).unwrap();
-    assert!(l.text.ends_with(" 18 AWG Red"), "{}", l.text);
+    assert!(l.text.ends_with(" 18 AWG RD"), "{}", l.text);
     // The labels are drawn on their reserved layer and mapped to their wire.
     let n = h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| e.common.layer == LABEL_LAYER).count();
     assert_eq!(n, ws.len());
@@ -394,7 +394,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     assert!(pot.value == "24V (continuation)" && pot.inherited, "{pot:?}");
     let cs = row(&v, "cross_section");
     assert!(cs.value == "0.5 (24V)" && cs.inherited, "{cs:?}");
-    assert_eq!(row(&v, "colour").value, "Blue (24V)");
+    assert_eq!(row(&v, "colour").value, "BU (24V)");
     assert!(row(&v, "net").value.starts_with("1 wire"), "{v:?}");
     let target = v.sections[0].target.clone().unwrap();
     // Each edit through the line the panel sends.
@@ -416,9 +416,9 @@ fn a_wires_properties_show_and_edit_its_net() {
     assert_eq!(row(&view(&mut h, a), "potential").value, "0V");
     send(&mut h, "colour", Some("Red"));
     let c = row(&view(&mut h, a), "colour");
-    assert!(c.value == "Red" && !c.inherited, "{c:?}");
+    assert!(c.value == "RD" && !c.inherited, "{c:?}");
     send(&mut h, "colour", None);
-    assert_eq!(row(&view(&mut h, a), "colour").value, "Blue (0V)", "empty returns to the default");
+    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0V)", "empty returns to the default");
     // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
     let v = view(&mut h, a);
     let n = h.p(|p| p.change_count());
@@ -427,4 +427,90 @@ fn a_wires_properties_show_and_edit_its_net() {
     assert!(touched.iter().any(|o| v.deps.contains(o)), "{touched:?}");
     assert!(row(&view(&mut h, a), "net").value.starts_with("2 wires"));
     let _ = b;
+}
+
+/// Owner, 2026-11-09: colours are IEC 60757 codes by default (`BU`, `BN`, `GNYE`), the project may
+/// write them three-letter (`BLU`, `BRN`, `GRN/YEL`), and free text stays as typed.
+#[test]
+fn colours_are_iec_codes_or_three_letter_and_free_text_stays() {
+    let mut h = H::new(0x22_08);
+    let page = h.first_page();
+    let a = wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({"potential": "24V"}));
+    let b = wire(&mut h, &[(0.0, 20.0), (40.0, 20.0)], json!({"potential": "PE"}));
+    let c = wire(&mut h, &[(0.0, 40.0), (40.0, 40.0)], json!({"potential": "L"}));
+    h.run("setprop", json!({"conductor": c.hex(), "key": "colour", "value": "bn"})).unwrap();
+    let texts = |h: &mut H| {
+        let doc = h.doc();
+        let all = wires::labels_on_page(&doc, page);
+        [a, b, c].map(|w| all.iter().find(|l| l.conductor == w).unwrap().text.clone())
+    };
+    assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GNYE", "L-01 2.5 BN"]);
+    let r = h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
+    assert_eq!(r["colour_style"], json!("three-letter"));
+    assert_eq!(texts(&mut h), ["24V-01 0.5 BLU", "PE 2.5 GRN/YEL", "L-01 2.5 BRN"]);
+    h.run("setprop", json!({"conductor": a.hex(), "key": "colour", "value": "Violet stripe"})).unwrap();
+    assert_eq!(texts(&mut h)[0], "24V-01 0.5 Violet stripe");
+    assert!(h.run("wiresettings", json!({"colour_style": "words"})).is_err());
+}
+
+/// Owner, 2026-11-09: the label height is a wiring setting with a smaller default, and labels keep
+/// clear of their wire, of other wires and of each other.
+#[test]
+fn labels_are_small_and_never_touch() {
+    let mut h = H::new(0x22_09);
+    let page = h.first_page();
+    // Parallel wires 5 mm apart, and a column of short wires one above the other.
+    for i in 0..5 {
+        let y = 5.0 * i as f64;
+        wire(&mut h, &[(0.0, y), (40.0, y)], json!({"potential": "24V"}));
+    }
+    for i in 0..5 {
+        let y = 100.0 + 12.0 * i as f64;
+        wire(&mut h, &[(80.0, y), (80.0, y + 10.0)], json!({"potential": "0V"}));
+    }
+    let doc = h.doc();
+    let labels = wires::labels_on_page(&doc, page);
+    assert_eq!(labels.len(), 10);
+    assert!(labels.iter().all(|l| (l.height - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() < 1e-9));
+    for (i, x) in labels.iter().enumerate() {
+        for y in labels.iter().skip(i + 1) {
+            let (p, q) = (wires::label_box(x), wires::label_box(y));
+            let meet = p.0.x < q.1.x && q.0.x < p.1.x && p.0.y < q.1.y && q.0.y < p.1.y;
+            assert!(!meet, "{} and {} touch", x.text, y.text);
+        }
+    }
+    h.run("wiresettings", json!({"label_height": 2.5})).unwrap();
+    let doc = h.doc();
+    assert!(wires::labels_on_page(&doc, page).iter().all(|l| (l.height - 2.5).abs() < 1e-9));
+    assert!(h.run("wiresettings", json!({"label_height": 50})).is_err());
+}
+
+/// Owner, 2026-11-09: a cable in fan view hides its members' labels with their routes; back in
+/// traditional view they return. Display only: nothing is recorded.
+#[test]
+fn a_fan_view_hides_its_members_labels() {
+    let mut h = H::new(0x22_0a);
+    let page = h.first_page();
+    for i in 0..3 {
+        let x = 10.0 * i as f64;
+        wire(&mut h, &[(x, 0.0), (x, 60.0)], json!({}));
+    }
+    let other = wire(&mut h, &[(100.0, 0.0), (100.0, 60.0)], json!({}));
+    let k = h.run("cableslash", json!({"from": [-5, 30], "to": [25, 32]})).unwrap();
+    let cable = k["cable"].as_str().unwrap().to_string();
+    let shown = |h: &mut H| {
+        let labels: Vec<_> =
+            h.pv(|p, pg| pg.entities_of(p, page)).into_iter().filter(|e| e.common.layer == LABEL_LAYER).collect();
+        labels.len()
+    };
+    assert_eq!(shown(&mut h), 4);
+    let head = h.head();
+    h.run("cableview", json!({"cable": cable, "view": "fan"})).unwrap();
+    assert_eq!(h.head(), head, "a view is not recorded");
+    assert_eq!(shown(&mut h), 1, "only the wire outside the cable keeps its label");
+    let doc = h.doc();
+    let route = ecad_model::derive::route_on_page(&doc, other, page).unwrap().0;
+    assert!(h.p(|p| p.pages[&page].map.item(route)).is_some());
+    h.run("cableview", json!({"cable": cable, "view": "traditional"})).unwrap();
+    assert_eq!(shown(&mut h), 4);
 }

@@ -76,35 +76,46 @@ fn the_demo_nets_and_wire_numbers() {
     // (continuations) and below it (the cable cores show the number only). Page 3: the same 24V-01,
     // 0V-01 and core numbers, the NC-to-lamp wire 24V-05.
     let want = [
-        "1: 0V-01 0.5 Blue",
-        "1: 24V-01 0.5 Blue",
-        "1: L-01 2.5 Brown",
-        "1: L-02 2.5 Brown",
-        "1: N-01 2.5 Blue",
-        "1: N-02 2.5 Blue",
-        "1: PE 2.5 Green-Yellow",
-        "2: 0V-01 0.5 Blue",
-        "2: 24V-01 0.5 Blue",
-        "2: 24V-02 0.5 Blue",
-        "2: 24V-03 0.5 Blue",
-        "2: 24V-04 0.5 Blue",
-        "2: L1-01 2.5 Brown",
+        "1: 0V-01 0.5 BU",
+        "1: 24V-01 0.5 BU",
+        "1: L-01 2.5 BN",
+        "1: L-02 2.5 BN",
+        "1: N-01 2.5 BU",
+        "1: N-02 2.5 BU",
+        "1: PE 2.5 GNYE",
+        "2: 0V-01 0.5 BU",
+        "2: 24V-01 0.5 BU",
+        "2: 24V-02 0.5 BU",
+        "2: 24V-03 0.5 BU",
+        "2: 24V-04 0.5 BU",
+        "2: L1-01 2.5 BN",
         "2: L1-02",
-        "2: L2-01 2.5 Black",
+        "2: L2-01 2.5 BK",
         "2: L2-02",
-        "2: L3-01 2.5 Grey",
+        "2: L3-01 2.5 GY",
         "2: L3-02",
-        "3: 0V-01 0.5 Blue",
-        "3: 24V-01 0.5 Blue",
-        "3: 24V-05 0.5 Blue",
+        "3: 0V-01 0.5 BU",
+        "3: 24V-01 0.5 BU",
+        "3: 24V-05 0.5 BU",
         "3: L1-02",
-        "3: L1-02 2.5 Brown",
+        "3: L1-02 2.5 BN",
         "3: L2-02",
-        "3: L2-02 2.5 Black",
+        "3: L2-02 2.5 BK",
         "3: L3-02",
-        "3: L3-02 2.5 Grey",
+        "3: L3-02 2.5 GY",
     ];
     assert_eq!(shown, want, "{shown:#?}");
+    // Owner, 2026-11-09: no two labels touch, on any page (page 2 is the busiest).
+    for page in &doc.page_order {
+        let labels = ecad_cadcraft::wires::labels_on_page(&doc, *page);
+        for (i, x) in labels.iter().enumerate() {
+            for y in labels.iter().skip(i + 1) {
+                let (p, q) = (ecad_cadcraft::wires::label_box(x), ecad_cadcraft::wires::label_box(y));
+                let meet = p.0.x < q.1.x && q.0.x < p.1.x && p.0.y < q.1.y && q.0.y < p.1.y;
+                assert!(!meet, "{} and {} touch", x.text, y.text);
+            }
+        }
+    }
     // 24V runs over pages 1-3 through continuations; L1-02 through the core and -X02.
     let conn = doc.connectivity();
     let net = |n: &str| conn.nets_numbered(n).map(|(id, _)| id).collect::<Vec<_>>();

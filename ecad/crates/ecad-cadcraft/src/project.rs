@@ -844,7 +844,9 @@ pub fn project_page_framed(
         map.insert_tag_text(t.rep, t.of, h);
     }
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
-    for l in crate::wires::labels_on_page(doc, page) {
+    // A cable in fan view hides its members' routes, and their labels with them (owner,
+    // 2026-11-09): display only, nothing is written.
+    for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
         ents.push(crate::wires::label_entity(&l, h));
         map.insert_label(l.rep, l.conductor, h);

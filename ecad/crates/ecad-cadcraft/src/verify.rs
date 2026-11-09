@@ -119,7 +119,7 @@ pub fn verify_page_with(
         *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
     }
     // Conductor labels (brief 022), derived the same way.
-    for l in crate::wires::labels_on_page(doc, page) {
+    for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.

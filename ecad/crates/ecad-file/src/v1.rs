@@ -300,14 +300,44 @@ pub struct PotentialDef {
     pub cross_section: String,
 }
 
-/// Wiring settings (brief 022).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// How label colours are written (brief 022 fix round).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColourStyle {
+    #[serde(rename = "iec")]
+    Iec,
+    #[serde(rename = "three-letter")]
+    ThreeLetter,
+}
+
+fn is_iec(s: &ColourStyle) -> bool {
+    *s == ColourStyle::Iec
+}
+
+fn iec() -> ColourStyle {
+    ColourStyle::Iec
+}
+
+fn default_label_height() -> f64 {
+    m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+fn is_default_label_height(h: &f64) -> bool {
+    *h == m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+/// Wiring settings (brief 022). `colour_style` and `label_height` (fix round, 2026-11-09) are left
+/// out at their defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WiringSettings {
     pub scheme: Scheme,
     pub digits: u8,
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
+    #[serde(default = "iec", skip_serializing_if = "is_iec")]
+    pub colour_style: ColourStyle,
+    #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
+    pub label_height: f64,
 }
 
 impl Default for WiringSettings {
@@ -337,6 +367,11 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     cross_section: p.cross_section.clone(),
                 })
                 .collect(),
+            colour_style: match w.colour_style {
+                m::wiring::ColourStyle::Iec => ColourStyle::Iec,
+                m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
         }
     }
 }
@@ -413,6 +448,11 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     cross_section: p.cross_section,
                 })
                 .collect(),
+            colour_style: match w.colour_style {
+                ColourStyle::Iec => m::wiring::ColourStyle::Iec,
+                ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
         }
     }
 }

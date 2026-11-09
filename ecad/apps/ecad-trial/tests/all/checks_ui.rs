@@ -58,6 +58,18 @@ fn show(h: &mut H, p: PageId) {
     h.run_steps(3);
 }
 
+/// Show the box (x0, y0)-(x1, y1) in the part of the window the panels leave visible (about
+/// 520 px wide, its centre 70 px right of the window's).
+fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
+    let height = (y1 - y0).max((x1 - x0) * 800.0 / 520.0);
+    let per_px = height / 800.0;
+    if let Ok(st) = h.state_mut().cad.session.state_mut() {
+        let centre = cadcraft_engine::geom::Vec2::new((x0 + x1) / 2.0 - 70.0 * per_px, (y0 + y1) / 2.0);
+        let _ = st.set_view(cadcraft_engine::View { center: centre, height });
+    }
+    h.run_steps(3);
+}
+
 fn click(h: &mut H, label: &str) {
     h.get_by_label(label).click();
     h.run_steps(3);
@@ -90,13 +102,17 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
         .filter(|e| e.common.layer == ecad_cadcraft::wires::LABEL_LAYER)
         .count();
     assert!(labels >= 12, "{labels} labels on page 2");
+    // The circuit, not the whole sheet: labels are small (owner, 2026-11-09).
+    view(&mut h, 10.0, 35.0, 160.0, 195.0);
     save(&h, &deltas, "022-demo-page2.png");
     show(&mut h, p1);
+    view(&mut h, 0.0, 35.0, 110.0, 165.0);
     save(&h, &deltas, "022-demo-page1.png");
 
     // The hover lens on the wire under the coil names its net (design 022 §15, step 2).
     show(&mut h, p2);
-    let at = screen(&h, 57.5, 50.0);
+    view(&mut h, 10.0, 35.0, 160.0, 195.0);
+    let at = screen(&h, 57.5, 52.5);
     pointer_to(&mut h, at);
     h.run_steps(3);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
@@ -106,7 +122,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     for want in [
         "End B: junction",
         "Potential 0V (continuation)",
-        "Cross-section 0.5 (0V) \u{b7} Colour Blue (0V)",
+        "Cross-section 0.5 (0V) \u{b7} Colour BU (0V)",
         "Net 0V-01 \u{b7} 5 wires \u{b7} -G01:-, -H01:X2, -H02:X2, -K01:A2",
     ] {
         assert!(lines.iter().any(|l| l == want), "{want} missing from {lines:?}");

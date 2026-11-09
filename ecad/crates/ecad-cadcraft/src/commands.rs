@@ -150,7 +150,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("wiresettings", "Wire Settings", crate::wire_cmds::run_wiresettings)
             .params(
-                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered, colour, cross_section}]} (no parameters reads)",
+                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered, colour, cross_section}], colour_style?: \"iec\"|\"three-letter\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
             )
             .noundo(),
         CommandSpec::new("renumberwires", "Renumber Wires", crate::wire_cmds::run_renumberwires)

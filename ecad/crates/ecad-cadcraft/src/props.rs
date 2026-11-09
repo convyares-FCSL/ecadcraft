@@ -485,12 +485,16 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
     for (key, label, default) in
         [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)]
     {
+        let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };
         let stored = props.and_then(|p| p.get(key)).cloned();
-        let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
+        let mut row = Row::rw(key, label, stored.as_deref().map(shown).unwrap_or_default());
+        if key == wiring::COLOUR {
+            row.choices = wiring::COLOUR_CODES.iter().map(|(iec, _)| shown(iec)).collect();
+        }
         if stored.is_none()
             && let (Some(d), Some(p)) = (default, &pot.name)
         {
-            row.value = format!("{d} ({p})");
+            row.value = format!("{} ({p})", shown(d));
             row.inherited = true;
         }
         top.push(row);

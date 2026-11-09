@@ -48,10 +48,11 @@
 {"command":"wire","params":{"points":[[30,90],[65,90]],"potential":"24V"}}
 {"command":"wire","params":{"points":[[30,90],[30,75]],"potential":"24V"}}
 {"command":"wire","params":{"points":[[30,75],[85,75]],"potential":"24V"}}
-// 0V: the coil's wire runs to a continuation; the lamp's wire ends on it, so a junction joins them.
-{"command":"place","params":{"symbol":"continuation","at":[30,40],"name":"0V"}}
-{"command":"wire","params":{"points":[[30,55],[30,40]]}}
-{"command":"wire","params":{"points":[[85,55],[85,50],[30,50]]}}
+// 0V: the coil's wire runs to a continuation at the left, just above the title block; the lamp's
+// wire ends on its bend, so a junction joins them.
+{"command":"place","params":{"symbol":"continuation","at":[20,52.5],"rotation":270,"name":"0V"}}
+{"command":"wire","params":{"points":[[30,55],[30,52.5],[20,52.5]]}}
+{"command":"wire","params":{"points":[[85,55],[85,52.5],[30,52.5]]}}
 // Power circuit: the contactor's main contacts feed the motor on page 3 through cable -W01.
 {"command":"place","params":{"symbol":"power3","at":[130,110],"tag":"K01"}}
 {"command":"place","params":{"symbol":"continuation","at":[120,150],"rotation":180,"name":"L1"}}
@@ -91,10 +92,10 @@
 {"command":"place","params":{"symbol":"nc","at":[50,110],"tag":"K01"}}
 {"command":"place","params":{"symbol":"lamp","at":[50,75],"tag":"H02"},"as":"h2"}
 {"command":"place","params":{"symbol":"continuation","at":[50,135],"rotation":180,"name":"24V"}}
-{"command":"place","params":{"symbol":"continuation","at":[50,50],"name":"0V"}}
+{"command":"place","params":{"symbol":"continuation","at":[50,57.5],"name":"0V"}}
 {"command":"wire","params":{"points":[[50,135],[50,120]]}}
 {"command":"wire","params":{"points":[[50,100],[50,85]],"potential":"24V"}}
-{"command":"wire","params":{"points":[[50,65],[50,50]]}}
+{"command":"wire","params":{"points":[[50,65],[50,57.5]]}}
 {"command":"setprop","params":{"component":"$x2a.component","key":"description","value":"Motor terminals"}}
 {"command":"setprop","params":{"component":"$x2a.component","key":"location","value":"FIELD"}}
 {"command":"setprop","params":{"component":"$m1.component","key":"description","value":"Pump motor 0.75 kW"}}

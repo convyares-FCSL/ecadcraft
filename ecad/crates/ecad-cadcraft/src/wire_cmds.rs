@@ -413,6 +413,8 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
 fn settings_json(w: &wiring::WiringSettings) -> Value {
     json!({
         "scheme": w.scheme.name(),
+        "colour_style": w.colour_style.name(),
+        "label_height": w.label_height(),
         "digits": w.digits,
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
@@ -423,7 +425,7 @@ fn settings_json(w: &wiring::WiringSettings) -> Value {
 
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?}`: no parameters reads.
 pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let given = ["scheme", "digits", "unclassified_prefix", "potentials"]
+    let given = ["scheme", "digits", "unclassified_prefix", "potentials", "colour_style", "label_height"]
         .iter()
         .any(|k| params.get(*k).is_some_and(|v| !v.is_null()));
     with_project(s, |p, pg, _| {
@@ -442,6 +444,17 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
                 .filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d))
                 .ok_or("`digits` must be 1 to 6")?;
             w.digits = d as u8;
+        }
+        if let Some(c) = opt_str(params, "colour_style")? {
+            w.colour_style = wiring::ColourStyle::parse(c)
+                .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+        }
+        if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
+            let hv = hv
+                .as_f64()
+                .filter(|x| wiring::LABEL_HEIGHTS.contains(x))
+                .ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+            w.label_height = hv;
         }
         if let Some(u) = opt_str(params, "unclassified_prefix")? {
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();

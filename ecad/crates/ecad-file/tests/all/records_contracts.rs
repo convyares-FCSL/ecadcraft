@@ -233,10 +233,12 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let mut after = before.clone();
     after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
     after.wiring.digits = 3;
+    after.wiring.colour_style = ecad_model::wiring::ColourStyle::ThreeLetter;
+    after.wiring.label_height = 2.5;
     after.wiring.potentials.retain(|p| p.name != "PE");
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
-    assert!(line.contains("\"page-column\""), "{line}");
+    assert!(line.contains("\"page-column\"") && line.contains("\"three-letter\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
     let bare =

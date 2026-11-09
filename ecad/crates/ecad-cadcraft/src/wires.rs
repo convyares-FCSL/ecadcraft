@@ -6,6 +6,17 @@
 //!   (like 018's tag texts): only the page on screen is projected.
 //! - A junction or continuation is a tagless component made from the starter definition
 //!   `junction` or `continuation` (FP4), with one connection point keyed `1`.
+//! - Labels use the project's label height and colour style (wiring settings) and are placed so
+//!   none touches another label or another wire ([`labels_on_page_with`]).
+//!
+//! # Update map of the labels
+//! | Change | Labels |
+//! | --- | --- |
+//! | a route added, moved or removed | that page's labels, when it is projected |
+//! | a wire number, potential, cross-section or colour | the pages of the conductors it was written on (the numbering pass's included) |
+//! | wiring settings (colour style, label height, defaults) | every page, when it is projected next |
+//! | a cable switched to fan or traditional view | that cable's members' labels hide or show on the page on screen (display only, nothing recorded) |
+//! | anything else | nothing |
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
@@ -25,10 +36,16 @@ use crate::symbols::{self, Starter};
 
 /// The reserved layer of conductor labels (derived, plotted), like 009's `ECAD-CABLES`.
 pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";
-/// `ecad.label-height`.
-pub const LABEL_HEIGHT: f64 = 2.5;
-/// `ecad.label-gap`: from the line to the label's baseline.
-pub const LABEL_GAP: f64 = 1.0;
+/// The smallest clearance from the line to the label, millimetres; it grows with the label height
+/// ([`gap`]).
+pub const LABEL_GAP: f64 = 0.8;
+/// The least space kept between two labels, and between a label and another wire, millimetres.
+pub const LABEL_CLEARANCE: f64 = 0.6;
+
+/// The clearance between a label of height `h` and its line.
+pub fn gap(h: f64) -> f64 {
+    (0.5 * h).max(LABEL_GAP)
+}
 /// `ecad.wire-label`: ACI 7, ByLayer on the label layer.
 pub const LABEL_ACI: u8 = 7;
 /// How near a wire a point must be to lie on it (model units, mm).
@@ -84,6 +101,8 @@ pub struct WireLabel {
     pub at: Pt,
     /// Radians, within (−90°, 90°], so the text is never upside down.
     pub rotation: f64,
+    /// Text height (the project's wiring setting).
+    pub height: f64,
     pub text: String,
     /// Drawn in `ecad.orphan`: the net is in a number error.
     pub error: bool,
@@ -114,8 +133,8 @@ pub fn longest_segment(v: &[Pt]) -> Option<(Pt, Pt)> {
     best.filter(|(_, _, l)| *l > 0.0).map(|(a, b, _)| (a, b))
 }
 
-/// Where a label of segment `a`-`b` goes (design 022 §7): its baseline centre and rotation.
-pub fn label_place(a: Pt, b: Pt) -> (Pt, f64) {
+/// The reading angle of segment `a`-`b`, within (−90°, 90°] so the text is never upside down.
+fn reading_angle(a: Pt, b: Pt) -> f64 {
     let mut theta = (b.y - a.y).atan2(b.x - a.x);
     let half = std::f64::consts::FRAC_PI_2;
     let eps = 1e-9;
@@ -124,30 +143,161 @@ pub fn label_place(a: Pt, b: Pt) -> (Pt, f64) {
     } else if theta <= -half + eps {
         theta += std::f64::consts::PI;
     }
+    theta
+}
+
+/// Where a label of segment `a`-`b` goes first (design 022 §7): its baseline centre and rotation,
+/// above the line in the text's own frame (left of a vertical line), at the clearance [`gap`] of
+/// a label of height `h`.
+pub fn label_place(a: Pt, b: Pt, h: f64) -> (Pt, f64) {
+    let theta = reading_angle(a, b);
     let mid = Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
-    // Above the line in the text's own frame: for a vertical line, its left.
     let n = Pt::new(-theta.sin(), theta.cos());
-    (Pt::new(mid.x + n.x * LABEL_GAP, mid.y + n.y * LABEL_GAP), theta)
+    let g = gap(h);
+    (Pt::new(mid.x + n.x * g, mid.y + n.y * g), theta)
+}
+
+/// An axis-aligned box `(lo, hi)`.
+type Bbox = (Pt, Pt);
+
+/// The box round a label's text: baseline centre `at`, angle `theta`, width `w`, height `h`.
+fn text_box(at: Pt, theta: f64, w: f64, h: f64) -> Bbox {
+    let (d, n) = (Pt::new(theta.cos(), theta.sin()), Pt::new(-theta.sin(), theta.cos()));
+    let corners = [(-w / 2.0, 0.0), (w / 2.0, 0.0), (w / 2.0, h), (-w / 2.0, h)]
+        .map(|(u, v)| Pt::new(at.x + d.x * u + n.x * v, at.y + d.y * u + n.y * v));
+    let (mut lo, mut hi) = (corners[0], corners[0]);
+    for c in corners {
+        lo = Pt::new(lo.x.min(c.x), lo.y.min(c.y));
+        hi = Pt::new(hi.x.max(c.x), hi.y.max(c.y));
+    }
+    (lo, hi)
+}
+
+/// The box round label `l`'s text, as placement sees it (tests check that labels never touch).
+pub fn label_box(l: &WireLabel) -> (Pt, Pt) {
+    let w = cadcraft_engine::fonts::line_width(&l.text, l.height, 1.0);
+    let w = if w.is_finite() && w > 0.0 { w } else { l.text.chars().count() as f64 * l.height * 0.8 };
+    text_box(l.at, l.rotation, w, l.height)
+}
+
+fn boxes_meet(a: &Bbox, b: &Bbox, clearance: f64) -> bool {
+    a.0.x < b.1.x + clearance && b.0.x < a.1.x + clearance && a.0.y < b.1.y + clearance && b.0.y < a.1.y + clearance
+}
+
+/// Whether segment `p`-`q` comes within `clearance` of box `b` (its own box test, then the
+/// segment sampled: labels are short, so a few samples are enough).
+fn segment_meets(b: &Bbox, p: Pt, q: Pt, clearance: f64) -> bool {
+    let grown = (Pt::new(b.0.x - clearance, b.0.y - clearance), Pt::new(b.1.x + clearance, b.1.y + clearance));
+    let seg = (Pt::new(p.x.min(q.x), p.y.min(q.y)), Pt::new(p.x.max(q.x), p.y.max(q.y)));
+    if !boxes_meet(&grown, &seg, 0.0) {
+        return false;
+    }
+    let len = p.dist(q);
+    let steps = ((len / 0.5).ceil() as usize).clamp(1, 2_000);
+    (0..=steps).any(|i| {
+        let t = i as f64 / steps as f64;
+        let x = Pt::new(p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t);
+        x.x >= grown.0.x && x.x <= grown.1.x && x.y >= grown.0.y && x.y <= grown.1.y
+    })
+}
+
+/// The places tried for a label of width `w` on segment `a`-`b`, nearest first (owner,
+/// 2026-11-09: labels must not touch): above the line at its middle, then below it, then moved
+/// along the segment, then just past either end of it (a label longer than a short segment), then
+/// one text height further from the line.
+fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
+    let theta = reading_angle(a, b);
+    let (d, n) = (Pt::new(theta.cos(), theta.sin()), Pt::new(-theta.sin(), theta.cos()));
+    let mid = Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+    let len = a.dist(b);
+    let g = gap(h);
+    let past = len / 2.0 + w / 2.0 + LABEL_CLEARANCE;
+    let shifts = [0.0, 0.25 * len, -0.25 * len, 0.4 * len, -0.4 * len, past, -past];
+    let mut out = Vec::new();
+    for ring in [0.0, h + LABEL_CLEARANCE] {
+        for shift in shifts {
+            for above in [true, false] {
+                // Below the line the baseline is a text height and a clearance under it.
+                let off = if above { g + ring } else { -(g + h + ring) };
+                out.push(Pt::new(mid.x + d.x * shift + n.x * off, mid.y + d.y * shift + n.y * off));
+            }
+        }
+    }
+    out
 }
 
 /// Every conductor label on `page`: one per route representation, on its longest segment.
 pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
-    let mut out = Vec::new();
+    labels_on_page_with(doc, page, &std::collections::BTreeSet::new())
+}
+
+/// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
+/// members' routes and their labels are not shown, brief 005 and owner 2026-11-09).
+///
+/// # Semantics
+/// Labels are placed in route order. Each takes the first place ([`candidates`]) where its box
+/// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
+/// page; failing that, the first place clear of labels; failing that, the first place.
+pub fn labels_on_page_with(
+    doc: &Document,
+    page: PageId,
+    hidden: &std::collections::BTreeSet<ItemId>,
+) -> Vec<WireLabel> {
+    let h = doc.settings.wiring.label_height();
+    // Every route on the page: (representation, conductor, vertices).
+    let mut routes: Vec<(RepresentationId, ConductorId, Vec<Pt>)> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
         let Subject::Conductor(c) = r.subject else { continue };
-        if r.form != Form::Drawn {
+        if r.form != Form::Drawn || r.items.first().is_some_and(|i| hidden.contains(i)) {
             continue;
         }
         let Some(ItemKind::Primitive(p)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
             continue;
         };
-        let Some((a, b)) = path_vertices(p).as_deref().and_then(longest_segment) else { continue };
-        let Some(label) = ecad_model::wiring::label(doc, c) else { continue };
-        let (at, rotation) = label_place(a, b);
-        if !(at.is_finite() && rotation.is_finite()) {
+        if let Some(v) = path_vertices(p) {
+            routes.push((rid, c, v));
+        }
+    }
+    let mut placed: Vec<Bbox> = Vec::new();
+    let mut out = Vec::new();
+    for (rid, c, v) in &routes {
+        let Some((a, b)) = longest_segment(v) else { continue };
+        let Some(label) = ecad_model::wiring::label(doc, *c) else { continue };
+        let theta = reading_angle(a, b);
+        if !theta.is_finite() {
             continue;
         }
-        out.push(WireLabel { conductor: c, rep: rid, at, rotation, text: label.text, error: label.error });
+        let w = cadcraft_engine::fonts::line_width(&label.text, h, 1.0);
+        let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
+        let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
+        let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h)
+            .into_iter()
+            .filter(|p| p.is_finite())
+            .map(|p| (p, text_box(p, theta, w, h)))
+            .collect();
+        let clear_of_labels = |bx: &Bbox| placed.iter().all(|q| !boxes_meet(bx, q, LABEL_CLEARANCE));
+        let clear_of_wires = |bx: &Bbox| {
+            others().all(|s| match (s.first(), s.get(1)) {
+                (Some(p), Some(q)) => !segment_meets(bx, *p, *q, LABEL_CLEARANCE / 2.0),
+                _ => true,
+            })
+        };
+        let pick = tried
+            .iter()
+            .find(|(_, bx)| clear_of_labels(bx) && clear_of_wires(bx))
+            .or_else(|| tried.iter().find(|(_, bx)| clear_of_labels(bx)))
+            .or_else(|| tried.first());
+        let Some((at, bx)) = pick else { continue };
+        placed.push(*bx);
+        out.push(WireLabel {
+            conductor: *c,
+            rep: *rid,
+            at: *at,
+            rotation: theta,
+            height: h,
+            text: label.text,
+            error: label.error,
+        });
     }
     out
 }
@@ -166,7 +316,7 @@ pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
         kind: EntityKind::Text(Text {
             insert: p,
             align_pt: Some(p),
-            height: LABEL_HEIGHT,
+            height: l.height,
             value: l.text.clone(),
             rotation: l.rotation,
             width_factor: 1.0,
@@ -586,10 +736,14 @@ pub fn hover_lines(doc: &Document, w: ConductorId) -> Vec<String> {
         let from = if pot.from_continuation { " (continuation)" } else { "" };
         lines.push(format!("Potential {p}{from}"));
     }
-    let shown = |key: &str, default: &Option<String>| match (cond.properties.get(key), default, &pot.name) {
-        (Some(v), _, _) => Some(v.clone()),
-        (None, Some(d), Some(p)) => Some(format!("{d} ({p})")),
-        _ => None,
+    let w = &doc.settings.wiring;
+    let shown = |key: &str, default: &Option<String>| {
+        let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
+        match (cond.properties.get(key), default, &pot.name) {
+            (Some(v), _, _) => Some(text(v)),
+            (None, Some(d), Some(p)) => Some(format!("{} ({p})", text(d))),
+            _ => None,
+        }
     };
     let mut values = Vec::new();
     if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &pot.cross_section) {

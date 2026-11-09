@@ -38,7 +38,7 @@ pub use crate::connectivity::{POTENTIAL as POTENTIAL_KEY, WIRE_NUMBER as WIRE_NU
 
 /// Conductor property: the cross-section shown on its label (`0.5`, `18 AWG`).
 pub const CROSS_SECTION: &str = "cross_section";
-/// Conductor property: the colour shown on its label (`Blue`).
+/// Conductor property: the colour shown on its label (`BU`, IEC 60757; free text allowed).
 pub const COLOUR: &str = "colour";
 /// Longest wire number, cross-section or colour, in characters.
 pub const MAX_VALUE_CHARS: usize = 24;
@@ -91,8 +91,68 @@ pub struct PotentialDef {
     pub cross_section: String,
 }
 
+/// How colours are written on labels (owner, 2026-11-09).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ColourStyle {
+    /// IEC 60757 two-letter codes: `BN`, `BU`, `GNYE`.
+    #[default]
+    #[serde(rename = "iec")]
+    Iec,
+    /// Three-letter codes: `BRN`, `BLU`, `GRN/YEL`.
+    #[serde(rename = "three-letter")]
+    ThreeLetter,
+}
+
+impl ColourStyle {
+    pub fn name(self) -> &'static str {
+        match self {
+            ColourStyle::Iec => "iec",
+            ColourStyle::ThreeLetter => "three-letter",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "iec" | "iec60757" | "iec 60757" | "two-letter" => Some(ColourStyle::Iec),
+            "three-letter" | "three" | "3" | "three_letter" => Some(ColourStyle::ThreeLetter),
+            _ => None,
+        }
+    }
+}
+
+/// The IEC 60757 colour codes and their three-letter forms.
+pub const COLOUR_CODES: [(&str, &str); 15] = [
+    ("BK", "BLK"),
+    ("BN", "BRN"),
+    ("RD", "RED"),
+    ("OG", "ORG"),
+    ("YE", "YEL"),
+    ("GN", "GRN"),
+    ("BU", "BLU"),
+    ("VT", "VIO"),
+    ("GY", "GRY"),
+    ("WH", "WHT"),
+    ("PK", "PNK"),
+    ("GD", "GLD"),
+    ("TQ", "TQS"),
+    ("SR", "SLR"),
+    ("GNYE", "GRN/YEL"),
+];
+
+/// A colour as labels write it in `style`: a known code (either form, any case) in that style;
+/// anything else (free text) as typed.
+pub fn colour_text(style: ColourStyle, value: &str) -> String {
+    let v = value.trim();
+    let found = COLOUR_CODES.iter().find(|(iec, three)| v.eq_ignore_ascii_case(iec) || v.eq_ignore_ascii_case(three));
+    match (found, style) {
+        (Some((iec, _)), ColourStyle::Iec) => (*iec).to_string(),
+        (Some((_, three)), ColourStyle::ThreeLetter) => (*three).to_string(),
+        (None, _) => v.to_string(),
+    }
+}
+
 /// Project wiring settings (FP1): `ProjectSettings.wiring`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WiringSettings {
     pub scheme: Scheme,
@@ -101,7 +161,17 @@ pub struct WiringSettings {
     /// The prefix of a net with no potential (design 022 Q8: empty, so `07`).
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
+    /// How label colours are written (IEC 60757 codes by default).
+    pub colour_style: ColourStyle,
+    /// Text height of conductor labels, millimetres ([`DEFAULT_LABEL_HEIGHT`]; read through
+    /// [`WiringSettings::label_height`], which keeps it in range).
+    pub label_height: f64,
 }
+
+/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags).
+pub const DEFAULT_LABEL_HEIGHT: f64 = 1.8;
+/// The label heights a project may set, millimetres.
+pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
 /// The default sequence padding.
 pub const DEFAULT_DIGITS: u8 = 2;
@@ -121,14 +191,14 @@ fn row(name: &str, prefix: &str, numbered: bool, colour: &str, cross_section: &s
 /// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10).
 pub fn default_potentials() -> Vec<PotentialDef> {
     vec![
-        row("L", "L-", true, "Brown", "2.5"),
-        row("L1", "L1-", true, "Brown", "2.5"),
-        row("L2", "L2-", true, "Black", "2.5"),
-        row("L3", "L3-", true, "Grey", "2.5"),
-        row("N", "N-", true, "Blue", "2.5"),
-        row("PE", "PE", false, "Green-Yellow", "2.5"),
-        row("24V", "24V-", true, "Blue", "0.5"),
-        row("0V", "0V-", true, "Blue", "0.5"),
+        row("L", "L-", true, "BN", "2.5"),
+        row("L1", "L1-", true, "BN", "2.5"),
+        row("L2", "L2-", true, "BK", "2.5"),
+        row("L3", "L3-", true, "GY", "2.5"),
+        row("N", "N-", true, "BU", "2.5"),
+        row("PE", "PE", false, "GNYE", "2.5"),
+        row("24V", "24V-", true, "BU", "0.5"),
+        row("0V", "0V-", true, "BU", "0.5"),
     ]
 }
 
@@ -139,11 +209,24 @@ impl Default for WiringSettings {
             digits: DEFAULT_DIGITS,
             unclassified_prefix: String::new(),
             potentials: default_potentials(),
+            colour_style: ColourStyle::default(),
+            label_height: DEFAULT_LABEL_HEIGHT,
         }
     }
 }
 
 impl WiringSettings {
+    /// The label height in range ([`LABEL_HEIGHTS`]; the default for a value out of it or not
+    /// finite).
+    pub fn label_height(&self) -> f64 {
+        if LABEL_HEIGHTS.contains(&self.label_height) { self.label_height } else { DEFAULT_LABEL_HEIGHT }
+    }
+
+    /// `value` as a label writes it ([`colour_text`] in this project's style).
+    pub fn colour(&self, value: &str) -> String {
+        colour_text(self.colour_style, value)
+    }
+
     /// The table row of potential `name`, case-insensitively.
     pub fn potential(&self, name: &str) -> Option<&PotentialDef> {
         let n = name.trim();
@@ -637,7 +720,12 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
         let pot = net.map(|(_, n)| net_potential(doc, n));
         let cs =
             cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour = cond.properties.get(COLOUR).cloned().or_else(|| pot.as_ref().and_then(|p| p.colour.clone()));
+        let colour = cond
+            .properties
+            .get(COLOUR)
+            .cloned()
+            .or_else(|| pot.as_ref().and_then(|p| p.colour.clone()))
+            .map(|c| doc.settings.wiring.colour(&c));
         words.extend(cs);
         words.extend(colour);
     }
