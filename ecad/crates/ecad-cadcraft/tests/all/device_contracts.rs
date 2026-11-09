@@ -407,12 +407,7 @@ fn g_device_properties_renames_and_asks_before_merging() {
     let h = f.h.handle_of(f.p1, sym);
     f.h.s.input(Input::Pick(vec![h])).unwrap();
     assert!(f.h.s.log.iter().any(|l| l == "Tag: -K02"));
-    assert!(
-        prompt(&f.h).starts_with("Enter property to change or [Tag/Description/Maker/Part/Location/Function]"),
-        "{}: {:?}",
-        prompt(&f.h),
-        f.h.s.log
-    );
+    assert!(prompt(&f.h).starts_with("Enter property to change [Tag/Description/Maker/Part/Location/Function]"), "{}: {:?}", prompt(&f.h), f.h.s.log);
     typed(&mut f.h, "Maker");
     typed(&mut f.h, "Acme");
     assert!(f.h.s.log.iter().any(|l| l == "Maker of -K02 set to \"Acme\"."));
