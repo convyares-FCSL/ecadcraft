@@ -235,12 +235,18 @@ pub fn unit_scale(unit: LengthUnit) -> f64 {
 }
 
 /// The sheet `page` is drawn on: its own `sheet` property when that reads, else the project's.
+///
+/// The one place a page's sheet is decided, so the frame, the references, the Devices tab and the
+/// Properties panel always agree: the page's own spec when it reads and is within the limits
+/// ([`SheetSpec::check`]), else the project's when that is within them (a hostile file may hold
+/// any numbers), else the default A3.
 pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
         .and_then(|p| p.properties.get(SHEET_KEY))
         .and_then(|t| SheetSpec::parse(t).ok())
-        .unwrap_or(doc.settings.sheet)
+        .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
+        .unwrap_or_default()
 }
 
 /// The frame's distance from the paper edge on each side, in millimetres.

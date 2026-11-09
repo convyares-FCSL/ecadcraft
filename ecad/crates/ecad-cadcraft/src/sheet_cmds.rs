@@ -364,7 +364,12 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         for sub in doc.subfolders(folder) {
             let before = doc.folders.get(&sub).cloned().ok_or("no such folder")?;
-            check_sibling_name(doc, old.parent, &before.name, Some(folder))?;
+            if check_sibling_name(doc, old.parent, &before.name, Some(folder)).is_err() {
+                return Err(format!(
+                    "Rename sub-folder \"{}\" first: its new place already has a folder of that name.",
+                    before.name
+                ));
+            }
             let after = Folder { name: before.name.clone(), parent: old.parent };
             ops.push(Op::ModifyFolder { id: sub, before, after });
         }

@@ -896,6 +896,28 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         assert_eq!(c.log().len(), before + 1, "{cmd}");
     }
     assert_eq!(c.exec("openrevision", json!({"rev": "A"}))["rev"], json!("A"));
+    // Review W4: a plain undo by the agent across the issue is refused with the question; the
+    // agent confirms with `undoissue`, recorded as the agent.
+    c.exec("revision", json!({"description": "Second issue", "drawn": "CVA"}));
+    c.exec("issuerevision", json!({}));
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "u", "params": {}}));
+    assert!(m.contains("Undo the issue?"), "{m}");
+    assert_eq!(c.log().len(), before, "nothing undone");
+    c.exec("undoissue", json!({}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
+    assert!(!c.doc().versions.contains_key("Rev B") && c.doc().versions.contains_key("Rev A"));
+    // `setprop {components}`: two devices in one transaction, as the agent.
+    let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
+    let b = c.exec("place", json!({"symbol": "coil", "at": [250, 200]}))["component"].clone();
+    let before = c.log().len();
+    let v = c.exec("setprop", json!({"components": [a, b], "key": "maker", "value": "Generic"}));
+    assert_eq!(v["devices"], json!(2));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1, "one transaction for both");
+    assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
     assert_eq!(c.exec("pageprops", json!({"page": page}))["number"], json!("100"));
 
     // Writes off: every write refused, the reads work and record nothing.
@@ -914,6 +936,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         ("revision", json!({"description": "x"})),
         ("issuerevision", json!({})),
         ("undoissue", json!({})),
+        ("setprop", json!({"components": ["1", "2"], "key": "maker", "value": "x"})),
     ] {
         let m = r.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");

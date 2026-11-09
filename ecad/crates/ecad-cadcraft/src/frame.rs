@@ -102,10 +102,8 @@ impl FrameInput {
         let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
         let next_page = book.next(page);
-        let mut sheet = ecad_model::sheet::sheet_of(doc, page);
-        if sheet.check().is_err() {
-            sheet = SheetSpec::default();
-        }
+        // Checked there, so the frame and the references always use the same sheet.
+        let sheet = ecad_model::sheet::sheet_of(doc, page);
         FrameInput {
             sheet,
             unit: doc.settings.length_unit,
@@ -140,7 +138,11 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetProjectSettings { before, after } => {
             before.sheet != after.sheet || before.length_unit != after.length_unit
         }
-        Op::SetProperty { object: ObjectRef::Project, .. } => true,
+        // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
+        Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+            [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
+                || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
+        }
         Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
             *p == page || key == book::FOLDER_KEY || (key == book::NUMBER_KEY && shown.next_page == Some(*p))
         }

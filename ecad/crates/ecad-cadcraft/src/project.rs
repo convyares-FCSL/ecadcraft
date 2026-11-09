@@ -322,8 +322,8 @@ pub fn tree_touched(ops: &[Op]) -> bool {
                 | Op::AddFolder { .. }
                 | Op::RemoveFolder { .. }
                 | Op::ModifyFolder { .. }
-                | Op::SetProperty { object: ecad_model::ObjectRef::Page(_), .. }
-        )
+        ) || matches!(op, Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
+            if key == ecad_model::book::NUMBER_KEY || key == ecad_model::book::FOLDER_KEY)
     })
 }
 
@@ -2195,8 +2195,22 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
+            // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
+                if key == ecad_model::book::FOLDER_KEY =>
+            {
+                return None;
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } => {
                 out.insert(*p);
+                // The page before it in book order shows its number in its Next box.
+                if key == ecad_model::book::NUMBER_KEY {
+                    let book = ecad_model::book::Book::of(doc);
+                    if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i))
+                    {
+                        out.insert(*prev);
+                    }
+                }
             }
             // A device's tag is drawn beside each of its symbols (brief 018): their pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {

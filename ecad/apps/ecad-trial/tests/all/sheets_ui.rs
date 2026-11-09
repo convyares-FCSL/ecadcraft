@@ -285,3 +285,25 @@ fn the_demo_on_its_sheets() {
         take(&h, &deltas, &format!("019-demo-p{}.png", i + 1));
     }
 }
+
+/// Review W3: the open Revisions dialog follows changes made elsewhere (a typed command, undo and
+/// redo), keeping what the user typed and has not sent.
+#[test]
+fn the_revisions_dialog_follows_undo_and_redo() {
+    let mut h = build(trial(), None);
+    let _ = fixture_p(&mut h);
+    click(&mut h, project_panel::REVISIONS);
+    ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
+    ok(&mut h, "issuerevision {}");
+    h.run_steps(2);
+    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "Rev A listed");
+    h.state_mut().revisions.as_mut().unwrap().pending[2] = "typed, not sent".into();
+    ok(&mut h, "undoissue {}");
+    h.run_steps(2);
+    let d = h.state().revisions.clone().unwrap();
+    assert!(d.issued.is_empty(), "the undone issue is gone from the dialog");
+    assert_eq!(d.pending[2], "typed, not sent", "unsent typing kept");
+    ok(&mut h, "redo");
+    h.run_steps(2);
+    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
+}

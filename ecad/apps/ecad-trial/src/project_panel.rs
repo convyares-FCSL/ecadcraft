@@ -245,6 +245,8 @@ pub struct ProjectPanel {
     pub folder_rename: Option<InPlace<FolderId>>,
     /// The revision opened read-only: the bar's text (design 019 §7.3).
     pub revision: Option<String>,
+    /// Whether the tree has a folder (worked out on each new tree, not per row).
+    folders_present: bool,
 }
 
 impl ProjectPanel {
@@ -341,11 +343,12 @@ impl ProjectPanel {
             }
         }
         self.visible = out;
+        self.folders_present = self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }));
     }
 
     /// Whether the project has folders (the list is then a tree).
     fn has_folders(&self) -> bool {
-        self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }))
+        self.folders_present
     }
 
     /// The folder new pages and folders go in: the cursor row's, else the active page's.

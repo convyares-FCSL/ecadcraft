@@ -54,18 +54,87 @@ pub struct Book {
     pub nodes: Vec<Node>,
 }
 
-impl Book {
-    /// The book order of `doc`.
-    pub fn of(doc: &Document) -> Book {
+/// What book order depends on, and nothing else: the page order, each page's folder, the folders
+/// and their order. Light to copy, so the book order after a list of ops can be worked out
+/// without copying the document ([`Outline::apply`], [`positions_changed`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Outline {
+    pub page_order: Vec<PageId>,
+    /// Each page's folder, when its `folder` property names an existing folder.
+    pub page_folder: BTreeMap<PageId, FolderId>,
+    /// Each folder's parent.
+    pub folders: BTreeMap<FolderId, Option<FolderId>>,
+    pub folder_order: Vec<FolderId>,
+}
+
+impl Outline {
+    /// The outline of `doc`: O(pages + folders).
+    pub fn of(doc: &Document) -> Outline {
+        Outline {
+            page_order: doc.page_order.clone(),
+            page_folder: doc.page_order.iter().filter_map(|p| folder_of(doc, *p).map(|f| (*p, f))).collect(),
+            folders: doc.folders.iter().map(|(id, f)| (*id, f.parent)).collect(),
+            folder_order: doc.folder_order.clone(),
+        }
+    }
+
+    /// Apply what `op` changes in the outline (page and folder ops, a page's `folder` property);
+    /// every other op changes nothing here. Out-of-range indexes are ignored (the ledger refuses
+    /// them anyway).
+    pub fn apply(&mut self, op: &crate::op::Op) {
+        use crate::op::{ObjectRef, Op};
+        match op {
+            Op::AddPage { id, page, index } => {
+                if *index <= self.page_order.len() {
+                    self.page_order.insert(*index, *id);
+                }
+                match page.properties.get(FOLDER_KEY).and_then(|t| FolderId::parse(t)) {
+                    Some(f) => self.page_folder.insert(*id, f),
+                    None => self.page_folder.remove(id),
+                };
+            }
+            Op::RemovePage { id, index, .. } => {
+                if self.page_order.get(*index) == Some(id) {
+                    self.page_order.remove(*index);
+                }
+                self.page_folder.remove(id);
+            }
+            Op::SetProperty { object: ObjectRef::Page(p), key, after, .. } if key == FOLDER_KEY => {
+                match after.as_deref().and_then(FolderId::parse) {
+                    Some(f) => self.page_folder.insert(*p, f),
+                    None => self.page_folder.remove(p),
+                };
+            }
+            Op::AddFolder { id, folder, index } => {
+                if *index <= self.folder_order.len() {
+                    self.folder_order.insert(*index, *id);
+                }
+                self.folders.insert(*id, folder.parent);
+            }
+            Op::RemoveFolder { id, index, .. } => {
+                if self.folder_order.get(*index) == Some(id) {
+                    self.folder_order.remove(*index);
+                }
+                self.folders.remove(id);
+            }
+            Op::ModifyFolder { id, after, .. } => {
+                self.folders.insert(*id, after.parent);
+            }
+            _ => {}
+        }
+    }
+
+    /// The book order of this outline.
+    pub fn book(&self) -> Book {
         // Children per parent (None = top level), each list in its stored order.
         let mut pages_in: BTreeMap<Option<FolderId>, Vec<PageId>> = BTreeMap::new();
-        for p in &doc.page_order {
-            let f = folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
+        for p in &self.page_order {
+            let f = self.page_folder.get(p).copied().filter(|f| self.folders.contains_key(f));
             pages_in.entry(f).or_default().push(*p);
         }
         let mut folders_in: BTreeMap<Option<FolderId>, Vec<FolderId>> = BTreeMap::new();
-        for f in &doc.folder_order {
-            let parent = doc.folders.get(f).map(|x| x.parent.filter(|p| doc.folders.contains_key(p)));
+        for f in &self.folder_order {
+            let parent = self.folders.get(f).map(|x| x.filter(|p| self.folders.contains_key(p)));
             if let Some(parent) = parent {
                 folders_in.entry(parent).or_default().push(*f);
             }
@@ -90,12 +159,46 @@ impl Book {
             }
         }
         // Pages in a folder that could not be reached (a cycle, from a hostile document).
-        for p in &doc.page_order {
+        for p in &self.page_order {
             if !book.positions.contains_key(p) {
                 book.push_page(*p, 0);
             }
         }
         book
+    }
+}
+
+/// Whether `ops` can change book order at all (page and folder ops, a page's `folder`).
+pub fn moves_pages(ops: &[crate::op::Op]) -> bool {
+    use crate::op::{ObjectRef, Op};
+    ops.iter().any(|op| match op {
+        Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
+        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == FOLDER_KEY,
+        _ => false,
+    })
+}
+
+/// The pages of `doc` (before `ops`) whose book position `ops` change: a rename in place or an
+/// append changes no other page's position. O(pages + folders + ops); empty when `ops` cannot
+/// move a page.
+pub fn positions_changed(doc: &Document, ops: &[crate::op::Op]) -> BTreeSet<PageId> {
+    if !moves_pages(ops) {
+        return BTreeSet::new();
+    }
+    let mut outline = Outline::of(doc);
+    let before = outline.book();
+    for op in ops {
+        outline.apply(op);
+    }
+    let after = outline.book();
+    before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
+}
+
+impl Book {
+    /// The book order of `doc`.
+    pub fn of(doc: &Document) -> Book {
+        Outline::of(doc).book()
     }
 
     fn push_page(&mut self, id: PageId, depth: usize) {

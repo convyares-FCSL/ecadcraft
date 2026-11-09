@@ -465,6 +465,22 @@ impl Revisions {
         Revisions { issued, orig: pending.clone(), pending, read_only, confirming: false, error: None }
     }
 
+    /// Take `fresh` (the project now), keeping what the user typed in the pending row and has not
+    /// sent yet.
+    pub fn refresh(&mut self, fresh: Revisions) {
+        let typed: Vec<Option<String>> =
+            self.pending.iter().zip(self.orig.iter()).map(|(p, o)| (p != o).then(|| p.clone())).collect();
+        let (error, confirming) = (self.error.take(), self.confirming);
+        *self = fresh;
+        for (i, t) in typed.into_iter().enumerate() {
+            if let (Some(t), Some(slot)) = (t, self.pending.get_mut(i)) {
+                *slot = t;
+            }
+        }
+        self.error = error;
+        self.confirming = confirming;
+    }
+
     /// Whether Issue can be pressed: Rev, Description and Drawn are filled (owner answer Q7).
     pub fn can_issue(&self) -> bool {
         [0, 2, 3].iter().all(|i| self.pending.get(*i).is_some_and(|v| !v.trim().is_empty()))
@@ -631,8 +647,9 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
         return;
     }
     let t = Tokens::get();
-    let sections = sh.view.sections.clone();
-    for s in sections {
+    // Borrowed out for the frame (moved, not copied) and put back after.
+    let view = std::mem::take(&mut sh.view);
+    for s in &view.sections {
         ui.add_space(4.0);
         ui.label(RichText::new(&s.title).strong().color(t.text))
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.props.{}", s.kind)));
@@ -658,6 +675,7 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
             });
         }
     }
+    sh.view = view;
     ui.separator();
 }
 

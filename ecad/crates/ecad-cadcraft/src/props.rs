@@ -255,6 +255,12 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
+        // From and To name each end's device and connection point: a renamed device, or a
+        // connection point added or removed, changes them.
+        let ends = doc.conductors.get(w).map(|c| c.ends).unwrap_or([None, None]);
+        v.deps.extend(
+            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
+        );
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Cable(*c));
@@ -262,6 +268,9 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     } else if let [r] = k.references.iter().copied().collect::<Vec<_>>().as_slice() {
         if let Some(Subject::Cable(c)) = doc.representations.get(r).map(|x| x.subject) {
             v.deps.insert(ObjectRef::Cable(c));
+            // "Other ends" name each partner's page number and its sheet's zones.
+            let refs = ecad_model::derive::cable_references_of(doc, &BTreeSet::from([c]));
+            v.deps.extend(refs.iter().map(|x| ObjectRef::Page(x.page)));
         }
         v.deps.insert(ObjectRef::Page(page));
         v.sections.push(reference_section(doc, *r));
