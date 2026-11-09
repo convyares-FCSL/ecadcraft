@@ -338,7 +338,7 @@ pub(crate) fn run_wirenumber(s: &mut Session, params: &Value) -> cadcraft_engine
                     props.insert(KIND.into(), CONTINUATION.into());
                     props.insert(NAME.into(), name.clone());
                     let placement = Placement { origin: at, rotation: arrow_rotation(d), mirror: false, scale: 1.0 };
-                    let t = wires::plan_tagless(doc, &mut p.ids, page, style.clone(), starter, placement, props);
+                    let t = wires::plan_tagless(doc, &mut p.ids, page, style.clone(), starter, placement, props)?;
                     // The plan attaches the loose end at the point.
                     placed.push(t.component.hex());
                     ops.extend(t.ops);
@@ -513,7 +513,7 @@ pub(crate) fn run_junction(s: &mut Session, params: &Value) -> cadcraft_engine::
                 })
                 .unwrap_or(at);
             let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
-            let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props);
+            let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
             let r = json!({"junction": t.component.hex(), "terminal": t.terminal.hex(), "conductor": null, "at": [snapped.x, snapped.y], "attached": t.attached.len()});
             p.apply_edit(pg, "junction", "Junction", t.ops)?;
             return Ok(r);
@@ -598,7 +598,7 @@ pub(crate) fn place_tagless(
             props.insert(NAME.into(), n.clone());
         }
         let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
-        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props);
+        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
         let label = if starter.key == CONTINUATION { "Continuation" } else { "Junction" };
         p.apply_edit(pg, "place", label, t.ops.clone())?;
         if let Some(n) = &name {

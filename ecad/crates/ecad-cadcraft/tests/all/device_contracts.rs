@@ -284,6 +284,55 @@ fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Review of PR #41 (S2): the project reads its history for tag numbers once when it opens and
+/// then only what each change adds, so the prompt's preview, which never reads the log, already
+/// knows a deleted tag after reopening.
+#[test]
+fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
+    let mut h = new_h();
+    place(&mut h, "coil", [0.0, 0.0]);
+    let k2: ComponentId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
+    h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
+    let coil = symbols::by_key("coil").unwrap();
+    assert_eq!(h.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
+    h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
+    let dir = std::env::temp_dir().join(format!("ecad-018-s2-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("tags.ecad").display().to_string();
+    h.run("saveas", json!({"path": path})).unwrap();
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = cadcraft_engine::Session::empty();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 77).unwrap();
+    let mut h2 = H { s, project, trail: Vec::new() };
+    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"), "-K02 was used once");
+    // The preview uses nothing up.
+    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
+    drop(h2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review of PR #41 (W3): a symbol that is linked to none of its device's connection points (an
+/// old or hand-edited file) is refused before merging, with words that say what to do, not with
+/// a model invariant.
+#[test]
+fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly() {
+    let mut f = k1();
+    let k2: ComponentId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
+    let mut doc = f.h.doc();
+    let (rid, _) = doc.representations_of(Subject::Component(k2)).next().unwrap();
+    doc.representations.get_mut(&rid).unwrap().connection_points.clear();
+    let ts: Vec<TerminalId> = doc.terminals_of(k2).map(|(t, _)| t).collect();
+    for t in ts {
+        doc.terminals.get_mut(&t).unwrap().key = Some(format!("old-{}", t.short()));
+    }
+    let mut ids = ecad_model::IdAllocator::seeded(5);
+    let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err();
+    assert!(e.starts_with("Cannot merge -K02: its symbol on page"), "{e}");
+    assert!(e.contains("not linked to any of its connection points"), "{e}");
+}
+
 // ---------------------------------------------------------------- G (interactive)
 
 #[test]

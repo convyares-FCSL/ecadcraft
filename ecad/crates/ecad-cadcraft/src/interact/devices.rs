@@ -51,7 +51,10 @@ fn yes(i: &Input) -> Option<bool> {
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let default = read(s, |p, _| Ok(p.last_placed.as_ref().map(|(k, _)| k.clone()))).ok().flatten();
-    let default = default.and_then(|k| symbols::by_key(&k)).unwrap_or(&symbols::STARTERS[0]);
+    let default = default
+        .and_then(|k| symbols::by_key(&k))
+        .or_else(|| symbols::STARTERS.first())
+        .ok_or_else(|| other("no starter symbols are built in"))?;
     Ok(Box::new(Safe(Place {
         stage: Stage::Symbol,
         default,
@@ -121,7 +124,7 @@ impl Place {
                 None => {
                     let t = match &self.tag {
                         Some(t) => t.clone(),
-                        None => p.tag_high.clone().next(&p.ledger, &devices::prefix_for(doc, sym))?,
+                        None => p.tag_high.peek(doc, &devices::prefix_for(doc, sym))?,
                     };
                     Ok((format!("new device {t}"), t, sym.labels()))
                 }
@@ -482,9 +485,8 @@ impl Interactive for Place {
             return Vec::new();
         }
         let pl = self.placement(cursor);
-        self.symbol()
-            .definition()
-            .graphics
+        let Ok(def) = self.symbol().definition() else { return Vec::new() };
+        def.graphics
             .iter()
             .filter_map(|g| super::forms::placed(g, &pl))
             .map(|g| crate::convert::kind_for_primitive(&g))
@@ -497,7 +499,7 @@ impl Interactive for Place {
         }
         let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
         let pl = self.placement(cursor);
-        let def = self.symbol().definition();
+        let Ok(def) = self.symbol().definition() else { return Vec::new() };
         let mut out: Vec<Entity> = def
             .terminals
             .iter()
@@ -506,7 +508,7 @@ impl Interactive for Place {
         if let Some((_, tag, labels)) = self.outcome(s) {
             let at: Vec<(TextOf, String, ecad_model::Pt)> =
                 def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
-            for (_, value, p, h, ha, va) in devices::texts_for(&def, &pl, Some(&tag), &at) {
+            for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at) {
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, TERMINAL_ACI));
             }

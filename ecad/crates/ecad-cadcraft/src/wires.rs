@@ -297,6 +297,9 @@ pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(Con
 
 /// Plan a tagless component of starter `s` at `placement` on `page`, with properties `props`
 /// (`kind`, and `name` for a continuation); loose ends lying on its connection point attach.
+///
+/// # Errors
+/// The starter definition cannot be built (never expected).
 pub fn plan_tagless(
     doc: &Document,
     ids: &mut IdAllocator,
@@ -305,13 +308,13 @@ pub fn plan_tagless(
     s: &Starter,
     placement: Placement,
     props: ecad_model::Properties,
-) -> Tagless {
+) -> Result<Tagless, String> {
     let mut ops = Vec::new();
     let definition = match symbols::embedded(doc, s) {
         Some(d) => d,
         None => {
             let d: DefinitionId = ids.fresh();
-            ops.push(Op::EmbedDefinition { id: d, definition: s.definition() });
+            ops.push(Op::EmbedDefinition { id: d, definition: s.definition()?.clone() });
             d
         }
     };
@@ -341,7 +344,7 @@ pub fn plan_tagless(
     for (c, end) in &attached {
         ops.push(Op::AttachEnd { conductor: *c, end: *end, before: None, after: Some(terminal) });
     }
-    Tagless { ops, component, terminal, item, representation, definition, attached }
+    Ok(Tagless { ops, component, terminal, item, representation, definition, attached })
 }
 
 /// The nearest point to `p` on segment `a`-`b`, and its distance.
@@ -457,7 +460,7 @@ pub fn plan_junction(
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
     let placement = Placement { origin: on.at, rotation: 0.0, mirror: false, scale: 1.0 };
-    let mut tagless = plan_tagless(doc, ids, page, style, starter, placement, props);
+    let mut tagless = plan_tagless(doc, ids, page, style, starter, placement, props)?;
     let j = tagless.terminal;
     // Split: C keeps its vertices up to the point; C2 runs from the point to C's old end B.
     let seg = on.segment;

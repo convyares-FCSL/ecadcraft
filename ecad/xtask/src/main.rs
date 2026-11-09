@@ -221,6 +221,13 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
     path.strip_prefix(workspace).is_some_and(|p| build(p) || p == "cargo.lock") || build(path)
 }
 
+/// Folders of the workspace that belong to no package but are read into one at build time
+/// (`include_str!`), with the package that reads them: a change there selects that package.
+const READ_BY: &[(&str, &str)] = &[
+    // The demo's command list, embedded by `ecad-mcp`'s demo module (`cargo xtask demo`).
+    ("examples/", "ecad-mcp"),
+];
+
 /// The workspace members whose tests to run after `changed` (paths relative to the repository
 /// root `repo`).
 ///
@@ -239,13 +246,6 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
 /// # Errors
 ///
 /// `meta` has no package list or no resolve graph.
-/// Folders of the workspace that belong to no package but are read into one at build time
-/// (`include_str!`), with the package that reads them: a change there selects that package.
-const READ_BY: &[(&str, &str)] = &[
-    // The demo's command list, embedded by `ecad-mcp`'s demo module (`cargo xtask demo`).
-    ("examples/", "ecad-mcp"),
-];
-
 fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<String>, String> {
     let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
     let repo = norm(repo);

@@ -397,6 +397,8 @@ pub struct Project {
     change_count: u64,
     /// The highest number each tag prefix has had (brief 018), read from the log as it grows.
     pub(crate) tag_high: crate::devices::TagHigh,
+    /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
+    page_list_version: u64,
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
     pub(crate) last_placed: Option<(String, ComponentId)>,
@@ -776,6 +778,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
             last_placed: None,
             last_continuation: None,
             wire_potential: None,
@@ -784,6 +787,8 @@ impl Project {
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         // Automated tests (the test store) never touch the user's settings unless they choose a
         // folder; a new project has no remembered views to read.
         if persistence != Persistence::TestStore {
@@ -844,6 +849,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
             last_placed: None,
             last_continuation: None,
             wire_potential: None,
@@ -852,6 +858,8 @@ impl Project {
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         if let Some(first) = pages.first() {
             p.open_page(&mut Pages(s), *first)?;
         }
@@ -942,6 +950,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
+            page_list_version: 0,
             last_placed: None,
             last_continuation: None,
             wire_potential: None,
@@ -950,6 +959,8 @@ impl Project {
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
+        // Read the history once, so tag numbering never reads the log during a prompt.
+        p.catch_up_tags();
         p.views = views;
         p.settings = settings;
         let head = p.ledger.head();
@@ -1134,6 +1145,15 @@ impl Project {
             .collect()
     }
 
+    /// A number that changes exactly when [`Project::page_rows`] could differ (update map of the
+    /// Project panel's rows, brief 016): a page added or removed (rename and move are a remove and
+    /// an add, [`crate::device_list::DeviceTouch::pages`]), or a page becoming available or
+    /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
+    /// switches) leaves it alone, so the panel keeps its rows.
+    pub fn page_list_version(&self) -> u64 {
+        self.page_list_version
+    }
+
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
     /// switch); 0 before the first. Cheap: callers compare it every frame.
     pub fn change_count(&self) -> u64 {
@@ -1169,13 +1189,26 @@ impl Project {
         for c in self.changes.iter().filter(|c| c.n > n) {
             out.components.extend(c.devices.components.iter().copied());
             out.pages |= c.devices.pages;
+            out.settings |= c.devices.settings;
         }
         Some(out)
     }
 
+    /// Bring the tag numbering up to date with the log.
+    fn catch_up_tags(&mut self) {
+        self.tag_high.catch_up(&self.ledger);
+    }
+
     /// Record one change and the pages it could change.
+    ///
+    /// The tag numbering ([`crate::devices::TagHigh`]) reads the transactions this change added,
+    /// so reads (prompts, previews, pick lists) never read the log.
     fn record_change(&mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch) {
         self.goto_ring = None;
+        self.tag_high.catch_up(&self.ledger);
+        if devices.pages {
+            self.page_list_version += 1;
+        }
         self.change_count += 1;
         self.changes.push_back(Change { n: self.change_count, pages, devices });
         while self.changes.len() > CHANGE_LOG {
@@ -1244,7 +1277,10 @@ impl Project {
         if !has_view && !empty {
             pg.zoom_extents();
         }
-        self.pages.insert(page, PageView { uid: Some(uid), map, last, unavailable: false });
+        let was = self.pages.insert(page, PageView { uid: Some(uid), map, last, unavailable: false });
+        if was.is_some_and(|v| v.unavailable) {
+            self.page_list_version += 1;
+        }
         self.active = Some(page);
         self.events.record(EventKind::PageOpened, None, self.ledger.head(), Some(page), title);
         self.sync_saved(pg);
@@ -1395,7 +1431,10 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = map;
                     v.last = Some(st.doc.clone());
-                    v.unavailable = false;
+                    if v.unavailable {
+                        v.unavailable = false;
+                        self.page_list_version += 1;
+                    }
                 }
             }
             Err(_) => {
@@ -1406,7 +1445,10 @@ impl Project {
                 if let Some(v) = self.pages.get_mut(&page) {
                     v.map = HandleMap::default();
                     v.last = Some(st.doc.clone());
-                    v.unavailable = true;
+                    if !v.unavailable {
+                        v.unavailable = true;
+                        self.page_list_version += 1;
+                    }
                 }
                 pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
             }
