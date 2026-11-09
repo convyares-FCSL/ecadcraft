@@ -54,8 +54,11 @@ fn edit(ledger: &mut Ledger, rng: &mut Rng, n: u64, version: bool) {
     }
 }
 
-/// One power-loss round; the description of a failure.
-fn power_round(seed: u64, mode: CrashMode) -> std::result::Result<&'static str, String> {
+/// One power-loss round; the description of a failure. With `span` `None` nothing is cut and
+/// the number of disk operations of the last save is returned; with `Some(ops)` the power is cut
+/// after a uniformly chosen number of operations up to the end of that save (the round is
+/// deterministic, so the save is the same).
+fn power_round(seed: u64, mode: CrashMode, span: Option<u64>) -> std::result::Result<(&'static str, u64), String> {
     let mut rng = Rng::new(seed);
     let disk = PowerLoss::default();
     let mut f = fixture();
@@ -76,9 +79,13 @@ fn power_round(seed: u64, mode: CrashMode) -> std::result::Result<&'static str, 
     let v = rng.below(4) == 0;
     edit(&mut ledger, &mut rng, n, v);
     let attempted = (ledger.head(), ledger.document().clone());
-    // A save is a few dozen writes and syncs: most cuts land inside it.
-    disk.cut_after(rng.below(24));
+    let pick = rng.next_u64();
+    if let Some(ops) = span {
+        disk.cut_after(pick % (ops + 1));
+    }
+    let before = disk.ops();
     let saved = proj.save(&mut ledger);
+    let ops = disk.ops() - before;
     if saved.is_ok() {
         acked = attempted.clone();
     }
@@ -109,7 +116,7 @@ fn power_round(seed: u64, mode: CrashMode) -> std::result::Result<&'static str, 
     if !v.ok {
         return Err(format!("verify: {:?}", v.lines));
     }
-    Ok(outcome)
+    Ok((outcome, ops))
 }
 
 fn run_rounds(name: &str, n: u64, mode: CrashMode) {
@@ -118,8 +125,10 @@ fn run_rounds(name: &str, n: u64, mode: CrashMode) {
     let mut outcomes: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
     for round in 0..n {
         let seed = 0xEC4D_0000 + round;
-        match power_round(seed, mode) {
-            Ok(o) => *outcomes.entry(o).or_default() += 1,
+        // The same round twice: once to count the save's disk operations, then cut anywhere in it.
+        let cut = power_round(seed, mode, None).and_then(|(_, ops)| power_round(seed, mode, Some(ops)));
+        match cut {
+            Ok((o, _)) => *outcomes.entry(o).or_default() += 1,
             Err(e) => failures.push(format!("round {round} (seed {seed:#x}): {e}")),
         }
     }
@@ -176,7 +185,7 @@ fn child_v2_writer() {
     };
     let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(acks_path(&file)).unwrap();
     let mut rng = Rng::new(u64::from(std::process::id()) ^ 0x5EED);
-    writeln!(acks, "s {}", ledger.head()).unwrap();
+    writeln!(acks, "s {} {}", ledger.head(), digest(ledger.document())).unwrap();
     loop {
         let r = rng.below(100);
         if r == 0 {
@@ -200,8 +209,13 @@ fn child_v2_writer() {
             let seq = ledger.head() - 1;
             writeln!(acks, "v V{seq} {seq}").unwrap();
         }
-        writeln!(acks, "s {}", ledger.head()).unwrap();
+        writeln!(acks, "s {} {}", ledger.head(), digest(ledger.document())).unwrap();
     }
+}
+
+/// A short fingerprint of a document's contents (the hash of its serde JSON).
+fn digest(doc: &Document) -> String {
+    ecad_file::chain::hex(&ecad_file::v2::schema::chunk_hash(&serde_json::to_vec(doc).unwrap()))
 }
 
 fn ack_lines(file: &Path) -> Vec<String> {
@@ -244,7 +258,15 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         let _ = child.wait();
         let acks = ack_lines(&file);
         acked_total += acks.len().saturating_sub(before);
-        let last_save: u64 = acks.iter().rev().find_map(|l| l.strip_prefix("s ")?.parse().ok()).unwrap_or(0);
+        // Acknowledged saves: head → the document's fingerprint.
+        let saves: std::collections::BTreeMap<u64, String> = acks
+            .iter()
+            .filter_map(|l| {
+                let mut it = l.strip_prefix("s ")?.split(' ');
+                Some((it.next()?.parse().ok()?, it.next()?.to_string()))
+            })
+            .collect();
+        let last_save = saves.keys().next_back().copied().unwrap_or(0);
         let t = Instant::now();
         let opened = ecad_file::v2::disk::DiskProjectV2::open(&file, 1, "crash parent");
         reopen_ms.push(t.elapsed().as_secs_f64() * 1000.0);
@@ -260,6 +282,15 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         }
         if o.ledger.head() < last_save {
             failures.push(format!("round {round}: reopened at {}, but {last_save} was acknowledged", o.ledger.head()));
+        }
+        // The contents: the document an acknowledged save had, and every invariant.
+        if let Some(d) = saves.get(&o.ledger.head())
+            && *d != digest(o.ledger.document())
+        {
+            failures.push(format!("round {round}: the document at {} is not the one saved", o.ledger.head()));
+        }
+        if let Err(e) = o.ledger.document().check() {
+            failures.push(format!("round {round}: the reopened document breaks an invariant: {e}"));
         }
         let store = o.project.project().store().clone();
         let r = store.reader().unwrap();
@@ -305,5 +336,135 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         pick(1.0)
     );
     let _ = std::fs::remove_dir_all(&dir);
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+const CHILD_DIR: &str = "ECAD_CRASH_DIR";
+
+/// The Save As and first-save writer: in a folder of its own, it writes a new project's first
+/// save, then alternates edits, saves, Save As to a new name and first saves of other new projects,
+/// acknowledging each file written (`f <path> <head> <fingerprint>`) only after it returned.
+#[test]
+#[ignore = "run by killed_during_save_as_or_a_first_save_leaves_only_whole_files in a child process"]
+fn child_v2_save_as_writer() {
+    let Some(dir) = std::env::var_os("ECAD_TEST_CHILD").and(std::env::var_os(CHILD_DIR)) else { return };
+    let dir = PathBuf::from(dir);
+    let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("acks")).unwrap();
+    let mut rng = Rng::new(u64::from(std::process::id()) ^ 0x5A5A);
+    let mut f = fixture();
+    let first = dir.join("p0.ecad");
+    let (mut disk, _) =
+        ecad_file::v2::disk::DiskProjectV2::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
+    let mut ledger = f.ledger;
+    writeln!(acks, "f {} {} {}", first.display(), ledger.head(), digest(ledger.document())).unwrap();
+    for i in 1..u32::MAX {
+        let (n, v) = (1 + rng.below(30), rng.below(4) == 0);
+        edit(&mut ledger, &mut rng, n, v);
+        disk.save(&mut ledger).unwrap();
+        writeln!(acks, "f {} {} {}", disk.path().display(), ledger.head(), digest(ledger.document())).unwrap();
+        if rng.below(2) == 0 {
+            let target = dir.join(format!("p{i}.ecad"));
+            disk.save_as(&target, &mut ledger, None, "crash child").unwrap();
+            writeln!(acks, "f {} {} {}", target.display(), ledger.head(), digest(ledger.document())).unwrap();
+        } else {
+            // The first save of another new project.
+            let mut g = fixture();
+            let n = 1 + rng.below(50);
+            edit(&mut g.ledger, &mut rng, n, false);
+            let target = dir.join(format!("n{i}.ecad"));
+            let (d, _) =
+                ecad_file::v2::disk::DiskProjectV2::create(&target, PROJECT, &mut g.ledger, None, None, "crash child")
+                    .unwrap();
+            drop(d);
+            writeln!(acks, "f {} {} {}", target.display(), g.ledger.head(), digest(g.ledger.document())).unwrap();
+        }
+    }
+}
+
+/// Killed during a Save As or a first save: every acknowledged file opens with what was saved in
+/// it (or more), and every other project file in the folder is whole (the rename is atomic): no
+/// half-written project at a project's name.
+#[test]
+#[ignore = "slow: kills a child process during Save As and first saves"]
+fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
+    let n = rounds(50);
+    let mut rng = Rng::new(0x5AFE);
+    let mut failures = Vec::new();
+    let mut files_checked = 0usize;
+    for round in 0..n {
+        let dir = std::env::temp_dir().join(format!("ecad-crash-as-{}", ecad_store::disk::unique()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let acks_file = dir.join("acks");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "container_crash::child_v2_save_as_writer",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ECAD_TEST_CHILD", "1")
+            .env(CHILD_DIR, &dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let start = Instant::now();
+        while std::fs::read_to_string(&acks_file).unwrap_or_default().is_empty()
+            && start.elapsed() < Duration::from_secs(60)
+        {
+            if let Ok(Some(status)) = child.try_wait() {
+                failures.push(format!("round {round}: the writer exited by itself ({status})"));
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        std::thread::sleep(Duration::from_millis(rng.below(400)));
+        let _ = child.kill();
+        let _ = child.wait();
+        // The newest acknowledgement of each file.
+        let mut acked: std::collections::BTreeMap<String, (u64, String)> = std::collections::BTreeMap::new();
+        for l in std::fs::read_to_string(&acks_file).unwrap_or_default().lines() {
+            let mut it = l.strip_prefix("f ").unwrap_or_default().rsplitn(3, ' ');
+            let (Some(d), Some(h), Some(p)) = (it.next(), it.next(), it.next()) else { continue };
+            acked.insert(p.to_string(), (h.parse().unwrap_or(0), d.to_string()));
+        }
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("ecad") {
+                continue;
+            }
+            files_checked += 1;
+            let key = path.display().to_string();
+            match ecad_file::v2::disk::DiskProjectV2::open(&path, 1, "crash parent") {
+                Ok(o) => {
+                    if let Some(d) = &o.report.damage {
+                        failures.push(format!("round {round}: {key} is damaged: {d:?}"));
+                    }
+                    if let Some((head, fp)) = acked.get(&key) {
+                        if o.ledger.head() < *head {
+                            failures.push(format!(
+                                "round {round}: {key} reopened at {}, {head} acknowledged",
+                                o.ledger.head()
+                            ));
+                        } else if o.ledger.head() == *head && *fp != digest(o.ledger.document()) {
+                            failures.push(format!("round {round}: {key} does not hold what was saved"));
+                        }
+                    }
+                }
+                Err(e) => failures.push(format!("round {round}: {key} does not open: {e}")),
+            }
+        }
+        for path in acked.keys() {
+            if !Path::new(path).exists() {
+                failures.push(format!("round {round}: acknowledged {path} is missing"));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        if !failures.is_empty() {
+            break;
+        }
+    }
+    eprintln!("Save As and first saves killed: {n} rounds, {files_checked} files checked, {} failures", failures.len());
     assert!(failures.is_empty(), "{failures:#?}");
 }

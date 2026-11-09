@@ -34,6 +34,8 @@ struct Inner {
     off: bool,
     syncs: u64,
     writes: u64,
+    /// Writes, length changes and syncs so far (the unit [`PowerLoss::cut_after`] counts).
+    ops: u64,
 }
 
 /// A small deterministic random source (xorshift64*), so a failing round can be replayed from
@@ -120,6 +122,11 @@ impl PowerLoss {
         self.inner.lock().map_or((0, 0), |i| (i.writes, i.syncs))
     }
 
+    /// Writes, length changes and syncs so far: what [`PowerLoss::cut_after`] counts.
+    pub fn ops(&self) -> u64 {
+        self.inner.lock().map_or(0, |i| i.ops)
+    }
+
     /// Whether the power has been cut.
     pub fn is_off(&self) -> bool {
         self.inner.lock().is_ok_and(|i| i.off)
@@ -167,6 +174,7 @@ impl PowerLoss {
 
     /// Count one operation against an armed cut; whether the power is (now) off.
     fn tick(i: &mut Inner) -> bool {
+        i.ops += 1;
         if i.off {
             return true;
         }
