@@ -727,7 +727,6 @@ impl ProjectV2 {
         // the rows under it), open from the project root instead, read-only with the damage
         // reported (EEP-0005 §5.8), as for a damaged chunk.
         let to = head.min(last);
-        let mut loaded = loaded;
         let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
             let using = loaded.take();
             let from_snapshot = using.as_ref().map(|(v, _, _)| v.point.seq);
