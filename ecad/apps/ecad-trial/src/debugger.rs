@@ -758,7 +758,7 @@ impl Debugger {
                     |l| {
                         format!(
                             "transactions {}–{}, {} bytes, {} new chunks, {} snapshots",
-                            l.first_seq, l.last_seq, l.bytes, l.parts_written, l.snapshots
+                            l.first_seq, l.last_seq, l.bytes, l.chunks_written, l.snapshots
                         )
                     },
                 ),

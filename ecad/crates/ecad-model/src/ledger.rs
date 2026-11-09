@@ -106,6 +106,8 @@ pub struct Ledger {
     verify: bool,
     /// Rollback failures (never expected) and whether they left the document unusable.
     health: Health,
+    /// How often the whole undo and redo stacks were read from the history (at most once).
+    stack_rebuilds: u32,
 }
 
 /// The derived undo/redo stacks: the `seq` and ID of each entry, so that admitting a step never
@@ -114,9 +116,27 @@ pub struct Ledger {
 struct Stacks {
     undo: Vec<(u64, TxId)>,
     redo: Vec<(u64, TxId)>,
+    /// Entries below the visible ones that a snapshot did not record (brief 021: a snapshot
+    /// keeps the top of each stack and its depth). They are read once, from the history, when
+    /// undo or redo first reaches them ([`Ledger::rebuild_stacks`]).
+    undo_hidden: u64,
+    redo_hidden: u64,
 }
 
 impl Stacks {
+    /// Whether `kind` would pop a stack whose visible part is empty but which has hidden entries.
+    fn needs_full(&self, kind: TxKind) -> bool {
+        match kind {
+            TxKind::Edit => false,
+            TxKind::Undo { .. } => self.undo.is_empty() && self.undo_hidden > 0,
+            TxKind::Redo { .. } => self.redo.is_empty() && self.redo_hidden > 0,
+        }
+    }
+
+    /// Whether either stack's visible part is empty while it has hidden entries.
+    fn top_hidden(&self) -> bool {
+        (self.undo.is_empty() && self.undo_hidden > 0) || (self.redo.is_empty() && self.redo_hidden > 0)
+    }
     /// Whether transaction `id`, of `kind`, may follow the entries already pushed.
     fn admit_kind(&self, kind: TxKind, id: impl std::fmt::Display) -> Result<()> {
         let top = |stack: &Vec<(u64, TxId)>| stack.last().map(|(_, t)| *t);
@@ -143,6 +163,7 @@ impl Stacks {
             TxKind::Edit => {
                 self.undo.push((tx.seq, tx.id));
                 self.redo.clear();
+                self.redo_hidden = 0;
             }
             TxKind::Undo { .. } => {
                 self.undo.pop();
@@ -188,6 +209,26 @@ pub trait History: std::fmt::Debug + Send + Sync {
     fn transactions(&self, from: u64, to: u64) -> Result<Vec<Transaction>> {
         (from..=to).map(|s| self.transaction(s)).collect()
     }
+
+    /// The whole undo and redo stacks after transaction `seq` (at or before the ledger's base),
+    /// derived from the transactions' kinds: reads every transaction up to `seq`, so it is used
+    /// once per session at most, when undo or redo first goes below what a snapshot recorded.
+    ///
+    /// # Errors
+    /// As [`History::transaction`]; an inconsistent undo/redo structure.
+    fn stacks_at(&self, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+        let mut s = Stacks::default();
+        let mut from = 1;
+        while from <= seq {
+            let to = seq.min(from + 4_095);
+            for tx in self.transactions(from, to)? {
+                s.admit(&tx)?;
+                s.push(&tx);
+            }
+            from = to + 1;
+        }
+        Ok((s.undo, s.redo))
+    }
 }
 
 /// A snapshot a ledger starts from instead of the project root (brief 021): the state after
@@ -197,8 +238,12 @@ pub trait History: std::fmt::Debug + Send + Sync {
 pub struct Base {
     pub seq: u64,
     pub doc: Document,
+    /// The top of each stack (all of it, or only the newest entries a snapshot recorded).
     pub undo: Vec<(u64, TxId)>,
     pub redo: Vec<(u64, TxId)>,
+    /// How many entries lie below `undo` and `redo` (0 when they are whole).
+    pub undo_hidden: u64,
+    pub redo_hidden: u64,
     pub history: Arc<dyn History>,
 }
 
@@ -517,6 +562,7 @@ impl Ledger {
             stacks: Stacks::default(),
             verify: false,
             health: Health::default(),
+            stack_rebuilds: 0,
         }
     }
 
@@ -566,7 +612,7 @@ impl Ledger {
     /// [`ModelError::CorruptLog`] when the base's stacks are inconsistent (an entry at 0 or after
     /// the base, or out of order) or their tops cannot be read from the history.
     pub fn from_base(base: Base, tail: Vec<Transaction>, seed: u64) -> Result<(Self, Option<(usize, ModelError)>)> {
-        let Base { seq, mut doc, undo, redo, history } = base;
+        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, history } = base;
         for stack in [&undo, &redo] {
             let bad_entry = stack.iter().any(|(s, _)| *s == 0 || *s > seq);
             let unordered = stack.windows(2).any(|w| matches!(w, [a, b] if a.0 >= b.0));
@@ -585,9 +631,10 @@ impl Ledger {
             older: BTreeMap::new(),
             persisted: seq,
             ids: IdAllocator::seeded(seed),
-            stacks: Stacks { undo, redo },
+            stacks: Stacks { undo, redo, undo_hidden, redo_hidden },
             verify: false,
             health: Health::default(),
+            stack_rebuilds: 0,
         };
         me.load_tops()?;
         let failure = me.extend_prefix(tail);
@@ -604,7 +651,11 @@ impl Ledger {
         let start = self.head();
         for (i, tx) in log.into_iter().enumerate() {
             let expected = start + i as u64 + 1;
-            let step = if tx.seq != expected {
+            // A step that pops below what the snapshot recorded reads the stacks whole first.
+            let full = if self.stacks.needs_full(tx.kind) { self.rebuild_stacks() } else { Ok(()) };
+            let step = if let Err(e) = full {
+                Err(e)
+            } else if tx.seq != expected {
                 Err(ModelError::CorruptLog(format!(
                     "transaction {} has sequence {} at position {}",
                     tx.id, tx.seq, expected
@@ -646,6 +697,48 @@ impl Ledger {
         }
         self.persisted = self.head();
         failure
+    }
+
+    /// Read the whole undo and redo stacks, once: the stacks at the base from the history (from
+    /// the transactions' kinds), then the in-memory log. Called only when undo or redo reaches
+    /// below what the snapshot the ledger was opened from recorded; afterwards nothing is hidden.
+    ///
+    /// # Errors
+    /// The history could not be read, or does not agree with the stacks' visible tops.
+    fn rebuild_stacks(&mut self) -> Result<()> {
+        if self.stacks.undo_hidden == 0 && self.stacks.redo_hidden == 0 {
+            return Ok(());
+        }
+        let h = self.history.as_ref().ok_or_else(|| {
+            ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
+        })?;
+        let (undo, redo) = h.stacks_at(self.base)?;
+        let mut full = Stacks { undo, redo, undo_hidden: 0, redo_hidden: 0 };
+        for tx in &self.log {
+            full.admit(tx)?;
+            full.push(tx);
+        }
+        // The rebuilt stacks must end with what was visible.
+        let agrees = |all: &[(u64, TxId)], top: &[(u64, TxId)]| all.ends_with(top);
+        if !agrees(&full.undo, &self.stacks.undo) || !agrees(&full.redo, &self.stacks.redo) {
+            return Err(ModelError::CorruptLog("the history does not agree with the recorded undo stacks".into()));
+        }
+        self.stacks = full;
+        self.stack_rebuilds += 1;
+        self.load_tops()
+    }
+
+    /// How often the whole undo and redo stacks were read from the history (at most once).
+    pub fn stack_rebuilds(&self) -> u32 {
+        self.stack_rebuilds
+    }
+
+    /// The depths of the undo and redo stacks, entries not read yet included.
+    pub fn stack_depths(&self) -> (u64, u64) {
+        (
+            self.stacks.undo.len() as u64 + self.stacks.undo_hidden,
+            self.stacks.redo.len() as u64 + self.stacks.redo_hidden,
+        )
     }
 
     /// Read the tops of the undo and redo stacks that lie before the base, if not read yet.
@@ -719,6 +812,7 @@ impl Ledger {
             stacks,
             verify,
             health,
+            stack_rebuilds: 0,
         })
     }
 
@@ -902,9 +996,11 @@ impl Ledger {
         let tx = Transaction { id, seq, author, label, kind, time_ms, ops };
         self.stacks.push(&tx);
         self.log.push(tx);
-        // Undo or redo may have exposed a top before the base: read it now, so labels and the
-        // next step never wait on the store. A failure is reported here, and retried by the step.
-        if let Err(e) = self.load_tops() {
+        // Undo or redo may have exposed a top before the base, or emptied what the snapshot
+        // recorded: read it now, so labels and the next step never wait on the store. A failure
+        // is reported here, and retried by the step.
+        let read = if self.stacks.top_hidden() { self.rebuild_stacks() } else { self.load_tops() };
+        if let Err(e) = read {
             self.health.diagnostics.push(format!("could not read an older step for undo or redo: {e}"));
         }
         Ok(id)
@@ -928,6 +1024,9 @@ impl Ledger {
     /// The top of the undo (or redo) stack, read from the history first if it lies before the
     /// base and was not read yet (a failed earlier read is retried here).
     fn ensure_top(&mut self, undo: bool, nothing: &'static str) -> Result<&Transaction> {
+        if self.stacks.top_hidden() {
+            self.rebuild_stacks()?;
+        }
         let empty = if undo { self.stacks.undo.is_empty() } else { self.stacks.redo.is_empty() };
         if empty {
             return Err(ModelError::NothingTo(nothing));

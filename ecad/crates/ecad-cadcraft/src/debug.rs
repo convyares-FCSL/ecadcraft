@@ -240,7 +240,7 @@ impl FileFacts {
                 "link_v1": s.link_v1.as_ref().map(|(h, n)| json!({"hash": h, "transactions": n})),
                 "last_save": s.last_save.as_ref().map(|l| json!({
                     "first_seq": l.first_seq, "last_seq": l.last_seq, "bytes": l.bytes,
-                    "parts_written": l.parts_written, "snapshots": l.snapshots,
+                    "chunks_written": l.chunks_written, "snapshots": l.snapshots,
                 })),
             })),
         })

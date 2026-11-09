@@ -4,7 +4,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use ecad_model::{Author, Base, Document, History, Layer, LayerId, Ledger, ModelError, Op, Page, PageId, Transaction};
+use ecad_model::{
+    Author, Base, Document, History, Layer, LayerId, Ledger, ModelError, Op, Page, PageId, Transaction, TxId,
+};
 
 /// The full log, counting reads.
 #[derive(Debug)]
@@ -46,10 +48,21 @@ fn full() -> Ledger {
 }
 
 fn based(l: &Ledger, at: u64) -> (Ledger, Arc<Store>) {
+    based_capped(l, at, usize::MAX)
+}
+
+/// A ledger from the snapshot at `at` that recorded only the top `cap` entries of each stack.
+fn based_capped(l: &Ledger, at: u64, cap: usize) -> (Ledger, Arc<Store>) {
     let store = Arc::new(Store { log: l.log().to_vec(), reads: AtomicUsize::new(0), fail: Mutex::new(false) });
     let prefix = Ledger::replay(l.log()[..at as usize].to_vec(), 0).unwrap();
     let (undo, redo) = prefix.stacks();
-    let base = Base { seq: at, doc: prefix.document().clone(), undo, redo, history: store.clone() };
+    let top = |s: Vec<(u64, TxId)>| {
+        let hidden = s.len().saturating_sub(cap);
+        (s[hidden..].to_vec(), hidden as u64)
+    };
+    let ((undo, undo_hidden), (redo, redo_hidden)) = (top(undo), top(redo));
+    let base =
+        Base { seq: at, doc: prefix.document().clone(), undo, redo, undo_hidden, redo_hidden, history: store.clone() };
     let (b, failure) = Ledger::from_base(base, l.log()[at as usize..].to_vec(), 1).unwrap();
     assert!(failure.is_none(), "{failure:?}");
     (b, store)
@@ -117,6 +130,55 @@ fn inconsistent_snapshot_stacks_are_refused() {
     let reference = full();
     let store = Arc::new(Store { log: reference.log().to_vec(), reads: AtomicUsize::new(0), fail: Mutex::new(false) });
     let (undo, _) = reference.stacks();
-    let bad = Base { seq: 3, doc: Document::default(), undo, redo: vec![], history: store };
+    let bad =
+        Base { seq: 3, doc: Document::default(), undo, redo: vec![], undo_hidden: 0, redo_hidden: 0, history: store };
     assert!(matches!(Ledger::from_base(bad, vec![], 1), Err(ModelError::CorruptLog(_))));
+}
+
+/// Brief 021: a snapshot records only the top of each stack. Undo and redo below it read the
+/// whole stacks from the history once, and then behave exactly as a replayed ledger.
+#[test]
+fn stacks_cut_at_the_snapshot_are_read_whole_once_when_undo_goes_below_them() {
+    let mut reference = full();
+    // More edits than the cut, some undone and redone, so both stacks are deep.
+    for n in 20..40 {
+        reference.commit(Author::User, &format!("page {n}"), vec![page(n)]).unwrap();
+    }
+    for _ in 0..12 {
+        reference.undo(Author::User).unwrap();
+    }
+    reference.redo(Author::User).unwrap();
+    for (at, cap) in [(reference.head(), 0), (reference.head(), 3), (reference.head() - 5, 2), (20, 1)] {
+        let (mut b, store) = based_capped(&reference, at, cap);
+        let mut r = reference.clone();
+        assert_eq!(b.document(), r.document(), "at {at}, cap {cap}");
+        assert_eq!(b.stack_depths(), (r.stacks().0.len() as u64, r.stacks().1.len() as u64), "at {at}, cap {cap}");
+        // Redo to the end, then undo to the beginning: every step as the replayed ledger.
+        while r.redo(Author::User).is_ok() {
+            b.redo(Author::User).unwrap();
+            assert_eq!(b.document(), r.document(), "redo, at {at}, cap {cap}");
+        }
+        assert!(b.redo(Author::User).is_err());
+        loop {
+            let (x, y) = (b.undo(Author::User), r.undo(Author::User));
+            assert_eq!(x.is_ok(), y.is_ok(), "at {at}, cap {cap}");
+            assert_eq!(b.document(), r.document(), "undo, at {at}, cap {cap}");
+            assert_eq!(b.undo_label(), r.undo_label(), "at {at}, cap {cap}");
+            if x.is_err() {
+                break;
+            }
+        }
+        assert!(b.stack_rebuilds() <= 1, "read whole at most once: {}", b.stack_rebuilds());
+        // The same steps on each stack (the new transactions' IDs come from each ledger's seed).
+        let seqs = |l: &Ledger| {
+            let (u, r) = l.stacks();
+            (u.iter().map(|x| x.0).collect::<Vec<_>>(), r.iter().map(|x| x.0).collect::<Vec<_>>())
+        };
+        assert_eq!(seqs(&b), seqs(&r));
+        let _ = store;
+    }
+    // Stacks shallower than the cut never read the history whole.
+    let (mut b, _) = based_capped(&reference, reference.head(), usize::MAX);
+    while b.undo(Author::User).is_ok() {}
+    assert_eq!(b.stack_rebuilds(), 0);
 }

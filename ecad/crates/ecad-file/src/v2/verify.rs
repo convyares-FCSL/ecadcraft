@@ -177,15 +177,13 @@ pub fn verify(store: &Store) -> VerifyReport {
                 Ok(_) => fail(&mut rep, format!("{}: the snapshot of {:?} DIFFERS from the replay", b.name, v.name)),
                 Err(e) => fail(&mut rep, format!("{}: the snapshot of {:?}: {e}", b.name, v.name)),
             }
-            let recorded = (
-                v.undo.iter().map(|(q, i)| (*q, TxId::parse(i))).collect::<Vec<_>>(),
-                v.redo.iter().map(|(q, i)| (*q, TxId::parse(i))).collect::<Vec<_>>(),
-            );
-            let replayed = (
-                stacks.0.iter().map(|(q, i)| (*q, Some(*i))).collect::<Vec<_>>(),
-                stacks.1.iter().map(|(q, i)| (*q, Some(*i))).collect::<Vec<_>>(),
-            );
-            if recorded != replayed && !(v.undo.is_empty() && v.redo.is_empty() && v.kind != VersionKind::Auto) {
+            // The recorded top of each stack, and the count below it, against the replay's.
+            let matches = |rec: &[(u64, String)], hidden: u64, all: &[(u64, TxId)]| {
+                let rec: Vec<(u64, Option<TxId>)> = rec.iter().map(|(q, i)| (*q, TxId::parse(i))).collect();
+                let all: Vec<(u64, Option<TxId>)> = all.iter().map(|(q, i)| (*q, Some(*i))).collect();
+                rec.len() as u64 + hidden == all.len() as u64 && all.ends_with(&rec)
+            };
+            if !matches(&v.undo, v.undo_hidden, &stacks.0) || !matches(&v.redo, v.redo_hidden, &stacks.1) {
                 fail(&mut rep, format!("{}: the undo stacks of {:?} differ from the replay", b.name, v.name));
             }
             if v.kind != VersionKind::Auto && named.get(&v.name) != Some(&&v.point.seq) {

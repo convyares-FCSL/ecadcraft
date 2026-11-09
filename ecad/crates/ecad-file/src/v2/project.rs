@@ -21,7 +21,7 @@ use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
     BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME,
-    META_NAMES, Point, Release, SNAPSHOT_EVERY_RANGE, SnapshotRef, VersionKind, VersionRecord, auto_name,
+    META_NAMES, Point, Release, SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
 use crate::chain::{self, ChainKind, Hash};
@@ -61,7 +61,7 @@ pub struct SavedV2 {
     pub last_seq: u64,
     /// Bytes of new rows and chunks (before redb's own overhead).
     pub bytes: u64,
-    pub parts_written: usize,
+    pub chunks_written: usize,
     /// Snapshots written (versions and automatic).
     pub snapshots: usize,
 }
@@ -155,28 +155,65 @@ fn encode_tx(tx: &Transaction, prev: &Hash) -> Result<(Vec<u8>, Hash), String> {
     Ok((canonical, hash))
 }
 
-/// The undo and redo stacks after `txs`, starting from `stacks` (only kinds and IDs are read).
-fn advance_stacks(stacks: &mut (Vec<(u64, TxId)>, Vec<(u64, TxId)>), txs: &[Transaction]) {
-    for tx in txs {
-        match tx.kind {
-            TxKind::Edit => {
-                stacks.0.push((tx.seq, tx.id));
-                stacks.1.clear();
-            }
-            TxKind::Undo { .. } => {
-                stacks.0.pop();
-                stacks.1.push((tx.seq, tx.id));
-            }
-            TxKind::Redo { .. } => {
-                stacks.1.pop();
-                stacks.0.push((tx.seq, tx.id));
-            }
-        }
-    }
+/// The undo and redo stacks at a point: their tops, and how many entries lie below what is held
+/// (a snapshot records only the top [`STACK_CAP`] of each, brief 021).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct StackState {
+    undo: Vec<(u64, TxId)>,
+    redo: Vec<(u64, TxId)>,
+    undo_hidden: u64,
+    redo_hidden: u64,
 }
 
-fn stacks_record(s: &[(u64, TxId)]) -> Vec<(u64, String)> {
-    s.iter().map(|(q, id)| (*q, format!("{:032x}", id.0))).collect()
+impl StackState {
+    /// Advance over `txs` (only kinds and IDs are read). `false` when a step pops below what is
+    /// held: the whole stacks must be read first.
+    fn advance(&mut self, txs: &[Transaction]) -> bool {
+        for tx in txs {
+            match tx.kind {
+                TxKind::Edit => {
+                    self.undo.push((tx.seq, tx.id));
+                    self.redo.clear();
+                    self.redo_hidden = 0;
+                }
+                TxKind::Undo { .. } => {
+                    if self.undo.pop().is_none() && self.undo_hidden > 0 {
+                        return false;
+                    }
+                    self.redo.push((tx.seq, tx.id));
+                }
+                TxKind::Redo { .. } => {
+                    if self.redo.pop().is_none() && self.redo_hidden > 0 {
+                        return false;
+                    }
+                    self.undo.push((tx.seq, tx.id));
+                }
+            }
+        }
+        true
+    }
+
+    /// The record's form: the top [`STACK_CAP`] entries of each stack and the counts below them.
+    fn record(&self) -> (Vec<(u64, String)>, Vec<(u64, String)>, u64, u64) {
+        let cap = usize::try_from(STACK_CAP).unwrap_or(usize::MAX);
+        let top = |s: &[(u64, TxId)], hidden: u64| {
+            let cut = s.len().saturating_sub(cap);
+            let kept = s.get(cut..).unwrap_or_default().iter().map(|(q, id)| (*q, format!("{:032x}", id.0))).collect();
+            (kept, hidden + cut as u64)
+        };
+        let ((undo, uh), (redo, rh)) = (top(&self.undo, self.undo_hidden), top(&self.redo, self.redo_hidden));
+        (undo, redo, uh, rh)
+    }
+
+    /// From a version row.
+    fn from_record(v: &VersionRecord) -> Result<Self, String> {
+        Ok(Self {
+            undo: stacks_from_record(&v.undo)?,
+            redo: stacks_from_record(&v.redo)?,
+            undo_hidden: v.undo_hidden,
+            redo_hidden: v.redo_hidden,
+        })
+    }
 }
 
 fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, String> {
@@ -356,7 +393,9 @@ pub struct ProjectV2 {
     /// The `versions` row of the snapshot opened from or last written (`None`: the root).
     snap_ref: Option<SnapshotRef>,
     /// The undo and redo stacks at the ledger's base (the snapshot opened from).
-    base_stacks: (Vec<(u64, TxId)>, Vec<(u64, TxId)>),
+    base_stacks: StackState,
+    /// The whole stacks at `base_seq`, once read from the history (at most once a session).
+    full_base_stacks: Option<StackState>,
     base_seq: u64,
     writer: String,
     read_only: Option<String>,
@@ -508,12 +547,11 @@ impl ProjectV2 {
             Some((v, doc, meta)) => {
                 snap_meta = meta;
                 let chain = v.point.hash().map_err(OpenErrorV2::Damaged)?;
-                let undo = stacks_from_record(&v.undo).map_err(OpenErrorV2::Damaged)?;
-                let redo = stacks_from_record(&v.redo).map_err(OpenErrorV2::Damaged)?;
+                let stacks = StackState::from_record(&v).map_err(OpenErrorV2::Damaged)?;
                 let set = ChunkSet::from_record(&v.chunks).map_err(OpenErrorV2::Damaged)?;
-                (v.point.seq, chain, doc, (undo, redo), set)
+                (v.point.seq, chain, doc, stacks, set)
             }
-            None => (0, seed_chain, Document::default(), (Vec::new(), Vec::new()), ChunkSet::default()),
+            None => (0, seed_chain, Document::default(), StackState::default(), ChunkSet::default()),
         };
         // The snapshot's point must be the stored row's chain value.
         if snap_seq > 0 && r.tx(branch, snap_seq)?.map(|(_, c, _)| c) != Some(snap_chain) {
@@ -535,7 +573,15 @@ impl ProjectV2 {
         let damage = damage.or(row_damage);
         let history: Arc<dyn History> =
             Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
-        let base = Base { seq: snap_seq, doc, undo: stacks.0.clone(), redo: stacks.1.clone(), history };
+        let base = Base {
+            seq: snap_seq,
+            doc,
+            undo: stacks.undo.clone(),
+            redo: stacks.redo.clone(),
+            undo_hidden: stacks.undo_hidden,
+            redo_hidden: stacks.redo_hidden,
+            history,
+        };
         let tail_len = tail.len() as u64;
         let (ledger, failure) = Ledger::from_base(base, tail, seed)
             .map_err(|e| OpenErrorV2::Damaged(format!("the snapshot at {snap_seq}: {e}")))?;
@@ -569,6 +615,7 @@ impl ProjectV2 {
             base_tag_high,
             snap_ref,
             base_stacks: stacks,
+            full_base_stacks: None,
             base_seq: snap_seq,
             writer: writer.to_string(),
             read_only,
@@ -628,7 +675,7 @@ impl ProjectV2 {
         points.push((ledger.head(), VersionKind::Auto, auto_name(ledger.head())));
         points.sort();
         let mut doc = Document::default();
-        let mut stacks = (Vec::new(), Vec::new());
+        let mut stacks = StackState::default();
         let mut done = 0u64;
         let mut snap = Snap { seq: 0, set: ChunkSet::default() };
         let mut first = true;
@@ -644,7 +691,7 @@ impl ProjectV2 {
                 dirty.add_ops(&tx.ops);
                 ecad_model::tag::note_ops(&mut high, &tx.ops);
             }
-            advance_stacks(&mut stacks, range);
+            stacks.advance(range);
             done = at;
             let meta = ModelMeta { tag_high: high.clone() };
             let (set, new) = if first {
@@ -657,10 +704,11 @@ impl ProjectV2 {
             for p in &new {
                 let n = w.put_chunk(&p.hash, &p.body)?;
                 saved.bytes += n;
-                saved.parts_written += usize::from(n > 0);
+                saved.chunks_written += usize::from(n > 0);
             }
             let chain = chains.get(at as usize).copied().unwrap_or(seed);
             let release = (kind == VersionKind::Revision).then(|| revision_of(doc_end, &name)).flatten();
+            let rec = stacks.record();
             w.put_version(
                 branch,
                 &VersionRecord {
@@ -669,8 +717,11 @@ impl ProjectV2 {
                     point: Point::new(at, &chain),
                     chunks: set.to_record(),
                     release,
-                    undo: stacks_record(&stacks.0),
-                    redo: stacks_record(&stacks.1),
+                    undo: rec.0,
+                    redo: rec.1,
+                    undo_hidden: rec.2,
+                    redo_hidden: rec.3,
+                    stack_cap: STACK_CAP,
                 },
             )?;
             saved.snapshots += 1;
@@ -714,7 +765,8 @@ impl ProjectV2 {
             snap: snap.clone(),
             base_tag_high: HighWater::new(),
             snap_ref: latest,
-            base_stacks: (Vec::new(), Vec::new()),
+            base_stacks: StackState::default(),
+            full_base_stacks: None,
             base_seq: 0,
             writer: writer.to_string(),
             read_only: None,
@@ -864,7 +916,7 @@ impl ProjectV2 {
     /// `snap` when the transactions between them are in memory.
     #[allow(clippy::too_many_arguments)]
     fn write_snapshot(
-        &self,
+        &mut self,
         w: &mut super::store::Writer,
         ledger: &mut Ledger,
         snap: &mut Snap,
@@ -912,17 +964,9 @@ impl ProjectV2 {
         for p in &new {
             let n = w.put_chunk(&p.hash, &p.body)?;
             saved.bytes += n;
-            saved.parts_written += usize::from(n > 0);
+            saved.chunks_written += usize::from(n > 0);
         }
-        // The stacks at `at`, from those at the base (known only from the base on).
-        let mut stacks = self.base_stacks.clone();
-        if at >= self.base_seq && self.base_seq >= base {
-            let from = usize::try_from(self.base_seq - base).unwrap_or(usize::MAX);
-            let to = usize::try_from(at - base).unwrap_or(usize::MAX);
-            advance_stacks(&mut stacks, ledger.log().get(from..to).unwrap_or_default());
-        } else {
-            stacks = (Vec::new(), Vec::new());
-        }
+        let (undo, redo, undo_hidden, redo_hidden) = self.stacks_at(ledger, at)?.record();
         w.put_version(
             self.branch,
             &VersionRecord {
@@ -931,8 +975,11 @@ impl ProjectV2 {
                 point: Point::new(at, &chain),
                 chunks: set.to_record(),
                 release,
-                undo: stacks_record(&stacks.0),
-                redo: stacks_record(&stacks.1),
+                undo,
+                redo,
+                undo_hidden,
+                redo_hidden,
+                stack_cap: STACK_CAP,
             },
         )?;
         saved.snapshots += 1;
@@ -980,6 +1027,33 @@ impl ProjectV2 {
         }
         w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         Ok(())
+    }
+
+    /// The undo and redo stacks at `at`: from those at the snapshot this project was opened from
+    /// and the transactions after it in memory; when that pops below what the snapshot recorded,
+    /// the whole stacks at that snapshot are read from the file once and kept. A point before it
+    /// is read from the file.
+    fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
+        let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
+        if at >= self.base_seq && self.base_seq >= ledger.base() {
+            let from = usize::try_from(self.base_seq - ledger.base()).unwrap_or(usize::MAX);
+            let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
+            let txs = ledger.log().get(from..to).unwrap_or_default();
+            let mut s = self.full_base_stacks.clone().unwrap_or_else(|| self.base_stacks.clone());
+            if s.advance(txs) {
+                return Ok(s);
+            }
+            let (undo, redo) = self.history().stacks_at(self.base_seq).map_err(enc)?;
+            let full = StackState { undo, redo, undo_hidden: 0, redo_hidden: 0 };
+            self.full_base_stacks = Some(full.clone());
+            let mut s = full;
+            if !s.advance(txs) {
+                return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
+            }
+            return Ok(s);
+        }
+        let (undo, redo) = self.history().stacks_at(at).map_err(enc)?;
+        Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0 })
     }
 
     /// The tag high-water mark at `at`: from the one at the snapshot this project was opened from

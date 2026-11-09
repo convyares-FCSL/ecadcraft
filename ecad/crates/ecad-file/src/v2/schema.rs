@@ -44,6 +44,8 @@ pub const META_NAMES: [&str; 9] =
 pub const DEFAULT_SNAPSHOT_EVERY: u64 = 2_000;
 /// Smallest and largest snapshot intervals accepted from a file.
 pub const SNAPSHOT_EVERY_RANGE: (u64, u64) = (16, 1_000_000);
+/// The most entries of each undo and redo stack a snapshot records (overseer, 2026-11-09).
+pub const STACK_CAP: u64 = 1_024;
 /// Longest version name accepted from a file.
 pub const MAX_NAME: usize = 4_096;
 
@@ -191,10 +193,19 @@ pub struct VersionRecord {
     pub chunks: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<Release>,
-    /// The undo and redo stacks at `point`: `[seq, transaction ID]`, oldest first
-    /// (EEP-0005 §5.5, option a).
+    /// The top of the undo and redo stacks at `point`: `[seq, transaction ID]`, oldest first,
+    /// at most `stack_cap` entries each (EEP-0005 §5.5 as built, overseer 2026-11-09).
     pub undo: Vec<(u64, String)>,
     pub redo: Vec<(u64, String)>,
+    /// How many entries lie below `undo` and `redo`: read from the history, once a session, when
+    /// undo or redo first reaches them.
+    #[serde(default)]
+    pub undo_hidden: u64,
+    #[serde(default)]
+    pub redo_hidden: u64,
+    /// The cap this row was written with.
+    #[serde(default)]
+    pub stack_cap: u64,
 }
 
 /// `meta.cache`: the snapshot policy and, per branch, the latest snapshot (EEP-0005 §3.1).

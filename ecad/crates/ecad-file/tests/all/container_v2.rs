@@ -279,3 +279,57 @@ fn a_file_opens_from_its_bytes_in_memory() {
     assert_eq!(o.ledger.document(), f.ledger.document());
     assert_eq!(o.ledger.head(), f.ledger.head());
 }
+
+/// Overseer, 2026-11-09: a snapshot records only the top 1 024 entries of each undo and redo
+/// stack and how many lie below. Reopened, undo below them reads the whole stacks from the file
+/// once and then undoes exactly as the replayed project; snapshots written after it are right.
+#[test]
+fn undo_below_the_recorded_stack_top_reads_the_history_once() {
+    let dir = TempDir::new("stack-cap");
+    let mut f = fixture();
+    let first = f.ledger.head();
+    for i in 0..1_100 {
+        f.commit(
+            "Property",
+            vec![Op::SetProperty {
+                object: ObjectRef::Project,
+                key: format!("k{i}"),
+                before: None,
+                after: Some("v".into()),
+            }],
+        );
+    }
+    let p = dir.path("p.ecad");
+    let proj = create(&p, &f.ledger, 2_000);
+    let r = proj.store().reader().unwrap();
+    let head = r.auto_at_or_before(proj.branch(), f.ledger.head()).unwrap().unwrap();
+    assert_eq!(head.undo.len() as u64, schema::STACK_CAP);
+    assert_eq!(head.undo_hidden + schema::STACK_CAP, f.ledger.stacks().0.len() as u64);
+    assert_eq!(head.stack_cap, schema::STACK_CAP);
+    drop(r);
+    drop(proj);
+    let mut o = open(&p);
+    assert_eq!(o.ledger.stack_depths().0, f.ledger.stacks().0.len() as u64);
+    let mut reference = f.ledger.clone();
+    // Undo below the 1 024 recorded entries, all the way back.
+    let mut n = 0;
+    while reference.undo(Author::User).is_ok() {
+        o.ledger.undo(Author::User).unwrap();
+        n += 1;
+        if n % 100 == 0 || reference.head() > first + 2_000 {
+            assert_eq!(o.ledger.document(), reference.document(), "after {n} undos");
+        }
+    }
+    assert!(o.ledger.undo(Author::User).is_err());
+    assert_eq!(o.ledger.document(), reference.document());
+    assert_eq!(o.ledger.stack_rebuilds(), 1, "the history was read whole exactly once");
+    // Saving now writes a snapshot whose stacks need the whole history at the base: still right.
+    o.project.set_snapshot_every(16).unwrap();
+    o.project.save(&mut o.ledger).unwrap();
+    let v = ecad_file::v2::verify::verify(o.project.store());
+    assert!(v.ok, "{:#?}", v.lines);
+    drop(o);
+    let again = open(&p);
+    assert_eq!(again.ledger.document(), reference.document());
+    assert_eq!(again.ledger.stack_depths(), (reference.stacks().0.len() as u64, reference.stacks().1.len() as u64));
+}
