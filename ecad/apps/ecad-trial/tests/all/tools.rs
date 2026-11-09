@@ -47,6 +47,7 @@ fn rectangle(t: &mut Trial) -> Vec<Handle> {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .filter(|e| matches!(e.kind, EntityKind::Line(_)))
         .map(|e| e.handle)
         .collect()

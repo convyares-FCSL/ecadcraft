@@ -262,7 +262,8 @@ fn each_seeded_fault_appears_once_where_it_is() {
     // Rows point at their page and point, in book order (errors first).
     let lamp = all.iter().find(|c| c.kind == Kind::Unconnected).unwrap();
     assert_eq!(lamp.page, Some(page));
-    assert_eq!(lamp.locator(&doc), "/1.6");
+    // Brief 019: places read page-column-row on the page's sheet.
+    assert_eq!(lamp.locator(&doc), "1-D-4");
     assert_eq!(all.first().map(|c| c.severity()), Some(ecad_cadcraft::checks::Severity::Error));
     // Put the drawn-away end back (written past the commands, it is undone the same way).
     h.cfg(|p| p.ledger.undo(Author::User).unwrap());

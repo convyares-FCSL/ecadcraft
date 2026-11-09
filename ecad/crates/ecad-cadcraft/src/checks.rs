@@ -198,15 +198,14 @@ impl Check {
         self.kind.words().to_string()
     }
 
-    /// `/<page>.<column>` of the row, or empty.
+    /// Where the row is, as references name a place (`3-D-5`, or `/3.D` in that style); the page
+    /// number alone when it has no point; empty when it has no page.
     pub fn locator(&self, doc: &Document) -> String {
         let Some(page) = self.page else { return String::new() };
-        let Some(n) = doc.page_order.iter().position(|p| *p == page) else { return "/?".into() };
-        let col = self
-            .at
-            .and_then(|a| ecad_model::derive::column_of(a.x, ecad_model::derive::column_width(doc)))
-            .map_or_else(String::new, |c| format!(".{c}"));
-        format!("/{}{col}", n + 1)
+        match self.at.and_then(|a| ecad_model::wiring::place(doc, page, a)) {
+            Some(p) => p.text(doc.settings.reference_style),
+            None => ecad_model::book::page_number(doc, page),
+        }
     }
 
     /// Book order: severity, then page, then position (top to bottom, left to right).
@@ -223,12 +222,13 @@ impl Check {
             Object::Component(c) => json!({"component": c.hex()}),
             Object::None => Value::Null,
         };
-        let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+        let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::wiring::place(doc, p, a));
         json!({
             "kind": self.kind.name(),
             "severity": self.severity().name(),
-            "page": self.page.and_then(|p| order.get(&p)),
-            "column": self.at.and_then(|a| ecad_model::derive::column_of(a.x, ecad_model::derive::column_width(doc))),
+            "page": self.page.map(|p| ecad_model::book::page_number(doc, p)),
+            "column": place.as_ref().map(|p| p.column_label.clone()),
+            "row": place.as_ref().map(|p| p.row_label.clone()),
             "at": self.at.map(|a| [a.x, a.y]),
             "object": object,
             "text": self.what(),
@@ -829,6 +829,9 @@ impl Checks {
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
     all: bool,
+    /// Only where rows are (page numbers, folders) changed: the revision moves, so copies of the
+    /// rows are taken again.
+    relocate: bool,
     nodes: BTreeSet<ecad_model::Node>,
     old_nets: BTreeSet<NetId>,
     numbers: BTreeSet<String>,
@@ -930,12 +933,15 @@ impl Scope {
                     }
                 }
                 Op::SetProjectSettings { .. } => self.all = true,
-                Op::AddPage { .. }
-                | Op::RemovePage { .. }
-                | Op::AddLayer { .. }
-                | Op::RemoveLayer { .. }
-                | Op::NameVersion { .. }
-                | Op::UnnameVersion { .. } => {}
+                // Page numbers, folders and the page order change where rows say they are (brief
+                // 019), not what they find: the rows are copied again.
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project, .. }
+                | Op::AddFolder { .. }
+                | Op::RemoveFolder { .. }
+                | Op::ModifyFolder { .. }
+                | Op::AddPage { .. }
+                | Op::RemovePage { .. } => self.relocate = true,
+                Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
             }
         }
     }

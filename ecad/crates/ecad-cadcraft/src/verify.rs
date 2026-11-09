@@ -122,6 +122,11 @@ pub fn verify_page_with(
     for l in crate::wires::labels_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
     }
+    // The sheet frame (brief 019), derived like the cable parts.
+    let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
+    for part in crate::frame::parts(&input) {
+        *fan_expected.entry(computed_key(&crate::frame::entity(&part, Handle(0)))).or_default() += 1;
+    }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
 
@@ -153,6 +158,10 @@ pub fn verify_page_with(
             if !doc.conductors.contains_key(&c) {
                 problems.push(format!("a label is drawn for {c}, which does not exist"));
             }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Frame(_)) = map.get(e.handle) {
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }

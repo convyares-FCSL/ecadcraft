@@ -108,7 +108,7 @@ fn fixture(h: &mut Harness<'static, Trial>) {
     ok(h, r#"wire {"points":[[0,10],[60,10]]}"#);
     h.state_mut().cad.run("line", json!({"points": [[0, 15], [60, 15]]})).unwrap();
     h.state_mut().cad.session.set_selection(Vec::new());
-    ok(h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.run_steps(3);
 }
 

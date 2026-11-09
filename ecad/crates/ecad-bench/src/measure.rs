@@ -97,6 +97,19 @@ pub struct Measured {
     pub join_ms: f64,
     /// Rename that device's tag (`setprop` tag, brief 018).
     pub tag_ms: f64,
+    /// Renumber page 2 (`pageprops {number}`, brief 019): the commit, the redraw of the page shown
+    /// and the reference texts naming page 2 (its cables' other ends).
+    pub pnum_ms: f64,
+    /// Work out one page's frame and title block from the document (`frame::FrameInput::of` and
+    /// `frame::parts`): what the first view of a page adds to `switch`.
+    pub frame_ms: f64,
+    /// Change the project title (`projectprops {title}`): the commit and the title block redrawn.
+    pub tbupd_ms: f64,
+    /// Change the project's sheet (`projectprops {sheet}`, A3 to A2 and back): the one change that
+    /// may rewrite every reference text.
+    pub gridchange_ms: f64,
+    /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
+    pub revopen_ms: f64,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -196,6 +209,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     let (mut netupd_ms, mut netcut_ms, netcut_size) = net_edits(path, &scratch.join("nets.ecad"), runs)?;
     // A debug build (the tests) uses a small rail: the release benchmark measures the real one.
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
+    let mut sheet = sheet_edits(path, &scratch.join("sheets.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -223,6 +237,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
         netcut_ms: median(&mut netcut_ms),
         netcut_size,
         rail_ms: median(&mut rail_ms),
+        pnum_ms: median(&mut sheet.pnum),
+        frame_ms: median(&mut sheet.frame),
+        tbupd_ms: median(&mut sheet.tbupd),
+        gridchange_ms: median(&mut sheet.gridchange),
+        revopen_ms: median(&mut sheet.revopen),
     };
     Ok((m, doc))
 }
@@ -288,7 +307,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let comp: ComponentId = ids.fresh();
     let hub: TerminalId = ids.fresh();
     let mut ops = vec![
-        Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
+        Op::AddPage { id: page, page: Page::new("1"), index: 0 },
         Op::CreateComponent { id: comp, component: Component::default() },
         Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
     ];
@@ -578,6 +597,73 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
         drop(project);
         drop(s);
         Ok((places, joins, tags))
+    })();
+    remove(copy);
+    result
+}
+
+/// Brief 019's timings, one sample per run each.
+#[derive(Debug, Default)]
+struct SheetTimes {
+    pnum: Vec<f64>,
+    frame: Vec<f64>,
+    tbupd: Vec<f64>,
+    gridchange: Vec<f64>,
+    revopen: Vec<f64>,
+}
+
+/// Brief 019 (design 019 §9): renumber a page, work out a frame, change the project title, change
+/// the grid, open an issued revision; each a recorded command in a headless session on a copy.
+fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
+            &mut s,
+            path_text(copy)?,
+            OPEN_SEED,
+            ecad_cadcraft::views::Settings::none(),
+        )?;
+        let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
+            let t = Instant::now();
+            s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
+            Ok::<f64, String>(ms(t))
+        };
+        let page2 = project.read(&mut s, |p, _| p.ledger.document().page_order.get(1).copied())?;
+        let mut out = SheetTimes::default();
+        for i in 0..runs {
+            if let Some(p2) = page2 {
+                out.pnum.push(run(&mut s, "pageprops", json!({"page": p2.hex(), "number": format!("{}", 9000 + i)}))?);
+            }
+            let f = project.read(&mut s, |p, _| {
+                let doc = p.ledger.document();
+                let page = doc.page_order.first().copied();
+                let t = Instant::now();
+                let n = page.map(|pg| {
+                    let input = ecad_cadcraft::frame::FrameInput::of(doc, pg, &ecad_model::book::Book::of(doc));
+                    ecad_cadcraft::frame::parts(&input).len()
+                });
+                std::hint::black_box(n);
+                ms(t)
+            })?;
+            out.frame.push(f);
+            out.tbupd.push(run(&mut s, "projectprops", json!({"title": format!("Bench {i}")}))?);
+            let size = if i % 2 == 0 { "A2" } else { "A3" };
+            out.gridchange.push(run(&mut s, "projectprops", json!({"sheet": size}))?);
+        }
+        run(&mut s, "revision", json!({"description": "Bench issue", "drawn": "BN"}))?;
+        run(&mut s, "issuerevision", json!({"date": "2026-11-08"}))?;
+        for _ in 0..runs {
+            out.revopen.push(run(&mut s, "openrevision", json!({"rev": "A"}))?);
+            run(&mut s, "closerevision", json!({}))?;
+        }
+        drop(project);
+        drop(s);
+        Ok(out)
     })();
     remove(copy);
     result

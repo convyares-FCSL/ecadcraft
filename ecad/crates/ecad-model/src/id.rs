@@ -70,6 +70,8 @@ macro_rules! typed_id {
 
 typed_id!(/// A page of the project.
     PageId, "pg");
+typed_id!(/// A folder of pages (brief 019).
+    FolderId, "fld");
 typed_id!(/// A layer.
     LayerId, "lyr");
 typed_id!(/// A drawn item: a primitive or a symbol instance.

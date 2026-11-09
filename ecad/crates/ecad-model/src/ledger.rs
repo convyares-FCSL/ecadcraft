@@ -78,7 +78,7 @@ pub struct Transaction {
 /// use ecad_model::{Author, Ledger, Op, Page, PageId};
 /// let mut ledger = Ledger::new(1);
 /// let page = PageId(7);
-/// ledger.commit(Author::User, "New page", vec![Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 }]).unwrap();
+/// ledger.commit(Author::User, "New page", vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }]).unwrap();
 /// assert!(ledger.is_unsaved());
 /// ledger.undo(Author::User).unwrap();
 /// assert!(ledger.document().pages.is_empty());
@@ -461,7 +461,7 @@ impl Document {
     /// ```rust
     /// use ecad_model::{Document, Op, Page, PageId};
     /// let mut doc = Document::default();
-    /// let add = vec![Op::AddPage { id: PageId(1), page: Page { title: "1".into() }, index: 0 }];
+    /// let add = vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }];
     /// let pages = doc.with_applied(&add, |d| d.pages.len()).unwrap();
     /// assert_eq!(pages, 1);
     /// assert!(doc.pages.is_empty()); // reverted
@@ -896,7 +896,7 @@ mod tests {
             Author::User,
             "setup",
             vec![
-                Op::AddPage { id: PageId(1), page: Page { title: "1".into() }, index: 0 },
+                Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
                 Op::CreateComponent { id: c, component: Component::default() },
                 Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None } },
@@ -920,7 +920,7 @@ mod tests {
                 index: 0,
                 member: CableMember { conductor: ConductorId(6), core: None },
             },
-            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
         ]
     }
 
@@ -975,7 +975,7 @@ mod tests {
         let (doc, head) = (json(l.document()), l.head());
         // Ops that apply, then an end state that fails: a conductor end on a missing terminal.
         let ops = vec![
-            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
             Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
         ];
         hooks::FAIL_REVERT.with(|c| c.set(true));
@@ -1060,7 +1060,7 @@ mod tests {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
         let bad_end = vec![
-            Op::AddPage { id: PageId(8), page: Page { title: "2".into() }, index: 1 },
+            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
             Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
         ];
         let bad_before =

@@ -29,10 +29,10 @@ pub fn device_label(e: &DeviceEntry) -> String {
     format!("Device {}: {}", e.tag.as_deref().unwrap_or("(no tag)"), e.description)
 }
 
-/// The accessible label of a symbol row: `-K01 NO contact, page 2, column 3`.
+/// The accessible label of a symbol row: `-K01 NO contact, 2-C-4` (its place in the project's
+/// reference style, brief 019).
 pub fn symbol_label(e: &DeviceEntry, s: &ecad_cadcraft::device_list::SymbolEntry) -> String {
-    let col = s.column.map(|c| format!(", column {c}")).unwrap_or_default();
-    format!("{} {}, page {}{col}", e.tag.as_deref().unwrap_or("(no tag)"), s.name, s.page_number)
+    format!("{} {}, {}", e.tag.as_deref().unwrap_or("(no tag)"), s.name, s.place)
 }
 
 /// One laid-out row.
@@ -222,8 +222,7 @@ impl DevicesPanel {
                             if resp.hovered() {
                                 p.rect_filled(rect, 0.0, t.chrome);
                             }
-                            let col = sym.column.map(|c| format!(".{c}")).unwrap_or_default();
-                            let text = format!("    /{}{col}  {}", sym.page_number, sym.name);
+                            let text = format!("    {}  {}", sym.place, sym.name);
                             p.text(
                                 pos2(rect.left() + 8.0, rect.center().y),
                                 egui::Align2::LEFT_CENTER,

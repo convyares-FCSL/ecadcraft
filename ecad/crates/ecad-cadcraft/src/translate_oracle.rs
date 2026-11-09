@@ -270,7 +270,20 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
         .collect();
+    // The sheet frame (brief 019), as in the current translation.
+    let frame = |m: &HandleMap, h: Handle| matches!(m.get(h), Some(Mapped::Frame(_)));
+    let framed: BTreeSet<Handle> = removed
+        .iter()
+        .map(|(h, _)| *h)
+        .chain(changed_handles.iter().copied())
+        .filter(|h| frame(cx.map, *h))
+        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &frame)))
+        .collect();
     let touched = removed.len() + changed_handles.len() + added_handles.len();
+    if !framed.is_empty() && framed.len() + skipped.len() >= touched {
+        return Err(crate::frame::DERIVED.into());
+    }
+    let skipped: BTreeSet<Handle> = skipped.into_iter().chain(framed).collect();
     if !skipped.is_empty() && skipped.len() == touched {
         let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
         let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
@@ -306,6 +319,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
+            Some(Mapped::Frame(_)) => {}
             // Erasing a device's tag text or terminal label erases that symbol (design 018 §2.4).
             Some(Mapped::Tag(rid)) => erased_refs.push(rid),
             Some(Mapped::Marker(rid, term)) => {
@@ -360,6 +374,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::Frame(_)) => {}
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
             Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
@@ -474,6 +489,7 @@ fn copy_batch(
         match map.get(h) {
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);

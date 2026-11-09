@@ -247,40 +247,35 @@ fn has_prefix(doc: &Document, number: &str, prefix: &str) -> bool {
         .any(|p| p.prefix.len() > prefix.len() && !p.prefix.is_empty() && number.starts_with(p.prefix.as_str()))
 }
 
-/// The column letters of 1-based column `col` (`1` → `A`, `27` → `AA`).
-pub fn column_letters(col: u32) -> String {
-    let mut n = col.max(1);
-    let mut out = Vec::new();
-    while n > 0 {
-        let r = (n - 1) % 26;
-        out.push(char::from(b'A' + r as u8));
-        n = (n - 1) / 26;
-    }
-    out.iter().rev().collect()
+/// Where `at` lies on `page` (brief 019): the page's shown number and its frame's column and row.
+pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate::derive::Place> {
+    let grid = crate::sheet::Grid::of(doc, page);
+    crate::derive::place_on(&grid, &crate::book::page_number(doc, page), at)
 }
 
-/// Where a net is, for the page schemes: the 1-based page number and column of its lowest-ID
-/// conductor's route start on its first page in book order.
-pub fn net_place(doc: &Document, net: &NetData) -> (usize, u32) {
-    let Some(first) = net.first_conductor() else { return (1, 1) };
+/// Where a net is, for the page schemes: the shown page number and the frame column label of its
+/// lowest-ID conductor's route start on its first page in page order (`1`, `A` when it has none).
+pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
+    let fallback = || ("1".to_string(), "A".to_string());
+    let Some(first) = net.first_conductor() else { return fallback() };
     let order: Option<(usize, PageId)> = doc
         .representations_of(Subject::Conductor(first))
         .filter_map(|(_, r)| doc.page_order.iter().position(|p| *p == r.page).map(|i| (i, r.page)))
         .min();
-    let Some((i, page)) = order else { return (1, 1) };
-    let col = crate::derive::route_ends_on(doc, first, page)
-        .and_then(|(a, _)| crate::derive::column_of(a.x, crate::derive::column_width(doc)))
-        .unwrap_or(1);
-    (i + 1, col)
+    let Some((_, page)) = order else { return fallback() };
+    match crate::derive::route_ends_on(doc, first, page).and_then(|(a, _)| place(doc, page, a)) {
+        Some(p) => (p.page, p.column_label),
+        None => (crate::book::page_number(doc, page), "A".to_string()),
+    }
 }
 
-/// The sequence prefix (scope) and the format of a new number for a net with number prefix
-/// `prefix` at page `page`, column `col`.
-fn scope(doc: &Document, prefix: &str, page: usize, col: u32) -> String {
+/// The sequence prefix (scope) of a new number for a net with number prefix `prefix` on page
+/// `page` (its shown number), column `col` (its label).
+fn scope(doc: &Document, prefix: &str, page: &str, col: &str) -> String {
     match doc.settings.wiring.scheme {
         Scheme::Potential => prefix.to_string(),
         Scheme::Page => format!("{prefix}{page}."),
-        Scheme::PageColumn => format!("{prefix}{page}{}.", column_letters(col)),
+        Scheme::PageColumn => format!("{prefix}{page}{col}."),
     }
 }
 
@@ -301,10 +296,10 @@ impl Allocator {
     /// The next free number for `net` (with potential `pot`): highest used in its scope plus one.
     pub fn next(&mut self, doc: &Document, net: &NetData, pot: &NetPotential) -> String {
         let (page, col) = match doc.settings.wiring.scheme {
-            Scheme::Potential => (1, 1),
+            Scheme::Potential => (String::new(), String::new()),
             _ => net_place(doc, net),
         };
-        let sc = scope(doc, &pot.prefix, page, col);
+        let sc = scope(doc, &pot.prefix, &page, &col);
         let used = doc.connectivity().next_in(&sc);
         let n = self.taken.get(&sc).map_or(used, |t| used.max(t.saturating_add(1)));
         self.taken.insert(sc.clone(), n);
@@ -544,10 +539,10 @@ pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
             let pot = net_potential(doc, net);
             let number = if pot.numbered {
                 let (page, col) = match doc.settings.wiring.scheme {
-                    Scheme::Potential => (1, 1),
+                    Scheme::Potential => (String::new(), String::new()),
                     _ => net_place(doc, net),
                 };
-                let sc = scope(doc, &pot.prefix, page, col);
+                let sc = scope(doc, &pot.prefix, &page, &col);
                 let slot = next.entry(sc.clone()).or_insert(1);
                 while fixed_seqs.get(&sc).is_some_and(|s| s.contains(slot)) {
                     *slot = slot.saturating_add(1);

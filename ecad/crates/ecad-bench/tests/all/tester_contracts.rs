@@ -85,6 +85,11 @@ fn row(variant: &str, open_ms: f64) -> Row {
             netcut_ms: 1.0,
             netcut_size: 3,
             rail_ms: 2.0,
+            pnum_ms: 0.5,
+            frame_ms: 0.1,
+            tbupd_ms: 0.5,
+            gridchange_ms: 1.0,
+            revopen_ms: 10.0,
         },
     }
 }

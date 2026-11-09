@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
+    TerminalId,
 };
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
@@ -20,9 +21,32 @@ use crate::id::{
 pub type Properties = BTreeMap<String, String>;
 
 /// A page of the project.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Its `properties` (brief 019, decision FP1) hold the page number (`number`), the `=`/`+`
+/// overrides (`function`, `location`), its own sheet (`sheet`) and its folder (`folder`); see
+/// [`crate::book`] and [`crate::sheet`]. Left out of records while empty.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Page {
     pub title: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: Properties,
+}
+
+impl Page {
+    /// A page titled `title`, with no properties.
+    pub fn new(title: impl Into<String>) -> Self {
+        Page { title: title.into(), properties: Properties::new() }
+    }
+}
+
+/// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their
+/// folder in their `folder` property; sibling order is the relative order in
+/// [`Document::folder_order`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Folder {
+    pub name: String,
+    /// The folder it is in; `None` at the top level.
+    pub parent: Option<FolderId>,
 }
 
 /// A layer. References use [`LayerId`]; the name is a property (DOC-02).
@@ -324,7 +348,29 @@ pub struct ProjectSettings {
     /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
     /// the file while it holds [`WiringSettings::default`].
     pub wiring: crate::wiring::WiringSettings,
+    /// The project's sheet: size and grid of every page's frame unless a page sets its own
+    /// (brief 019, decision FP2). A3 landscape, `A`–`H` by `1`–`6` by default.
+    pub sheet: crate::sheet::SheetSpec,
+    /// What a new page's number adds to the number before it (design 019 §6.1, owner answer
+    /// Q11): 1 by default.
+    pub page_number_step: u32,
+    /// How cross-references name a place (owner answer Q1, 2026-11-08): `105-C-4` by default.
+    pub reference_style: ReferenceStyle,
 }
+
+/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08). Other
+/// styles (US) come later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ReferenceStyle {
+    /// `105-C-4`: page number, column, row.
+    #[default]
+    PageColumnRow,
+    /// `/105.C`: page number and column.
+    PageColumn,
+}
+
+/// The page number step of a project that sets none.
+pub const DEFAULT_PAGE_NUMBER_STEP: u32 = 1;
 
 /// The tag padding of a project that sets none (owner decision 2026-11-08).
 pub const DEFAULT_TAG_PADDING: u8 = 2;
@@ -336,6 +382,9 @@ impl Default for ProjectSettings {
             tag_padding: DEFAULT_TAG_PADDING,
             tag_prefixes: BTreeMap::new(),
             wiring: crate::wiring::WiringSettings::default(),
+            sheet: crate::sheet::SheetSpec::default(),
+            page_number_step: DEFAULT_PAGE_NUMBER_STEP,
+            reference_style: ReferenceStyle::default(),
         }
     }
 }
@@ -401,6 +450,16 @@ pub struct Document {
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
     pub versions: BTreeMap<String, u64>,
+    /// The project's own properties (brief 019, decision FP1): title, drawing number, customer,
+    /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: Properties,
+    /// Folders of pages (brief 019, decision FP3).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub folders: BTreeMap<FolderId, Folder>,
+    /// Every folder once; siblings are ordered as they appear here.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub folder_order: Vec<FolderId>,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
@@ -424,6 +483,12 @@ struct DocumentData {
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
+    #[serde(default)]
+    properties: Properties,
+    #[serde(default)]
+    folders: BTreeMap<FolderId, Folder>,
+    #[serde(default)]
+    folder_order: Vec<FolderId>,
 }
 
 impl From<DocumentData> for Document {
@@ -441,6 +506,9 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
         } = d;
         let mut doc = Document {
             pages,
@@ -455,6 +523,9 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
             index: Index::default(),
             conn: crate::connectivity::Connectivity::default(),
         };
@@ -479,6 +550,9 @@ impl PartialEq for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
             index: _,
             conn: _,
         } = self;
@@ -494,6 +568,9 @@ impl PartialEq for Document {
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions
+            && *properties == other.properties
+            && *folders == other.folders
+            && *folder_order == other.folder_order
     }
 }
 
@@ -585,6 +662,16 @@ impl Document {
     /// then ID: no scan of the components.
     pub fn tagged(&self) -> impl Iterator<Item = (&str, ComponentId)> {
         self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
+    /// Pages whose `folder` property names `folder`, in ID order (through the folder index).
+    pub fn pages_in_folder(&self, folder: FolderId) -> Vec<PageId> {
+        referrers(&self.index.folder_pages, &folder).collect()
+    }
+
+    /// Folders whose parent is `folder`, in ID order (through the folder index).
+    pub fn subfolders(&self, folder: FolderId) -> Vec<FolderId> {
+        referrers(&self.index.folder_children, &folder).collect()
     }
 
     /// Cables `conductor` is a member of, in ID order.

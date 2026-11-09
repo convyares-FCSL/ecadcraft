@@ -38,7 +38,21 @@ pub const READ_COMMANDS: &[&str] = &[
     "nets",
     "net",
     "checks",
+    // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
+    "openrevision",
+    "closerevision",
 ];
+
+/// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
+/// `projectprops {}`.
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[])];
+
+/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`]).
+pub fn reads_only(id: &str, params: &Value) -> bool {
+    READ_WITHOUT_FIELDS
+        .iter()
+        .any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
+}
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
 /// person who starts the server; saving is the `save` tool (only with `--write`).
@@ -91,7 +105,16 @@ pub const NEVER_COMMANDS: &[&str] = &[
 pub const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
 
 /// Commands whose `path` parameter is not a file (ARRAYPATH's path is a handle).
-const PATH_IS_NOT_A_FILE: &[&str] = &["arraypath"];
+const PATH_IS_NOT_A_FILE: &[&str] = &[
+    "arraypath",
+    // Brief 019: `folder` names a folder of pages, never a file.
+    "newpage",
+    "movepage",
+    "newfolder",
+    "renamefolder",
+    "movefolder",
+    "deletefolder",
+];
 
 /// Said when one call asks for several undo or redo steps.
 pub fn one_step(id: &str) -> String {
@@ -168,7 +191,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     if sets_auditctl(id, params) {
         return Err(never("setvar auditctl"));
     }
-    if READ_COMMANDS.contains(&id) {
+    if READ_COMMANDS.contains(&id) || reads_only(id, params) {
         return Ok(());
     }
     if !writes {

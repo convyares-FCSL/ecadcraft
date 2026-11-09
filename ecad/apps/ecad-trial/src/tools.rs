@@ -348,7 +348,8 @@ impl Picked {
                 Some(Mapped::Label(w)) => {
                     subjects.insert(Subject::Conductor(w));
                 }
-                None => {}
+                // The sheet frame (brief 019) names nothing.
+                Some(Mapped::Frame(_)) | None => {}
             }
         }
         Picked {

@@ -23,7 +23,7 @@ fn half_saved(n: usize) -> (ProjectFile<MemoryMedium>, Ledger) {
 fn edit(ledger: &mut Ledger, title: &str) {
     let id = PageId(0x1000 + ledger.head() as u128);
     let index = ledger.document().page_order.len();
-    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page { title: title.into() }, index }]).unwrap();
+    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page::new(title), index }]).unwrap();
 }
 
 /// The file reopened: every in-memory transaction exactly once, nothing else.

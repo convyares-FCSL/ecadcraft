@@ -31,15 +31,17 @@ pub const USE_POTENTIAL: &str = "use potential: a potential belongs to the whole
 pub fn net_json(doc: &Document, net: &NetData) -> Value {
     let pot = wiring::net_potential(doc, net);
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
-    let mut pages: BTreeMap<usize, Option<u32>> = BTreeMap::new();
+    // Per page (in page order): its shown number and the column of the first route start there.
+    let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
     for c in &net.conductors {
         for (_, r) in doc.representations_of(Subject::Conductor(*c)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = ecad_model::derive::route_ends_on(doc, *c, r.page)
-                .and_then(|(a, _)| ecad_model::derive::column_of(a.x, ecad_model::derive::column_width(doc)));
-            let slot = pages.entry(*n).or_insert(col);
-            if slot.is_none() {
-                *slot = col;
+                .and_then(|(a, _)| ecad_model::wiring::place(doc, r.page, a))
+                .map(|p| p.column_label);
+            let slot = pages.entry(*n).or_insert_with(|| (ecad_model::book::page_number(doc, r.page), None));
+            if slot.1.is_none() {
+                slot.1 = col;
             }
         }
     }
@@ -67,7 +69,7 @@ pub fn net_json(doc: &Document, net: &NetData) -> Value {
         "conductors": net.conductors.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         "points": points,
         "continuations": continuations,
-        "pages": pages.into_iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
+        "pages": pages.into_values().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
     })
 }
 
@@ -177,10 +179,8 @@ fn where_words(doc: &Document, net: &NetData) -> String {
     let point = wires::net_points(doc, net).into_iter().next();
     let place = net.first_conductor().and_then(|c| {
         doc.representations_of(Subject::Conductor(c)).find_map(|(_, r)| {
-            let n = doc.page_order.iter().position(|p| *p == r.page)? + 1;
-            let col = ecad_model::derive::route_ends_on(doc, c, r.page)
-                .and_then(|(a, _)| ecad_model::derive::column_of(a.x, ecad_model::derive::column_width(doc)))?;
-            Some(format!("/{n}.{col}"))
+            let (a, _) = ecad_model::derive::route_ends_on(doc, c, r.page)?;
+            Some(ecad_model::wiring::place(doc, r.page, a)?.text(doc.settings.reference_style))
         })
     });
     [point, place].into_iter().flatten().collect::<Vec<_>>().join(", ")

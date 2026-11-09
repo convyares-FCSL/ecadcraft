@@ -60,6 +60,7 @@ pub mod devices_panel;
 pub mod preview;
 pub mod project_panel;
 pub mod search;
+pub mod sheets_ui;
 pub mod startup;
 pub mod tools;
 
@@ -319,6 +320,24 @@ pub struct Trial {
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
     pub search: search::SymbolSearch,
+    /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
+    pub props: sheets_ui::Shared,
+    /// What the section's copy was built for: project serial, change count, page, selection.
+    props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
+    /// How many times the section's copy was built (tests: only when it can differ).
+    pub props_rebuilds: u64,
+    /// The Project Properties and Revisions dialogs, when open.
+    pub project_props: Option<sheets_ui::ProjectProps>,
+    pub revisions: Option<sheets_ui::Revisions>,
+    /// The folder the page name box's new page goes in.
+    new_page_folder: Option<ecad_model::FolderId>,
+    /// The revision shown in the panel (its log point), when one is open.
+    panel_revision: Option<u64>,
+    /// The change count the Revisions dialog was filled at (design 019 §9: it follows
+    /// `SetProperty(Project, rev.*)` and Name/UnnameVersion, so undo and redo too).
+    revisions_seen: u64,
+    /// The selection last checked for frame objects.
+    frame_checked: Vec<Handle>,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -409,6 +428,8 @@ impl Trial {
         let requested = Arc::new(AtomicBool::new(false));
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
         cad.extra_tool_tabs = vec![tools::tab()];
+        let props: sheets_ui::Shared = Arc::default();
+        cad.owner_properties = Some(sheets_ui::section(Arc::clone(&props)));
         Trial {
             cad,
             project: None,
@@ -437,6 +458,15 @@ impl Trial {
             home: ecad_cadcraft::home(),
             lwdisplay_set: None,
             search: search::SymbolSearch::default(),
+            props,
+            props_seen: None,
+            props_rebuilds: 0,
+            project_props: None,
+            revisions: None,
+            new_page_folder: None,
+            panel_revision: None,
+            revisions_seen: 0,
+            frame_checked: Vec::new(),
         }
     }
 
@@ -700,6 +730,7 @@ impl Trial {
         // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
         // again next frame (a failed projection is reported by the redraw itself).
         self.handle_tools();
+        self.drop_frame_selection();
         self.hold_close();
         self.sync_keep_open();
         if self.save_as_requested.swap(false, Ordering::Relaxed) {
@@ -713,6 +744,37 @@ impl Trial {
             }
         }
         self.report_saves();
+    }
+
+    /// Zoom the page window to its drawing without the sheet frame (brief 019: Zoom Extents fits
+    /// the whole sheet). Returns `false` when there is no drawing to zoom to.
+    pub fn zoom_to_drawing(&mut self) -> bool {
+        let Ok(d) = self.cad.session.doc() else { return false };
+        let mut b = cadcraft_engine::geom::Bounds2::default();
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER) {
+            b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
+        }
+        if b.is_empty() {
+            return false;
+        }
+        let m = ((b.max.x - b.min.x).max(b.max.y - b.min.y) * 0.1).max(5.0);
+        let (p1, p2) = ([b.min.x - m, b.min.y - m], [b.max.x + m, b.max.y + m]);
+        self.cad.run("zoom", json!({"mode": "window", "p1": p1, "p2": p2})).is_ok()
+    }
+
+    /// The sheet frame is never selected (design 019 §3.2): a selection that held only the frame
+    /// says why it is empty.
+    fn drop_frame_selection(&mut self) {
+        // Only when the selection changed: no work on a frame where nothing was picked.
+        let sel = self.cad.session.selection();
+        if sel == self.frame_checked {
+            return;
+        }
+        let only_frame = ecad_cadcraft::frame::drop_from_selection(&mut self.cad.session);
+        self.frame_checked = self.cad.session.selection();
+        if only_frame {
+            self.cad.session.echo(ecad_cadcraft::frame::DERIVED);
+        }
     }
 
     fn hold_close(&mut self) {
@@ -1252,8 +1314,12 @@ impl Trial {
             self.refresh_debugger(false);
         }
         self.project_panel(ui);
+        self.sync_props();
         self.cad.ui(ui);
+        self.take_props();
+        self.drop_frame_selection();
         self.handle_tools();
+        self.sheet_windows(ui.ctx());
         self.preview_window(ui.ctx());
         self.symbol_search(ui.ctx());
         if std::mem::take(&mut self.focus_drawing) {
@@ -1412,11 +1478,29 @@ impl Trial {
         };
         let serial = self.project_serial;
         let panel = &mut self.panel;
+        let panel_revision = &mut self.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
-            // Update map: rows are re-read only when a page was added, removed (rename and move
-            // included) or became (un)available; every other change leaves them.
-            panel.sync(serial, p.page_list_version(), || Some(p.page_rows()));
+            // An issued revision opened read-only (design 019 §7.3): its pages, under its bar.
+            match &p.revision_view {
+                Some(rv) => {
+                    if *panel_revision != Some(rv.at) {
+                        panel.set_tree(ecad_cadcraft::tree_rows(&rv.doc, |_| false));
+                        panel.revision = Some(sheets_ui::revision_bar(&rv.rev, &rv.date));
+                        *panel_revision = Some(rv.at);
+                    }
+                    return;
+                }
+                None if panel_revision.is_some() => {
+                    *panel_revision = None;
+                    panel.revision = None;
+                    panel.set_tree(p.tree_rows());
+                }
+                None => {}
+            }
+            // Update map: the tree is re-read only when its version moved (pages added, removed,
+            // renamed or moved, page properties, folder ops, a page becoming (un)available).
+            panel.sync(serial, p.page_list_version(), || Some(p.tree_rows()));
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {
@@ -1565,6 +1649,71 @@ impl Trial {
             A::NumberThem => {
                 let _ = self.run_line(&format!("renumberwires {}", json!({"scope": "unnumbered"})));
             }
+            A::MoveInto { page, folder, index } => {
+                let mut v = json!({"page": page.hex(), "folder": folder.map(|f| f.hex())});
+                if let Some(i) = index {
+                    v["index"] = json!(i);
+                }
+                let _ = self.run_line(&format!("movepage {v}"));
+            }
+            A::MoveFolder { folder, parent } => {
+                let line = format!("movefolder {}", json!({"folder": folder.hex(), "parent": parent.map(|f| f.hex())}));
+                if let Some(e) = self.run_line(&line) {
+                    self.panel.note = Some(e);
+                }
+            }
+            A::NewFolder(parent) => {
+                let r = self.run_value("newfolder", json!({"name": "New folder", "parent": parent.map(|f| f.hex())}));
+                match r {
+                    Ok(v) => {
+                        self.refresh_panel();
+                        if let Some(f) = v["folder"].as_str().and_then(ecad_model::FolderId::parse) {
+                            self.panel.folded.remove(&f);
+                            self.panel.start_folder_rename(f);
+                        }
+                    }
+                    Err(e) => self.panel.note = Some(e),
+                }
+            }
+            A::RenameFolder(folder, name) => {
+                let line = format!("renamefolder {}", json!({"folder": folder.hex(), "name": name}));
+                match self.run_line(&line) {
+                    None => self.panel.folder_rename = None,
+                    Some(e) => {
+                        if let Some(r) = &mut self.panel.folder_rename {
+                            r.text = name;
+                            r.error = Some(e);
+                        }
+                    }
+                }
+            }
+            A::DeleteFolder(folder) => {
+                let _ = self.run_line(&format!("deletefolder {}", json!({"folder": folder.hex()})));
+            }
+            A::NewPageIn(folder) => {
+                self.open_new_page_box();
+                self.new_page_folder = folder;
+            }
+            A::SetNumber(page, number) => {
+                let line = format!("pageprops {}", json!({"page": page.hex(), "number": number}));
+                match self.run_line(&line) {
+                    None => self.panel.number_edit = None,
+                    Some(e) => {
+                        if let Some(r) = &mut self.panel.number_edit {
+                            r.text = number;
+                            r.error = Some(e);
+                        }
+                    }
+                }
+            }
+            A::ProjectInfo => self.open_project_popout(sheets_ui::Popout::Info),
+            A::ProjectSettings => self.open_project_popout(sheets_ui::Popout::Settings),
+            A::Revisions => self.open_revisions(),
+            A::BackToCurrent => {
+                let _ = self.run_line("closerevision {}");
+                self.preview = None;
+            }
+            A::RevisionPage(page) => self.preview_revision_page(page),
             A::SetDeviceProperty { component, key, value, merge } => {
                 let line = format!(
                     "setprop {}",
@@ -1650,6 +1799,7 @@ impl Trial {
     /// Open the page name box for a new page, prefilled with its number (the panel's **+** and
     /// Tool Sets' New Page).
     pub fn open_new_page_box(&mut self) {
+        self.new_page_folder = None;
         let n = self.project_page_count() + 1;
         self.name_box = Some(NameBox { kind: NameBoxKind::New, text: n.to_string(), error: None, focused: false });
     }
@@ -1684,7 +1834,10 @@ impl Trial {
             self.cad.session.cancel();
         }
         let line = match b.kind {
-            NameBoxKind::New => format!("newpage {}", json!({ "title": b.text })),
+            NameBoxKind::New => match self.new_page_folder {
+                Some(f) => format!("newpage {}", json!({ "title": b.text, "folder": f.hex() })),
+                None => format!("newpage {}", json!({ "title": b.text })),
+            },
             NameBoxKind::Rename(page) => format!("renamepage {}", json!({"page": page.hex(), "title": b.text})),
         };
         match self.run_line(&line) {
@@ -1700,6 +1853,238 @@ impl Trial {
                     nb.error = Some(e);
                     nb.focused = false;
                 }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- brief 019
+
+    /// Run a command's JSON form as the command path does, returning its result.
+    fn run_value(&mut self, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        let r = self.cad.run(cmd, params).map_err(|e| e.to_string());
+        self.after_logic();
+        r
+    }
+
+    /// Open the Project info or Project settings popout, filled from `projectprops {}` (reads only).
+    pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
+        let read_only = self.header().read_only;
+        match self.run_value("projectprops", json!({})) {
+            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
+            Err(e) => self.cad.session.echo(e),
+        }
+    }
+
+    /// Open the Revisions dialog, filled from `projectprops {}` (reads only).
+    pub fn open_revisions(&mut self) {
+        let read_only = self.header().read_only;
+        match self.run_value("projectprops", json!({})) {
+            Ok(v) => {
+                self.revisions = Some(sheets_ui::Revisions::from_json(&v, read_only));
+                self.revisions_seen = self.change_count();
+            }
+            Err(e) => self.cad.session.echo(e),
+        }
+    }
+
+    /// The project's change count (0 without a project).
+    fn change_count(&mut self) -> u64 {
+        let Some(p) = self.project.clone() else { return 0 };
+        p.read(&mut self.cad.session, |p, _| p.change_count()).unwrap_or(0)
+    }
+
+    /// Bring the open Revisions dialog up to date after a change of its update map (the project's
+    /// properties, issuing, undo and redo of them), keeping unsent typing. One integer compared
+    /// per frame otherwise.
+    fn refresh_revisions(&mut self) {
+        if self.revisions.is_none() {
+            return;
+        }
+        let Some(p) = self.project.clone() else { return };
+        let seen = self.revisions_seen;
+        let Ok((count, touched)) = p.read(&mut self.cad.session, |p, _| {
+            let count = p.change_count();
+            (count, if count == seen { Some(Default::default()) } else { p.props_changes_since(seen) })
+        }) else {
+            return;
+        };
+        self.revisions_seen = count;
+        let hit = touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| {
+            t.contains(&ecad_model::ObjectRef::Project)
+        });
+        if !hit {
+            return;
+        }
+        let read_only = self.header().read_only;
+        if let Ok(v) = self.run_value("projectprops", json!({}))
+            && let Some(d) = &mut self.revisions
+        {
+            d.refresh(sheets_ui::Revisions::from_json(&v, read_only));
+        }
+    }
+
+    /// Preview `page` of the revision opened read-only (design 019 §7.3).
+    pub fn preview_revision_page(&mut self, page: PageId) {
+        let Some(p) = self.project.clone() else { return };
+        let rv = p.read(&mut self.cad.session, |p, _| p.revision_view.clone()).ok().flatten();
+        let Some(rv) = rv else { return };
+        let mut v = Preview::new(page, None, None);
+        v.revision = Some((rv.doc.clone(), format!("Rev {}", rv.rev)));
+        if let Some(r) = self.cad.canvas.rect {
+            v.place(r);
+        }
+        self.preview = Some(v);
+    }
+
+    /// Bring the Properties section's copy up to date (design 019 §9): rebuilt on a new selection
+    /// or page, or after a change that touched what it shows; otherwise kept.
+    pub fn sync_props(&mut self) {
+        let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
+            if let Ok(mut sh) = self.props.lock() {
+                sh.view = ecad_cadcraft::props::PropsView::default();
+            }
+            self.props_seen = None;
+            return;
+        };
+        let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
+        let selection = if owned { self.cad.session.selection() } else { Vec::new() };
+        let serial = self.project_serial;
+        let seen = &self.props_seen;
+        let read = p.read(&mut self.cad.session, |p, _| {
+            let page = p.active_page();
+            let same = seen.as_ref().is_some_and(|(s, _, pg, sel)| *s == serial && *pg == page && *sel == selection);
+            // Nothing changed since the copy was built: nothing to look at (the usual frame).
+            let since = seen.as_ref().map(|(_, n, _, _)| *n);
+            let touched = match since {
+                Some(n) if n == p.change_count() => Some(Default::default()),
+                Some(n) => p.props_changes_since(n),
+                None => None,
+            };
+            (page, p.change_count(), same, touched)
+        });
+        let Ok((page, count, same, touched)) = read else { return };
+        let stale = !same
+            || touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| {
+                self.props.lock().map_or(true, |sh| t.iter().any(|o| sh.view.deps.contains(o)))
+            });
+        if !stale {
+            if let Some(seen) = &mut self.props_seen {
+                seen.1 = count;
+            }
+            return;
+        }
+        let view = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::props::view(p, page, &selection));
+        if let Ok(view) = view {
+            let writable = !self.header().read_only;
+            if let Ok(mut sh) = self.props.lock() {
+                // A refusal stays under its field until what the section shows changes.
+                if sh.view != view {
+                    sh.errors.clear();
+                }
+                sh.view = view;
+                sh.writable = writable;
+            }
+            self.props_rebuilds += 1;
+            self.props_seen = Some((serial, count, page, selection));
+        }
+    }
+
+    /// Run what the Properties section asked for: each edit through its command's JSON form, a
+    /// refusal kept under its field.
+    fn take_props(&mut self) {
+        let (edits, buttons) = match self.props.lock() {
+            Ok(mut sh) => (std::mem::take(&mut sh.edits), std::mem::take(&mut sh.buttons)),
+            Err(_) => return,
+        };
+        // A command waiting at a prompt is cancelled first (nothing written), as a page click does.
+        if (!edits.is_empty() || !buttons.is_empty()) && self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        for (target, key, value) in edits {
+            let line = ecad_cadcraft::props::edit_line(&target, &key, value.as_deref());
+            let r = self.run_line(&line);
+            if let Ok(mut sh) = self.props.lock() {
+                match r {
+                    Some(e) => {
+                        sh.errors.insert(key, e);
+                    }
+                    None => {
+                        sh.errors.remove(&key);
+                    }
+                }
+            }
+        }
+        for b in buttons {
+            match b.as_str() {
+                "revisions" => self.open_revisions(),
+                "more" => self.open_project_popout(sheets_ui::Popout::Info),
+                g => {
+                    if let Some(r) = g.strip_prefix("goto:") {
+                        let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Project Properties and Revisions windows and the question a plain undo across an issue
+    /// stops at.
+    fn sheet_windows(&mut self, ctx: &egui::Context) {
+        if let Some(d) = &mut self.project_props {
+            match d.show(ctx) {
+                Some(sheets_ui::Out::Run(line)) => match self.run_line(&line) {
+                    None => self.project_props = None,
+                    Some(e) => {
+                        if let Some(d) = &mut self.project_props {
+                            d.error = Some(e);
+                        }
+                    }
+                },
+                Some(sheets_ui::Out::Close) => self.project_props = None,
+                Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
+                Some(sheets_ui::Out::Open(_)) | None => {}
+            }
+        }
+        self.refresh_revisions();
+        if let Some(d) = &mut self.revisions {
+            match d.show(ctx) {
+                Some(sheets_ui::Out::Run(line)) => {
+                    let issuing = line.starts_with("issuerevision");
+                    let r = self.run_line(&line);
+                    if let Some(d) = &mut self.revisions {
+                        d.error = r.clone();
+                    }
+                    if r.is_none() && issuing {
+                        self.open_revisions();
+                    }
+                }
+                Some(sheets_ui::Out::Open(rev)) => {
+                    if let Some(e) = self.run_line(&format!("openrevision {}", json!({ "rev": rev })))
+                        && let Some(d) = &mut self.revisions
+                    {
+                        d.error = Some(e);
+                    }
+                    self.refresh_panel();
+                }
+                Some(sheets_ui::Out::Close) => self.revisions = None,
+                Some(sheets_ui::Out::OpenRevisions) | None => {}
+            }
+        }
+        let question = self
+            .project
+            .clone()
+            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.issue_undo_question.clone()).ok().flatten());
+        if let Some(q) = question {
+            match sheets_ui::issue_undo(ctx, &q) {
+                Some(true) => {
+                    let _ = self.run_line("undoissue {}");
+                }
+                Some(false) => {
+                    if let Some(p) = self.project.clone() {
+                        let _ = p.configure(&mut self.cad.session, |p| p.issue_undo_question = None);
+                    }
+                }
+                None => {}
             }
         }
     }
@@ -1825,7 +2210,7 @@ impl Trial {
             self.cad.session.echo("The previewed page no longer exists.");
             return;
         }
-        if self.panel.active == Some(v.page) {
+        if self.panel.active == Some(v.page) && v.revision.is_none() {
             self.preview = None;
             return;
         }

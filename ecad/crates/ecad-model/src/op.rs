@@ -8,12 +8,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Item, Layer, Page, ProjectSettings,
+    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings,
     Representation, Terminal,
 };
 use crate::error::{ModelError, Result};
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
 };
 use crate::index::Delta;
 
@@ -23,6 +23,10 @@ pub enum ObjectRef {
     Component(ComponentId),
     Conductor(ConductorId),
     Cable(CableId),
+    /// A page's properties (brief 019, decision FP1).
+    Page(PageId),
+    /// The project's own properties (brief 019, decision FP1).
+    Project,
 }
 
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
@@ -154,6 +158,23 @@ pub enum Op {
         name: String,
         at: u64,
     },
+    /// A folder of pages at `index` in the folder order (brief 019, decision FP3).
+    AddFolder {
+        id: FolderId,
+        folder: Folder,
+        index: usize,
+    },
+    RemoveFolder {
+        id: FolderId,
+        folder: Folder,
+        index: usize,
+    },
+    /// Rename or re-parent a folder.
+    ModifyFolder {
+        id: FolderId,
+        before: Folder,
+        after: Folder,
+    },
 }
 
 fn pre(msg: String) -> ModelError {
@@ -221,6 +242,9 @@ impl Op {
             Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: after, after: before },
             Op::NameVersion { name, at } => Op::UnnameVersion { name, at },
             Op::UnnameVersion { name, at } => Op::NameVersion { name, at },
+            Op::AddFolder { id, folder, index } => Op::RemoveFolder { id, folder, index },
+            Op::RemoveFolder { id, folder, index } => Op::AddFolder { id, folder, index },
+            Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
         }
     }
 
@@ -284,6 +308,7 @@ impl Op {
                 if *index > doc.page_order.len() {
                     return Err(pre(format!("page index {index} is past the end")));
                 }
+                doc.index.page(*id, page, Delta::Add);
                 doc.pages.insert(*id, page.clone());
                 doc.page_order.insert(*index, *id);
             }
@@ -292,7 +317,9 @@ impl Op {
                     return Err(pre(format!("page {id} is not at index {index}")));
                 }
                 holds(&doc.pages, *id, page, "page", checked)?;
-                doc.pages.remove(id);
+                if let Some(old) = doc.pages.remove(id) {
+                    doc.index.page(*id, &old, Delta::Remove);
+                }
                 doc.page_order.remove(*index);
             }
             Op::AddLayer { id, layer } => {
@@ -420,6 +447,8 @@ impl Op {
                     ObjectRef::Component(id) => doc.components.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Conductor(id) => doc.conductors.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
+                    ObjectRef::Project => Some(&mut doc.properties),
                 }
                 .ok_or_else(|| pre(format!("{object:?} does not exist")))?;
                 if checked && props.get(key) != before.as_ref() {
@@ -453,11 +482,22 @@ impl Op {
                 if let ObjectRef::Component(id) = object
                     && key == crate::tag::TAG_KEY
                 {
-                    if let Some(old) = old {
-                        doc.index.tag(*id, &old, Delta::Remove);
+                    if let Some(old) = &old {
+                        doc.index.tag(*id, old, Delta::Remove);
                     }
                     if let Some(new) = after {
                         doc.index.tag(*id, new, Delta::Add);
+                    }
+                }
+                // A page's folder is indexed (brief 019).
+                if let ObjectRef::Page(id) = object
+                    && key == crate::book::FOLDER_KEY
+                {
+                    if let Some(old) = &old {
+                        doc.index.page_folder(*id, old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.page_folder(*id, new, Delta::Add);
                     }
                 }
             }
@@ -486,6 +526,32 @@ impl Op {
                     return Err(pre(format!("version name {name:?} does not name transaction {at}")));
                 }
                 doc.versions.remove(name);
+            }
+            Op::AddFolder { id, folder, index } => {
+                absent(&doc.folders, *id, "folder")?;
+                if *index > doc.folder_order.len() {
+                    return Err(pre(format!("folder index {index} is past the end")));
+                }
+                doc.index.folder(*id, folder, Delta::Add);
+                doc.folders.insert(*id, folder.clone());
+                doc.folder_order.insert(*index, *id);
+            }
+            Op::RemoveFolder { id, folder, index } => {
+                if doc.folder_order.get(*index) != Some(id) {
+                    return Err(pre(format!("folder {id} is not at index {index}")));
+                }
+                holds(&doc.folders, *id, folder, "folder", checked)?;
+                if let Some(old) = doc.folders.remove(id) {
+                    doc.index.folder(*id, &old, Delta::Remove);
+                }
+                doc.folder_order.remove(*index);
+            }
+            Op::ModifyFolder { id, before, after } => {
+                holds(&doc.folders, *id, before, "folder", checked)?;
+                if let Some(old) = doc.folders.insert(*id, after.clone()) {
+                    doc.index.folder(*id, &old, Delta::Remove);
+                }
+                doc.index.folder(*id, after, Delta::Add);
             }
         }
         Ok(())
@@ -521,6 +587,9 @@ impl Op {
             Op::SetProjectSettings { .. } => "SetProjectSettings",
             Op::NameVersion { .. } => "NameVersion",
             Op::UnnameVersion { .. } => "UnnameVersion",
+            Op::AddFolder { .. } => "AddFolder",
+            Op::RemoveFolder { .. } => "RemoveFolder",
+            Op::ModifyFolder { .. } => "ModifyFolder",
         }
     }
 }

@@ -180,15 +180,17 @@ pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
 
 // ---------------------------------------------------------------- continuation texts (§3.2)
 
-/// `/<page>.<column>` of a continuation (its symbol on its first page).
-fn place_of(doc: &Document, c: ComponentId) -> Option<(usize, u32, String)> {
+/// Where a continuation is (its symbol on its first page), as references name it (`2-A-6`), with
+/// a sort key (page position, column, row).
+fn place_of(doc: &Document, c: ComponentId) -> Option<((usize, u32, u32), String)> {
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    let style = doc.settings.reference_style;
     doc.representations_of(Subject::Component(c))
         .filter_map(|(_, r)| {
             let n = *order.get(&r.page)?;
             let ItemKind::Symbol(s) = &doc.items.get(r.items.first()?)?.kind else { return None };
-            let col = ecad_model::derive::column_of(s.placement.origin.x, ecad_model::derive::column_width(doc))?;
-            Some((n, col, format!("/{n}.{col}")))
+            let p = ecad_model::wiring::place(doc, r.page, s.placement.origin)?;
+            Some(((n, p.column, p.row), p.text(style)))
         })
         .min()
 }
@@ -199,7 +201,7 @@ pub fn other_places(doc: &Document, c: ComponentId) -> (String, Vec<ComponentId>
     let Some(key) = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).map(|n| name_key(n)) else {
         return (String::new(), Vec::new());
     };
-    let mut others: Vec<((usize, u32, String), ComponentId)> = doc
+    let mut others: Vec<(((usize, u32, u32), String), ComponentId)> = doc
         .continuations_named(&key)
         .into_iter()
         .filter(|o| *o != c)
@@ -207,7 +209,7 @@ pub fn other_places(doc: &Document, c: ComponentId) -> (String, Vec<ComponentId>
         .collect();
     others.sort();
     let ids = others.iter().map(|(_, o)| *o).collect();
-    let mut words: Vec<String> = others.iter().take(MAX_PLACES).map(|((_, _, w), _)| w.clone()).collect();
+    let mut words: Vec<String> = others.iter().take(MAX_PLACES).map(|((_, w), _)| w.clone()).collect();
     if others.len() > MAX_PLACES {
         words.push(format!("+{}", others.len() - MAX_PLACES));
     }

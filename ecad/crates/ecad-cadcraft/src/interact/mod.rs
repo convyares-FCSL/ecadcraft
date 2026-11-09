@@ -143,7 +143,15 @@ pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
     if !in_range(p) {
         return None;
     }
-    s.pick_object(&s.space(), p, r).ok().flatten()
+    let h = s.pick_object(&s.space(), p, r).ok().flatten()?;
+    // The sheet frame (brief 019) is not an object to pick. It is drawn behind everything else, so
+    // it is only picked where nothing else is.
+    let d = s.doc().ok()?;
+    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == crate::frame::LAYER);
+    if !frame(h) {
+        return Some(h);
+    }
+    (!frame(h)).then_some(h)
 }
 
 /// A terminal under the cursor.
@@ -458,6 +466,10 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::Fan(_) if view.map.reference_of(h).is_some() => {
             crate::references::hover_lines(doc, view.map.reference_of(h)?)?
         }
+        // The sheet frame and title block (design 019 §4): where to change it.
+        Mapped::Frame(_) => {
+            vec![format!("Page {}: change it in the Properties panel", crate::references::page_number(doc, page))]
+        }
         // A device's tag text or terminal label (brief 018): the device's lens.
         Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
             Subject::Component(c) => crate::devices::hover_lines(doc, c, r),
@@ -735,6 +747,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
         Some(Mapped::Item(i)) => i,
         Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
+        Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

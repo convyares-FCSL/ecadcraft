@@ -37,7 +37,7 @@ fn device(h: &mut H, tag: &str) -> ComponentId {
 }
 
 fn zoom(h: &mut H) {
-    ok(h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.run_steps(3);
 }
 

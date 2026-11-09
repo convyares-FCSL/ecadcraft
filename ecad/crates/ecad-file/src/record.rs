@@ -165,6 +165,9 @@ pub const OP_NAMES: &[&str] = &[
     "SetProjectSettings",
     "NameVersion",
     "UnnameVersion",
+    "AddFolder",
+    "RemoveFolder",
+    "ModifyFolder",
 ];
 
 /// Why a record could not be decoded; the reader maps these to its checks (§20.6).
@@ -345,7 +348,9 @@ fn check_integers(op: &v1::Op) -> Result<(), String> {
         v1::Op::AddPage { index, .. }
         | v1::Op::RemovePage { index, .. }
         | v1::Op::AddCableMember { index, .. }
-        | v1::Op::RemoveCableMember { index, .. } => *index,
+        | v1::Op::RemoveCableMember { index, .. }
+        | v1::Op::AddFolder { index, .. }
+        | v1::Op::RemoveFolder { index, .. } => *index,
         v1::Op::NameVersion { at, .. } | v1::Op::UnnameVersion { at, .. } => *at,
         v1::Op::EmbedDefinition { definition, .. } | v1::Op::RemoveDefinition { definition, .. } => {
             definition.origin.as_ref().map_or(0, |o| o.library_seq)
@@ -414,7 +419,7 @@ mod tests {
             label: "v0 page".into(),
             kind: m::TxKind::Edit,
             time_ms: None,
-            ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page { title: "1".into() }, index: 0 }],
+            ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page::new("1"), index: 0 }],
         };
         let mut v = tx_value(&tx, &seed).unwrap();
         let op = v["ops"][0].as_object_mut().unwrap();

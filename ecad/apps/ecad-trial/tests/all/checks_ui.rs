@@ -96,7 +96,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // The hover lens on the wire under the coil names its net (design 022 §15, step 2).
     show(&mut h, p2);
-    let at = screen(&h, 47.5, 0.0);
+    let at = screen(&h, 57.5, 50.0);
     pointer_to(&mut h, at);
     h.run_steps(3);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
@@ -119,7 +119,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let rows = h.state().panel.checks.rows().to_vec();
     assert_eq!(rows.len(), 4, "{rows:?}");
     let pe = rows.iter().find(|r| r.check.which == "-M01:PE").unwrap().clone();
-    assert_eq!(pe.locator, "/3.4");
+    assert_eq!(pe.locator, "3-C-5");
     click(&mut h, &checks_panel::row_label(&pe));
     assert_eq!(h.state().panel.active, Some(p3));
     assert!(!h.state().cad.session.selection().is_empty(), "the motor is selected");

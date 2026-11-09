@@ -395,7 +395,16 @@ fn the_quick_start_trial_runs_headless() {
     };
     // 1. Draw a rectangle and convert it into a component with a terminal.
     ok(&mut t, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let lines: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
     ok(&mut t, "convertcomponent");
@@ -406,6 +415,7 @@ fn the_quick_start_trial_runs_headless() {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle)
         .unwrap();
@@ -465,8 +475,12 @@ fn the_quick_start_trial_runs_headless() {
     assert!(t.pending_close().is_none() && t.cad.session.docs.is_empty() && t.project_open());
     t.show_page(p2).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1);
-    // The wire and its label (brief 022).
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), 2, "page 2's wire is drawn again");
+    // The wire and its label (brief 022), not counting the sheet frame (brief 019).
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        2,
+        "page 2's wire is drawn again"
+    );
     t.show_page(page).unwrap();
     // 7. Save, close and reopen: connectivity, IDs and history survive. The guide's `~/` path,
     // under a temporary home folder (on Linux the default folder is created by this save; on
@@ -518,7 +532,10 @@ fn the_command_field_keeps_trailing_enters() {
     assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
     assert!(t.submit_command("").is_none());
     assert!(t.cad.session.running.is_none(), "an empty line is Enter");
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), 2);
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        2
+    );
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
 

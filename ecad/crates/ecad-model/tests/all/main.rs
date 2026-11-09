@@ -7,5 +7,6 @@ mod connectivity_contracts;
 mod device_contracts;
 mod incremental_contracts;
 mod ledger_contracts;
+mod sheet_contracts;
 mod verify_mode_acceptance;
 mod worked_example;

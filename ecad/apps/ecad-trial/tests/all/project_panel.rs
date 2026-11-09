@@ -5,7 +5,7 @@
 //! `016-rename.png`, `016-drag.png`, `016-collapsed.png`, `016-preview-ref.png`, `016-large.png`).
 //!
 //! Fixture P (design §10): 010's fixture R (pages `Supply` and `Field`, cable C1 with linked
-//! references `/2.1` and `/1.2`) plus a third page `Spare`.
+//! references `2-A-6` and `1-B-6`) plus a third page `Spare`.
 
 use std::sync::{Arc, Mutex};
 
@@ -16,9 +16,9 @@ use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
+pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
-struct Collect(Deltas);
+pub(crate) struct Collect(pub(crate) Deltas);
 
 impl egui_kittest::TestRenderer for Collect {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
@@ -50,7 +50,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 }
 
 /// Render the harness's last frame with egui-wgpu and save it as PNG; `None` without an adapter.
-fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
@@ -154,7 +154,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     Some(image)
 }
 
-fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
+pub(crate) fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
     // 60 frames a second, so two clicks a few frames apart are a double-click.
     let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).with_step_dt(1.0 / 60.0);
     if let Some(d) = deltas {
@@ -171,7 +171,7 @@ fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
     h
 }
 
-fn trial() -> Trial {
+pub(crate) fn trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
@@ -179,31 +179,31 @@ fn trial() -> Trial {
     t
 }
 
-fn ok(h: &mut Harness<'static, Trial>, line: &str) {
+pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
     let e = h.state_mut().submit_command(line);
     assert!(e.is_none(), "{line}: {e:?}");
     h.run_steps(2);
 }
 
-fn doc(h: &mut Harness<'static, Trial>) -> ecad_model::Document {
+pub(crate) fn doc(h: &mut Harness<'static, Trial>) -> ecad_model::Document {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
 }
 
-fn head(h: &mut Harness<'static, Trial>) -> u64 {
+pub(crate) fn head(h: &mut Harness<'static, Trial>) -> u64 {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
 }
 
-fn last_ops(h: &mut Harness<'static, Trial>) -> (String, Vec<Op>) {
+pub(crate) fn last_ops(h: &mut Harness<'static, Trial>) -> (String, Vec<Op>) {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.log().last().map(|x| (x.label.clone(), x.ops.clone())).unwrap()).unwrap()
 }
 
-fn active(h: &mut Harness<'static, Trial>) -> Option<PageId> {
+pub(crate) fn active(h: &mut Harness<'static, Trial>) -> Option<PageId> {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap()
@@ -222,18 +222,18 @@ fn tab_title(h: &Harness<'static, Trial>) -> String {
     owned.first().map(|d| d.title.clone()).unwrap_or_default()
 }
 
-fn click(h: &mut Harness<'static, Trial>, label: &str) {
+pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
     h.get_by_label(label).click();
     h.run_steps(3);
 }
 
-fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
+pub(crate) fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
     h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
     h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers });
     h.run_steps(2);
 }
 
-fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
+pub(crate) fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
     h.event(Event::PointerMoved(at));
     if let Some(pressed) = pressed {
         h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
@@ -242,12 +242,12 @@ fn pointer(h: &mut Harness<'static, Trial>, at: Pos2, pressed: Option<bool>) {
 }
 
 /// The screen rectangle of the panel row labelled `label`.
-fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
+pub(crate) fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
     h.get_by_label(label).rect()
 }
 
-/// Fixture P: Supply (C1 leaving at (65,5), `/2.1`), Field (C1 arriving at (20,5), `/1.2`), Spare.
-fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
+/// Fixture P: Supply (C1 leaving at (65,5), `2-A-6`), Field (C1 arriving at (20,5), `1-B-6`), Spare.
+pub(crate) fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let supply = doc(h).page_order[0];
     ok(h, &format!(r#"renamepage {{"page":"{}","title":"Supply"}}"#, supply.hex()));
@@ -264,11 +264,11 @@ fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     (d.page_order[0], d.page_order[1], d.page_order[2])
 }
 
-fn shots() -> Option<std::path::PathBuf> {
+pub(crate) fn shots() -> Option<std::path::PathBuf> {
     std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from)
 }
 
-fn take(h: &Harness<'static, Trial>, deltas: &Deltas, name: &str) -> Option<egui::ColorImage> {
+pub(crate) fn take(h: &Harness<'static, Trial>, deltas: &Deltas, name: &str) -> Option<egui::ColorImage> {
     shots().and_then(|dir| shot(h, deltas, &dir.join(name)))
 }
 
@@ -297,7 +297,16 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     }
     assert_eq!(h.state().cad.session.docs.len(), 1, "exactly one ECAD file tab after clicking every row");
     click(&mut h, "Page 1: Supply");
-    let shown = h.state().cad.session.doc().unwrap().model.len();
+    let shown = h
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .count();
     assert!(shown > 3, "the page window shows Supply's items ({shown})");
 
     // J: after a row click, Down, Down, Enter makes row 3 active; typing then reaches the
@@ -423,12 +432,12 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
         "{ops:?}"
     );
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
-    // The reference texts follow the move at once (010): Supply's now says /3.1.
+    // Page numbers are stored (brief 019): the move changes no reference text.
     let texts: Vec<String> =
         ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
-    assert_eq!(texts, ["/3.1"]);
+    assert_eq!(texts, ["2-A-6"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
-    click(&mut h, "Page 1: Spare");
+    click(&mut h, "Page 3: Spare");
     let before = head(&mut h);
     key(&mut h, Key::ArrowDown, Modifiers::ALT);
     assert_eq!(head(&mut h), before + 1);
@@ -539,17 +548,21 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(h.state().preview.as_ref().unwrap().projections, n, "an edit on Supply does not touch Field");
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field", "the title follows the move");
+    assert_eq!(
+        h.state().preview.as_ref().unwrap().title,
+        "page 2: Field",
+        "the number stays with the page (brief 019)"
+    );
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field X"}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field X");
+    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field X");
     ok(&mut h, "u");
     ok(&mut h, "u");
     h.run_steps(2);
     assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "undo");
     ok(&mut h, "redo");
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 1: Field", "redo");
+    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "redo");
     assert!(h.state().preview.as_ref().unwrap().projections > n, "page changes redraw it");
 
     // Clicks, drags, wheel and keys inside it record nothing and keep the selection.
@@ -573,7 +586,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert!(h.state().preview.is_none());
     // The panel's Preview on a row, and Space on it again closes; the active page says so.
     click(&mut h, "Page 3: Spare");
-    click(&mut h, "Page 2: Supply");
+    click(&mut h, "Page 1: Supply");
     key(&mut h, Key::Space, Modifiers::NONE);
     assert!(h.state().preview.is_none(), "the cursor row is active: no preview");
     click(&mut h, "Page 3: Spare");
@@ -680,9 +693,9 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     click(&mut h, "Page 2: Field");
     let field = doc(&mut h).page_order[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
-    // New page, Move up and Move down are disabled and named by why.
+    // New page, New folder, Move up and Move down are disabled and named by why.
     let disabled = h.get_all_by_label(project_panel::READ_ONLY).count();
-    assert_eq!(disabled, 3, "New page, Move up and Move down");
+    assert_eq!(disabled, 4, "New page, New folder, Move up and Move down");
     h.get_all_by_label(project_panel::READ_ONLY).for_each(|n| n.click());
     h.run_steps(3);
     key(&mut h, Key::ArrowUp, Modifiers::ALT);
@@ -690,6 +703,16 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     assert!(h.state().panel.rename.is_none(), "no rename");
     assert_eq!(head(&mut h), before, "nothing recorded");
     assert_eq!(doc(&mut h).page_order.len(), 2);
+    // Brief 019, check J: every Properties field and dialog field read-only, Issue hidden; a
+    // revision can still be reopened (the command reads only).
+    assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
+    h.state_mut().open_project_popout(ecad_trial::sheets_ui::Popout::Info);
+    assert!(h.state().project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
+    h.state_mut().project_props = None;
+    h.state_mut().open_revisions();
+    assert!(h.state().revisions.as_ref().is_some_and(|d| d.read_only), "no pending row, no Issue");
+    h.state_mut().revisions = None;
+    assert_eq!(head(&mut h), before, "nothing recorded");
     drop(h);
     drop(first);
     let _ = std::fs::remove_dir_all(&dir);
@@ -697,7 +720,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
-/// A coil `-K01` on page 1 and its NO contact on page 2 (column 2), page 1 shown, Devices tab open.
+/// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
 fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
@@ -730,9 +753,9 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
     click(&mut h, "Device -K01: Contactor / relay coil");
     assert_eq!(h.state().panel.devices.selected, Some(coil));
-    let row = "-K01 NO contact, page 2, column 2";
+    let row = "-K01 NO contact, 2-A-6";
     assert!(
-        h.query_by_label("-K01 Contactor / relay coil, page 1, column 1").is_some(),
+        h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(),
         "unfolded: {:?}",
         h.state().panel.devices.entries()
     );
@@ -880,12 +903,13 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
     assert_eq!(other_before, other_after, "the other device is untouched");
     assert!(h.query_by_label("Device -S07: Contactor / relay coil").is_some(), "the row shows it");
 
-    // A page move: the symbols' page numbers follow, without a rebuild.
+    // A page move: the symbols are re-sorted in book order, without a rebuild; their page numbers
+    // are stored (brief 019), so they stay.
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":2}}"#, page1.hex()));
     h.run_steps(2);
     let e = h.state().panel.devices.entries().iter().find(|e| e.id == coil).unwrap().clone();
     let numbers: Vec<_> = e.symbols.iter().map(|s| s.page_number.clone()).collect();
-    assert_eq!(numbers, ["1", "2"], "the contact (now page 1) first, the coil (now page 2) after");
+    assert_eq!(numbers, ["2", "1"], "the contact (page 2, now first in book order) first, the coil after");
     assert_eq!(e.symbols[1].name, "Contactor / relay coil");
     assert_eq!(h.state().panel.devices.list.rebuilds, rebuilds, "never rebuilt whole while shown");
 

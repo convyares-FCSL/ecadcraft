@@ -40,12 +40,19 @@ are.
 | **wire number** | The number a net carries and every one of its conductors shows (`24V-07`). Automatic, or **fixed** by hand. Stored on the conductors once issued, so adding a wire never renumbers others. |
 | **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. |
 | **core** | One conductor of a cable, with its core number or colour (`1`, `BK`). |
-| **cable reference** | Where a cable leaves one page and continues on another, shown `/<page>.<column>` of the other end (`/3.1`). An end with no other end is an **orphan** (`/?`). |
+| **cable reference** | Where a cable leaves one page and continues on another, shown as the other end's page, column and row on its sheet (`105-C-4`, brief 019). An end with no other end is an **orphan** (`?`). |
 
 ## Pages
 
 | Word | Means |
 | --- | --- |
 | **page** | One drawing sheet of the project. Exactly one is the **active page**, shown and editable in the page window. |
-| **column** | The 40 mm grid across a page, counted from 1, used in reference texts (`/2.3` is page 2, column 3). |
+| **page number** | The number a page is shown with, chosen by the designer (`100`, `105a`) and kept when the page moves; a page without one (files from before brief 019) shows its position. |
+| **folder** | A named group of pages in the Pages tree; folders nest (at most 8 deep). Within a folder, pages come before sub-folders. |
+| **sheet** | The paper a page is drawn on (A3 by default, A2, A1, A0 or a custom size), with its **frame** and grid. The paper's bottom-left corner is the drawing's origin. |
+| **frame** | The border inside the paper's margins, divided into zones: **columns** lettered `A`, `B`… from the left and **rows** numbered `1`, `2`… from the top, over the whole frame. |
+| **column**, **row** | The frame's zones, used in reference texts: `105-C-4` is page 105, column C, row 4. |
+| **title block** | The box along the bottom of the frame showing the project's and the page's facts and the revisions. Derived from the properties, never drawn by hand. |
+| **revision** | One step in the project's release history (`Rev A`, `B`…), with its date, description and who drew, checked and approved it. Users only ever see "revision", never "version". |
+| **issue** | Releasing a revision: its fields are fixed and the project as it is then can be reopened read-only (**Reopen**). Undoing an issue asks first. |
 | **preview** | A read-only view of another page, for checking a reference's other end. |

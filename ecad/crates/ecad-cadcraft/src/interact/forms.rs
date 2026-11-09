@@ -968,7 +968,7 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             _ => Err(NOT_A_CABLE),
         },
         Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
-        Mapped::Marker(..) | Mapped::Tag(_) => Err(NOT_A_CABLE),
+        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) => Err(NOT_A_CABLE),
     }
 }
 

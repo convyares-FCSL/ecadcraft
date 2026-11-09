@@ -285,10 +285,24 @@ impl PagesRef<'_> {
         self.doc(uid).map(|d| d.doc.clone())
     }
 
-    /// Model-space entities of `page`'s drawing.
+    /// Model-space entities of `page`'s drawing, without its sheet frame (brief 019; see
+    /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().cloned().collect()))
+            .and_then(|d| {
+                d.space(&Space::Model)
+                    .map(|m| m.iter().filter(|e| e.common.layer != crate::frame::LAYER).cloned().collect())
+            })
+            .unwrap_or_default()
+    }
+
+    /// The sheet frame's entities of `page`'s drawing (brief 019).
+    pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
+        self.drawing_of(p, page)
+            .and_then(|d| {
+                d.space(&Space::Model)
+                    .map(|m| m.iter().filter(|e| e.common.layer == crate::frame::LAYER).cloned().collect())
+            })
             .unwrap_or_default()
     }
 

@@ -120,10 +120,10 @@ fn the_demo_nets_and_wire_numbers() {
     assert_eq!(
         checks,
         [
-            "LonelyContinuation /2.3 L1",
-            "LonelyContinuation /2.4 L2",
-            "LonelyContinuation /2.4 L3",
-            "Unconnected /3.4 -M01:PE"
+            "LonelyContinuation 2-C-4 L1",
+            "LonelyContinuation 2-C-4 L2",
+            "LonelyContinuation 2-C-4 L3",
+            "Unconnected 3-C-5 -M01:PE"
         ],
         "{checks:#?}"
     );

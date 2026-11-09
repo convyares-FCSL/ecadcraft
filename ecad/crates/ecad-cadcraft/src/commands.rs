@@ -18,8 +18,8 @@ use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_model::{
     CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, End, Form,
-    Item, ItemId, ItemKind, ObjectRef, Op, Page, PageId, Placement, Primitive, Pt, Representation, RepresentationId,
-    Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    Item, ItemId, ItemKind, ObjectRef, Op, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style,
+    Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -32,6 +32,12 @@ use crate::views::{self, View};
 
 /// The commands this crate adds.
 pub fn specs() -> Vec<CommandSpec> {
+    let mut v = base_specs();
+    v.extend(crate::sheet_cmds::specs());
+    v
+}
+
+fn base_specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("convertcomponent", "Convert to Component", run_convert)
             .params("{handles?: [hex]} (default: selection)")
@@ -96,7 +102,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("setprop", "Set Property", run_setprop)
             .params(
-                "{component|conductor|cable: id, key, value: string|null, merge?: bool} (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
+                "{component|conductor|cable: id, key, value: string|null, merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
             )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
@@ -158,10 +164,14 @@ end's spine; null: the middle)",
         CommandSpec::new("checks", "Checks", crate::wire_cmds::run_checks)
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
-        CommandSpec::new("newpage", "New Page", run_newpage).params("{title}").noundo(),
+        CommandSpec::new("newpage", "New Page", run_newpage)
+            .params("{title, number?, folder?: id} (number: default the next after the page before it)")
+            .noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
         CommandSpec::new("renamepage", "Rename Page", run_renamepage).params("{page: id, title}").noundo(),
-        CommandSpec::new("movepage", "Move Page", run_movepage).params("{page: id, index: n} (1 = first)").noundo(),
+        CommandSpec::new("movepage", "Move Page", run_movepage)
+            .params("{page: id, index: n} (1 = first) | {page: id, folder: id|null, index?: n} (into a folder, 1 = first of its pages)")
+            .noundo(),
         CommandSpec::new("ecadinspect", "Inspect Project", run_inspect)
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),
@@ -612,6 +622,11 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
         None => return Err(err("`value` is required (a string, or null to clear the property)")),
     };
+    // Several devices at once (brief 019, the Properties panel): one transaction for all.
+    if params.get("components").is_some() {
+        let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;
+        return run_setprop_many(s, cs, key, value);
+    }
     let object = if let Some(c) = opt_id(params, "component").map_err(err)? {
         ObjectRef::Component(c)
     } else if let Some(c) = opt_id(params, "conductor").map_err(err)? {
@@ -638,6 +653,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
             ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
             ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
+            ObjectRef::Page(_) | ObjectRef::Project => None,
         }
         .ok_or("no such object")?;
         let before = props.get(&key).cloned();
@@ -646,6 +662,42 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         }
         p.apply_edit(pg, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
         Ok(json!({"changed": true}))
+    })
+}
+
+/// `setprop {components: [id…], key, value}`: a device property written to several devices in
+/// one transaction (design 019 §8.2); tags are one per device, so `tag` is refused.
+fn run_setprop_many(
+    s: &mut Session,
+    cs: Vec<ComponentId>,
+    key: String,
+    value: Option<String>,
+) -> cadcraft_engine::Result<Value> {
+    if key == ecad_model::tag::TAG_KEY {
+        return Err(err("Tags are one per device."));
+    }
+    with_project(s, |p, pg, _page| {
+        let doc = p.ledger.document();
+        let after = crate::devices::property_value(doc, &key, value.as_deref())?;
+        let mut ops = Vec::new();
+        for c in &cs {
+            let comp = doc.components.get(c).ok_or("no such object")?;
+            let before = comp.properties.get(&key).cloned();
+            if before != after {
+                ops.push(Op::SetProperty {
+                    object: ObjectRef::Component(*c),
+                    key: key.clone(),
+                    before,
+                    after: after.clone(),
+                });
+            }
+        }
+        if ops.is_empty() {
+            return Ok(json!({"changed": false}));
+        }
+        let n = ops.len();
+        p.apply_edit(pg, "setprop", "Set property", ops)?;
+        Ok(json!({"changed": true, "devices": n}))
     })
 }
 
@@ -1148,14 +1200,21 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
 
 fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let title = params.get("title").and_then(Value::as_str).unwrap_or("new").to_string();
-    let page = with_project(s, |p, pg, _| {
-        let id: PageId = p.ids.fresh();
-        let index = p.ledger.document().page_order.len();
-        p.apply_edit(pg, "newpage", "New page", vec![Op::AddPage { id, page: Page { title }, index }])?;
+    let number = match params.get("number") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(_) => return Err(err("`number` must be a string such as \"105\", or null for the next number")),
+    };
+    let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
+    let (page, number) = with_project(s, |p, pg, _| {
+        let (id, number, ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
+        p.apply_edit(pg, "newpage", "New page", ops)?;
         p.pages.entry(id).or_default();
-        Ok(id)
+        Ok((id, number))
     })?;
-    open(s, page)
+    let mut v = open(s, page)?;
+    v["number"] = json!(number);
+    Ok(v)
 }
 
 fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
@@ -1408,7 +1467,7 @@ fn run_cablerefs(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
 pub const MAX_PAGE_TITLE: usize = 200;
 
 /// A page title: 1 to [`MAX_PAGE_TITLE`] characters after trimming, no control characters.
-fn page_title(p: &Value) -> Result<String, String> {
+pub(crate) fn page_title(p: &Value) -> Result<String, String> {
     const BAD: &str = "`title` must be a non-empty string of at most 200 characters";
     let t = p.get("title").and_then(Value::as_str).ok_or(BAD)?.trim();
     let n = t.chars().count();
@@ -1442,6 +1501,9 @@ fn run_renamepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
 /// `movepage` (design 010 §2.3, §7.5): one transaction, `RemovePage` at the old position +
 /// `AddPage` at `index` (1 = first). The same position changes nothing.
 fn run_movepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("folder").is_some() {
+        return crate::sheet_cmds::run_movepage_folder(s, params);
+    }
     let page: PageId = id(params, "page").map_err(err)?;
     let wanted = params.get("index").and_then(Value::as_u64);
     with_project(s, |p, pg, _| {

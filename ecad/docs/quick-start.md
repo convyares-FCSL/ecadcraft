@@ -35,6 +35,24 @@ another net; the Project panel has a **Checks** tab. Section 5I describes it, on
   them; no agent has clicked through the live window.
 - *Owner-tried:* not yet.
 
+**Brief 019 (design `ecad/docs/design/019.md`), on `feature/sheets` (built on
+`feature/project-manager`), not yet in `dev`:** every page is an A3 sheet with a lettered and
+numbered grid and a title block; references read `page-column-row` (`105-C-4`); pages have their
+own numbers and sit in folders; project and page properties are edited in CADCraft's
+**Properties** palette and a **Project Properties** dialog; revisions are issued and opened
+read-only. Section 5H describes it; 5D, 5E and 5G changed with it (texts such as `/2.1` now read
+`2-A-6`, and moving a page no longer renumbers it).
+- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/sheets_contracts.rs` (design 019 checks
+  A–G and J), `ecad/crates/ecad-model/tests/all/sheet_contracts.rs` (folders and their
+  invariants), the round trip in `ecad/crates/ecad-file/tests/all/records_contracts.rs`, check I in
+  `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and
+  `ecad/apps/ecad-trial/tests/all/sheets_ui.rs` (the tree, the Properties section, both dialogs,
+  Rev A and the undo question, by the UI in a headless 1280×800 window, with the eight `019-*.png`
+  screenshots).
+- *Agent-observed:* the worker rendered the `019-*.png` screenshots headless (wgpu) and looked at
+  them; no agent has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 016 (design `ecad/docs/design/016.md`), on `feature/project-manager`, not yet in `dev`:**
 the Project panel, one active page at a time, undo and redo bringing their page to the front, a
 read-only preview of another page, and the top banner replaced by the panel's header and an
@@ -628,11 +646,11 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 
 1. **Mark where it leaves.** Click **Cable Reference** (Wiring group, after Cable View). The
    prompt says `Select a cable to reference:`. Click the slash. The prompt says
-   `Specify reference point or [Undo]:`; a red ring and a red `/?` follow the pointer. Click just
+   `Specify reference point or [Undo]:`; a red ring and a red `?` follow the pointer. Click just
    right of the wire ends, at about `65,5`.
    Expected: `Reference for cable … placed on page 2.` and `It has no other end yet: open the
    other page and click Continue Cable.`; a red ring at the point and, beside it, a magenta flag
-   around a small red `/?`. The Project panel's change count goes up by one.
+   around a small red `?`. The Project panel's change count goes up by one.
 2. **A page where it arrives.** `newpage {"title":"field"}` (page 3). Draw a component with three
    connection points as in section 5: `line 100,-5 110,-5 110,15 100,15 c`, select the four lines, click
    **Convert to Component**, then **Add Connection Point** at `100,0`, `100,5` and `100,10` and press
@@ -640,32 +658,32 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 3. **Continue it.** Click **Continue Cable**. The prompt says
    `Enter cable to continue or [List] <…>:` with your cable as the default (`L` lists the
    references waiting for their other end). Press Enter. Click where the cable arrives, at about
-   `20,5` (a magenta ring and `/2.2` follow the pointer: the text this end will show). Move the
+   `20,5` (a magenta ring and `2-B-6` follow the pointer: the text this end will show). Move the
    pointer to the right, to about `40,5`.
    Expected before the click: three short wires 5 apart, a slash across them and
    `-> 3 wires continue` beside the pointer. Click.
-   Expected: `Cable … continued on page 3 with 3 wires; this end shows /2.2 and the end on page 2
-   now shows /3.1.` and `Connect each wire's free end to its connection point with Connect.`; three short
+   Expected: `Cable … continued on page 3 with 3 wires; this end shows 2-B-6 and the end on page 2
+   now shows 3-A-6.` and `Connect each wire's free end to its connection point with Connect.`; three short
    wires with grey squares at their right ends, a slash with three magenta dots, a magenta ring at
-   `20,5` and, to its left, a flag pointing left (away from the wires) with `/2.2`. Switch to page 2: its `/?` is now a magenta `/3.1` (only the page in front is redrawn by a change; another open page it affected is redrawn when you bring it to the front), and the
+   `20,5` and, to its left, a flag pointing left (away from the wires) with `2-B-6`. Switch to page 2: its `?` is now a magenta `3-A-6` (only the page in front is redrawn by a change; another open page it affected is redrawn when you bring it to the front), and the
    wire ends next to the reference lost their grey squares (the wires continue). One change.
 4. **Connect.** Click **Connect**, click each short wire near its right end, then the connection point
    at the same height. Expected: each wire stretches to its connection point; green dots there. In the
    debugger the three wires are the same IDs as on page 2.
 5. **Hover.** Rest the pointer on a reference (its ring or its text). Expected: a lens such as
-   `Cable reference  /3.1`, the cable and the reference's ID, `This end: page 2 "cables",
+   `Cable reference  3-A-6`, the cable and the reference's ID, `This end: page 2 "cables",
    column 2, 3 wires`, `Other end: page 3 "field", column 1, 3 wires`, and one line per wire with
    the connection point it reaches there (`wire … -> …:1`).
 6. **Go there and back.** Click the reference on page 2 to select it, then click **Go to
    Reference**. Expected: the `field` tab is current, centred on `20,5`, with its reference point
-   selected, and `Page 3 "field", at the other end of cable … (/3.1).` Click **Go to Reference**
+   selected, and `Page 3 "field", at the other end of cable … (3-A-6).` Click **Go to Reference**
    again: back on page 2. Without a selection the button asks `Select a cable reference:`.
 7. **Move a page.** In the PROJECT panel drag this page's row to the top (or click it and the
    up arrow in the header). Expected: the page is now first; both references show the new numbers (the other page's when you switch to it); the change count goes up by one only. Renaming (double-click the row) changes the hover lens, not the marker text (it shows numbers, not titles).
 8. **Erase one end.** On the `field` page, drag a crossing window (right to left) from about
    `45,15` to `5,-5` and `erase`. Expected: the short wires, the slash and the reference go (the
    wires themselves stay, still connected to the component on that page); the other page's
-   marker turns red `/?` (click its tab to see it: an edit in the drawing redraws only the page
+   marker turns red `?` (click its tab to see it: an edit in the drawing redraws only the page
    in front, and another page whose references it changed is redrawn when you bring it to the
    front); the reply adds `Cable …'s reference on page … now has no other end.`;
    the debugger's Diagnostics lists it under **Cable references**. Type `u`: everything is back
@@ -694,8 +712,8 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
 4. **Rename.** Double-click `Spare`, type `Spare 2`, press Enter. Type `u` at the command line:
    back to `Spare`. An empty title, or one over 200 characters, is refused under the field and
    nothing is recorded.
-5. **Reorder.** Drag `Spare` above `Supply`: it becomes page 1, and the reference texts on the
-   other pages change their page numbers (`/2.1` becomes `/3.1`). Click `Spare`, then the down
+5. **Reorder.** Drag `Spare` above `Supply`: it moves to the top of the list. Page numbers are
+   stored (brief 019), so `Spare` keeps its number `3` and no reference text changes. Click `Spare`, then the down
    arrow in the header twice to put it back (or Alt+Down). Each move is one `u`.
 6. **Keyboard.** After clicking a row, Up and Down move an outline, Enter shows that page, F2
    renames it, Space previews it. Any other key goes to the command line as usual.
@@ -704,7 +722,7 @@ On `demo.ecad`, or after 5D (which leaves two pages, `Supply` and `Field`). Brie
    `redo` puts the wire back, still on `Field`.
 8. **Preview.** On `Supply`, click the magenta reference point, then **Preview Reference** (Tool
    Sets > ECAD > Wiring). A read-only window over the drawing shows `Field` around the other end,
-   with a magenta ring on it and `/1.2` beside it. Scroll to zoom, drag to pan; nothing in it can
+   with a magenta ring on it and `1-B-6` beside it. Scroll to zoom, drag to pan; nothing in it can
    be selected and nothing is recorded. Click **×** to close it. Click `Field`'s row and press
    Space: a preview of the whole page; **Open page** shows it in the drawing tab.
 9. **Closed tab.** Close the drawing tab (its ×): the panel still lists every page and none is
@@ -771,10 +789,10 @@ After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §
 
 1. **Open the tab.** In the PROJECT panel click **Devices** (beside **Pages**). Expected: `-K (1)`
    and `▸ -K01  Contactor / relay coil`.
-2. **Unfold and select.** Click `-K01`. Expected: its symbols appear under it as `/1.1 Contactor /
-   relay coil`, `/1.2 NO contact`, `/2.1 NC contact` (page.column), and its properties show at the
-   bottom of the panel.
-3. **Go to.** Click the `/2.…` row. Expected: page 2 is shown in the drawing tab, centred on that
+2. **Unfold and select.** Click `-K01`. Expected: its symbols appear under it, each with its place
+   on the sheet (`1-A-6  Contactor / relay coil`, `1-B-6  NO contact`, `2-A-6  NC contact`, page,
+   column and row; brief 019), and its properties show at the bottom of the panel.
+3. **Go to.** Click the `2-…` row. Expected: page 2 is shown in the drawing tab, centred on that
    contact, which is selected. Nothing is recorded.
 4. **Edit.** Click the **Description** field, select all, type `Main contactor`, press Enter.
    Expected: the row reads `-K01  Main contactor`. Type `u` at the command line: it is back.
@@ -783,6 +801,54 @@ After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §
 6. **A tag that exists.** Select another device and set its **Tag** to `K01`. Expected: a red line
    says the tag is used by `-K01`, with **Make it the same device**; clicking it merges (one `u`), or
    explains why it cannot.
+
+## 5H. Sheets and properties (by clicking)
+
+On the demo project (`cargo xtask demo <file>.ecad`, then open it; pages `Supply`, `Motor control`
+and `Field` with cable `-W01` continued from page 2 to page 3). Design 019 §13, with the owner's fix
+round of 2026-11-08. Every write is one transaction: one `u` takes it back.
+
+1. **The sheet.** Each page sits on an A3 sheet: the paper's bottom-left corner is the drawing's
+   origin (0,0). A frame with columns `A`–`H` and rows `1`–`6` labelled on all four sides; the
+   zones run over the whole frame, title block included (row `6` is the bottom strip with the
+   title block). Type `z` Enter `e` Enter (zoom extents): the whole sheet fits. On page 2 the
+   `-W01` reference reads `3-C-4`, on page 3 it reads `2-C-5` (page, column, row). The frame cannot
+   be picked or edited: a click on one of its lines selects nothing and the command line says `The
+   sheet frame is derived; change it in Project settings or the page's Sheet.`
+2. **Number a page.** On page 2, click an empty part of the drawing (nothing selected). In the
+   **Properties** palette (right), under `ECAD · PAGE 2`, click **Number**, select all, type `105`,
+   press Enter. Expected: the title block's Page box says `105`, the panel's row says `105`, and
+   page 3's reference now reads `105-C-5`. Type `u`: back to `2`. Set it again. A number another
+   page has (`1`) is refused under the field. You can also double-click a page's number in the
+   PROJECT panel.
+3. **Project info.** Click **Project info** under the PROJECT panel's header. Fill **Title**,
+   **Drawing no.** and **Customer**, pick **Status** `Draft` from the **v** list, click **OK**.
+   Expected: the title block fills in; one `u` takes all of it back. **Cancel** writes nothing.
+4. **Project settings.** Click **Project settings**. Under **References** choose `/105.C`, set
+   **Digits** to `3`, click **OK**: the references read `/105.C` style and new tags get three
+   digits; one `u` takes both back. Changing the sheet (Size `A2`) says it changes reference texts
+   on every page.
+5. **Folders.** On the **Pages** tab, click the folder icon at the right of the `Pages | Devices`
+   row (**New folder**): a folder appears with its name ready to type; type `Schematic layouts`,
+   Enter. Or right-click a page (**New folder**), the empty space under the pages (**New folder**)
+   or a folder (**New sub-folder**). Drag `Motor control` onto the folder row: it moves inside and
+   the folder reads `Schematic layouts (1)`. An empty folder shows `(empty)`. Click a folder row to
+   fold or unfold it. Right-click a folder for **New page here**, **New sub-folder**, **Rename** and
+   **Delete folder** (its pages move up a level, one `u`).
+6. **Revision A.** Click **Revisions** under the PROJECT panel's header. In the pending row type
+   Description `First issue` and Drawn your initials, pressing Tab or clicking away after each.
+   Click **Issue Rev A…**, then **Issue**. Expected: the title block's Rev box says `A` and the table
+   lists it with today's date. Save.
+7. **Look back.** Draw a wire on page `1`. In Revisions click **Reopen** on Rev A, then close the
+   Revisions window. Expected: the PROJECT panel shows a bar `Rev A, <date>: read-only` with
+   **Back to current**; click page `1` in the panel: a preview titled `Rev A · page 1: Supply`
+   shows the page without the wire. Click **Back to current**.
+8. **Undo is careful with an issue.** Type `u` (the wire goes), then `u` again: a window asks
+   `Rev A was issued on <date>. Undo the issue? This removes the release mark.` **Cancel** keeps
+   it; **Undo the issue** takes it back.
+9. **Device properties.** On page `105`, click the coil `-K01`: Properties shows
+   `ECAD · DEVICE -K01` with its Tag, Description, Maker, Part number, Location, Function, This
+   symbol and Where (`105-A-5`). Change its Description, Enter. Type `u`.
 
 ## 5I. Connectivity and wire numbers (by clicking)
 
@@ -818,7 +884,7 @@ until then the same facts show when you hover a wire, and are changed with the t
    it the next free number (`24V-51`); `S` swaps the two numbers; `M` joins the nets with a pair
    of continuations named `24V-50` when that is electrically sensible, otherwise it says why (for
    example two different potentials).
-7. **Checks.** In the **Checks** tab: `· Connection point not connected /3.4 -M01:PE`, and three
+7. **Checks.** In the **Checks** tab: `· Connection point not connected 3-C-5 -M01:PE`, and three
    `· Continuation without partner` rows (`L1`, `L2`, `L3` on page 2: the supply side of the motor
    circuit is not drawn). Click the `-M01:PE` row. Expected: page 3 is shown, the motor centred
    and selected, a grey ring on `PE`. **Show** lets you untick kinds of rows.
@@ -828,7 +894,7 @@ until then the same facts show when you hover a wire, and are changed with the t
 Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `wirenumber {"number":"24V-04","value":"24V-10"}`, `potential {"conductor":"<id>","value":"24V"}`,
 `wiresettings {"scheme":"page"}` then `renumberwires {"scope":"all"}` (numbers become
-`24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[20,0]}`,
+`24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[30,50]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`.
 `setprop` refuses `wire_number` and `potential` on a wire (use `wirenumber` and `potential`, which
 change the whole net); it takes `cross_section` and `colour`, which only that wire shows.
@@ -1281,9 +1347,14 @@ Your table of three clean runs goes here once you have run it.
 
 - **Pages and the Project panel** (brief 016): there is no Delete page (no command exists yet).
   The preview shows no connection point or wire-end marks and cannot be edited. Page views, the panel's
-  width and whether it is collapsed are remembered for the session only. The page number shown is
-  the page's position; designer-chosen page numbers come later (F6). The JSON form of ECAD
+  width and whether it is collapsed are remembered for the session only. The JSON form of ECAD
   commands needs the ECAD command field: CADCraft's own command line takes a space as Enter.
+- **Sheets and properties** (brief 019): one built-in title block; landscape A3–A0 and custom sizes
+  only (A4 and portrait later); the revision-list page, cover and contents are F6. A click exactly
+  on a frame line selects nothing and does not start a window selection: start the window off the
+  line. Title-block texts are fitted by an estimate of their width, so a long value may be squeezed
+  or cut a little early. The revision view is read-only and shows pages one at a time in the
+  preview. Folders are remembered as folded for the session only.
 
 - It is an experiment. No native file dialogs (the trial has its own path dialog) and no ECAD
   menu (CADCraft shows no top-level menu supplied by an embedder; use the ECAD tab or type the
