@@ -20,6 +20,9 @@ sha2 = { version = "0.10", default-features = false }
 redb = { workspace = true }
 ruzstd = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+zstd = { workspace = true }
+
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }

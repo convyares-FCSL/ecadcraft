@@ -103,31 +103,57 @@ pub(crate) struct Index {
 impl Index {
     /// The index of `doc`, computed from its stored objects.
     pub(crate) fn build(doc: &Document) -> Self {
-        let mut ix = Index::default();
-        for (id, item) in &doc.items {
-            ix.item(*id, item, Delta::Add);
-        }
-        for (id, c) in &doc.components {
-            ix.component(*id, c, Delta::Add);
-        }
-        for (id, t) in &doc.terminals {
-            ix.terminal(*id, t, Delta::Add);
-        }
-        for (id, r) in &doc.representations {
-            ix.representation(*id, r, Delta::Add);
-        }
-        for (id, c) in &doc.conductors {
-            ix.conductor(*id, c, Delta::Add);
-        }
-        for (id, c) in &doc.cables {
-            ix.cable(*id, c, Delta::Add);
-        }
-        for (id, p) in &doc.pages {
-            ix.page(*id, p, Delta::Add);
-        }
-        for (id, f) in &doc.folders {
-            ix.folder(*id, f, Delta::Add);
-        }
+        // Items and representations are most of a large project, and fill maps of their own: they
+        // are indexed on threads of their own where the platform has them (opening a version 2
+        // snapshot builds the whole index, brief 021). Anything a thread could not do is done here.
+        let items = || {
+            let mut ix = Index::default();
+            for (id, item) in &doc.items {
+                ix.item(*id, item, Delta::Add);
+            }
+            ix
+        };
+        let reps = || {
+            let mut ix = Index::default();
+            for (id, r) in &doc.representations {
+                ix.representation(*id, r, Delta::Add);
+            }
+            ix
+        };
+        let (a, b, mut ix) = std::thread::scope(|scope| {
+            let threads = !cfg!(target_arch = "wasm32");
+            let ha = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, items).ok()).flatten();
+            let hb = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, reps).ok()).flatten();
+            let mut rest = Index::default();
+            for (id, c) in &doc.components {
+                rest.component(*id, c, Delta::Add);
+            }
+            for (id, t) in &doc.terminals {
+                rest.terminal(*id, t, Delta::Add);
+            }
+            for (id, c) in &doc.conductors {
+                rest.conductor(*id, c, Delta::Add);
+            }
+            for (id, c) in &doc.cables {
+                rest.cable(*id, c, Delta::Add);
+            }
+            for (id, p) in &doc.pages {
+                rest.page(*id, p, Delta::Add);
+            }
+            for (id, f) in &doc.folders {
+                rest.folder(*id, f, Delta::Add);
+            }
+            let a = ha.and_then(|h| h.join().ok()).unwrap_or_else(items);
+            let b = hb.and_then(|h| h.join().ok()).unwrap_or_else(reps);
+            (a, b, rest)
+        });
+        ix.page_items = a.page_items;
+        ix.layer_items = a.layer_items;
+        ix.definition_items = a.definition_items;
+        ix.subject_reps = b.subject_reps;
+        ix.page_reps = b.page_reps;
+        ix.item_reps = b.item_reps;
+        ix.terminal_reps = b.terminal_reps;
         ix
     }
 

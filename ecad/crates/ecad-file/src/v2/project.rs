@@ -578,9 +578,13 @@ impl ProjectV2 {
             match r.version(branch, s.kind, &s.name)? {
                 Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
                     Ok((mut doc, meta)) => {
-                        // A snapshot is checked like a replayed document: every invariant holds.
+                        // Every invariant of the snapshot is checked in debug builds and after a
+                        // crash repair (overseer, 2026-11-09: about 38 ms on the large project, so
+                        // not on every normal release open). Its chunks were checked against their
+                        // hashes in any case, and Verify checks everything on request.
                         doc.rebuild_index();
-                        match doc.check() {
+                        let checked = if cfg!(debug_assertions) || store.repaired() { doc.check() } else { Ok(()) };
+                        match checked {
                             Ok(()) => {
                                 loaded = Some((v, doc, meta));
                                 snap_ref = Some(s.clone());
