@@ -34,7 +34,7 @@ pub const FRAME_WEIGHT: u16 = 50;
 /// `ecad.wire-weight`.
 pub const THIN_WEIGHT: u16 = 25;
 /// Refusal of an edit of the frame (design 019 §3.2).
-pub const DERIVED: &str = "The sheet frame is derived; change it in Project Properties or the page's Sheet.";
+pub const DERIVED: &str = "The sheet frame is derived; change it in Project settings or the page's Sheet.";
 /// Most issued revisions the title block lists (owner answer Q12).
 pub const TABLE_ROWS: usize = 7;
 /// Project property keys the title block shows.
@@ -102,10 +102,8 @@ impl FrameInput {
         let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
         let next_page = book.next(page);
-        let mut sheet = ecad_model::sheet::sheet_of(doc, page);
-        if sheet.check().is_err() {
-            sheet = SheetSpec::default();
-        }
+        // Checked there, so the frame and the references always use the same sheet.
+        let sheet = ecad_model::sheet::sheet_of(doc, page);
         FrameInput {
             sheet,
             unit: doc.settings.length_unit,
@@ -140,7 +138,11 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetProjectSettings { before, after } => {
             before.sheet != after.sheet || before.length_unit != after.length_unit
         }
-        Op::SetProperty { object: ObjectRef::Project, .. } => true,
+        // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
+        Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+            [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
+                || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
+        }
         Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
             *p == page || key == book::FOLDER_KEY || (key == book::NUMBER_KEY && shown.next_page == Some(*p))
         }
@@ -184,14 +186,19 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
     }
 }
 
+/// Draws in the frame's own coordinates (origin at the top-left corner of the title block, the
+/// layout of design 019 §4), placed so the paper's bottom-left corner is the model origin.
 struct Draw {
     k: f64,
     out: Vec<Part>,
 }
 
+/// Where the frame's own origin sits on the paper, in millimetres.
+const OFFSET: (f64, f64) = (MARGIN_MM, MARGIN_MM + TITLE_BLOCK_MM);
+
 impl Draw {
     fn p(&self, x: f64, y: f64) -> Pt {
-        Pt::new(x * self.k, y * self.k)
+        Pt::new((x + OFFSET.0) * self.k, (y + OFFSET.1) * self.k)
     }
     fn line(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
@@ -259,14 +266,39 @@ fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     (s, MIN_WIDTH_FACTOR)
 }
 
-/// Every line and text of the frame `input` describes.
+/// How a page's frame and title block are drawn from what they show (owner note of 2026-11-08:
+/// users will define their own borders and title blocks). [`BuiltIn`] is the one layout today; a
+/// user-defined template becomes another implementation, chosen per project or page.
+pub trait FrameLayout: Send + Sync {
+    /// Every line and text of the frame `input` describes, in model coordinates (the paper's
+    /// bottom-left corner at the origin).
+    fn parts(&self, input: &FrameInput) -> Vec<Part>;
+}
+
+/// The built-in frame and title block (design 019 §3, §4).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BuiltIn;
+
+impl FrameLayout for BuiltIn {
+    fn parts(&self, input: &FrameInput) -> Vec<Part> {
+        built_in(input)
+    }
+}
+
+/// Every line and text of the frame `input` describes, with the built-in layout.
 pub fn parts(input: &FrameInput) -> Vec<Part> {
+    BuiltIn.parts(input)
+}
+
+fn built_in(input: &FrameInput) -> Vec<Part> {
     let s = input.sheet;
     let k = unit_scale(input.unit);
     let grid = Grid::new(s, LengthUnit::Millimetre);
     let (w, h) = (f64::from(s.width), f64::from(s.height));
     let a = grid.area_width();
-    let top = grid.area_height();
+    // The frame's top edge and bottom edge in the frame's own coordinates.
+    let top = h - MARGIN_MM - TOP_MARGIN_MM - TITLE_BLOCK_MM;
+    let bottom = -TITLE_BLOCK_MM;
     let mut d = Draw { k, out: Vec::new() };
     let ml = (HAlign::Middle, VAlign::Middle);
     let left = (HAlign::Left, VAlign::Baseline);
@@ -280,18 +312,24 @@ pub fn parts(input: &FrameInput) -> Vec<Part> {
     );
     d.rect((0.0, -TITLE_BLOCK_MM), (a, top), FRAME_WEIGHT, None);
     d.line((0.0, 0.0), (a, 0.0), FRAME_WEIGHT, None);
-    // Grid: ticks and labels.
+    // Grid: zones over the whole frame (title-block area included), counted from the top-left;
+    // ticks and labels on all four sides.
     let (cw, rh) = (grid.column_width(), grid.row_height());
-    for c in 1..=s.columns {
-        let x0 = f64::from(c - 1) * cw;
-        if c > 1 {
+    for ci in 0..s.columns {
+        let x0 = f64::from(ci) * cw;
+        let c = grid.column_number(ci);
+        if ci > 0 {
             d.line((x0, top), (x0, top + 3.0), THIN_WEIGHT, None);
+            d.line((x0, bottom), (x0, bottom - 3.0), THIN_WEIGHT, None);
         }
-        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &grid.column_label(c), ml, None, None);
+        let label = grid.column_label(c);
+        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
+        d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
     }
-    for r in 1..=s.rows {
-        let y1 = top - f64::from(r - 1) * rh;
-        if r > 1 {
+    for ri in 0..s.rows {
+        let y1 = top - f64::from(ri) * rh;
+        let r = grid.row_number(ri);
+        if ri > 0 {
             d.line((0.0, y1), (-3.0, y1), THIN_WEIGHT, None);
             d.line((a, y1), (a + 3.0, y1), THIN_WEIGHT, None);
         }

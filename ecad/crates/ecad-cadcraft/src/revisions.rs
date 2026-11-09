@@ -59,29 +59,22 @@ pub fn key(n: u32, field: &str) -> String {
     format!("{PREFIX}{n}.{field}")
 }
 
-/// Every revision row, by `n` ascending. Reads only the `rev.` properties.
+/// Every revision row, by `n` ascending. Reads only the `rev.` properties, once each: linear in
+/// their number.
 pub fn list(doc: &Document) -> Vec<Revision> {
-    let mut out: Vec<Revision> = Vec::new();
+    let mut rows: std::collections::BTreeMap<u32, Revision> = std::collections::BTreeMap::new();
     for (k, v) in doc.properties.range(PREFIX.to_string()..) {
         let Some(rest) = k.strip_prefix(PREFIX) else { break };
         let Some((n, field)) = rest.split_once('.') else { continue };
         let Some(n) = n.parse::<u32>().ok().filter(|n| (1..=MAX_REVISIONS).contains(n)) else { continue };
-        let i = match out.iter().position(|r| r.n == n) {
-            Some(i) => i,
-            None => {
-                out.push(Revision { n, ..Revision::default() });
-                out.len() - 1
-            }
-        };
-        let Some(row) = out.get_mut(i) else { continue };
+        let row = rows.entry(n).or_insert_with(|| Revision { n, ..Revision::default() });
         if field == ISSUED {
             row.issued = Some(v.clone());
         } else if let Some(slot) = FIELDS.iter().position(|f| *f == field).and_then(|j| row.fields.get_mut(j)) {
             *slot = v.clone();
         }
     }
-    out.sort_by_key(|r| r.n);
-    out
+    rows.into_values().collect()
 }
 
 /// The issued revisions, newest first.

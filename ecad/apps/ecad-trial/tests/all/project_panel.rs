@@ -706,7 +706,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     // Brief 019, check J: every Properties field and dialog field read-only, Issue hidden; a
     // revision can still be reopened (the command reads only).
     assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
-    h.state_mut().open_project_props();
+    h.state_mut().open_project_popout(ecad_trial::sheets_ui::Popout::Info);
     assert!(h.state().project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
     h.state_mut().project_props = None;
     h.state_mut().open_revisions();

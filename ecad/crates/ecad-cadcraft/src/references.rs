@@ -534,6 +534,7 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 /// definitions and conductors are not shown or not members yet, so they touch nothing.
 pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
     let mut out = BTreeSet::new();
+    let mut moved = false;
     let note = |r: &Representation, out: &mut BTreeSet<CableId>| match r.subject {
         Subject::Cable(k) => {
             out.insert(k);
@@ -569,20 +570,20 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             {
                 out.extend(cables_on(doc, *p));
             }
-            // A page moved between folders, a page added, removed or moved, a folder op: the book
-            // order changes, so only pages shown by their position (no stored number) may read
-            // differently.
+            // A page moved between folders, a page added, removed or moved, a folder op: only the
+            // pages whose book position changed may read differently (an unnumbered page's
+            // number, the order of a cable's partners); a rename in place or an append moves none.
             Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
                 if key == ecad_model::book::FOLDER_KEY =>
             {
-                out.extend(cables_on_unnumbered(doc));
+                moved_cables(doc, ops, &mut moved, &mut out);
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Page(_) | ecad_model::ObjectRef::Project, .. } => {}
             Op::AddPage { .. }
             | Op::RemovePage { .. }
             | Op::AddFolder { .. }
             | Op::RemoveFolder { .. }
-            | Op::ModifyFolder { .. } => out.extend(cables_on_unnumbered(doc)),
+            | Op::ModifyFolder { .. } => moved_cables(doc, ops, &mut moved, &mut out),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit
@@ -602,13 +603,15 @@ fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = CableId> + '_
     })
 }
 
-/// The cables with a reference on a page shown by its position (no stored number).
-fn cables_on_unnumbered(doc: &Document) -> BTreeSet<CableId> {
-    doc.page_order
-        .iter()
-        .filter(|p| ecad_model::book::stored_number(doc, **p).is_none())
-        .flat_map(|p| cables_on(doc, *p))
-        .collect()
+/// Add the cables with a reference on a page whose book position `ops` change, once per call
+/// (`done`).
+fn moved_cables(doc: &Document, ops: &[Op], done: &mut bool, out: &mut BTreeSet<CableId>) {
+    if std::mem::replace(done, true) {
+        return;
+    }
+    for p in ecad_model::book::positions_changed(doc, ops) {
+        out.extend(cables_on(doc, p));
+    }
 }
 
 /// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.

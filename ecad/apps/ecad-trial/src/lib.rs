@@ -335,6 +335,9 @@ pub struct Trial {
     new_page_folder: Option<ecad_model::FolderId>,
     /// The revision shown in the panel (its log point), when one is open.
     panel_revision: Option<u64>,
+    /// The change count the Revisions dialog was filled at (design 019 §9: it follows
+    /// `SetProperty(Project, rev.*)` and Name/UnnameVersion, so undo and redo too).
+    revisions_seen: u64,
     /// The selection last checked for frame objects.
     frame_checked: Vec<Handle>,
 }
@@ -465,6 +468,7 @@ impl Trial {
             revisions: None,
             new_page_folder: None,
             panel_revision: None,
+            revisions_seen: 0,
             frame_checked: Vec::new(),
         }
     }
@@ -1734,7 +1738,9 @@ impl Trial {
                     }
                 }
             }
-            A::ProjectProps => self.open_project_props(),
+            A::ProjectInfo => self.open_project_popout(sheets_ui::Popout::Info),
+            A::ProjectSettings => self.open_project_popout(sheets_ui::Popout::Settings),
+            A::Revisions => self.open_revisions(),
             A::BackToCurrent => {
                 let _ = self.run_line("closerevision {}");
                 self.preview = None;
@@ -1869,11 +1875,11 @@ impl Trial {
         r
     }
 
-    /// Open the Project Properties dialog, filled from `projectprops {}` (reads only).
-    pub fn open_project_props(&mut self) {
+    /// Open the Project info or Project settings popout, filled from `projectprops {}` (reads only).
+    pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only)),
+            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
             Err(e) => self.cad.session.echo(e),
         }
     }
@@ -1882,8 +1888,47 @@ impl Trial {
     pub fn open_revisions(&mut self) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.revisions = Some(sheets_ui::Revisions::from_json(&v, read_only)),
+            Ok(v) => {
+                self.revisions = Some(sheets_ui::Revisions::from_json(&v, read_only));
+                self.revisions_seen = self.change_count();
+            }
             Err(e) => self.cad.session.echo(e),
+        }
+    }
+
+    /// The project's change count (0 without a project).
+    fn change_count(&mut self) -> u64 {
+        let Some(p) = self.project.clone() else { return 0 };
+        p.read(&mut self.cad.session, |p, _| p.change_count()).unwrap_or(0)
+    }
+
+    /// Bring the open Revisions dialog up to date after a change of its update map (the project's
+    /// properties, issuing, undo and redo of them), keeping unsent typing. One integer compared
+    /// per frame otherwise.
+    fn refresh_revisions(&mut self) {
+        if self.revisions.is_none() {
+            return;
+        }
+        let Some(p) = self.project.clone() else { return };
+        let seen = self.revisions_seen;
+        let Ok((count, touched)) = p.read(&mut self.cad.session, |p, _| {
+            let count = p.change_count();
+            (count, if count == seen { Some(Default::default()) } else { p.props_changes_since(seen) })
+        }) else {
+            return;
+        };
+        self.revisions_seen = count;
+        let hit = touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| {
+            t.contains(&ecad_model::ObjectRef::Project)
+        });
+        if !hit {
+            return;
+        }
+        let read_only = self.header().read_only;
+        if let Ok(v) = self.run_value("projectprops", json!({}))
+            && let Some(d) = &mut self.revisions
+        {
+            d.refresh(sheets_ui::Revisions::from_json(&v, read_only));
         }
     }
 
@@ -1913,18 +1958,28 @@ impl Trial {
         let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
         let selection = if owned { self.cad.session.selection() } else { Vec::new() };
         let serial = self.project_serial;
-        let seen = self.props_seen.clone();
+        let seen = &self.props_seen;
         let read = p.read(&mut self.cad.session, |p, _| {
             let page = p.active_page();
             let same = seen.as_ref().is_some_and(|(s, _, pg, sel)| *s == serial && *pg == page && *sel == selection);
-            let touched = seen.as_ref().and_then(|(_, n, _, _)| p.props_changes_since(*n));
+            // Nothing changed since the copy was built: nothing to look at (the usual frame).
+            let since = seen.as_ref().map(|(_, n, _, _)| *n);
+            let touched = match since {
+                Some(n) if n == p.change_count() => Some(Default::default()),
+                Some(n) => p.props_changes_since(n),
+                None => None,
+            };
             (page, p.change_count(), same, touched)
         });
         let Ok((page, count, same, touched)) = read else { return };
-        let deps = self.props.lock().map(|sh| sh.view.deps.clone()).unwrap_or_default();
-        let stale = !same || touched.is_none_or(|t| t.iter().any(|o| deps.contains(o)));
+        let stale = !same
+            || touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| {
+                self.props.lock().map_or(true, |sh| t.iter().any(|o| sh.view.deps.contains(o)))
+            });
         if !stale {
-            self.props_seen = Some((serial, count, page, selection));
+            if let Some(seen) = &mut self.props_seen {
+                seen.1 = count;
+            }
             return;
         }
         let view = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::props::view(p, page, &selection));
@@ -1971,7 +2026,7 @@ impl Trial {
         for b in buttons {
             match b.as_str() {
                 "revisions" => self.open_revisions(),
-                "more" => self.open_project_props(),
+                "more" => self.open_project_popout(sheets_ui::Popout::Info),
                 g => {
                     if let Some(r) = g.strip_prefix("goto:") {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
@@ -1999,6 +2054,7 @@ impl Trial {
                 Some(sheets_ui::Out::Open(_)) | None => {}
             }
         }
+        self.refresh_revisions();
         if let Some(d) = &mut self.revisions {
             match d.show(ctx) {
                 Some(sheets_ui::Out::Run(line)) => {

@@ -41,7 +41,12 @@ pub const PICK_FIRST: &str = "Click a page first.";
 pub const ALREADY_SHOWN: &str = "This page is already shown.";
 /// Accessible labels of the header's brief 019 buttons (design 019 §10).
 pub const NEW_FOLDER: &str = "New folder";
-pub const PROJECT_PROPS: &str = "Project Properties";
+/// The project popouts of the header (owner, fix round of 2026-11-08).
+pub const PROJECT_INFO: &str = "Project info";
+pub const PROJECT_SETTINGS: &str = "Project settings";
+pub const REVISIONS: &str = "Revisions";
+/// The folder menu's entry for a folder inside a folder.
+pub const NEW_SUB_FOLDER: &str = "New sub-folder";
 /// Accessible label of the page-number field.
 pub const NUMBER: &str = "Page number";
 /// Accessible label of the folder-name field.
@@ -116,8 +121,10 @@ pub enum Action {
     NewPageIn(Option<FolderId>),
     /// `pageprops {page, number}`.
     SetNumber(PageId, String),
-    /// Open the Project Properties dialog.
-    ProjectProps,
+    /// Open the Project info, Project settings or Revisions popout.
+    ProjectInfo,
+    ProjectSettings,
+    Revisions,
     /// Leave the revision view (design 019 §7.3).
     BackToCurrent,
     /// Preview this page of the revision opened read-only.
@@ -238,6 +245,8 @@ pub struct ProjectPanel {
     pub folder_rename: Option<InPlace<FolderId>>,
     /// The revision opened read-only: the bar's text (design 019 §7.3).
     pub revision: Option<String>,
+    /// Whether the tree has a folder (worked out on each new tree, not per row).
+    folders_present: bool,
 }
 
 impl ProjectPanel {
@@ -334,11 +343,12 @@ impl ProjectPanel {
             }
         }
         self.visible = out;
+        self.folders_present = self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }));
     }
 
     /// Whether the project has folders (the list is then a tree).
     fn has_folders(&self) -> bool {
-        self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }))
+        self.folders_present
     }
 
     /// The folder new pages and folders go in: the cursor row's, else the active page's.
@@ -452,13 +462,6 @@ impl ProjectPanel {
                 {
                     self.move_row(i, i - 1, &mut out);
                 }
-                if icon_button(ui, "ecad.project.props", Icon::Properties, PROJECT_PROPS, true).clicked() {
-                    out.push(Action::ProjectProps);
-                }
-                if icon_button(ui, "ecad.project.newfolder", Icon::Open, tip(NEW_FOLDER), writable).clicked() {
-                    self.armed = true;
-                    out.push(Action::NewFolder(self.target_folder()));
-                }
                 if icon_button(ui, "ecad.project.new", Icon::Plus, tip(NEW_PAGE), writable).clicked() {
                     self.armed = true;
                     if self.has_folders() {
@@ -469,6 +472,25 @@ impl ProjectPanel {
                 }
             });
         });
+        // The project popouts: info, settings, revisions.
+        if header.name.is_some() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                if ui.small_button(PROJECT_INFO).on_hover_text("Title, drawing number, customer, status").clicked() {
+                    out.push(Action::ProjectInfo);
+                }
+                if ui
+                    .small_button(PROJECT_SETTINGS)
+                    .on_hover_text("Sheet and grid, reference style, page numbers, tags")
+                    .clicked()
+                {
+                    out.push(Action::ProjectSettings);
+                }
+                if ui.small_button(REVISIONS).on_hover_text("Issue a revision, reopen an issued one").clicked() {
+                    out.push(Action::Revisions);
+                }
+            });
+        }
         self.status(ui, header, &mut out);
         // The revision opened read-only (design 019 §7.3): its bar and Back to current.
         let writable = writable && self.revision.is_none();
@@ -497,7 +519,7 @@ impl ProjectPanel {
             return out;
         }
 
-        // Pages | Devices.
+        // Pages | Devices, and on Pages the New folder button (owner: folders must be found).
         ui.horizontal(|ui| {
             for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB)] {
                 if ui.selectable_label(self.tab == tab, RichText::new(name).small()).clicked() {
@@ -508,6 +530,15 @@ impl ProjectPanel {
                     self.tab = tab;
                     self.armed = false;
                 }
+            }
+            if self.tab == Tab::Pages {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let tip = if writable { NEW_FOLDER } else { READ_ONLY };
+                    if icon_button(ui, "ecad.project.newfolder", Icon::Open, tip, writable).clicked() {
+                        self.armed = true;
+                        out.push(Action::NewFolder(self.target_folder()));
+                    }
+                });
             }
         });
         if self.tab == Tab::Devices {
@@ -581,6 +612,24 @@ impl ProjectPanel {
             first_top
         });
         self.rows_drawn = drawn;
+        // The empty space under the rows: right-click for a new page or folder at the top level.
+        if let Some(top) = list.inner {
+            let r = list.inner_rect;
+            let below = Rect::from_min_max(pos2(r.left(), (top + n as f32 * ROW_H).max(r.top())), r.max);
+            if below.height() > 4.0 {
+                let resp = ui.interact(below, egui::Id::unique("ecad.project.empty"), Sense::click());
+                resp.context_menu(|ui| {
+                    if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
+                        out.push(Action::New);
+                        ui.close();
+                    }
+                    if ui.add_enabled(writable, egui::Button::new(NEW_FOLDER)).clicked() {
+                        out.push(Action::NewFolder(None));
+                        ui.close();
+                    }
+                });
+            }
+        }
 
         // Dragging: where the row would land, auto-scroll near the edges, drop or cancel.
         if let Some(mut d) = self.drag {
@@ -750,7 +799,7 @@ impl ProjectPanel {
                 out.push(Action::NewPageIn(Some(id)));
                 ui.close();
             }
-            if ui.add_enabled(writable, egui::Button::new("New folder inside")).clicked() {
+            if ui.add_enabled(writable, egui::Button::new(NEW_SUB_FOLDER)).clicked() {
                 out.push(Action::NewFolder(Some(id)));
                 ui.close();
             }
@@ -931,7 +980,11 @@ impl ProjectPanel {
         }
         resp.context_menu(|ui| {
             if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
-                out.push(Action::New);
+                out.push(if row.folder.is_some() { Action::NewPageIn(row.folder) } else { Action::New });
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new(NEW_FOLDER)).clicked() {
+                out.push(Action::NewFolder(row.folder));
                 ui.close();
             }
             if ui.button("Open").clicked() {

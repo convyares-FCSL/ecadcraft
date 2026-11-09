@@ -77,8 +77,9 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
             _ => None,
         })
         .collect();
-    assert!(rects.iter().any(|r| r.first() == Some(&(-10.0, -50.0)) && r.get(2) == Some(&(410.0, 247.0))), "{rects:?}");
-    assert!(rects.iter().any(|r| r.first() == Some(&(0.0, -40.0)) && r.get(2) == Some(&(400.0, 240.0))), "{rects:?}");
+    // The paper's bottom-left corner is the model origin (owner, fix round of 2026-11-08).
+    assert!(rects.iter().any(|r| r.first() == Some(&(0.0, 0.0)) && r.get(2) == Some(&(420.0, 297.0))), "{rects:?}");
+    assert!(rects.iter().any(|r| r.first() == Some(&(10.0, 10.0)) && r.get(2) == Some(&(410.0, 290.0))), "{rects:?}");
     // Zoom extents fits the sheet edge.
     let _ = h.s.zoom_extents();
     let v = h.s.state().unwrap().view();
@@ -98,8 +99,8 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     h.check();
 }
 
-/// Check B: a reference's column and row are the frame's, on both ends; moving the point moves
-/// the other end's text.
+/// Check B: a reference's column and row are the frame's (zones over the whole frame, counted
+/// from the top-left), on both ends; moving the point moves the other end's text.
 #[test]
 fn references_name_the_frames_column_and_row() {
     let mut s = fixture();
@@ -352,4 +353,132 @@ fn a_read_only_project_refuses_writes() {
     let v = s.h.run("projectprops", json!({})).unwrap();
     assert_eq!(v["revisions"][0]["rev"], "A");
     s.h.run("openrevision", json!({"rev": "A"})).unwrap();
+}
+
+/// The Properties rows of `selection` on `page`, and the objects they depend on.
+fn props_of(h: &mut H, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> ecad_cadcraft::props::PropsView {
+    let sel = selection.to_vec();
+    h.p(|p| ecad_cadcraft::props::view(p, Some(page), &sel))
+}
+
+fn row(v: &ecad_cadcraft::props::PropsView, key: &str) -> String {
+    v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).map(|r| r.value.clone()).unwrap_or_default()
+}
+
+/// Review S1: a wire's From and To follow a rename of the device at its end (the update map names
+/// the end devices), and a reference's Other ends follow a renumber of the partner's page.
+#[test]
+fn wire_and_reference_properties_follow_the_objects_they_name() {
+    let mut s = fixture();
+    // A coil and a wire from its first connection point.
+    let coil: ecad_model::ComponentId =
+        id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
+    let doc = s.h.doc();
+    let (_, _, at) = ecad_model::derive::terminal_positions(&doc, s.supply)
+        .into_iter()
+        .find(|(t, _, _)| doc.terminals[t].component == coil)
+        .unwrap();
+    let w: ConductorId =
+        id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");
+    let route = s.h.route_handle(s.supply, w);
+    let v = props_of(&mut s.h, s.supply, &[route]);
+    assert!(row(&v, "from").starts_with("-K01:") || row(&v, "to").starts_with("-K01:"), "{v:?}");
+    let n = s.h.p(|p| p.change_count());
+    s.h.run("setprop", json!({"component": coil.hex(), "key": "tag", "value": "K7"})).unwrap();
+    let touched = s.h.p(|p| p.props_changes_since(n)).unwrap();
+    assert!(touched.iter().any(|o| v.deps.contains(o)), "the rename meets the wire view's dependencies");
+    let v = props_of(&mut s.h, s.supply, &[route]);
+    assert!(row(&v, "from").starts_with("-K07:") || row(&v, "to").starts_with("-K07:"), "{v:?}");
+
+    // The reference on Supply: renumbering Field (its partner's page) meets the view's dependencies.
+    let doc = s.h.doc();
+    let r = cable_references(&doc).into_iter().find(|r| r.page == s.supply).unwrap();
+    let hd = s.h.handle_of(s.supply, r.item.unwrap());
+    let v = props_of(&mut s.h, s.supply, &[hd]);
+    assert_eq!(row(&v, "others"), "2-A-6");
+    let n = s.h.p(|p| p.change_count());
+    s.h.run("pageprops", json!({"page": s.field.hex(), "number": "105"})).unwrap();
+    let touched = s.h.p(|p| p.props_changes_since(n)).unwrap();
+    assert!(touched.iter().any(|o| v.deps.contains(o)), "the renumber meets the reference view's dependencies");
+    assert_eq!(row(&props_of(&mut s.h, s.supply, &[hd]), "others"), "105-A-6");
+}
+
+/// Review W1: in a project whose pages have no stored numbers (files from before 019), a rename in
+/// place or an appended page re-derives no reference and touches no device; a move touches only
+/// the pages whose position changed.
+#[test]
+fn old_projects_touch_only_pages_whose_position_changed() {
+    let mut s = fixture();
+    for p in [s.supply, s.field] {
+        s.h.run("pageprops", json!({"page": p.hex(), "number": null})).unwrap();
+    }
+    let doc = s.h.doc();
+    let old = doc.pages[&s.supply].clone();
+    let rename = vec![
+        Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
+        Op::AddPage { id: s.supply, page: ecad_model::Page { title: "Renamed".into(), ..old.clone() }, index: 0 },
+    ];
+    assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &rename), Some(Default::default()));
+    assert!(ecad_cadcraft::device_list::devices_touched(&doc, &rename).is_empty());
+    let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::new("New"), index: 2 }];
+    assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &append), Some(Default::default()));
+    // Moving Supply after Field: both positions change, so the cable with references on them.
+    let moved = vec![
+        Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
+        Op::AddPage { id: s.supply, page: old, index: 1 },
+    ];
+    let k = ecad_cadcraft::references::cables_touched(&doc, &moved).unwrap();
+    assert_eq!(k.len(), 1, "{k:?}");
+}
+
+/// Review W2: an invalid project sheet (only from a hostile file) is read as A3 everywhere, so the
+/// frame and the references agree.
+#[test]
+fn an_invalid_sheet_falls_back_to_a3_everywhere() {
+    let mut s = fixture();
+    let before = s.h.doc().settings;
+    let mut after = before.clone();
+    after.sheet.columns = 0;
+    after.sheet.width = 0;
+    s.h.project.apply_ops(&mut s.h.s, "hostile", vec![Op::SetProjectSettings { before, after }]).unwrap();
+    let doc = s.h.doc();
+    assert_eq!(ecad_model::sheet::sheet_of(&doc, s.supply), ecad_model::SheetSpec::default());
+    assert_eq!(text_on(&mut s.h, s.field), "1-C-6", "references use the same A3 the frame draws");
+    let input = frame::FrameInput::of(&doc, s.supply, &Book::of(&doc));
+    assert_eq!(input.sheet, ecad_model::SheetSpec::default());
+}
+
+/// Review W5: each new command undone and redone: the document after redo equals the document
+/// after the command, and redoing an issue asks nothing and names Rev A again.
+#[test]
+fn every_019_command_redoes_exactly() {
+    let mut s = fixture();
+    s.h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
+    let outer: FolderId = id(&s.h.run("newfolder", json!({"name": "A"})).unwrap(), "folder");
+    let inner: FolderId = id(&s.h.run("newfolder", json!({"name": "B", "parent": outer.hex()})).unwrap(), "folder");
+    let steps: Vec<(&str, serde_json::Value)> = vec![
+        ("newfolder", json!({"name": "C"})),
+        ("renamefolder", json!({"folder": inner.hex(), "name": "B2"})),
+        ("movefolder", json!({"folder": inner.hex(), "parent": null})),
+        ("movepage", json!({"page": s.field.hex(), "folder": outer.hex()})),
+        ("pageprops", json!({"page": s.field.hex(), "number": "105", "sheet": "A2", "function": "PWR"})),
+        ("projectprops", json!({"title": "P7", "sheet": "A1", "tag_padding": 3})),
+        ("deletefolder", json!({"folder": outer.hex()})),
+        ("issuerevision", json!({"date": "2026-11-09"})),
+    ];
+    for (cmd, params) in steps {
+        s.h.run(cmd, params.clone()).unwrap_or_else(|e| panic!("{cmd}: {e}"));
+        let after = s.h.doc();
+        if cmd == "issuerevision" {
+            s.h.run("undoissue", json!({})).unwrap();
+        } else {
+            s.h.run("u", serde_json::Value::Null).unwrap();
+        }
+        assert_ne!(s.h.doc(), after, "{cmd}: undone");
+        s.h.run("redo", serde_json::Value::Null).unwrap_or_else(|e| panic!("{cmd} redo: {e}"));
+        assert_eq!(s.h.doc(), after, "{cmd}: redo gives the same document");
+    }
+    assert!(s.h.doc().versions.contains_key("Rev A"), "redo names Rev A again");
+    assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "P7"), "the title block follows");
+    s.h.check();
 }

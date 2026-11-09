@@ -4,11 +4,12 @@
 //! # Semantics
 //! - A [`SheetSpec`] is stored in whole millimetres whatever the project's length unit; drawing
 //!   geometry divides by 25.4 in an inch project ([`unit_scale`]).
-//! - The model origin is the lower-left corner of the drawing area (owner, 2026-11-08). The sheet
-//!   edge runs from (−10, −50) to (W − 10, H − 50); the drawing area (the grid) from (0, 0) to
-//!   (W − 20, H − 57); the title block fills (0, −40) to (W − 20, 0) (design 019 §3.1).
-//! - Columns run left to right; **row 1 is the top row**. A point outside the area is clamped to
-//!   the nearest column and row, so a point in the title block is in the last row.
+//! - The model origin is the **page's bottom-left corner**, the paper edge (owner, 2026-11-08, fix
+//!   round): the paper runs from (0, 0) to (W, H); the frame from (10, 10) to (W − 10, H − 7).
+//!   Nothing assumes a title block or a bottom margin of any width.
+//! - The grid's zones span the **whole frame**, title-block area included: columns run left to
+//!   right from the frame's left edge, **row 1 is the top row**, counted down from the frame's top
+//!   edge. A point outside the frame is clamped to the nearest column and row.
 //! - The project's sheet is [`crate::ProjectSettings::sheet`]; a page may override it with its
 //!   `sheet` property ([`SHEET_KEY`]), a text spec ([`SheetSpec::parse`]).
 //!
@@ -234,26 +235,90 @@ pub fn unit_scale(unit: LengthUnit) -> f64 {
 }
 
 /// The sheet `page` is drawn on: its own `sheet` property when that reads, else the project's.
+///
+/// The one place a page's sheet is decided, so the frame, the references, the Devices tab and the
+/// Properties panel always agree: the page's own spec when it reads and is within the limits
+/// ([`SheetSpec::check`]), else the project's when that is within them (a hostile file may hold
+/// any numbers), else the default A3.
 pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
         .and_then(|p| p.properties.get(SHEET_KEY))
         .and_then(|t| SheetSpec::parse(t).ok())
-        .unwrap_or(doc.settings.sheet)
+        .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
+        .unwrap_or_default()
+}
+
+/// The frame's distance from the paper edge on each side, in millimetres.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Margins {
+    pub left: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub top: f64,
+}
+
+impl Default for Margins {
+    /// 10 mm left, right and bottom, 7 mm at the top (design 019 §3.1).
+    fn default() -> Self {
+        Margins { left: MARGIN_MM, right: MARGIN_MM, bottom: MARGIN_MM, top: TOP_MARGIN_MM }
+    }
+}
+
+/// The corner the zones are counted from (owner note of 2026-11-08: a project setting later;
+/// today always [`Corner::TopLeft`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Corner {
+    #[default]
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 /// A sheet's grid in drawing units: where columns and rows are, and their labels.
+///
+/// The zone counts and label styles come from the [`SheetSpec`]; the margins and the corner the
+/// counting starts from are parameters too ([`Grid::with_layout`]), so a later project setting
+/// for them needs no change here (owner note of 2026-11-08).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Grid {
     pub spec: SheetSpec,
     /// Millimetres to drawing units.
     pub k: f64,
+    pub margins: Margins,
+    pub start: Corner,
 }
 
 impl Grid {
-    /// The grid of `spec` in a project of length unit `unit`.
+    /// The grid of `spec` in a project of length unit `unit`, with the default margins, counted
+    /// from the top-left.
     pub fn new(spec: SheetSpec, unit: LengthUnit) -> Grid {
-        Grid { spec, k: unit_scale(unit) }
+        Grid::with_layout(spec, unit, Margins::default(), Corner::TopLeft)
+    }
+
+    /// The grid of `spec` with its own margins and starting corner.
+    pub fn with_layout(spec: SheetSpec, unit: LengthUnit, margins: Margins, start: Corner) -> Grid {
+        Grid { spec, k: unit_scale(unit), margins, start }
+    }
+
+    /// The column number of the `i`-th zone from the left (0-based), as counted from the start
+    /// corner.
+    pub fn column_number(&self, i: u32) -> u32 {
+        let c = self.spec.columns.max(1);
+        match self.start {
+            Corner::TopLeft | Corner::BottomLeft => i + 1,
+            Corner::TopRight | Corner::BottomRight => c.saturating_sub(i),
+        }
+    }
+
+    /// The row number of the `i`-th zone from the top (0-based), as counted from the start corner.
+    pub fn row_number(&self, i: u32) -> u32 {
+        let r = self.spec.rows.max(1);
+        match self.start {
+            Corner::TopLeft | Corner::TopRight => i + 1,
+            Corner::BottomLeft | Corner::BottomRight => r.saturating_sub(i),
+        }
     }
 
     /// The grid of `page` in `doc`.
@@ -261,14 +326,29 @@ impl Grid {
         Grid::new(sheet_of(doc, page), doc.settings.length_unit)
     }
 
-    /// Width of the drawing area (the frame), in drawing units.
-    pub fn area_width(&self) -> f64 {
-        (f64::from(self.spec.width) - 2.0 * MARGIN_MM) * self.k
+    /// The frame's left edge (the grid's first column starts here), in drawing units.
+    pub fn frame_left(&self) -> f64 {
+        self.margins.left * self.k
     }
 
-    /// Height of the drawing area above the title block, in drawing units.
+    /// The frame's bottom edge, in drawing units.
+    pub fn frame_bottom(&self) -> f64 {
+        self.margins.bottom * self.k
+    }
+
+    /// The frame's top edge (row 1 starts here), in drawing units.
+    pub fn frame_top(&self) -> f64 {
+        (f64::from(self.spec.height) - self.margins.top) * self.k
+    }
+
+    /// Width of the frame (all columns), in drawing units.
+    pub fn area_width(&self) -> f64 {
+        (f64::from(self.spec.width) - self.margins.left - self.margins.right) * self.k
+    }
+
+    /// Height of the frame (all rows, title-block area included), in drawing units.
     pub fn area_height(&self) -> f64 {
-        (f64::from(self.spec.height) - MARGIN_MM - TOP_MARGIN_MM - TITLE_BLOCK_MM) * self.k
+        (f64::from(self.spec.height) - self.margins.bottom - self.margins.top) * self.k
     }
 
     /// Width of one column.
@@ -283,13 +363,15 @@ impl Grid {
 
     /// The 1-based column of `x`, clamped to the grid; `None` when `x` is not finite.
     pub fn column_of(&self, x: f64) -> Option<u32> {
-        index_of(x, self.column_width(), self.spec.columns)
+        let i = index_of(x - self.frame_left(), self.column_width(), self.spec.columns)?;
+        Some(self.column_number(i - 1))
     }
 
     /// The 1-based row of `y` (row 1 at the top), clamped to the grid; `None` when `y` is not
     /// finite.
     pub fn row_of(&self, y: f64) -> Option<u32> {
-        index_of(self.area_height() - y, self.row_height(), self.spec.rows)
+        let i = index_of(self.frame_top() - y, self.row_height(), self.spec.rows)?;
+        Some(self.row_number(i - 1))
     }
 
     /// The label of column `n`.
@@ -340,16 +422,22 @@ mod tests {
     #[test]
     fn the_a3_grid_places_points() {
         let g = Grid::new(SheetSpec::default(), LengthUnit::Millimetre);
-        assert_eq!((g.area_width(), g.area_height(), g.column_width(), g.row_height()), (400.0, 240.0, 50.0, 40.0));
-        assert_eq!(g.column_of(120.0), Some(3));
+        assert_eq!((g.area_width(), g.area_height(), g.column_width()), (400.0, 280.0, 50.0));
+        // Column C is x 110..160; row 1 is y 290 down to 243.3, row 6 reaches the frame's bottom.
+        assert_eq!(g.column_of(130.0), Some(3));
         assert_eq!(g.column_label(3), "C");
-        assert_eq!(g.column_of(-5.0), Some(1));
+        assert_eq!(g.column_of(5.0), Some(1));
         assert_eq!(g.column_of(1e9), Some(8));
-        assert_eq!(g.row_of(239.0), Some(1));
-        assert_eq!(g.row_of(85.0), Some(4));
+        assert_eq!(g.row_of(289.0), Some(1));
+        assert_eq!(g.row_of(120.0), Some(4));
+        assert_eq!(g.row_of(15.0), Some(6), "the title-block area is in the last row");
         assert_eq!(g.row_of(-20.0), Some(6));
         assert_eq!(g.row_label(4), "4");
         assert_eq!(g.column_of(f64::NAN), None);
         assert_eq!(letters(27), "AA");
+        // Counted from the bottom-right instead: the same point is in column F, row 3.
+        let br =
+            Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
+        assert_eq!((br.column_of(130.0), br.row_of(120.0)), (Some(6), Some(3)));
     }
 }

@@ -50,8 +50,8 @@ clears; no fields: the current values, read only)",
         CommandSpec::new("projectprops", "Project Properties", run_projectprops)
             .params(
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
-page_number_step?: n, reference_style?: \"page-column-row\"|\"page-column\", props?: {key: value|null}} (no fields: \
-everything, read only)",
+page_number_step?: n, reference_style?: \"page-column-row\"|\"page-column\", tag_padding?: 1..6, \
+tag_prefixes?: {symbol: prefix|null}, props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             )
             .noundo(),
         CommandSpec::new("newfolder", "New Folder", run_newfolder).params("{name, parent?: id|null}").noundo(),
@@ -364,7 +364,12 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         for sub in doc.subfolders(folder) {
             let before = doc.folders.get(&sub).cloned().ok_or("no such folder")?;
-            check_sibling_name(doc, old.parent, &before.name, Some(folder))?;
+            if check_sibling_name(doc, old.parent, &before.name, Some(folder)).is_err() {
+                return Err(format!(
+                    "Rename sub-folder \"{}\" first: its new place already has a folder of that name.",
+                    before.name
+                ));
+            }
             let after = Folder { name: before.name.clone(), parent: old.parent };
             ops.push(Op::ModifyFolder { id: sub, before, after });
         }
@@ -649,6 +654,8 @@ pub fn project_json(doc: &Document) -> Value {
     v["sheet_shown"] = json!(doc.settings.sheet.summary());
     v["page_number_step"] = json!(doc.settings.page_number_step);
     v["reference_style"] = json!(style_word(doc.settings.reference_style));
+    v["tag_padding"] = json!(crate::devices::padding(doc));
+    v["tag_prefixes"] = Value::Object(crate::device_cmds::prefixes_json(doc));
     v["revisions"] = Value::Array(revs);
     v["pending_rev"] = json!(revisions::pending_rev(doc));
     v
@@ -696,6 +703,8 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 _ => return Err("`reference_style` must be \"page-column-row\" or \"page-column\"".into()),
             };
         }
+        let (padding, prefixes) = crate::device_cmds::tag_settings_params(params, "tag_padding", "tag_prefixes")?;
+        crate::device_cmds::apply_tag_settings(&mut settings, padding, prefixes);
         if settings != doc.settings {
             ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
         }

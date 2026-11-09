@@ -808,46 +808,51 @@ After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §
 
 ## 5H. Sheets and properties (by clicking)
 
-On the project of 5D–5G (pages `1` and `2` with cable `C1` between them). Design 019 §13. Every
-write is one transaction: one `u` takes it back.
+On the demo project (`cargo xtask demo <file>.ecad`, then open it; pages `Supply`, `Motor control`
+and `Field` with cable `-W01` continued from page 2 to page 3). Design 019 §13, with the owner's fix
+round of 2026-11-08. Every write is one transaction: one `u` takes it back.
 
-1. **The sheet.** Each page now sits on an A3 sheet: a paper edge, a frame with columns `A`–`H`
-   along the top and rows `1`–`6` down both sides, and a title block along the bottom. Type `z`
-   Enter `e` Enter (zoom extents): the whole sheet fits. The reference texts read
-   `<page>-<column>-<row>`, for example `2-A-6`. The frame cannot be picked or edited: a click on
-   one of its lines selects nothing and the command line says `The sheet frame is derived; change it
-   in Project Properties or the page's Sheet.`
-2. **Number a page.** Click an empty part of the drawing (nothing selected). In the **Properties**
-   palette (right), under `ECAD · PAGE 1`, click **Number**, select all, type `100`, press Enter.
-   Expected: the title block's Page box says `100`, the row in the PROJECT panel says `100`, and
-   the reference on page 2 now reads `100-…`. Type `u`: back to `1`. Set it again. A number another
-   page has (`2`) is refused with `Page 2 already exists ("…").` under the field.
-   You can also double-click a page's number in the PROJECT panel and type it there.
-3. **Project facts.** Click **Project Properties** in the PROJECT panel header (the properties
-   icon). Fill **Title**, **Drawing no.** and **Customer**, pick **Status** `Draft` from the **v**
-   list, click **OK**. Expected: the title block fills in; one `u` takes all of it back. **Cancel**
-   writes nothing.
-4. **Folders.** Click **New folder** in the header (the folder icon): a folder `New folder` appears
-   with its name ready to type; type `Schematic layouts`, Enter. Drag page `2` onto the folder row:
-   it moves inside, indented, and the folder reads `Schematic layouts (1)`. Make another folder
-   `Terminal strips`: it shows `(empty)`. Click a folder row to fold or unfold it. Right-click a
-   folder for **New page here**, **New folder inside**, **Rename** and **Delete folder** (its pages
-   move up a level, one `u`).
-5. **Revision A.** In Project Properties click **Revisions…** (or **Revisions…** under
-   `ECAD · PROJECT` in Properties). In the pending row type Description `First issue` and Drawn
-   your initials, pressing Tab or clicking away after each. Click **Issue Rev A…**, then
-   **Issue**. Expected: the title block's Rev box says `A` and the table lists it with today's
-   date. Save.
-6. **Look back.** Draw a wire on page `100`. In Revisions click **Reopen** on Rev A, then close the
+1. **The sheet.** Each page sits on an A3 sheet: the paper's bottom-left corner is the drawing's
+   origin (0,0). A frame with columns `A`–`H` and rows `1`–`6` labelled on all four sides; the
+   zones run over the whole frame, title block included (row `6` is the bottom strip with the
+   title block). Type `z` Enter `e` Enter (zoom extents): the whole sheet fits. On page 2 the
+   `-W01` reference reads `3-C-4`, on page 3 it reads `2-C-5` (page, column, row). The frame cannot
+   be picked or edited: a click on one of its lines selects nothing and the command line says `The
+   sheet frame is derived; change it in Project settings or the page's Sheet.`
+2. **Number a page.** On page 2, click an empty part of the drawing (nothing selected). In the
+   **Properties** palette (right), under `ECAD · PAGE 2`, click **Number**, select all, type `105`,
+   press Enter. Expected: the title block's Page box says `105`, the panel's row says `105`, and
+   page 3's reference now reads `105-C-5`. Type `u`: back to `2`. Set it again. A number another
+   page has (`1`) is refused under the field. You can also double-click a page's number in the
+   PROJECT panel.
+3. **Project info.** Click **Project info** under the PROJECT panel's header. Fill **Title**,
+   **Drawing no.** and **Customer**, pick **Status** `Draft` from the **v** list, click **OK**.
+   Expected: the title block fills in; one `u` takes all of it back. **Cancel** writes nothing.
+4. **Project settings.** Click **Project settings**. Under **References** choose `/105.C`, set
+   **Digits** to `3`, click **OK**: the references read `/105.C` style and new tags get three
+   digits; one `u` takes both back. Changing the sheet (Size `A2`) says it changes reference texts
+   on every page.
+5. **Folders.** On the **Pages** tab, click the folder icon at the right of the `Pages | Devices`
+   row (**New folder**): a folder appears with its name ready to type; type `Schematic layouts`,
+   Enter. Or right-click a page (**New folder**), the empty space under the pages (**New folder**)
+   or a folder (**New sub-folder**). Drag `Motor control` onto the folder row: it moves inside and
+   the folder reads `Schematic layouts (1)`. An empty folder shows `(empty)`. Click a folder row to
+   fold or unfold it. Right-click a folder for **New page here**, **New sub-folder**, **Rename** and
+   **Delete folder** (its pages move up a level, one `u`).
+6. **Revision A.** Click **Revisions** under the PROJECT panel's header. In the pending row type
+   Description `First issue` and Drawn your initials, pressing Tab or clicking away after each.
+   Click **Issue Rev A…**, then **Issue**. Expected: the title block's Rev box says `A` and the table
+   lists it with today's date. Save.
+7. **Look back.** Draw a wire on page `1`. In Revisions click **Reopen** on Rev A, then close the
    Revisions window. Expected: the PROJECT panel shows a bar `Rev A, <date>: read-only` with
-   **Back to current**; click page `100` in the panel: a preview titled `Rev A · page 100: …`
+   **Back to current**; click page `1` in the panel: a preview titled `Rev A · page 1: Supply`
    shows the page without the wire. Click **Back to current**.
-7. **Undo is careful with an issue.** Type `u` (the wire goes), then `u` again: a window asks
+8. **Undo is careful with an issue.** Type `u` (the wire goes), then `u` again: a window asks
    `Rev A was issued on <date>. Undo the issue? This removes the release mark.` **Cancel** keeps
    it; **Undo the issue** takes it back.
-8. **Device properties.** Click the coil `-K01`: Properties shows `ECAD · DEVICE -K01` with its
-   Tag, Description, Maker, Part number, Location, Function, This symbol and Where (`100-A-6`).
-   Change its Description, Enter. Type `u`.
+9. **Device properties.** On page `105`, click the coil `-K01`: Properties shows
+   `ECAD · DEVICE -K01` with its Tag, Description, Maker, Part number, Location, Function, This
+   symbol and Where (`105-A-5`). Change its Description, Enter. Type `u`.
 
 ## 6. Check connected movement, undo/redo and pages
 

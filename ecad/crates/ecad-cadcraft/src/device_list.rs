@@ -86,6 +86,22 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
     };
     let mut pages = false;
     let mut settings = false;
+    // Pages whose book position changes (worked out once, only for ops that can move pages): only
+    // their symbols' places and order may differ; a rename in place or an append moves none.
+    let mut extra: BTreeSet<ComponentId> = BTreeSet::new();
+    let mut moved = false;
+    let mut moved_pages = |t: &mut BTreeSet<ComponentId>| {
+        if std::mem::replace(&mut moved, true) {
+            return;
+        }
+        for p in ecad_model::book::positions_changed(doc, ops) {
+            for (_, r) in doc.representations_on(p) {
+                if let Subject::Component(c) = r.subject {
+                    t.insert(c);
+                }
+            }
+        }
+    };
     for op in ops {
         match op {
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => component(&Subject::Component(*id)),
@@ -100,7 +116,7 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                     component(&r.subject);
                 }
             }
-            Op::AddPage { .. } | Op::RemovePage { .. } => pages = true,
+            Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
             // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
             // order (folders) or the project's grid may change every place.
             Op::SetProperty { object: ObjectRef::Page(pg), key, .. }
@@ -111,9 +127,9 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                 }
             }
             Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                pages = true
+                moved_pages(&mut extra)
             }
-            Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => pages = true,
+            Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
             Op::SetProjectSettings { before, after } => {
                 settings = true;
                 if before.sheet != after.sheet
@@ -126,6 +142,7 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             _ => {}
         }
     }
+    t.components.extend(extra);
     t.pages = pages;
     t.settings = settings;
     t

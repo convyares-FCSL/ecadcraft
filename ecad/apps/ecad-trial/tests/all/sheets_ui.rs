@@ -4,7 +4,8 @@
 //! read-only, and the question a plain `u` across an issue stops at. The reference screenshots
 //! of design §12 are written to `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists:
 //! `019-sheet.png`, `019-titleblock.png`, `019-tree.png`, `019-props-page.png`,
-//! `019-props-device.png`, `019-projectprops.png`, `019-revisions.png`, `019-rev-open.png`.
+//! `019-props-device.png`, `019-projectinfo.png`, `019-projectsettings.png`, `019-revisions.png`,
+//! `019-rev-open.png`.
 
 use crate::project_panel::{Deltas, active, build, click, doc, fixture_p, head, ok, take, trial};
 
@@ -74,7 +75,8 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert!(h.state().props.lock().unwrap().frames > 0, "the section is drawn through the seam");
     let view = h.state().props.lock().unwrap().view.clone();
     let titles: Vec<&str> = view.sections.iter().map(|s| s.title.as_str()).collect();
-    assert_eq!(titles, ["ECAD · PAGE 1", "ECAD · PROJECT"]);
+    // Project-level things are popouts of the Project panel, not part of Properties.
+    assert_eq!(titles, ["ECAD · PAGE 1"]);
     // Number 100 by the panel's field: one transaction; the other end reads 100-B-6.
     let before = head(&mut h);
     type_into(&mut h, "ecad.props.page.number", "100");
@@ -101,7 +103,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(h.state().panel.rebuilds, tree_builds, "a line does not rebuild the tree");
 
     // Project Properties: one transaction; Cancel writes nothing.
-    click(&mut h, project_panel::PROJECT_PROPS);
+    click(&mut h, project_panel::PROJECT_INFO);
     assert!(h.state().project_props.is_some());
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
@@ -111,15 +113,35 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
         d.fields.insert("status".into(), "Draft".into());
     }
     h.run_steps(2);
-    take(&h, &deltas, "019-projectprops.png");
+    take(&h, &deltas, "019-projectinfo.png");
     let before = head(&mut h);
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
     assert_eq!(doc(&mut h).properties.get("customer").map(String::as_str), Some("ACME"));
-    click(&mut h, project_panel::PROJECT_PROPS);
+    click(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
+
+    // Project settings: the reference style and the tag digits in one transaction; `u` undoes both.
+    click(&mut h, project_panel::PROJECT_SETTINGS);
+    {
+        let d = h.state_mut().project_props.as_mut().unwrap();
+        assert_eq!(d.popout, sheets_ui::Popout::Settings);
+        d.style = "page-column".into();
+        d.padding = "3".into();
+    }
+    h.run_steps(2);
+    take(&h, &deltas, "019-projectsettings.png");
+    let before = head(&mut h);
+    click(&mut h, "ecad.projectprops.ok");
+    assert_eq!(head(&mut h), before + 1, "one transaction");
+    let d = doc(&mut h);
+    assert_eq!((d.settings.reference_style, d.settings.tag_padding), (ecad_model::ReferenceStyle::PageColumn, 3));
+    let refs = ecad_cadcraft::references::markers_on_page(&d, field);
+    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.B"));
+    ok(&mut h, "u");
+    assert_eq!(doc(&mut h).settings.reference_style, ecad_model::ReferenceStyle::PageColumnRow);
 
     // Folders: New folder (renamed in place), a page into it, fold; one transaction each.
     let before = head(&mut h);
@@ -188,10 +210,10 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(2);
 
-    // Revisions: the pending row, Issue Rev A (asks first), the title block, Open Rev A.
+    // Revisions (the panel's Revisions popout): the pending row, Issue Rev A (asks first), the
+    // title block, Reopen Rev A.
     let p = h.state().project().unwrap().clone();
-    h.state_mut().open_revisions();
-    h.run_steps(2);
+    click(&mut h, project_panel::REVISIONS);
     {
         let r = h.state_mut().revisions.as_mut().unwrap();
         assert_eq!(r.pending[0], "A");
@@ -241,4 +263,47 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "Undo the issue");
     assert!(!doc(&mut h).versions.contains_key("Rev A"));
     let _ = sheets_ui::ISSUE_UNDO_ID;
+}
+
+/// The demo project (`cargo xtask demo <file>`) on its A3 sheets, for the owner's look: run with
+/// `ECAD_DEMO_FILE` set to the file and `ECAD_TESTER_SHOTS` to a folder (`019-demo-p1.png` …
+/// `019-demo-p3.png`). Does nothing without `ECAD_DEMO_FILE`.
+#[test]
+fn the_demo_on_its_sheets() {
+    let Some(file) = std::env::var_os("ECAD_DEMO_FILE") else { return };
+    ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
+    let mut t = Trial::with_file(None, &file.to_string_lossy()).unwrap();
+    t.dismiss_notice();
+    let deltas: Deltas = Default::default();
+    let mut h = build(t, Some(deltas.clone()));
+    let pages = doc(&mut h).page_order.clone();
+    for (i, p) in pages.iter().enumerate() {
+        h.state_mut().show_page(*p).unwrap();
+        h.state_mut().cad.run("zoom", serde_json::json!({"mode": "extents"})).unwrap();
+        h.run_steps(4);
+        take(&h, &deltas, &format!("019-demo-p{}.png", i + 1));
+    }
+}
+
+/// Review W3: the open Revisions dialog follows changes made elsewhere (a typed command, undo and
+/// redo), keeping what the user typed and has not sent.
+#[test]
+fn the_revisions_dialog_follows_undo_and_redo() {
+    let mut h = build(trial(), None);
+    let _ = fixture_p(&mut h);
+    click(&mut h, project_panel::REVISIONS);
+    ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
+    ok(&mut h, "issuerevision {}");
+    h.run_steps(2);
+    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "Rev A listed");
+    h.state_mut().revisions.as_mut().unwrap().pending[2] = "typed, not sent".into();
+    ok(&mut h, "undoissue {}");
+    h.run_steps(2);
+    let d = h.state().revisions.clone().unwrap();
+    assert!(d.issued.is_empty(), "the undone issue is gone from the dialog");
+    assert_eq!(d.pending[2], "typed, not sent", "unsent typing kept");
+    ok(&mut h, "redo");
+    h.run_steps(2);
+    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
 }

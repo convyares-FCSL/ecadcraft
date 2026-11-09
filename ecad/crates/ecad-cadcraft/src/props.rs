@@ -72,7 +72,7 @@ pub struct Section {
     pub target: Option<Target>,
     pub rows: Vec<Row>,
     pub note: Option<String>,
-    /// `revisions`, `more` (Project), `goto:<reference hex>` (a reference).
+    /// `goto:<reference hex>` (a reference).
     pub buttons: Vec<String>,
 }
 
@@ -211,8 +211,10 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     let mut v = PropsView::default();
     let Some(page) = page.filter(|pg| doc.pages.contains_key(pg)) else { return v };
     if selection.is_empty() {
+        // Project-level things are popouts of the Project panel (owner, fix round of 2026-11-08):
+        // with nothing selected, Properties shows the page. Its Function and Location show the
+        // project's defaults when the page has none, so the project is a dependency too.
         v.sections.push(page_section(doc, page));
-        v.sections.push(project_section(doc));
         v.deps.insert(ObjectRef::Page(page));
         v.deps.insert(ObjectRef::Project);
         return v;
@@ -253,6 +255,12 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
+        // From and To name each end's device and connection point: a renamed device, or a
+        // connection point added or removed, changes them.
+        let ends = doc.conductors.get(w).map(|c| c.ends).unwrap_or([None, None]);
+        v.deps.extend(
+            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Component(t.component)),
+        );
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Cable(*c));
@@ -260,6 +268,9 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     } else if let [r] = k.references.iter().copied().collect::<Vec<_>>().as_slice() {
         if let Some(Subject::Cable(c)) = doc.representations.get(r).map(|x| x.subject) {
             v.deps.insert(ObjectRef::Cable(c));
+            // "Other ends" name each partner's page number and its sheet's zones.
+            let refs = ecad_model::derive::cable_references_of(doc, &BTreeSet::from([c]));
+            v.deps.extend(refs.iter().map(|x| ObjectRef::Page(x.page)));
         }
         v.deps.insert(ObjectRef::Page(page));
         v.sections.push(reference_section(doc, *r));
@@ -327,30 +338,6 @@ fn page_section(doc: &Document, page: PageId) -> Section {
         rows,
         note: None,
         buttons: Vec::new(),
-    }
-}
-
-fn project_section(doc: &Document) -> Section {
-    let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
-    let mut rows = vec![
-        Row::rw(crate::frame::TITLE, "Title", prop(crate::frame::TITLE)),
-        Row::rw(crate::frame::DRAWING_NUMBER, "Drawing no.", prop(crate::frame::DRAWING_NUMBER)),
-        Row::rw(crate::frame::CUSTOMER, "Customer", prop(crate::frame::CUSTOMER)),
-    ];
-    let mut status = Row::rw(crate::frame::STATUS, "Status", prop(crate::frame::STATUS));
-    status.choices = crate::sheet_cmds::STATUS_SUGGESTIONS.iter().map(|s| s.to_string()).collect();
-    rows.push(status);
-    let rev = crate::revisions::issued(doc)
-        .first()
-        .map_or_else(|| "none issued".to_string(), |r| format!("{}, {}", r.rev(), r.get("date")));
-    rows.push(Row::ro("revision", "Revision", rev));
-    Section {
-        title: "ECAD · PROJECT".into(),
-        kind: "project",
-        target: Some(Target::Project),
-        rows,
-        note: None,
-        buttons: vec!["revisions".into(), "more".into()],
     }
 }
 

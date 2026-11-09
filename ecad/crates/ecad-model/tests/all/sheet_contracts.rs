@@ -153,7 +153,7 @@ fn references_and_sheets_read_from_page_and_project() {
     assert_eq!(ecad_model::sheet::sheet_of(doc, p).columns, 12);
     assert_eq!(ecad_model::sheet::sheet_of(doc, f.pages[1]).columns, 8);
     let g = ecad_model::sheet::Grid::of(doc, f.pages[1]);
-    let place = ecad_model::derive::place_on(&g, "105", ecad_model::Pt::new(120.0, 85.0)).unwrap();
+    let place = ecad_model::derive::place_on(&g, "105", ecad_model::Pt::new(130.0, 120.0)).unwrap();
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumnRow), "105-C-4");
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumn), "/105.C");
 }

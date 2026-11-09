@@ -1107,7 +1107,11 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
 
 fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let title = params.get("title").and_then(Value::as_str).unwrap_or("new").to_string();
-    let number = params.get("number").and_then(Value::as_str).map(str::to_string);
+    let number = match params.get("number") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(_) => return Err(err("`number` must be a string such as \"105\", or null for the next number")),
+    };
     let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
     let (page, number) = with_project(s, |p, pg, _| {
         let (id, number, ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
