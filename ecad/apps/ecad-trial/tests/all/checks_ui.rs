@@ -63,7 +63,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
     let per_px = height / 800.0;
     if let Ok(st) = h.state_mut().cad.session.state_mut() {
         let centre = cadcraft_engine::geom::Vec2::new((x0 + x1) / 2.0 - 70.0 * per_px, (y0 + y1) / 2.0);
-        let _ = st.set_view(cadcraft_engine::View { center: centre, height });
+        let _ = st.set_view(cadcraft_engine::View { center: centre, height, twist: 0.0 });
     }
     h.run_steps(3);
 }

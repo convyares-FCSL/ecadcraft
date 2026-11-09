@@ -82,7 +82,7 @@ fn switching_pages_uses_one_window_and_remembers_each_pages_view() {
     let name = h.p(|p| p.name.clone());
     assert_eq!(h.s.docs[0].title, format!("{name} - page 2: Field"));
     h.activate(p1);
-    let view = cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(123.0, 45.0), height: 77.0 };
+    let view = cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(123.0, 45.0), height: 77.0, twist: 0.0 };
     assert!(h.s.state_mut().unwrap().set_view(view));
     h.activate(p2);
     assert_eq!((h.s.docs.len(), h.s.docs[0].uid), (1, uid), "the same document");

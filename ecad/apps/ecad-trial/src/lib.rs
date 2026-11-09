@@ -352,6 +352,7 @@ pub const HOVER_DELAY: f64 = 0.5;
 pub fn services(requested: Arc<AtomicBool>) -> Services {
     Services {
         pick_open: None,
+        pick_pgp: None,
         pick_save: Some(Box::new(move |name: &str| {
             let ext = Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
             if matches!(ext.as_deref(), None | Some("dwg" | "dxf" | "dwt" | "ecad")) {
@@ -1766,7 +1767,7 @@ impl Trial {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height });
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -1789,7 +1790,7 @@ impl Trial {
         })?;
         if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height });
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -2221,7 +2222,7 @@ impl Trial {
                     && let Ok(st) = self.cad.session.state_mut()
                 {
                     let c = cadcraft_engine::geom::Vec2::new(view.center.x, view.center.y);
-                    let _ = st.set_view(cadcraft_engine::View { center: c, height: view.height });
+                    let _ = st.set_view(cadcraft_engine::View { center: c, height: view.height, twist: 0.0 });
                 }
             }
             None => {}

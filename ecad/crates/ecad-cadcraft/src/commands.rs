@@ -1331,7 +1331,7 @@ fn run_cablegoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     }
     if let Ok(st) = s.state_mut() {
         let height = st.view().height;
-        let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height });
+        let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
     }
     let handle = with_any_page(s, |p, _| Ok(p.pages.get(&page).and_then(|v| v.map.item(item))))?;
     if let Some(h) = handle {
