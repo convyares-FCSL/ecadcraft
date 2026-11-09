@@ -76,7 +76,8 @@ fn power_round(seed: u64, mode: CrashMode) -> std::result::Result<&'static str, 
     let v = rng.below(4) == 0;
     edit(&mut ledger, &mut rng, n, v);
     let attempted = (ledger.head(), ledger.document().clone());
-    disk.cut_after(rng.below(120));
+    // A save is a few dozen writes and syncs: most cuts land inside it.
+    disk.cut_after(rng.below(24));
     let saved = proj.save(&mut ledger);
     if saved.is_ok() {
         acked = attempted.clone();
