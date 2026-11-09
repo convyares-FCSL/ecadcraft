@@ -20,7 +20,8 @@
 //! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that conductor; loose ends near its old and new route |
 //! | the same of a component symbol | conductors attached to its points ("drawn away"); continuations with its name |
 //! | `EmbedDefinition` / `RemoveDefinition` | components using it and their points |
-//! | `SetProjectSettings` | every net (potential table changed: allowed, it is rare and explicit) |
+//! | `SetProjectSettings` changing the numbering or potentials (`wiring` scheme, digits, prefix, table) | every net (rare and explicit) |
+//! | `SetProjectSettings` changing anything else (label looks, tags, sheet, reference style) | nothing (sheet and reference style: rows are copied again) |
 //! | pages, layers, cables, versions | nothing (page texts are worked out when shown) |
 //!
 //! This module reads the document; it changes nothing.
@@ -790,7 +791,11 @@ impl Checks {
                 numbers.extend(net.numbers.keys().cloned());
             }
         }
-        for n in &numbers {
+        // An unnumbered potential's shared number (`PE`) is never a shared-number error, so the
+        // other nets carrying it have nothing to re-check (otherwise every PE edit would re-check
+        // every PE net in the project).
+        let exempt = |n: &str| doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == n);
+        for n in numbers.iter().filter(|n| !exempt(n)) {
             nets.extend(conn.nets_numbered(n).map(|(id, _)| id));
         }
         // Nets that no longer exist lose their rows; those that do are checked again.
@@ -932,7 +937,24 @@ impl Scope {
                         }
                     }
                 }
-                Op::SetProjectSettings { .. } => self.all = true,
+                // Only the numbering and potential settings change what checks find; sheet, page
+                // numbering and reference style change where rows say they are; label looks
+                // (colour style, height), tag settings and units change nothing here.
+                Op::SetProjectSettings { before, after } => {
+                    let (b, a) = (&before.wiring, &after.wiring);
+                    if b.scheme != a.scheme
+                        || b.digits != a.digits
+                        || b.unclassified_prefix != a.unclassified_prefix
+                        || b.potentials != a.potentials
+                    {
+                        self.all = true;
+                    } else if before.sheet != after.sheet
+                        || before.page_number_step != after.page_number_step
+                        || before.reference_style != after.reference_style
+                    {
+                        self.relocate = true;
+                    }
+                }
                 // Page numbers, folders and the page order change where rows say they are (brief
                 // 019), not what they find: the rows are copied again.
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project, .. }

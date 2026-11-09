@@ -306,6 +306,13 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         ("place", json!({"symbol": "lamp", "at": [300, 50], "tag": "H1"})),
         ("wire", json!({"points": [[300, 60], [300, 100]]})),
         ("place", json!({"symbol": "lamp", "at": [400, 50], "tag": "H2"})),
+        // Two separate PE nets share the unnumbered `PE`: neither is a shared-number error.
+        ("wire", json!({"points": [[500, 0], [500, 40]], "potential": "PE"})),
+        ("wire", json!({"points": [[600, 0], [600, 40]], "potential": "PE"})),
+        ("wire", json!({"points": [[600, 40], [640, 40]], "potential": "PE"})),
+        // Settings: label looks re-check nothing, numbering settings re-check every net.
+        ("wiresettings", json!({"label_height": 2.5, "colour_style": "three-letter"})),
+        ("wiresettings", json!({"digits": 3})),
         ("newpage", json!({"title": "2"})),
     ];
     for (cmd, params) in steps {
