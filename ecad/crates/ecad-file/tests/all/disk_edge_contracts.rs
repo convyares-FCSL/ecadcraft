@@ -323,9 +323,17 @@ fn a_project_file_that_cannot_be_looked_at_is_cannot_check_then_saves() {
         return;
     }
     let start = Instant::now();
-    let e = project.save(&mut ledger).unwrap_err();
+    let r = project.save(&mut ledger);
     let took = start.elapsed();
     deny_read(&p, false);
+    // Windows: since brief 021 the identity is read through a handle opened for attributes only,
+    // which a denied read does not stop, and the file is still the project's own: Save goes on.
+    if cfg!(windows) {
+        r.unwrap();
+        assert!(!ledger.is_unsaved());
+        return;
+    }
+    let e = r.unwrap_err();
     assert!(matches!(e, DiskError::CannotCheck { .. }), "{e}");
     let text = e.to_string();
     assert!(text.contains("could not check") && text.contains("nothing was written"), "{text}");

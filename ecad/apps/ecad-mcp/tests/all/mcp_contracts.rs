@@ -81,7 +81,7 @@ impl Client {
     }
 
     fn log(&mut self) -> Vec<Transaction> {
-        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.log().to_vec()).unwrap()).unwrap()
+        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.full_log().unwrap()).unwrap()).unwrap()
     }
 
     fn doc(&mut self) -> Document {
@@ -112,7 +112,7 @@ impl Direct {
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
-        self.p.read(&mut self.s, |p, _| p.ledger.log().to_vec()).unwrap()
+        self.p.read(&mut self.s, |p, _| p.ledger.full_log().unwrap()).unwrap()
     }
 }
 

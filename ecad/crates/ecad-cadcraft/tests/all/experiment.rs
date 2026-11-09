@@ -221,10 +221,14 @@ fn scenario_s1_to_s16() {
     assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
     let medium = h.p(|p| p.store.medium().clone());
-    let log = h.p(|p| p.ledger.log().to_vec());
+    let log = h.p(|p| p.ledger.full_log().unwrap());
     let mut s1 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
-    assert_eq!(reopened.read(&mut s1, |p, _| p.ledger.log().to_vec()).unwrap(), log, "every transaction exactly once");
+    assert_eq!(
+        reopened.read(&mut s1, |p, _| p.ledger.full_log().unwrap()).unwrap(),
+        log,
+        "every transaction exactly once"
+    );
 
     // S14: undo everything, then redo everything: state and IDs restored at every point.
     let trail: Vec<Document> = h.trail.clone();

@@ -327,7 +327,7 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     let mut h = H::new(4242);
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
-    let saved = h.p(|p| p.ledger.log().to_vec());
+    let saved = h.p(|p| p.ledger.full_log().unwrap());
     let mut medium = h.p(|p| p.store.medium().clone());
     // Damage the last complete record's payload: a complete record failing its checksum.
     let bytes = medium.external();
@@ -339,7 +339,7 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     let report = reopened.read(&mut s, |p, _| p.open_report.clone()).unwrap().unwrap();
     assert_eq!(report.access, ecad_file::Access::ReadOnly);
     assert!(matches!(report.outcome, ecad_file::Outcome::Corrupt(ref c) if c.check == ecad_file::Check::Crc));
-    let log = reopened.read(&mut s, |p, _| p.ledger.log().to_vec()).unwrap();
+    let log = reopened.read(&mut s, |p, _| p.ledger.full_log().unwrap()).unwrap();
     assert_eq!(log, saved[..saved.len() - 1], "the verified prefix, without the damaged record");
     let e = s.execute("qsave", &Value::Null).unwrap_err().to_string();
     assert!(e.contains("read-only"), "{e}");

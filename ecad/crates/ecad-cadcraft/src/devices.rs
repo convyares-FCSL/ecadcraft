@@ -95,38 +95,26 @@ pub fn prefix_for(doc: &Document, s: &Starter) -> String {
 pub struct TagHigh {
     seen: usize,
     high: BTreeMap<String, u64>,
+    /// The high-water mark at the ledger's base (a version 2 snapshot carries it, brief 021): the
+    /// history before the base is never read for it.
+    base: tag::HighWater,
 }
 
 impl TagHigh {
-    fn note(&mut self, t: &str) {
-        if let Some((prefix, n)) = tag::parse(t) {
-            let e = self.high.entry(prefix).or_insert(0);
-            *e = (*e).max(n);
-        }
+    /// Starting from `base`, the high-water mark at the ledger's base (empty for a ledger
+    /// replayed from the root).
+    pub fn starting_at(base: tag::HighWater) -> Self {
+        Self { seen: 0, high: base.clone(), base }
     }
 
     /// Read the transactions added to `ledger`'s log since the last call.
     pub fn catch_up(&mut self, ledger: &Ledger) {
         let log = ledger.log();
         if self.seen > log.len() {
-            *self = TagHigh::default();
+            *self = TagHigh::starting_at(self.base.clone());
         }
         for tx in log.get(self.seen..).unwrap_or_default() {
-            for op in &tx.ops {
-                match op {
-                    Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
-                        if let Some(t) = component.properties.get(TAG_KEY) {
-                            self.note(t);
-                        }
-                    }
-                    Op::SetProperty { key, before, after, .. } if key == TAG_KEY => {
-                        for t in before.iter().chain(after) {
-                            self.note(t);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            tag::note_ops(&mut self.high, &tx.ops);
         }
         self.seen = log.len();
     }

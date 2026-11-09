@@ -126,10 +126,13 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     assert_eq!(m.transactions, g.ledger.head());
     assert_eq!(&doc, g.ledger.document());
 
+    // The app opens version 2 files (brief 021): convert first.
+    let v2 = dir.join("tiny.v2.ecad");
+    ecad_bench::v2::convert(&path, &v2).unwrap();
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(
         &mut s,
-        path.to_str().unwrap(),
+        v2.to_str().unwrap(),
         9,
         ecad_cadcraft::views::Settings::none(),
     )

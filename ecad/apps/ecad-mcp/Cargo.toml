@@ -16,3 +16,7 @@ ecad-model = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-mcp = { path = "../../../crates/mcp" }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# Brief 021: tests read a version 2 file's history.
+ecad-file = { workspace = true }

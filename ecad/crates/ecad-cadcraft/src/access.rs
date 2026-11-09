@@ -208,6 +208,15 @@ impl ProjectHandle {
     ) -> Result<(Self, String), String> {
         Project::open_file_in(s, path, seed, settings)
     }
+
+    /// Open a project file for reading only: no writer lock, and the file is never changed; see
+    /// [`Project::open_file_with`].
+    ///
+    /// # Errors
+    /// As [`ProjectHandle::open_file`].
+    pub fn open_file_read_only(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
+        Project::open_file_with(s, path, seed, crate::views::Settings::from_env(), true)
+    }
 }
 
 /// The project that owns the active document, for ECAD commands.

@@ -19,6 +19,26 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 021 (container v2 on redb, EEP-0005), on `feature/container-v2` (built on
+`dev`, brief 022 included), not yet in `dev`:** a `.ecad` file is now one **redb** database. Saving writes
+one transaction in a few milliseconds and opening reads the latest snapshot and the changes after
+it, so both stay fast as the history grows. A version 1 file is **offered** for conversion when
+you open it (a new `<name>.v2.ecad`, the original untouched), or converted with `ecad upgrade`.
+`ecadinspect` shows a version 2 file's tables, branches, log, versions and chunks, and exports the
+history as version 1 JSON Lines. The debugger gains **Storage** and **Branches** views. Sections
+7, 7B, 7C, 8 and "Measuring load time" describe it.
+- *Automated checks:* `ecad/crates/ecad-file/tests/all/container_v2.rs` (reopen, saves and
+  snapshots, versions and revisions, the append-only API, damage),
+  `ecad/crates/ecad-file/tests/all/container_crash.rs` (power loss, torn writes and process kills,
+  in the slow set), `ecad/crates/ecad-model/tests/all/ledger_base.rs` (a project opened from a
+  snapshot undoes and rebuilds exactly as a replayed one), `ecad/apps/ecad-cli/tests/all/cli_contracts.rs`
+  (`ecad upgrade`, every `ecadinspect` view, `export-jsonl` read back by version 1), and the
+  debugger checks in `ecad/crates/ecad-cadcraft/tests/all/debugger.rs` and
+  `ecad/apps/ecad-trial/tests/all/debugger.rs`.
+- *Agent-observed:* the worker ran the crash suite and the benchmark; no agent has clicked through
+  the live window.
+- *Owner-tried:* not yet.
+
 **Brief 022 (design `ecad/docs/design/022.md`), on `feature/connectivity`, not yet in `dev`:**
 ECAD knows what is connected. Nets come from the attachments (a T joins only at a junction dot,
 crossings never join, continuations with one name join across pages); every wire shows its net's
@@ -981,8 +1001,57 @@ change the whole net); it takes `cross_section` and `colour`, which only that wi
    - `demo.ecad.lock` is normal. It marks which session may write the file, and it is empty when
      nothing holds it. If the app is killed or crashes, the next open reports and reclaims the
      leftover lock; nothing stays locked.
-   - A file such as `demo.ecad.tail-<offset>-<…>` appears only after a save was interrupted. It
-     keeps the incomplete bytes that the next save removed from the end of the project file.
+   - Since brief 021 there is nothing else: `demo.ecad` is one redb database. (A version 1 file
+     could leave `demo.ecad.tail-<offset>-<…>` after an interrupted save; version 2 never does.)
+8. **Kill it mid-edit (brief 021).** Make a few edits, save, make one more edit, then end the app
+   from Task Manager (or `kill -9` on Linux) without saving. Start it again with the same file.
+   Expected: it opens at once at the last save; the status says a leftover lock was reclaimed and,
+   if the app was killed inside a save, that the file was recovered to its last save. The unsaved
+   edit is gone; nothing saved is lost.
+
+## 7B. Open a version 1 project: convert it (brief 021)
+
+Projects saved before brief 021 are version 1 files (JSON Lines). This version opens only
+version 2 files, and never converts one silently.
+
+1. Click **Open…** in the PROJECT panel (no project open) and type the path of a version 1 file,
+   for example `C:\dev\ecad-projects\demo.ecad`, then Enter.
+   Expected: a dialog, **Convert this project to the new file format?**, naming the new file it
+   would write, `C:\dev\ecad-projects\demo.v2.ecad`, and saying the original is left untouched.
+2. Click **Convert and open**.
+   Expected: the project opens from `demo.v2.ecad`, with the same pages, devices and history; a
+   notice reports the conversion (transactions, named versions, sizes, the final hash carried
+   over, and that it was verified by replaying both). `demo.ecad` is unchanged.
+   **Cancel** opens and writes nothing.
+3. Opening the same version 1 file again offers again; the new file is never overwritten (rename
+   or delete `demo.v2.ecad` first, or open it directly).
+
+The same converter on the command line (build once with `cargo build --release -p ecad-cli`):
+
+```sh
+cargo run --release -p ecad-cli --bin ecad -- upgrade ~/ecad-projects/demo.ecad
+```
+
+`--out <file>` chooses another name. It refuses a damaged version 1 file (rescue it first with
+Save As in a build before brief 021) and an output that exists.
+
+## 7C. Look inside a version 2 file: `ecadinspect` (brief 021)
+
+Read-only; run it on a saved file (the app may have it open).
+
+```sh
+cargo run --release -p ecad-cli --bin ecadinspect -- ~/ecad-projects/demo.v2.ecad tables
+```
+
+Views: `tables` (rows and bytes per table, and `meta`), `branches` (each branch, its head and
+fork point; only `main` exists for now), `log main --last 20` (the newest transactions,
+decompressed, one JSON record each with its stored size), `versions` (named versions, issued
+revisions and the automatic snapshots taken every 2 000 transactions), `chunk <hash>` (one
+snapshot chunk, decompressed), `verify` (replays the whole history and checks every snapshot;
+reads everything), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
+Lines file: the HTML inspector and any version 1 reader open it). `export-jsonl --with-raw
+--out <file>` writes every stored row instead, with its raw bytes (hex) beside the readable form;
+that file is not a version 1 project.
 
 ## 7A. Let an AI agent work on a project (MCP, headless)
 
@@ -1107,22 +1176,28 @@ and its bytes.**
   **Stale**, the project was busy; the previous copy is shown until the next one succeeds.
 - **Views.** **Selection** (what you clicked, and its IDs), **Model** and **Definitions**
   (searchable lists), **History** (every transaction, newest first), **Persistence** (the file,
-  its lock, header and record positions), **Diagnostics** (pages and runtime events, which are
-  never saved in the project) and **Checks**.
+  its lock, header and record positions), **Storage** (brief 021: the version 2 file's head, the
+  snapshot the project was opened from, the latest snapshot and the interval, what the last save
+  wrote, the version 1 link; **Read table sizes** reads each table's rows and bytes and the version
+  rows, on request), **Branches** (brief 021: each branch, its head, rows and fork point, read
+  again after each save), **Diagnostics** (pages and runtime events, which are never saved in the
+  project) and **Checks**.
 - **Trail.** Clicking a selected object, a model object or a transaction shows the trail below
   the view: the objects (expand one for its stored value), the transactions that touched them,
   and the chosen transaction's command, ops and record.
 - **Transaction states.**
   - `[pending]` (orange): only in memory, not in the file. Save writes it.
-  - `[saved]` (green): durably saved, at the file offset shown. **Read bytes** reads that record
-    from the file and checks that it holds exactly this transaction.
+  - `[saved]` (green): durably saved. For a version 2 file (brief 021) **Read row** reads its row
+    from the file's transactions table, decompressed, and checks that it holds exactly this
+    transaction. (A version 1 file showed its offset and **Read bytes**.)
   - `[written, unconfirmed]`: a Save As wrote it, but could not confirm it is durable; Save
     confirms it.
   - `[pending (save failed)]`: a save of it failed; Save retries it.
 - **Checks** run only when you press their button, on copies, and never change the project:
   **Verify replay** (replaying the history gives the live document), **Verify projection** (the
-  drawing equals a fresh projection of the document) and **Verify file** (re-read the file:
-  checksums, hash chain and history, compared with the project). Each result shows the
+  drawing equals a fresh projection of the document) and **Verify file** (for a version 2 file:
+  replay the history from the root with every check, compare every snapshot with the replay, and
+  compare the rows with the project's history). Each result shows the
   transaction and the time it ran against.
 
 ### Worked example: what to inspect when placing, wiring, moving, undoing and saving
@@ -1218,6 +1293,24 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | devices ms | Rebuild the Devices tab's list (every device from the tag index, with its symbols). |
 | goto ms | From the Devices tab, show a device symbol's page and select it. |
 | devupd ms | Bring the Devices tab's list up to date after one device property edit (only that device is refreshed). |
+
+**Container version 2 (brief 021).** The generated version 1 file is converted to a version 2 file
+(`<tier>-<history>.v2.ecad`), and since the app opens only version 2, every column from **1st
+page** on is timed on the version 2 file; **open**, **edit** and **save** above stay the version 1
+timings, for comparison. A second table follows:
+
+| Column | What it times |
+| --- | --- |
+| v1 MB, v2 MB | The version 1 file and the converted version 2 file. |
+| convert ms | `ecad upgrade`: convert, write and verify by replaying both. |
+| v2 open ms | Open the version 2 file as the app does: the latest snapshot and the transactions after it. Target (EEP-0005): about 100 ms or less on large. |
+| v2 save ms | Save one new wire: one redb write transaction, durable before it returns. Target: about 1–1.4 ms on large (the bake-off's redb range). |
+| crash open ms | Open the file after a process saved and exited without closing it (as a killed app leaves it), with redb's quick repair. |
+| open x10 ms | Open it after the history grew tenfold (property changes saved 1 000 at a time): it should stay within the run's noise of **v2 open**. |
+
+Below it, **Zstandard** compares the pure-Rust `ruzstd` the container uses with the `zstd` crate
+(levels 1 and 3) on the file's records and chunks: compressed sizes and the time to compress and
+decompress them all.
 
 Open and first page open the file afresh in every run; edit and save all run on one copy of the
 file opened once; the three draw columns run on another copy, opened once in one drawing session

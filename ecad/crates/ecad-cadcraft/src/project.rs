@@ -463,8 +463,11 @@ pub struct Project {
     pub store: MemoryStore,
     /// The project's file on disk (`Persistence::File`).
     pub file: crate::file::Binding,
-    /// What opening reported, when the project was opened from a file.
+    /// What opening reported, when the project was opened from the in-memory test store
+    /// (version 1 format).
     pub open_report: Option<OpenReport>,
+    /// What opening reported, when the project was opened from a file on disk (version 2).
+    pub open_report_v2: Option<ecad_file::v2::ReportV2>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
@@ -545,7 +548,7 @@ fn first_page() -> Page {
 }
 
 /// What this program records about itself in a file header and a writer lock.
-pub(crate) fn writer() -> String {
+pub fn writer() -> String {
     format!("ecad {} (cadcraft {})", env!("CARGO_PKG_VERSION"), crate::UPSTREAM_COMMIT.get(..7).unwrap_or_default())
 }
 
@@ -921,6 +924,7 @@ impl Project {
             store: MemoryStore::default(),
             file: crate::file::Binding::default(),
             open_report: None,
+            open_report_v2: None,
             pages: BTreeMap::new(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -998,6 +1002,7 @@ impl Project {
             store: MemoryStore::Written(Box::new(file)),
             file: crate::file::Binding::default(),
             open_report: Some(report),
+            open_report_v2: None,
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -1066,8 +1071,27 @@ impl Project {
         seed: u64,
         settings: crate::views::Settings,
     ) -> Result<(ProjectHandle, String), String> {
+        Self::open_file_with(s, path, seed, settings, false)
+    }
+
+    /// [`Project::open_file_in`], for reading only when `reading`: no writer lock is taken and
+    /// the file is never changed (an agent with writes off).
+    ///
+    /// # Errors
+    /// As [`Project::open_file`].
+    pub fn open_file_with(
+        s: &mut Session,
+        path: &str,
+        seed: u64,
+        settings: crate::views::Settings,
+        reading: bool,
+    ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path)?;
-        let o = crate::file::Binding::open(&path, seed, &writer())?;
+        let mut o = if reading {
+            crate::file::Binding::open_read_only(&path, seed, &writer())?
+        } else {
+            crate::file::Binding::open(&path, seed, &writer())?
+        };
         let ledger = o.ledger;
         let default_layer =
             ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
@@ -1077,7 +1101,7 @@ impl Project {
             IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
         let mut summary = vec![format!("Opened {path} at transaction {}.", ledger.head())];
-        if o.report.outcome != ecad_file::Outcome::Clean {
+        if o.report.damage.is_some() || o.report.repaired {
             summary.push(o.report.describe());
         }
         if let Some(r) = &o.reclaimed_lock {
@@ -1104,7 +1128,8 @@ impl Project {
             id: o.project,
             store: MemoryStore::default(),
             file: o.binding,
-            open_report: Some(o.report),
+            open_report: None,
+            open_report_v2: Some(o.report),
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -1124,7 +1149,7 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::default(),
+            tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,

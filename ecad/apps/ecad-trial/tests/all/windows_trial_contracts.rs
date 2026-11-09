@@ -370,7 +370,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let model =
         t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
     let p = t.project().unwrap().clone();
-    let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap();
+    let history = p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap();
     match save_as(&mut t, &typed) {
         None => {
             println!("UNC branch: confirmed");
@@ -404,7 +404,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
         "the same drawing"
     );
     let p = t.project().unwrap().clone();
-    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap(), history, "the same history");
+    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap(), history, "the same history");
 }
 
 // ---- Round 2 (fixes for F1-F3) ----

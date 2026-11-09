@@ -433,7 +433,7 @@ fn ac3_save_and_reopen_keep_core_labels_and_replay_matches() {
     let path = work.path("cores.ecad");
     f.h.run("saveas", json!({"path": path})).unwrap();
     assert!(!f.h.p(|p| p.unsaved()));
-    let (doc, log) = (f.h.doc(), f.h.p(|p| p.ledger.log().to_vec()));
+    let (doc, log) = (f.h.doc(), f.h.p(|p| p.ledger.full_log().unwrap()));
     while !f.h.s.docs.is_empty() {
         f.h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -442,7 +442,7 @@ fn ac3_save_and_reopen_keep_core_labels_and_replay_matches() {
     assert!(!summary.contains("could not"), "{summary}");
     let mut h = H { s, project: handle, trail: Vec::new() };
     assert_eq!(h.doc(), doc, "document unchanged by save and reopen");
-    assert_eq!(h.p(|p| p.ledger.log().to_vec()), log, "log unchanged by save and reopen");
+    assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log, "log unchanged by save and reopen");
     assert_eq!(
         cores(&mut h, f.c1),
         vec![Some("1".into()), Some("BK".into()), Some("grün/gelb".into()), Some("PE".into())]
@@ -1034,7 +1034,7 @@ fn ac7_switching_stays_presentation_only_with_cores_and_references() {
     f.h.run("cablecore", json!({"conductor": f.wires[0].hex(), "core": "PE"})).unwrap();
     f.h.run("saveas", json!({"path": work.path("v.ecad")})).unwrap();
     let doc = f.h.doc();
-    let log = f.h.p(|p| p.ledger.log().to_vec());
+    let log = f.h.p(|p| p.ledger.full_log().unwrap());
     let head = f.h.head();
     let nets = ecad_model::derive::nets(&doc);
     for i in 0..10 {
@@ -1058,7 +1058,7 @@ fn ac7_switching_stays_presentation_only_with_cores_and_references() {
         assert!(!f.h.p(|p| p.unsaved()), "switch {i} is not an unsaved change");
     }
     assert_eq!(f.h.doc(), doc);
-    assert_eq!(f.h.p(|p| p.ledger.log().to_vec()), log);
+    assert_eq!(f.h.p(|p| p.ledger.full_log().unwrap()), log);
     assert_eq!(f.h.head(), head);
     assert_eq!(ecad_model::derive::nets(&f.h.doc()), nets);
     view(&mut f.h, f.c1, "fan");
@@ -1271,7 +1271,7 @@ fn cablefan_join_survives_save_and_reopen() {
     // Note: fraction 0 on end B is the top core (y = 15), on end A the bottom one (see the report).
     let path = work.path("join.ecad");
     f.h.run("saveas", json!({"path": path})).unwrap();
-    let (doc, log) = (f.h.doc(), f.h.p(|p| p.ledger.log().to_vec()));
+    let (doc, log) = (f.h.doc(), f.h.p(|p| p.ledger.full_log().unwrap()));
     while !f.h.s.docs.is_empty() {
         f.h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -1279,7 +1279,7 @@ fn cablefan_join_survives_save_and_reopen() {
     let (handle, _) = ProjectHandle::open_file_in(&mut s, &path, 3, Settings::at(&settings.0)).unwrap();
     let mut h = H { s, project: handle, trail: Vec::new() };
     assert_eq!(h.doc(), doc);
-    assert_eq!(h.p(|p| p.ledger.log().to_vec()), log);
+    assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log);
     assert!(h.p(|p| p.ledger.replay_matches().unwrap()));
     h.check();
     // The view is per user (a fresh settings folder: traditional); switch to fan to see the joins.

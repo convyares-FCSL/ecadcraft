@@ -660,7 +660,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h.s.running.is_none());
     h.run("saveas", json!({ "path": path })).unwrap();
     let live = h.doc();
-    let log = h.p(|p| p.ledger.log().to_vec());
+    let log = h.p(|p| p.ledger.full_log().unwrap());
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -669,7 +669,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     let mut h2 = H { s, project, trail: Vec::new() };
     h2.s.viewport_px = (1280.0, 800.0);
     assert!(h2.doc() == live, "same document after reopening");
-    assert_eq!(h2.p(|p| p.ledger.log().to_vec()), log, "same history");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "same history");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     h2.check();
     let pg = h2.first_page();

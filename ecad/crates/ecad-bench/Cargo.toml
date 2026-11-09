@@ -18,6 +18,9 @@ ecad-file = { workspace = true }
 ecad-cadcraft = { path = "../ecad-cadcraft" }
 cadcraft-engine = { path = "../../../crates/engine" }
 serde_json = { workspace = true }
+# Brief 021: the Zstandard comparison (ruzstd, the wasm decoder, against zstd, the native codec).
+ruzstd = { workspace = true }
+zstd = { workspace = true }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).

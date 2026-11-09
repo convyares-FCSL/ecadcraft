@@ -446,13 +446,13 @@ fn a_project_deleted_and_recreated_is_refused_and_left_alone() {
 }
 
 /// Windows only: a file at the project's path that another program holds open without sharing
-/// cannot even be looked at. Save waits briefly, then says it could not check, rather than
-/// calling it a replacement; once the file is released, the check runs and finds what is there.
-/// (The project's own file cannot be held this way while the project has it open, so a file
-/// moved over it stands in for it.) Elsewhere opening a file never stops another reading it.
+/// is still identified (since brief 021 the identity is read through a handle opened for its
+/// attributes only, which sharing does not block), so a replacement is reported as one at once,
+/// and nothing is written. (The project's own file cannot be held this way while the project has
+/// it open, so a file moved over it stands in for it.)
 #[cfg(windows)]
 #[test]
-fn a_file_another_program_holds_exclusively_is_not_reported_as_replaced() {
+fn a_file_another_program_holds_exclusively_is_still_identified() {
     use std::os::windows::fs::OpenOptionsExt;
     let d = TempDir::new("exclusive");
     let p = d.path("p.ecad");
@@ -463,20 +463,10 @@ fn a_file_another_program_holds_exclusively_is_not_reported_as_replaced() {
     std::fs::write(&other, b"replacement").unwrap();
     std::fs::rename(&other, &p).unwrap();
     let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(&p).unwrap();
-    let start = std::time::Instant::now();
     let e = project.save(&mut ledger).unwrap_err();
-    assert!(matches!(e, DiskError::CannotCheck { .. }), "{e}");
-    assert!(e.to_string().contains("could not check") && e.to_string().contains("nothing was written"), "{e}");
-    assert!(start.elapsed() >= ecad_store::disk::TRANSIENT_PAUSE, "retried before giving up");
-    assert!(ledger.is_unsaved());
-    // Released after a moment: the retry waits for it, and the check finds the other file.
-    let release = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        drop(held);
-    });
-    let e = project.save(&mut ledger).unwrap_err();
-    release.join().unwrap();
     assert!(matches!(e, DiskError::Replaced(_)), "{e}");
+    assert!(ledger.is_unsaved());
+    drop(held);
     assert_eq!(std::fs::read(&p).unwrap(), b"replacement");
 }
 

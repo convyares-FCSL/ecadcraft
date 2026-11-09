@@ -615,3 +615,38 @@ fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
     assert_eq!(h.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("KA"));
     h.check();
 }
+
+/// Brief 021 (overseer answer C): the tag high-water mark travels with the snapshot. Delete -K05,
+/// save (the save writes a snapshot at the head), reopen from that snapshot: the next tag is -K06,
+/// never -K05, although the history before the snapshot is not read.
+#[test]
+fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
+    let mut h = new_h();
+    let mut k5 = None;
+    for i in 0..5 {
+        k5 = Some(id(&place(&mut h, "coil", [50.0 * f64::from(i), 0.0]), "component"));
+    }
+    let k5: ComponentId = k5.unwrap();
+    h.run("ecaddelete", json!({"component": k5.hex()})).unwrap();
+    h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
+    let dir = std::env::temp_dir().join(format!("ecad-021-c-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("k05.ecad").display().to_string();
+    h.run("saveas", json!({"path": path})).unwrap();
+    let head = h.head();
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = cadcraft_engine::Session::empty();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 78).unwrap();
+    let mut h2 = H { s, project, trail: Vec::new() };
+    assert_eq!(h2.p(|p| (p.ledger.base(), p.ledger.log().len())), (head, 0), "opened from the snapshot");
+    let coil = symbols::by_key("coil").unwrap();
+    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
+    let placed = place(&mut h2, "coil", [400.0, 0.0]);
+    let c: ComponentId = id(&placed, "component");
+    let tag = h2.p(|p| p.ledger.document().components[&c].properties.get("tag").cloned());
+    assert_eq!(tag.as_deref(), Some("-K06"));
+    drop(h2);
+    let _ = std::fs::remove_dir_all(&dir);
+}

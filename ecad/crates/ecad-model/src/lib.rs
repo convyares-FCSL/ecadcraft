@@ -53,7 +53,7 @@ pub use id::{
     ProjectId, RepresentationId, TerminalId, TxId,
 };
 pub use invariant::Touched;
-pub use ledger::{Author, Ledger, Transaction, TxKind};
+pub use ledger::{Author, Base, History, Ledger, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use sheet::{GridLabels, SheetSpec};
 

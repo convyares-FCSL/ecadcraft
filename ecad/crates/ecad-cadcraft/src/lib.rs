@@ -72,7 +72,7 @@ pub use file::{
 };
 pub use project::{
     Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View,
-    project_page, project_page_framed, project_page_with, session_seed, tree_rows,
+    project_page, project_page_framed, project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

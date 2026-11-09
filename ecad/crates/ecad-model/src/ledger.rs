@@ -4,7 +4,8 @@
 //! the document ([`crate::invariant`]), so its cost follows the size of the change: on every
 //! commit, undo and redo, and per transaction when a file is replayed on open.
 
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -87,7 +88,16 @@ pub struct Transaction {
 #[derive(Debug, Clone)]
 pub struct Ledger {
     doc: Document,
+    /// The transactions after [`Ledger::base`], oldest first: `log[i].seq == base + i + 1`.
     log: Vec<Transaction>,
+    /// The sequence number the in-memory log starts after: 0 for a ledger replayed from the
+    /// project root, a snapshot's `seq` for one opened from a snapshot (brief 021).
+    base: u64,
+    /// Where transactions before `base` are read on demand (`None` when `base` is 0).
+    history: Option<Arc<dyn History>>,
+    /// Transactions before `base` read so far: always the tops of the undo and redo stacks when
+    /// they lie before `base` (read again after every step that exposes a new top).
+    older: BTreeMap<u64, Transaction>,
     persisted: u64,
     ids: IdAllocator,
     /// The undo/redo stacks derived from `log`, kept current.
@@ -96,25 +106,49 @@ pub struct Ledger {
     verify: bool,
     /// Rollback failures (never expected) and whether they left the document unusable.
     health: Health,
+    /// How often the whole undo and redo stacks were read from the history (at most once).
+    stack_rebuilds: u32,
+    /// Stack entries read from the history at a time ([`Base::stack_cap`]).
+    stack_read: u64,
 }
 
-/// The derived undo/redo stacks: log indices.
+/// The derived undo/redo stacks: the `seq` and ID of each entry, so that admitting a step never
+/// needs the transaction itself (which may lie before the ledger's base).
 #[derive(Debug, Clone, Default)]
 struct Stacks {
-    undo: Vec<usize>,
-    redo: Vec<usize>,
+    undo: Vec<(u64, TxId)>,
+    redo: Vec<(u64, TxId)>,
+    /// Entries below the visible ones that a snapshot did not record (brief 021: a snapshot
+    /// keeps the top of each stack and its depth). They are read once, from the history, when
+    /// undo or redo first reaches them ([`Ledger::rebuild_stacks`]).
+    undo_hidden: u64,
+    redo_hidden: u64,
+    /// How many entries of the base's stacks (from their tops) have been read so far.
+    undo_known: u64,
+    redo_known: u64,
 }
 
+/// How many stack entries are read from the history at a time, when undo or redo reaches below
+/// what is held (the cap a snapshot records, brief 021).
+pub const STACK_READ: u64 = 1_024;
+
 impl Stacks {
-    /// Whether `log[i]` may follow the entries already pushed.
-    fn admit(&self, log: &[Transaction], i: usize) -> Result<()> {
-        let Some(tx) = log.get(i) else { return Ok(()) };
-        self.admit_kind(log, tx.kind, tx.id)
+    /// Whether `kind` would pop a stack whose visible part is empty but which has hidden entries.
+    fn needs_full(&self, kind: TxKind) -> bool {
+        match kind {
+            TxKind::Edit => false,
+            TxKind::Undo { .. } => self.undo.is_empty() && self.undo_hidden > 0,
+            TxKind::Redo { .. } => self.redo.is_empty() && self.redo_hidden > 0,
+        }
     }
 
+    /// Whether either stack's visible part is empty while it has hidden entries.
+    fn top_hidden(&self) -> bool {
+        (self.undo.is_empty() && self.undo_hidden > 0) || (self.redo.is_empty() && self.redo_hidden > 0)
+    }
     /// Whether transaction `id`, of `kind`, may follow the entries already pushed.
-    fn admit_kind(&self, log: &[Transaction], kind: TxKind, id: impl std::fmt::Display) -> Result<()> {
-        let top = |stack: &Vec<usize>| stack.last().and_then(|j| log.get(*j)).map(|t| t.id);
+    fn admit_kind(&self, kind: TxKind, id: impl std::fmt::Display) -> Result<()> {
+        let top = |stack: &Vec<(u64, TxId)>| stack.last().map(|(_, t)| *t);
         match kind {
             TxKind::Edit => Ok(()),
             TxKind::Undo { of } if top(&self.undo) != Some(of) => {
@@ -127,21 +161,26 @@ impl Stacks {
         }
     }
 
-    /// Account for `log[i]`, after [`Stacks::admit`] accepted it.
-    fn push(&mut self, log: &[Transaction], i: usize) {
-        let Some(tx) = log.get(i) else { return };
+    /// Whether `tx` may follow the entries already pushed.
+    fn admit(&self, tx: &Transaction) -> Result<()> {
+        self.admit_kind(tx.kind, tx.id)
+    }
+
+    /// Account for `tx`, after [`Stacks::admit`] accepted it.
+    fn push(&mut self, tx: &Transaction) {
         match tx.kind {
             TxKind::Edit => {
-                self.undo.push(i);
+                self.undo.push((tx.seq, tx.id));
                 self.redo.clear();
+                self.redo_hidden = 0;
             }
             TxKind::Undo { .. } => {
                 self.undo.pop();
-                self.redo.push(i);
+                self.redo.push((tx.seq, tx.id));
             }
             TxKind::Redo { .. } => {
                 self.redo.pop();
-                self.undo.push(i);
+                self.undo.push((tx.seq, tx.id));
             }
         }
     }
@@ -149,11 +188,100 @@ impl Stacks {
 
 fn stacks(log: &[Transaction]) -> Result<Stacks> {
     let mut s = Stacks::default();
-    for i in 0..log.len() {
-        s.admit(log, i)?;
-        s.push(log, i);
+    for tx in log {
+        s.admit(tx)?;
+        s.push(tx);
     }
     Ok(s)
+}
+
+/// Where a ledger opened from a snapshot reads the history before its base (brief 021): a
+/// project file's store. Reads only; never changes the file.
+pub trait History: std::fmt::Debug + Send + Sync {
+    /// Transaction `seq` (before the ledger's base).
+    ///
+    /// # Errors
+    /// The store could not be read, or holds no such transaction.
+    fn transaction(&self, seq: u64) -> Result<Transaction>;
+
+    /// The document after transaction `seq` (at or before the ledger's base), rebuilt from the
+    /// nearest snapshot before it and the transactions after that snapshot.
+    ///
+    /// # Errors
+    /// As [`History::transaction`], and replay failures.
+    fn state_at(&self, seq: u64) -> Result<Document>;
+
+    /// Transactions `from..=to` (all before the ledger's base), in order.
+    ///
+    /// # Errors
+    /// As [`History::transaction`].
+    fn transactions(&self, from: u64, to: u64) -> Result<Vec<Transaction>> {
+        (from..=to).map(|s| self.transaction(s)).collect()
+    }
+
+    /// The whole undo and redo stacks after transaction `seq` (at or before the ledger's base),
+    /// derived from the transactions' kinds: reads every transaction up to `seq`, so it is used
+    /// once per session at most, when undo or redo first goes below what a snapshot recorded.
+    ///
+    /// # Errors
+    /// As [`History::transaction`]; an inconsistent undo/redo structure.
+    fn stacks_at(&self, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+        stacks_from(self, seq)
+    }
+
+    /// Entries `skip .. skip + count` counted from the top of the undo (or redo) stack after
+    /// transaction `seq`, oldest first (fewer when the stack is shallower). A store walks the
+    /// history backwards from `seq` only as far as those entries go.
+    ///
+    /// # Errors
+    /// As [`History::stacks_at`].
+    fn stack_slice(&self, seq: u64, undo: bool, skip: u64, count: u64) -> Result<Vec<(u64, TxId)>> {
+        let (u, r) = self.stacks_at(seq)?;
+        let s = if undo { u } else { r };
+        let end = s.len().saturating_sub(usize::try_from(skip).unwrap_or(usize::MAX));
+        let start = end.saturating_sub(usize::try_from(count).unwrap_or(usize::MAX));
+        Ok(s.get(start..end).unwrap_or_default().to_vec())
+    }
+}
+
+/// The whole undo and redo stacks after transaction `seq`, from the kinds of every transaction
+/// up to it.
+fn stacks_from<H: History + ?Sized>(h: &H, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {
+    {
+        let mut s = Stacks::default();
+        let mut from = 1;
+        while from <= seq {
+            let to = seq.min(from.saturating_add(4_095));
+            for tx in h.transactions(from, to)? {
+                s.admit(&tx)?;
+                s.push(&tx);
+            }
+            let Some(next) = to.checked_add(1) else { break };
+            from = next;
+        }
+        Ok((s.undo, s.redo))
+    }
+}
+
+/// A snapshot a ledger starts from instead of the project root (brief 021): the state after
+/// transaction `seq`, the undo and redo stacks there (as `(seq, id)` pairs, oldest first), and
+/// where the history before it is read.
+#[derive(Debug, Clone)]
+pub struct Base {
+    pub seq: u64,
+    pub doc: Document,
+    /// The top of each stack (all of it, or only the newest entries a snapshot recorded).
+    pub undo: Vec<(u64, TxId)>,
+    pub redo: Vec<(u64, TxId)>,
+    /// How many entries lie below `undo` and `redo` (0 when they are whole).
+    pub undo_hidden: u64,
+    pub redo_hidden: u64,
+    /// `doc`'s derived index is already built (it is built here otherwise).
+    pub indexed: bool,
+    /// The cap the snapshot recorded its stacks with: entries below them are read from the
+    /// history this many at a time (0: the stacks are whole; [`STACK_READ`] is then used).
+    pub stack_cap: u64,
+    pub history: Arc<dyn History>,
 }
 
 /// Whether `ECAD_VERIFY_INVARIANTS=1` is set (read once per process).
@@ -182,10 +310,29 @@ struct Health {
     broken: bool,
 }
 
+/// The committed state a failed rollback is repaired from: the state at `base` (read from
+/// `history` when `base` is not 0) followed by `log`.
+#[derive(Clone, Copy)]
+struct Committed<'a> {
+    log: &'a [Transaction],
+    base: u64,
+    history: Option<&'a Arc<dyn History>>,
+}
+
+impl<'a> Committed<'a> {
+    fn root(log: &'a [Transaction]) -> Self {
+        Self { log, base: 0, history: None }
+    }
+}
+
 /// The document after replaying `history` (already committed transactions), without checks.
-fn restore(history: &[Transaction]) -> Option<Document> {
-    let mut doc = Document::default();
-    for tx in history {
+fn restore(history: Committed<'_>) -> Option<Document> {
+    let mut doc = match (history.base, history.history) {
+        (0, _) => Document::default(),
+        (base, Some(h)) => h.state_at(base).ok()?,
+        (_, None) => return None,
+    };
+    for tx in history.log {
         for op in &tx.ops {
             op.apply(&mut doc).ok()?;
         }
@@ -231,13 +378,13 @@ struct Journal<'a> {
     applied: usize,
     /// The committed transactions whose replay gives the state before this one; `None` when the
     /// caller discards the document on error.
-    history: Option<&'a [Transaction]>,
+    history: Option<Committed<'a>>,
     health: &'a mut Health,
     open: bool,
 }
 
 impl<'a> Journal<'a> {
-    fn new(doc: &'a mut Document, ops: &'a [Op], history: Option<&'a [Transaction]>, health: &'a mut Health) -> Self {
+    fn new(doc: &'a mut Document, ops: &'a [Op], history: Option<Committed<'a>>, health: &'a mut Health) -> Self {
         Self { doc, ops: std::borrow::Cow::Borrowed(ops), applied: 0, history, health, open: true }
     }
 
@@ -354,7 +501,7 @@ fn apply_tx(
     doc: &mut Document,
     ops: &[Op],
     verify: bool,
-    history: Option<&[Transaction]>,
+    history: Option<Committed<'_>>,
     health: &mut Health,
     then: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
@@ -384,7 +531,7 @@ fn apply_tx_extended(
     doc: &mut Document,
     ops: &[Op],
     verify: bool,
-    history: Option<&[Transaction]>,
+    history: Option<Committed<'_>>,
     health: &mut Health,
     extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
     then: impl FnOnce() -> Result<()>,
@@ -421,7 +568,7 @@ fn applied_then_reverted<R>(
     doc: &mut Document,
     ops: &[Op],
     verify: bool,
-    history: Option<&[Transaction]>,
+    history: Option<Committed<'_>>,
     health: &mut Health,
     read: impl FnOnce(&Document) -> R,
 ) -> (Result<R>, Option<String>) {
@@ -505,11 +652,16 @@ impl Ledger {
         Self {
             doc: Document::default(),
             log: Vec::new(),
+            base: 0,
+            history: None,
+            older: BTreeMap::new(),
             persisted: 0,
             ids: IdAllocator::seeded(seed),
             stacks: Stacks::default(),
             verify: false,
             health: Health::default(),
+            stack_rebuilds: 0,
+            stack_read: STACK_READ,
         }
     }
 
@@ -539,39 +691,127 @@ impl Ledger {
     /// Every transaction is checked as it is applied, exactly as when it was committed; a failed
     /// one is rolled back, so the document is the state after the last good transaction.
     pub fn replay_prefix(log: Vec<Transaction>, seed: u64) -> (Self, Option<(usize, ModelError)>) {
-        let mut doc = Document::default();
-        let mut stacks = Stacks::default();
-        let mut health = Health::default();
+        let mut me = Self::new(seed);
+        let failure = me.extend_prefix(log);
+        let last = me.log.last().map_or(0, |t| t.id.0);
+        me.ids = IdAllocator::seeded_after(seed, last);
+        (me, failure)
+    }
+
+    /// Start from a snapshot instead of the project root (brief 021, EEP-0005 §5): the document,
+    /// undo and redo stacks after transaction `base.seq`, then `tail` (the transactions after it,
+    /// `seq` `base.seq + 1` on) replayed with every check. Transactions before the base are read
+    /// from `base.history` only when undo, redo or [`Ledger::state_at`] reach them.
+    ///
+    /// # Semantics
+    /// Like [`Ledger::replay_prefix`], the longest valid prefix of `tail` is kept, and the first
+    /// failure is returned with its position in `tail` (0-based).
+    ///
+    /// # Errors
+    /// [`ModelError::CorruptLog`] when the base's stacks are inconsistent (an entry at 0 or after
+    /// the base, or out of order) or their tops cannot be read from the history.
+    pub fn from_base(base: Base, tail: Vec<Transaction>, seed: u64) -> Result<(Self, Option<(usize, ModelError)>)> {
+        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, stack_cap, history } = base;
+        // Each transaction up to the base is on at most one stack: more entries than that (a
+        // crafted file) is damage, never an allocation or a loop.
+        let depth = [undo.len() as u64, undo_hidden, redo.len() as u64, redo_hidden]
+            .into_iter()
+            .try_fold(0u64, u64::checked_add);
+        if depth.is_none_or(|n| n > seq) {
+            return Err(ModelError::CorruptLog(format!(
+                "the undo and redo stacks recorded at {seq} are deeper than the history"
+            )));
+        }
+        if stack_cap == 0 && (undo_hidden > 0 || redo_hidden > 0) {
+            return Err(ModelError::CorruptLog(format!(
+                "the stacks recorded at {seq} have entries below them but no cap"
+            )));
+        }
+        for stack in [&undo, &redo] {
+            let bad_entry = stack.iter().any(|(s, _)| *s == 0 || *s > seq);
+            let unordered = stack.windows(2).any(|w| matches!(w, [a, b] if a.0 >= b.0));
+            if bad_entry || unordered {
+                return Err(ModelError::CorruptLog(format!(
+                    "the undo or redo stack recorded at {seq} is inconsistent"
+                )));
+            }
+        }
+        if !indexed {
+            doc.rebuild_index();
+        }
+        let mut me = Self {
+            doc,
+            log: Vec::new(),
+            base: seq,
+            history: Some(history),
+            older: BTreeMap::new(),
+            persisted: seq,
+            ids: IdAllocator::seeded(seed),
+            stacks: Stacks {
+                undo_known: undo.len() as u64,
+                redo_known: redo.len() as u64,
+                undo,
+                redo,
+                undo_hidden,
+                redo_hidden,
+            },
+            verify: false,
+            health: Health::default(),
+            stack_rebuilds: 0,
+            stack_read: if stack_cap == 0 { STACK_READ } else { stack_cap },
+        };
+        me.load_tops()?;
+        let failure = me.extend_prefix(tail);
+        let last = me.log.last().map_or(0, |t| t.id.0);
+        me.ids = IdAllocator::seeded_after(seed, last);
+        Ok((me, failure))
+    }
+
+    /// Append as much of `log` (the transactions after the head, in order) as is valid, checking
+    /// each as when it was committed; the first failure and its position in `log`. Everything
+    /// appended counts as persisted (it was read from a file).
+    fn extend_prefix(&mut self, log: Vec<Transaction>) -> Option<(usize, ModelError)> {
         let mut failure = None;
-        let mut good = 0;
-        for (i, tx) in log.iter().enumerate() {
-            let step = if tx.seq != i as u64 + 1 {
+        let start = self.head();
+        for (i, tx) in log.into_iter().enumerate() {
+            let expected = start.checked_add(i as u64).and_then(|n| n.checked_add(1));
+            // A step that pops below what the snapshot recorded reads the stacks whole first.
+            let full = if self.stacks.needs_full(tx.kind) { self.rebuild_stacks() } else { Ok(()) };
+            let step = if let Err(e) = full {
+                Err(e)
+            } else if Some(tx.seq) != expected {
                 Err(ModelError::CorruptLog(format!(
-                    "transaction {} has sequence {} at position {}",
-                    tx.id,
-                    tx.seq,
-                    i + 1
+                    "transaction {} has sequence {} at position {:?}",
+                    tx.id, tx.seq, expected
                 )))
             } else {
+                let stacks = &self.stacks;
+                let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
                 check_bookmarks(&tx.ops, tx.seq).and_then(|()| {
-                    let admit = || stacks.admit(&log, i);
-                    apply_tx(&mut doc, &tx.ops, false, log.get(..i), &mut health, admit)
+                    apply_tx(&mut self.doc, &tx.ops, false, Some(committed), &mut self.health, || stacks.admit(&tx))
                 })
             };
-            if health.broken {
+            if self.health.broken {
                 // Never expected: a rollback failed and the good prefix did not replay either.
                 // Open nothing rather than a document that may be corrupt.
-                doc = Document::default();
-                stacks = Stacks::default();
-                good = 0;
-                let why = health.diagnostics.last().cloned().unwrap_or_default();
+                self.doc = Document::default();
+                self.stacks = Stacks::default();
+                self.log.clear();
+                self.base = 0;
+                self.history = None;
+                self.older.clear();
+                let why = self.health.diagnostics.last().cloned().unwrap_or_default();
                 failure = Some((i, ModelError::CorruptLog(why)));
                 break;
             }
             match step {
                 Ok(()) => {
-                    stacks.push(&log, i);
-                    good = i + 1;
+                    self.stacks.push(&tx);
+                    self.log.push(tx);
+                    if let Err(e) = self.load_tops() {
+                        failure = Some((i + 1, e));
+                        break;
+                    }
                 }
                 Err(e) => {
                     failure = Some((i, e));
@@ -579,12 +819,86 @@ impl Ledger {
                 }
             }
         }
-        let mut log = log;
-        log.truncate(good);
-        let persisted = log.len() as u64;
-        let last = log.last().map_or(0, |t| t.id.0);
-        let ids = IdAllocator::seeded_after(seed, last);
-        (Self { doc, log, persisted, ids, stacks, verify: false, health }, failure)
+        self.persisted = self.head();
+        failure
+    }
+
+    /// Read the next [`Base::stack_cap`] entries below an emptied stack from the history: the base's
+    /// stack entries just below those already read (the transactions after the base never reach
+    /// below what is held without this). Kept for the session; each further read goes deeper.
+    ///
+    /// # Errors
+    /// The history could not be read, or holds fewer entries than the depth recorded.
+    fn rebuild_stacks(&mut self) -> Result<()> {
+        for undo in [true, false] {
+            let (held, hidden, known) = if undo {
+                (self.stacks.undo.len(), self.stacks.undo_hidden, self.stacks.undo_known)
+            } else {
+                (self.stacks.redo.len(), self.stacks.redo_hidden, self.stacks.redo_known)
+            };
+            if held > 0 || hidden == 0 {
+                continue;
+            }
+            let h = self.history.as_ref().ok_or_else(|| {
+                ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
+            })?;
+            let n = hidden.min(self.stack_read);
+            let more = h.stack_slice(self.base, undo, known, n)?;
+            if more.len() as u64 != n || more.iter().any(|(s, _)| *s > self.base) {
+                return Err(ModelError::CorruptLog("the history does not agree with the recorded undo stacks".into()));
+            }
+            if undo {
+                self.stacks.undo = more;
+                self.stacks.undo_hidden = hidden.saturating_sub(n);
+                self.stacks.undo_known = known.saturating_add(n);
+            } else {
+                self.stacks.redo = more;
+                self.stacks.redo_hidden = hidden.saturating_sub(n);
+                self.stacks.redo_known = known.saturating_add(n);
+            }
+            self.stack_rebuilds += 1;
+        }
+        self.load_tops()
+    }
+
+    /// How often stack entries below what was held were read from the history.
+    pub fn stack_rebuilds(&self) -> u32 {
+        self.stack_rebuilds
+    }
+
+    /// The depths of the undo and redo stacks, entries not read yet included.
+    pub fn stack_depths(&self) -> (u64, u64) {
+        (
+            self.stacks.undo.len() as u64 + self.stacks.undo_hidden,
+            self.stacks.redo.len() as u64 + self.stacks.redo_hidden,
+        )
+    }
+
+    /// Read the tops of the undo and redo stacks that lie before the base, if not read yet.
+    fn load_tops(&mut self) -> Result<()> {
+        let tops = [self.stacks.undo.last().copied(), self.stacks.redo.last().copied()];
+        for (seq, id) in tops.into_iter().flatten() {
+            if seq > self.base || self.older.contains_key(&seq) {
+                continue;
+            }
+            let h = self.history.as_ref().ok_or_else(|| {
+                ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history"))
+            })?;
+            let tx = h.transaction(seq)?;
+            if tx.seq != seq || tx.id != id {
+                return Err(ModelError::CorruptLog(format!(
+                    "the history holds {} at {}, where the undo or redo stack names {id} at {seq}",
+                    tx.id, tx.seq
+                )));
+            }
+            self.older.insert(seq, tx);
+        }
+        Ok(())
+    }
+
+    /// Transaction `seq`, from the log or the transactions read from before the base.
+    fn tx(&self, seq: u64) -> Option<&Transaction> {
+        if seq > self.base { self.log.get(usize::try_from(seq - self.base - 1).ok()?) } else { self.older.get(&seq) }
     }
 
     /// Rebuild from a checkpoint holding the state after the first `at` transactions, applying
@@ -611,15 +925,29 @@ impl Ledger {
                 )));
             }
             if tx.seq > at {
+                let history = log.get(..i).map(Committed::root);
                 check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify, log.get(..i), &mut health, || Ok(())))
+                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify, history, &mut health, || Ok(())))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
             }
         }
         let stacks = stacks(&log)?;
         let persisted = log.len() as u64;
         let last = log.last().map_or(0, |t| t.id.0);
-        Ok(Self { doc, log, persisted, ids: IdAllocator::seeded_after(seed, last), stacks, verify, health })
+        Ok(Self {
+            doc,
+            log,
+            base: 0,
+            history: None,
+            older: BTreeMap::new(),
+            persisted,
+            ids: IdAllocator::seeded_after(seed, last),
+            stacks,
+            verify,
+            health,
+            stack_rebuilds: 0,
+            stack_read: STACK_READ,
+        })
     }
 
     /// Rollback failures since this ledger was built: one line each, naming the op and how the
@@ -634,14 +962,68 @@ impl Ledger {
         &self.doc
     }
 
-    /// The whole log, oldest first.
+    /// The transactions held in memory, oldest first: the whole log when [`Ledger::base`] is 0,
+    /// otherwise only those after the base (`log()[i].seq == base() + i + 1`).
     pub fn log(&self) -> &[Transaction] {
         &self.log
     }
 
+    /// The whole history, oldest first: the transactions before the base read from the history
+    /// (reads everything before the base: for checks and tools, never on an ordinary path), then
+    /// the in-memory log.
+    ///
+    /// # Errors
+    /// The history could not be read.
+    pub fn full_log(&self) -> Result<Vec<Transaction>> {
+        let mut all = match (&self.history, self.base) {
+            (_, 0) => Vec::new(),
+            (Some(h), base) => h.transactions(1, base)?,
+            (None, base) => {
+                return Err(ModelError::CorruptLog(format!("transactions 1 to {base} cannot be read: no history")));
+            }
+        };
+        all.extend(self.log.iter().cloned());
+        Ok(all)
+    }
+
+    /// The `seq` the in-memory log starts after: 0, or the snapshot this ledger was opened from.
+    pub fn base(&self) -> u64 {
+        self.base
+    }
+
+    /// Where transactions before [`Ledger::base`] are read, when it is not 0.
+    pub fn history(&self) -> Option<&Arc<dyn History>> {
+        self.history.as_ref()
+    }
+
+    /// Read the history before the base from `history` from now on: the same history in another
+    /// file (Save As copies it). Transactions already read are kept.
+    pub fn set_history(&mut self, history: Arc<dyn History>) {
+        if self.base > 0 {
+            self.history = Some(history);
+        }
+    }
+
+    /// The undo and redo stacks as `(seq, id)` pairs, oldest first (recorded with snapshots).
+    pub fn stacks(&self) -> (Vec<(u64, TxId)>, Vec<(u64, TxId)>) {
+        (self.stacks.undo.clone(), self.stacks.redo.clone())
+    }
+
+    /// Transaction `seq` if it is held in memory (after the base, or read from before it).
+    pub fn transaction(&self, seq: u64) -> Option<&Transaction> {
+        self.tx(seq)
+    }
+
+    /// The sequence number the next transaction gets.
+    fn next_seq(&self) -> Result<u64> {
+        self.head()
+            .checked_add(1)
+            .ok_or_else(|| ModelError::CorruptLog("the history has no room for another transaction".into()))
+    }
+
     /// Sequence number of the last applied transaction (0 when empty).
     pub fn head(&self) -> u64 {
-        self.log.len() as u64
+        self.base.saturating_add(self.log.len() as u64)
     }
 
     /// Sequence number of the last transaction known to be durably saved.
@@ -700,8 +1082,9 @@ impl Ledger {
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
+        let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
         let (result, failure) =
-            applied_then_reverted(&mut self.doc, ops, self.verify, Some(&self.log), &mut self.health, read);
+            applied_then_reverted(&mut self.doc, ops, self.verify, Some(committed), &mut self.health, read);
         match failure {
             // The revert failed and replaying the log could not restore the document either.
             Some(f) if self.health.broken => Err(ModelError::CorruptLog(format!("{f}; reopen the project"))),
@@ -751,17 +1134,21 @@ impl Ledger {
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
-        let seq = self.head() + 1;
+        let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
         let kind = TxKind::Edit;
-        let (stacks, log) = (&self.stacks, &self.log);
-        let admit = || stacks.admit_kind(log, kind, "the new transaction");
-        let more = apply_tx_extended(&mut self.doc, &ops, self.verify, Some(log), &mut self.health, extend, admit)?;
+        let stacks = &self.stacks;
+        let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
+        let admit = || stacks.admit_kind(kind, "the new transaction");
+        let more =
+            apply_tx_extended(&mut self.doc, &ops, self.verify, Some(committed), &mut self.health, extend, admit)?;
         let mut ops = ops;
         ops.extend(more);
         let id: TxId = self.ids.fresh();
-        self.log.push(Transaction { id, seq, author, label: label.to_string(), kind, time_ms, ops });
-        self.stacks.push(&self.log, self.log.len() - 1);
+        let tx = Transaction { id, seq, author, label: label.to_string(), kind, time_ms, ops };
+        self.stacks.push(&tx);
+        self.log.push(tx);
+        self.after_append();
         Ok(id)
     }
 
@@ -778,27 +1165,60 @@ impl Ledger {
                 "the document could not be restored after a failed rollback; reopen the project".into(),
             ));
         }
-        let seq = self.head() + 1;
+        let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
         // Not refused through undo/redo (their target is the stack top); kept so a bad kind can
         // never be recorded.
-        let (stacks, log) = (&self.stacks, &self.log);
-        let admit = || stacks.admit_kind(log, kind, "the new transaction");
-        apply_tx(&mut self.doc, &ops, self.verify, Some(log), &mut self.health, admit)?;
+        let stacks = &self.stacks;
+        let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
+        let admit = || stacks.admit_kind(kind, "the new transaction");
+        apply_tx(&mut self.doc, &ops, self.verify, Some(committed), &mut self.health, admit)?;
         let id: TxId = self.ids.fresh();
-        self.log.push(Transaction { id, seq, author, label, kind, time_ms, ops });
-        self.stacks.push(&self.log, self.log.len() - 1);
+        let tx = Transaction { id, seq, author, label, kind, time_ms, ops };
+        self.stacks.push(&tx);
+        self.log.push(tx);
+        self.after_append();
         Ok(id)
+    }
+
+    /// After a transaction is appended: undo or redo may have exposed a top before the base, or
+    /// emptied what the snapshot recorded. Read it now, so labels and the next step never wait on
+    /// the store. A failure is reported here, and retried by the step.
+    fn after_append(&mut self) {
+        let read = if self.stacks.top_hidden() { self.rebuild_stacks() } else { self.load_tops() };
+        if let Err(e) = read {
+            self.health.diagnostics.push(format!("could not read an older step for undo or redo: {e}"));
+        }
+    }
+
+    /// The transaction on top of `stack`, if held in memory.
+    fn top(&self, stack: &[(u64, TxId)]) -> Option<&Transaction> {
+        stack.last().and_then(|(seq, _)| self.tx(*seq))
     }
 
     /// Label of the step [`Ledger::undo`] would undo.
     pub fn undo_label(&self) -> Option<&str> {
-        self.stacks.undo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
+        self.top(&self.stacks.undo).map(|t| t.label.as_str())
     }
 
     /// Label of the step [`Ledger::redo`] would redo.
     pub fn redo_label(&self) -> Option<&str> {
-        self.stacks.redo.last().and_then(|i| self.log.get(*i)).map(|t| t.label.as_str())
+        self.top(&self.stacks.redo).map(|t| t.label.as_str())
+    }
+
+    /// The top of the undo (or redo) stack, read from the history first if it lies before the
+    /// base and was not read yet (a failed earlier read is retried here).
+    fn ensure_top(&mut self, undo: bool, nothing: &'static str) -> Result<&Transaction> {
+        if self.stacks.top_hidden() {
+            self.rebuild_stacks()?;
+        }
+        let empty = if undo { self.stacks.undo.is_empty() } else { self.stacks.redo.is_empty() };
+        if empty {
+            return Err(ModelError::NothingTo(nothing));
+        }
+        self.load_tops()?;
+        let stack = if undo { &self.stacks.undo } else { &self.stacks.redo };
+        self.top(stack).ok_or(ModelError::NothingTo(nothing))
     }
 
     /// Append the inverse of the latest effective step.
@@ -812,10 +1232,10 @@ impl Ledger {
     /// [`Ledger::undo`] with a wall-clock time.
     ///
     /// # Errors
-    /// As [`Ledger::undo`].
+    /// As [`Ledger::undo`]; [`ModelError::CorruptLog`] when the step lies before the base and
+    /// could not be read.
     pub fn undo_at(&mut self, author: Author, time_ms: Option<u64>) -> Result<TxId> {
-        let target =
-            self.stacks.undo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to undo"))?;
+        let target = self.ensure_top(true, "nothing to undo")?;
         let (of, label, ops) = (target.id, target.label.clone(), inverse_ops(&target.ops));
         self.append(author, label, TxKind::Undo { of }, ops, time_ms)
     }
@@ -823,12 +1243,12 @@ impl Ledger {
     /// The ops [`Ledger::undo_at`] would apply now (the inverse of the transaction it undoes), or
     /// `None` when there is nothing to undo. Reads only.
     pub fn undo_ops(&self) -> Option<Vec<Op>> {
-        self.stacks.undo.last().and_then(|i| self.log.get(*i)).map(|t| inverse_ops(&t.ops))
+        self.top(&self.stacks.undo).map(|t| inverse_ops(&t.ops))
     }
 
     /// The ops [`Ledger::redo_at`] would apply now, or `None` when there is nothing to redo.
     pub fn redo_ops(&self) -> Option<Vec<Op>> {
-        self.stacks.redo.last().and_then(|i| self.log.get(*i)).map(|t| inverse_ops(&t.ops))
+        self.top(&self.stacks.redo).map(|t| inverse_ops(&t.ops))
     }
 
     /// Append the inverse of the latest undo.
@@ -844,8 +1264,7 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::redo`].
     pub fn redo_at(&mut self, author: Author, time_ms: Option<u64>) -> Result<TxId> {
-        let target =
-            self.stacks.redo.last().and_then(|i| self.log.get(*i)).ok_or(ModelError::NothingTo("nothing to redo"))?;
+        let target = self.ensure_top(false, "nothing to redo")?;
         let (of, label, ops) = (target.id, target.label.clone(), inverse_ops(&target.ops));
         self.append(author, label, TxKind::Redo { of }, ops, time_ms)
     }
@@ -853,25 +1272,54 @@ impl Ledger {
     /// Reconstruct the document as it was after transaction `seq`, separately from the live
     /// state (which is not touched).
     ///
+    /// # Semantics
+    /// From the root, replaying the log, when the base is 0. Otherwise a point at or after the
+    /// base is reached by undoing the later transactions on a copy of the live document, and a
+    /// point before it is read from the history (its nearest snapshot and the rows after it).
+    ///
     /// # Errors
-    /// [`ModelError::Precondition`] when `seq` is past the head; replay failures.
+    /// [`ModelError::Precondition`] when `seq` is past the head; replay or store failures.
     pub fn state_at(&self, seq: u64) -> Result<Document> {
         if seq > self.head() {
             return Err(ModelError::Precondition(format!("sequence {seq} is past the head {}", self.head())));
         }
-        let mut doc = Document::default();
-        for tx in self.log.iter().take(seq as usize) {
-            apply_scratch(&mut doc, &tx.ops, self.verify)?;
+        if self.base == 0 {
+            let mut doc = Document::default();
+            for tx in self.log.iter().take(usize::try_from(seq).unwrap_or(usize::MAX)) {
+                apply_scratch(&mut doc, &tx.ops, self.verify)?;
+            }
+            return Ok(doc);
+        }
+        if seq < self.base {
+            let h = self.history.as_ref().ok_or_else(|| {
+                ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history"))
+            })?;
+            return h.state_at(seq);
+        }
+        let mut doc = self.doc.clone();
+        for tx in self.log.iter().rev().take_while(|t| t.seq > seq) {
+            apply_scratch(&mut doc, &inverse_ops(&tx.ops), self.verify)?;
         }
         Ok(doc)
     }
 
-    /// Replay the whole log into a fresh document and compare it with the live one.
+    /// Replay the log from the root (or, for a ledger with a base, from the state the history
+    /// gives at the base) into a fresh document and compare it with the live one.
     ///
     /// # Errors
     /// Replay failures.
     pub fn replay_matches(&self) -> Result<bool> {
-        Ok(self.state_at(self.head())? == self.doc)
+        let mut doc = match (&self.history, self.base) {
+            (_, 0) => Document::default(),
+            (Some(h), base) => h.state_at(base)?,
+            (None, base) => {
+                return Err(ModelError::CorruptLog(format!("the state at {base} cannot be read: no history")));
+            }
+        };
+        for tx in &self.log {
+            apply_scratch(&mut doc, &tx.ops, self.verify)?;
+        }
+        Ok(doc == self.doc)
     }
 }
 
