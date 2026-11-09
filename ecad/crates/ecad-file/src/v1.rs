@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId,
-    TxId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
+    TerminalId, TxId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,44 @@ fn mpt(p: Pt) -> m::Pt {
 #[serde(deny_unknown_fields)]
 pub struct Page {
     pub title: String,
+    /// Brief 019 (decision FP1): left out while empty, so a page without properties is written
+    /// exactly as before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, String>,
+}
+
+/// A folder of pages (brief 019, decision FP3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Folder {
+    pub name: String,
+    pub parent: Option<FolderId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GridLabels {
+    Letters,
+    Numbers,
+}
+
+/// A sheet (brief 019, decision FP2), in whole millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SheetSpec {
+    pub width: u32,
+    pub height: u32,
+    pub columns: u32,
+    pub rows: u32,
+    pub column_labels: GridLabels,
+    pub row_labels: GridLabels,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceStyle {
+    PageColumnRow,
+    PageColumn,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -197,6 +235,10 @@ pub struct Definition {
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub terminals: Vec<TerminalDef>,
+    /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
+    /// a definition without bridges is written, and hashed, exactly as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridges: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -206,10 +248,234 @@ pub enum LengthUnit {
     Inch,
 }
 
+/// Project settings. `tag_padding` and `tag_prefixes` (brief 018, owner decision 2026-11-08) are
+/// left out while they hold their defaults, so a project that never changes them is written
+/// exactly as before; a file that sets them is refused by older builds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
+    #[serde(default = "default_padding", skip_serializing_if = "is_default_padding")]
+    pub tag_padding: u8,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tag_prefixes: BTreeMap<String, String>,
+    /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
+    /// project that never changes them is written exactly as before.
+    #[serde(default, skip_serializing_if = "is_default_wiring")]
+    pub wiring: WiringSettings,
+    /// Brief 019 (decision FP2): left out at the default A3 sheet.
+    #[serde(default = "default_sheet", skip_serializing_if = "is_default_sheet")]
+    pub sheet: SheetSpec,
+    /// Brief 019 (decision FP2): left out at the default step 1.
+    #[serde(default = "default_step", skip_serializing_if = "is_default_step")]
+    pub page_number_step: u32,
+    /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
+    #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
+    pub reference_style: ReferenceStyle,
+}
+
+fn is_default_wiring(w: &WiringSettings) -> bool {
+    *w == WiringSettings::from(&m::wiring::WiringSettings::default())
+}
+
+/// How automatic wire numbers are made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Scheme {
+    #[serde(rename = "potential")]
+    Potential,
+    #[serde(rename = "page")]
+    Page,
+    #[serde(rename = "page-column")]
+    PageColumn,
+}
+
+/// One row of the potentials table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PotentialDef {
+    pub name: String,
+    pub prefix: String,
+    pub numbered: bool,
+    pub colour: String,
+    pub cross_section: String,
+}
+
+/// How label colours are written (brief 022 fix round).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColourStyle {
+    #[serde(rename = "iec")]
+    Iec,
+    #[serde(rename = "three-letter")]
+    ThreeLetter,
+}
+
+fn is_iec(s: &ColourStyle) -> bool {
+    *s == ColourStyle::Iec
+}
+
+fn iec() -> ColourStyle {
+    ColourStyle::Iec
+}
+
+fn default_label_height() -> f64 {
+    m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+fn is_default_label_height(h: &f64) -> bool {
+    *h == m::wiring::DEFAULT_LABEL_HEIGHT
+}
+
+/// Wiring settings (brief 022). `colour_style` and `label_height` (fix round, 2026-11-09) are left
+/// out at their defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WiringSettings {
+    pub scheme: Scheme,
+    pub digits: u8,
+    pub unclassified_prefix: String,
+    pub potentials: Vec<PotentialDef>,
+    #[serde(default = "iec", skip_serializing_if = "is_iec")]
+    pub colour_style: ColourStyle,
+    #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
+    pub label_height: f64,
+}
+
+impl Default for WiringSettings {
+    fn default() -> Self {
+        WiringSettings::from(&m::wiring::WiringSettings::default())
+    }
+}
+
+impl From<&m::wiring::WiringSettings> for WiringSettings {
+    fn from(w: &m::wiring::WiringSettings) -> Self {
+        WiringSettings {
+            scheme: match w.scheme {
+                m::wiring::Scheme::Potential => Scheme::Potential,
+                m::wiring::Scheme::Page => Scheme::Page,
+                m::wiring::Scheme::PageColumn => Scheme::PageColumn,
+            },
+            digits: w.digits,
+            unclassified_prefix: w.unclassified_prefix.clone(),
+            potentials: w
+                .potentials
+                .iter()
+                .map(|p| PotentialDef {
+                    name: p.name.clone(),
+                    prefix: p.prefix.clone(),
+                    numbered: p.numbered,
+                    colour: p.colour.clone(),
+                    cross_section: p.cross_section.clone(),
+                })
+                .collect(),
+            colour_style: match w.colour_style {
+                m::wiring::ColourStyle::Iec => ColourStyle::Iec,
+                m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
+        }
+    }
+}
+
+fn default_sheet() -> SheetSpec {
+    (&m::SheetSpec::default()).into()
+}
+
+fn is_default_sheet(s: &SheetSpec) -> bool {
+    *s == default_sheet()
+}
+
+fn default_step() -> u32 {
+    m::DEFAULT_PAGE_NUMBER_STEP
+}
+
+fn is_default_step(s: &u32) -> bool {
+    *s == m::DEFAULT_PAGE_NUMBER_STEP
+}
+
+fn default_style() -> ReferenceStyle {
+    ReferenceStyle::PageColumnRow
+}
+
+fn is_default_style(s: &ReferenceStyle) -> bool {
+    *s == ReferenceStyle::PageColumnRow
+}
+
+fn labels(l: m::GridLabels) -> GridLabels {
+    match l {
+        m::GridLabels::Letters => GridLabels::Letters,
+        m::GridLabels::Numbers => GridLabels::Numbers,
+    }
+}
+
+fn mlabels(l: GridLabels) -> m::GridLabels {
+    match l {
+        GridLabels::Letters => m::GridLabels::Letters,
+        GridLabels::Numbers => m::GridLabels::Numbers,
+    }
+}
+
+impl From<&m::SheetSpec> for SheetSpec {
+    fn from(s: &m::SheetSpec) -> Self {
+        SheetSpec {
+            width: s.width,
+            height: s.height,
+            columns: s.columns,
+            rows: s.rows,
+            column_labels: labels(s.column_labels),
+            row_labels: labels(s.row_labels),
+        }
+    }
+}
+
+impl From<WiringSettings> for m::wiring::WiringSettings {
+    fn from(w: WiringSettings) -> Self {
+        m::wiring::WiringSettings {
+            scheme: match w.scheme {
+                Scheme::Potential => m::wiring::Scheme::Potential,
+                Scheme::Page => m::wiring::Scheme::Page,
+                Scheme::PageColumn => m::wiring::Scheme::PageColumn,
+            },
+            digits: w.digits,
+            unclassified_prefix: w.unclassified_prefix,
+            potentials: w
+                .potentials
+                .into_iter()
+                .map(|p| m::wiring::PotentialDef {
+                    name: p.name,
+                    prefix: p.prefix,
+                    numbered: p.numbered,
+                    colour: p.colour,
+                    cross_section: p.cross_section,
+                })
+                .collect(),
+            colour_style: match w.colour_style {
+                ColourStyle::Iec => m::wiring::ColourStyle::Iec,
+                ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
+            },
+            label_height: w.label_height,
+        }
+    }
+}
+
+impl From<SheetSpec> for m::SheetSpec {
+    fn from(s: SheetSpec) -> Self {
+        m::SheetSpec {
+            width: s.width,
+            height: s.height,
+            columns: s.columns,
+            rows: s.rows,
+            column_labels: mlabels(s.column_labels),
+            row_labels: mlabels(s.row_labels),
+        }
+    }
+}
+
+fn default_padding() -> u8 {
+    m::DEFAULT_TAG_PADDING
+}
+
+fn is_default_padding(p: &u8) -> bool {
+    *p == m::DEFAULT_TAG_PADDING
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -218,6 +484,10 @@ pub enum ObjectRef {
     Component(ComponentId),
     Conductor(ConductorId),
     Cable(CableId),
+    /// Brief 019 (decision FP1).
+    Page(PageId),
+    /// Brief 019 (decision FP1).
+    Project,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -240,33 +510,140 @@ pub enum TxKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Op {
-    AddPage { id: PageId, page: Page, index: u64 },
-    RemovePage { id: PageId, page: Page, index: u64 },
-    AddLayer { id: LayerId, layer: Layer },
-    RemoveLayer { id: LayerId, layer: Layer },
-    AddItem { id: ItemId, item: Item },
-    ModifyItem { id: ItemId, before: Item, after: Item },
-    RemoveItem { id: ItemId, item: Item },
-    CreateComponent { id: ComponentId, component: Component },
-    DeleteComponent { id: ComponentId, component: Component },
-    AddTerminal { id: TerminalId, terminal: Terminal },
-    RemoveTerminal { id: TerminalId, terminal: Terminal },
-    LinkRepresentation { id: RepresentationId, rep: Representation },
-    ModifyRepresentation { id: RepresentationId, before: Representation, after: Representation },
-    UnlinkRepresentation { id: RepresentationId, rep: Representation },
-    CreateConductor { id: ConductorId, conductor: Conductor },
-    DeleteConductor { id: ConductorId, conductor: Conductor },
-    AttachEnd { conductor: ConductorId, end: End, before: Option<TerminalId>, after: Option<TerminalId> },
-    CreateCable { id: CableId, cable: Cable },
-    DeleteCable { id: CableId, cable: Cable },
-    AddCableMember { cable: CableId, index: u64, member: CableMember },
-    RemoveCableMember { cable: CableId, index: u64, member: CableMember },
-    SetProperty { object: ObjectRef, key: String, before: Option<String>, after: Option<String> },
-    EmbedDefinition { id: DefinitionId, definition: Definition },
-    RemoveDefinition { id: DefinitionId, definition: Definition },
-    SetProjectSettings { before: ProjectSettings, after: ProjectSettings },
-    NameVersion { name: String, at: u64 },
-    UnnameVersion { name: String, at: u64 },
+    AddPage {
+        id: PageId,
+        page: Page,
+        index: u64,
+    },
+    RemovePage {
+        id: PageId,
+        page: Page,
+        index: u64,
+    },
+    AddLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    RemoveLayer {
+        id: LayerId,
+        layer: Layer,
+    },
+    AddItem {
+        id: ItemId,
+        item: Item,
+    },
+    ModifyItem {
+        id: ItemId,
+        before: Item,
+        after: Item,
+    },
+    RemoveItem {
+        id: ItemId,
+        item: Item,
+    },
+    CreateComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    DeleteComponent {
+        id: ComponentId,
+        component: Component,
+    },
+    AddTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    RemoveTerminal {
+        id: TerminalId,
+        terminal: Terminal,
+    },
+    LinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    ModifyRepresentation {
+        id: RepresentationId,
+        before: Representation,
+        after: Representation,
+    },
+    UnlinkRepresentation {
+        id: RepresentationId,
+        rep: Representation,
+    },
+    CreateConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    DeleteConductor {
+        id: ConductorId,
+        conductor: Conductor,
+    },
+    AttachEnd {
+        conductor: ConductorId,
+        end: End,
+        before: Option<TerminalId>,
+        after: Option<TerminalId>,
+    },
+    CreateCable {
+        id: CableId,
+        cable: Cable,
+    },
+    DeleteCable {
+        id: CableId,
+        cable: Cable,
+    },
+    AddCableMember {
+        cable: CableId,
+        index: u64,
+        member: CableMember,
+    },
+    RemoveCableMember {
+        cable: CableId,
+        index: u64,
+        member: CableMember,
+    },
+    SetProperty {
+        object: ObjectRef,
+        key: String,
+        before: Option<String>,
+        after: Option<String>,
+    },
+    EmbedDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    RemoveDefinition {
+        id: DefinitionId,
+        definition: Definition,
+    },
+    SetProjectSettings {
+        before: ProjectSettings,
+        after: ProjectSettings,
+    },
+    NameVersion {
+        name: String,
+        at: u64,
+    },
+    UnnameVersion {
+        name: String,
+        at: u64,
+    },
+    /// Brief 019 (decision FP3).
+    AddFolder {
+        id: FolderId,
+        folder: Folder,
+        index: u64,
+    },
+    RemoveFolder {
+        id: FolderId,
+        folder: Folder,
+        index: u64,
+    },
+    ModifyFolder {
+        id: FolderId,
+        before: Folder,
+        after: Folder,
+    },
 }
 
 /// The current version of every op in schema version 1.
@@ -402,7 +779,32 @@ impl From<&m::Definition> for Definition {
                 .iter()
                 .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) })
                 .collect(),
+            bridges: d.bridges.clone(),
         }
+    }
+}
+
+impl From<&m::Page> for Page {
+    fn from(p: &m::Page) -> Self {
+        Page { title: p.title.clone(), properties: p.properties.clone() }
+    }
+}
+
+impl From<Page> for m::Page {
+    fn from(p: Page) -> Self {
+        m::Page { title: p.title, properties: p.properties }
+    }
+}
+
+impl From<&m::Folder> for Folder {
+    fn from(f: &m::Folder) -> Self {
+        Folder { name: f.name.clone(), parent: f.parent }
+    }
+}
+
+impl From<Folder> for m::Folder {
+    fn from(f: Folder) -> Self {
+        m::Folder { name: f.name, parent: f.parent }
     }
 }
 
@@ -413,6 +815,15 @@ impl From<&m::ProjectSettings> for ProjectSettings {
                 m::LengthUnit::Millimetre => LengthUnit::Millimetre,
                 m::LengthUnit::Inch => LengthUnit::Inch,
             },
+            tag_padding: s.tag_padding,
+            tag_prefixes: s.tag_prefixes.clone(),
+            wiring: WiringSettings::from(&s.wiring),
+            sheet: (&s.sheet).into(),
+            page_number_step: s.page_number_step,
+            reference_style: match s.reference_style {
+                m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
+                m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
+            },
         }
     }
 }
@@ -422,6 +833,8 @@ fn object(o: m::ObjectRef) -> ObjectRef {
         m::ObjectRef::Component(c) => ObjectRef::Component(c),
         m::ObjectRef::Conductor(c) => ObjectRef::Conductor(c),
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
+        m::ObjectRef::Page(p) => ObjectRef::Page(p),
+        m::ObjectRef::Project => ObjectRef::Project,
     }
 }
 
@@ -429,12 +842,8 @@ impl From<&m::Op> for Op {
     fn from(op: &m::Op) -> Self {
         let ix = |i: usize| i as u64;
         match op {
-            m::Op::AddPage { id, page, index } => {
-                Op::AddPage { id: *id, page: Page { title: page.title.clone() }, index: ix(*index) }
-            }
-            m::Op::RemovePage { id, page, index } => {
-                Op::RemovePage { id: *id, page: Page { title: page.title.clone() }, index: ix(*index) }
-            }
+            m::Op::AddPage { id, page, index } => Op::AddPage { id: *id, page: page.into(), index: ix(*index) },
+            m::Op::RemovePage { id, page, index } => Op::RemovePage { id: *id, page: page.into(), index: ix(*index) },
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
@@ -476,6 +885,15 @@ impl From<&m::Op> for Op {
             }
             m::Op::NameVersion { name, at } => Op::NameVersion { name: name.clone(), at: *at },
             m::Op::UnnameVersion { name, at } => Op::UnnameVersion { name: name.clone(), at: *at },
+            m::Op::AddFolder { id, folder, index } => {
+                Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) }
+            }
+            m::Op::RemoveFolder { id, folder, index } => {
+                Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) }
+            }
+            m::Op::ModifyFolder { id, before, after } => {
+                Op::ModifyFolder { id: *id, before: before.into(), after: after.into() }
+            }
         }
     }
 }
@@ -639,6 +1057,7 @@ impl From<Definition> for m::Definition {
                 .into_iter()
                 .map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) })
                 .collect(),
+            bridges: d.bridges,
         }
     }
 }
@@ -650,6 +1069,15 @@ impl From<ProjectSettings> for m::ProjectSettings {
                 LengthUnit::Millimetre => m::LengthUnit::Millimetre,
                 LengthUnit::Inch => m::LengthUnit::Inch,
             },
+            tag_padding: s.tag_padding,
+            tag_prefixes: s.tag_prefixes,
+            wiring: s.wiring.into(),
+            sheet: s.sheet.into(),
+            page_number_step: s.page_number_step,
+            reference_style: match s.reference_style {
+                ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
+                ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
+            },
         }
     }
 }
@@ -659,6 +1087,8 @@ fn mobject(o: ObjectRef) -> m::ObjectRef {
         ObjectRef::Component(c) => m::ObjectRef::Component(c),
         ObjectRef::Conductor(c) => m::ObjectRef::Conductor(c),
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
+        ObjectRef::Page(p) => m::ObjectRef::Page(p),
+        ObjectRef::Project => m::ObjectRef::Project,
     }
 }
 
@@ -666,12 +1096,8 @@ impl TryFrom<Op> for m::Op {
     type Error = ConvertError;
     fn try_from(op: Op) -> Result<Self, ConvertError> {
         Ok(match op {
-            Op::AddPage { id, page, index: i } => {
-                m::Op::AddPage { id, page: m::Page { title: page.title }, index: index(i)? }
-            }
-            Op::RemovePage { id, page, index: i } => {
-                m::Op::RemovePage { id, page: m::Page { title: page.title }, index: index(i)? }
-            }
+            Op::AddPage { id, page, index: i } => m::Op::AddPage { id, page: page.into(), index: index(i)? },
+            Op::RemovePage { id, page, index: i } => m::Op::RemovePage { id, page: page.into(), index: index(i)? },
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
@@ -711,6 +1137,13 @@ impl TryFrom<Op> for m::Op {
             }
             Op::NameVersion { name, at } => m::Op::NameVersion { name, at },
             Op::UnnameVersion { name, at } => m::Op::UnnameVersion { name, at },
+            Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
+            Op::RemoveFolder { id, folder, index: i } => {
+                m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? }
+            }
+            Op::ModifyFolder { id, before, after } => {
+                m::Op::ModifyFolder { id, before: before.into(), after: after.into() }
+            }
         })
     }
 }

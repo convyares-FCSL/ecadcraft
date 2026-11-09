@@ -1,0 +1,105 @@
+// The ECAD demo project: a small, generic motor control panel (owner request, 2026-11-08).
+// Built by `cargo xtask demo` through the MCP `execute` tool, one command per line; see
+// ecad/apps/ecad-mcp/src/demo.rs for the format (`as` keeps a result, `$name.path` uses it).
+// Coordinates are millimetres on the 5 mm grid from the paper's bottom-left corner (brief 019);
+// terminal positions follow the starter symbols. Brief 022: wires carry potentials, continuations
+// (placed before their wire, so it attaches) carry 24V and 0V across pages, and one T on page 2
+// is a junction.
+
+// ---------------------------------------------------------------- page 1: Supply
+{"command":"renamepage","params":{"page":"$page1","title":"Supply"}}
+{"command":"place","params":{"symbol":"terminal","at":[30,150],"tag":"X01"},"as":"x1"}
+{"command":"place","params":{"symbol":"terminal","at":[50,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"terminal","at":[70,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"mcb2","at":[30,120],"tag":"Q01"},"as":"q1"}
+{"command":"place","params":{"symbol":"psu","at":[40,85],"tag":"G01"},"as":"g1"}
+{"command":"wire","params":{"points":[[30,150],[30,130]],"potential":"L"}}
+{"command":"wire","params":{"points":[[50,150],[50,140],[40,140],[40,130]],"potential":"N"}}
+{"command":"wire","params":{"points":[[30,110],[30,100]],"potential":"L"}}
+{"command":"wire","params":{"points":[[40,110],[40,100]],"potential":"N"}}
+{"command":"wire","params":{"points":[[70,150],[70,105],[50,105],[50,100]],"potential":"PE"}}
+{"command":"place","params":{"symbol":"continuation","at":[35,55],"name":"24V"}}
+{"command":"place","params":{"symbol":"continuation","at":[45,55],"name":"0V"}}
+{"command":"wire","params":{"points":[[35,70],[35,55]]}}
+{"command":"wire","params":{"points":[[45,70],[45,55]]}}
+{"command":"setprop","params":{"component":"$x1.component","key":"description","value":"Incoming supply L / N / PE"}}
+{"command":"setprop","params":{"component":"$q1.component","key":"description","value":"Main breaker"}}
+{"command":"setprop","params":{"component":"$q1.component","key":"maker","value":"Generic"}}
+{"command":"setprop","params":{"component":"$q1.component","key":"part_number","value":"MCB-2P-C10"}}
+{"command":"setprop","params":{"component":"$g1.component","key":"description","value":"Power supply 24 V DC"}}
+{"command":"setprop","params":{"component":"$g1.component","key":"maker","value":"Generic"}}
+{"command":"setprop","params":{"component":"$g1.component","key":"part_number","value":"PSU-24V-5A"}}
+{"command":"setprop","params":{"component":"$g1.component","key":"location","value":"CP1"}}
+
+// ---------------------------------------------------------------- page 2: Motor control
+{"command":"newpage","params":{"title":"Motor control"}}
+// Control circuit, top to bottom.
+{"command":"place","params":{"symbol":"mcb1","at":[30,160],"tag":"Q02"},"as":"q2"}
+{"command":"place","params":{"symbol":"pbnc","at":[30,130],"tag":"S01"},"as":"s1"}
+{"command":"place","params":{"symbol":"pbno","at":[30,100],"tag":"S02"},"as":"s2"}
+{"command":"place","params":{"symbol":"coil","at":[30,65],"tag":"K01"},"as":"k1"}
+{"command":"place","params":{"symbol":"no","at":[65,100],"tag":"K01"}}
+{"command":"place","params":{"symbol":"lamp","at":[85,65],"tag":"H01"},"as":"h1"}
+{"command":"place","params":{"symbol":"continuation","at":[30,185],"rotation":180,"name":"24V"}}
+{"command":"wire","params":{"points":[[30,185],[30,170]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,150],[30,140]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,120],[30,110]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,110],[65,110]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,90],[65,90]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,90],[30,75]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[30,75],[85,75]],"potential":"24V"}}
+// 0V: the coil's wire runs to a continuation at the left, just above the title block; the lamp's
+// wire ends on its bend, so a junction joins them.
+{"command":"place","params":{"symbol":"continuation","at":[20,52.5],"rotation":270,"name":"0V"}}
+{"command":"wire","params":{"points":[[30,55],[30,52.5],[20,52.5]]}}
+{"command":"wire","params":{"points":[[85,55],[85,52.5],[30,52.5]]}}
+// Power circuit: the contactor's main contacts feed the motor on page 3 through cable -W01.
+{"command":"place","params":{"symbol":"power3","at":[130,110],"tag":"K01"}}
+{"command":"place","params":{"symbol":"continuation","at":[120,150],"rotation":180,"name":"L1"}}
+{"command":"place","params":{"symbol":"continuation","at":[130,150],"rotation":180,"name":"L2"}}
+{"command":"place","params":{"symbol":"continuation","at":[140,150],"rotation":180,"name":"L3"}}
+{"command":"wire","params":{"points":[[120,150],[120,120]]}}
+{"command":"wire","params":{"points":[[130,150],[130,120]]}}
+{"command":"wire","params":{"points":[[140,150],[140,120]]}}
+{"command":"wire","params":{"points":[[120,100],[120,70]],"potential":"L1"}}
+{"command":"wire","params":{"points":[[130,100],[130,70]],"potential":"L2"}}
+{"command":"wire","params":{"points":[[140,100],[140,70]],"potential":"L3"}}
+{"command":"cableslash","params":{"from":[115,82],"to":[145,88],"tag":"-W01"},"as":"w1"}
+{"command":"cableref","params":{"cable":"$w1.cable","at":[130,65]}}
+{"command":"setprop","params":{"component":"$q2.component","key":"description","value":"Control circuit breaker"}}
+{"command":"setprop","params":{"component":"$s1.component","key":"description","value":"Stop"}}
+{"command":"setprop","params":{"component":"$s2.component","key":"description","value":"Start"}}
+{"command":"setprop","params":{"component":"$k1.component","key":"description","value":"Pump contactor"}}
+{"command":"setprop","params":{"component":"$k1.component","key":"maker","value":"Generic"}}
+{"command":"setprop","params":{"component":"$k1.component","key":"part_number","value":"CT-9A-24VDC"}}
+{"command":"setprop","params":{"component":"$k1.component","key":"function","value":"PUMP"}}
+{"command":"setprop","params":{"component":"$h1.component","key":"description","value":"Pump running"}}
+
+// ---------------------------------------------------------------- page 3: Field
+{"command":"newpage","params":{"title":"Field"}}
+{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]},"as":"cont"}
+{"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
+{"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}
+{"command":"place","params":{"symbol":"terminal","at":[150,110],"tag":"X02"},"as":"x2c"}
+{"command":"connect","params":{"conductor":"$cont.routes.0.conductor","end":"$cont.routes.0.free_end","terminal":"$x2a.terminals.0.terminal"}}
+{"command":"connect","params":{"conductor":"$cont.routes.1.conductor","end":"$cont.routes.1.free_end","terminal":"$x2b.terminals.0.terminal"}}
+{"command":"connect","params":{"conductor":"$cont.routes.2.conductor","end":"$cont.routes.2.free_end","terminal":"$x2c.terminals.0.terminal"}}
+{"command":"place","params":{"symbol":"motor3","at":[130,75],"tag":"M01"},"as":"m1"}
+{"command":"wire","params":{"points":[[110,110],[110,100],[120,100],[120,90]]}}
+{"command":"wire","params":{"points":[[130,110],[130,90]]}}
+{"command":"wire","params":{"points":[[150,110],[150,100],[140,100],[140,90]]}}
+// The contactor's NC contact, on this page, shows "pump stopped".
+{"command":"place","params":{"symbol":"nc","at":[50,110],"tag":"K01"}}
+{"command":"place","params":{"symbol":"lamp","at":[50,75],"tag":"H02"},"as":"h2"}
+{"command":"place","params":{"symbol":"continuation","at":[50,135],"rotation":180,"name":"24V"}}
+{"command":"place","params":{"symbol":"continuation","at":[50,57.5],"name":"0V"}}
+{"command":"wire","params":{"points":[[50,135],[50,120]]}}
+{"command":"wire","params":{"points":[[50,100],[50,85]],"potential":"24V"}}
+{"command":"wire","params":{"points":[[50,65],[50,57.5]]}}
+{"command":"setprop","params":{"component":"$x2a.component","key":"description","value":"Motor terminals"}}
+{"command":"setprop","params":{"component":"$x2a.component","key":"location","value":"FIELD"}}
+{"command":"setprop","params":{"component":"$m1.component","key":"description","value":"Pump motor 0.75 kW"}}
+{"command":"setprop","params":{"component":"$m1.component","key":"maker","value":"Generic"}}
+{"command":"setprop","params":{"component":"$m1.component","key":"part_number","value":"MOT-075-4P"}}
+{"command":"setprop","params":{"component":"$m1.component","key":"location","value":"FIELD"}}
+{"command":"setprop","params":{"component":"$h2.component","key":"description","value":"Pump stopped"}}

@@ -248,13 +248,11 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
             }
         }
         assert!(r.h.p(|p| p.ledger.replay_matches().unwrap()), "step {step}: replay");
-        // Worker, 014 fix round 3: both pages are open; a commit redraws only the page shown and
-        // marks the other stale when its reference ends changed. The page shown must equal a fresh
-        // projection now, and each page must once it is brought to the front.
+        // One page window (brief 016): the active page must equal a fresh projection now, and
+        // each page must once it is made active.
         r.h.check_with(true);
         for p in [r.supply, r.field] {
             r.h.activate(p);
-            assert!(!r.h.p(|x| x.pages[&p].stale), "step {step}: page stale in front");
             r.h.check_with(true);
         }
         // And the per-cable derivation is the whole-document one, cable by cable.

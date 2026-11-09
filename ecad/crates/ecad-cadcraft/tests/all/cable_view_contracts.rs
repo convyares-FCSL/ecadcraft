@@ -1,7 +1,7 @@
 //! Brief 005 (traditional / fan cable view), written from the brief and design 005 (§2 rules, §3
 //! switching, §4 what each view shows, §5 fan geometry, §6 editing in fan view, §7 remembering).
 //!
-//! Fixture G (design §9): two drawn components with terminals at x = 0 and x = 60, y = 0, 5, 10,
+//! Fixture G (design §9): two drawn components with connection points at x = 0 and x = 60, y = 0, 5, 10,
 //! three attached wires W0, W5, W10 between them, and the slash C1 from (28,-3) to (32,18).
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -302,7 +302,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     assert_eq!(prompt(&g.h), "Select wire near the end to connect:");
     g.h.s.input(Input::Enter).unwrap();
     assert_eq!(g.h.head(), head);
-    // Convert to Component and Add Terminal on a fan line.
+    // Convert to Component and Add Connection Point on a fan line.
     let e = g.h.run("convertcomponent", json!({"handles": [fans[3].hex()]})).unwrap_err();
     assert!(e.contains(FAN_REFUSED), "{e}");
     let e = g.h.run("addterminal", json!({"handle": fans[3].hex(), "at": [1, 1]})).unwrap_err();

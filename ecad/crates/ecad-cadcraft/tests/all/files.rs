@@ -74,13 +74,13 @@ fn save_close_and_reopen_keep_connectivity_ids_and_history() {
     assert!(!h.p(|p| p.unsaved()));
     h.check();
     let live = h.doc();
-    let log = h.p(|p| p.ledger.log().to_vec());
+    let log = h.p(|p| p.ledger.full_log().unwrap());
     let wire_end = h.route_ends(first, w).0;
     assert!(wire_end.near(Pt::new(40.0, 15.0), 1e-9), "the wire end followed the move");
 
     // Closing the project lets go of the file: another session could now write it.
     close_all(&mut h.s);
-    let probe = ecad_file::DiskProject::open(std::path::Path::new(&path), 1, "probe").unwrap();
+    let probe = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(&path), 1, "probe").unwrap();
     assert!(probe.project.read_only().is_none(), "the writer lock was released on close");
     drop(probe);
 
@@ -91,7 +91,7 @@ fn save_close_and_reopen_keep_connectivity_ids_and_history() {
     assert!(!summary.contains("read-only"), "{summary}");
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live, "the same objects, IDs, connections and pages");
-    assert_eq!(h2.p(|p| p.ledger.log().to_vec()), log, "the same history");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "the same history");
     assert!(!h2.p(|p| p.unsaved()));
     assert_eq!(h2.doc().page_order.len(), 2);
     h2.check();
@@ -167,26 +167,22 @@ fn opening_a_file_that_is_not_a_project_reports_why() {
     std::fs::write(&p, b"hello\n").unwrap();
     let mut s = Session::empty();
     let e = ProjectHandle::open_file(&mut s, &p, 1).err().unwrap();
-    assert!(e.contains("could not open") && e.contains("header"), "{e}");
+    assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
     assert!(s.docs.is_empty());
     assert!(ProjectHandle::open_file(&mut s, &d.path("missing"), 1).is_err());
 }
 
+/// The read-only open (an agent with writes off) refuses a file that is not a project in the
+/// same words.
 #[test]
-fn an_unconfirmed_first_save_still_counts_as_unsaved() {
-    let d = TempDir::new("unconfirmed");
-    let mut h = H::new(34);
-    h.cfg(|p| p.persistence = Persistence::File);
-    assert!(!h.p(|p| p.unsaved()), "an untouched new project has nothing to lose");
-    // The first Save As replaces its target, but the folder flush fails.
-    h.cfg(|p| p.file.faults.fail_dir_sync = true);
-    let e = h.run("saveas", json!({"path": d.path("p")})).unwrap_err();
-    assert!(e.contains("could not confirm the change is durable"), "{e}");
-    assert!(h.p(|p| p.unsaved()), "nothing is acknowledged, even the creation transaction");
-    assert!(h.p(|p| p.file_status().unconfirmed));
-    assert!(h.s.close_needs_prompt(0), "closing the last page asks Save/Discard/Cancel");
-    // The next Save confirms it.
-    h.run("qsave", Value::Null).unwrap();
-    assert!(!h.p(|p| p.unsaved()));
-    assert!(!h.p(|p| p.file_status().unconfirmed));
+fn opening_a_non_project_read_only_reports_why() {
+    let d = TempDir::new("notproject-ro");
+    let p = d.path("notes.ecad");
+    std::fs::write(
+        &p, b"hello
+",
+    )
+    .unwrap();
+    let e = ecad_cadcraft::file::Binding::open_read_only(&p, 1, "test").err().unwrap();
+    assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
 }

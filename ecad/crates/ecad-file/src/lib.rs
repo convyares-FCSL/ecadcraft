@@ -39,6 +39,7 @@ pub mod disk;
 pub mod read;
 pub mod record;
 pub mod v1;
+pub mod v2;
 pub mod write;
 
 pub use crc::crc32c;

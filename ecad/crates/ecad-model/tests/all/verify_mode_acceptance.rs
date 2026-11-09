@@ -39,11 +39,7 @@ fn child_probe() {
     assert!(doc.check().is_err(), "the checkpoint is invalid");
     let mut ledger = Ledger::from_checkpoint(doc, 0, Vec::new(), 1).unwrap();
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ledger.commit(
-            Author::User,
-            "unrelated",
-            vec![Op::AddPage { id: PageId(9), page: Page { title: "1".into() }, index: 0 }],
-        )
+        ledger.commit(Author::User, "unrelated", vec![Op::AddPage { id: PageId(9), page: Page::new("1"), index: 0 }])
     }));
     let verdict = match r {
         Ok(Ok(_)) => "VERDICT=accepted".to_string(),
@@ -96,8 +92,7 @@ fn replay_verified_runs_the_full_check_in_any_build() {
     // Verify replay of a log is the debugger's switch; it must agree with plain replay on a
     // valid log and refuse the same invalid one.
     let mut l = Ledger::new(5);
-    l.commit(Author::User, "p", vec![Op::AddPage { id: PageId(1), page: Page { title: "1".into() }, index: 0 }])
-        .unwrap();
+    l.commit(Author::User, "p", vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }]).unwrap();
     l.commit(Author::User, "l", vec![Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } }]).unwrap();
     l.undo(Author::User).unwrap();
     l.redo(Author::User).unwrap();
@@ -117,7 +112,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
         Author::User,
         "setup",
         vec![
-            Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
+            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::CreateComponent { id: c, component: Component::default() },
             Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },

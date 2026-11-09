@@ -58,7 +58,7 @@ impl Client {
         serde_json::from_str(r["content"][0]["text"].as_str().unwrap()).unwrap()
     }
     fn log(&mut self) -> Vec<Transaction> {
-        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.log().to_vec()).unwrap()).unwrap()
+        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.full_log().unwrap()).unwrap()).unwrap()
     }
     fn doc(&mut self) -> Document {
         self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap()
@@ -94,7 +94,7 @@ impl Direct {
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
-        self.p.read(&mut self.s, |p, _| p.ledger.log().to_vec()).unwrap()
+        self.p.read(&mut self.s, |p, _| p.ledger.full_log().unwrap()).unwrap()
     }
     fn doc(&mut self) -> Document {
         self.p.read(&mut self.s, |p, _| p.ledger.document().clone()).unwrap()
@@ -316,7 +316,8 @@ fn with_writes_off_every_catalogued_command_but_the_read_ones_is_refused_and_not
     let mut checked = 0;
     for spec in cadcraft_engine::command_specs() {
         let id = spec.id;
-        if policy::READ_COMMANDS.contains(&id) {
+        // Brief 019: `pageprops {}` and `projectprops {}` only read.
+        if policy::READ_COMMANDS.contains(&id) || policy::reads_only(id, &json!({})) {
             continue;
         }
         let r = c.exec_raw(id, json!({}));
@@ -479,7 +480,7 @@ fn saving_in_a_folder_with_spaces_and_reopening_without_ecad_mcp_shows_the_agent
     ecad_cadcraft::install();
     let mut s = Session::empty();
     let (p, _) = ProjectHandle::open_file(&mut s, &path, 1).unwrap();
-    let log = p.read(&mut s, |p, _| p.ledger.log().to_vec()).unwrap();
+    let log = p.read(&mut s, |p, _| p.ledger.full_log().unwrap()).unwrap();
     let labels: Vec<&str> = log.iter().map(|t| t.label.as_str()).collect();
     assert_eq!(log.len(), 7, "create, 3 wires, slash, undo, redo: {labels:?}");
     assert_eq!(log[0].author, Author::User, "the person created it (--create)");
@@ -763,6 +764,7 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
     assert_eq!(code, Some(0), "{err}");
     // --create on an existing file is refused, and the file is kept.
     let bytes = std::fs::read(&path).unwrap();
+    let history_before = history_of(&path);
     let (_, code, err) = run_binary(&["--create", &path], b"", &dir);
     assert_ne!(code, Some(0), "{err}");
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
@@ -802,5 +804,16 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
     drop(fin);
     let out = first.wait_with_output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(std::fs::read(&path).unwrap(), bytes, "nobody wrote");
+    // The first server opened the file for writing (redb updates its own bookkeeping on open and
+    // close, brief 021), so compare what the file holds: the same history, nothing saved.
+    let _ = bytes;
+    assert_eq!(history_of(&path), history_before, "nobody saved");
+}
+
+/// The whole history a version 2 file holds, as `ecadinspect export-jsonl` writes it.
+fn history_of(path: &str) -> Vec<u8> {
+    let store = ecad_file::v2::Store::open(std::path::Path::new(path), false).unwrap();
+    let mut out = Vec::new();
+    ecad_file::v2::inspect::export_jsonl(&store, false, &mut out).unwrap();
+    out
 }

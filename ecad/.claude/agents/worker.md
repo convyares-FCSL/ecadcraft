@@ -24,8 +24,9 @@ Rules:
   the tester, where `ecad/CLAUDE.md` calls for one) decides that.
 - Before every commit, make sure it builds and is clean: `cargo fmt --all -- --check` and
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` (plus `cargo xtask patches`
-  when files outside `ecad/` changed), using the shared build folder `ecad/CLAUDE.md` names
-  (`CARGO_TARGET_DIR=C:/dev/ecad-target`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`). Then
+  when files outside `ecad/` changed), in the feature folder's own build folder
+  (`CARGO_TARGET_DIR` unset, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`; see "Builds" in
+  `ecad/CLAUDE.md`). Say in your report when you have stopped building, so the owner can build. Then
   run the tests of what you changed: `cargo xtask test-changed` (the fast tests of the crates you
   touched and of every crate that depends on them), plus any of your new tests you marked slow
   (`cargo test -p <crate> <name> -- --include-ignored`). Never the whole workspace: the full suite,

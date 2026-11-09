@@ -102,17 +102,15 @@ impl H {
         self.pv(|p, pg| pg.index_of(p.pages.get(&page)?.uid?))
     }
 
-    /// Bring `page`'s tab to the front, as a click on it does in the trial: the tab switches, then
-    /// the trial's per-frame `refresh_shown` redraws it if a commit elsewhere left it stale.
+    /// Make `page` the active page, as a click on its row in the trial's Project panel does
+    /// (brief 016: one page window, the page projected into it).
     pub fn activate(&mut self, page: PageId) {
-        self.activate_tab_only(page);
-        self.project.refresh_shown(&mut self.s).expect("project not busy");
+        self.project.open_page(&mut self.s, page).expect("page shown");
     }
 
-    /// Switch the active tab without the per-frame redraw that follows in the trial.
+    /// [`Harness::activate`] (kept for the tests written when each page had its own tab).
     pub fn activate_tab_only(&mut self, page: PageId) {
-        let i = self.page_index(page).expect("page open");
-        self.s.active = i;
+        self.activate(page);
     }
 
     pub fn first_page(&mut self) -> PageId {
@@ -201,9 +199,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
         for (page, view) in &p.pages {
             let Some(uid) = view.uid else { continue };
             let Some(st) = pg.doc(uid) else { panic!("open page without a document") };
-            // A stale page (a commit elsewhere changed its reference texts) is redrawn when it
-            // comes to the front, not before (owner, 2026-11-08); `activate` redraws it.
-            if view.unavailable || view.stale {
+            if view.unavailable {
                 continue;
             }
             // 1. projecting the document equals the engine drawing.

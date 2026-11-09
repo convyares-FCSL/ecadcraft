@@ -1,7 +1,7 @@
 //! Independent tester's UI checks for brief 008, written from the brief and design 008 only, driving
 //! the trial headless (egui_kittest, elements by name) in a 1280×800 window.
 //!
-//! - AC3: the quick-start example built with terminals placed by **clicks** (Midpoint override
+//! - AC3: the quick-start example built with connection points placed by **clicks** (Midpoint override
 //!   typed, as design §5 describes) gives the same structure as the same example built by JSON.
 //! - Owner answer Q4: a typed point near (not on) a terminal does not attach, even with the pointer
 //!   resting on the drawing (Dynamic Input must not turn a typed value into a cursor capture).
@@ -23,7 +23,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 /// Texture updates in order: `Some(image)` sets, `None` frees.
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
+pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).
 struct Collect(Deltas);
@@ -38,7 +38,7 @@ impl egui_kittest::TestRenderer for Collect {
     }
 }
 
-fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
+pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
@@ -62,13 +62,13 @@ fn harness() -> Harness<'static, Trial> {
     harness_with(None)
 }
 
-fn doc(h: &mut Harness<'static, Trial>) -> Document {
+pub(crate) fn doc(h: &mut Harness<'static, Trial>) -> Document {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
 }
 
-fn head(h: &mut Harness<'static, Trial>) -> u64 {
+pub(crate) fn head(h: &mut Harness<'static, Trial>) -> u64 {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
@@ -82,16 +82,16 @@ fn unsaved(h: &mut Harness<'static, Trial>) -> (bool, Vec<bool>) {
     (project, tabs)
 }
 
-fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
+pub(crate) fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("canvas laid out").to_screen(Vec2::new(x, y))
 }
 
-fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
+pub(crate) fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
     h.event(Event::PointerMoved(at));
     h.run_steps(2);
 }
 
-fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
+pub(crate) fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
     pointer_to(h, at);
     for pressed in [true, false] {
         h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
@@ -99,7 +99,7 @@ fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
     h.run_steps(2);
 }
 
-fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
+pub(crate) fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
     if !text.is_empty() {
         h.event(Event::Text(text.into()));
         h.run_steps(1);
@@ -108,16 +108,16 @@ fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {
     h.run_steps(2);
 }
 
-fn button(h: &mut Harness<'static, Trial>, label: &str) {
+pub(crate) fn button(h: &mut Harness<'static, Trial>, label: &str) {
     h.get_by_label(label).click();
     h.run_steps(3);
 }
 
-fn prompt(h: &Harness<'static, Trial>) -> String {
+pub(crate) fn prompt(h: &Harness<'static, Trial>) -> String {
     h.state().cad.session.current_prompt().map(|p| p.display()).unwrap_or_default()
 }
 
-fn ok(h: &mut Harness<'static, Trial>, line: &str) {
+pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
     let e = h.state_mut().submit_command(line);
     assert!(e.is_none(), "{line}: {e:?}");
     h.run_steps(2);
@@ -196,7 +196,7 @@ fn canon(d: &Document) -> Vec<String> {
 fn component_by_clicks(h: &mut Harness<'static, Trial>) {
     ok(h, "line 0,0 40,0 40,20 0,20 c");
     view(h);
-    let (a, b) = (screen(h, -10.0, 30.0), screen(h, 50.0, -10.0));
+    let (a, b) = (screen(h, -15.0, 30.0), screen(h, 50.0, -10.0));
     click(h, a);
     click(h, b);
     assert_eq!(h.state().cad.session.selection().len(), 4);
@@ -205,7 +205,7 @@ fn component_by_clicks(h: &mut Harness<'static, Trial>) {
     assert_eq!(doc(h).components.len(), 1);
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(2);
-    button(h, "Add Terminal");
+    button(h, "Add Connection Point");
     for (x, y) in [(40.0, 10.0), (0.0, 10.0)] {
         type_enter(h, "mid");
         // A few pixels off the middle of the edge: the Midpoint override snaps there.
@@ -213,7 +213,7 @@ fn component_by_clicks(h: &mut Harness<'static, Trial>) {
         click(h, near);
     }
     type_enter(h, "");
-    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
+    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Connection Point");
 }
 
 fn coil_and_wire_by_clicks(h: &mut Harness<'static, Trial>) {
@@ -233,7 +233,7 @@ fn coil_and_wire_by_clicks(h: &mut Harness<'static, Trial>) {
     assert!(h.state().cad.session.running.is_none(), "a click on a terminal finishes the wire");
 }
 
-/// AC3 / design check E with terminals placed by clicks: the result has the structure of the same
+/// AC3 / design check E with connection points placed by clicks: the result has the structure of the same
 /// example built by JSON lines (IDs aside; bends to screen precision are snapped to the grid below).
 #[test]
 fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
@@ -247,7 +247,17 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     // The JSON version of the same example in a second trial.
     let mut j = harness();
     ok(&mut j, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = j.state().cad.session.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> = j
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle.hex())
+        .collect();
     ok(&mut j, &format!("convertcomponent {}", json!({ "handles": lines })));
     let edge = |j: &Harness<'static, Trial>, x: f64| {
         j.state()
@@ -257,6 +267,7 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
             .unwrap()
             .model
             .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
             .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x))
             .map(|e| e.handle.hex())
             .unwrap()
@@ -264,7 +275,8 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     let (right, left) = (edge(&j, 40.0), edge(&j, 0.0));
     ok(&mut j, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
     ok(&mut j, &format!("addterminal {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
-    ok(&mut j, r#"place {"at":[100,0],"rotation":90}"#);
+    // Place Symbol by clicks places the starter coil, a device (brief 018).
+    ok(&mut j, r#"place {"symbol":"coil","at":[100,0],"rotation":90}"#);
     ok(&mut j, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let mut by_clicks = doc(&mut h);
     // Clicked bends land within a pixel of 70,10 and 70,0; put them on the grid to compare.
@@ -318,7 +330,7 @@ fn q4_a_typed_point_near_a_terminal_does_not_attach_in_the_ui() {
 }
 
 /// Design §9: during Wire, Ctrl+Z removes the last point (it does not undo the last committed
-/// object nor end the command); Space is Enter at the Add Terminal prompt.
+/// object nor end the command); Space is Enter at the Add Connection Point prompt.
 #[test]
 fn ctrl_z_during_wire_removes_the_last_point_and_space_is_enter() {
     let mut h = harness();
@@ -341,13 +353,13 @@ fn ctrl_z_during_wire_removes_the_last_point_and_space_is_enter() {
     assert_eq!(prompt(&h), "Specify next point or [Undo]:", "one point is left");
     h.key_press(Key::Escape);
     h.run_steps(2);
-    // Space as Enter ends Add Terminal at its point prompt.
-    button(&mut h, "Add Terminal");
+    // Space as Enter ends Add Connection Point at its point prompt.
+    button(&mut h, "Add Connection Point");
     let started = h.state().cad.session.running.is_some();
     // A space typed at a point prompt (egui sends it as text) is Enter.
     h.event(Event::Text(" ".into()));
     h.run_steps(2);
-    assert!(started && h.state().cad.session.running.is_none(), "Space ends Add Terminal");
+    assert!(started && h.state().cad.session.running.is_none(), "Space ends Add Connection Point");
 }
 
 /// AC5: hovering the terminal ring names the terminal; hovering writes nothing (head, selection,
@@ -359,7 +371,17 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
-    let lines: Vec<String> = h.state().cad.session.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> = h
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle.hex())
+        .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     let right = h
         .state()
@@ -369,6 +391,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -381,6 +404,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 0.0 && l.b.x == 0.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -395,9 +419,12 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
     // Each terminal ring in turn: free drawn (2 at 0,10), free symbol (A2 at 110,0), connected
     // drawn (1 at 40,10, where the wire ends), connected symbol (A1 at 90,0).
     let mut seen = Vec::new();
-    for (x, y, want) in
-        [(0.0, 10.0, "Terminal 2"), (110.0, 0.0, "Terminal A2"), (40.0, 10.0, "Terminal 1"), (90.0, 0.0, "Terminal A1")]
-    {
+    for (x, y, want) in [
+        (0.0, 10.0, "Connection point 2"),
+        (110.0, 0.0, "Connection point A2"),
+        (40.0, 10.0, "Connection point 1"),
+        (90.0, 0.0, "Connection point A1"),
+    ] {
         let p = screen(&h, x, y);
         pointer_to(&mut h, p);
         h.run_steps(3);
@@ -458,7 +485,17 @@ fn overlay_shapes(h: &Harness<'static, Trial>) -> Vec<(Pos2, f32, egui::Color32,
 fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = h.state().cad.session.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> = h
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle.hex())
+        .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     ok(&mut h, r#"wire {"points":[[90,0],[90,-20]]}"#);
@@ -521,7 +558,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 
 /// Render the harness's last frame with egui-wgpu (the canvas uses its CPU path in tests, so the
 /// frame is plain egui shapes) and save it as PNG. `None` when no adapter is available.
-fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
@@ -650,19 +687,19 @@ fn ac6_reference_screenshots() {
     // Check E's drawing (terminals typed, as in E), then `zoom e`.
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
-    let (a, b) = (screen(&h, -10.0, 30.0), screen(&h, 50.0, -10.0));
+    let (a, b) = (screen(&h, -15.0, 30.0), screen(&h, 50.0, -10.0));
     click(&mut h, a);
     click(&mut h, b);
     button(&mut h, tools::TAB);
     button(&mut h, "Convert to Component");
-    button(&mut h, "Add Terminal");
+    button(&mut h, "Add Connection Point");
     type_enter(&mut h, "40,10");
     type_enter(&mut h, "0,10");
     type_enter(&mut h, "");
     coil_and_wire_by_clicks(&mut h);
     ok(&mut h, r#"wire {"points":[[0,30],[20,30]]}"#);
     h.state_mut().cad.session.set_selection(Vec::new());
-    ok(&mut h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     let away = screen(&h, 60.0, 40.0);
     pointer_to(&mut h, away);
     h.run_steps(3);
@@ -747,7 +784,17 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = h.state().cad.session.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> = h
+        .state()
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle.hex())
+        .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     view(&mut h);

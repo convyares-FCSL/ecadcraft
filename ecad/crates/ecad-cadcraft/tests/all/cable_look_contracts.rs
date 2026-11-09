@@ -4,7 +4,7 @@
 //! item) and hover (§8). Every `cablecore` check drives the JSON form, so it can move to the MCP
 //! harness once brief 011 is merged.
 //!
-//! Fixture H (design §10): two drawn components with terminals at x = 0 and x = 120,
+//! Fixture H (design §10): two drawn components with connection points at x = 0 and x = 120,
 //! y = 0, 5, 10, 15; four attached wires W1–W4 between them; the slash C1 from (58,-3) to (62,18),
 //! with designation `MOTOR M1` and type `4/C #10`.
 #![cfg(not(target_arch = "wasm32"))]
@@ -523,7 +523,7 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     let h_point = f.h.handle_of(f.page, point);
     let lines = f.h.p(|p| hover_lines(p, uid, h_point)).unwrap();
     // Combined trial with 010: a reference end hovers with 010's lens (one source of hover text).
-    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  /?"), "{lines:?}");
+    assert_eq!(lines.first().map(String::as_str), Some("Cable reference  ?"), "{lines:?}");
     // ERASE the reference point: both ends fan again; `u` brings it back.
     f.h.run("erase", json!({"handles": [h_point.hex()]})).unwrap();
     assert!(!f.h.doc().representations.contains_key(&rep));

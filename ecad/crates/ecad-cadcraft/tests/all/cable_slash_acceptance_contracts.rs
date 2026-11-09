@@ -333,7 +333,7 @@ fn ac3_save_close_reopen_keeps_cable_members_order_and_slash() {
     let path = dir.path("slash.ecad");
     f.h.run("saveas", json!({"path": path})).unwrap();
     let live = f.h.doc();
-    let log = f.h.p(|p| p.ledger.log().to_vec());
+    let log = f.h.p(|p| p.ledger.full_log().unwrap());
     close_all(&mut f.h.s);
 
     let mut s = Session::empty();
@@ -342,7 +342,7 @@ fn ac3_save_close_reopen_keeps_cable_members_order_and_slash() {
     let d = h2.doc();
     assert_eq!(d, live, "same cable, members, order, slash item and representation");
     assert_eq!(members(&d, k), vec![f.w10, f.w5, f.w0]);
-    assert_eq!(h2.p(|p| p.ledger.log().to_vec()), log, "same history");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "same history");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay equals the live state");
     h2.check();
     let (rid, rep) = d.representations_of(Subject::Cable(k)).next().unwrap();

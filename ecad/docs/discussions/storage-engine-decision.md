@@ -4,7 +4,7 @@ Status: **Decided: redb** (owner, 2026-11-08). The earlier recommendation of our
 **withdrawn**; §9 explains why. Sections 1–8 are kept as the record of how the decision was reached.
 
 Related: `discussions/history-and-branches.md` (the model: one log per branch, versions as
-snapshots, content-addressed chunks and assets), EEP-0005 (container v2, draft), and the spike report
+snapshots, content-addressed chunks and assets), EEP-0005 (container v2, accepted and built by brief 021), and the spike report
 `worker` notes `spike-storage-report.md`.
 
 ---

@@ -92,7 +92,11 @@ fn views_of(h: &mut Harness<'static, Trial>) -> Value {
 #[allow(dead_code)]
 fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer == views::LAYER).count()
+    d.model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer == views::LAYER)
+        .count()
 }
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
@@ -274,7 +278,16 @@ fn drawn_near(img: &egui::ColorImage, at: Pos2, r: i32) -> bool {
 /// y = 0, 5, 10, 15.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let before: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -283,6 +296,7 @@ fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -315,7 +329,7 @@ fn fixture(h: &mut Harness<'static, Trial>, right: bool) -> (String, Vec<String>
     for (k, v) in [("designation", "MOTOR M1"), ("type", "4/C #10")] {
         h.state_mut().cad.run("setprop", json!({"cable": cable, "key": k, "value": v})).unwrap();
     }
-    ok(h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(3);
     (cable, wires)
@@ -399,7 +413,9 @@ fn the_core_label_entry_is_in_wiring_after_cable_view() {
     // Combined trial of briefs 009 and 010 (overseer decision): Core Label, Cable Join, then 010's
     // three buttons, then Add to Cable.
     assert_eq!(at("ecad.cablefan"), at("ecad.cablecore") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cableadd"), at("ecad.cablegoto") + 1, "{ids:?}");
+    // Brief 016 puts Preview Reference after Go to Reference.
+    assert_eq!(at("ecad.cablepreview"), at("ecad.cablegoto") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cableadd"), at("ecad.cablepreview") + 1, "{ids:?}");
 }
 
 /// Check A and the reference screenshots of design §10 for fixture H.
@@ -523,7 +539,7 @@ fn one_sided_fan_reference_screenshot() {
     h.state_mut().cad.run("cablecore", json!({"cable": cable, "cores": cores})).unwrap();
     reference_end(&mut h, &cable, (125.0, 21.25));
     h.state_mut().cad.run("cableview", json!({"cable": cable, "view": "fan"})).unwrap();
-    ok(&mut h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let away = screen(&h, 60.0, 45.0);
@@ -562,7 +578,7 @@ fn moved_join_reference_screenshot() {
     assert_eq!(r["at"], json!([22.5, 15.0]), "clamped to the top core");
     let r = h.state_mut().cad.run("cablefan", json!({"cable": cable, "end": "B", "at": [97.5, -100]})).unwrap();
     assert_eq!(r["at"], json!([97.5, 0.0]), "clamped to the bottom core");
-    ok(&mut h, "zoom e");
+    assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let away = screen(&h, 60.0, 45.0);
@@ -590,18 +606,16 @@ fn lineweight_display_keeps_the_users_choice_across_projects() {
     h.state_mut().cad.session.settings.lwdisplay = false;
     let path = work.0.join("lw.ecad").display().to_string();
     h.state_mut().save_as(&path).unwrap();
-    while !h.state().cad.session.docs.is_empty() {
-        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
-    }
+    // Closing the project (the Project panel's Close; nothing unsaved, so nothing is asked).
+    h.state_mut().close_project();
     h.run_steps(2);
     assert!(!h.state().project_open());
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(2);
     assert!(!h.state().cad.session.settings.lwdisplay, "the user's choice is kept on the next open");
     // And a new project after that keeps it too.
-    while !h.state().cad.session.docs.is_empty() {
-        h.state_mut().cad.session.execute("close", &json!({"index": 0})).unwrap();
-    }
+    // Closing the project (the Project panel's Close; nothing unsaved, so nothing is asked).
+    h.state_mut().close_project();
     h.state_mut().new_project().unwrap();
     assert!(!h.state().cad.session.settings.lwdisplay, "kept for a new project");
 }

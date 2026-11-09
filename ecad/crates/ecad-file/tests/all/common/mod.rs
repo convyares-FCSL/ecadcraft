@@ -31,6 +31,7 @@ pub fn style(layer: LayerId) -> Style {
 
 pub fn coil(graphics_scale: f64) -> Definition {
     Definition {
+        bridges: Vec::new(),
         name: "Coil".into(),
         origin: None,
         graphics: vec![
@@ -125,11 +126,11 @@ pub fn fixture() -> Fixture {
     f.commit(
         "New project",
         vec![
-            Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
+            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
-                after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
             },
         ],
     );

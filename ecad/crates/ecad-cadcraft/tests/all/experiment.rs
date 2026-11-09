@@ -155,13 +155,14 @@ fn scenario_s1_to_s16() {
         id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (30.0, 20.0)])})).unwrap(), "conductor");
     let cable = h.run("cableadd", json!({"conductors": [w2_hex(w3), w2_hex(w4)], "tag": "-W1"})).unwrap();
     h.run("setprop", json!({"component": c1b.hex(), "key": "tag", "value": "-K2"})).unwrap();
-    let (i1, i2) = (h.page_index(p1).unwrap(), h.page_index(p2).unwrap());
-    assert!(h.s.doc_unsaved(i1) && h.s.doc_unsaved(i2), "both page tabs show unsaved");
+    let i2 = h.page_index(p2).unwrap();
+    assert!(h.s.doc_unsaved(i2), "the page window shows unsaved");
+    assert_eq!(h.page_index(p1), None, "one page window: page 1 is not shown");
     assert!(h.p(|p| p.ledger.is_unsaved()), "head differs from the persisted position");
 
     // S11: project-wide undo from page 1 changes page 2.
-    h.activate(p1);
     let w4_route = h.route_handle(p2, w4);
+    h.activate(p1);
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
@@ -169,15 +170,9 @@ fn scenario_s1_to_s16() {
     assert!(!doc.components[&c1b].properties.contains_key("tag"), "SETPROP undone");
     assert!(doc.cables.is_empty(), "cable undone");
     assert!(!doc.conductors.contains_key(&w4), "WIRE on page 2 undone");
-    // Only the page in front is redrawn by undo (owner, 2026-11-08): page 2 is marked stale and
-    // still shows the wire until it comes to the front.
-    assert!(h.p(|p| p.pages[&p2].stale), "page 2 is marked stale by the undo on page 1");
-    assert!(h.pv(|p, pg| pg.entities_of(p, p2)).iter().any(|e| e.handle == w4_route), "page 2 not redrawn yet");
-    h.activate(p2);
-    assert!(
-        h.pv(|p, pg| pg.entities_of(p, p2)).iter().all(|e| e.handle != w4_route),
-        "page 2's drawing was updated when it came to the front"
-    );
+    // Brief 016 (AC8): the undo of the wire on page 2 brings page 2 to the front, without it.
+    assert_eq!(h.p(|p| p.active_page()), Some(p2), "the undo on page 2 brought page 2 to the front");
+    assert!(h.pv(|p, pg| pg.entities_of(p, p2)).iter().all(|e| e.handle != w4_route), "page 2 shows the undo");
     h.activate(p1);
     for _ in 0..3 {
         h.run("redo", Value::Null).unwrap();
@@ -189,9 +184,12 @@ fn scenario_s1_to_s16() {
         "redo recreates the same cable ID"
     );
 
-    // S12: close page 2's tab (no prompt), reopen it.
+    // S12: close the page window showing page 2 (the trial's `keep_open`: no prompt, the project
+    // stays open), then show it again.
+    h.activate(p2);
+    h.cfg(|p| p.keep_open = true);
     let i2 = h.page_index(p2).unwrap();
-    assert!(!h.s.close_needs_prompt(i2), "closing a page tab never prompts");
+    assert!(!h.s.close_needs_prompt(i2), "closing the page window never prompts with keep_open");
     h.run("close", json!({"index": i2})).unwrap();
     assert!(h.p(|p| p.ledger.is_unsaved()), "the project and its unsaved work stay open");
     assert_eq!(h.s.ext.owners().len(), 1);
@@ -223,10 +221,14 @@ fn scenario_s1_to_s16() {
     assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
     let medium = h.p(|p| p.store.medium().clone());
-    let log = h.p(|p| p.ledger.log().to_vec());
+    let log = h.p(|p| p.ledger.full_log().unwrap());
     let mut s1 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
-    assert_eq!(reopened.read(&mut s1, |p, _| p.ledger.log().to_vec()).unwrap(), log, "every transaction exactly once");
+    assert_eq!(
+        reopened.read(&mut s1, |p, _| p.ledger.full_log().unwrap()).unwrap(),
+        log,
+        "every transaction exactly once"
+    );
 
     // S14: undo everything, then redo everything: state and IDs restored at every point.
     let trail: Vec<Document> = h.trail.clone();

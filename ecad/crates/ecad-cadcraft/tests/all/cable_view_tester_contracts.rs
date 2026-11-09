@@ -73,7 +73,7 @@ fn new_lines(h: &mut H, page: PageId, line: &str) -> Vec<Handle> {
     h.lines_on(page).into_iter().filter(|x| !before.contains(x)).collect()
 }
 
-/// A drawn component (closed rectangle converted) with terminals at x, y = 0, 5, 10.
+/// A drawn component (closed rectangle converted) with connection points at x, y = 0, 5, 10.
 fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     let lines = new_lines(h, page, line);
     assert_eq!(lines.len(), 4);
@@ -207,7 +207,7 @@ fn snap(h: &mut H) -> Snap {
     let doc = h.doc();
     Snap {
         doc: serde_json::to_string(&doc).unwrap(),
-        log: h.p(|p| p.ledger.log().to_vec()),
+        log: h.p(|p| p.ledger.full_log().unwrap()),
         head: h.head(),
         ids: h.p(|p| format!("{:?}", p.ids)),
         nets: format!("{:?}", ecad_model::derive::nets(&doc)),
@@ -360,7 +360,7 @@ fn ac2_switching_never_touches_the_ecad_file_and_saves_are_view_independent() {
     assert!(!String::from_utf8_lossy(&fan).contains(views::LAYER), "no cable layer in the file");
     assert!(!String::from_utf8_lossy(&fan).contains("ecad-cable-views"), "no view in the file");
     let doc = g.h.doc();
-    let log = g.h.p(|p| p.ledger.log().to_vec());
+    let log = g.h.p(|p| p.ledger.full_log().unwrap());
     while !g.h.s.docs.is_empty() {
         g.h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -370,7 +370,7 @@ fn ac2_switching_never_touches_the_ecad_file_and_saves_are_view_independent() {
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         let mut h = H { s, project: handle, trail: Vec::new() };
         assert_eq!(h.doc(), doc, "{name}: the document");
-        assert_eq!(h.p(|p| p.ledger.log().to_vec()), log, "{name}: the log");
+        assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log, "{name}: the log");
         assert!(!b.is_empty());
         h.check();
     }
@@ -437,7 +437,7 @@ fn child_reopen_through_env() {
     assert!(!g.h.p(|p| p.unsaved()));
     let project = g.h.p(|p| p.id);
     let doc = g.h.doc();
-    let log = g.h.p(|p| p.ledger.log().to_vec());
+    let log = g.h.p(|p| p.ledger.full_log().unwrap());
 
     // A second, read-only window of the same file reads the views too (design §7 "Read").
     let mut s2 = Session::empty();
@@ -469,7 +469,7 @@ fn child_reopen_through_env() {
     assert!(!summary.contains("could not be read"), "{summary}");
     let mut h = H { s, project: handle, trail: Vec::new() };
     assert_eq!(h.doc(), doc, "conductors and cables unchanged");
-    assert_eq!(h.p(|p| p.ledger.log().to_vec()), log);
+    assert_eq!(h.p(|p| p.ledger.full_log().unwrap()), log);
     let v = views_of(&mut h);
     assert_eq!(v[g.c1.hex()], "fan");
     assert_eq!(v[c2.hex()], "traditional");
@@ -1187,7 +1187,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
         eprintln!("setvar clayer ECAD-CABLES refused: {r:?}");
     }
     g.h.check();
-    // ECAD picks on a fan line: Disconnect, Add Terminal, Convert to Component.
+    // ECAD picks on a fan line: Disconnect, Add Connection Point, Convert to Component.
     for cmd in ["disconnect", "connect"] {
         g.h.s.start(cmd).unwrap();
         let p0 = prompt(&g.h);

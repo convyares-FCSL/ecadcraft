@@ -140,6 +140,7 @@ impl Generated {
 fn coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {
+        bridges: Vec::new(),
         name: "Coil (bench)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline {
@@ -304,11 +305,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         "New project",
         TxKind::Edit,
         vec![
-            Op::AddPage { id: first_page, page: Page { title: "1".into() }, index: 0 },
+            Op::AddPage { id: first_page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
-                after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
             },
         ],
     )?;
@@ -329,13 +330,13 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         } else {
             let id: PageId = ids.fresh();
             let title = (p + 1).to_string();
-            let renamed_page = Page { title: format!("{title} (draft)") };
+            let renamed_page = Page::new(format!("{title} (draft)"));
             b.step(
                 "New page",
-                vec![Op::AddPage { id, page: Page { title: title.clone() }, index: p }],
+                vec![Op::AddPage { id, page: Page::new(title.clone()), index: p }],
                 "Rename page",
                 vec![
-                    Op::RemovePage { id, page: Page { title }, index: p },
+                    Op::RemovePage { id, page: Page::new(title), index: p },
                     Op::AddPage { id, page: renamed_page, index: p },
                 ],
             )?;

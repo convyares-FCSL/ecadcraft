@@ -182,12 +182,24 @@ fn ci() -> Result<(), String> {
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|test-changed>
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed>
   test-changed [--base <ref>] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default dev, committed or not) and of
         every crate that depends on them; --dry-run only names the crates
+  demo [<path.ecad>] [--force]
+        write the demo project (default C:\\dev\\ecad-projects\\demo.ecad, ~/ecad-projects/demo.ecad
+        elsewhere) from ecad/examples/demo/commands.jsonl; an existing file needs --force
   bench [--tier small|medium|large|all] [--keep <folder>] [--compare <earlier.json>]
         project load benchmark (release build), run on demand only; not part of ci";
+
+/// The demo project (`ecad-demo`, built from `ecad/examples/demo/commands.jsonl` through the MCP
+/// `execute` tool), with `args` passed through: `[<path.ecad>] [--force]`.
+fn demo(args: &[String]) -> Result<(), String> {
+    run(Command::new(env!("CARGO"))
+        .args(["run", "--release", "--package", "ecad-mcp", "--bin", "ecad-demo", "--"])
+        .args(args)
+        .current_dir(ecad_root()))
+}
 
 /// The load benchmark in release, with `args` passed through. Never called by [`ci`].
 fn bench(args: &[String]) -> Result<(), String> {
@@ -209,6 +221,13 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
     path.strip_prefix(workspace).is_some_and(|p| build(p) || p == "cargo.lock") || build(path)
 }
 
+/// Folders of the workspace that belong to no package but are read into one at build time
+/// (`include_str!`), with the package that reads them: a change there selects that package.
+const READ_BY: &[(&str, &str)] = &[
+    // The demo's command list, embedded by `ecad-mcp`'s demo module (`cargo xtask demo`).
+    ("examples/", "ecad-mcp"),
+];
+
 /// The workspace members whose tests to run after `changed` (paths relative to the repository
 /// root `repo`).
 ///
@@ -220,7 +239,8 @@ fn affects_everything(path: &str, workspace: &str) -> bool {
 /// upstream change selects the ECAD crates that use it. The files [`affects_everything`] names
 /// (the workspace manifest and lock file, the repository root manifest, cargo configuration and
 /// toolchain files) select every member. Markdown files and files in no package
-/// (docs, tools, CI) select nothing. `meta` is `cargo metadata --format-version 1` output with
+/// (docs, tools, CI) select nothing, except the folders [`READ_BY`] names, which select the
+/// package that reads them. `meta` is `cargo metadata --format-version 1` output with
 /// its resolve graph. The result is sorted by name.
 ///
 /// # Errors
@@ -262,6 +282,15 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             local.iter().filter(|(_, _, dir)| path.starts_with(dir.as_str())).max_by_key(|(_, _, dir)| dir.len());
         if let Some((id, _, _)) = owner {
             hit.insert(id);
+        } else if let Some(rest) = path.strip_prefix(workspace.as_str()) {
+            // A folder read into a package at build time.
+            for (folder, reader) in READ_BY {
+                if rest.starts_with(folder)
+                    && let Some((id, _, _)) = local.iter().find(|(_, name, _)| name == reader)
+                {
+                    hit.insert(id);
+                }
+            }
         }
     }
     // Everything that depends on a selected package, to a fixed point (the graph is finite and
@@ -376,6 +405,7 @@ fn main() -> ExitCode {
         "wasm" => wasm(),
         "ci" => ci(),
         "bench" => bench(rest),
+        "demo" => demo(rest),
         "test-changed" => test_changed(rest),
         _ => Err(USAGE.into()),
     };
@@ -464,15 +494,27 @@ mod tests {
         let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
+            [
+                "ecad-bench",
+                "ecad-cadcraft",
+                "ecad-cli",
+                "ecad-file",
+                "ecad-inspect",
+                "ecad-mcp",
+                "ecad-model",
+                "ecad-trial"
+            ]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
+        // The demo's command list is embedded by ecad-mcp; the trial's Checks UI test opens the demo
+        // through it (brief 022).
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp", "ecad-trial"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 

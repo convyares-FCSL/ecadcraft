@@ -235,7 +235,7 @@ fn a_slash_survives_save_and_reopen() {
     let r = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     f.h.run("saveas", json!({ "path": path })).unwrap();
     let live = f.h.doc();
-    let log = f.h.p(|p| p.ledger.log().to_vec());
+    let log = f.h.p(|p| p.ledger.full_log().unwrap());
     while !f.h.s.docs.is_empty() {
         f.h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -243,7 +243,7 @@ fn a_slash_survives_save_and_reopen() {
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 99).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert!(h2.doc() == live, "same document after reopening");
-    assert_eq!(h2.p(|p| p.ledger.log().to_vec()), log, "same history");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "same history");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     let k: CableId = id(&r, "cable");
     assert_eq!(members(&mut h2, k), vec![f.w0, f.w5, f.w10]);

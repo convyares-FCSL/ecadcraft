@@ -22,7 +22,7 @@ fn fixture() -> Fixture {
             Author::User,
             "New project",
             vec![
-                Op::AddPage { id: page, page: Page { title: "1".into() }, index: 0 },
+                Op::AddPage { id: page, page: Page::new("1"), index: 0 },
                 Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             ],
         )
@@ -249,7 +249,7 @@ fn historical_state_is_reconstructed_without_touching_the_live_document() {
     assert!(at1.items.is_empty());
     assert_eq!(f.ledger.document(), &live);
     assert!(f.ledger.replay_matches().unwrap());
-    let replayed = Ledger::replay(f.ledger.log().to_vec(), 9).unwrap();
+    let replayed = Ledger::replay(f.ledger.full_log().unwrap(), 9).unwrap();
     assert_eq!(replayed.document(), &live);
     assert!(f.ledger.state_at(99).is_err());
 }
@@ -280,6 +280,7 @@ fn ids_serialise_as_exact_hex_strings() {
 fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
     let mut f = fixture();
     let def = |at: Pt, key2: &str| ecad_model::Definition {
+        bridges: Vec::new(),
         name: "d".into(),
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
@@ -307,7 +308,13 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
 #[test]
 fn a_symbol_must_show_its_components_own_definition() {
     let mut f = fixture();
-    let good = ecad_model::Definition { name: "d".into(), origin: None, graphics: vec![], terminals: vec![] };
+    let good = ecad_model::Definition {
+        bridges: Vec::new(),
+        name: "d".into(),
+        origin: None,
+        graphics: vec![],
+        terminals: vec![],
+    };
     let (d1, d2, c, i, r) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     let item = Item {
         page: f.page,
@@ -354,7 +361,7 @@ fn a_named_version_must_name_existing_history() {
     f.ledger.undo(Author::User).unwrap();
     f.ledger.redo(Author::User).unwrap();
     // A log holding a bookmark to the future does not replay.
-    let mut log = f.ledger.log().to_vec();
+    let mut log = f.ledger.full_log().unwrap();
     let bad_seq = log.len() as u64 + 1;
     log.push(ecad_model::Transaction {
         id: f.ids.fresh(),

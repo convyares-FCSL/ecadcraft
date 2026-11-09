@@ -92,7 +92,14 @@ fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> ConductorId {
 /// (A1 at 90,0), a loose wire 0,30 -> 20,30 and a wire 40,10 -> 90,0 attached at both ends.
 fn base(h: &mut H) -> ComponentId {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = h.s.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> =
+        h.s.doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle.hex())
+            .collect();
     let r = h.run("convertcomponent", json!({ "handles": lines })).unwrap();
     let c: ComponentId = common::id(&r, "component");
     let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
@@ -161,8 +168,10 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 for k in 0..4 {
                     let rot = f64::from(k * 90);
                     let y = f64::from(k * 40);
-                    h.run("place", json!({"at": [200.0, y], "rotation": rot, "mirror": false})).unwrap();
-                    h.run("place", json!({"at": [260.0, y], "rotation": rot, "mirror": true})).unwrap();
+                    // A typed point at the first prompt places the default symbol (brief 018).
+                    let place = |at: [f64; 2], mirror: bool| json!({"symbol": "coil", "at": at, "rotation": rot, "mirror": mirror});
+                    h.run("place", place([200.0, y], false)).unwrap();
+                    h.run("place", place([260.0, y], true)).unwrap();
                 }
             },
         ),
@@ -213,7 +222,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
             |h| {
                 start(h, "connect");
                 click(h, Vec2::new(19.0, 30.0));
-                assert_eq!(prompt(h), "Select terminal for end B:");
+                assert_eq!(prompt(h), "Select connection point for end B:");
                 let px = h.s.pixel_size();
                 click(h, Vec2::new(40.0 + 4.0 * px, 10.0));
                 typed(h, "");
@@ -245,7 +254,14 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 h.run("line", json!({"points": [[200, 200], [220, 200]]})).unwrap();
                 h.run("line", json!({"points": [[220, 200], [220, 220]]})).unwrap();
                 h.run("line", json!({"points": [[220, 220], [200, 220]]})).unwrap();
-                let all: Vec<Handle> = h.s.doc().unwrap().model.iter().map(|e| e.handle).collect();
+                let all: Vec<Handle> =
+                    h.s.doc()
+                        .unwrap()
+                        .model
+                        .iter()
+                        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+                        .map(|e| e.handle)
+                        .collect();
                 let (a, b, c) = (all[all.len() - 3], all[all.len() - 2], all[all.len() - 1]);
                 start(h, "convertcomponent");
                 h.s.input(Input::Pick(vec![a, b, a])).unwrap();
@@ -259,7 +275,14 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 h.run("line", json!({"points": [[200, 200], [220, 200]]})).unwrap();
                 h.run("line", json!({"points": [[220, 200], [220, 220]]})).unwrap();
                 h.run("line", json!({"points": [[220, 220], [200, 220]]})).unwrap();
-                let all: Vec<String> = h.s.doc().unwrap().model.iter().map(|e| e.handle.hex()).collect();
+                let all: Vec<String> =
+                    h.s.doc()
+                        .unwrap()
+                        .model
+                        .iter()
+                        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+                        .map(|e| e.handle.hex())
+                        .collect();
                 h.run("convertcomponent", json!({"handles": &all[all.len() - 3..]})).unwrap();
             },
         ),
@@ -584,7 +607,7 @@ fn the_prompt_names_the_default_terminal_name_that_is_used() {
     assert_eq!(label, "2", "smallest unused number on that component");
     assert_eq!(
         shown,
-        format!("Specify point for terminal {label} on a component or [Name]:"),
+        format!("Specify point for connection point {label} on a component or [Name]:"),
         "the prompt promised a different name than the one used"
     );
     h.s.cancel();
@@ -637,7 +660,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h.s.running.is_none());
     h.run("saveas", json!({ "path": path })).unwrap();
     let live = h.doc();
-    let log = h.p(|p| p.ledger.log().to_vec());
+    let log = h.p(|p| p.ledger.full_log().unwrap());
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -646,7 +669,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     let mut h2 = H { s, project, trail: Vec::new() };
     h2.s.viewport_px = (1280.0, 800.0);
     assert!(h2.doc() == live, "same document after reopening");
-    assert_eq!(h2.p(|p| p.ledger.log().to_vec()), log, "same history");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "same history");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     h2.check();
     let pg = h2.first_page();

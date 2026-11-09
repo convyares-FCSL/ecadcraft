@@ -1,7 +1,7 @@
 # Discussion: history, versions and branches
 
 Status: **Agreed direction** (owner, 2026-11-08). Storage-neutral: how it is stored is
-[EEP-0005](../spec/eep-0005.md) (Draft; engine decided: redb, see
+[EEP-0005](../spec/eep-0005.md) (Accepted; built by brief 021 on redb, see
 [`storage-engine-decision.md`](storage-engine-decision.md)). It supersedes the
 folder-project and git-native ideas of [`git.md`](git.md): git is an optional integration,
 never the model. It refines the vocabulary of [`revisions.md`](revisions.md) (§2 below).

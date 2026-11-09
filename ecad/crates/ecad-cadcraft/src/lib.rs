@@ -38,29 +38,41 @@
 )]
 
 mod access;
+pub mod checks;
 pub mod commands;
 pub mod convert;
 pub mod debug;
+mod device_cmds;
+pub mod device_list;
+pub mod devices;
 pub mod file;
+pub mod frame;
 pub mod interact;
 pub mod look;
+pub mod preview;
 pub mod project;
+pub mod props;
 pub mod references;
+pub mod revisions;
+pub mod sheet_cmds;
 pub mod slash;
+pub mod symbols;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]
 pub mod translate_oracle;
 pub mod verify;
 pub mod views;
+mod wire_cmds;
+pub mod wires;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use file::{
     FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
 };
 pub use project::{
-    Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, View, project_page, project_page_with,
-    session_seed,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View,
+    project_page, project_page_framed, project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

@@ -79,7 +79,7 @@ impl Client {
     }
 
     fn log(&mut self) -> Vec<Transaction> {
-        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.log().to_vec()).unwrap()).unwrap()
+        self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.full_log().unwrap()).unwrap()).unwrap()
     }
 
     fn doc(&mut self) -> Document {
@@ -116,7 +116,7 @@ impl Direct {
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
-        self.p.read(&mut self.s, |p, _| p.ledger.log().to_vec()).unwrap()
+        self.p.read(&mut self.s, |p, _| p.ledger.full_log().unwrap()).unwrap()
     }
     fn doc(&mut self) -> Document {
         self.p.read(&mut self.s, |p, _| p.ledger.document().clone()).unwrap()
@@ -203,17 +203,17 @@ fn rows() -> Vec<(&'static str, Value, &'static str, usize)> {
         // Brief 010: a reference on Supply (an orphan until continued), then the continuation.
         ("cablerefs", json!({}), r#"{"references":[]}"#, 0),
         ("cableref", json!({"cable": "<c1>", "at": [65, 5]}), r#""orphan":true"#, 1),
-        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"/?""#, 0),
+        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"?""#, 0),
         ("newpage", json!({"title": "Field"}), "page", 1),
         ("openpage", json!({"page": "<field>"}), "document", 0),
-        ("cablecontinue", json!({"cable": "<c1>", "at": [20, 5], "toward": [40, 5]}), r#""text":"/1.2""#, 1),
-        ("cablerefs", json!({}), r#""text":"/2.1""#, 0),
+        ("cablecontinue", json!({"cable": "<c1>", "at": [20, 5], "toward": [40, 5]}), r#""text":"1-B-6""#, 1),
+        ("cablerefs", json!({}), r#""text":"2-A-6""#, 0),
         ("renamepage", json!({"page": "<supply>", "title": "  Supply  "}), r#""changed":false"#, 0),
         ("renamepage", json!({"page": "<supply>", "title": "Source"}), r#""changed":true"#, 1),
         ("movepage", json!({"page": "<field>", "index": 2}), r#""changed":false"#, 0),
         ("movepage", json!({"page": "<field>", "index": 1}), r#""index":1"#, 1),
-        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"/2.2""#, 0),
-        ("cablegoto", json!({"reference": "<ref field>"}), r#"Page 2 \"Source\", at the other end of cable C1"#, 0),
+        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"2-A-6""#, 0),
+        ("cablegoto", json!({"reference": "<ref field>"}), r#"Page 1 \"Source\", at the other end of cable C1"#, 0),
     ]
 }
 
@@ -392,7 +392,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
     let refs = c.exec("cablerefs", json!({}));
     let texts: Vec<&str> = refs["references"].as_array().unwrap().iter().filter_map(|r| r["text"].as_str()).collect();
     assert_eq!(texts.len(), 2, "{refs}");
-    assert!(texts.contains(&"/2.1") && texts.contains(&"/1.2"), "{refs}");
+    assert!(texts.contains(&"2-A-6") && texts.contains(&"1-B-6"), "{refs}");
 
     // cablegoto from Supply's reference opens Field, selects the other end, and records nothing.
     let (supply, field) = (supply(&doc), field(&doc));
@@ -403,7 +403,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
     let v = c.exec("cablegoto", json!({"reference": from}));
     assert_eq!(v["page"], json!(field.hex()), "{v}");
     assert_eq!(v["reference"], fill(&doc, &json!("<ref field>")), "{v}");
-    assert_eq!(v["message"], json!("Page 2 \"Field\", at the other end of cable C1 (/2.1)."), "{v}");
+    assert_eq!(v["message"], json!("Page 2 \"Field\", at the other end of cable C1 (2-A-6)."), "{v}");
     assert!(v.get("ecadTransactions").is_none(), "{v}");
     let (active, on_field) = c.active_and(field);
     assert!(on_field.is_some() && active == on_field, "the open page switched to Field");

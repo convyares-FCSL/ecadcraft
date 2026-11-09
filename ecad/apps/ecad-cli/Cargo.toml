@@ -1,0 +1,26 @@
+[package]
+name = "ecad-cli"
+description = "ECAD's command-line tools: `ecad upgrade` (version 1 to 2 converter) and `ecadinspect` (read-only views of a version 2 file)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ecad"
+path = "src/main.rs"
+
+[[bin]]
+name = "ecadinspect"
+path = "src/bin/ecadinspect.rs"
+
+[dependencies]
+ecad-file = { workspace = true }
+
+[dev-dependencies]
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+ecad-store = { workspace = true }
+serde_json = { workspace = true }

@@ -196,8 +196,7 @@ fn a_case_variant_opens_the_same_project_on_windows() {
     let mut t = trial(None, None);
     let own = d.0.join("Plan.ecad").display().to_string();
     assert_eq!(save_as(&mut t, &own), None);
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     let upper = d.0.join("PLAN.ECAD").display().to_string();
     t.open_project(&upper).unwrap();
     assert!(t.status().unwrap().file.read_only.is_none());
@@ -368,9 +367,10 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let mut t = trial(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
-    let model = t.cad.session.doc().unwrap().model.len();
+    let model =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
     let p = t.project().unwrap().clone();
-    let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap();
+    let history = p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap();
     match save_as(&mut t, &typed) {
         None => {
             println!("UNC branch: confirmed");
@@ -386,8 +386,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
         }
     }
     assert!(d.0.join("over unc.ecad").is_file());
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     // After an unconfirmed save, closing asks first (the change is not known to be durable);
     // the file is already written, so Discard closes without writing again.
     if t.pending_close().is_some() {
@@ -399,9 +398,13 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let s = t.status().unwrap();
     assert!(s.file.read_only.is_none(), "{:?}", s.file);
     assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()));
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), model, "the same drawing");
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        model,
+        "the same drawing"
+    );
     let p = t.project().unwrap().clone();
-    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.log().len()).unwrap(), history, "the same history");
+    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap(), history, "the same history");
 }
 
 // ---- Round 2 (fixes for F1-F3) ----

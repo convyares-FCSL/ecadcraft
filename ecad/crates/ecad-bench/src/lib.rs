@@ -25,6 +25,7 @@
 pub mod generate;
 pub mod measure;
 pub mod report;
+pub mod v2;
 
 use std::path::{Path, PathBuf};
 
@@ -121,12 +122,29 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
     }
     let mut rows = Vec::new();
     for (variant, path) in paths {
+        // The app opens version 2 files (brief 021): convert first (timed), the converter's checks
+        // included.
+        let v2_path = path.with_file_name(format!("{}-{}.v2.ecad", tier.name, variant.name()));
+        measure::claim(&v2_path)?;
+        eprintln!("{} {}: converting to {}…", tier.name, variant.name(), v2_path.display());
+        let convert_ms = v2::convert(&path, &v2_path)?;
         eprintln!("{} {}: measuring {} ({runs} runs of each)…", tier.name, variant.name(), path.display());
-        let measured = measure::measure(&path, runs, scratch);
+        let measured = measure::measure_with(&path, &v2_path, runs, scratch);
         // The opens leave an empty lock file beside a kept project: remove it once released.
         measure::release_lock_file(&path);
+        measure::release_lock_file(&v2_path);
         let (measured, _) = measured?;
-        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured });
+        eprintln!("{} {}: measuring version 2…", tier.name, variant.name());
+        let v2m = v2::measure(&v2_path, runs, scratch, convert_ms);
+        measure::release_lock_file(&v2_path);
+        let compression = v2::compression(&v2_path)?;
+        rows.push(report::Row {
+            tier: tier.name.into(),
+            variant: variant.name().into(),
+            measured,
+            v2: Some(v2m?),
+            compression: Some(compression),
+        });
     }
     Ok(rows)
 }

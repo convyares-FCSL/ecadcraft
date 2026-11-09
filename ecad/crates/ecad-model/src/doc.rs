@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId,
+    TerminalId,
 };
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
@@ -20,9 +21,32 @@ use crate::id::{
 pub type Properties = BTreeMap<String, String>;
 
 /// A page of the project.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Its `properties` (brief 019, decision FP1) hold the page number (`number`), the `=`/`+`
+/// overrides (`function`, `location`), its own sheet (`sheet`) and its folder (`folder`); see
+/// [`crate::book`] and [`crate::sheet`]. Left out of records while empty.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Page {
     pub title: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: Properties,
+}
+
+impl Page {
+    /// A page titled `title`, with no properties.
+    pub fn new(title: impl Into<String>) -> Self {
+        Page { title: title.into(), properties: Properties::new() }
+    }
+}
+
+/// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their
+/// folder in their `folder` property; sibling order is the relative order in
+/// [`Document::folder_order`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Folder {
+    pub name: String,
+    /// The folder it is in; `None` at the top level.
+    pub parent: Option<FolderId>,
 }
 
 /// A layer. References use [`LayerId`]; the name is a property (DOC-02).
@@ -194,7 +218,10 @@ pub struct Representation {
     /// Free text such as `main` or `route`.
     pub role: String,
     pub items: Vec<ItemId>,
-    /// Drawn form only: where each terminal sits on the page.
+    /// Drawn form: where each terminal sits on the page. Symbol form (brief 018, decision on
+    /// I14): empty for a symbol of the component's own definition, whose terminals are matched to
+    /// the definition by key; otherwise where each terminal sits in the **definition's local
+    /// frame**, so the terminals follow the instance's placement.
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
@@ -307,9 +334,59 @@ pub enum LengthUnit {
 }
 
 /// Project-wide settings (proposal §3.2, §20.13). Set at creation; changed only by a recorded op.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
+    /// How many digits automatic tag numbers are padded to (brief 018, owner decision
+    /// 2026-11-08): [`DEFAULT_TAG_PADDING`] unless the project says otherwise. Values above
+    /// [`crate::tag::MAX_PADDING`] count as that maximum.
+    pub tag_padding: u8,
+    /// The project's own tag prefix per starter symbol key (`"coil" → "KA"`), overriding the
+    /// built-in IEC 81346 default. Empty by default.
+    pub tag_prefixes: BTreeMap<String, String>,
+    /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
+    /// the file while it holds [`WiringSettings::default`].
+    pub wiring: crate::wiring::WiringSettings,
+    /// The project's sheet: size and grid of every page's frame unless a page sets its own
+    /// (brief 019, decision FP2). A3 landscape, `A`–`H` by `1`–`6` by default.
+    pub sheet: crate::sheet::SheetSpec,
+    /// What a new page's number adds to the number before it (design 019 §6.1, owner answer
+    /// Q11): 1 by default.
+    pub page_number_step: u32,
+    /// How cross-references name a place (owner answer Q1, 2026-11-08): `105-C-4` by default.
+    pub reference_style: ReferenceStyle,
+}
+
+/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08). Other
+/// styles (US) come later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ReferenceStyle {
+    /// `105-C-4`: page number, column, row.
+    #[default]
+    PageColumnRow,
+    /// `/105.C`: page number and column.
+    PageColumn,
+}
+
+/// The page number step of a project that sets none.
+pub const DEFAULT_PAGE_NUMBER_STEP: u32 = 1;
+
+/// The tag padding of a project that sets none (owner decision 2026-11-08).
+pub const DEFAULT_TAG_PADDING: u8 = 2;
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            length_unit: LengthUnit::default(),
+            tag_padding: DEFAULT_TAG_PADDING,
+            tag_prefixes: BTreeMap::new(),
+            wiring: crate::wiring::WiringSettings::default(),
+            sheet: crate::sheet::SheetSpec::default(),
+            page_number_step: DEFAULT_PAGE_NUMBER_STEP,
+            reference_style: ReferenceStyle::default(),
+        }
+    }
 }
 
 /// A terminal of a definition, in the symbol's local frame.
@@ -327,6 +404,22 @@ pub struct Definition {
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub terminals: Vec<TerminalDef>,
+    /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
+    /// group is on one net. Empty for almost every definition, and then left out of the file so
+    /// existing content hashes do not change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridges: Vec<Vec<String>>,
+}
+
+impl Definition {
+    /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
+    pub fn bridged_with<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.bridges
+            .iter()
+            .filter(move |g| g.iter().any(|k| k == key))
+            .flat_map(|g| g.iter().map(String::as_str))
+            .filter(move |k| *k != key)
+    }
 }
 
 /// The authoritative document: everything stored, nothing derived.
@@ -357,9 +450,22 @@ pub struct Document {
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
     pub versions: BTreeMap<String, u64>,
+    /// The project's own properties (brief 019, decision FP1): title, drawing number, customer,
+    /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: Properties,
+    /// Folders of pages (brief 019, decision FP3).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub folders: BTreeMap<FolderId, Folder>,
+    /// Every folder once; siblings are ordered as they appear here.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub folder_order: Vec<FolderId>,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
+    /// Derived nets (brief 022), kept by [`crate::Op::apply`]; never serialised.
+    #[serde(skip)]
+    pub(crate) conn: crate::connectivity::Connectivity,
 }
 
 /// The serialised form of [`Document`]: its stored fields, without the derived index.
@@ -377,6 +483,12 @@ struct DocumentData {
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
+    #[serde(default)]
+    properties: Properties,
+    #[serde(default)]
+    folders: BTreeMap<FolderId, Folder>,
+    #[serde(default)]
+    folder_order: Vec<FolderId>,
 }
 
 impl From<DocumentData> for Document {
@@ -394,6 +506,9 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
         } = d;
         let mut doc = Document {
             pages,
@@ -408,7 +523,11 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
             index: Index::default(),
+            conn: crate::connectivity::Connectivity::default(),
         };
         doc.rebuild_index();
         doc
@@ -431,7 +550,11 @@ impl PartialEq for Document {
             definitions,
             settings,
             versions,
+            properties,
+            folders,
+            folder_order,
             index: _,
+            conn: _,
         } = self;
         *pages == other.pages
             && *page_order == other.page_order
@@ -445,6 +568,9 @@ impl PartialEq for Document {
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions
+            && *properties == other.properties
+            && *folders == other.folders
+            && *folder_order == other.folder_order
     }
 }
 
@@ -456,6 +582,14 @@ impl Document {
     /// current on its own.
     pub fn rebuild_index(&mut self) {
         self.index = Index::build(self);
+        self.conn = crate::connectivity::Connectivity::build(self);
+    }
+
+    /// Whether the index built on threads (as on open) equals one built on a single thread.
+    /// For tests.
+    #[doc(hidden)]
+    pub fn index_build_is_deterministic(&self) -> bool {
+        Index::build(self) == Index::build_serial(self)
     }
 
     /// Whether the kept index equals one rebuilt from the stored objects.
@@ -463,11 +597,35 @@ impl Document {
     /// # Errors
     /// [`ModelError::Invariant`] when the index is stale.
     pub fn check_index(&self) -> Result<()> {
-        if self.index == Index::build(self) {
-            Ok(())
-        } else {
-            Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()))
+        if self.index != Index::build(self) {
+            return Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()));
         }
+        // The kept nets (brief 022) are derived the same way: they must equal a fresh build.
+        if let Some(diff) = self.conn.differs_from(&crate::connectivity::Connectivity::build(self)) {
+            return Err(ModelError::Invariant(format!("the kept nets differ from a fresh build: {diff}")));
+        }
+        Ok(())
+    }
+
+    /// The nets, kept up to date by every op (brief 022).
+    pub fn connectivity(&self) -> &crate::connectivity::Connectivity {
+        &self.conn
+    }
+
+    /// Continuation components whose name has the key `key` ([`crate::connectivity::name_key`]),
+    /// in ID order, through the name index.
+    pub fn continuations_named(&self, key: &str) -> Vec<ComponentId> {
+        referrers(&self.index.continuations, &key.to_string()).collect()
+    }
+
+    /// Every continuation name key and its components, through the name index.
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+        self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
+    /// Components made from `definition`, in ID order.
+    pub fn components_using(&self, definition: DefinitionId) -> Vec<ComponentId> {
+        referrers(&self.index.definition_components, &definition).collect()
     }
 
     /// The representation an item belongs to, if any (DOC-05 allows at most one).
@@ -491,9 +649,36 @@ impl Document {
         referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
+    /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
+    pub fn has_ends(&self, terminal: TerminalId) -> bool {
+        self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
+    }
+
     /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
     pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
         referrers(&self.index.terminal_ends, &terminal).collect()
+    }
+
+    /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
+    /// through the tag index: the cost does not grow with the project.
+    pub fn components_tagged(&self, tag: &str) -> Vec<ComponentId> {
+        referrers(&self.index.tags, &crate::tag::key(tag)).collect()
+    }
+
+    /// Every tagged component through the tag index (brief 018), by tag key ([`crate::tag::key`]),
+    /// then ID: no scan of the components.
+    pub fn tagged(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+        self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
+    /// Pages whose `folder` property names `folder`, in ID order (through the folder index).
+    pub fn pages_in_folder(&self, folder: FolderId) -> Vec<PageId> {
+        referrers(&self.index.folder_pages, &folder).collect()
+    }
+
+    /// Folders whose parent is `folder`, in ID order (through the folder index).
+    pub fn subfolders(&self, folder: FolderId) -> Vec<FolderId> {
+        referrers(&self.index.folder_children, &folder).collect()
     }
 
     /// Cables `conductor` is a member of, in ID order.

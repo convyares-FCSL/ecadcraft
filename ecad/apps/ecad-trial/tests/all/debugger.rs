@@ -125,7 +125,7 @@ fn the_quick_start_debugger_example_runs_headless() {
     assert_eq!(snap.label(), "live at seq 1");
     assert_eq!(
         saved_summary(snap),
-        "Saved through transaction 0; 1 pending (in memory only). The banner counts 0: a new project's own setup \
+        "Saved through transaction 0; 1 pending (in memory only). The Project panel counts 0: a new project's own setup \
 is not counted as a change until the project has a file."
     );
     assert_eq!(snap.record_state(1), RecordState::Pending { attempt: None }, "a new project is in memory only");
@@ -181,22 +181,21 @@ is not counted as a change until the project has a file."
     assert!(attach.before.unwrap()["terminal"].is_null());
     frame(&mut t, &ctx);
 
-    // 3. Save As: everything is saved; the wire's record sits at an offset in the file and its
-    //    bytes decode to exactly that transaction.
+    // 3. Save As: everything is saved; the wire's row in the version 2 file decodes to exactly
+    //    that transaction (brief 021).
     let path = d.path("debug-demo.ecad");
     t.save_as(&path).unwrap();
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!((snap.head, snap.persisted), (3, 3));
     assert_eq!(saved_summary(snap), "Saved through transaction 3; 0 pending (in memory only).");
-    let RecordState::Saved(Some(span)) = snap.record_state(3) else { panic!("saved: {:?}", snap.record_state(3)) };
+    assert_eq!(snap.record_state(3), RecordState::Saved(None));
     assert_eq!(snap.file.path.as_deref(), Some(path.as_str()));
     t.debugger.select_tx(Some(3));
-    t.debugger.read_record();
+    t.debugger.read_row();
     let rec = t.debugger.record().unwrap().as_ref().unwrap();
     assert_eq!(rec.check, Ok(()));
-    let bytes = std::fs::read(&path).unwrap();
-    assert_eq!(rec.shown, bytes[span.offset as usize..(span.offset + span.len) as usize]);
+    assert!(rec.shown.starts_with(b"{\""), "the decompressed record");
     every_view(&mut t, &ctx);
 
     // 4. Move the coil: a pending transaction that modifies the wire's route too.
@@ -233,8 +232,7 @@ is not counted as a change until the project has a file."
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!(snap.persisted, 5);
-    let RecordState::Saved(Some(s4)) = snap.record_state(4) else { panic!("saved") };
-    assert!(s4.offset >= span.offset + span.len);
+    assert_eq!(snap.record_state(4), RecordState::Saved(None));
     // 7. The checks, on request only.
     assert!(t.debugger.checks().is_empty(), "no check ran by itself");
     for k in [CheckKind::Replay, CheckKind::Projection, CheckKind::File] {
@@ -248,31 +246,30 @@ is not counted as a change until the project has a file."
     let _ = t.cad.run("qsave", Value::Null);
 }
 
-/// A Save As that wrote the file but could not confirm durability: the heading counts those
-/// transactions as written and unconfirmed, not as pending in memory, and not as saved.
+/// The Storage and Branches views (brief 021): the file's facts live, its table sizes on request.
 #[test]
-fn an_unconfirmed_save_as_is_neither_saved_nor_memory_only() {
-    let d = TempDir::new("unconfirmed");
+fn the_storage_and_branches_views_show_the_version_2_file() {
+    let d = TempDir::new("storage");
     let mut t = trial();
     ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
-    let p = t.project().unwrap().clone();
-    p.configure(&mut t.cad.session, |p| p.file.faults.fail_dir_sync = true).unwrap();
-    assert!(t.save_as(&d.path("unconfirmed.ecad")).is_err());
     t.toggle_debugger();
-    let snap = t.debugger.snapshot().unwrap();
-    assert_eq!(snap.record_state(2), RecordState::Unconfirmed(snap.span(2).unwrap()));
-    assert_eq!(
-        saved_summary(snap),
-        "Saved through transaction 0; 2 written but not confirmed durable (Save confirms them); 0 pending (in \
-memory only)."
-    );
     let ctx = eframe::egui::Context::default();
-    t.debugger.view = View::History;
+    t.debugger.view = View::Storage;
     frame(&mut t, &ctx);
+    assert!(t.debugger.snapshot().unwrap().file.storage.is_none(), "no file yet");
+    t.save_as(&d.path("storage.ecad")).unwrap();
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    let st = snap.file.storage.clone().unwrap();
+    assert_eq!((st.head, st.snapshot_seq), (2, 2), "the first save writes a snapshot at the head");
+    t.debugger_action(Action::ReadStorage);
+    for v in [View::Storage, View::Branches] {
+        t.debugger.view = v;
+        frame(&mut t, &ctx);
+    }
+    ok(&mut t, r#"place {"at":[150,0],"rotation":0}"#);
     t.save().unwrap();
     frame(&mut t, &ctx);
-    assert_eq!(
-        saved_summary(t.debugger.snapshot().unwrap()),
-        "Saved through transaction 2; 0 pending (in memory only)."
-    );
+    assert_eq!(t.debugger.snapshot().unwrap().file.storage.clone().unwrap().head, 3);
+    frame(&mut t, &ctx);
 }

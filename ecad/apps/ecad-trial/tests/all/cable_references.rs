@@ -59,9 +59,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1);
     assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1);
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1);
-    let pages = tab.groups.iter().find(|g| g.name == "Pages").expect("Pages group");
-    let ids: Vec<&str> = pages.tools.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, ["ecad.newpage", "ecad.openpage", "ecad.renamepage", "ecad.movepage"]);
+    assert!(tab.groups.iter().all(|g| g.name != "Pages"), "the Project panel has the page actions");
 
     let mut h = harness(trial());
     h.get_by_label(tools::TAB).click();
@@ -86,28 +84,38 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
 }
 
 #[test]
-fn the_page_buttons_fill_in_the_current_page() {
+fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     let mut h = harness(trial());
-    h.get_by_label(tools::TAB).click();
     h.run_steps(3);
-    let page = doc(h.state_mut()).page_order[0].hex();
     let before = head(h.state_mut());
-    h.get_by_label("Rename Page").click();
-    h.run_steps(4);
-    let t = h.state_mut();
-    assert_eq!(t.command, format!(r#"renamepage {{"page":"{page}","title":"<title>"}}"#));
-    assert!(t.command_hint().unwrap().starts_with("Rename Page:"));
-    assert_eq!(head(t), before, "nothing ran");
-    assert!(t.submit_command(&format!(r#"renamepage {{"page":"{page}","title":"Supply"}}"#)).is_none());
-    assert_eq!(head(t), before + 1);
-    // The note went away and moved the panel: lay out again before clicking by position.
+    // The row's right-click menu: Rename… asks the new title in a name box, prefilled with the
+    // current one (owner, 2026-11-08): OK renames, one transaction.
+    h.get_by_label("Page 1: 1").click_secondary();
     h.run_steps(3);
-    h.get_by_label("Move Page").click();
+    h.get_by_label("Rename…").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.command, format!(r#"movepage {{"page":"{page}","index":<new position>}}"#));
-    let line = t.command.clone();
-    assert!(t.submit_command(&line).is_some_and(|e| e.contains("<new position>")), "the placeholder never runs");
+    assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
+    assert_eq!(head(t), before, "nothing ran yet");
+    t.name_box.as_mut().unwrap().text = "Supply".into();
+    h.run_steps(1);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    let t = h.state_mut();
+    assert!(t.name_box.is_none());
+    assert_eq!(head(t), before + 1);
+    assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
+    // New page from the same menu: the name box with the next number; OK adds it.
+    h.get_by_label("Page 1: Supply").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("New page…").click();
+    h.run_steps(3);
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    let t = h.state_mut();
+    assert_eq!(head(t), before + 2);
+    assert_eq!(doc(t).page_order.len(), 2);
 }
 
 /// The quick start's click-only path (design 010 §12): reference, continue on a new page, go back.
@@ -144,11 +152,11 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let said = t.cad.session.log.join("\n");
     assert!(
         said.contains(
-            "Cable C1 continued on page 2 with 3 wires; this end shows /1.2 and the end on page 1 now shows /2.1."
+            "Cable C1 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."
         ),
         "{said}"
     );
-    assert!(said.contains("Connect each wire's free end to its terminal with Connect."));
+    assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
     let field_uid = t.cad.session.state().unwrap().uid;
@@ -167,35 +175,44 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     h.run_steps(3);
     let t = h.state_mut();
     assert!(t.cad.session.running.is_none(), "{:?}", t.cad.session.log.last());
-    assert_ne!(t.cad.session.state().unwrap().uid, field_uid, "the other page is current");
+    // One page window (brief 016): the same document now shows the other page.
+    let p = t.project().unwrap().clone();
+    let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
+    assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
-    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (/1.2)."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (1-B-6)."));
 }
 
-/// The reference texts page `page_uid` draws now (the drawing as it is, not a fresh derivation).
-fn drawn_ref_texts(t: &mut Trial, page_uid: u64) -> Vec<String> {
+/// The reference texts the active page draws now (the drawing as it is, not a fresh derivation),
+/// and that page.
+fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, pg| {
-        let Some(page) = p.page_of(page_uid) else { return Vec::new() };
-        let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
-        p.pages[&page]
+        let Some(page) = p.active_page() else { return (None, Vec::new()) };
+        let Some(d) = pg.drawing_of(p, page) else { return (Some(page), Vec::new()) };
+        let texts = p.pages[&page]
             .map
             .ref_text_handles()
-            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
+            .filter_map(|hd| {
+                d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).find(|e| e.handle == hd)
+            })
             .filter_map(|e| match &e.kind {
                 cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
                 _ => None,
             })
-            .collect()
+            .collect();
+        (Some(page), texts)
     })
     .unwrap()
 }
 
-/// Owner's two-page trial (brief 014 fix round): page 2's cable end is erased (page 1's marker
-/// becomes `/?`), the owner switches to page 1 and types `u`: page 1, in front, shows `/2.1` again
-/// at once, although the undone erase was on page 2.
+/// Owner's two-page trial (brief 014 fix round) with one page window (brief 016): page 2's cable
+/// end is erased (page 1's marker becomes `?`), the owner clicks page 1 in the Project panel and
+/// types `u`: page 2, where the erase was, comes to the front with its end back (AC8), and page 1
+/// shows `2-A-6` when it is clicked again. Through undo and redo, the page shown always draws what
+/// the document says.
 #[test]
-fn undo_typed_on_page_1_redraws_it_after_an_erase_on_page_2() {
+fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     let mut h = harness(trial());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
@@ -205,27 +222,26 @@ fn undo_typed_on_page_1_redraws_it_after_an_erase_on_page_2() {
         assert!(t.submit_command(&format!(r#"wire {{"points":[[0,{y}],[60,{y}]]}}"#)).is_none());
     }
     assert!(t.submit_command(r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#).is_none());
-    let page1 = t.cad.session.state().unwrap().uid;
     let cable = doc(t).cables.keys().next().copied().unwrap();
     assert!(t.submit_command(&format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
     assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
-    let page2 = t.cad.session.state().unwrap().uid;
     assert!(
         t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex()))
             .is_none()
     );
+    let (page1, page2) = (doc(t).page_order[0], doc(t).page_order[1]);
     h.run_steps(3);
     // Erase page 2's end: every drawn object on page 2 except terminal markers.
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     let erase: Vec<String> = p
         .read(&mut t.cad.session, |p, pg| {
-            let page = p.page_of(page2).unwrap();
-            let map = &p.pages[&page].map;
-            pg.drawing_of(p, page)
+            let map = &p.pages[&page2].map;
+            pg.drawing_of(p, page2)
                 .unwrap()
                 .model
                 .iter()
+                .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
                 .map(|e| e.handle)
                 .filter(|hd| !matches!(map.get(*hd), Some(ecad_cadcraft::Mapped::Marker(..))))
                 .map(|hd| hd.hex())
@@ -236,27 +252,30 @@ fn undo_typed_on_page_1_redraws_it_after_an_erase_on_page_2() {
     assert!(t.submit_command(&format!(r#"erase {{"handles":{}}}"#, serde_json::to_string(&erase).unwrap())).is_none());
     assert_eq!(head(t), before + 1, "{:?}", t.cad.session.log.last());
     h.run_steps(3);
-    // Switch to page 1 (its tab comes to the front) and let frames run.
-    let t = h.state_mut();
-    let title = t.cad.session.docs.iter().find(|d| d.uid == page1).unwrap().title.clone();
-    h.get_by_label(&title).click();
+    // Click page 1 in the Project panel.
+    h.get_by_label("Page 1: 1").click();
     h.run_steps(3);
-    assert_eq!(h.state_mut().cad.session.state().unwrap().uid, page1, "the tab click brought page 1 to the front");
     let t = h.state_mut();
-    assert!(drawn_ref_texts(t, page1).iter().any(|x| x == "/?"), "{:?}", drawn_ref_texts(t, page1));
-    // Typed `u`.
+    let (shown, texts) = drawn_ref_texts(t);
+    assert_eq!(shown, Some(page1), "the row click made page 1 active");
+    assert!(texts.iter().any(|x| x == "?"), "{texts:?}");
+    // Typed `u`: page 2 comes to the front with its end back.
     assert!(t.submit_command("u").is_none());
     h.run_steps(3);
     let t = h.state_mut();
     assert_eq!(head(t), before + 2);
-    let texts = drawn_ref_texts(t, page1);
-    assert!(texts.iter().any(|x| x == "/2.1"), "page 1 in front still shows {texts:?}");
-    // Pressing `u` again and again, then redoing: page 1, in front, always draws what the
-    // document says, with no frame in which the change count moved and the text did not.
-    let derived = |t: &mut Trial| {
+    let (shown, texts) = drawn_ref_texts(t);
+    assert_eq!(shown, Some(page2), "the undo brought page 2 to the front");
+    assert!(texts.iter().any(|x| x == "1-B-6"), "{texts:?}");
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."));
+    h.get_by_label("Page 1: 1").click();
+    h.run_steps(3);
+    let (_, texts) = drawn_ref_texts(h.state_mut());
+    assert!(texts.iter().any(|x| x == "2-A-6"), "page 1 shows {texts:?}");
+    // Pressing `u` again and again, then redoing: the page shown always draws what the document
+    // says, with no frame in which the change count moved and the text did not.
+    let derived = |t: &mut Trial, page: ecad_model::PageId| {
         let d = doc(t);
-        let p = t.project().unwrap().clone();
-        let page = p.read(&mut t.cad.session, |p, _| p.page_of(page1)).unwrap().unwrap();
         let mut v: Vec<String> =
             ecad_cadcraft::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
         v.sort();
@@ -265,9 +284,10 @@ fn undo_typed_on_page_1_redraws_it_after_an_erase_on_page_2() {
     for cmd in ["u", "u", "u", "u", "redo", "redo", "redo", "redo", "u"] {
         let t = h.state_mut();
         let _ = t.submit_command(cmd);
-        let mut drawn = drawn_ref_texts(t, page1);
+        let (shown, mut drawn) = drawn_ref_texts(t);
         drawn.sort();
-        assert_eq!(drawn, derived(t), "right after {cmd}: {:?}", t.cad.session.log.last());
+        let shown = shown.expect("a page is shown");
+        assert_eq!(drawn, derived(t, shown), "right after {cmd}: {:?}", t.cad.session.log.last());
         h.run_steps(2);
     }
 }

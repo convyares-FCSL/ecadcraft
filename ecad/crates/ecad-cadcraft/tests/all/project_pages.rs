@@ -25,19 +25,22 @@ fn save_from_either_page_saves_the_whole_project() {
     let stored = h.p(|p| p.store.medium().read_all().unwrap());
     let records = stored.iter().filter(|b| **b == b'\n').count();
     assert_eq!(records, len + 1, "header plus every transaction, including page 1's edit");
-    let (i1, i2) = (h.page_index(p1).unwrap(), h.page_index(p2).unwrap());
-    assert!(!h.s.doc_unsaved(i1) && !h.s.doc_unsaved(i2), "both tabs clean");
-    // An edit on page 2, saved from page 1.
+    let i = h.page_index(p2).unwrap();
+    assert!(!h.s.doc_unsaved(i), "the page window is clean");
+    // An edit on page 2, saved from page 1 (the same page window, showing page 1).
     h.run("wire", json!({"points": [[0, 10], [30, 10]]})).unwrap();
-    assert!(h.s.doc_unsaved(i1) && h.s.doc_unsaved(i2), "both tabs show the project's unsaved state");
+    assert!(h.s.doc_unsaved(i), "the page window shows the project's unsaved state");
     h.activate(p1);
+    let i1 = h.page_index(p1).unwrap();
+    assert!(h.s.doc_unsaved(i1), "still unsaved after switching");
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
+    assert!(!h.s.doc_unsaved(i1));
     h.check();
 }
 
 #[test]
-fn save_as_updates_every_page_path() {
+fn save_as_updates_the_page_window_path() {
     let (mut h, ..) = small_project(42);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
@@ -45,20 +48,51 @@ fn save_as_updates_every_page_path() {
     h.activate(p1);
     h.run("saveas", json!({"path": "first.ecad"})).unwrap();
     let paths = |h: &mut common::H| {
-        let (a, b) = (h.page_index(p1).unwrap(), h.page_index(p2).unwrap());
-        (h.s.docs[a].path.clone(), h.s.docs[b].path.clone(), h.p(|p| p.path.clone()))
+        let i = h.s.active;
+        (h.s.docs[i].path.clone(), h.p(|p| p.path.clone()))
     };
     let first = Some("first.ecad".to_string());
-    assert_eq!(paths(&mut h), (first.clone(), first.clone(), first));
+    assert_eq!(paths(&mut h), (first.clone(), first));
     h.activate(p2);
     h.run("saveas", json!({"path": "second.ecad"})).unwrap();
     let second = Some("second.ecad".to_string());
-    assert_eq!(paths(&mut h), (second.clone(), second.clone(), second.clone()));
-    // A page opened later carries the project's path as well.
-    let i2 = h.page_index(p2).unwrap();
-    h.run("close", json!({"index": i2})).unwrap();
-    h.run("openpage", json!({"page": p2.hex()})).unwrap();
-    assert_eq!(paths(&mut h), (second.clone(), second.clone(), second));
+    assert_eq!(paths(&mut h), (second.clone(), second.clone()));
+    assert_eq!(h.s.docs.len(), 1, "one page window");
+    // A page window opened again later carries the project's path as well.
+    let i = h.page_index(p2).unwrap();
+    h.cfg(|p| p.keep_open = true);
+    h.run("close", json!({"index": i})).unwrap();
+    assert!(h.s.docs.is_empty() && h.project.is_attached(&h.s), "the project stays open without a page");
+    h.project.open_page(&mut h.s, p1).unwrap();
+    assert_eq!(paths(&mut h), (second.clone(), second));
+    h.check();
+}
+
+/// Brief 016: exactly one page window; switching projects the page into it, keeps each page's
+/// view for the session and never opens a second document.
+#[test]
+fn switching_pages_uses_one_window_and_remembers_each_pages_view() {
+    let (mut h, ..) = small_project(45);
+    let p1 = h.first_page();
+    h.run("newpage", json!({"title": "Field"})).unwrap();
+    let p2 = h.doc().page_order[1];
+    assert_eq!(h.s.docs.len(), 1, "newpage switched the one window");
+    assert_eq!(h.p(|p| p.active_page()), Some(p2));
+    let uid = h.s.docs[0].uid;
+    let name = h.p(|p| p.name.clone());
+    assert_eq!(h.s.docs[0].title, format!("{name} - page 2: Field"));
+    h.activate(p1);
+    let view = cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(123.0, 45.0), height: 77.0 };
+    assert!(h.s.state_mut().unwrap().set_view(view));
+    h.activate(p2);
+    assert_eq!((h.s.docs.len(), h.s.docs[0].uid), (1, uid), "the same document");
+    h.activate(p1);
+    let back = h.s.state().unwrap().view();
+    assert_eq!((back.center.x, back.center.y, back.height), (123.0, 45.0, 77.0), "page 1's view came back");
+    // Renaming follows in the window's title; moving keeps the stored number (brief 019).
+    h.run("renamepage", json!({"page": p1.hex(), "title": "Supply"})).unwrap();
+    h.run("movepage", json!({"page": p1.hex(), "index": 2})).unwrap();
+    assert!(h.s.docs[0].title.ends_with(" - page 1: Supply"), "{}", h.s.docs[0].title);
     h.check();
 }
 
@@ -122,4 +156,49 @@ fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     // Undo back to the start still counts as changed: the history moved.
     s.execute("u", &Value::Null).unwrap();
     assert!(s.doc_unsaved(0));
+}
+
+/// Brief 016, AC8 (design check G): undo or redo of an edit made on another page brings that page
+/// to the front and shows the change; undo of a new page while it is active shows the page before.
+#[test]
+fn undo_and_redo_bring_the_page_they_change_to_the_front() {
+    let (mut h, ..) = small_project(46);
+    let supply = h.first_page();
+    h.run("newpage", json!({"title": "Field"})).unwrap();
+    let field = h.doc().page_order[1];
+    h.run("newpage", json!({"title": "Spare"})).unwrap();
+    let spare = h.doc().page_order[2];
+    h.activate(field);
+    let w = h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
+    let wire: ecad_model::ConductorId = common::id(&w, "conductor");
+    let count = |h: &mut common::H| h.pv(|p, pg| pg.entities_of(p, field).len());
+    let with_wire = count(&mut h);
+    h.activate(spare);
+    h.run("u", Value::Null).unwrap();
+    assert_eq!(h.p(|p| p.active_page()), Some(field), "Field is brought to the front");
+    assert!(!h.doc().conductors.contains_key(&wire));
+    assert!(count(&mut h) < with_wire, "the wire is gone from the page shown");
+    assert!(h.s.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."), "{:?}", h.s.log);
+    h.run("redo", Value::Null).unwrap();
+    assert_eq!(h.p(|p| p.active_page()), Some(field), "redo: Field stays");
+    assert_eq!(count(&mut h), with_wire, "the wire is back");
+    // Redo from another page brings Field too.
+    h.run("u", Value::Null).unwrap();
+    h.activate(supply);
+    h.run("redo", Value::Null).unwrap();
+    assert_eq!(h.p(|p| p.active_page()), Some(field));
+    // Undo of a page op: undoing `newpage` Spare while Spare is active shows the page before it.
+    let (mut h, ..) = small_project(47);
+    h.run("newpage", json!({"title": "Field"})).unwrap();
+    let field = h.doc().page_order[1];
+    h.run("newpage", json!({"title": "Spare"})).unwrap();
+    assert_eq!(h.p(|p| p.active_page()), Some(h.doc().page_order[2]));
+    h.run("u", Value::Null).unwrap();
+    assert_eq!(h.doc().page_order.len(), 2);
+    assert_eq!(h.p(|p| p.active_page()), Some(field), "the page before Spare");
+    h.run("redo", Value::Null).unwrap();
+    let spare = h.doc().page_order[2];
+    assert_eq!(h.p(|p| p.active_page()), Some(spare), "redo shows the page it adds");
+    assert_eq!(h.s.docs.len(), 1, "still one page window");
+    h.check();
 }

@@ -70,12 +70,11 @@ fn starts_with_one_new_project_and_nothing_to_lose() {
     let mut t = trial(None);
     assert_eq!(t.cad.session.docs.len(), 1);
     assert!(t.project_open());
-    assert!(t.cad.session.log.iter().any(|l| l.contains("Save As writes the project to a .ecad file")));
+    assert!(t.cad.session.log.iter().any(|l| l.contains("PROJECT panel on the left lists the pages")));
     let s = t.status().unwrap();
     assert_eq!((s.pages, s.unsaved, s.file.path), (1, 0, None));
     // An untouched project closes without a question.
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     assert!(t.pending_close().is_none());
     assert!(t.cad.session.docs.is_empty() && !t.project_open());
     t.new_project().unwrap();
@@ -162,15 +161,13 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     let d = TempDir::new("close");
     let mut t = trial(None);
     edit(&mut t);
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     assert!(t.pending_close().is_some(), "the trial asks");
     assert!(t.cad.close_prompt().is_none(), "CADCraft's own prompt is not shown");
     t.answer(Answer::Cancel);
     assert!(t.project_open() && t.cad.session.doc_unsaved(0), "cancel keeps the project and its edit");
     // Save on a project with no file: the Save As dialog, then the close goes on.
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Save);
     assert!(t.project_open(), "still open while the file name is asked");
     t.set_dialog_path(&d.path("closing.ecad"));
@@ -179,16 +176,14 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     // Reopen, edit, close with Save: saved to its file without a dialog.
     t.open_project(&d.path("closing.ecad")).unwrap();
     edit(&mut t);
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Save);
     assert!(t.dialog().is_none() && !t.project_open());
     t.open_project(&d.path("closing.ecad")).unwrap();
     assert_eq!(doc(&mut t).conductors.len(), 2, "both wires were saved");
     // Discard: closed; the file keeps its last saved state.
     edit(&mut t);
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Discard);
     assert!(!t.project_open());
     assert!(t.cad.session.log.iter().any(|l| l.contains("keeps its last saved state")));
@@ -200,31 +195,43 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
 fn cancelling_the_save_as_of_a_close_keeps_the_project_open() {
     let mut t = trial(None);
     edit(&mut t);
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Save);
     t.cancel_dialog();
     assert!(t.project_open() && t.pending_close().is_none());
     assert!(t.cad.session.log.iter().any(|l| l.contains("Close cancelled")));
 }
 
+/// Design 016 §4.1: closing the one page window's tab only hides the page (no question, the
+/// project and its unsaved edits stay); a click shows a page again; closing the project asks.
 #[test]
-fn a_page_tab_closes_quietly_and_the_last_page_asks() {
+fn the_page_tab_closes_quietly_and_closing_the_project_asks() {
     let mut t = trial(None);
     edit(&mut t);
     t.cad.run("newpage", json!({"title": "2"})).unwrap();
-    assert_eq!(t.cad.session.docs.len(), 2);
-    t.cad.request_close(None); // page 2, the active tab
-    t.after_logic();
-    assert!(t.pending_close().is_none(), "another page is still open: no question");
-    assert_eq!(t.cad.session.docs.len(), 1);
-    let s = t.status().unwrap();
-    assert_eq!((s.pages, s.unsaved), (1, 2), "the project and both edits are still there");
+    assert_eq!(t.cad.session.docs.len(), 1, "one page window");
     t.cad.request_close(None);
     t.after_logic();
-    assert!(t.pending_close().is_some(), "closing the last page asks");
+    assert!(t.pending_close().is_none(), "closing the page window asks nothing");
+    assert!(t.cad.session.docs.is_empty() && t.project_open() && !t.page_window_open());
+    let s = t.status().unwrap();
+    assert_eq!((s.pages, s.unsaved), (2, 2), "the project and both edits are still there");
+    let first = doc(&mut t).page_order[0];
+    t.show_page(first).unwrap();
+    assert_eq!(t.cad.session.docs.len(), 1, "one click shows the page again");
+    t.close_project();
+    assert!(t.pending_close().is_some(), "closing the project asks");
     t.answer(Answer::Cancel);
     assert_eq!(t.cad.session.docs.len(), 1);
+    assert!(t.project_open());
+    // Quitting with the page window closed still asks (never lose work).
+    t.cad.request_close(None);
+    t.after_logic();
+    assert!(t.cad.session.docs.is_empty() && t.project_open());
+    assert!(t.request_quit(), "the window close is held");
+    assert!(t.pending_close().is_some(), "the quit asks about the unsaved project");
+    t.answer(Answer::Cancel);
+    assert!(t.project_open() && !t.cad.quit_requested);
 }
 
 #[test]
@@ -232,12 +239,12 @@ fn quitting_with_unsaved_changes_asks_then_saves_or_discards() {
     let d = TempDir::new("quit");
     let mut t = trial(None);
     edit(&mut t);
-    assert!(t.cad.request_quit(), "the window close is held");
+    assert!(t.request_quit(), "the window close is held");
     t.after_logic();
     assert!(t.pending_close().is_some());
     t.answer(Answer::Cancel);
     assert!(!t.cad.quit_requested && t.project_open(), "cancel keeps the app and the project");
-    assert!(t.cad.request_quit());
+    assert!(t.request_quit());
     t.after_logic();
     t.answer(Answer::Save);
     t.set_dialog_path(&d.path("quit.ecad"));
@@ -246,7 +253,7 @@ fn quitting_with_unsaved_changes_asks_then_saves_or_discards() {
     assert!(std::path::Path::new(&d.path("quit.ecad")).exists());
     let mut t = trial(None);
     edit(&mut t);
-    assert!(t.cad.request_quit());
+    assert!(t.request_quit());
     t.after_logic();
     t.answer(Answer::Discard);
     assert!(t.cad.quit_requested, "discard lets the app quit");
@@ -262,8 +269,7 @@ fn open_reopens_a_saved_project_with_its_history() {
     save_via_dialog(&mut t, &path);
     let saved = doc(&mut t);
     assert!(t.open_project(&path).is_err(), "close the open project first");
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     assert!(!t.project_open());
     // Opening through the dialog.
     t.request_open();
@@ -273,13 +279,12 @@ fn open_reopens_a_saved_project_with_its_history() {
     assert!(t.notice().is_none(), "a clean open needs no dialog");
     assert_eq!(doc(&mut t), saved, "same pages, objects and IDs");
     let s = t.status().unwrap();
-    assert_eq!((s.name.as_str(), s.unsaved, s.pages), ("p", 0, 1));
+    assert_eq!((s.name.as_str(), s.unsaved, s.pages), ("p", 0, 2), "both pages, one shown");
     // History came back: undo removes page 2, then the wire.
     t.submit_command("u");
     assert_eq!(doc(&mut t).page_order.len(), 1);
     // A file that is not a project is refused in the dialog.
-    t.cad.request_close_all();
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Discard);
     let junk = d.path("junk.ecad");
     std::fs::write(&junk, b"hello\n").unwrap();
@@ -313,8 +318,7 @@ fn a_second_window_on_the_same_file_is_read_only() {
     assert_eq!(std::fs::read(&path).unwrap(), before);
     // Closing with Save asks for another file name.
     second.dismiss_notice();
-    second.cad.request_close(None);
-    second.after_logic();
+    second.close_project();
     second.answer(Answer::Save);
     assert!(matches!(second.dialog(), Some((DialogKind::SaveAs, ..))));
     second.set_dialog_path(&d.path("mine.ecad"));
@@ -335,8 +339,7 @@ fn snapshots_are_exported_as_diagnostics_only() {
     assert_eq!(snap["seq"], snap["head"]);
     assert!(t.cad.session.log.iter().any(|l| l.contains(SNAPSHOT_NOTE)));
     // Discarding exports one more first.
-    t.cad.request_close(None);
-    t.after_logic();
+    t.close_project();
     t.answer(Answer::Discard);
     let files: Vec<_> = std::fs::read_dir(&snaps).unwrap().filter_map(Result::ok).map(|e| e.file_name()).collect();
     assert_eq!(files.len(), 2, "{files:?}");
@@ -361,13 +364,13 @@ fn frames_lay_out_headless_with_every_dialog() {
     t.confirm_dialog();
     one_frame(&mut t, &ctx);
     t.cancel_dialog();
-    t.cad.request_close(None);
+    t.close_project();
     one_frame(&mut t, &ctx);
     assert!(t.pending_close().is_some(), "the close dialog is up");
     one_frame(&mut t, &ctx);
     t.answer(Answer::Discard);
     one_frame(&mut t, &ctx);
-    assert!(!t.project_open(), "after discard the banner offers New and Open");
+    assert!(!t.project_open(), "after discard the Project panel offers New and Open");
     t.request_open();
     one_frame(&mut t, &ctx);
     t.cancel_dialog();
@@ -376,7 +379,7 @@ fn frames_lay_out_headless_with_every_dialog() {
     one_frame(&mut t, &ctx);
 }
 
-/// The quick-start guide's manual trial, typed through the banner's command field. Mouse steps
+/// The quick-start guide's manual trial, typed through the ECAD command window's field. Mouse steps
 /// (window selection, dragging) are replaced by their JSON forms; how they look on screen is not
 /// checked. Keep in step with `ecad/docs/quick-start.md`.
 #[test]
@@ -392,7 +395,16 @@ fn the_quick_start_trial_runs_headless() {
     };
     // 1. Draw a rectangle and convert it into a component with a terminal.
     ok(&mut t, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<_> = t.cad.session.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    let lines: Vec<_> = t
+        .cad
+        .session
+        .doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .map(|e| e.handle)
+        .collect();
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
     ok(&mut t, "convertcomponent");
@@ -403,6 +415,7 @@ fn the_quick_start_trial_runs_headless() {
         .unwrap()
         .model
         .iter()
+        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
         .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle)
         .unwrap();
@@ -449,17 +462,26 @@ fn the_quick_start_trial_runs_headless() {
     let n = t.cad.session.log.len();
     let _ = t.submit_command(r#"undo {"mode":"mark"}"#);
     assert!(t.cad.session.log[n..].iter().any(|l| l.contains("not supported")));
-    // 6. Two pages: a quiet tab close, then reopen with the content back.
+    // 6. Two pages in one page window: switch from the Project panel; a quiet tab close, then a
+    // click shows the page again with its content (design 016, quick start 5E).
     ok(&mut t, r#"newpage {"title":"2"}"#);
     ok(&mut t, r#"wire {"points":[[0,0],[30,0]]}"#);
-    assert_eq!(t.cad.session.docs.len(), 2);
+    assert_eq!(t.cad.session.docs.len(), 1, "one page window");
     let p2 = doc(&mut t).page_order[1];
+    t.show_page(page).unwrap();
+    assert_eq!(t.cad.session.docs.len(), 1);
     t.cad.request_close(None);
     t.after_logic();
-    assert!(t.pending_close().is_none() && t.cad.session.docs.len() == 1);
-    ok(&mut t, &format!("openpage {{\"page\":\"{}\"}}", p2.hex()));
-    assert_eq!(t.cad.session.docs.len(), 2);
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), 1, "page 2's wire is drawn again");
+    assert!(t.pending_close().is_none() && t.cad.session.docs.is_empty() && t.project_open());
+    t.show_page(p2).unwrap();
+    assert_eq!(t.cad.session.docs.len(), 1);
+    // The wire and its label (brief 022), not counting the sheet frame (brief 019).
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        2,
+        "page 2's wire is drawn again"
+    );
+    t.show_page(page).unwrap();
     // 7. Save, close and reopen: connectivity, IDs and history survive. The guide's `~/` path,
     // under a temporary home folder (on Linux the default folder is created by this save; on
     // Windows the guide's default is `C:\dev\ecad-projects`, so the folder is made first).
@@ -470,21 +492,20 @@ fn the_quick_start_trial_runs_headless() {
     let path = home.0.join("ecad-projects").join("demo.ecad").display().to_string();
     assert_eq!(
         ecad_trial::status_line(&t.status().unwrap()),
-        format!("Project \"demo\": 2 pages open, file {path}, no unsaved changes."),
-        "the banner the guide quotes"
+        format!("Project \"demo\": 2 pages, file {path}, no unsaved changes."),
+        "the Project panel's status line the guide quotes"
     );
-    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1"), "the tab the guide quotes");
+    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"), "the tab the guide quotes");
     assert!(t.cad.session.log.iter().any(|l| l.starts_with("Saved:")));
     let saved = doc(&mut t);
-    let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap();
-    t.cad.request_close_all();
-    t.after_logic();
+    let history = p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap();
+    t.close_project();
     assert!(t.pending_close().is_none(), "nothing unsaved: no question");
     assert!(!t.project_open());
     t.open_project(&path).unwrap();
     assert_eq!(doc(&mut t), saved);
     let reopened = t.project().unwrap().clone();
-    assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap(), history);
+    assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap(), history);
     assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
     // The component ID noted before saving still names the component.
     ok(&mut t, &format!("setprop {{\"component\":\"{}\",\"key\":\"tag\",\"value\":\"-K1\"}}", component.hex()));
@@ -511,7 +532,10 @@ fn the_command_field_keeps_trailing_enters() {
     assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
     assert!(t.submit_command("").is_none());
     assert!(t.cad.session.running.is_none(), "an empty line is Enter");
-    assert_eq!(t.cad.session.doc().unwrap().model.len(), 2);
+    assert_eq!(
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
+        2
+    );
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
 

@@ -12,7 +12,7 @@ use ecad_store::{Medium, MemoryMedium};
 /// A file holding the first `n` transactions of the fixture, and the full ledger with the rest
 /// pending.
 fn half_saved(n: usize) -> (ProjectFile<MemoryMedium>, Ledger) {
-    let full = fixture().ledger.log().to_vec();
+    let full = fixture().ledger.full_log().unwrap();
     let mut prefix = Ledger::replay(full[..n].to_vec(), SEED).unwrap();
     let file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut prefix, None, WRITER).unwrap();
     let mut ledger = Ledger::replay(full, SEED).unwrap();
@@ -23,7 +23,7 @@ fn half_saved(n: usize) -> (ProjectFile<MemoryMedium>, Ledger) {
 fn edit(ledger: &mut Ledger, title: &str) {
     let id = PageId(0x1000 + ledger.head() as u128);
     let index = ledger.document().page_order.len();
-    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page { title: title.into() }, index }]).unwrap();
+    ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page::new(title), index }]).unwrap();
 }
 
 /// The file reopened: every in-memory transaction exactly once, nothing else.
@@ -164,7 +164,7 @@ fn a_new_file_needs_an_empty_target() {
     // A failed first write leaves the in-memory project unsaved.
     let mut m = MemoryMedium::default();
     m.fail_next_flush = true;
-    let mut ledger = Ledger::replay(f.ledger.log().to_vec(), SEED).unwrap();
+    let mut ledger = Ledger::replay(f.ledger.full_log().unwrap(), SEED).unwrap();
     ledger.mark_persisted(0).unwrap();
     assert!(matches!(ProjectFile::create(m, PROJECT, &mut ledger, None, WRITER), Err(SaveError::Flush(_))));
     assert!(ledger.is_unsaved());

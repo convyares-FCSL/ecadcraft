@@ -122,24 +122,15 @@ impl ProjectHandle {
         self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops)
     }
 
-    /// Redraw the page in front if a commit on another page left it stale (only the page being
-    /// shown is redrawn on a commit; owner, 2026-11-08). The trial calls it every frame, after
-    /// CADCraft's logic, so a page is redrawn when its tab comes to the front; anything else that
-    /// brings a page to the front calls it too. Does nothing when the page in front is no page of
-    /// this project or is not stale.
-    ///
-    /// # Errors
-    /// [`BUSY`] or [`NOT_ATTACHED`], as for [`ProjectHandle::read`].
-    pub fn refresh_shown(&self, s: &mut Session) -> Result<(), String> {
-        let Ok(uid) = s.state().map(|st| st.uid) else { return Ok(()) };
-        let mut p = self.lock(s)?;
-        if let Some(page) = p.page_of(uid) {
-            p.refresh_if_stale(&mut Pages(s), page);
-        }
-        Ok(())
+    /// Whether the project is still attached to `s`: open there, with or without its page window
+    /// (a project whose page window was closed with [`Project::keep_open`] stays attached).
+    pub fn is_attached(&self, s: &Session) -> bool {
+        let me = Arc::as_ptr(&self.0).cast::<()>();
+        s.ext.owners().iter().any(|o| Arc::as_ptr(o).cast::<()>() == me)
     }
 
-    /// Open `page` as a document (or switch to it).
+    /// Make `page` the active page, as `openpage` does: it is shown in the project's one page
+    /// window, which is opened if it was closed (brief 016).
     ///
     /// # Errors
     /// [`BUSY`], an unknown page, or projection failure.
@@ -217,6 +208,15 @@ impl ProjectHandle {
     ) -> Result<(Self, String), String> {
         Project::open_file_in(s, path, seed, settings)
     }
+
+    /// Open a project file for reading only: no writer lock, and the file is never changed; see
+    /// [`Project::open_file_with`].
+    ///
+    /// # Errors
+    /// As [`ProjectHandle::open_file`].
+    pub fn open_file_read_only(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
+        Project::open_file_with(s, path, seed, crate::views::Settings::from_env(), true)
+    }
 }
 
 /// The project that owns the active document, for ECAD commands.
@@ -240,9 +240,9 @@ impl Pages<'_> {
         self.0.docs.iter_mut().find(|d| d.uid == uid)
     }
 
-    /// The document in front, if any.
-    pub(crate) fn front_uid(&self) -> Option<u64> {
-        self.0.state().ok().map(|st| st.uid)
+    /// Zoom the active document to its extents (a page shown for the first time).
+    pub(crate) fn zoom_extents(&mut self) {
+        let _ = self.0.zoom_extents();
     }
 
     /// Make document `uid` the active one; `false` when it is not open.
@@ -294,10 +294,24 @@ impl PagesRef<'_> {
         self.doc(uid).map(|d| d.doc.clone())
     }
 
-    /// Model-space entities of `page`'s drawing.
+    /// Model-space entities of `page`'s drawing, without its sheet frame (brief 019; see
+    /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().cloned().collect()))
+            .and_then(|d| {
+                d.space(&Space::Model)
+                    .map(|m| m.iter().filter(|e| e.common.layer != crate::frame::LAYER).cloned().collect())
+            })
+            .unwrap_or_default()
+    }
+
+    /// The sheet frame's entities of `page`'s drawing (brief 019).
+    pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
+        self.drawing_of(p, page)
+            .and_then(|d| {
+                d.space(&Space::Model)
+                    .map(|m| m.iter().filter(|e| e.common.layer == crate::frame::LAYER).cloned().collect())
+            })
             .unwrap_or_default()
     }
 

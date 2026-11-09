@@ -82,23 +82,24 @@ fn component_and_coil(h: &mut Harness<'static, Trial>) {
     assert!(h.state_mut().submit_command("line 0,0 40,0 40,20 0,20 c").is_none());
     h.state_mut().cad.run("zoom", json!({"mode": "window", "p1": [-20, -40], "p2": [130, 50]})).unwrap();
     h.run_steps(3);
-    // Window selection around the rectangle, from top left to bottom right.
-    let (a, b) = (screen(h, -10.0, 30.0), screen(h, 50.0, -10.0));
+    // Window selection around the rectangle, from top left to bottom right (starting off the
+    // sheet's paper edge at x = -10, brief 019).
+    let (a, b) = (screen(h, -15.0, 30.0), screen(h, 50.0, -10.0));
     click(h, a);
     click(h, b);
     assert_eq!(h.state().cad.session.selection().len(), 4, "the four lines are selected");
     button(h, tools::TAB);
     button(h, "Convert to Component");
     assert_eq!(doc(h).components.len(), 1);
-    button(h, "Add Terminal");
-    assert_eq!(prompt(h), "Specify point for terminal 1 on a component or [Name]:");
+    button(h, "Add Connection Point");
+    assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
     type_enter(h, "40,10");
     type_enter(h, "0,10");
     type_enter(h, "");
-    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Terminal");
+    assert!(h.state().cad.session.running.is_none(), "Enter finished Add Connection Point");
     button(h, "Place Symbol");
     type_enter(h, "R");
-    assert_eq!(prompt(h), "Specify insertion point (rotation 90, not mirrored) or [Rotate/Mirror]:");
+    assert_eq!(prompt(h), "Specify insertion point (new device -K01, rotation 90) or [Rotate/Mirror/Device/Tag]:");
     // The coil follows the cursor before the click.
     let at = screen(h, 100.0, 0.0);
     pointer_to(h, at);
@@ -114,7 +115,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     let mut h = harness();
     component_and_coil(&mut h);
     button(&mut h, "Wire");
-    assert_eq!(prompt(&h), "Specify first point of wire:");
+    assert_eq!(prompt(&h), "Specify first point of wire or [Potential] <auto>:");
     let first = screen(&h, 40.0, 10.0) + egui::vec2(2.0, -2.0);
     click(&mut h, first);
     assert_eq!(prompt(&h), "Specify next point or [Undo]:");
@@ -202,16 +203,18 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     let coil_edge = screen(&h, 110.0, 3.0);
     pointer_to(&mut h, coil_edge);
     h.run_steps(2);
-    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some("Component (no tag)"));
-    assert!(h.query_by_label("Component (no tag)").is_some(), "{HOVER_ID} shows it");
-    assert!(h.query_by_label("Terminals: 2").is_some());
+    // The coil placed by Place Symbol is a device (brief 018): its lens names its tag.
+    let lens = "Device -K01   Contactor / relay coil";
+    assert_eq!(h.state().hover_lines().map(|l| l[0].clone()).as_deref(), Some(lens));
+    assert!(h.query_by_label(lens).is_some(), "{HOVER_ID} shows it");
+    assert!(h.query_by_label("This symbol: coil A1/A2, page 1 \"1\"").is_some());
     let on_wire = screen(&h, 55.0, 10.0);
     pointer_to(&mut h, on_wire);
     h.run_steps(2);
     assert!(h.query_by_label("Wire (no tag)").is_some());
-    assert!(h.query_by_label("End B: terminal A1 of ").is_none(), "lines are whole");
+    assert!(h.query_by_label("End B: connection point A1 of ").is_none(), "lines are whole");
     let lines = h.state().hover_lines().unwrap().to_vec();
-    assert!(lines.iter().any(|l| l.starts_with("End B: terminal A1 of ")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("End B: connection point A1 of ")), "{lines:?}");
     // Empty space: no tooltip.
     let empty = screen(&h, 60.0, 40.0);
     pointer_to(&mut h, empty);

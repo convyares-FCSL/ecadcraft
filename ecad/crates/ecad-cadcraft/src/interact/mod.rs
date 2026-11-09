@@ -19,8 +19,10 @@
 //! This module adds no ECAD meaning: no numbering beyond the default terminal name, no new
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
+mod devices;
 mod forms;
 mod refs;
+mod wiring_forms;
 
 use std::collections::BTreeSet;
 
@@ -39,10 +41,10 @@ use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
-pub(crate) use forms::{
-    addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, place, wire,
-};
+pub(crate) use devices::{devicedelete, deviceprops, place};
+pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
+pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -141,7 +143,15 @@ pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
     if !in_range(p) {
         return None;
     }
-    s.pick_object(&s.space(), p, r).ok().flatten()
+    let h = s.pick_object(&s.space(), p, r).ok().flatten()?;
+    // The sheet frame (brief 019) is not an object to pick. It is drawn behind everything else, so
+    // it is only picked where nothing else is.
+    let d = s.doc().ok()?;
+    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == crate::frame::LAYER);
+    if !frame(h) {
+        return Some(h);
+    }
+    (!frame(h)).then_some(h)
 }
 
 /// A terminal under the cursor.
@@ -203,7 +213,7 @@ fn short(hex: &str) -> &str {
 pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
     match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
-        None => format!("terminal {}", short(&t.hex())),
+        None => format!("connection point {}", short(&t.hex())),
     }
 }
 
@@ -424,6 +434,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         stroke: crate::references::BOLD_PX,
         color: if m.orphan { ORPHAN_RGB } else { CABLE_RGB },
     }));
+    // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
+    if let Some((pg, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
+        let _ = pg;
+        let color = match sev {
+            crate::checks::Severity::Error => Rgb(0xFF, 0x00, 0x00),
+            crate::checks::Severity::Warning => Rgb(0xFF, 0xFF, 0x00),
+            crate::checks::Severity::Info => Rgb(0xA0, 0xA0, 0xA0),
+        };
+        out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
+    }
     out
 }
 
@@ -446,9 +466,24 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::Fan(_) if view.map.reference_of(h).is_some() => {
             crate::references::hover_lines(doc, view.map.reference_of(h)?)?
         }
+        // The sheet frame and title block (design 019 §4): where to change it.
+        Mapped::Frame(_) => {
+            vec![format!("Page {}: change it in the Properties panel", crate::references::page_number(doc, page))]
+        }
+        // A device's tag text or terminal label (brief 018): the device's lens.
+        Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
+            Subject::Component(c) => crate::devices::hover_lines(doc, c, r),
+            _ => return None,
+        },
+        // A conductor label (brief 022): its wire's lens.
+        Mapped::Label(w) => wire_lines(doc, w, page),
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
-            (_, r) => match r.subject {
+            (rid, r) => match r.subject {
+                // A device (a tagged component, brief 018): design 018 §6.4's lens.
+                Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
+                    crate::devices::hover_lines(doc, c, rid)
+                }
                 Subject::Component(c) => component_lines(doc, c),
                 Subject::Conductor(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
@@ -574,7 +609,7 @@ fn component_lines(doc: &Document, c: ComponentId) -> Vec<String> {
     ];
     let terminals: Vec<(TerminalId, String)> =
         doc.terminals_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
-    lines.push(format!("Terminals: {}", terminals.len()));
+    lines.push(format!("Connection points: {}", terminals.len()));
     for (t, label) in terminals {
         let k = doc.ends_at(t).len();
         lines.push(format!("  {label} — {k} wire end{}", if k == 1 { "" } else { "s" }));
@@ -591,7 +626,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
         })
         .unwrap_or_default();
     let mut lines = vec![
-        format!("Terminal {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
+        format!("Connection point {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
         format!("of component {of}"),
         format!("id {}", t.hex()),
     ];
@@ -665,6 +700,14 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     }
     for end in End::BOTH {
         lines.push(match conductor.and_then(|x| x.end(end)) {
+            // A junction or a continuation (brief 022) is named by what it is.
+            Some(t) if doc.terminals.get(&t).is_some_and(|x| crate::wires::kind_of(doc, x.component).is_some()) => {
+                let words = crate::wires::point_words(doc, t);
+                match words.strip_prefix('\u{2192}') {
+                    Some(name) => format!("End {end:?}: continuation {name}"),
+                    None => format!("End {end:?}: {words}"),
+                }
+            }
             Some(t) => {
                 let of = doc
                     .terminals
@@ -675,7 +718,7 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
                             .map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
                     })
                     .unwrap_or_default();
-                format!("End {end:?}: terminal {} of {of}", terminal_name(doc, t))
+                format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
             }
             None => format!("End {end:?}: not connected"),
         });
@@ -689,6 +732,9 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     if !others.is_empty() {
         lines.push(format!("Also drawn on {}", others.join(", ")));
     }
+    // Brief 022: the wire's number, potential, label and net (the Properties panel's facts until
+    // 019's panel is merged).
+    lines.extend(crate::wires::hover_lines(doc, w));
     lines
 }
 
@@ -699,14 +745,15 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let doc = p.ledger.document();
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
-        Some(Mapped::Marker(..)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
+        Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };
     let Subject::Component(c) = rep.subject else { return Err(NOT_OUTLINE.into()) };
     if rep.form != Form::Drawn {
-        return Err("terminals of placed symbols come from their definition".into());
+        return Err("connection points of placed symbols come from their definition".into());
     }
     match doc.items.get(&item).map(|i| &i.kind) {
         Some(ItemKind::Primitive(prim)) => Ok((c, prim.clone())),

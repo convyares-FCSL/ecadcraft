@@ -48,7 +48,15 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     let (mut h, c1, _c2, _w) = small_project(31);
     let page = h.first_page();
     let handles = h.rep_handles(page, c1);
-    h.s.set_selection(h.s.doc().unwrap().model.iter().map(|e| e.handle).collect());
+    h.s.set_selection(
+        h.s.doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle)
+            .collect(),
+    );
     h.cfg(|p| p.faults.fail_projections = 1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), 1);
@@ -72,12 +80,16 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
 #[cfg(feature = "fault-injection")]
 #[test]
 fn owner_recovery_rebuilds_every_open_page_and_keeps_the_document() {
+    // One page window (brief 016): the shown page is rebuilt and verified; another page is
+    // projected from the same document when it is shown again.
     let (mut h, ..) = small_project(32);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
     let p2 = h.doc().page_order[1];
+    h.activate(p1);
     let (doc_before, d1, m1) = page_state(&mut h, p1);
+    h.activate(p2);
     let (_, d2, m2) = page_state(&mut h, p2);
     let head = h.head();
     h.cfg(|p| p.faults.panic_in_commit = true);
@@ -85,8 +97,9 @@ fn owner_recovery_rebuilds_every_open_page_and_keeps_the_document() {
     assert_eq!(h.head(), head, "the failed command recorded nothing");
     assert_eq!(h.doc(), doc_before, "stable IDs and content are unchanged");
     assert_eq!(h.p(|p| p.events.count(EventKind::Recovered)), 1);
-    assert_eq!(h.p(|p| p.events.count(EventKind::RecoveryVerified)), 2, "both open pages verified");
-    for (page, before, before_map) in [(p1, d1, m1), (p2, d2, m2)] {
+    assert_eq!(h.p(|p| p.events.count(EventKind::RecoveryVerified)), 1, "the shown page verified");
+    for (page, before, before_map) in [(p2, d2, m2), (p1, d1, m1)] {
+        h.activate(page);
         let (doc, d, map) = page_state(&mut h, page);
         assert!(verify_page(&doc, page, &d, &map).ok());
         assert_eq!(content_by_id(&doc, page, &d, &map), content_by_id(&doc_before, page, &before, &before_map));
@@ -219,18 +232,15 @@ fn an_unavailable_page_is_a_labelled_read_only_placeholder() {
         assert!(Arc::ptr_eq(&h.s.docs[i1].doc, &shown) || h.s.docs[i1].doc.model == shown.model, "{cmd}");
     }
     assert_eq!(h.head(), head);
-    // Edits on another page do not revive or touch the placeholder.
-    h.activate(p2);
-    h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
-    assert!(h.p(|p| p.pages[&p1].unavailable));
-    assert!(h.s.docs[i1].doc.model == shown.model);
     // The project still saves, from the placeholder page too.
     h.s.active = i1;
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
-    // Close and reopen: the page is drawn from the document again.
-    h.run("close", json!({"index": i1})).unwrap();
-    h.run("openpage", json!({"page": p1.hex()})).unwrap();
+    // Edits on another page work (one page window: switching leaves the placeholder) ...
+    h.activate(p2);
+    h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
+    // ... and showing page 1 again draws it from the document.
+    h.activate(p1);
     assert!(!h.p(|p| p.pages[&p1].unavailable));
     let i1 = h.page_index(p1).unwrap();
     assert!(!h.s.docs[i1].title.ends_with(ecad_cadcraft::project::UNAVAILABLE_SUFFIX));

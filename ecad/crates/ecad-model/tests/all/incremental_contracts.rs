@@ -83,11 +83,12 @@ fn base() -> Base {
     let mut ids = IdAllocator::seeded(13);
     let mut ledger = Ledger::new(5);
     let page = ids.fresh();
-    let page_v = Page { title: "1".into() };
+    let page_v = Page::new("1");
     let layer = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def = ids.fresh();
     let def_v = Definition {
+        bridges: Vec::new(),
         name: "K".into(),
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
@@ -188,7 +189,7 @@ fn applicable(b: &mut Base) -> Vec<Op> {
     let mut rep_after = b.rep_wire_v.clone();
     rep_after.role = "moved".into();
     vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page { title: "2".into() }, index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: b.layer, layer: b.layer_v.clone() },
@@ -226,7 +227,7 @@ fn applicable(b: &mut Base) -> Vec<Op> {
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
             before: ProjectSettings::default(),
-            after: ProjectSettings { length_unit: LengthUnit::Inch },
+            after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
         Op::NameVersion { name: "w".into(), at: 2 },
         Op::UnnameVersion { name: "v".into(), at: 1 },
@@ -241,9 +242,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
     let missing_comp = b.ids.fresh();
     vec![
         // Not atomic before brief 013: the page went in before the index was rejected.
-        Op::AddPage { id: b.ids.fresh(), page: Page { title: "2".into() }, index: 9 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 9 },
         Op::AddPage { id: b.page, page: b.page_v.clone(), index: 0 },
-        Op::RemovePage { id: b.page, page: Page { title: "other".into() }, index: 0 },
+        Op::RemovePage { id: b.page, page: Page::new("other"), index: 0 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 1 },
         Op::AddLayer { id: b.layer, layer: b.layer_v.clone() },
         Op::RemoveLayer { id: b.layer, layer: Layer { name: "other".into() } },
@@ -270,7 +271,7 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
-            before: ProjectSettings { length_unit: LengthUnit::Inch },
+            before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
         Op::NameVersion { name: "v".into(), at: 1 },
@@ -319,12 +320,26 @@ fn every_op_inverse_after_apply_restores_the_exact_document() {
     }
 }
 
+/// Brief 021: the index built on threads (items and representations apart, as on open) equals
+/// one built on a single thread, on a document with every kind of object and after every op.
+#[test]
+fn the_parallel_index_build_equals_a_serial_build() {
+    let mut b = base();
+    let before = b.ledger.document().clone();
+    assert!(before.index_build_is_deterministic());
+    for op in applicable(&mut b) {
+        let mut doc = before.clone();
+        op.apply(&mut doc).unwrap_or_else(|e| panic!("{}: {e}", op.name()));
+        assert!(doc.index_build_is_deterministic(), "after {}", op.name());
+    }
+}
+
 #[test]
 fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let mut b = base();
     // Rename the page by removing and re-adding it: in between, every item and representation on
     // it points at a missing page.
-    let renamed = Page { title: "renamed".into() };
+    let renamed = Page::new("renamed");
     let ops = vec![
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
         Op::AddPage { id: b.page, page: renamed.clone(), index: 0 },
@@ -369,7 +384,7 @@ fn a_transaction_failing_at_op_three_leaves_the_document_byte_identical() {
     let head = b.ledger.head();
     let missing = b.ids.fresh();
     let ops = vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page { title: "2".into() }, index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
         Op::AttachEnd { conductor: b.wire2, end: End::A, before: None, after: Some(b.term) },
         Op::RemoveItem { id: missing, item: b.item_v.clone() },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "never".into() } },
@@ -432,18 +447,18 @@ fn undo_and_redo_use_the_kept_stacks_and_restore_state() {
     assert_eq!(b.ledger.undo_label(), Some("bookmark"));
     b.ledger.redo(Author::User).unwrap();
     assert_eq!(b.ledger.document().cables_of(b.wire2), vec![b.cable]);
-    let replayed = Ledger::replay(b.ledger.log().to_vec(), 0).unwrap();
+    let replayed = Ledger::replay(b.ledger.full_log().unwrap(), 0).unwrap();
     assert_eq!(replayed.undo_label(), b.ledger.undo_label());
     assert_eq!(replayed.redo_label(), b.ledger.redo_label());
     assert_eq!(replayed.document(), b.ledger.document());
-    let verified = Ledger::replay_verified(b.ledger.log().to_vec(), 0).unwrap();
+    let verified = Ledger::replay_verified(b.ledger.full_log().unwrap(), 0).unwrap();
     assert_eq!(verified.document(), b.ledger.document());
 }
 
 #[test]
 fn a_damaged_history_opens_at_its_last_good_transaction() {
     let b = base();
-    let mut log = b.ledger.log().to_vec();
+    let mut log = b.ledger.full_log().unwrap();
     let mut bad = log[1].clone();
     bad.seq = 3;
     bad.ops = vec![
@@ -588,6 +603,27 @@ impl Gen {
                 connection_points: Default::default(),
             };
         }
+        // Sometimes a symbol of any definition with connection points of the component's own
+        // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
+        if self.rng.chance(30)
+            && let Some((cid, _)) = doc.components.iter().nth(self.rng.below(doc.components.len()))
+            && let Some(t) = doc.terminals_of(*cid).map(|(t, _)| t).next()
+            && let Some((iid, it)) = doc
+                .items
+                .iter()
+                .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
+        {
+            let mut connection_points = std::collections::BTreeMap::new();
+            connection_points.insert(t, Pt::new(0.0, 10.0));
+            return Representation {
+                subject: Subject::Component(*cid),
+                page: it.page,
+                form: Form::Symbol,
+                role: "no".into(),
+                items: vec![*iid],
+                connection_points,
+            };
+        }
         let subject = match self.rng.below(3) {
             0 => Subject::Component(self.comp()),
             1 => Subject::Conductor(self.cond()),
@@ -630,6 +666,7 @@ impl Gen {
         }
         let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
         Definition {
+            bridges: Vec::new(),
             name: "d".into(),
             origin: None,
             graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: r }],
@@ -650,18 +687,14 @@ impl Gen {
                     fresh_in!(self, pages)
                 };
                 let index = self.rng.below(doc.page_order.len() + 1 + usize::from(spoil));
-                Op::AddPage { id, page: Page { title: "p".into() }, index }
+                Op::AddPage { id, page: Page::new("p"), index }
             }
             2 => match self.rng.pick(&doc.page_order) {
                 Some(id) => {
                     let index = doc.page_order.iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
-                    Op::RemovePage {
-                        id,
-                        page: doc.pages.get(&id).cloned().unwrap_or(Page { title: "?".into() }),
-                        index,
-                    }
+                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::new("?")), index }
                 }
-                None => Op::AddPage { id: fresh_in!(self, pages), page: Page { title: "p".into() }, index: 0 },
+                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::new("p"), index: 0 },
             },
             3 => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
             4 => match self.rng.pick_key(&doc.layers) {
@@ -826,7 +859,12 @@ impl Gen {
                 Some(id) => {
                     let current = doc.components.get(&id).and_then(|c| c.properties.get("tag").cloned());
                     let before = if spoil { Some("spoilt".into()) } else { current };
-                    let after = if self.rng.chance(50) { None } else { Some(format!("K{}", self.rng.below(9))) };
+                    // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
+                    let after = match self.rng.below(3) {
+                        0 => None,
+                        1 => Some(format!("K{}", self.rng.below(9))),
+                        _ => Some(format!("-K0{}", self.rng.below(9))),
+                    };
                     Op::SetProperty { object: ObjectRef::Component(id), key: "tag".into(), before, after }
                 }
                 None => Op::CreateComponent { id: fresh_in!(self, comps), component: Component::default() },
@@ -841,10 +879,16 @@ impl Gen {
             },
             _ => match self.rng.below(3) {
                 0 => {
-                    let before =
-                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch } } else { doc.settings.clone() };
+                    let before = if spoil {
+                        ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() }
+                    } else {
+                        doc.settings.clone()
+                    };
                     let after = ProjectSettings {
                         length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
+                        // Brief 018's tag settings change with it sometimes.
+                        tag_padding: if self.rng.chance(30) { 3 } else { ecad_model::DEFAULT_TAG_PADDING },
+                        ..ProjectSettings::default()
                     };
                     Op::SetProjectSettings { before, after }
                 }
@@ -951,7 +995,8 @@ fn sequence(seed: u64, tally: &mut Tally) {
             }
         }
     }
-    let replayed = Ledger::replay_verified(ledger.log().to_vec(), 0).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    let replayed =
+        Ledger::replay_verified(ledger.full_log().unwrap(), 0).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
     assert_eq!(replayed.document(), ledger.document(), "seed {seed}: replay");
     assert_eq!(replayed.undo_label(), ledger.undo_label());
     assert_eq!(replayed.redo_label(), ledger.redo_label());
@@ -1068,7 +1113,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
             before: Some("K1".into()),
             after: Some("K2".into()),
         },
-        Op::AddPage { id: b.ids.fresh(), page: Page { title: "2".into() }, index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];
     for op in applicable(&mut b) {

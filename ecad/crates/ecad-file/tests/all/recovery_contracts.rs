@@ -221,11 +221,7 @@ fn the_source_is_preserved_and_a_read_only_file_refuses_save() {
     let (mut file, mut ledger, report) = ProjectFile::open(MemoryMedium::from_bytes(bytes.clone()), SEED).unwrap();
     assert_eq!(report.access, Access::ReadOnly);
     ledger
-        .commit(
-            Author::User,
-            "edit",
-            vec![Op::AddPage { id: PageId(0x99), page: Page { title: "x".into() }, index: 1 }],
-        )
+        .commit(Author::User, "edit", vec![Op::AddPage { id: PageId(0x99), page: Page::new("x"), index: 1 }])
         .unwrap();
     assert!(matches!(file.save(&mut ledger), Err(ecad_file::SaveError::ReadOnly)));
     assert_eq!(file.medium().read_all().unwrap(), bytes, "nothing written or truncated");

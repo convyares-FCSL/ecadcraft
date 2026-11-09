@@ -7,12 +7,19 @@
 //! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
 //!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
 //!   Component converts the current selection at once, or asks to select objects.
-//! - **Run** buttons type the command into the same path as the banner's Command field, so the
+//! - **Run** buttons type the command into the same path as the ECAD command field, so the
 //!   command's own validation, transaction and undo apply.
-//! - **Template** buttons put an editable command line in the Command field, with a short note
-//!   on what to fill in, and run nothing. IDs and handles are filled in from the current
+//! - **Template** buttons open the ECAD command field with an editable command line and a short
+//!   note on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
+//! - **Trial** buttons act in the trial itself: Preview Reference (brief 016) and the **ECAD Dev**
+//!   tab's developer tools (now the Project panel's Developer section: the command field, the debugger and snapshots), which
+//!   replaced the trial's top banner (owner, 2026-11-08).
+//!
+//! The command window stays because CADCraft's own command line takes a space as Enter: it can
+//! run `name {json}` only when the line has no space at all, so JSON with spaces or a title such
+//! as `Motor control` cannot be typed there.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -25,7 +32,11 @@ use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, Ter
 pub const TAB: &str = "ECAD";
 
 /// The tab's groups, in order.
-pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit", "Pages", "Inspect"];
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit"];
+
+/// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
+/// in Tool Sets (owner, 2026-11-08).
+pub const DEV_GROUP: &str = "Developer";
 
 /// What a button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,8 +45,12 @@ pub enum Kind {
     Start(&'static str),
     /// Run this command line now (it needs no values beyond the selection).
     Run(&'static str),
-    /// Prefill the Command field with a template.
+    /// Open the ECAD command field with a template.
     Template,
+    /// Handled by the trial itself (no command).
+    Trial,
+    /// Open or close the symbol search window (brief 018, [`crate::search`]).
+    Search,
 }
 
 /// One button: a stable, namespaced id, its group, label and tooltip.
@@ -52,6 +67,13 @@ pub struct Tool {
 /// The buttons, in panel order. Only commands that exist (`ecad_cadcraft::commands::specs`).
 pub const TOOLS: &[Tool] = &[
     Tool {
+        id: "ecad.findsymbol",
+        group: "Components",
+        label: "Find Symbol",
+        tooltip: "Type a few letters (coil, contact, fuse, -Q, -K01) and click a symbol or device to place it",
+        kind: Kind::Search,
+    },
+    Tool {
         id: "ecad.convertcomponent",
         group: "Components",
         label: "Convert to Component",
@@ -61,29 +83,65 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.addterminal",
         group: "Components",
-        label: "Add Terminal",
-        tooltip: "Click on a component's outline to add terminals; Enter to finish",
+        label: "Add Connection Point",
+        tooltip: "Click on a component's outline to add connection points; Enter to finish",
         kind: Kind::Start("addterminal"),
     },
     Tool {
         id: "ecad.place",
         group: "Components",
         label: "Place Symbol",
-        tooltip: "Place coil symbols by clicking; R then Enter rotates, M then Enter mirrors; Enter to finish",
+        tooltip: "Type a symbol (coil, no, nc, mcb1…) or Enter for the last one, then click to place devices; R rotates, D adds to a device, T sets the tag; Enter to finish",
         kind: Kind::Start("place"),
+    },
+    Tool {
+        id: "ecad.deviceprops",
+        group: "Components",
+        label: "Device Properties",
+        tooltip: "Click a device to see and change its tag, description, maker and part number",
+        kind: Kind::Start("deviceprops"),
+    },
+    Tool {
+        id: "ecad.devicedelete",
+        group: "Components",
+        label: "Delete Device",
+        tooltip: "Click a device to delete it with every symbol on every page (asks first)",
+        kind: Kind::Start("devicedelete"),
     },
     Tool {
         id: "ecad.wire",
         group: "Wiring",
         label: "Wire",
-        tooltip: "Click points to draw a wire; ends on terminals attach; Enter to finish",
+        tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
+    },
+    // Brief 022: junctions, wire numbers.
+    Tool {
+        id: "ecad.junction",
+        group: "Wiring",
+        label: "Junction",
+        tooltip: "Click a wire where a T joins it: a junction dot, and the wire is split there",
+        kind: Kind::Start("junction"),
+    },
+    Tool {
+        id: "ecad.wirenumber",
+        group: "Wiring",
+        label: "Fix Wire Number",
+        tooltip: "Click a wire, type the number its whole net should carry (. releases a fixed one)",
+        kind: Kind::Start("wirenumber"),
+    },
+    Tool {
+        id: "ecad.renumberwires",
+        group: "Wiring",
+        label: "Renumber Wires",
+        tooltip: "Number the nets that have no number, or renumber every automatic one (fixed numbers stay)",
+        kind: Kind::Start("renumberwires"),
     },
     Tool {
         id: "ecad.connect",
         group: "Wiring",
         label: "Connect",
-        tooltip: "Click a wire near its end, then a terminal",
+        tooltip: "Click a wire near its end, then a connection point",
         kind: Kind::Start("connect"),
     },
     Tool {
@@ -143,77 +201,81 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cablegoto"),
     },
     Tool {
+        id: "ecad.cablepreview",
+        group: "Wiring",
+        label: "Preview Reference",
+        tooltip: "Preview the other end of the selected cable reference without leaving this page",
+        kind: Kind::Trial,
+    },
+    Tool {
         id: "ecad.setprop",
         group: "Edit",
         label: "Set Property",
-        tooltip: "Set a property such as the tag, or a cable's designation or type (fills in the Command field)",
+        tooltip: "Set a property such as the tag, or a cable's designation or type (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.cableadd",
         group: "Wiring",
         label: "Add to Cable",
-        tooltip: "Group wires into a cable (fills in the Command field)",
+        tooltip: "Group wires into a cable (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.delete",
         group: "Edit",
         label: "Delete Electrical Object",
-        tooltip: "Delete a component, wire or cable with its connections (fills in the Command field)",
-        kind: Kind::Template,
-    },
-    Tool {
-        id: "ecad.newpage",
-        group: "Pages",
-        label: "New Page",
-        tooltip: "Add a page to the project (fills in the Command field)",
-        kind: Kind::Template,
-    },
-    Tool {
-        id: "ecad.openpage",
-        group: "Pages",
-        label: "Open Page",
-        tooltip: "Open a closed page again (fills in the Command field)",
-        kind: Kind::Template,
-    },
-    Tool {
-        id: "ecad.renamepage",
-        group: "Pages",
-        label: "Rename Page",
-        tooltip: "Rename a page (fills in the Command field)",
-        kind: Kind::Template,
-    },
-    Tool {
-        id: "ecad.movepage",
-        group: "Pages",
-        label: "Move Page",
-        tooltip: "Move a page to another position (fills in the Command field)",
+        tooltip: "Delete a component, wire or cable with its connections (opens the ECAD command field)",
         kind: Kind::Template,
     },
     Tool {
         id: "ecad.inspect",
-        group: "Inspect",
+        group: DEV_GROUP,
         label: "Inspect Project",
         tooltip: "Show the project's IDs and history at the command line (read-only; runs now)",
         kind: Kind::Run("ecadinspect"),
+    },
+    Tool {
+        id: "ecad.dev.debugger",
+        group: DEV_GROUP,
+        label: "Debugger",
+        tooltip: "Open or close the read-only debugger panel",
+        kind: Kind::Trial,
+    },
+    Tool {
+        id: "ecad.dev.snapshot",
+        group: DEV_GROUP,
+        label: "Export Inspector Snapshot",
+        tooltip: "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.",
+        kind: Kind::Trial,
+    },
+    Tool {
+        id: "ecad.dev.command",
+        group: DEV_GROUP,
+        label: "JSON Command",
+        tooltip: "Open the ECAD command field: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
+        kind: Kind::Trial,
     },
 ];
 
 /// The tab as CADCraft's Tool Sets panel shows it.
 pub fn tab() -> ExtraToolTab {
-    ExtraToolTab {
-        name: TAB.into(),
-        groups: GROUPS
+    ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
+}
+
+/// The tools of the Project panel's Developer section, in order; Export Inspector Snapshot only
+/// when `snapshots` is on (`--snapshots`).
+pub fn developer_tools(snapshots: bool) -> Vec<&'static Tool> {
+    TOOLS.iter().filter(|t| t.group == DEV_GROUP && (snapshots || t.id != "ecad.dev.snapshot")).collect()
+}
+
+fn group(name: &str, snapshots: bool) -> ExtraToolGroup {
+    ExtraToolGroup {
+        name: name.into(),
+        tools: TOOLS
             .iter()
-            .map(|g| ExtraToolGroup {
-                name: (*g).into(),
-                tools: TOOLS
-                    .iter()
-                    .filter(|t| t.group == *g)
-                    .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
-                    .collect(),
-            })
+            .filter(|t| t.group == name && (snapshots || t.id != "ecad.dev.snapshot"))
+            .map(|t| ExtraTool { id: t.id.into(), label: t.label.into(), tooltip: t.tooltip.into() })
             .collect(),
     }
 }
@@ -275,13 +337,19 @@ impl Picked {
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
-                // A cable reference's text names its cable (brief 010).
-                Some(Mapped::RefText(r)) => {
+                // A cable reference's text names its cable (brief 010); a device's tag text or
+                // terminal label names its device (brief 018).
+                Some(Mapped::RefText(r) | Mapped::Tag(r)) => {
                     if let Some(r) = doc.representations.get(&r) {
                         subjects.insert(r.subject);
                     }
                 }
-                None => {}
+                // A conductor's label names its wire (brief 022).
+                Some(Mapped::Label(w)) => {
+                    subjects.insert(Subject::Conductor(w));
+                }
+                // The sheet frame (brief 019) names nothing.
+                Some(Mapped::Frame(_)) | None => {}
             }
         }
         Picked {
@@ -354,29 +422,8 @@ to add to an existing one). Then press Enter.",
 press Enter.",
             )
         }
-        "ecad.newpage" => (
-            r#"newpage {"title":"<title>"}"#.to_string(),
-            "New Page: the new page's title. Replace the <placeholder>, then press Enter.",
-        ),
-        "ecad.openpage" => (
-            r#"openpage {"page":"<page id>"}"#.to_string(),
-            "Open Page: the page's ID, listed by Inspect Project (under \"pages\"). Then press Enter.",
-        ),
-        "ecad.renamepage" => (
-            format!(r#"renamepage {{"page":"{}","title":"<title>"}}"#, page_or_placeholder(picked)),
-            "Rename Page: the current page's ID is filled in; replace <title> with the new title (1 to 200 characters). Then press Enter.",
-        ),
-        "ecad.movepage" => (
-            format!(r#"movepage {{"page":"{}","index":<new position>}}"#, page_or_placeholder(picked)),
-            "Move Page: the current page's ID is filled in; replace <new position> with its new place (1 = first). Cable references follow at once. Then press Enter.",
-        ),
         _ => return None,
     })
-}
-
-/// The current page's ID, or a placeholder off an ECAD page.
-fn page_or_placeholder(picked: &Picked) -> String {
-    picked.page.map_or_else(|| "<page id>".to_string(), PageId::hex)
 }
 
 /// The `<placeholder>`s still in `line`: `<` and `>` around letters, digits, spaces, `_` or `-`,

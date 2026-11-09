@@ -21,10 +21,11 @@
 use std::collections::BTreeMap;
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Document, End, Item, ItemKind, Representation, Subject, Terminal,
+    Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject,
+    Terminal,
 };
 use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
 };
 
 /// Whether a reference is being added or removed.
@@ -91,31 +92,112 @@ pub(crate) struct Index {
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
     pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
+    /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
+    pub(crate) tags: Multi<String, ComponentId>,
+    /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
+    /// that name (brief 022).
+    pub(crate) continuations: Multi<String, ComponentId>,
+    /// Folder → pages whose `folder` property names it (brief 019).
+    pub(crate) folder_pages: Multi<FolderId, PageId>,
+    /// Folder → folders whose parent it is (brief 019).
+    pub(crate) folder_children: Multi<FolderId, FolderId>,
 }
 
 impl Index {
     /// The index of `doc`, computed from its stored objects.
     pub(crate) fn build(doc: &Document) -> Self {
+        // Items and representations are most of a large project, and fill maps of their own: they
+        // are indexed on threads of their own where the platform has them (opening a version 2
+        // snapshot builds the whole index, brief 021). Anything a thread could not do is done here.
+        let items = || {
+            let mut ix = Index::default();
+            for (id, item) in &doc.items {
+                ix.item(*id, item, Delta::Add);
+            }
+            ix
+        };
+        let reps = || {
+            let mut ix = Index::default();
+            for (id, r) in &doc.representations {
+                ix.representation(*id, r, Delta::Add);
+            }
+            ix
+        };
+        let (a, b, mut ix) = std::thread::scope(|scope| {
+            let threads = !cfg!(target_arch = "wasm32");
+            let ha = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, items).ok()).flatten();
+            let hb = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, reps).ok()).flatten();
+            let mut rest = Index::default();
+            rest.add_rest(doc);
+            let a = ha.and_then(|h| h.join().ok()).unwrap_or_else(items);
+            let b = hb.and_then(|h| h.join().ok()).unwrap_or_else(reps);
+            (a, b, rest)
+        });
+        ix.page_items = a.page_items;
+        ix.layer_items = a.layer_items;
+        ix.definition_items = a.definition_items;
+        ix.subject_reps = b.subject_reps;
+        ix.page_reps = b.page_reps;
+        ix.item_reps = b.item_reps;
+        ix.terminal_reps = b.terminal_reps;
+        ix
+    }
+
+    /// The index built on one thread, every object into one index: what [`Index::build`]'s
+    /// threads must equal (a test compares them).
+    pub(crate) fn build_serial(doc: &Document) -> Self {
         let mut ix = Index::default();
         for (id, item) in &doc.items {
             ix.item(*id, item, Delta::Add);
         }
-        for (id, c) in &doc.components {
-            ix.component(*id, c, Delta::Add);
-        }
-        for (id, t) in &doc.terminals {
-            ix.terminal(*id, t, Delta::Add);
-        }
         for (id, r) in &doc.representations {
             ix.representation(*id, r, Delta::Add);
         }
+        ix.add_rest(doc);
+        ix
+    }
+
+    /// Everything but items and representations.
+    fn add_rest(&mut self, doc: &Document) {
+        let rest = self;
+        for (id, c) in &doc.components {
+            rest.component(*id, c, Delta::Add);
+        }
+        for (id, t) in &doc.terminals {
+            rest.terminal(*id, t, Delta::Add);
+        }
         for (id, c) in &doc.conductors {
-            ix.conductor(*id, c, Delta::Add);
+            rest.conductor(*id, c, Delta::Add);
         }
         for (id, c) in &doc.cables {
-            ix.cable(*id, c, Delta::Add);
+            rest.cable(*id, c, Delta::Add);
         }
-        ix
+        for (id, p) in &doc.pages {
+            rest.page(*id, p, Delta::Add);
+        }
+        for (id, f) in &doc.folders {
+            rest.folder(*id, f, Delta::Add);
+        }
+    }
+
+    pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
+        if let Some(f) = p.properties.get(crate::book::FOLDER_KEY) {
+            self.page_folder(id, f, delta);
+        }
+    }
+
+    /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
+    /// folder ID is indexed under no folder (the invariant check refuses it).
+    pub(crate) fn page_folder(&mut self, id: PageId, value: &str, delta: Delta) {
+        if let Some(f) = FolderId::parse(value) {
+            bump(&mut self.folder_pages, f, id, delta);
+        }
+    }
+
+    pub(crate) fn folder(&mut self, id: FolderId, f: &Folder, delta: Delta) {
+        if let Some(parent) = f.parent {
+            bump(&mut self.folder_children, parent, id, delta);
+        }
     }
 
     pub(crate) fn item(&mut self, id: ItemId, item: &Item, delta: Delta) {
@@ -130,6 +212,22 @@ impl Index {
         if let Some(d) = c.definition {
             bump(&mut self.definition_components, d, id, delta);
         }
+        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+            self.tag(id, t, delta);
+        }
+        if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
+            self.continuation(id, k, delta);
+        }
+    }
+
+    /// A continuation's name key is added or removed (brief 022).
+    pub(crate) fn continuation(&mut self, id: ComponentId, key: String, delta: Delta) {
+        bump(&mut self.continuations, key, id, delta);
+    }
+
+    /// A component's tag `tag` (its stored value) is added or removed.
+    pub(crate) fn tag(&mut self, id: ComponentId, tag: &str, delta: Delta) {
+        bump(&mut self.tags, crate::tag::key(tag), id, delta);
     }
 
     pub(crate) fn terminal(&mut self, id: TerminalId, t: &Terminal, delta: Delta) {

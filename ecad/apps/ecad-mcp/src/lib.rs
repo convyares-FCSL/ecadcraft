@@ -29,6 +29,7 @@
 )]
 
 pub mod args;
+pub mod demo;
 pub mod policy;
 mod tools;
 
@@ -351,7 +352,14 @@ impl EcadMcp {
         install()?;
         let path = ecad_cadcraft::normalize(path)?;
         let mut headless = Headless { session: Session::empty() };
-        let (project, summary) = ProjectHandle::open_file(&mut headless.session, &path, ecad_cadcraft::session_seed())?;
+        // Writes off: the file is opened for reading only, so it is never changed, not even by the
+        // database's own bookkeeping (brief 021: a version 2 file is a redb database).
+        let seed = ecad_cadcraft::session_seed();
+        let (project, summary) = if opts.write {
+            ProjectHandle::open_file(&mut headless.session, &path, seed)?
+        } else {
+            ProjectHandle::open_file_read_only(&mut headless.session, &path, seed)?
+        };
         Ok((Self::with(headless, project, opts)?, summary))
     }
 

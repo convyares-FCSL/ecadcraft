@@ -19,7 +19,7 @@ fn worked_example_replays_and_undoes() {
         Author::User,
         "New project",
         vec![
-            Op::AddPage { id: p1, page: Page { title: "1".into() }, index: 0 },
+            Op::AddPage { id: p1, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
         ],
     )
