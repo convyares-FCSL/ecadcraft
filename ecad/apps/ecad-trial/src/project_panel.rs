@@ -44,7 +44,7 @@ pub fn row_label(number: &str, title: &str) -> String {
 }
 
 /// What the user asked the panel for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     /// Make this page the active page (`openpage`).
     Open(PageId),
@@ -74,6 +74,12 @@ pub enum Action {
     },
     /// Rename this page in the name box (the row's right-click menu).
     RenameInBox(PageId),
+    /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
+    GotoCheck(Box<ecad_cadcraft::checks::Check>),
+    /// Checks tab: `junction {at}` on this page.
+    AddJunction(PageId, ecad_model::Pt),
+    /// Checks tab: `renumberwires {scope: "unnumbered"}`.
+    NumberThem,
 }
 
 /// Accessible label of the Developer section's header ([`crate::developer`]).
@@ -85,6 +91,8 @@ pub enum Tab {
     #[default]
     Pages,
     Devices,
+    /// Brief 022.
+    Checks,
 }
 
 /// Accessible labels of the tabs.
@@ -135,6 +143,8 @@ pub struct ProjectPanel {
     pub tab: Tab,
     /// The Devices tab.
     pub devices: crate::devices_panel::DevicesPanel,
+    /// The Checks tab (brief 022).
+    pub checks: crate::checks_panel::ChecksPanel,
     /// The copy of the project's pages.
     rows: Vec<PageRow>,
     /// The project change count the copy was taken at, and which project (its pointer value).
@@ -292,11 +302,29 @@ impl ProjectPanel {
 
         // Pages | Devices.
         ui.horizontal(|ui| {
-            for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB)] {
-                if ui.selectable_label(self.tab == tab, RichText::new(name).small()).clicked() {
+            let checks = self.checks.title();
+            for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB), (Tab::Checks, checks.as_str())] {
+                let resp = ui.selectable_label(self.tab == tab, RichText::new(name).small());
+                let resp = if tab == Tab::Checks {
+                    resp.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::Role::Button,
+                            true,
+                            self.tab == tab,
+                            crate::checks_panel::CHECKS_TAB,
+                        )
+                    });
+                    resp
+                } else {
+                    resp
+                };
+                if resp.clicked() {
                     if tab == Tab::Devices && self.tab != Tab::Devices {
                         // Shown again after being hidden: rebuilt once, then kept up to date.
                         self.devices.invalidate();
+                    }
+                    if tab == Tab::Checks && self.tab != Tab::Checks {
+                        self.checks.invalidate();
                     }
                     self.tab = tab;
                     self.armed = false;
@@ -305,6 +333,11 @@ impl ProjectPanel {
         });
         if self.tab == Tab::Devices {
             out.extend(self.devices.show(ui, writable));
+            self.rows_drawn = 0;
+            return out;
+        }
+        if self.tab == Tab::Checks {
+            out.extend(self.checks.show(ui, writable));
             self.rows_drawn = 0;
             return out;
         }

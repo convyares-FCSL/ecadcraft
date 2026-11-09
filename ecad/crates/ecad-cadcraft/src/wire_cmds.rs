@@ -491,9 +491,34 @@ pub(crate) fn run_renumberwires(s: &mut Session, params: &Value) -> cadcraft_eng
 pub(crate) fn run_junction(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or("There is no wire there: click on a wire.")?;
         let style = plain_style(p);
+        let doc = p.ledger.document();
+        // Loose ends that only meet (no wire runs through the point): a junction joins them, with
+        // nothing to split (the Checks row's Add junction, design 022 §8).
+        let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
+        let through = wires::wire_at(doc, page, at, ON_WIRE, None).filter(|on| {
+            wires::route_vertices(doc, on.conductor, page).is_some_and(|(_, _, v)| {
+                !v.first().is_some_and(|f| f.near(on.at, ON_WIRE)) && !v.last().is_some_and(|l| l.near(on.at, ON_WIRE))
+            })
+        });
+        if through.is_none() && loose.len() >= 2 {
+            let starter = wires::junction_starter().ok_or("the junction symbol is missing")?;
+            let mut props = ecad_model::Properties::new();
+            props.insert(KIND.into(), ecad_model::connectivity::JUNCTION.into());
+            let snapped = loose
+                .first()
+                .and_then(|(c, e)| {
+                    wires::route_vertices(doc, *c, page)
+                        .and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
+                })
+                .unwrap_or(at);
+            let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
+            let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props);
+            let r = json!({"junction": t.component.hex(), "terminal": t.terminal.hex(), "conductor": null, "at": [snapped.x, snapped.y], "attached": t.attached.len()});
+            p.apply_edit(pg, "junction", "Junction", t.ops)?;
+            return Ok(r);
+        }
+        let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or("There is no wire there: click on a wire.")?;
         let j = wires::plan_junction(doc, &mut p.ids, page, style, on)?;
         let r = json!({
             "junction": j.tagless.component.hex(),

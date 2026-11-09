@@ -565,6 +565,11 @@ impl Document {
         referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
+    /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
+    pub fn has_ends(&self, terminal: TerminalId) -> bool {
+        self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
+    }
+
     /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
     pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
         referrers(&self.index.terminal_ends, &terminal).collect()

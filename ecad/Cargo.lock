@@ -1336,6 +1336,7 @@ dependencies = [
  "ecad-cadcraft",
  "ecad-file",
  "ecad-inspect",
+ "ecad-mcp",
  "ecad-model",
  "ecad-store",
  "eframe",

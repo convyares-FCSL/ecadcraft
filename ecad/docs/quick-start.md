@@ -19,6 +19,22 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 022 (design `ecad/docs/design/022.md`), on `feature/connectivity`, not yet in `dev`:**
+ECAD knows what is connected. Nets come from the attachments (a T joins only at a junction dot,
+crossings never join, continuations with one name join across pages); every wire shows its net's
+wire number with its cross-section and colour (`24V-04 0.5 Blue`); adding a wire never renumbers
+another net; the Project panel has a **Checks** tab. Section 5I describes it, on the demo project.
+- *Automated checks:* `ecad/crates/ecad-model/tests/all/connectivity_contracts.rs` (net rules,
+  numbering rules, a random-op test against a fresh build after every step),
+  `ecad/crates/ecad-cadcraft/tests/all/wiring_contracts.rs` (T, crossing, labels, stable numbers,
+  one row per seeded fault, the kept Checks list against a fresh build),
+  `ecad/apps/ecad-mcp/tests/all/demo.rs` (the demo's numbers) and `mcp_contracts.rs` (every new
+  command through MCP), `ecad/apps/ecad-trial/tests/all/checks_ui.rs` (the Checks tab by label,
+  go-to, Add junction, and the `022-*.png` screenshots).
+- *Agent-observed:* the worker rendered the `022-*.png` screenshots headless (wgpu) and looked at
+  them; no agent has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 016 (design `ecad/docs/design/016.md`), on `feature/project-manager`, not yet in `dev`:**
 the Project panel, one active page at a time, undo and redo bringing their page to the front, a
 read-only preview of another page, and the top banner replaced by the panel's header and an
@@ -768,6 +784,55 @@ After 5F (a coil `-K01` on page 1 with contacts on pages 1 and 2). Design 016 §
    says the tag is used by `-K01`, with **Make it the same device**; clicking it merges (one `u`), or
    explains why it cannot.
 
+## 5I. Connectivity and wire numbers (by clicking)
+
+On the demo project (`cargo xtask demo`, then open `C:\dev\ecad-projects\demo.ecad`; on Linux
+`~/ecad-projects/demo.ecad`). Design 022. The Properties panel rows for wires come with brief 019;
+until then the same facts show when you hover a wire, and are changed with the tools below.
+
+1. **Labels.** Show page 2 (**Motor control**). Expected: every wire is labelled beside it, e.g.
+   `24V-04 0.5 Blue` on the three wires joining `-S02:14`, `-K01:14`, `-K01:A1` and the lamp's
+   `X1`; vertical labels read bottom to top; a dot where the lamp's 0V wire meets the coil's, and
+   `0V-01 0.5 Blue` on both; the cable cores below the contactor show their number only
+   (`L1-02`). Page 1 shows `L-01 2.5 Brown`, `N-01 2.5 Blue`, `PE 2.5 Green-Yellow`,
+   `24V-01 0.5 Blue`, `0V-01 0.5 Blue`.
+2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
+   `Wire number 0V-01`, `Potential 0V (continuation)`, `Cross-section 0.5 (0V) · Colour Blue (0V)`
+   and `Net 0V-01 · 5 wires · -G01:-, -H01:X2, -H02:X2, -K01:A2`.
+3. **A wire into a net.** Click **Wire** (ECAD tab, Wiring) and draw from the lamp's `X1` to an
+   empty spot, Enter. Expected: `Wire 24V-04 drawn; …`, and the new wire shows `24V-04 0.5 Blue`;
+   no other label changes. Type `u`.
+4. **A new net, and a potential.** Draw a wire between two empty spots. Expected: a new number
+   with no prefix, `01` (nets with no potential have none). Click **Wire** again, click
+   **Potential** (or type `P`), type `24V`, then draw. Expected: `24V-06 0.5 Blue`
+   (24V-05 is on page 3). The choice stays for new wires in this session (`auto` clears it).
+5. **A junction.** Draw a wire ending on the middle of another wire. Expected: while you point at
+   the wire, the ring says `junction`; a dot appears and both wires show one number. Select the
+   dot and erase it. Open the **Checks** tab (PROJECT panel, beside **Devices**): a row
+   `▲ Looks connected, no junction`. Click the row (the page centres on it with a yellow ring),
+   then **Add junction**: the dot is back. `u` takes it away again.
+6. **Fix a number.** Click **Fix Wire Number**, click a 24V wire, type `24V-50`, Enter. Expected:
+   `Wire number 24V-50 fixed on the whole net.` and every wire of that net shows `24V-50`; hover
+   says `Wire number 24V-50 (fixed)`. Now fix another net to `24V-50`: it is never a dead end;
+   the prompt asks `24V-50 is used by another net. [Swap/Another/Merge] <Another>:`. Enter gives
+   it the next free number (`24V-51`); `S` swaps the two numbers; `M` joins the nets with a pair
+   of continuations named `24V-50` when that is electrically sensible, otherwise it says why (for
+   example two different potentials).
+7. **Checks.** In the **Checks** tab: `· Connection point not connected /3.4 -M01:PE`, and three
+   `· Continuation without partner` rows (`L1`, `L2`, `L3` on page 2: the supply side of the motor
+   circuit is not drawn). Click the `-M01:PE` row. Expected: page 3 is shown, the motor centred
+   and selected, a grey ring on `PE`. **Show** lets you untick kinds of rows.
+8. **Save, close and reopen** (section 7). Expected: the same numbers (they are stored on the
+   wires, so they never change by themselves).
+
+Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
+`wirenumber {"number":"24V-04","value":"24V-10"}`, `potential {"conductor":"<id>","value":"24V"}`,
+`wiresettings {"scheme":"page"}` then `renumberwires {"scope":"all"}` (numbers become
+`24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[20,0]}`,
+`place {"symbol":"continuation","at":[0,0],"name":"24V"}`.
+`setprop` refuses `wire_number` and `potential` on a wire (use `wirenumber` and `potential`, which
+change the whole net); it takes `cross_section` and `colour`, which only that wire shows.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1204,6 +1269,15 @@ launch and about 0.15 s on the next two (measured from Git Bash's clock, so appr
 Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
+
+- **Connectivity and wire numbers (brief 022).** Labels are placed on each route's longest
+  segment with no collision avoidance and cannot be dragged (owner answer Q11), so a label can
+  cross a tag or a reference text. The Properties panel rows for wires, junctions and
+  continuations wait for brief 019; until then hover and the tools show and change them. The go-to
+  ring of the Checks tab clears at the next change or the next go-to, not at a click or Esc.
+  Projects made before brief 022 open with no numbers (`?`); the Checks tab offers **Number them**,
+  and any net an edit touches is numbered then. Wire numbers on cable core labels in fan view,
+  terminal strips and wire lists come later (F5, F6).
 
 - **Pages and the Project panel** (brief 016): there is no Delete page (no command exists yet).
   The preview shows no connection point or wire-end marks and cannot be edited. Page views, the panel's

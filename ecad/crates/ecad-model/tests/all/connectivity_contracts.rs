@@ -361,8 +361,21 @@ fn a_refused_transaction_leaves_nets_as_they_were() {
 /// Design 022 §4: a long random op sequence; after every step the kept nets equal a fresh build.
 #[test]
 fn random_ops_keep_nets_equal_to_a_fresh_build() {
+    random_ops(0x2545_f491_4f6c_dd1d, 600);
+}
+
+/// The same over more seeds and longer sequences.
+#[test]
+#[ignore = "slow: 3 seeds of 1,500 random steps, verified after each, about 30 s"]
+fn random_ops_over_many_seeds_keep_nets_equal_to_a_fresh_build() {
+    for seed in [0x9E37_79B9_7F4A_7C15_u64, 0xD1B5_4A32_D192_ED03, 0xFEED_FACE_CAFE_BEEF] {
+        random_ops(seed, 1_500);
+    }
+}
+
+fn random_ops(seed: u64, steps: usize) {
     let mut p = P::new();
-    let mut rng = 0x2545_f491_4f6c_dd1d_u64;
+    let mut rng = seed;
     let mut next = move |n: usize| {
         rng ^= rng << 13;
         rng ^= rng >> 7;
@@ -370,7 +383,7 @@ fn random_ops_keep_nets_equal_to_a_fresh_build() {
         (rng % n.max(1) as u64) as usize
     };
     let names = ["24V", "0V", "L1"];
-    for step in 0..600 {
+    for step in 0..steps {
         let doc = p.doc();
         let terminals: Vec<TerminalId> = doc.terminals.keys().copied().collect();
         let conductors: Vec<ConductorId> = doc.conductors.keys().copied().collect();

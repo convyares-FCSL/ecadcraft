@@ -11,6 +11,7 @@ mod cable_slash;
 mod cable_slash_tester;
 mod cable_view;
 mod cable_view_tester;
+mod checks_ui;
 mod debugger;
 mod devices_ui;
 mod layouts_and_hover;

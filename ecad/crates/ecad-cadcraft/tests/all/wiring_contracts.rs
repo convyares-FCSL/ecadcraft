@@ -339,3 +339,24 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     let _ = PageId(0);
     let _ = ObjectRef::Conductor(w);
 }
+
+/// Two loose ends meeting at one point look connected; Add junction joins them there with
+/// nothing to split.
+#[test]
+fn add_junction_joins_loose_ends_that_only_meet() {
+    let mut h = H::new(0x22_06);
+    let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
+    let b = wire(&mut h, &[(30.0, 0.0), (30.0, 30.0)], json!({"junction": false}));
+    let doc = h.doc();
+    assert_ne!(net_of(&doc, a), net_of(&doc, b));
+    let looks: Vec<_> =
+        ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
+    assert_eq!(looks.len(), 1, "one row for the pair: {looks:?}");
+    let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("{looks:?}") };
+    let r = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
+    assert_eq!(r["attached"], json!(2), "{r}");
+    let doc = h.doc();
+    assert_eq!(net_of(&doc, a), net_of(&doc, b));
+    assert_eq!(doc.conductors.len(), 2, "nothing was split");
+    assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
+}

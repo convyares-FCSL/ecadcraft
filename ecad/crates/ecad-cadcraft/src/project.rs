@@ -407,6 +407,9 @@ pub struct Project {
     /// The Checks list (design 022 §8), built on its first show and then kept from each change's
     /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
     pub checks: Option<crate::checks::Checks>,
+    /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
+    /// next change. Display only, never recorded.
+    pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -777,6 +780,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            goto_ring: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -844,6 +848,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            goto_ring: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -941,6 +946,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            goto_ring: None,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1169,6 +1175,7 @@ impl Project {
 
     /// Record one change and the pages it could change.
     fn record_change(&mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch) {
+        self.goto_ring = None;
         self.change_count += 1;
         self.changes.push_back(Change { n: self.change_count, pages, devices });
         while self.changes.len() > CHANGE_LOG {

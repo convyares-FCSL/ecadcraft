@@ -614,7 +614,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
 /// The checks of connection point `t`: a device point with nothing attached.
 pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    if matches!(kind_of(doc, term.component), Some(JUNCTION | CONTINUATION)) || !doc.ends_at(t).is_empty() {
+    if matches!(kind_of(doc, term.component), Some(JUNCTION | CONTINUATION)) || doc.has_ends(t) {
         return Vec::new();
     }
     // Bridged inside its device to an attached point: connected.
@@ -984,6 +984,26 @@ impl Scope {
             Subject::Cable(_) => {}
         }
     }
+}
+
+/// The drawn handles of `object` on `page` (for a go-to's selection): a conductor's route, a
+/// component's symbols, a connection point's symbol.
+pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcraft_engine::doc::Handle> {
+    let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
+    let doc = p.ledger.document();
+    let subject = match object {
+        Object::Conductor(c) => Subject::Conductor(c),
+        Object::Component(c) => Subject::Component(c),
+        Object::Terminal(t) => match doc.terminals.get(&t) {
+            Some(x) => Subject::Component(x.component),
+            None => return Vec::new(),
+        },
+        Object::None => return Vec::new(),
+    };
+    doc.representations_of(subject)
+        .filter(|(_, r)| r.page == page)
+        .flat_map(|(_, r)| r.items.iter().filter_map(|i| map.item(*i)))
+        .collect()
 }
 
 /// `rows` in book order.

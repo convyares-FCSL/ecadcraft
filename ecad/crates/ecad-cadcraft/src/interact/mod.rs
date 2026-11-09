@@ -426,6 +426,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         stroke: crate::references::BOLD_PX,
         color: if m.orphan { ORPHAN_RGB } else { CABLE_RGB },
     }));
+    // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
+    if let Some((pg, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
+        let _ = pg;
+        let color = match sev {
+            crate::checks::Severity::Error => Rgb(0xFF, 0x00, 0x00),
+            crate::checks::Severity::Warning => Rgb(0xFF, 0xFF, 0x00),
+            crate::checks::Severity::Info => Rgb(0xA0, 0xA0, 0xA0),
+        };
+        out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
+    }
     out
 }
 

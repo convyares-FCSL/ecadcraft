@@ -337,6 +337,15 @@ pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Ve
     ops
 }
 
+/// Whether every conductor of `net` already carries `number` (fixed or not as `fixed` says), read
+/// from the net's counts without visiting its conductors.
+fn carries(net: &NetData, number: &str, fixed: bool) -> bool {
+    let n = u32::try_from(net.conductors.len()).unwrap_or(u32::MAX);
+    let all = net.numbers.len() == 1 && net.numbers.get(number) == Some(&n);
+    let flags = if fixed { net.fixed.len() == 1 && net.fixed.get(number) == Some(&n) } else { net.fixed.is_empty() };
+    all && flags
+}
+
 /// The nets a transaction's ops touched, in the state after them (design 022 §11).
 pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<NetId>) {
     let conn = doc.connectivity();
@@ -448,7 +457,9 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
     let mut out = Vec::new();
     for (_, id) in order {
         let Some(net) = conn.net(id) else { continue };
-        if let Some((number, fixed)) = decide(doc, id, net, potential_changed.contains(&id), &mut alloc) {
+        if let Some((number, fixed)) = decide(doc, id, net, potential_changed.contains(&id), &mut alloc)
+            && !carries(net, &number, fixed)
+        {
             out.extend(write_ops(doc, net, &number, fixed));
         }
     }

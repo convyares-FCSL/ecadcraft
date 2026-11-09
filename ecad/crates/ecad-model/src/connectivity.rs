@@ -17,10 +17,13 @@
 //! - **Joins** (an end attached, a node added, a continuation named into a group, a bridge
 //!   embedded) union two nets at once: the smaller net's members are relabelled into the larger.
 //! - **Cuts** (an end detached, a node removed, a continuation renamed out of a group, a bridge
-//!   removed) only mark the net *suspect*. Once per transaction ([`Connectivity::settle`], run by
-//!   the ledger after a transaction's ops, by [`crate::Op::apply`] after a single op) each suspect
-//!   net is walked once: if it fell apart, its largest part keeps its identity and each other part
-//!   becomes a new net. The cost is the size of the nets cut, never the project.
+//!   removed) only mark the net *suspect*, with the nodes on either side of each cut (its
+//!   *frontier*). Once per transaction ([`Connectivity::settle`], run by the ledger after a
+//!   transaction's ops, by [`crate::Op::apply`] after a single op) a search runs from each frontier
+//!   node of a suspect net, one step at a time, the smallest search first; searches that meet join.
+//!   When at most one search is still running, every finished search is a part that fell off: it
+//!   becomes a new net, and the net keeps its identity for the rest. So a cut costs about twice the
+//!   smaller part when the net splits and the net's size when it does not; never the project.
 //! - Every op not listed in [`Connectivity::on_op`]'s map changes nothing here.
 //! - Per net, the counted wire numbers, fixed numbers and potentials of its conductors are kept
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
@@ -29,7 +32,7 @@
 //!
 //! This module reads the document and its indexes; it holds no I/O.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::doc::{Document, Properties};
 use crate::id::{ComponentId, ConductorId, TerminalId};
@@ -179,8 +182,9 @@ pub struct Connectivity {
     by_number: BTreeMap<String, BTreeMap<NetId, u32>>,
     /// Number prefix ([`split_number`]) → sequence → how many conductors carry it.
     seqs: BTreeMap<String, BTreeMap<u64, u32>>,
-    /// Nets a cut may have split, to be walked by [`Connectivity::settle`].
-    suspect: BTreeSet<NetId>,
+    /// Nets a cut may have split, with the nodes on either side of each cut, to be searched by
+    /// [`Connectivity::settle`].
+    suspect: BTreeMap<NetId, Vec<Node>>,
 }
 
 impl std::fmt::Debug for Connectivity {
@@ -429,8 +433,8 @@ impl Connectivity {
             self.relabel(doc, n, large);
         }
         self.nets.remove(&small);
-        if self.suspect.remove(&small) {
-            self.suspect.insert(large);
+        if let Some(frontier) = self.suspect.remove(&small) {
+            self.suspect.entry(large).or_default().extend(frontier);
         }
     }
 
@@ -458,16 +462,20 @@ impl Connectivity {
         }
     }
 
-    /// Mark the net of `node` as possibly split.
+    /// Mark the net of `node` as possibly split, `node` being on one side of a cut.
     fn cut(&mut self, node: &Node) {
         if let Some(id) = self.node_net.get(node) {
-            self.suspect.insert(*id);
+            self.suspect.entry(*id).or_default().push(node.clone());
         }
     }
 
-    /// Take `node` out of its net (it no longer exists); the rest of the net is suspect.
-    fn remove(&mut self, doc_props: Option<&Properties>, node: &Node) {
-        let Some(id) = self.node_net.remove(node) else { return };
+    /// Take `node` out of its net (it no longer exists; `doc` still shows it); the rest of the net
+    /// is suspect, with the node's neighbours as the frontier.
+    fn remove(&mut self, doc: &Document, doc_props: Option<&Properties>, node: &Node) {
+        let Some(id) = self.node_net.get(node).copied() else { return };
+        let around: Vec<Node> =
+            neighbors(doc, node).into_iter().filter(|m| m != node && self.node_net.get(m) == Some(&id)).collect();
+        self.node_net.remove(node);
         if let Some(props) = doc_props {
             let con = Contribution::of(props);
             self.contribute(id, &con, false);
@@ -494,7 +502,7 @@ impl Connectivity {
             self.nets.remove(&id);
             self.suspect.remove(&id);
         } else {
-            self.suspect.insert(id);
+            self.suspect.entry(id).or_default().extend(around);
         }
     }
 
@@ -520,18 +528,21 @@ impl Connectivity {
         match op {
             Op::DeleteConductor { id, .. } => {
                 let props = doc.conductors.get(id).map(|c| c.properties.clone());
-                self.remove(props.as_ref(), &Node::Conductor(*id));
+                self.remove(doc, props.as_ref(), &Node::Conductor(*id));
             }
-            Op::AttachEnd { conductor, before: Some(_), .. } => self.cut(&Node::Conductor(*conductor)),
-            Op::RemoveTerminal { id, .. } => self.remove(None, &Node::Terminal(*id)),
+            Op::AttachEnd { conductor, before: Some(t), .. } => {
+                self.cut(&Node::Conductor(*conductor));
+                self.cut(&Node::Terminal(*t));
+            }
+            Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
             Op::DeleteComponent { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
-                    self.cut(&t);
+                    self.cut_around(doc, &t);
                 }
             }
             Op::SetProperty { object: ObjectRef::Component(id), key, .. } if key == KIND || key == NAME => {
                 for t in Self::terminals_of(doc, *id) {
-                    self.cut(&t);
+                    self.cut_around(doc, &t);
                 }
             }
             Op::SetProperty { object: ObjectRef::Conductor(id), key, .. }
@@ -548,11 +559,21 @@ impl Connectivity {
             Op::RemoveDefinition { id, definition } if !definition.bridges.is_empty() => {
                 for comp in doc.components_using(*id) {
                     for t in Self::terminals_of(doc, comp) {
-                        self.cut(&t);
+                        self.cut_around(doc, &t);
                     }
                 }
             }
             _ => {}
+        }
+    }
+
+    /// `node` and its name group and bridged points are on the sides of a cut.
+    fn cut_around(&mut self, doc: &Document, node: &Node) {
+        self.cut(node);
+        for m in neighbors(doc, node) {
+            if !matches!(m, Node::Conductor(_)) {
+                self.cut(&m);
+            }
         }
     }
 
@@ -615,16 +636,151 @@ impl Connectivity {
         if present(doc, &node) {
             self.ensure(doc, node);
         } else {
-            self.remove(None, &node);
+            self.remove(doc, None, &node);
         }
     }
 
-    /// Walk every suspect net once; split those that fell apart (see the module docs). Cost: the
-    /// size of the suspect nets.
+    /// Split every suspect net that fell apart (see the module docs). Cost: about twice the parts
+    /// that fell off; a net that did not split costs at most its size.
     pub fn settle(&mut self, doc: &Document) {
         let suspects = std::mem::take(&mut self.suspect);
-        for id in suspects {
-            let Some(net) = self.nets.get(&id) else { continue };
+        for (id, frontier) in suspects {
+            if !self.nets.contains_key(&id) {
+                continue;
+            }
+            let mut seen = BTreeSet::new();
+            let frontier: Vec<Node> =
+                frontier.into_iter().filter(|n| self.node_net.get(n) == Some(&id) && seen.insert(n.clone())).collect();
+            if frontier.len() < 2 {
+                continue;
+            }
+            if !self.split_from(doc, id, frontier) {
+                self.walk_all(doc, id);
+            }
+        }
+    }
+
+    /// The interleaved searches of [`Connectivity::settle`] in net `id` from `frontier` (two or
+    /// more of its nodes). Returns `false` when they could not decide (never expected), so the
+    /// caller walks the whole net.
+    fn split_from(&mut self, doc: &Document, id: NetId, frontier: Vec<Node>) -> bool {
+        let k = frontier.len();
+        let mut parent: Vec<usize> = (0..k).collect();
+        fn find(parent: &mut [usize], mut x: usize) -> usize {
+            let mut guard = 0usize;
+            while let Some(&p) = parent.get(x) {
+                if p == x || guard > parent.len() {
+                    break;
+                }
+                x = p;
+                guard += 1;
+            }
+            x
+        }
+        let mut owner: HashMap<Node, usize> = HashMap::new();
+        let mut queues: Vec<VecDeque<Node>> = vec![VecDeque::new(); k];
+        let mut members: Vec<Vec<Node>> = vec![Vec::new(); k];
+        let mut done = vec![false; k];
+        for (i, n) in frontier.into_iter().enumerate() {
+            owner.insert(n.clone(), i);
+            if let (Some(q), Some(m)) = (queues.get_mut(i), members.get_mut(i)) {
+                q.push_back(n.clone());
+                m.push(n);
+            }
+        }
+        loop {
+            // The running searches; the smallest takes the next step.
+            let running: Vec<usize> =
+                (0..k).filter(|i| parent.get(*i) == Some(i) && !done.get(*i).copied().unwrap_or(true)).collect();
+            if running.len() <= 1 {
+                break;
+            }
+            let Some(r) = running.iter().copied().min_by_key(|i| members.get(*i).map_or(0, Vec::len)) else { break };
+            let Some(n) = queues.get_mut(r).and_then(VecDeque::pop_front) else {
+                if let Some(d) = done.get_mut(r) {
+                    *d = true;
+                }
+                continue;
+            };
+            for m in neighbors(doc, &n) {
+                if self.node_net.get(&m) != Some(&id) {
+                    continue;
+                }
+                let me = find(&mut parent, r);
+                match owner.get(&m).copied() {
+                    None => {
+                        owner.insert(m.clone(), me);
+                        if let (Some(q), Some(v)) = (queues.get_mut(me), members.get_mut(me)) {
+                            q.push_back(m.clone());
+                            v.push(m);
+                        }
+                    }
+                    Some(j) => {
+                        let other = find(&mut parent, j);
+                        if other == me {
+                            continue;
+                        }
+                        // They met: one part. The smaller search moves into the larger.
+                        let (small, large) =
+                            if members.get(me).map_or(0, Vec::len) < members.get(other).map_or(0, Vec::len) {
+                                (me, other)
+                            } else {
+                                (other, me)
+                            };
+                        let q = queues.get_mut(small).map(std::mem::take).unwrap_or_default();
+                        let v = members.get_mut(small).map(std::mem::take).unwrap_or_default();
+                        if let (Some(lq), Some(lv)) = (queues.get_mut(large), members.get_mut(large)) {
+                            lq.extend(q);
+                            lv.extend(v);
+                        }
+                        if let Some(p) = parent.get_mut(small) {
+                            *p = large;
+                        }
+                        let d = done.get(small).copied().unwrap_or(false) && done.get(large).copied().unwrap_or(false);
+                        if let Some(x) = done.get_mut(large) {
+                            *x = d;
+                        }
+                    }
+                }
+            }
+        }
+        let roots: Vec<usize> = (0..k).filter(|i| parent.get(*i) == Some(i)).collect();
+        let running: Vec<usize> = roots.iter().copied().filter(|i| !done.get(*i).copied().unwrap_or(true)).collect();
+        // The part that keeps the net: the one still running (it holds every node not searched);
+        // when every search finished, the largest.
+        let keep = match running.as_slice() {
+            [one] => *one,
+            [] => {
+                let searched: usize = roots.iter().map(|i| members.get(*i).map_or(0, Vec::len)).sum();
+                if searched != self.nets.get(&id).map_or(0, NetData::len) {
+                    return false;
+                }
+                match roots.iter().copied().max_by_key(|i| members.get(*i).map_or(0, Vec::len)) {
+                    Some(r) => r,
+                    None => return true,
+                }
+            }
+            _ => return false,
+        };
+        for r in roots {
+            if r == keep {
+                continue;
+            }
+            let part = members.get_mut(r).map(std::mem::take).unwrap_or_default();
+            let new = self.fresh();
+            self.nets.insert(new, NetData::default());
+            for n in &part {
+                self.relabel(doc, n, new);
+            }
+        }
+        true
+    }
+
+    /// Walk the whole of net `id` and split it into its parts (the fallback of
+    /// [`Connectivity::settle`]).
+    fn walk_all(&mut self, doc: &Document, id: NetId) {
+        {
+            let Some(net) = self.nets.get(&id) else { return };
             let members = net.nodes();
             let mut seen: BTreeSet<Node> = BTreeSet::new();
             let mut parts: Vec<Vec<Node>> = Vec::new();
@@ -647,7 +803,7 @@ impl Connectivity {
                 parts.push(part);
             }
             if parts.len() < 2 {
-                continue;
+                return;
             }
             // The largest part keeps the identity (ties: the first found).
             let keep = parts.iter().enumerate().max_by(|a, b| a.1.len().cmp(&b.1.len()).then(b.0.cmp(&a.0)));

@@ -115,6 +115,28 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
     },
+    // Brief 022: junctions, wire numbers.
+    Tool {
+        id: "ecad.junction",
+        group: "Wiring",
+        label: "Junction",
+        tooltip: "Click a wire where a T joins it: a junction dot, and the wire is split there",
+        kind: Kind::Start("junction"),
+    },
+    Tool {
+        id: "ecad.wirenumber",
+        group: "Wiring",
+        label: "Fix Wire Number",
+        tooltip: "Click a wire, type the number its whole net should carry (. releases a fixed one)",
+        kind: Kind::Start("wirenumber"),
+    },
+    Tool {
+        id: "ecad.renumberwires",
+        group: "Wiring",
+        label: "Renumber Wires",
+        tooltip: "Number the nets that have no number, or renumber every automatic one (fixed numbers stay)",
+        kind: Kind::Start("renumberwires"),
+    },
     Tool {
         id: "ecad.connect",
         group: "Wiring",
