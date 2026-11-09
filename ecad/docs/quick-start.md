@@ -904,7 +904,9 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). A colour may also be free
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+**Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
+GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
 `setprop` refuses `wire_number` and `potential` on a wire (use `wirenumber` and `potential`, which
 change the whole net); it takes `cross_section` and `colour`, which only that wire shows.

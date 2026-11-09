@@ -215,5 +215,28 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     ok(&mut h, "zoom e");
     h.run_steps(3);
     save(&h, &deltas, "022-labels.png");
+
+    // Project settings popout, Wires (owner, 2026-11-09): colours three-letter, label height 2.5;
+    // one transaction, labels follow, `u` takes both back.
+    click(&mut h, project_panel::PROJECT_SETTINGS);
+    {
+        let d = h.state_mut().project_props.as_mut().unwrap();
+        assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("iec", "1.8"));
+        d.label_height = "2.5".into();
+    }
+    h.run_steps(2);
+    click(&mut h, "ecad.projectsettings.colours.three");
+    save(&h, &deltas, "022-wire-settings.png");
+    let before = crate::mouse_tester::head(&mut h);
+    click(&mut h, "ecad.projectprops.ok");
+    assert_eq!(crate::mouse_tester::head(&mut h), before + 1, "one transaction");
+    let d = doc(&mut h);
+    assert_eq!(d.settings.wiring.colour_style, ecad_model::wiring::ColourStyle::ThreeLetter);
+    assert!((d.settings.wiring.label_height - 2.5).abs() < 1e-9);
+    let labels = ecad_cadcraft::wires::labels_on_page(&d, p2);
+    assert!(labels.iter().any(|l| l.text == "24V-04 0.5 BLU") && labels.iter().all(|l| (l.height - 2.5).abs() < 1e-9));
+    ok(&mut h, "u");
+    let d = doc(&mut h);
+    assert_eq!(d.settings.wiring.colour_style, ecad_model::wiring::ColourStyle::Iec);
     let _ = std::fs::remove_dir_all(&dir);
 }

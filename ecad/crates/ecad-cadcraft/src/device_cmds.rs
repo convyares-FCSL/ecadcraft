@@ -286,6 +286,8 @@ pub(crate) fn apply_tag_settings(
 pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
     crate::symbols::STARTERS
         .iter()
+        // Junctions and continuations have no tag (brief 022).
+        .filter(|s| s.kind != crate::symbols::Kind::Tagless)
         .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
         .collect()
 }
