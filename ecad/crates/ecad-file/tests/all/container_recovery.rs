@@ -53,12 +53,7 @@ fn prop(ledger: &mut Ledger, i: usize) {
         .commit(
             Author::User,
             "Property",
-            vec![Op::SetProperty {
-                object: ObjectRef::Project,
-                key: format!("k{i}"),
-                before: None,
-                after: Some("v".into()),
-            }],
+            vec![Op::SetProperty { object: ObjectRef::Project, key: format!("k{i}"), before: None, after: Some("v".into()) }],
         )
         .unwrap();
 }
@@ -71,11 +66,8 @@ fn lines(ledger: &mut Ledger, rng: &mut Rng, n: u64) {
     for i in 0..n {
         let id = ItemId(u128::from(rng.next_u64()) << 64 | u128::from(rng.next_u64()));
         let x = (rng.below(1000) as f64) / 10.0;
-        let item = Item {
-            page,
-            style: style(layer),
-            kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, 0.0), b: Pt::new(x, 5.0 + i as f64) }),
-        };
+        let item =
+            Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, 0.0), b: Pt::new(x, 5.0 + i as f64) }) };
         ledger.commit(Author::User, "LINE", vec![Op::AddItem { id, item }]).unwrap();
         if rng.below(8) == 0 {
             ledger.undo(Author::User).unwrap();
@@ -243,9 +235,8 @@ fn a_second_power_cut_during_recovery_loses_nothing_acknowledged() {
         loop {
             let recovering = PowerLoss::from_image(first.clone());
             recovering.cut_after(second_cut);
-            let opened = Store::with_backend(recovering.clone()).and_then(|s| {
-                ProjectV2::open(s, 1, WRITER).map_err(|e| ecad_file::v2::StoreError::Engine(e.to_string()))
-            });
+            let opened = Store::with_backend(recovering.clone())
+                .and_then(|s| ProjectV2::open(s, 1, WRITER).map_err(|e| ecad_file::v2::StoreError::Engine(e.to_string())));
             let survived = opened.is_ok();
             drop(opened);
             let second = recovering.crash(&mut rng, CrashMode::Reordered);
@@ -587,11 +578,7 @@ fn undo_and_redo_across_the_stack_cap_after_a_power_cut() {
     let mut reference = if cut.is_err() && o.ledger.head() == acked.head() { acked } else { ledger };
     assert_eq!(o.ledger.head(), reference.head(), "save result {cut:?}");
     let mut opened = o.ledger;
-    assert_eq!(
-        opened.stack_depths(),
-        (reference.stacks().0.len() as u64, reference.stacks().1.len() as u64),
-        "stack depths after reopening"
-    );
+    assert_eq!(opened.stack_depths(), (reference.stacks().0.len() as u64, reference.stacks().1.len() as u64), "stack depths after reopening");
     let mut n = 0;
     while reference.redo(Author::User).is_ok() {
         opened.redo(Author::User).unwrap_or_else(|e| panic!("redo {n} failed: {e}"));
@@ -743,9 +730,7 @@ fn damage_in_the_row_under_the_snapshot_opens_read_only_not_refused() {
     for a in &at {
         img[a + 33 + body.len() / 2] ^= 0x20;
     }
-    let o = reopen(img).unwrap_or_else(|e| {
-        panic!("a damaged transaction {} (under the snapshot) refused the whole project: {e}", rest.snap)
-    });
+    let o = reopen(img).unwrap_or_else(|e| panic!("a damaged transaction {} (under the snapshot) refused the whole project: {e}", rest.snap));
     let d = o.report.damage.clone().expect("the damage is reported");
     assert!(o.project.read_only().is_some(), "{d:?}");
 }
@@ -836,29 +821,21 @@ fn v1_cut(stride: usize) {
                     && !matches!(v1.report.outcome, ecad_file::Outcome::Corrupt(_))
                     && v1.ledger.head() > 0
                 {
-                    failures.push(format!(
-                        "cut {cut}: version 1 reads {} transactions, yet refused: {e}",
-                        v1.ledger.head()
-                    ));
+                    failures.push(format!("cut {cut}: version 1 reads {} transactions, yet refused: {e}", v1.ledger.head()));
                 }
             }
             Ok(rep) => {
-                *outcomes
-                    .entry(if rep.omitted.is_some() { "converted the prefix" } else { "converted whole" })
-                    .or_default() += 1;
+                *outcomes.entry(if rep.omitted.is_some() { "converted the prefix" } else { "converted whole" }).or_default() += 1;
                 let complete = ends.iter().filter(|e| **e <= *cut).count().saturating_sub(1) as u64;
                 let v1 = v1.unwrap();
                 let o = ProjectV2::open(Store::open(&out, false).unwrap(), 1, WRITER).unwrap();
                 if rep.transactions != complete && rep.transactions != v1.ledger.head() {
-                    failures
-                        .push(format!("cut {cut}: {} transactions converted, {complete} complete", rep.transactions));
+                    failures.push(format!("cut {cut}: {} transactions converted, {complete} complete", rep.transactions));
                 }
                 if o.ledger.head() != v1.ledger.head() || o.ledger.document() != v1.ledger.document() {
                     failures.push(format!("cut {cut}: the converted file differs from the version 1 prefix"));
                 }
-                if rep.source_hash != ecad_file::chain::hex(&v1.chain_head)
-                    || o.project.link_v1().map(|l| l.transactions) != Some(v1.ledger.head())
-                {
+                if rep.source_hash != ecad_file::chain::hex(&v1.chain_head) || o.project.link_v1().map(|l| l.transactions) != Some(v1.ledger.head()) {
                     failures.push(format!("cut {cut}: link_v1 does not name the prefix"));
                 }
                 if o.report.damage.is_some() {

@@ -134,8 +134,7 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
 pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize) -> String {
     let used: BTreeSet<String> = book.order.iter().map(|p| book.number(doc, *p).to_ascii_lowercase()).collect();
     let step = u64::from(doc.settings.page_number_step.max(1));
-    let digits =
-        before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
+    let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let start = digits.as_deref().and_then(|d| d.parse::<u64>().ok());
     let (mut n, step) = match start {
         Some(s) => (s.saturating_add(step), step),
@@ -153,12 +152,8 @@ pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, posit
 
 /// Where a new page in `folder` goes in book order: the page before it, and its position.
 fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
-    let in_folder: Vec<PageId> = doc
-        .page_order
-        .iter()
-        .copied()
-        .filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder)
-        .collect();
+    let in_folder: Vec<PageId> =
+        doc.page_order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
     if let Some(last) = in_folder.last() {
         let pos = book.position(*last).unwrap_or(0);
         return (Some(*last), pos + 1);
@@ -197,12 +192,7 @@ fn siblings(doc: &Document, parent: Option<FolderId>) -> Vec<FolderId> {
     doc.folder_order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect()
 }
 
-fn check_sibling_name(
-    doc: &Document,
-    parent: Option<FolderId>,
-    name: &str,
-    except: Option<FolderId>,
-) -> Result<(), String> {
+fn check_sibling_name(doc: &Document, parent: Option<FolderId>, name: &str, except: Option<FolderId>) -> Result<(), String> {
     let clash = siblings(doc, parent)
         .into_iter()
         .filter(|f| Some(*f) != except)
@@ -297,8 +287,7 @@ fn run_renamefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
 /// sub-folders (default last), in the order with `folder` removed.
 fn folder_slot(doc: &Document, folder: FolderId, parent: Option<FolderId>, index: Option<usize>) -> usize {
     let order: Vec<FolderId> = doc.folder_order.iter().copied().filter(|f| *f != folder).collect();
-    let sibs: Vec<FolderId> =
-        order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect();
+    let sibs: Vec<FolderId> = order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect();
     let pos = |f: &FolderId| order.iter().position(|x| x == f).unwrap_or(order.len());
     match index.and_then(|i| i.checked_sub(1)).and_then(|i| sibs.get(i)) {
         Some(f) => pos(f),
@@ -342,10 +331,7 @@ fn run_movefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         if to == from && parent == old.parent {
             return Ok(json!({"folder": folder.hex(), "changed": false}));
         }
-        let ops = vec![
-            Op::RemoveFolder { id: folder, folder: old, index: from },
-            Op::AddFolder { id: folder, folder: after, index: to },
-        ];
+        let ops = vec![Op::RemoveFolder { id: folder, folder: old, index: from }, Op::AddFolder { id: folder, folder: after, index: to }];
         p.apply_edit(pg, "movefolder", "Move folder", ops)?;
         Ok(json!({"folder": folder.hex(), "changed": true}))
     })
@@ -366,10 +352,7 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         for sub in doc.subfolders(folder) {
             let before = doc.folders.get(&sub).cloned().ok_or("no such folder")?;
             if check_sibling_name(doc, old.parent, &before.name, Some(folder)).is_err() {
-                return Err(format!(
-                    "Rename sub-folder \"{}\" first: its new place already has a folder of that name.",
-                    before.name
-                ));
+                return Err(format!("Rename sub-folder \"{}\" first: its new place already has a folder of that name.", before.name));
             }
             let after = Folder { name: before.name.clone(), parent: old.parent };
             ops.push(Op::ModifyFolder { id: sub, before, after });
@@ -382,8 +365,7 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         };
         p.apply_edit(pg, "deletefolder", "Delete folder", ops)?;
         let n = pages.len();
-        let line =
-            format!("Folder \"{}\" deleted; its {n} page{} moved to {to}.", old.name, if n == 1 { "" } else { "s" });
+        let line = format!("Folder \"{}\" deleted; its {n} page{} moved to {to}.", old.name, if n == 1 { "" } else { "s" });
         pg.echo(line.clone());
         Ok(json!({"folder": folder.hex(), "pages_moved": n, "message": line}))
     })
@@ -394,12 +376,7 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
 /// The ops that move `page` into `folder` (None: the top level) at 1-based `index` among that
 /// folder's pages (default last): its `folder` property, then a RemovePage + AddPage pair when its
 /// place in the page order changes.
-pub(crate) fn move_page_ops(
-    doc: &Document,
-    page: PageId,
-    folder: Option<FolderId>,
-    index: Option<usize>,
-) -> Result<Vec<Op>, String> {
+pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, String> {
     existing(doc, folder)?;
     let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
     let mut ops = Vec::new();
@@ -414,11 +391,8 @@ pub(crate) fn move_page_ops(
     }
     let from = doc.page_order.iter().position(|p| *p == page).ok_or("no such page")?;
     let order: Vec<PageId> = doc.page_order.iter().copied().filter(|p| *p != page).collect();
-    let in_folder: Vec<PageId> = order
-        .iter()
-        .copied()
-        .filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder)
-        .collect();
+    let in_folder: Vec<PageId> =
+        order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
     let pos = |p: &PageId| order.iter().position(|x| x == p).unwrap_or(order.len());
     let to = match index.and_then(|i| i.checked_sub(1)).and_then(|i| in_folder.get(i)) {
         Some(p) => pos(p),
@@ -451,10 +425,7 @@ pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_e
 
 /// The ops of `newpage {title, number?, folder?}`, the new page's ID and number.
 pub(crate) fn new_page_ops(
-    p: &mut Project,
-    title: String,
-    number: Option<String>,
-    folder: Option<FolderId>,
+    p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>,
 ) -> Result<(PageId, String, Vec<Op>), String> {
     let doc = p.ledger.document();
     existing(doc, folder)?;
@@ -597,9 +568,7 @@ pub const MAX_STEP: u32 = 1000;
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
         let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());
-        if let Some(r) =
-            n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued.is_some())
-        {
+        if let Some(r) = n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued.is_some()) {
             return Err(format!("Rev {} is issued and cannot change.", r.rev()));
         }
         return Err("Revision fields are changed with `revision` (Revisions…).".into());
@@ -611,9 +580,7 @@ fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
         return Err(format!("\"{key}\" is reserved."));
     }
     let n = key.chars().count();
-    if !(1..=MAX_KEY_CHARS).contains(&n)
-        || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-    {
+    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
         return Err("A property name is 1 to 40 characters a-z, 0-9 or _.".into());
     }
     Ok(())
@@ -697,8 +664,7 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         if let Some(v) = params.get("page_number_step").filter(|v| !v.is_null()) {
             let n = v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=MAX_STEP).contains(n));
-            settings.page_number_step =
-                n.ok_or(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}"))?;
+            settings.page_number_step = n.ok_or(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}"))?;
         }
         if let Some(v) = params.get("reference_style").filter(|v| !v.is_null()) {
             settings.reference_style = match v.as_str() {
@@ -717,10 +683,8 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
         }
         if let Some(v) = params.get("label_height").filter(|v| !v.is_null()) {
-            settings.wiring.label_height = v
-                .as_f64()
-                .filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x))
-                .ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+            settings.wiring.label_height =
+                v.as_f64().filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
         }
         if settings != doc.settings {
             ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
@@ -804,20 +768,10 @@ fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         if date.is_empty() {
             date = revisions::today().unwrap_or_default();
             if !date.is_empty() {
-                ops.push(Op::SetProperty {
-                    object: ObjectRef::Project,
-                    key: revisions::key(n, "date"),
-                    before: None,
-                    after: Some(date.clone()),
-                });
+                ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
             }
         }
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(n, revisions::ISSUED),
-            before: None,
-            after: Some(name.clone()),
-        });
+        ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
         ops.push(Op::NameVersion { name: name.clone(), at: head });
         p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
         let tx = p.ledger.head();
@@ -828,8 +782,7 @@ fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result
 }
 
 fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let rev =
-        params.get("rev").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`rev` is required"))?.to_string();
+    let rev = params.get("rev").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`rev` is required"))?.to_string();
     with_any_page(s, |p, _| {
         let doc = p.ledger.document();
         let row = revisions::issued(doc)
@@ -862,8 +815,7 @@ fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             })
             .collect();
         let date = row.get("date").to_string();
-        p.revision_view =
-            Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then) });
+        p.revision_view = Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then) });
         Ok(json!({"rev": row.rev(), "date": date, "at": at, "pages": pages}))
     })
 }

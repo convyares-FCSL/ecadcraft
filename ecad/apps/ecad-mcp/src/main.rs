@@ -2,14 +2,7 @@
 //!
 //! Usage: `ecad-mcp [--write] [--agent <name>] [--create] [<project.ecad>]`. Logs go to stderr
 //! only; stdout carries JSON-RPC. See `ecad/docs/quick-start.md`.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::process::ExitCode;
 

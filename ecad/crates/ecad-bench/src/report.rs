@@ -392,10 +392,8 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
         COLUMNS.iter().map(|(_, h)| format!("{h:>22}")).collect::<String>()
     );
     for r in rows {
-        let before = old.iter().find(|o| {
-            what(o, "tier").as_deref() == Some(r.tier.as_str())
-                && what(o, "variant").as_deref() == Some(r.variant.as_str())
-        });
+        let before =
+            old.iter().find(|o| what(o, "tier").as_deref() == Some(r.tier.as_str()) && what(o, "variant").as_deref() == Some(r.variant.as_str()));
         out.push_str(&format!("{:<8} {:<8} ", r.tier, r.variant));
         let Some(before) = before else {
             out.push_str("(not in the earlier run)\n");

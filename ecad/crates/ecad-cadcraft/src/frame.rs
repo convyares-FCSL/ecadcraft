@@ -61,8 +61,7 @@ pub fn drop_from_selection(s: &mut cadcraft_engine::Session) -> bool {
         return false;
     }
     let Ok(d) = s.doc() else { return false };
-    let keep: Vec<Handle> =
-        sel.iter().copied().filter(|h| d.entity(*h).is_none_or(|e| e.common.layer != LAYER)).collect();
+    let keep: Vec<Handle> = sel.iter().copied().filter(|h| d.entity(*h).is_none_or(|e| e.common.layer != LAYER)).collect();
     if keep.len() == sel.len() {
         return false;
     }
@@ -129,15 +128,11 @@ impl FrameInput {
 /// changes nothing there.
 pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
     // A rename or move is a RemovePage + AddPage pair of one page.
-    let removed: BTreeSet<PageId> =
-        ops.iter().filter_map(|o| if let Op::RemovePage { id, .. } = o { Some(*id) } else { None }).collect();
-    let added: BTreeSet<PageId> =
-        ops.iter().filter_map(|o| if let Op::AddPage { id, .. } = o { Some(*id) } else { None }).collect();
+    let removed: BTreeSet<PageId> = ops.iter().filter_map(|o| if let Op::RemovePage { id, .. } = o { Some(*id) } else { None }).collect();
+    let added: BTreeSet<PageId> = ops.iter().filter_map(|o| if let Op::AddPage { id, .. } = o { Some(*id) } else { None }).collect();
     let pair = |id: &PageId| removed.contains(id) && added.contains(id);
     ops.iter().any(|op| match op {
-        Op::SetProjectSettings { before, after } => {
-            before.sheet != after.sheet || before.length_unit != after.length_unit
-        }
+        Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
@@ -210,15 +205,7 @@ impl Draw {
         self.out.push(Part { kind, weight: Some(weight), aci });
     }
     /// Text at `at` (millimetres), `height` mm, aligned; fitted into `room` mm when given.
-    fn text(
-        &mut self,
-        at: (f64, f64),
-        height: f64,
-        value: &str,
-        align: (HAlign, VAlign),
-        aci: Option<u8>,
-        room: Option<f64>,
-    ) {
+    fn text(&mut self, at: (f64, f64), height: f64, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
@@ -304,12 +291,7 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     let left = (HAlign::Left, VAlign::Baseline);
     let tl = (HAlign::Left, VAlign::Top);
     // Paper edge, frame, title block's top line.
-    d.rect(
-        (-MARGIN_MM, -TITLE_BLOCK_MM - MARGIN_MM),
-        (w - MARGIN_MM, h - TITLE_BLOCK_MM - MARGIN_MM),
-        THIN_WEIGHT,
-        Some(LABEL_ACI),
-    );
+    d.rect((-MARGIN_MM, -TITLE_BLOCK_MM - MARGIN_MM), (w - MARGIN_MM, h - TITLE_BLOCK_MM - MARGIN_MM), THIN_WEIGHT, Some(LABEL_ACI));
     d.rect((0.0, -TITLE_BLOCK_MM), (a, top), FRAME_WEIGHT, None);
     d.line((0.0, 0.0), (a, 0.0), FRAME_WEIGHT, None);
     // Grid: zones over the whole frame (title-block area included), counted from the top-left;
@@ -390,10 +372,9 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         d.text((lo.0 + 1.0, hi.1 - 1.0), 1.8, label, tl, Some(LABEL_ACI), None);
         d.text((lo.0 + 1.0, lo.1 + 1.5), height, value, left, None, Some(hi.0 - lo.0 - 2.0));
     }
-    for ((x0, x1), label, value, height) in [
-        ((x_r, x_r + 40.0), "Page", input.page.as_str(), 7.0),
-        ((x_r + 40.0, x_r + 65.0), "Rev", input.rev.as_str(), 5.0),
-    ] {
+    for ((x0, x1), label, value, height) in
+        [((x_r, x_r + 40.0), "Page", input.page.as_str(), 7.0), ((x_r + 40.0, x_r + 65.0), "Rev", input.rev.as_str(), 5.0)]
+    {
         d.text((x0 + 1.0, -21.0), 1.8, label, tl, Some(LABEL_ACI), None);
         d.text(((x0 + x1) / 2.0, -31.0), height, value, ml, None, Some(x1 - x0 - 2.0));
     }

@@ -27,10 +27,7 @@ struct Client {
 impl Client {
     fn new(s: EcadMcp) -> Self {
         let mut c = Client { s, next: 1 };
-        let r = c.request(
-            "initialize",
-            json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}),
-        );
+        let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
         assert!(c.s.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
         c.no_settings();
@@ -39,10 +36,7 @@ impl Client {
 
     /// Cable views are remembered nowhere in these tests.
     fn no_settings(&mut self) {
-        self.s
-            .with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none()))
-            .unwrap()
-            .unwrap();
+        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
     }
 
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -142,19 +136,8 @@ impl Drop for TempDir {
 fn a_client_lists_the_ecad_commands_with_their_docs_and_the_ecad_tools() {
     let mut c = reader();
     let tools = c.request("tools/list", json!({}));
-    let names: Vec<&str> =
-        tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    for want in [
-        "ecad_project",
-        "ecad_history",
-        "ecad_inspect",
-        "save",
-        "execute",
-        "list_commands",
-        "inspect_drawing",
-        "query_entities",
-        "render",
-    ] {
+    let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for want in ["ecad_project", "ecad_history", "ecad_inspect", "save", "execute", "list_commands", "inspect_drawing", "query_entities", "render"] {
         assert!(names.contains(&want), "{want} missing from {names:?}");
     }
     for hidden in ["command_line", "script", "cancel", "new_drawing", "open", "screenshot", "ui_click"] {
@@ -220,8 +203,7 @@ fn the_cable_examples_through_mcp_record_the_json_forms_transactions_as_the_agen
     let mut d = Direct::new();
     let mut cable = None;
     for (cmd, params) in examples(None) {
-        let params =
-            if cmd == "cableview" { json!({"cable": cable.clone().unwrap(), "view": params["view"]}) } else { params };
+        let params = if cmd == "cableview" { json!({"cable": cable.clone().unwrap(), "view": params["view"]}) } else { params };
         d.s.execute(cmd, &params).unwrap_or_else(|e| panic!("{cmd}: {e}"));
         if cmd == "cableslash" {
             cable = d.p.read(&mut d.s, |p, _| p.ledger.document().cables.keys().next().unwrap().hex()).ok();
@@ -459,9 +441,7 @@ fn hostile_input_never_panics_and_gets_json_rpc_errors() {
     let mut c = writer();
     let before = c.log();
     let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
-    let too_many =
-        Value::Array((0..=MAX_BATCH).map(|i| json!({"jsonrpc": "2.0", "id": i, "method": "ping"})).collect())
-            .to_string();
+    let too_many = Value::Array((0..=MAX_BATCH).map(|i| json!({"jsonrpc": "2.0", "id": i, "method": "ping"})).collect()).to_string();
     let lines: Vec<(&str, String, i64)> = vec![
         ("truncated", "{".into(), -32700),
         ("not json", "hello".into(), -32700),
@@ -473,13 +453,33 @@ fn hostile_input_never_panics_and_gets_json_rpc_errors() {
         ("unknown method", r#"{"jsonrpc":"2.0","id":1,"method":"nope"}"#.into(), -32601),
         ("unknown tool", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nope"}}"#.into(), -32602),
         ("no tool name", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}"#.into(), -32602),
-        ("script tool", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"script","arguments":{"text":"line 0,0 1,1"}}}"#.into(), -32602),
+        (
+            "script tool",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"script","arguments":{"text":"line 0,0 1,1"}}}"#.into(),
+            -32602,
+        ),
         ("open tool", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"open","arguments":{"path":"x.dxf"}}}"#.into(), -32602),
-        ("arguments not an object", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_project","arguments":"x"}}"#.into(), -32602),
-        ("negative limit", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_history","arguments":{"limit":-1}}}"#.into(), -32602),
-        ("seq not a number", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_inspect","arguments":{"seq":"x"}}}"#.into(), -32602),
+        (
+            "arguments not an object",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_project","arguments":"x"}}"#.into(),
+            -32602,
+        ),
+        (
+            "negative limit",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_history","arguments":{"limit":-1}}}"#.into(),
+            -32602,
+        ),
+        (
+            "seq not a number",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ecad_inspect","arguments":{"seq":"x"}}}"#.into(),
+            -32602,
+        ),
         ("execute without command", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"execute","arguments":{}}}"#.into(), -32602),
-        ("command not a string", r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"execute","arguments":{"command":7}}}"#.into(), -32602),
+        (
+            "command not a string",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"execute","arguments":{"command":7}}}"#.into(),
+            -32602,
+        ),
     ];
     for (what, line, code) in lines {
         let reply = c.s.handle_line(&line).unwrap_or_else(|| panic!("{what}: no reply"));
@@ -523,8 +523,7 @@ fn an_oversized_or_non_utf8_line_is_answered_and_skipped() {
     input.push(b'\n');
     let mut out = Vec::new();
     c.s.serve(std::io::Cursor::new(input), &mut out).unwrap();
-    let replies: Vec<Value> =
-        String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let replies: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_eq!(replies.len(), 3, "{replies:?}");
     assert_eq!(replies[0]["error"]["code"], json!(-32600));
     assert!(replies[0]["error"]["message"].as_str().unwrap().contains("too large"));
@@ -556,10 +555,7 @@ fn session(args: &[&str], lines: &[Value]) -> (Vec<Value>, bool, String) {
             writeln!(stdin, "{l}").unwrap();
         }
     }
-    let replies: Vec<Value> = BufReader::new(child.stdout.take().unwrap())
-        .lines()
-        .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
-        .collect();
+    let replies: Vec<Value> = BufReader::new(child.stdout.take().unwrap()).lines().map(|l| serde_json::from_str(&l.unwrap()).unwrap()).collect();
     let out = child.wait_with_output().unwrap();
     (replies, out.status.success(), String::from_utf8_lossy(&out.stderr).into_owned())
 }
@@ -571,18 +567,10 @@ fn rpc(id: u64, method: &str, params: Value) -> Value {
 #[test]
 fn stdio_the_binary_serves_a_headless_session_and_exits_cleanly() {
     let lines = vec![
-        rpc(
-            1,
-            "initialize",
-            json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "stdio-agent"}}),
-        ),
+        rpc(1, "initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "stdio-agent"}})),
         json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
         rpc(2, "tools/list", json!({})),
-        rpc(
-            3,
-            "tools/call",
-            json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}}),
-        ),
+        rpc(3, "tools/call", json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}})),
         rpc(4, "tools/call", json!({"name": "ecad_history", "arguments": {}})),
         json!("garbage"),
     ];
@@ -667,12 +655,9 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
     assert!(matches!(last.kind, ecad_model::TxKind::Redo { .. }), "the overflowing undo was redone: {:?}", last.kind);
     // Several steps in one call are refused before anything runs.
     let before = c.log();
-    for (cmd, params) in [
-        ("undo", json!({"count": 2})),
-        ("undo", json!({"mode": "back"})),
-        ("redo", json!({"count": 3})),
-        ("mredo", json!({"all": true})),
-    ] {
+    for (cmd, params) in
+        [("undo", json!({"count": 2})), ("undo", json!({"mode": "back"})), ("redo", json!({"count": 3})), ("mredo", json!({"all": true}))]
+    {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::one_step(cmd), "{cmd}");
         assert_eq!(c.log(), before, "{cmd}");
@@ -686,8 +671,7 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
 #[test]
 fn the_first_initialize_names_the_author_and_later_ones_do_not() {
     let mut c = writer();
-    let again =
-        c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "someone else"}}));
+    let again = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "someone else"}}));
     assert!(again.get("result").is_some(), "{again}");
     c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
     assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
@@ -756,10 +740,7 @@ fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_change
     let first = r.doc().page_order[0];
     r.exec("openpage", json!({"page": first.hex()}));
     let before = r.log();
-    assert_eq!(
-        r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [9, 0]]}})),
-        policy::WRITES_OFF
-    );
+    assert_eq!(r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [9, 0]]}})), policy::WRITES_OFF);
     assert_eq!(r.log(), before);
 }
 
@@ -806,10 +787,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     // A duplicate tag is refused, naming the device and the ways forward; nothing is written.
     let other = c.exec("place", json!({"symbol": "coil", "at": [0, 60]}));
     let before = c.log();
-    let m = c.refused(
-        "execute",
-        json!({"command": "setprop", "params": {"component": other["component"], "key": "tag", "value": "-K05"}}),
-    );
+    let m = c.refused("execute", json!({"command": "setprop", "params": {"component": other["component"], "key": "tag", "value": "-K05"}}));
     assert!(m.contains("Tag -K05 is already used by -K05") && m.contains("`merge`"), "{m}");
     assert_eq!(c.log(), before);
 
@@ -858,10 +836,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         ("pageprops", json!({"number": "100", "title": "Supply"})),
         ("projectprops", json!({"title": "Panel 7", "customer": "ACME", "props": {"site": "Leeds"}})),
         // Project settings (fix round): sheet, reference style, page-number step and tag settings.
-        (
-            "projectprops",
-            json!({"sheet": "A2", "reference_style": "page-column", "page_number_step": 5, "tag_padding": 3}),
-        ),
+        ("projectprops", json!({"sheet": "A2", "reference_style": "page-column", "page_number_step": 5, "tag_padding": 3})),
         ("newfolder", json!({"name": "Schematic layouts"})),
     ];
     for (cmd, params) in steps {
@@ -888,9 +863,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()), "{cmd}");
     }
     let spare = c.doc().folder_order[1].hex();
-    for (cmd, params) in
-        [("movefolder", json!({"folder": spare, "parent": null})), ("deletefolder", json!({"folder": spare}))]
-    {
+    for (cmd, params) in [("movefolder", json!({"folder": spare, "parent": null})), ("deletefolder", json!({"folder": spare}))] {
         let before = c.log().len();
         c.exec(cmd, params);
         assert_eq!(c.log().len(), before + 1, "{cmd}");
@@ -964,23 +937,28 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
         (r, t)
     };
     let sets = |t: &Transaction, key: &str| {
-        t.ops
-            .iter()
-            .filter(|op| matches!(op, Op::SetProperty { object: ObjectRef::Conductor(_), key: k, .. } if k == key))
-            .count()
+        t.ops.iter().filter(|op| matches!(op, Op::SetProperty { object: ObjectRef::Conductor(_), key: k, .. } if k == key)).count()
     };
 
     // `wire` with a potential: the conductor's potential and its number in the same transaction.
     let (r, t) = one(&mut c, "wire", json!({"points": [[0, 0], [60, 0]], "potential": "24V"}));
     assert_eq!(r["number"], json!("24V-01"), "{r}");
     assert_eq!(r["potential"], json!("24V"));
-    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateConductor { conductor, .. } if conductor.properties.get("potential").map(String::as_str) == Some("24V"))));
+    assert!(
+        t.ops.iter().any(
+            |op| matches!(op, Op::CreateConductor { conductor, .. } if conductor.properties.get("potential").map(String::as_str) == Some("24V"))
+        )
+    );
     assert_eq!(sets(&t, "wire_number"), 1, "{:?}", t.ops);
     let first = r["conductor"].as_str().unwrap().to_string();
 
     // `junction`: a tagless component on the wire, which is split; both halves keep the number.
     let (j, t) = one(&mut c, "junction", json!({"at": [30, 0]}));
-    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))));
+    assert!(
+        t.ops.iter().any(
+            |op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
+        )
+    );
     let net = c.exec("net", json!({"conductor": j["conductor"]}));
     assert_eq!(net["number"], json!("24V-01"));
     assert_eq!(net["conductors"].as_array().unwrap().len(), 2);
@@ -993,7 +971,11 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     // `place` a continuation.
     let (r, t) = one(&mut c, "place", json!({"symbol": "continuation", "at": [100, 0], "name": "0V"}));
     assert_eq!(r["name"], json!("0V"));
-    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("name").map(String::as_str) == Some("0V"))));
+    assert!(
+        t.ops
+            .iter()
+            .any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
+    );
     let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
     assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");
     let zero = r["conductor"].as_str().unwrap().to_string();

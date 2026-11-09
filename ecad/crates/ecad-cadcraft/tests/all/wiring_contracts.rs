@@ -86,9 +86,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
     let mut h = H::new(0x22_02);
     let page = h.first_page();
     let mut ws = Vec::new();
-    for (i, (dx, dy)) in
-        [(20.0, 0.0), (0.0, 20.0), (-20.0, 0.0), (0.0, -20.0), (20.0, 20.0), (-20.0, 20.0)].into_iter().enumerate()
-    {
+    for (i, (dx, dy)) in [(20.0, 0.0), (0.0, 20.0), (-20.0, 0.0), (0.0, -20.0), (20.0, 20.0), (-20.0, 20.0)].into_iter().enumerate() {
         let x0 = 100.0 * i as f64;
         ws.push(wire(&mut h, &[(x0, 0.0), (x0 + dx, dy)], json!({"potential": "24V"})));
     }
@@ -222,9 +220,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     // drawn away from its connection point. Both are written past the commands.
     let old = h.cfg(|p| {
         let w: ConductorId = p.ids.fresh();
-        p.ledger
-            .commit(Author::User, "old", vec![Op::CreateConductor { id: w, conductor: Default::default() }])
-            .unwrap();
+        p.ledger.commit(Author::User, "old", vec![Op::CreateConductor { id: w, conductor: Default::default() }]).unwrap();
         let doc = p.ledger.document();
         let (item, _) = ecad_model::derive::route_on_page(doc, fa, page).unwrap();
         let before = doc.items[&item].clone();
@@ -292,10 +288,7 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
             let doc = p.ledger.document().clone();
             let kept = p.checks().clone();
             assert_eq!(rows(&doc, &kept), rows(&doc, &Checks::build(&doc, p.tolerance)));
-            ecad_cadcraft::checks::all(&doc, p.tolerance)
-                .into_iter()
-                .filter(|c| c.kind == Kind::UnknownName)
-                .collect::<Vec<_>>()
+            ecad_cadcraft::checks::all(&doc, p.tolerance).into_iter().filter(|c| c.kind == Kind::UnknownName).collect::<Vec<_>>()
         })
     };
     terminal(&mut h, (0.0, 0.0), "X1");
@@ -386,8 +379,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     compare(&mut h, "delete");
     // An unrelated edit (a device property) changes no row and re-checks no net.
     let before = h.cfg(|p| p.checks().clone());
-    let lamp =
-        h.doc().components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
+    let lamp = h.doc().components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
     if let Some(lamp) = lamp {
         h.run("setprop", json!({"component": lamp.hex(), "key": "description", "value": "Spare"})).unwrap();
     }
@@ -407,8 +399,7 @@ fn add_junction_joins_loose_ends_that_only_meet() {
     let b = wire(&mut h, &[(30.0, 0.0), (30.0, 30.0)], json!({"junction": false}));
     let doc = h.doc();
     assert_ne!(net_of(&doc, a), net_of(&doc, b));
-    let looks: Vec<_> =
-        ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
+    let looks: Vec<_> = ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "one row for the pair: {looks:?}");
     let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("{looks:?}") };
     let r = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
@@ -437,12 +428,7 @@ fn a_wires_properties_show_and_edit_its_net() {
         h.p(|p| props::view(p, Some(page), &[route]))
     };
     let row = |v: &props::PropsView, key: &str| {
-        v.sections
-            .iter()
-            .flat_map(|s| s.rows.iter())
-            .find(|r| r.key == key)
-            .cloned()
-            .unwrap_or_else(|| panic!("{key}: {v:?}"))
+        v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).cloned().unwrap_or_else(|| panic!("{key}: {v:?}"))
     };
     let v = view(&mut h, a);
     assert_eq!(row(&v, "wire_number").value, number(&h.doc(), a).unwrap());
@@ -556,8 +542,7 @@ fn a_fan_view_hides_its_members_labels() {
     let k = h.run("cableslash", json!({"from": [-5, 30], "to": [25, 32]})).unwrap();
     let cable = k["cable"].as_str().unwrap().to_string();
     let shown = |h: &mut H| {
-        let labels: Vec<_> =
-            h.pv(|p, pg| pg.entities_of(p, page)).into_iter().filter(|e| e.common.layer == LABEL_LAYER).collect();
+        let labels: Vec<_> = h.pv(|p, pg| pg.entities_of(p, page)).into_iter().filter(|e| e.common.layer == LABEL_LAYER).collect();
         labels.len()
     };
     assert_eq!(shown(&mut h), 4);

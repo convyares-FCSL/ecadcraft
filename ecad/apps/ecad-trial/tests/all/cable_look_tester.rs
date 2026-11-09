@@ -92,11 +92,7 @@ fn views_of(h: &mut Harness<'static, Trial>) -> Value {
 #[allow(dead_code)]
 fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .filter(|e| e.common.layer == views::LAYER)
-        .count()
+    d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
 }
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
@@ -151,9 +147,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -166,19 +160,12 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -197,10 +184,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -231,9 +215,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -278,16 +260,8 @@ fn drawn_near(img: &egui::ColorImage, at: Pos2, r: i32) -> bool {
 /// y = 0, 5, 10, 15.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle)
-        .collect();
+    let before: Vec<_> =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -338,10 +312,7 @@ fn fixture(h: &mut Harness<'static, Trial>, right: bool) -> (String, Vec<String>
 /// A reference end of the cable at `at` with brief 010's ops (one Point item in a `reference`
 /// representation), one transaction.
 fn reference_end(h: &mut Harness<'static, Trial>, cable: &str, at: (f64, f64)) {
-    use ecad_model::{
-        CableId, Color, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Style,
-        Subject,
-    };
+    use ecad_model::{CableId, Color, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Style, Subject};
     // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
     // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
     // built with the ops.
@@ -351,17 +322,13 @@ fn reference_end(h: &mut Harness<'static, Trial>, cable: &str, at: (f64, f64)) {
     }
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
-    let (page, layer) =
-        p.read(&mut t.cad.session, |p, _| (p.ledger.document().page_order[0], p.default_layer)).unwrap();
+    let (page, layer) = p.read(&mut t.cad.session, |p, _| (p.ledger.document().page_order[0], p.default_layer)).unwrap();
     let k = CableId::parse(cable).unwrap();
     let item = ItemId::from(0x0977_0000_0000_0000_0000_0000_0000_0001);
     let rep = RepresentationId::from(0x0978_0000_0000_0000_0000_0000_0000_0001);
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let ops = vec![
-        Op::AddItem {
-            id: item,
-            item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(at.0, at.1) }) },
-        },
+        Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(at.0, at.1) }) } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -446,11 +413,7 @@ fn check_a_core_label_by_label_and_reference_screenshots() {
     h.run_steps(3);
     let prompt_img = out.as_ref().and_then(|d| shot(&h, &deltas, &d.join("009-core-prompt.png")));
     ok(&mut h, "3");
-    assert!(
-        h.state().cad.session.log.iter().any(|l| l == "Wire W3 is now core 3 of cable C1."),
-        "{:?}",
-        h.state().cad.session.log.last()
-    );
+    assert!(h.state().cad.session.log.iter().any(|l| l == "Wire W3 is now core 3 of cable C1."), "{:?}", h.state().cad.session.log.last());
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(prompt(&h), "Select a wire in a cable:", "back to step 1");
     h.key_press(Key::Escape);

@@ -89,10 +89,7 @@ fn keys_sort_by_utf16_and_strings_escape_minimally() {
     // UTF-16: "a" < "b" < "é" (U+00E9) < U+1F600 (D83D…) < U+FF5E. UTF-8 order would put U+FF5E first.
     assert_eq!(text, "{\"a\":4,\"b\":3,\"é\":5,\"\u{1F600}\":1,\"\u{FF5E}\":2}");
     let s = json!("q\" b\\ \u{8}\u{9}\u{a}\u{c}\u{d} \u{1} \u{1f} \u{7f} / ü");
-    assert_eq!(
-        String::from_utf8(canonical(&s).unwrap()).unwrap(),
-        "\"q\\\" b\\\\ \\b\\t\\n\\f\\r \\u0001 \\u001f \u{7f} / ü\""
-    );
+    assert_eq!(String::from_utf8(canonical(&s).unwrap()).unwrap(), "\"q\\\" b\\\\ \\b\\t\\n\\f\\r \\u0001 \\u001f \u{7f} / ü\"");
     assert_eq!(String::from_utf8(canonical(&json!([null, true, false, []])).unwrap()).unwrap(), "[null,true,false,[]]");
 }
 

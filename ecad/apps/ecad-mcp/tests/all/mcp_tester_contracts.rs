@@ -31,9 +31,7 @@ impl Client {
         let mut c = Client { s, next: 1 };
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": AGENT}}));
         assert!(r.get("result").is_some(), "{r}");
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none()))
-            .unwrap()
-            .unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
         c
     }
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -66,9 +64,7 @@ impl Client {
     /// The handles of the entities on the active page.
     fn handles(&mut self) -> Vec<String> {
         let r = self.exec("entities", json!({}));
-        r["entities"]
-            .as_array()
-            .map_or_else(Vec::new, |a| a.iter().filter_map(|e| e["handle"].as_str().map(str::to_string)).collect())
+        r["entities"].as_array().map_or_else(Vec::new, |a| a.iter().filter_map(|e| e["handle"].as_str().map(str::to_string)).collect())
     }
 }
 
@@ -208,9 +204,7 @@ fn multi_step_undo_and_redo_are_refused_before_they_run() {
     }
     // Spellings the gate does not catch reach ECAD's own refusal of non-count UNDO modes, or run
     // as one step: never more than one transaction.
-    for (cmd, p) in
-        [("undo", json!({"mode": " back "})), ("undo", json!({"mode": "begin"})), ("mredo", json!({"all": false}))]
-    {
+    for (cmd, p) in [("undo", json!({"mode": " back "})), ("undo", json!({"mode": "begin"})), ("mredo", json!({"all": false}))] {
         let before = c.log().len();
         let _ = c.exec_raw(cmd, p.clone());
         assert!(c.log().len() <= before + 1, "{cmd} {p}");
@@ -667,17 +661,9 @@ fn scripted_session(path: &str) -> Vec<u8> {
     line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#);
     line(&rpc(2, "tools/list", json!({})));
     line(&rpc(3, "tools/call", json!({"name": "ecad_project", "arguments": {}})));
-    line(&rpc(
-        4,
-        "tools/call",
-        json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}}),
-    ));
+    line(&rpc(4, "tools/call", json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}})));
     line(&rpc(5, "tools/call", json!({"name": "save", "arguments": {}})));
-    line(&rpc(
-        6,
-        "tools/call",
-        json!({"name": "execute", "arguments": {"command": "saveas", "params": {"path": path}}}),
-    ));
+    line(&rpc(6, "tools/call", json!({"name": "execute", "arguments": {"command": "saveas", "params": {"path": path}}})));
     // Hostile lines.
     line("");
     line("{");
@@ -714,12 +700,7 @@ fn stdio_the_binary_on_a_path_with_spaces_with_and_without_write() {
     assert!(err.contains("writes off"), "{err}");
     let by_id = |r: &[Value], id: u64| r.iter().find(|v| v["id"] == json!(id)).cloned().unwrap_or(Value::Null);
     assert_eq!(by_id(&r, 1)["result"]["serverInfo"]["name"], json!("ecad"));
-    let names: Vec<String> = by_id(&r, 2)["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|t| t["name"].as_str().unwrap().to_string())
-        .collect();
+    let names: Vec<String> = by_id(&r, 2)["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
     assert!(names.iter().any(|n| n == "ecad_project"), "{names:?}");
     assert_ne!(by_id(&r, 3)["result"]["isError"], json!(true));
     assert_eq!(by_id(&r, 4)["result"]["content"][0]["text"], json!(policy::WRITES_OFF));
@@ -787,11 +768,7 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
 
     let input = format!(
         "{}\n{}\n",
-        rpc(
-            1,
-            "tools/call",
-            json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [1, 0]]}}})
-        ),
+        rpc(1, "tools/call", json!({"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [1, 0]]}}})),
         rpc(2, "tools/call", json!({"name": "save", "arguments": {}}))
     );
     let (r, code, err) = run_binary(&["--write", &path], input.as_bytes(), &dir);

@@ -258,10 +258,7 @@ impl WriterLock {
             Err(TryLockError::WouldBlock) => {
                 let mut s = String::new();
                 // Best effort where it is shown at all.
-                let holder = HOLDER_SHOWN
-                    .then(|| file.read_to_string(&mut s).ok().map(|_| s.trim().to_string()))
-                    .flatten()
-                    .filter(|s| !s.is_empty());
+                let holder = HOLDER_SHOWN.then(|| file.read_to_string(&mut s).ok().map(|_| s.trim().to_string())).flatten().filter(|s| !s.is_empty());
                 return Ok(LockAttempt::HeldByOther { holder });
             }
             Err(TryLockError::Error(e)) => return Err(e),

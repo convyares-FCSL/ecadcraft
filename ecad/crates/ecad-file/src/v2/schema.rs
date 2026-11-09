@@ -38,8 +38,7 @@ pub const CONTAINER_VERSION: u64 = 2;
 /// `meta.codec`: rows and chunks are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
 pub const CODEC: &str = "json/1";
 /// The `meta` names this build reads; any other is refused (EEP-0005 §3.1, strict reading).
-pub const META_NAMES: [&str; 9] =
-    ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "link_v1"];
+pub const META_NAMES: [&str; 9] = ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "link_v1"];
 /// The default number of transactions between automatic snapshots (overseer, 2026-11-08).
 pub const DEFAULT_SNAPSHOT_EVERY: u64 = 2_000;
 /// Smallest and largest snapshot intervals accepted from a file.

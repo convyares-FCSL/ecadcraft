@@ -44,14 +44,7 @@
 //! OneDrive-redirected Documents folder) and `~/ecad-projects` on Linux, including the Linux home
 //! under WSL. Network, synced and removable folders, and Windows drives under `/mnt`, are
 //! unverified.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod checks_panel;
 pub mod debugger;
@@ -108,7 +101,8 @@ pub const BANNER: &str = concat!(
 /// The experiment line at the top of the Project panel (one small line; [`BANNER`] on hover).
 pub const NOTE: &str = "ECAD trial (experiment): keep .ecad files in a local folder.";
 /// Said wherever snapshots are mentioned.
-pub const SNAPSHOT_NOTE: &str = "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
+pub const SNAPSHOT_NOTE: &str =
+    "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
 /// Name of a new project until it is saved.
 pub const PROJECT_NAME: &str = "Untitled";
 /// Where the Save As dialog suggests saving, created by the first save into it: `C:\dev\ecad-projects`
@@ -157,10 +151,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
             Some(path) if project.is_none() => project = Some(path.to_string()),
             Some(extra) => return Err(format!("only one project file can be opened ({extra:?})")),
             None => {
-                return Err(format!(
-                    "the argument {:?} is not valid Unicode; project files need a Unicode name",
-                    a.to_string_lossy()
-                ));
+                return Err(format!("the argument {:?} is not valid Unicode; project files need a Unicode name", a.to_string_lossy()));
             }
         }
     }
@@ -172,11 +163,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
 pub fn status_line(s: &Status) -> String {
     let plural = |n: u64, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
     let file = s.file.path.as_deref().map_or("not saved to a file yet".to_string(), |p| format!("file {p}"));
-    let changes = if s.unsaved == 0 {
-        "no unsaved changes".to_string()
-    } else {
-        format!("{} not saved", plural(s.unsaved, "change"))
-    };
+    let changes = if s.unsaved == 0 { "no unsaved changes".to_string() } else { format!("{} not saved", plural(s.unsaved, "change")) };
     format!("Project \"{}\": {}, {file}, {changes}.", s.name, plural(s.pages as u64, "page"))
 }
 
@@ -403,11 +390,7 @@ impl Trial {
     ///
     /// # Errors
     /// Neither the file (if any) nor a new project could be opened.
-    pub fn start(
-        snapshots: Option<PathBuf>,
-        project: Option<&str>,
-        mut timing: Option<&mut startup::StartupTiming>,
-    ) -> Result<Self, String> {
+    pub fn start(snapshots: Option<PathBuf>, project: Option<&str>, mut timing: Option<&mut startup::StartupTiming>) -> Result<Self, String> {
         let mut t = Self::empty(snapshots);
         if let Some(timing) = timing.as_deref_mut() {
             timing.mark(startup::Step::Shell);
@@ -589,9 +572,7 @@ impl Trial {
     fn show_page_window(&mut self) -> Result<u64, String> {
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
-            .read(&mut self.cad.session, |p, _| {
-                p.active_page().or(self.panel.active).or_else(|| p.ledger.document().page_order.first().copied())
-            })?
+            .read(&mut self.cad.session, |p, _| p.active_page().or(self.panel.active).or_else(|| p.ledger.document().page_order.first().copied()))?
             .ok_or("the project has no pages")?;
         p.open_page(&mut self.cad.session, page)
     }
@@ -681,19 +662,10 @@ impl Trial {
 
     fn open_dialog(&mut self, kind: DialogKind, then_close: Option<Closing>) {
         let suggested = match (kind, self.status()) {
-            (DialogKind::SaveAs, Some(s)) => {
-                s.file.path.unwrap_or_else(|| in_default_folder(&format!("{}.ecad", s.name.to_lowercase())))
-            }
+            (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
             _ => in_default_folder(""),
         };
-        self.dialog = Some(FileDialog {
-            kind,
-            path: suggested,
-            error: None,
-            then_close,
-            confirmed_replace: None,
-            focused: false,
-        });
+        self.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
     }
 
     /// Type a path into the open file dialog.
@@ -1059,8 +1031,7 @@ impl Trial {
         if !self.search.open {
             return;
         }
-        let (project, session, finder, serial) =
-            (&self.project, &mut self.cad.session, &mut self.search, self.project_serial);
+        let (project, session, finder, serial) = (&self.project, &mut self.cad.session, &mut self.search, self.project_serial);
         let q = finder.query.clone();
         // Both are copies kept under the search's update map (search.rs): a frame reads nothing
         // from the project unless a change touched a device, a page or the settings.
@@ -1122,12 +1093,7 @@ impl Trial {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,
         };
-        let r = self
-            .cad
-            .session
-            .start("place")
-            .and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text)))
-            .map_err(|e| e.to_string());
+        let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
             self.cad.session.echo(e.clone());
         }
@@ -1259,8 +1225,7 @@ impl Trial {
         let file = self.status().map(|s| status_line(&s)).unwrap_or_default();
         let text = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let mut out =
-                vec![file, format!("Transaction {} (saved through {}).", p.ledger.head(), p.ledger.persisted())];
+            let mut out = vec![file, format!("Transaction {} (saved through {}).", p.ledger.head(), p.ledger.persisted())];
             out.push(String::new());
             out.push(format!("Pages ({}):", doc.page_order.len()));
             for (i, page) in doc.page_order.iter().enumerate() {
@@ -1283,12 +1248,7 @@ impl Trial {
             out.push(String::new());
             out.push(format!("Cables ({}):", doc.cables.len()));
             for (k, cable) in &doc.cables {
-                out.push(format!(
-                    "  {:<8} {} members  {}",
-                    ecad_cadcraft::views::cable_title(doc, *k),
-                    cable.members.len(),
-                    k.hex()
-                ));
+                out.push(format!("  {:<8} {} members  {}", ecad_cadcraft::views::cable_title(doc, *k), cable.members.len(), k.hex()));
             }
             out.push(String::new());
             out.push(format!(
@@ -1311,16 +1271,7 @@ impl Trial {
             developer::Action::Run(line) => {
                 let n = self.cad.session.log.len();
                 let failed = self.submit_command(&line);
-                self.developer.reply = self
-                    .cad
-                    .session
-                    .log
-                    .iter()
-                    .skip(n)
-                    .filter(|l| !l.starts_with("Command: "))
-                    .take(40)
-                    .cloned()
-                    .collect();
+                self.developer.reply = self.cad.session.log.iter().skip(n).filter(|l| !l.starts_with("Command: ")).take(40).cloned().collect();
                 if failed.is_some() {
                     self.command = line; // kept for correction
                 }
@@ -1409,9 +1360,7 @@ impl Trial {
         let radius = self.cad.session.pixel_size() * self.cad.session.settings.pickbox.max(1.0) * 1.5;
         let uid = self.cad.session.state().ok()?.uid;
         let p = self.project.as_ref()?;
-        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_reference(p, uid, world, radius))
-            .ok()
-            .flatten()
+        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_reference(p, uid, world, radius)).ok().flatten()
     }
 
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
@@ -1428,9 +1377,7 @@ impl Trial {
         let aperture = self.cad.session.pixel_size() * self.cad.session.settings.aperture.max(1.0);
         let uid = self.cad.session.state().ok()?.uid;
         let p = self.project.as_ref()?;
-        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_terminal(p, uid, world, aperture))
-            .ok()
-            .flatten()
+        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_terminal(p, uid, world, aperture)).ok().flatten()
     }
 
     /// The hover description shown now, if any (design 008 §4.3).
@@ -1485,10 +1432,7 @@ impl Trial {
                 Hovered::Object(h) => {
                     let uid = self.cad.session.state().map(|st| st.uid).ok();
                     match (self.project.as_ref(), uid) {
-                        (Some(p), Some(uid)) => p
-                            .read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h))
-                            .ok()
-                            .flatten(),
+                        (Some(p), Some(uid)) => p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h)).ok().flatten(),
                         _ => None,
                     }
                 }
@@ -1774,10 +1718,7 @@ impl Trial {
             }
             A::RevisionPage(page) => self.preview_revision_page(page),
             A::SetDeviceProperty { component, key, value, merge } => {
-                let line = format!(
-                    "setprop {}",
-                    json!({"component": component.hex(), "key": key, "value": value, "merge": merge})
-                );
+                let line = format!("setprop {}", json!({"component": component.hex(), "key": key, "value": value, "merge": merge}));
                 if let Some(e) = self.run_line(&line) {
                     self.panel.devices.refused(component, key, &value, e);
                 } else {
@@ -1819,9 +1760,8 @@ impl Trial {
             .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol).map(|t| t.0))?
             .ok_or("that symbol no longer exists")?;
         self.show_page(page)?;
-        let (_, at, handles) = p
-            .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol))?
-            .ok_or("that symbol no longer exists")?;
+        let (_, at, handles) =
+            p.read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol))?.ok_or("that symbol no longer exists")?;
         if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
@@ -1886,10 +1826,7 @@ impl Trial {
             Some((page, p.ledger.document().pages.get(&page)?.title.clone()))
         });
         match found {
-            Ok(Some((page, title))) => {
-                self.name_box =
-                    Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false })
-            }
+            Ok(Some((page, title))) => self.name_box = Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false }),
             _ => self.cad.session.echo("Rename Page: show the page to rename first."),
         }
     }
@@ -1982,9 +1919,7 @@ impl Trial {
             return;
         };
         self.revisions_seen = count;
-        let hit = touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| {
-            t.contains(&ecad_model::ObjectRef::Project)
-        });
+        let hit = touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| t.contains(&ecad_model::ObjectRef::Project));
         if !hit {
             return;
         }
@@ -2143,10 +2078,7 @@ impl Trial {
                 Some(sheets_ui::Out::OpenRevisions) | None => {}
             }
         }
-        let question = self
-            .project
-            .clone()
-            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.issue_undo_question.clone()).ok().flatten());
+        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.issue_undo_question.clone()).ok().flatten());
         if let Some(q) = question {
             match sheets_ui::issue_undo(ctx, &q) {
                 Some(true) => {
@@ -2179,18 +2111,13 @@ impl Trial {
             ui.label(RichText::new(heading).strong());
             ui.add_space(4.0);
             let id = egui::Id::unique("ecad.page_name_box.field");
-            let field = ui
-                .add(egui::TextEdit::singleline(&mut b.text).id(id).desired_width(f32::INFINITY))
-                .accessible_name(NAME_BOX_FIELD);
+            let field = ui.add(egui::TextEdit::singleline(&mut b.text).id(id).desired_width(f32::INFINITY)).accessible_name(NAME_BOX_FIELD);
             if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 ok = true;
             } else if !b.focused {
                 field.request_focus();
                 if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
-                    let all = egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(b.text.chars().count()),
-                    );
+                    let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(b.text.chars().count()));
                     state.cursor.set_char_range(Some(all));
                     state.store(ui.ctx(), id);
                     b.focused = true;
@@ -2249,8 +2176,7 @@ impl Trial {
             let (uid, handles) = (st.uid, st.selection.clone());
             let p = self.project.clone().ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
             p.read(&mut self.cad.session, |p, _| {
-                let r = ecad_cadcraft::preview::selected_reference(p, uid, &handles)
-                    .ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
+                let r = ecad_cadcraft::preview::selected_reference(p, uid, &handles).ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
                 ecad_cadcraft::preview::other_end(p, r)
             })?
         })();
@@ -2364,18 +2290,13 @@ impl Trial {
             ui.label(RichText::new(format!("Save changes to project \"{name}\"?")).strong());
             ui.add_space(4.0);
             let _ = title;
-            ui.label(format!(
-                "Closing the project. It has {changes} unsaved change{}.",
-                if changes == 1 { "" } else { "s" }
-            ));
+            ui.label(format!("Closing the project. It has {changes} unsaved change{}.", if changes == 1 { "" } else { "s" }));
             ui.label(match (&file.path, &file.read_only) {
                 (Some(_), Some(r)) => format!("The project is read-only ({r}); Save asks for another file name."),
                 (Some(p), None) => format!("Save writes them to {p}."),
                 (None, _) => "The project has no file yet; Save asks for a file name.".to_string(),
             });
-            ui.label(
-                RichText::new("Discard closes it and loses the unsaved changes.").color(ui.visuals().warn_fg_color),
-            );
+            ui.label(RichText::new("Discard closes it and loses the unsaved changes.").color(ui.visuals().warn_fg_color));
             if self.snapshots.is_some() {
                 ui.label(format!("Discard exports a snapshot first. {SNAPSHOT_NOTE}"));
             }

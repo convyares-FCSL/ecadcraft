@@ -133,9 +133,8 @@ is not counted as a change until the project has a file."
     // 1. Place a coil, select it: Selection → item → representation → component; one pending
     //    transaction created it.
     ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
-    let symbol = |d: &ecad_model::Document| {
-        d.items.iter().filter(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).collect()
-    };
+    let symbol =
+        |d: &ecad_model::Document| d.items.iter().filter(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).collect();
     select_ecad(&mut t, symbol);
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();

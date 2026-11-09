@@ -128,9 +128,7 @@ impl H {
         let map = self.p(|p| p.pages[&page].map.clone());
         let map = &map;
         let mut out = Vec::new();
-        for (rid, r) in
-            doc.representations_of(ecad_model::Subject::Component(component)).filter(|(_, r)| r.page == page)
-        {
+        for (rid, r) in doc.representations_of(ecad_model::Subject::Component(component)).filter(|(_, r)| r.page == page) {
             out.extend(r.items.iter().filter_map(|i| map.item(*i)).map(|h| h.hex()));
             out.extend(r.connection_points.keys().filter_map(|t| map.marker(rid, *t)).map(|h| h.hex()));
         }
@@ -150,11 +148,7 @@ impl H {
     }
 
     pub fn terminal_pos(&mut self, page: PageId, t: TerminalId) -> Pt {
-        ecad_model::derive::terminal_positions(&self.doc(), page)
-            .into_iter()
-            .find(|(x, _, _)| *x == t)
-            .map(|(_, _, p)| p)
-            .expect("terminal shown")
+        ecad_model::derive::terminal_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
     }
 
     pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
@@ -173,8 +167,7 @@ impl H {
     pub fn check_with(&mut self, allow_mismatch: bool) {
         // Unsaved state as the engine reports it; the project is not locked here (and cannot be:
         // `pv` holds the session).
-        let unsaved_per_doc: Vec<(u64, bool)> =
-            self.s.docs.iter().enumerate().map(|(i, d)| (d.uid, self.s.doc_unsaved(i))).collect();
+        let unsaved_per_doc: Vec<(u64, bool)> = self.s.docs.iter().enumerate().map(|(i, d)| (d.uid, self.s.doc_unsaved(i))).collect();
         self.pv(|p, pg| check_project(p, pg, &unsaved_per_doc, allow_mismatch));
     }
 
@@ -238,18 +231,14 @@ pub fn small_project(seed: u64) -> (H, ComponentId, ComponentId, ConductorId) {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
     let lines = h.lines_on(first);
-    let c1: ComponentId = id(
-        &h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(),
-        "component",
-    );
+    let c1: ComponentId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
     h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     let c2: ComponentId = id(&h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap(), "component");
     // Wire to the rotated symbol's first terminal, wherever the placement puts it.
     let doc = h.doc();
     let (rid, _) = doc.representations_of(ecad_model::Subject::Component(c2)).next().unwrap();
     let to = ecad_model::derive::terminal_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
-    let w: ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
+    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
     assert!(doc.conductors.is_empty());
     assert!(h.doc().conductors[&w].ends.iter().all(Option::is_some), "both ends attached");
     (h, c1, c2, w)

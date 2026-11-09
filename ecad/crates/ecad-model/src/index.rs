@@ -20,13 +20,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::doc::{
-    Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject,
-    Terminal,
-};
-use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
-};
+use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
+use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 
 /// Whether a reference is being added or removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,10 +55,7 @@ fn bump<K: Ord, V: Ord>(map: &mut Multi<K, V>, key: K, value: V, delta: Delta) {
 }
 
 /// The referrers of `key`, in ID order.
-pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(
-    map: &'a Multi<K, V>,
-    key: &K,
-) -> impl Iterator<Item = V> + use<'a, K, V> {
+pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(map: &'a Multi<K, V>, key: &K) -> impl Iterator<Item = V> + use<'a, K, V> {
     map.get(key).into_iter().flat_map(|inner| inner.keys().copied())
 }
 

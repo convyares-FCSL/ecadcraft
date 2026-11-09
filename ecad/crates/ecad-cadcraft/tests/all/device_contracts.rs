@@ -37,13 +37,7 @@ fn tag(h: &mut H, c: ComponentId) -> String {
 
 /// The derived tag texts drawn on `page` (as the projection draws them).
 fn tag_texts(h: &mut H, page: PageId) -> Vec<String> {
-    h.p(|p| {
-        devices::texts_on_page(p.ledger.document(), page)
-            .into_iter()
-            .filter(|t| t.of == TextOf::Tag)
-            .map(|t| t.value)
-            .collect()
-    })
+    h.p(|p| devices::texts_on_page(p.ledger.document(), page).into_iter().filter(|t| t.of == TextOf::Tag).map(|t| t.value).collect())
 }
 
 fn new_page(h: &mut H, title: &str) -> PageId {
@@ -146,10 +140,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
 #[test]
 fn b_a_coil_and_two_contacts_on_two_pages_are_one_device() {
     let mut f = k1();
-    assert_eq!(
-        (labels(&f.no), labels(&f.nc)),
-        (vec!["13".to_string(), "14".into()], vec!["21".to_string(), "22".into()])
-    );
+    assert_eq!((labels(&f.no), labels(&f.nc)), (vec!["13".to_string(), "14".into()], vec!["21".to_string(), "22".into()]));
     assert_eq!((f.no["joined"].clone(), f.nc["joined"].clone()), (json!(true), json!(true)));
     assert_eq!(f.no["tag"], json!("-K01"));
     assert_eq!(f.nc["pages"], json!([1, 2]));
@@ -354,18 +345,14 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     typed(&mut h, "");
     assert!(h.s.running.is_none());
     let ops = last_ops(&mut h);
-    assert!(ops.iter().any(
-        |o| matches!(o, Op::LinkRepresentation { rep, .. } if rep.role == "no" && rep.connection_points.len() == 2)
-    ));
+    assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { rep, .. } if rep.role == "no" && rep.connection_points.len() == 2)));
     let doc = h.doc();
     let labels: Vec<String> = doc.terminals_of(k1).filter_map(|(_, t)| t.label.clone()).collect();
     assert!(labels.contains(&"13".to_string()) && labels.contains(&"14".to_string()));
     // Rotated: the tag sits above the contact, centred.
     let page = h.first_page();
     let above = h.p(|p| {
-        devices::texts_on_page(p.ledger.document(), page)
-            .into_iter()
-            .any(|t| t.of == TextOf::Tag && t.halign == cadcraft_engine::doc::HAlign::Center)
+        devices::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == cadcraft_engine::doc::HAlign::Center)
     });
     assert!(above);
 }
@@ -379,10 +366,7 @@ fn g_a_typed_tag_that_exists_offers_to_add_the_symbol_to_that_device() {
     typed(&mut h, "T");
     assert_eq!(prompt(&h), "Enter tag for the new device <-K02>:");
     typed(&mut h, "k1");
-    assert_eq!(
-        prompt(&h),
-        "-K01 exists: -K01 (Contactor / relay coil, page 1 \"1\"). Add this NC contact to it? [Yes/Choose another] <Yes>:"
-    );
+    assert_eq!(prompt(&h), "-K01 exists: -K01 (Contactor / relay coil, page 1 \"1\"). Add this NC contact to it? [Yes/Choose another] <Yes>:");
     typed(&mut h, "C");
     assert_eq!(prompt(&h), "Enter tag for the new device <-K02>:", "Choose another goes back to the tag");
     typed(&mut h, "k1");
@@ -407,8 +391,7 @@ fn g_device_properties_renames_and_asks_before_merging() {
     let mut f = k1();
     f.h.activate(f.p1);
     let k2: ComponentId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
-    let item: ItemId =
-        id(&f.h.run("devices", json!({"tag": "-K02"})).unwrap()["devices"][0]["representations"][0], "representation");
+    let item: ItemId = id(&f.h.run("devices", json!({"tag": "-K02"})).unwrap()["devices"][0]["representations"][0], "representation");
     let _ = item;
     f.h.s.set_selection(vec![]);
     f.h.s.start("deviceprops").unwrap();
@@ -437,11 +420,7 @@ fn g_device_properties_renames_and_asks_before_merging() {
     assert_eq!(prompt(&f.h), "New tag <-K02>:");
     let head = f.h.head();
     typed(&mut f.h, "K01");
-    assert!(
-        prompt(&f.h).contains("Make this the same device? [Yes/Choose another] <Choose another>"),
-        "{}",
-        prompt(&f.h)
-    );
+    assert!(prompt(&f.h).contains("Make this the same device? [Yes/Choose another] <Choose another>"), "{}", prompt(&f.h));
     typed(&mut f.h, "");
     assert_eq!(f.h.head(), head, "Choose another writes nothing");
     assert_eq!(prompt(&f.h), "New tag <-K02>:", "and asks for another tag");
@@ -581,10 +560,7 @@ fn hover_lens_names_the_device_its_symbols_and_wires() {
 fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
     let mut h = new_h();
     let r = h.run("tagsettings", json!({})).unwrap();
-    assert_eq!(
-        (r["changed"].clone(), r["padding"].clone(), r["prefixes"]["coil"].clone()),
-        (json!(false), json!(2), json!("-K"))
-    );
+    assert_eq!((r["changed"].clone(), r["padding"].clone(), r["prefixes"]["coil"].clone()), (json!(false), json!(2), json!("-K")));
     let head = h.head();
     let r = h.run("tagsettings", json!({"padding": 3, "prefixes": {"coil": "-ka", "mcb1": "F"}})).unwrap();
     assert_eq!(r["changed"], json!(true));

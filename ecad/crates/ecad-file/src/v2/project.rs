@@ -20,8 +20,8 @@ use serde_json::{Value, json};
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME,
-    META_NAMES, Point, Release, SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, META_NAMES, Point, Release,
+    SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
 use crate::chain::{self, ChainKind, Hash};
@@ -95,10 +95,7 @@ pub struct ReportV2 {
 impl ReportV2 {
     /// One paragraph for the user.
     pub fn describe(&self) -> String {
-        let mut s = format!(
-            "Opened: {} transactions (from the snapshot at {}, then {} replayed).",
-            self.verified_seq, self.snapshot_seq, self.tail
-        );
+        let mut s = format!("Opened: {} transactions (from the snapshot at {}, then {} replayed).", self.verified_seq, self.snapshot_seq, self.tail);
         if self.repaired {
             s.push_str(" The file was not closed cleanly last time and was recovered to its last save.");
         }
@@ -124,13 +121,7 @@ pub(crate) use decode_row as decode_row_pub;
 
 /// A transaction row decoded and checked: its record against its stored chain value, its `seq`,
 /// and its `prev` against the previous row's chain value.
-pub(crate) fn decode_row(
-    seq: u64,
-    flag: u8,
-    stored_chain: &Hash,
-    body: &[u8],
-    prev: &Hash,
-) -> Result<Transaction, String> {
+pub(crate) fn decode_row(seq: u64, flag: u8, stored_chain: &Hash, body: &[u8], prev: &Hash) -> Result<Transaction, String> {
     let record = pack::unpack(flag, body)?;
     if chain::tx_hash(&record) != *stored_chain {
         return Err("the record does not match its chain value".into());
@@ -230,9 +221,7 @@ impl StackState {
 }
 
 fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, String> {
-    s.iter()
-        .map(|(q, id)| TxId::parse(id).map(|t| (*q, t)).ok_or_else(|| format!("{id:?} is not a transaction ID")))
-        .collect()
+    s.iter().map(|(q, id)| TxId::parse(id).map(|t| (*q, t)).ok_or_else(|| format!("{id:?} is not a transaction ID"))).collect()
 }
 
 /// The tag high-water mark of rows `1..=upto` of `branch`, read from the file: for a snapshot
@@ -262,10 +251,7 @@ fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<Mode
     let set = ChunkSet::from_record(&v.chunks)?;
     let mut stored = Vec::with_capacity(set.chunks.len());
     for (key, hash) in &set.chunks {
-        let (flag, body) = r
-            .chunk(hash)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("chunk {} is missing", chain::hex(hash)))?;
+        let (flag, body) = r.chunk(hash).map_err(|e| e.to_string())?.ok_or_else(|| format!("chunk {} is missing", chain::hex(hash)))?;
         stored.push((key.clone(), *hash, flag, body));
     }
     chunks::assemble_stored(&set, stored)
@@ -273,13 +259,7 @@ fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<Mode
 
 /// Rows `from..=to` of `branch`, decoded and chain-checked from `prev`. Stops at the first bad
 /// row: the good prefix, and the failure.
-fn read_rows(
-    r: &Reader,
-    branch: BranchId,
-    from: u64,
-    to: u64,
-    mut prev: Hash,
-) -> Result<(Vec<Transaction>, Hash, Option<DamageV2>), StoreError> {
+fn read_rows(r: &Reader, branch: BranchId, from: u64, to: u64, mut prev: Hash) -> Result<(Vec<Transaction>, Hash, Option<DamageV2>), StoreError> {
     let rows = r.tx_range(branch, from..=to)?;
     let mut out = Vec::with_capacity(rows.len());
     // `None` once past u64::MAX: no row can follow.
@@ -317,8 +297,7 @@ pub struct StoreHistory {
 
 impl StoreHistory {
     fn read(&self) -> ecad_model::Result<Reader> {
-        let store =
-            self.store.upgrade().ok_or_else(|| ModelError::CorruptLog("the project's file is closed".into()))?;
+        let store = self.store.upgrade().ok_or_else(|| ModelError::CorruptLog("the project's file is closed".into()))?;
         store.reader().map_err(|e| ModelError::CorruptLog(e.to_string()))
     }
 
@@ -342,15 +321,13 @@ impl History for StoreHistory {
             .tx(self.branch, seq)
             .map_err(|e| ModelError::CorruptLog(e.to_string()))?
             .ok_or_else(|| ModelError::CorruptLog(format!("transaction {seq} is missing")))?;
-        decode_row(seq, flag, &chain, &body, &prev)
-            .map_err(|e| ModelError::CorruptLog(format!("transaction {seq}: {e}")))
+        decode_row(seq, flag, &chain, &body, &prev).map_err(|e| ModelError::CorruptLog(format!("transaction {seq}: {e}")))
     }
 
     fn transactions(&self, from: u64, to: u64) -> ecad_model::Result<Vec<Transaction>> {
         let r = self.read()?;
         let prev = self.prev_of(&r, from)?;
-        let (txs, _, damage) =
-            read_rows(&r, self.branch, from, to, prev).map_err(|e| ModelError::CorruptLog(e.to_string()))?;
+        let (txs, _, damage) = read_rows(&r, self.branch, from, to, prev).map_err(|e| ModelError::CorruptLog(e.to_string()))?;
         match damage {
             Some(d) => Err(ModelError::CorruptLog(format!("transaction {:?}: {}", d.seq, d.detail))),
             None => Ok(txs),
@@ -549,8 +526,7 @@ impl History for StoreHistory {
             Some(v) => (load_snapshot(&r, v).map_err(err)?.0, v.point.seq, v.point.hash().map_err(err)?),
             None => (Document::default(), 0, self.seed),
         };
-        let (txs, _, damage) =
-            read_rows(&r, self.branch, from.saturating_add(1), seq, prev).map_err(|e| err(e.to_string()))?;
+        let (txs, _, damage) = read_rows(&r, self.branch, from.saturating_add(1), seq, prev).map_err(|e| err(e.to_string()))?;
         if let Some(d) = damage {
             return Err(err(format!("transaction {:?}: {}", d.seq, d.detail)));
         }
@@ -633,15 +609,11 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
     }
     let cv = meta_json(r, "container_version")?.and_then(|v| v.as_u64());
     if cv != Some(CONTAINER_VERSION) {
-        return Err(OpenErrorV2::Unsupported(format!(
-            "container version {cv:?} is not supported (this build reads {CONTAINER_VERSION})"
-        )));
+        return Err(OpenErrorV2::Unsupported(format!("container version {cv:?} is not supported (this build reads {CONTAINER_VERSION})")));
     }
     let sv = meta_json(r, "schema_version")?.and_then(|v| v.as_u64()).unwrap_or(0);
     if sv == 0 || sv > SCHEMA_VERSION {
-        return Err(OpenErrorV2::Unsupported(format!(
-            "schema version {sv} is not supported (this build reads 1 to {SCHEMA_VERSION})"
-        )));
+        return Err(OpenErrorV2::Unsupported(format!("schema version {sv} is not supported (this build reads 1 to {SCHEMA_VERSION})")));
     }
     let codec = meta_json(r, "codec")?;
     if codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
@@ -693,15 +665,9 @@ impl ProjectV2 {
         // The head must be the branch's last row, with the recorded chain value.
         let last = r.last_seq(branch)?.unwrap_or(0);
         if last != head {
-            damage = Some(DamageV2 {
-                seq: Some(head),
-                detail: format!("the head is {head} but the last stored transaction is {last}"),
-            });
+            damage = Some(DamageV2 { seq: Some(head), detail: format!("the head is {head} but the last stored transaction is {last}") });
         } else if head > 0 && r.tx(branch, head)?.map(|(_, c, _)| c) != Some(head_chain) {
-            damage = Some(DamageV2 {
-                seq: Some(head),
-                detail: "the head transaction does not match the branch head".into(),
-            });
+            damage = Some(DamageV2 { seq: Some(head), detail: "the head transaction does not match the branch head".into() });
         }
         // The latest snapshot at or before the head.
         let latest = facts.cache.latest.get(&branch.hex()).filter(|s| s.seq <= head);
@@ -722,20 +688,12 @@ impl ProjectV2 {
                                 loaded = Some((v, doc, meta));
                                 snap_ref = Some(s.clone());
                             }
-                            Err(e) => {
-                                damage = damage.or(Some(DamageV2 {
-                                    seq: Some(s.seq),
-                                    detail: format!("snapshot breaks an invariant: {e}"),
-                                }))
-                            }
+                            Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot breaks an invariant: {e}") })),
                         }
                     }
                     Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
                 },
-                _ => {
-                    damage =
-                        damage.or(Some(DamageV2 { seq: Some(s.seq), detail: "the latest snapshot is missing".into() }))
-                }
+                _ => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: "the latest snapshot is missing".into() })),
             }
         }
         // Start from the snapshot; if anything about it fails (its point row, its stack record,
@@ -768,8 +726,7 @@ impl ProjectV2 {
                 };
                 let (tail, verified_chain, row_damage) =
                     read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain).map_err(|e| e.to_string())?;
-                let history: Arc<dyn History> =
-                    Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
+                let history: Arc<dyn History> = Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
                 let base = Base {
                     seq: snap_seq,
                     doc,
@@ -782,20 +739,8 @@ impl ProjectV2 {
                     history,
                 };
                 let tail_len = tail.len() as u64;
-                let (ledger, failure) =
-                    Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
-                Ok((
-                    ledger,
-                    failure,
-                    snap_seq,
-                    snap_chain,
-                    stacks,
-                    set,
-                    base_tag_high,
-                    tail_len,
-                    verified_chain,
-                    row_damage,
-                ))
+                let (ledger, failure) = Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
+                Ok((ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage))
             })();
             match (attempt, from_snapshot) {
                 (Ok(done), _) => break done,
@@ -808,10 +753,8 @@ impl ProjectV2 {
         };
         drop(r);
         let damage = damage.or(row_damage);
-        let damage = damage.or(failure.map(|(i, e)| DamageV2 {
-            seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)),
-            detail: e.to_string(),
-        }));
+        let damage =
+            damage.or(failure.map(|(i, e)| DamageV2 { seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)), detail: e.to_string() }));
         let verified = ledger.head();
         let verified_chain = if verified == snap_seq + tail_len {
             verified_chain
@@ -860,13 +803,7 @@ impl ProjectV2 {
     /// [`SaveErrorV2`]; nothing is committed. `every` outside [`SNAPSHOT_EVERY_RANGE`] is refused
     /// (an open would refuse the file).
     pub fn create(
-        store: Store,
-        project: ProjectId,
-        ledger: &Ledger,
-        records: Option<&[Vec<u8>]>,
-        link: Option<LinkV1>,
-        created_ms: Option<u64>,
-        writer: &str,
+        store: Store, project: ProjectId, ledger: &Ledger, records: Option<&[Vec<u8>]>, link: Option<LinkV1>, created_ms: Option<u64>, writer: &str,
         every: u64,
     ) -> Result<(ProjectV2, SavedV2), SaveErrorV2> {
         if ledger.base() != 0 {
@@ -925,12 +862,8 @@ impl ProjectV2 {
             stacks.advance(range);
             done = at;
             let meta = ModelMeta { tag_high: high.clone() };
-            let (set, new) = if first {
-                chunks::build_full(&doc, &meta)
-            } else {
-                chunks::build_incremental(&doc, &snap.set, &dirty, &meta)
-            }
-            .map_err(SaveErrorV2::Encode)?;
+            let (set, new) = if first { chunks::build_full(&doc, &meta) } else { chunks::build_incremental(&doc, &snap.set, &dirty, &meta) }
+                .map_err(SaveErrorV2::Encode)?;
             first = false;
             for p in &new {
                 let n = w.put_chunk(&p.hash, &p.body)?;
@@ -1065,15 +998,10 @@ impl ProjectV2 {
                         for k in [VersionKind::User, VersionKind::Revision] {
                             w.remove_version(self.branch, k, name)?;
                         }
-                        let release = if kind == VersionKind::Revision {
-                            Some(release_at(ledger, tx, name).map_err(SaveErrorV2::Encode)?)
-                        } else {
-                            None
-                        };
+                        let release =
+                            if kind == VersionKind::Revision { Some(release_at(ledger, tx, name).map_err(SaveErrorV2::Encode)?) } else { None };
                         let chain = self.chain_at(*at, &chains)?;
-                        self.write_snapshot(
-                            &mut w, ledger, &mut snap, &mut cache, *at, chain, kind, name, release, &mut saved,
-                        )?;
+                        self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, *at, chain, kind, name, release, &mut saved)?;
                     }
                     Op::UnnameVersion { name, .. } => {
                         for k in [VersionKind::User, VersionKind::Revision] {
@@ -1087,18 +1015,7 @@ impl ProjectV2 {
         let end = ledger.head();
         if end.saturating_sub(snap.seq) >= cache.every {
             let chain = prev;
-            self.write_snapshot(
-                &mut w,
-                ledger,
-                &mut snap,
-                &mut cache,
-                end,
-                chain,
-                VersionKind::Auto,
-                &auto_name(end),
-                None,
-                &mut saved,
-            )?;
+            self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, end, chain, VersionKind::Auto, &auto_name(end), None, &mut saved)?;
         }
         w.put_branch(
             self.branch,
@@ -1137,26 +1054,15 @@ impl ProjectV2 {
             return Ok(chain::seed(ChainKind::Project, self.project.0));
         }
         let r = self.store.reader()?;
-        r.tx(self.branch, seq)?
-            .map(|(_, c, _)| c)
-            .ok_or_else(|| SaveErrorV2::Encode(format!("transaction {seq} is not stored")))
+        r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or_else(|| SaveErrorV2::Encode(format!("transaction {seq} is not stored")))
     }
 
     /// Build and write the snapshot at `at` (a point at or before the ledger's head), relative to
     /// `snap` when the transactions between them are in memory.
     #[allow(clippy::too_many_arguments)]
     fn write_snapshot(
-        &mut self,
-        w: &mut super::store::Writer,
-        ledger: &mut Ledger,
-        snap: &mut Snap,
-        cache: &mut Cache,
-        at: u64,
-        chain: Hash,
-        kind: VersionKind,
-        name: &str,
-        release: Option<Release>,
-        saved: &mut SavedV2,
+        &mut self, w: &mut super::store::Writer, ledger: &mut Ledger, snap: &mut Snap, cache: &mut Cache, at: u64, chain: Hash, kind: VersionKind,
+        name: &str, release: Option<Release>, saved: &mut SavedV2,
     ) -> Result<(), SaveErrorV2> {
         let enc = SaveErrorV2::Encode;
         let base = ledger.base();
@@ -1170,20 +1076,13 @@ impl ProjectV2 {
                     dirty.add_ops(&tx.ops);
                 }
             }
-            let undo_after: Vec<Op> = ledger
-                .log()
-                .iter()
-                .rev()
-                .take_while(|t| t.seq > at)
-                .flat_map(|t| t.ops.iter().rev().map(Op::inverse))
-                .collect();
+            let undo_after: Vec<Op> =
+                ledger.log().iter().rev().take_while(|t| t.seq > at).flat_map(|t| t.ops.iter().rev().map(Op::inverse)).collect();
             let prev = snap.set.clone();
             if undo_after.is_empty() {
                 chunks::build_incremental(ledger.document(), &prev, &dirty, &meta)
             } else {
-                ledger
-                    .with_applied(&undo_after, |d| chunks::build_incremental(d, &prev, &dirty, &meta))
-                    .map_err(|e| enc(e.to_string()))?
+                ledger.with_applied(&undo_after, |d| chunks::build_incremental(d, &prev, &dirty, &meta)).map_err(|e| enc(e.to_string()))?
             }
         } else {
             let doc = ledger.state_at(at).map_err(|e| enc(e.to_string()))?;
@@ -1279,11 +1178,7 @@ impl ProjectV2 {
                 let cap = base.cap.max(1);
                 let mut grew = false;
                 for undo in [true, false] {
-                    let (stack, hidden) = if undo {
-                        (&mut base.undo, &mut base.undo_hidden)
-                    } else {
-                        (&mut base.redo, &mut base.redo_hidden)
-                    };
+                    let (stack, hidden) = if undo { (&mut base.undo, &mut base.undo_hidden) } else { (&mut base.redo, &mut base.redo_hidden) };
                     if *hidden == 0 {
                         continue;
                     }
@@ -1331,11 +1226,7 @@ impl ProjectV2 {
 
     /// A reader of this file's history, for a ledger based on one of its snapshots.
     pub fn history(&self) -> Arc<dyn History> {
-        Arc::new(StoreHistory {
-            store: Arc::downgrade(&self.store),
-            branch: self.branch,
-            seed: chain::seed(ChainKind::Project, self.project.0),
-        })
+        Arc::new(StoreHistory { store: Arc::downgrade(&self.store), branch: self.branch, seed: chain::seed(ChainKind::Project, self.project.0) })
     }
 
     /// The database.
@@ -1374,10 +1265,7 @@ impl ProjectV2 {
     /// Out of range.
     pub fn set_snapshot_every(&mut self, every: u64) -> Result<(), String> {
         if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&every) {
-            return Err(format!(
-                "the snapshot interval must be between {} and {}",
-                SNAPSHOT_EVERY_RANGE.0, SNAPSHOT_EVERY_RANGE.1
-            ));
+            return Err(format!("the snapshot interval must be between {} and {}", SNAPSHOT_EVERY_RANGE.0, SNAPSHOT_EVERY_RANGE.1));
         }
         self.cache.every = every;
         Ok(())
@@ -1436,13 +1324,7 @@ fn release_at(ledger: &mut Ledger, tx: &Transaction, name: &str) -> Result<Relea
     if name.len() > MAX_NAME {
         return Err("a revision name is too long".into());
     }
-    let undo_after: Vec<Op> = ledger
-        .log()
-        .iter()
-        .rev()
-        .take_while(|t| t.seq > tx.seq)
-        .flat_map(|t| t.ops.iter().rev().map(Op::inverse))
-        .collect();
+    let undo_after: Vec<Op> = ledger.log().iter().rev().take_while(|t| t.seq > tx.seq).flat_map(|t| t.ops.iter().rev().map(Op::inverse)).collect();
     let release = if undo_after.is_empty() {
         revision_of(ledger.document(), name)
     } else {

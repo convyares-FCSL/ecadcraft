@@ -152,8 +152,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     terminals.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(terminals, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
     let (w, c) = d.conductors.iter().next().unwrap();
-    let ends: Vec<String> =
-        End::BOTH.iter().map(|e| c.end(*e).and_then(|t| d.terminals[&t].label.clone()).unwrap_or_default()).collect();
+    let ends: Vec<String> = End::BOTH.iter().map(|e| c.end(*e).and_then(|t| d.terminals[&t].label.clone()).unwrap_or_default()).collect();
     assert_eq!(ends, ["1", "A1"], "both ends attached: to terminal 1 and to the coil's A1");
     let route = ecad_model::derive::route_on_page(&d, *w, page).unwrap().1;
     let ecad_model::Primitive::Polyline { vertices, .. } = route else { panic!("a polyline route") };

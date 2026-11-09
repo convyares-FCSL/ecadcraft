@@ -28,31 +28,15 @@ const NUMBER_FREE: &str = "Specify point for a connection point on a component o
 fn shown(h: &mut H, cursor: Vec2) -> String {
     h.s.cursor = cursor;
     let p = prompt(h);
-    p.strip_prefix("Specify point for connection point ")
-        .and_then(|r| r.strip_suffix(" on a component or [Name]:"))
-        .unwrap_or(&p)
-        .to_string()
+    p.strip_prefix("Specify point for connection point ").and_then(|r| r.strip_suffix(" on a component or [Name]:")).unwrap_or(&p).to_string()
 }
 
 fn edge(h: &H, x: f64) -> Handle {
-    h.s.doc()
-        .unwrap()
-        .model
-        .iter()
-        .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == x && l.b.x == x))
-        .map(|e| e.handle)
-        .unwrap()
+    h.s.doc().unwrap().model.iter().find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == x && l.b.x == x)).map(|e| e.handle).unwrap()
 }
 
 fn rect(h: &mut H, x0: f64) -> ComponentId {
-    let before: Vec<Handle> =
-        h.s.doc()
-            .unwrap()
-            .model
-            .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-            .map(|e| e.handle)
-            .collect();
+    let before: Vec<Handle> = h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     h.cmdline(&format!("line {x0},0 {},0 {},20 {x0},20 c", x0 + 40.0, x0 + 40.0));
     let hs: Vec<String> =
         h.s.doc()
@@ -97,8 +81,7 @@ fn clicked_names_match_the_prompt_across_components_in_one_run() {
         let (la, lb) = (labels(&mut h, a), labels(&mut h, b));
         h.s.input(Input::Point(at)).unwrap();
         let (na, nb) = (labels(&mut h, a), labels(&mut h, b));
-        let added: Vec<String> =
-            na.iter().filter(|x| !la.contains(x)).chain(nb.iter().filter(|x| !lb.contains(x))).cloned().collect();
+        let added: Vec<String> = na.iter().filter(|x| !la.contains(x)).chain(nb.iter().filter(|x| !lb.contains(x))).cloned().collect();
         if added != [promised.clone()] {
             mismatches.push(format!("{who}: prompt said {promised:?}, added {added:?}"));
         }
@@ -178,12 +161,7 @@ fn the_prompt_survives_hostile_cursors() {
     let mut h = new_h();
     rect(&mut h, 0.0);
     h.s.start("addterminal").unwrap();
-    for c in [
-        Vec2::new(f64::NAN, 0.0),
-        Vec2::new(f64::INFINITY, f64::NEG_INFINITY),
-        Vec2::new(f64::MAX, f64::MAX),
-        Vec2::new(1e13, 0.0),
-    ] {
+    for c in [Vec2::new(f64::NAN, 0.0), Vec2::new(f64::INFINITY, f64::NEG_INFINITY), Vec2::new(f64::MAX, f64::MAX), Vec2::new(1e13, 0.0)] {
         assert_eq!(shown(&mut h, c), "1");
     }
     h.s.cancel();
@@ -207,12 +185,7 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     h.run("addterminal", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
     h.s.start("addterminal").unwrap();
     let over_b = Vec2::new(120.0, -px);
-    let cases = [
-        ("empty", empty, NUMBER_FREE),
-        ("over A", over_a, "2"),
-        ("over B", over_b, "1"),
-        ("empty again", empty, NUMBER_FREE),
-    ];
+    let cases = [("empty", empty, NUMBER_FREE), ("over A", over_a, "2"), ("over B", over_b, "1"), ("empty again", empty, NUMBER_FREE)];
     for (who, at, want) in cases {
         assert_eq!(shown(&mut h, at), want, "{who}");
     }

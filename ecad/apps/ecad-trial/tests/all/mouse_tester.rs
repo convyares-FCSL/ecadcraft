@@ -171,16 +171,13 @@ fn canon(d: &Document) -> Vec<String> {
             })
             .collect();
         items.sort();
-        let mut pts: Vec<String> =
-            r.connection_points.iter().map(|(t, p)| format!("{}@{},{}", label(*t), r6(p.x), r6(p.y))).collect();
+        let mut pts: Vec<String> = r.connection_points.iter().map(|(t, p)| format!("{}@{},{}", label(*t), r6(p.x), r6(p.y))).collect();
         pts.sort();
         let subject = match r.subject {
             Subject::Component(_) => "component".to_string(),
             Subject::Conductor(c) => {
-                let ends: Vec<String> = End::BOTH
-                    .iter()
-                    .map(|e| d.conductors.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label))
-                    .collect();
+                let ends: Vec<String> =
+                    End::BOTH.iter().map(|e| d.conductors.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label)).collect();
                 format!("wire ends {ends:?}")
             }
             Subject::Cable(_) => "cable".into(),
@@ -247,17 +244,8 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     // The JSON version of the same example in a second trial.
     let mut j = harness();
     ok(&mut j, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = j
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle.hex())
-        .collect();
+    let lines: Vec<String> =
+        j.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut j, &format!("convertcomponent {}", json!({ "handles": lines })));
     let edge = |j: &Harness<'static, Trial>, x: f64| {
         j.state()
@@ -323,10 +311,7 @@ fn q4_a_typed_point_near_a_terminal_does_not_attach_in_the_ui() {
     }
     let d = doc(&mut h);
     let c = d.conductors.values().next().expect("a wire was drawn");
-    assert!(
-        c.end(End::B).is_none() && !ended_by_capture,
-        "typed {near} (3 px from A1) was captured: Q4 says typed points are literal"
-    );
+    assert!(c.end(End::B).is_none() && !ended_by_capture, "typed {near} (3 px from A1) was captured: Q4 says typed points are literal");
 }
 
 /// Design §9: during Wire, Ctrl+Z removes the last point (it does not undo the last committed
@@ -371,17 +356,8 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
-    let lines: Vec<String> = h
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle.hex())
-        .collect();
+    let lines: Vec<String> =
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     let right = h
         .state()
@@ -485,17 +461,8 @@ fn overlay_shapes(h: &Harness<'static, Trial>) -> Vec<(Pos2, f32, egui::Color32,
 fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = h
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle.hex())
-        .collect();
+    let lines: Vec<String> =
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     ok(&mut h, r#"wire {"points":[[90,0],[90,-20]]}"#);
@@ -516,21 +483,12 @@ fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
         let a1 = screen(&h, 90.0, 0.0);
         let shapes = overlay_shapes(&h);
         let at_a1: Vec<_> = shapes.iter().filter(|s| (s.0 - a1).length() < 0.5).collect();
-        assert!(
-            at_a1.iter().any(|s| s.2 == cyan && (s.1 - 8.0).abs() < 0.01 && !s.3),
-            "{what}: 8 px cyan ring at A1: {at_a1:?}"
-        );
-        assert!(
-            at_a1.iter().any(|s| s.2 == green && (s.1 - 4.0).abs() < 0.01 && s.3),
-            "{what}: 4 px green dot at A1: {at_a1:?}"
-        );
+        assert!(at_a1.iter().any(|s| s.2 == cyan && (s.1 - 8.0).abs() < 0.01 && !s.3), "{what}: 8 px cyan ring at A1: {at_a1:?}");
+        assert!(at_a1.iter().any(|s| s.2 == green && (s.1 - 4.0).abs() < 0.01 && s.3), "{what}: 4 px green dot at A1: {at_a1:?}");
         if what != "x100 at A1" {
             let loose = screen(&h, 90.0, -20.0);
             let sq: Vec<_> = shapes.iter().filter(|s| (s.0 - loose).length() < 0.5).collect();
-            assert!(
-                sq.iter().any(|s| (s.1 - 6.0).abs() < 0.01 && s.2 != egui::Color32::from_rgb(255, 0, 0)),
-                "{what}: 6 px neutral square: {sq:?}"
-            );
+            assert!(sq.iter().any(|s| (s.1 - 6.0).abs() < 0.01 && s.2 != egui::Color32::from_rgb(255, 0, 0)), "{what}: 6 px neutral square: {sq:?}");
         }
     }
 }
@@ -563,9 +521,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -578,19 +534,12 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -609,10 +558,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -643,9 +589,7 @@ pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::pat
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -669,9 +613,7 @@ fn pixel(img: &egui::ColorImage, at: Pos2) -> egui::Color32 {
 
 /// Whether a colour near `want` is painted within `r` pixels of `at`.
 fn painted_near(img: &egui::ColorImage, at: Pos2, r: f32, want: egui::Color32) -> bool {
-    let close = |c: egui::Color32| {
-        c.r().abs_diff(want.r()) < 60 && c.g().abs_diff(want.g()) < 60 && c.b().abs_diff(want.b()) < 60
-    };
+    let close = |c: egui::Color32| c.r().abs_diff(want.r()) < 60 && c.g().abs_diff(want.g()) < 60 && c.b().abs_diff(want.b()) < 60;
     let ri = r.ceil() as i32;
     (-ri..=ri).any(|dx| (-ri..=ri).any(|dy| close(pixel(img, at + egui::vec2(dx as f32, dy as f32)))))
 }
@@ -755,19 +697,11 @@ fn bare_names_start_the_forms_in_both_fields_and_json_lines_do_not_prompt() {
         let e = h.state_mut().submit_command(name);
         h.run_steps(2);
         assert!(e.is_none(), "banner {name}: {e:?}");
-        assert_eq!(
-            h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(),
-            Some(name),
-            "banner {name}"
-        );
+        assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some(name), "banner {name}");
         h.key_press(Key::Escape);
         h.run_steps(2);
         type_enter(&mut h, name);
-        assert_eq!(
-            h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(),
-            Some(name),
-            "command line {name}"
-        );
+        assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some(name), "command line {name}");
         h.key_press(Key::Escape);
         h.run_steps(2);
     }
@@ -784,17 +718,8 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<String> = h
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle.hex())
-        .collect();
+    let lines: Vec<String> =
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     view(&mut h);
@@ -813,7 +738,6 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
         let _ = shot(&h, &deltas, &dir.join("008-layout1-marks.png"));
     }
     let xf = h.state().cad.canvas.xf.unwrap();
-    let ring_at_model_pos =
-        overlay_shapes(&h).iter().any(|s| s.2 == cyan && (s.0 - xf.to_screen(Vec2::new(90.0, 0.0))).length() < 0.5);
+    let ring_at_model_pos = overlay_shapes(&h).iter().any(|s| s.2 == cyan && (s.0 - xf.to_screen(Vec2::new(90.0, 0.0))).length() < 0.5);
     assert!(!ring_at_model_pos, "a terminal ring is painted at the model position 90,0 on the paper sheet");
 }

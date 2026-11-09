@@ -36,8 +36,8 @@ use ecad_file::codec::{Codec, JsonLines};
 use ecad_file::{AttemptStage, AttemptSummary, Header, RecordSpan};
 use ecad_inspect::Event;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId,
-    ProjectId, RepresentationId, Subject, TerminalId, Transaction, TxId, TxKind,
+    CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
+    TerminalId, Transaction, TxId, TxKind,
 };
 use serde_json::{Value, json};
 
@@ -377,9 +377,7 @@ pub fn record_state(file: &FileFacts, persisted: u64, seq: u64) -> RecordState {
     }
     match span {
         Some(s) => RecordState::Unconfirmed(s),
-        None => RecordState::Pending {
-            attempt: file.attempt.as_ref().filter(|a| (a.first_seq..=a.last_seq).contains(&seq)).map(|a| a.stage),
-        },
+        None => RecordState::Pending { attempt: file.attempt.as_ref().filter(|a| (a.first_seq..=a.last_seq).contains(&seq)).map(|a| a.stage) },
     }
 }
 
@@ -465,10 +463,7 @@ impl Project {
             .take(MAX_SELECTION)
             .map(|h| SelectedObject {
                 handle: *h,
-                entity: drawing
-                    .as_ref()
-                    .and_then(|d| d.entity(*h))
-                    .map_or_else(|| "missing".to_string(), |e| e.kind.type_name().to_string()),
+                entity: drawing.as_ref().and_then(|d| d.entity(*h)).map_or_else(|| "missing".to_string(), |e| e.kind.type_name().to_string()),
                 mapped: map.and_then(|m| m.get(*h)),
             })
             .collect();
@@ -489,8 +484,7 @@ impl Project {
                 }
             })
             .collect();
-        let events: Vec<Event> =
-            self.events.events().skip(self.events.len().saturating_sub(MAX_EVENTS)).cloned().collect();
+        let events: Vec<Event> = self.events.events().skip(self.events.len().saturating_sub(MAX_EVENTS)).cloned().collect();
         DebugSnapshot {
             key,
             name: self.name.clone(),
@@ -595,12 +589,7 @@ pub fn verify_replay(log: &[Transaction], live: &Document) -> Check {
 
 /// [`verify_replay`] for a copy of the history that starts after `base` (a project opened from a
 /// version 2 snapshot): the state at `base` is read from `history`, then the copy is applied.
-pub fn verify_replay_from(
-    base: u64,
-    history: Option<&Arc<dyn ecad_model::History>>,
-    log: &[Transaction],
-    live: &Document,
-) -> Check {
+pub fn verify_replay_from(base: u64, history: Option<&Arc<dyn ecad_model::History>>, log: &[Transaction], live: &Document) -> Check {
     if base == 0 {
         return verify_replay(log, live);
     }
@@ -649,13 +638,8 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
     let mut ok = v.ok;
     let mut lines = v.lines;
     let rows = store.reader().map_err(|e| e.to_string()).and_then(|r| {
-        let branch = r
-            .branches()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|(_, b)| b.name == "main")
-            .map(|(id, _)| id)
-            .ok_or("no main branch")?;
+        let branch =
+            r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
         let head = r.last_seq(branch).map_err(|e| e.to_string())?.unwrap_or(0);
         Ok((r, branch, head))
     });
@@ -668,13 +652,9 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
             let mut differ = None;
             for tx in log.iter().filter(|t| t.seq <= head.min(persisted)) {
                 let row = r.tx(branch, tx.seq).ok().flatten();
-                let same =
-                    row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
-                        serde_json::from_slice::<Value>(&rec)
-                            .ok()
-                            .and_then(|v| ecad_file::record::decode_tx(&v).ok())
-                            .is_some_and(|t| &t == tx)
-                    });
+                let same = row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
+                    serde_json::from_slice::<Value>(&rec).ok().and_then(|v| ecad_file::record::decode_tx(&v).ok()).is_some_and(|t| &t == tx)
+                });
                 if !same {
                     differ = Some(tx.seq);
                     break;
@@ -706,13 +686,7 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
 /// The file cannot be read, or holds no such row.
 pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
-    let branch = r
-        .branches()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|(_, b)| b.name == "main")
-        .map(|(id, _)| id)
-        .ok_or("no main branch")?;
+    let branch = r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
     let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
     let record = ecad_file::v2::pack::unpack(flag, &body)?;
     let check = (|| {
@@ -793,11 +767,8 @@ pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result
     let tables = r.stats().map_err(|e| e.to_string())?;
     let mut versions = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
-        for kind in [
-            ecad_file::v2::schema::VersionKind::User,
-            ecad_file::v2::schema::VersionKind::Revision,
-            ecad_file::v2::schema::VersionKind::Auto,
-        ] {
+        for kind in [ecad_file::v2::schema::VersionKind::User, ecad_file::v2::schema::VersionKind::Revision, ecad_file::v2::schema::VersionKind::Auto]
+        {
             for v in r.versions(id, kind).map_err(|e| e.to_string())? {
                 versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
             }
@@ -825,9 +796,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
         let same = project_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance)
             .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
-            Ok(true) => {
-                lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len()))
-            }
+            Ok(true) => lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len())),
             Ok(false) => {
                 ok = false;
                 lines.push(format!("page {title}: drawing DIFFERS from a fresh projection"));
@@ -872,10 +841,7 @@ pub fn verify_file(path: &Path, log: &[Transaction], file: &FileFacts, persisted
         ok = false;
         lines.push(format!("the file ends at transaction {n}, before the saved position {persisted}"));
     } else {
-        lines.push(format!(
-            "saved through transaction {persisted}; {} pending in memory",
-            at_seq.saturating_sub(n as u64)
-        ));
+        lines.push(format!("saved through transaction {persisted}; {} pending in memory", at_seq.saturating_sub(n as u64)));
     }
     if opened.spans == file.spans {
         lines.push(format!("all {} record offsets match the writer's", opened.spans.len()));
@@ -949,12 +915,7 @@ fn check_record(bytes: &[u8], seq: u64, expected: Option<&Transaction>) -> Resul
 ///
 /// # Errors
 /// `seq` past the end of `log`, or replay failure.
-pub fn state_at_from(
-    base: u64,
-    history: Option<&Arc<dyn ecad_model::History>>,
-    log: &[Transaction],
-    seq: u64,
-) -> Result<Document, String> {
+pub fn state_at_from(base: u64, history: Option<&Arc<dyn ecad_model::History>>, log: &[Transaction], seq: u64) -> Result<Document, String> {
     if base == 0 {
         return state_at(log, seq);
     }
@@ -1026,16 +987,12 @@ pub fn op_view(op: &Op) -> OpView {
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
         Op::CreateConductor { conductor, .. } => (None, val(conductor)),
         Op::DeleteConductor { conductor, .. } => (val(conductor), None),
-        Op::AttachEnd { end, before, after, .. } => {
-            (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after})))
-        }
+        Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
         Op::AddCableMember { index, member, .. } => (None, val(&json!({"index": index, "member": member}))),
         Op::RemoveCableMember { index, member, .. } => (val(&json!({"index": index, "member": member})), None),
-        Op::SetProperty { key, before, after, .. } => {
-            (val(&json!({ key.as_str(): before })), val(&json!({ key.as_str(): after })))
-        }
+        Op::SetProperty { key, before, after, .. } => (val(&json!({ key.as_str(): before })), val(&json!({ key.as_str(): after }))),
         Op::EmbedDefinition { definition, .. } => (None, val(definition)),
         Op::RemoveDefinition { definition, .. } => (val(definition), None),
         Op::SetProjectSettings { before, after } => (val(before), val(after)),
@@ -1177,12 +1134,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {
-        Some(Subject::Component(c)) => {
-            doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect()
-        }
-        Some(Subject::Conductor(c)) => {
-            doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default()
-        }
+        Some(Subject::Component(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
+        Some(Subject::Conductor(c)) => doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
@@ -1237,12 +1190,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .iter()
             .filter(|(_, c)| c.definition == Some(d))
             .map(|(i, _)| ObjectId::Component(*i))
-            .chain(
-                doc.items
-                    .iter()
-                    .filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d))
-                    .map(|(i, _)| ObjectId::Item(*i)),
-            )
+            .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
         ObjectId::Component(c) => doc
             .terminals
@@ -1251,12 +1199,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .map(|(i, _)| ObjectId::Terminal(*i))
             .chain(reps_of(Subject::Component(c)))
             .collect(),
-        ObjectId::Terminal(t) => doc
-            .conductors
-            .iter()
-            .filter(|(_, c)| c.ends.contains(&Some(t)))
-            .map(|(i, _)| ObjectId::Conductor(*i))
-            .collect(),
+        ObjectId::Terminal(t) => doc.conductors.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Conductor(*i)).collect(),
         ObjectId::Conductor(c) => doc
             .cables
             .iter()
@@ -1271,9 +1214,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .flat_map(|k| k.members.iter().map(|m| ObjectId::Conductor(m.conductor)))
             .chain(reps_of(Subject::Cable(c)))
             .collect(),
-        ObjectId::Page(p) => {
-            doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect()
-        }
+        ObjectId::Page(p) => doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect(),
         ObjectId::Representation(r) => match doc.representations.get(&r) {
             Some(rep) if crate::references::is_reference(rep) => {
                 let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
@@ -1314,12 +1255,10 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Conductor(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
-                k.members.iter().find(|m| m.conductor == c).and_then(|m| {
-                    m.core
-                        .as_deref()
-                        .filter(|x| !x.trim().is_empty())
-                        .map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS))
-                })
+                k.members
+                    .iter()
+                    .find(|m| m.conductor == c)
+                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),

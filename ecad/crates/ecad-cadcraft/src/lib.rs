@@ -28,14 +28,7 @@
 //!
 //! This crate intentionally contains **no** UI, no file encoding of its own (that is `ecad-file`)
 //! and no ECAD semantics inside upstream crates.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
 pub mod checks;
@@ -67,12 +60,10 @@ mod wire_cmds;
 pub mod wires;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use file::{
-    FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
-};
+pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
 pub use project::{
-    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View,
-    project_page, project_page_framed, project_page_with, session_seed, tree_rows, writer,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_framed,
+    project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

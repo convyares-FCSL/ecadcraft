@@ -104,13 +104,7 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     pointer_to(&mut h, at);
     h.run_steps(3);
     save(&h, &deltas, "018-place-preview.png");
-    h.event(Event::Key {
-        key: egui::Key::Escape,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: egui::Modifiers::NONE,
-    });
+    h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
     h.run_steps(2);
     h.state_mut().cad.session.cancel();
     h.state_mut().search.open = false;
@@ -128,8 +122,7 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     // A duplicate: a second coil tagged -K01 is refused, naming -K01.
     ok(&mut h, r#"place {"symbol":"coil","at":[0,-40]}"#);
     let k2 = device(&mut h, "-K02");
-    let e =
-        h.state_mut().submit_command(&format!(r#"setprop {{"component":"{}","key":"tag","value":"K01"}}"#, k2.hex()));
+    let e = h.state_mut().submit_command(&format!(r#"setprop {{"component":"{}","key":"tag","value":"K01"}}"#, k2.hex()));
     let e = e.unwrap_or_default();
     assert!(e.contains("Tag -K01 is already used by -K01"), "{e}");
     let away = screen(&h, 200.0, 200.0);
@@ -182,12 +175,7 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
     let at = screen(&h, 20.0, 0.0);
     crate::mouse_tester::click(&mut h, at);
     let log: Vec<String> = h.state().cad.session.log.iter().rev().take(4).cloned().collect();
-    assert_eq!(
-        doc(&mut h).representations_of(Subject::Component(k1)).count(),
-        2,
-        "the click placed it: {} {log:?}",
-        prompt(&h)
-    );
+    assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
     save(&h, &deltas, "018-choices.png");
     // The prompt's default device is a keyword: a click on it (sent as the keyword) answers.
     type_enter(&mut h, "D");

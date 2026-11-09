@@ -20,8 +20,8 @@ use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage};
 use ecad_model::{
-    CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, Transaction,
+    CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    Transaction,
 };
 use serde_json::{Value, json};
 
@@ -59,8 +59,7 @@ fn fixture(right: bool) -> Fx {
         h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
     h.run("setprop", json!({"cable": c1.hex(), "key": "designation", "value": "MOTOR M1"})).unwrap();
     h.run("setprop", json!({"cable": c1.hex(), "key": "type", "value": "4/C #10"})).unwrap();
     h.run("zoom", json!({"mode": "window", "p1": [-20, -30], "p2": [140, 50]})).unwrap();
@@ -178,10 +177,7 @@ fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
     let mut f = fixture(true);
     let (before, head) = (f.h.doc(), f.h.head());
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
-    assert_eq!(
-        r,
-        json!({"cable": f.c1.hex(), "conductor": f.wires[0].hex(), "index": 0, "core": "1", "changed": true})
-    );
+    assert_eq!(r, json!({"cable": f.c1.hex(), "conductor": f.wires[0].hex(), "index": 0, "core": "1", "changed": true}));
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core label");
@@ -323,11 +319,7 @@ fn m_hostile_core_input_is_refused() {
     refused(&mut f.h, json!({"core": "1"}), "`conductor` (hex id) is required");
     refused(&mut f.h, json!({"conductor": "zz", "core": "1"}), "`conductor` (hex id) is required");
     refused(&mut f.h, json!({"conductor": "ab", "core": "1"}), "no such conductor");
-    refused(
-        &mut f.h,
-        json!({"cable": f.c1.hex(), "cores": ["1"]}),
-        "`cores` must list one label (or null) per member: cable C1 has 4 members",
-    );
+    refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1"]}), "`cores` must list one label (or null) per member: cable C1 has 4 members");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": "1"}), "`cores` must list one label");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1", "2", "a\tb", "4"]}), "Core 3: A core label cannot");
     assert_eq!(f.h.head(), head, "nothing written");
@@ -516,8 +508,7 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     assert!(flag.iter().any(|p| p.x > 125.0 + look::font_width(look::REFERENCE_PLACEHOLDER) + 1.25 + 1e-9));
     // No loose-end squares at x = 120.
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
-    let squares: Vec<Vec2> =
-        f.h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| m.at).collect();
+    let squares: Vec<Vec2> = f.h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| m.at).collect();
     assert!(squares.iter().all(|q| (q.x - 120.0).abs() > 1e-6), "{squares:?}");
     // Hover of the reference point.
     let h_point = f.h.handle_of(f.page, point);
@@ -603,10 +594,7 @@ fn k_hover_and_trail_show_cores() {
     let lines = f.h.p(|p| hover_lines(p, uid, tail)).unwrap();
     assert_eq!(lines.get(1).map(String::as_str), Some("Core: 3 (W3)"), "{lines:?}");
     let doc = f.h.doc();
-    assert_eq!(
-        ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Conductor(f.wires[2])),
-        "W3 · core 3"
-    );
+    assert_eq!(ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Conductor(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
     assert!(snap.to_string().contains("\"core\":\"3\""), "ecadinspect shows the core");
 }
@@ -666,8 +654,7 @@ fn m_hostile_geometry_never_panics() {
     let layer = h.p(|p| p.default_layer);
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let item = ItemId::from(77);
-    doc.items
-        .insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(f64::NAN, 0.0) }) });
+    doc.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(f64::NAN, 0.0) }) });
     doc.representations.insert(
         RepresentationId::from(78),
         Representation {
@@ -682,15 +669,13 @@ fn m_hostile_geometry_never_panics() {
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(d.is_fan());
     let (route, _) = ecad_model::derive::route_on_page(&doc, wires[3], page).unwrap();
-    doc.items.get_mut(&route).unwrap().kind =
-        ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
+    doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
     let (r1, _) = ecad_model::derive::route_on_page(&doc, wires[1], page).unwrap();
-    doc.items.get_mut(&r1).unwrap().kind =
-        ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
+    doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
     let _ = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
 }
 
@@ -718,8 +703,7 @@ fn loose_labelled_cable(h: &mut H) -> (PageId, CableId, Vec<Handle>, Vec<Handle>
 /// are still refused.
 #[test]
 fn s2_selections_with_core_labels_edit_the_rest() {
-    for (cmd, extra) in [("move", json!({"delta": [0, 40]})), ("copy", json!({"delta": [0, 40]})), ("erase", json!({}))]
-    {
+    for (cmd, extra) in [("move", json!({"delta": [0, 40]})), ("copy", json!({"delta": [0, 40]})), ("erase", json!({}))] {
         let mut h = H::new(SEED + 2);
         let (page, k, all, _) = loose_labelled_cable(&mut h);
         let head = h.head();
@@ -729,11 +713,8 @@ fn s2_selections_with_core_labels_edit_the_rest() {
         assert_eq!(h.head(), head + 1, "{cmd}: one transaction");
         h.check();
         let doc = h.doc();
-        let texts = h
-            .pv(|p, pg| pg.entities_of(p, page))
-            .iter()
-            .filter(|e| e.common.layer == views::LAYER && matches!(e.kind, EntityKind::Text(_)))
-            .count();
+        let texts =
+            h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| e.common.layer == views::LAYER && matches!(e.kind, EntityKind::Text(_))).count();
         match cmd {
             "move" => {
                 assert_eq!(texts, 3, "{cmd}: labels drawn again at the moved slash");
@@ -766,11 +747,7 @@ fn slash_items(doc: &ecad_model::Document, page: PageId, k: CableId) -> Vec<Item
 fn join_of(f: &views::Fan, left: bool) -> Pt {
     // The junction: the trunk point on that end's spine line (x = 22.5 left, 97.5 right).
     let x = if left { 22.5 } else { 97.5 };
-    of_role(f, Role::Trunk)
-        .into_iter()
-        .flat_map(path)
-        .find(|p| (p.x - x).abs() < 1e-9)
-        .unwrap_or_else(|| panic!("no junction at x = {x}"))
+    of_role(f, Role::Trunk).into_iter().flat_map(path).find(|p| (p.x - x).abs() < 1e-9).unwrap_or_else(|| panic!("no junction at x = {x}"))
 }
 
 /// Owner request (2026-11-07): the trunk joins the middle of each spine by default; `cablefan`

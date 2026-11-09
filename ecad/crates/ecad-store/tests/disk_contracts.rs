@@ -266,10 +266,7 @@ fn a_killed_writer_releases_its_lock() {
     let d = TempDir::new("crash");
     let p = d.path("p.ecad");
     let (mut child, child_record) = child_holding_lock(&p);
-    assert!(
-        matches!(WriterLock::try_acquire(&p, "parent").unwrap(), LockAttempt::HeldByOther { .. }),
-        "the child's lock was not respected"
-    );
+    assert!(matches!(WriterLock::try_acquire(&p, "parent").unwrap(), LockAttempt::HeldByOther { .. }), "the child's lock was not respected");
     // A crash: the process is killed without releasing anything.
     child.kill().unwrap();
     child.wait().unwrap();

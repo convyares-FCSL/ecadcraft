@@ -117,16 +117,8 @@ fn ok(h: &mut Harness<'static, Trial>, line: &str) {
 /// A drawn component: a closed rectangle typed, selected, converted (JSON form), three terminals.
 fn component(h: &mut Harness<'static, Trial>, rectangle: &str, x: f64) {
     let t = h.state_mut();
-    let before: Vec<_> = t
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle)
-        .collect();
+    let before: Vec<_> =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -173,9 +165,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -188,19 +178,12 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -219,10 +202,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -253,9 +233,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -361,16 +339,14 @@ fn reference_point(h: &mut Harness<'static, Trial>, page: PageId) -> cadcraft_en
 /// Tag every untagged component on `page` (`name`) and every untagged wire there by its first y.
 fn tag_page(h: &mut Harness<'static, Trial>, page: PageId, name: &str) {
     let d = doc(h);
-    let comps: Vec<_> =
-        d.components.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
+    let comps: Vec<_> = d.components.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
     for c in comps {
         let on_page = d.representations_of(ecad_model::Subject::Component(c)).any(|(_, r)| r.page == page);
         if on_page {
             ok(h, &format!(r#"setprop {{"component":"{}","key":"tag","value":"{name}"}}"#, c.hex()));
         }
     }
-    let wires: Vec<_> =
-        d.conductors.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
+    let wires: Vec<_> = d.conductors.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
     for w in wires {
         if let Some((a, _)) = ecad_model::derive::route_on_page(&d, w, page).and_then(|(_, p)| p.path_ends()) {
             ok(h, &format!(r#"setprop {{"conductor":"{}","key":"tag","value":"W{}"}}"#, w.hex(), a.y));
@@ -385,9 +361,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     if let Some(dir) = &out {
         std::fs::create_dir_all(dir).unwrap();
     }
-    let take = |h: &Harness<'static, Trial>, deltas: &Deltas, name: &str| {
-        out.as_ref().and_then(|dir| shot(h, deltas, &dir.join(name)))
-    };
+    let take = |h: &Harness<'static, Trial>, deltas: &Deltas, name: &str| out.as_ref().and_then(|dir| shot(h, deltas, &dir.join(name)));
     let settings = Tmp::new("r");
     let deltas: Deltas = Arc::default();
     let mut h = harness(&settings, Some(deltas.clone()));
@@ -547,8 +521,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, supply.hex()));
     assert_eq!(shown_text(&mut h), "2-A-6", "undo restores the link");
     // Pixel checks when frames were rendered.
-    let (Some(source), Some(target), Some(orphan), Some(_), Some(preview)) = (source, target, orphan, hover, preview)
-    else {
+    let (Some(source), Some(target), Some(orphan), Some(_), Some(preview)) = (source, target, orphan, hover, preview) else {
         eprintln!("ECAD_TESTER_SHOTS not set or no wgpu adapter: screenshots skipped");
         assert!(soft.is_empty(), "{soft:#?}");
         return;

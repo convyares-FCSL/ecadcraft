@@ -108,12 +108,8 @@ impl ChecksPanel {
         let p: &ecad_cadcraft::Project = p;
         let doc = p.ledger.document();
         let Some(list) = p.checks.as_ref() else { return };
-        let rows: Vec<Row> = list
-            .sorted(doc)
-            .into_iter()
-            .filter(|c| !hidden.contains(&c.kind))
-            .map(|c| Row { locator: c.locator(doc), check: c })
-            .collect();
+        let rows: Vec<Row> =
+            list.sorted(doc).into_iter().filter(|c| !hidden.contains(&c.kind)).map(|c| Row { locator: c.locator(doc), check: c }).collect();
         self.counts = (
             rows.iter().filter(|r| r.check.severity() == Severity::Error).count(),
             rows.iter().filter(|r| r.check.severity() == Severity::Warning).count(),
@@ -161,11 +157,7 @@ impl ChecksPanel {
             });
             let (e, w) = self.counts;
             let words = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
-            ui.label(
-                RichText::new(format!("{} \u{b7} {}", words(e, "error", "errors"), words(w, "warning", "warnings")))
-                    .small()
-                    .color(t.text_dim),
-            );
+            ui.label(RichText::new(format!("{} \u{b7} {}", words(e, "error", "errors"), words(w, "warning", "warnings"))).small().color(t.text_dim));
         });
         if self.rows.is_empty() {
             ui.label(RichText::new(NO_PROBLEMS).color(t.text_dim));
@@ -173,13 +165,8 @@ impl ChecksPanel {
             return out;
         }
         if self.armed {
-            let (up, down, enter) = ui.input(|i| {
-                (
-                    i.key_pressed(egui::Key::ArrowUp),
-                    i.key_pressed(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::Enter),
-                )
-            });
+            let (up, down, enter) =
+                ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
             let n = self.rows.len();
             if up || down {
                 let cur = self.selected.unwrap_or(0);
@@ -193,81 +180,57 @@ impl ChecksPanel {
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         let mut clicked: Option<usize> = None;
-        egui::ScrollArea::vertical().id_salt("ecad.checks.list").auto_shrink([false, false]).show_rows(
-            ui,
-            ROW_H,
-            self.rows.len(),
-            |ui, range| {
-                for i in range {
-                    let Some(r) = self.rows.get(i).cloned() else { continue };
-                    drawn += 1;
-                    let fix = r.check.fix.filter(|_| writable && !self.read_only);
-                    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-                    let p = ui.painter_at(rect);
-                    let selected = self.selected == Some(i);
-                    if selected {
-                        p.rect_filled(rect, 0.0, t.tab_active);
-                    } else if resp.hovered() {
-                        p.rect_filled(rect, 0.0, t.chrome);
-                    }
-                    let sev = r.check.severity();
-                    let font = egui::FontId::monospace(12.0);
-                    p.text(
-                        pos2(rect.left() + 4.0, rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        sev.glyph(),
-                        font.clone(),
-                        Self::colour(&t, sev),
-                    );
-                    let what = if r.check.kind == Kind::Unnumbered { r.check.which.clone() } else { r.check.what() };
-                    let colour = if selected { t.text } else { t.text_dim };
-                    // Where and which, on the right; a fix button beside them when it has one. The
-                    // description takes the room left, cut with an ellipsis.
-                    let right = if fix.is_some() { rect.right() - 92.0 } else { rect.right() - 4.0 };
-                    let tail = if r.check.kind == Kind::Unnumbered {
-                        String::new()
-                    } else {
-                        format!("{} {}", r.locator, r.check.which)
+        egui::ScrollArea::vertical().id_salt("ecad.checks.list").auto_shrink([false, false]).show_rows(ui, ROW_H, self.rows.len(), |ui, range| {
+            for i in range {
+                let Some(r) = self.rows.get(i).cloned() else { continue };
+                drawn += 1;
+                let fix = r.check.fix.filter(|_| writable && !self.read_only);
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+                let p = ui.painter_at(rect);
+                let selected = self.selected == Some(i);
+                if selected {
+                    p.rect_filled(rect, 0.0, t.tab_active);
+                } else if resp.hovered() {
+                    p.rect_filled(rect, 0.0, t.chrome);
+                }
+                let sev = r.check.severity();
+                let font = egui::FontId::monospace(12.0);
+                p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
+                let what = if r.check.kind == Kind::Unnumbered { r.check.which.clone() } else { r.check.what() };
+                let colour = if selected { t.text } else { t.text_dim };
+                // Where and which, on the right; a fix button beside them when it has one. The
+                // description takes the room left, cut with an ellipsis.
+                let right = if fix.is_some() { rect.right() - 92.0 } else { rect.right() - 4.0 };
+                let tail = if r.check.kind == Kind::Unnumbered { String::new() } else { format!("{} {}", r.locator, r.check.which) };
+                let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
+                let tail_w = tail_g.size().x;
+                let room = (right - tail_w - 6.0 - (rect.left() + 18.0)).max(0.0);
+                let what = fit(&p, &what, &font, room);
+                p.text(pos2(rect.left() + 18.0, rect.center().y), egui::Align2::LEFT_CENTER, what, font.clone(), colour);
+                let top = rect.center().y - tail_g.size().y / 2.0;
+                p.galley(pos2(right - tail_w, top), tail_g, t.text_dim);
+                let label = row_label(&r);
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
+                if let Some(f) = fix {
+                    let b = egui::Rect::from_min_size(pos2(rect.right() - 88.0, rect.top() + 2.0), vec2(84.0, ROW_H - 4.0));
+                    let name = match f {
+                        Fix::AddJunction(_) => ADD_JUNCTION,
+                        Fix::NumberThem => NUMBER_THEM,
                     };
-                    let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
-                    let tail_w = tail_g.size().x;
-                    let room = (right - tail_w - 6.0 - (rect.left() + 18.0)).max(0.0);
-                    let what = fit(&p, &what, &font, room);
-                    p.text(
-                        pos2(rect.left() + 18.0, rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        what,
-                        font.clone(),
-                        colour,
-                    );
-                    let top = rect.center().y - tail_g.size().y / 2.0;
-                    p.galley(pos2(right - tail_w, top), tail_g, t.text_dim);
-                    let label = row_label(&r);
-                    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
-                    if let Some(f) = fix {
-                        let b = egui::Rect::from_min_size(
-                            pos2(rect.right() - 88.0, rect.top() + 2.0),
-                            vec2(84.0, ROW_H - 4.0),
-                        );
-                        let name = match f {
-                            Fix::AddJunction(_) => ADD_JUNCTION,
-                            Fix::NumberThem => NUMBER_THEM,
-                        };
-                        if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
-                            match (f, r.check.page) {
-                                (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
-                                (Fix::NumberThem, _) => out.push(Action::NumberThem),
-                                _ => {}
-                            }
-                            continue;
+                    if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
+                        match (f, r.check.page) {
+                            (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
+                            (Fix::NumberThem, _) => out.push(Action::NumberThem),
+                            _ => {}
                         }
-                    }
-                    if resp.on_hover_text("Show it: its page, centred, with a ring on it").clicked() {
-                        clicked = Some(i);
+                        continue;
                     }
                 }
-            },
-        );
+                if resp.on_hover_text("Show it: its page, centred, with a ring on it").clicked() {
+                    clicked = Some(i);
+                }
+            }
+        });
         self.rows_drawn = drawn;
         if let Some(i) = clicked {
             self.selected = Some(i);

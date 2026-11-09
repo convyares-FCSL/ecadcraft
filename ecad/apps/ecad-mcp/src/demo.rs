@@ -71,9 +71,7 @@ fn substitute(v: Value, vars: &Map<String, Value>) -> Result<Value, String> {
     Ok(match v {
         Value::String(s) if s.starts_with('$') => lookup(&s, vars)?,
         Value::Array(a) => Value::Array(a.into_iter().map(|x| substitute(x, vars)).collect::<Result<_, _>>()?),
-        Value::Object(o) => {
-            Value::Object(o.into_iter().map(|(k, x)| Ok((k, substitute(x, vars)?))).collect::<Result<_, String>>()?)
-        }
+        Value::Object(o) => Value::Object(o.into_iter().map(|(k, x)| Ok((k, substitute(x, vars)?))).collect::<Result<_, String>>()?),
         other => other,
     })
 }

@@ -93,13 +93,7 @@ fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> ConductorId {
 fn base(h: &mut H) -> ComponentId {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
-        h.s.doc()
-            .unwrap()
-            .model
-            .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-            .map(|e| e.handle.hex())
-            .collect();
+        h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     let r = h.run("convertcomponent", json!({ "handles": lines })).unwrap();
     let c: ComponentId = common::id(&r, "component");
     let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
@@ -255,13 +249,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 h.run("line", json!({"points": [[220, 200], [220, 220]]})).unwrap();
                 h.run("line", json!({"points": [[220, 220], [200, 220]]})).unwrap();
                 let all: Vec<Handle> =
-                    h.s.doc()
-                        .unwrap()
-                        .model
-                        .iter()
-                        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-                        .map(|e| e.handle)
-                        .collect();
+                    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
                 let (a, b, c) = (all[all.len() - 3], all[all.len() - 2], all[all.len() - 1]);
                 start(h, "convertcomponent");
                 h.s.input(Input::Pick(vec![a, b, a])).unwrap();
@@ -276,13 +264,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 h.run("line", json!({"points": [[220, 200], [220, 220]]})).unwrap();
                 h.run("line", json!({"points": [[220, 220], [200, 220]]})).unwrap();
                 let all: Vec<String> =
-                    h.s.doc()
-                        .unwrap()
-                        .model
-                        .iter()
-                        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-                        .map(|e| e.handle.hex())
-                        .collect();
+                    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
                 h.run("convertcomponent", json!({"handles": &all[all.len() - 3..]})).unwrap();
             },
         ),
@@ -303,11 +285,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
         if a.head() == before {
             failures.push(format!("{what}: the interactive form committed nothing"));
         } else if ha != hb {
-            failures.push(format!(
-                "{what}: histories differ\n  prompts: {:?}\n  json:    {:?}",
-                &ha[ha.len().min(7)..],
-                &hb[hb.len().min(7)..]
-            ));
+            failures.push(format!("{what}: histories differ\n  prompts: {:?}\n  json:    {:?}", &ha[ha.len().min(7)..], &hb[hb.len().min(7)..]));
         } else if a.doc() != b.doc() {
             failures.push(format!("{what}: documents differ"));
         }

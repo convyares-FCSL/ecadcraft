@@ -67,10 +67,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
     }
     for s in symbols::search(&q) {
         let prefix = doc.map_or_else(|| s.prefix.to_string(), |d| devices::prefix_for(d, s));
-        out.push(Row {
-            text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")),
-            pick: Pick::Symbol(s.key),
-        });
+        out.push(Row { text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")), pick: Pick::Symbol(s.key) });
     }
     let more = out.len().saturating_sub(MAX_ROWS);
     out.truncate(MAX_ROWS);
@@ -79,11 +76,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
 }
 
 fn clip(t: &str, n: usize) -> String {
-    if t.chars().count() <= n {
-        t.to_string()
-    } else {
-        format!("{}…", t.chars().take(n.saturating_sub(1)).collect::<String>())
-    }
+    if t.chars().count() <= n { t.to_string() } else { format!("{}…", t.chars().take(n.saturating_sub(1)).collect::<String>()) }
 }
 
 /// What a click in the second step places (owner's trial of 2026-11-08: no Enter needed): a
@@ -165,13 +158,7 @@ struct Cached<K, V> {
 impl<K: PartialEq, V: Clone> Cached<K, V> {
     /// The copy for `key` at `at`, read again only when the key or the project differs, or
     /// `unchanged(count the copy was read at)` is false. Returns the value and whether it was read.
-    fn get(
-        slot: &mut Option<Self>,
-        key: K,
-        at: Option<At>,
-        unchanged: impl Fn(u64) -> bool,
-        read: impl FnOnce() -> V,
-    ) -> (V, bool) {
+    fn get(slot: &mut Option<Self>, key: K, at: Option<At>, unchanged: impl Fn(u64) -> bool, read: impl FnOnce() -> V) -> (V, bool) {
         if let Some(c) = slot.as_mut()
             && c.key == key
         {
@@ -222,10 +209,7 @@ impl SymbolSearch {
     /// the settings (`unchanged(since)` says none did). Drawing edits, wires and view switches
     /// keep the copy.
     pub fn rows_for(
-        &mut self,
-        at: Option<At>,
-        unchanged: impl Fn(u64) -> bool,
-        read: impl FnOnce() -> (Vec<Row>, usize, Option<String>),
+        &mut self, at: Option<At>, unchanged: impl Fn(u64) -> bool, read: impl FnOnce() -> (Vec<Row>, usize, Option<String>),
     ) -> (Vec<Row>, usize, Option<String>) {
         let key = self.query.clone();
         let (v, built) = Cached::get(&mut self.cache, key, at, unchanged, read);
@@ -235,12 +219,7 @@ impl SymbolSearch {
 
     /// The second step's choices for the pick shown, under the same update map as
     /// [`SymbolSearch::rows_for`]; empty when nothing is picked.
-    pub fn choices_for(
-        &mut self,
-        at: Option<At>,
-        unchanged: impl Fn(u64) -> bool,
-        read: impl FnOnce(&Pick) -> Vec<Choice>,
-    ) -> Vec<Choice> {
+    pub fn choices_for(&mut self, at: Option<At>, unchanged: impl Fn(u64) -> bool, read: impl FnOnce(&Pick) -> Vec<Choice>) -> Vec<Choice> {
         let Some(pick) = self.picked.clone() else {
             self.choice_cache = None;
             return Vec::new();
@@ -252,12 +231,7 @@ impl SymbolSearch {
 
     /// Draw the window: the search and its rows, or, once a row is picked, its second step
     /// ([`choices`]). Returns the choice clicked.
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        rows: &(Vec<Row>, usize, Option<String>),
-        choices: &[Choice],
-    ) -> Option<Choice> {
+    pub fn show(&mut self, ctx: &egui::Context, rows: &(Vec<Row>, usize, Option<String>), choices: &[Choice]) -> Option<Choice> {
         if !self.open {
             return None;
         }
@@ -308,13 +282,7 @@ impl SymbolSearch {
                     self.selected = 0;
                 }
                 let (list, more, nothing) = rows;
-                let keys = ui.input(|i| {
-                    (
-                        i.key_pressed(egui::Key::ArrowDown),
-                        i.key_pressed(egui::Key::ArrowUp),
-                        i.key_pressed(egui::Key::Escape),
-                    )
-                });
+                let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::Escape)));
                 if r.has_focus() || r.lost_focus() {
                     if keys.0 && self.selected + 1 < list.len() {
                         self.selected += 1;

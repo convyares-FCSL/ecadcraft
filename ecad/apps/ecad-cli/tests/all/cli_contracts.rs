@@ -63,10 +63,7 @@ fn v1_bytes(l: &Ledger) -> Vec<u8> {
     f.into_medium().read_all().unwrap()
 }
 
-fn run(
-    f: fn(&[String], &mut dyn std::io::Write) -> std::result::Result<(), String>,
-    args: &[&str],
-) -> std::result::Result<String, String> {
+fn run(f: fn(&[String], &mut dyn std::io::Write) -> std::result::Result<(), String>, args: &[&str]) -> std::result::Result<String, String> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut out = Vec::new();
     f(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
@@ -145,8 +142,7 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
     assert_eq!(back.ledger.document(), l.document());
     // --with-raw: every stored row, with its raw bytes and readable form.
     let raw_path = dir.path("raw.jsonl");
-    let said =
-        run(ecad_cli::ecadinspect, &[o, "export-jsonl", "--with-raw", "--out", raw_path.to_str().unwrap()]).unwrap();
+    let said = run(ecad_cli::ecadinspect, &[o, "export-jsonl", "--with-raw", "--out", raw_path.to_str().unwrap()]).unwrap();
     assert!(said.contains("wrote"), "{said}");
     let raw = std::fs::read_to_string(&raw_path).unwrap();
     let mut tables_seen = std::collections::BTreeSet::new();

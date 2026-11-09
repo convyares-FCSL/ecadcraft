@@ -43,8 +43,7 @@ fn output_is_deterministic_and_incremental_saves_match_one_write() {
     let full = f.ledger.full_log().unwrap();
     let mut prefix = Ledger::replay(full[..5].to_vec(), SEED).unwrap();
     prefix.mark_persisted(0).ok();
-    let mut file =
-        ProjectFile::create(MemoryMedium::default(), PROJECT, &mut prefix, Some(1_760_000_000_000), WRITER).unwrap();
+    let mut file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut prefix, Some(1_760_000_000_000), WRITER).unwrap();
     let mut rest = Ledger::replay(full.clone(), SEED).unwrap();
     // A ledger with the same history whose last 5.. transactions are not yet persisted.
     rest.mark_persisted(5).unwrap();
@@ -195,10 +194,7 @@ fn mutated_files_never_panic_and_are_always_classified() {
 #[test]
 fn tag_settings_are_written_only_when_set_and_round_trip() {
     let defaults = ProjectSettings::default();
-    let plain =
-        ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() })
-            .unwrap()
-            .to_string();
+    let plain = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() }).unwrap().to_string();
     assert!(!plain.contains("tag_padding") && !plain.contains("tag_prefixes"), "{plain}");
 
     let mut f = fixture();
@@ -222,10 +218,7 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
 #[test]
 fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let defaults = ProjectSettings::default();
-    let plain =
-        ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() })
-            .unwrap()
-            .to_string();
+    let plain = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults.clone() }).unwrap().to_string();
     assert!(!plain.contains("wiring"), "{plain}");
 
     let mut f = fixture();
@@ -241,8 +234,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     assert!(line.contains("\"page-column\"") && line.contains("\"three-letter\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
-    let bare =
-        ecad_model::Definition { name: "t".into(), origin: None, graphics: vec![], terminals: vec![], bridges: vec![] };
+    let bare = ecad_model::Definition { name: "t".into(), origin: None, graphics: vec![], terminals: vec![], bridges: vec![] };
     let bridged = ecad_model::Definition { bridges: vec![vec!["1".into(), "2".into()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::v1::Definition::from(&bare)).unwrap();
     assert!(!bare_line.contains("bridges"), "{bare_line}");
@@ -262,14 +254,10 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
 /// read back exactly; a page without properties and default settings are written as before.
 #[test]
 fn sheet_records_round_trip_and_defaults_are_left_out() {
-    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 })
-        .unwrap()
-        .to_string();
+    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }).unwrap().to_string();
     assert!(!plain.contains("properties"), "{plain}");
     let defaults = ProjectSettings::default();
-    let line = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults })
-        .unwrap()
-        .to_string();
+    let line = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults }).unwrap().to_string();
     for k in ["sheet", "page_number_step", "reference_style"] {
         assert!(!line.contains(k), "{k} in {line}");
     }
@@ -283,22 +271,13 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     after.reference_style = ReferenceStyle::PageColumn;
     let ops = vec![
         Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
-        Op::SetProperty {
-            object: ObjectRef::Page(f.page),
-            key: "folder".into(),
-            before: None,
-            after: Some(folder.hex()),
-        },
+        Op::SetProperty { object: ObjectRef::Page(f.page), key: "folder".into(), before: None, after: Some(folder.hex()) },
         Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
         Op::SetProjectSettings { before, after: after.clone() },
     ];
     f.ledger.commit(Author::User, "Sheets", ops).unwrap();
     let renamed = Folder { name: "Schematics".into(), parent: None };
-    let modify = Op::ModifyFolder {
-        id: folder,
-        before: Folder { name: "Layouts".into(), parent: None },
-        after: renamed.clone(),
-    };
+    let modify = Op::ModifyFolder { id: folder, before: Folder { name: "Layouts".into(), parent: None }, after: renamed.clone() };
     f.ledger.commit(Author::User, "Rename folder", vec![modify]).unwrap();
     let bytes = written(&mut f.ledger);
     let opened = open_project(&bytes, SEED).unwrap();

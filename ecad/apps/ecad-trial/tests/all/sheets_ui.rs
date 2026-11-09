@@ -35,13 +35,7 @@ fn type_into(h: &mut Harness<'static, Trial>, label: &str, text: &str) {
 /// Type into the field that has the keyboard (a field opened in place takes it), replacing its
 /// text, and press Enter.
 fn type_focused(h: &mut Harness<'static, Trial>, text: &str) {
-    h.event(egui::Event::Key {
-        key: Key::A,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: egui::Modifiers::COMMAND,
-    });
+    h.event(egui::Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND });
     h.event(egui::Event::Text(text.into()));
     h.run_steps(1);
     enter(h);
@@ -173,16 +167,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     ok(&mut h, r#"place {"symbol":"coil","at":[200,100]}"#);
     let sym = {
         let t = h.state_mut();
-        t.cad
-            .session
-            .doc()
-            .unwrap()
-            .model
-            .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-            .last()
-            .unwrap()
-            .handle
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).last().unwrap().handle
     };
     let _ = sym;
     let coil_items: Vec<_> = {

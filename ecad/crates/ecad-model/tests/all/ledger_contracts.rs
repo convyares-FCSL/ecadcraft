@@ -1,8 +1,8 @@
 //! Contract tests for the ledger: TX-01..TX-04, UNDO-01..UNDO-03, SAVE-01/02, DOC-05..DOC-07.
 
 use ecad_model::{
-    Author, CableMember, Color, Component, Conductor, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger,
-    ModelError, Op, Page, PageId, Primitive, Pt, Representation, Style, Subject, Terminal, TxKind,
+    Author, CableMember, Color, Component, Conductor, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId,
+    Primitive, Pt, Representation, Style, Subject, Terminal, TxKind,
 };
 
 struct Fixture {
@@ -21,10 +21,7 @@ fn fixture() -> Fixture {
         .commit(
             Author::User,
             "New project",
-            vec![
-                Op::AddPage { id: page, page: Page::new("1"), index: 0 },
-                Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-            ],
+            vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
         )
         .unwrap();
     Fixture { ids, ledger, page, layer }
@@ -66,12 +63,7 @@ fn every_op_inverts_to_the_previous_state() {
         Op::AttachEnd { conductor: cond, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember { conductor: cond, core: None } },
-        Op::SetProperty {
-            object: ecad_model::ObjectRef::Component(comp),
-            key: "tag".into(),
-            before: None,
-            after: Some("-K1".into()),
-        },
+        Op::SetProperty { object: ecad_model::ObjectRef::Component(comp), key: "tag".into(), before: None, after: Some("-K1".into()) },
     ];
     let before = f.ledger.document().clone();
     let after = f.ledger.preview(&ops).unwrap();
@@ -94,19 +86,13 @@ fn a_failed_transaction_changes_nothing() {
         ("precondition", vec![Op::RemoveItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 1.0)) }]),
         (
             "second op fails",
-            vec![
-                Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 1.0)) },
-                Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (2.0, 2.0)) },
-            ],
+            vec![Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 1.0)) }, Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (2.0, 2.0)) }],
         ),
         (
             "dangling layer",
             vec![Op::AddItem {
                 id: item,
-                item: Item {
-                    style: Style { layer: f.ids.fresh(), ..line(&f, (0.0, 0.0), (1.0, 1.0)).style },
-                    ..line(&f, (0.0, 0.0), (1.0, 1.0))
-                },
+                item: Item { style: Style { layer: f.ids.fresh(), ..line(&f, (0.0, 0.0), (1.0, 1.0)).style }, ..line(&f, (0.0, 0.0), (1.0, 1.0)) },
             }],
         ),
     ];
@@ -159,10 +145,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
             ],
         )
         .unwrap();
-    let delete = vec![
-        Op::RemoveTerminal { id: term, terminal: t.clone() },
-        Op::DeleteComponent { id: comp, component: Component::default() },
-    ];
+    let delete = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }, Op::DeleteComponent { id: comp, component: Component::default() }];
     assert!(f.ledger.commit(Author::User, "delete without detaching", delete.clone()).is_err());
     let mut with_detach = vec![Op::AttachEnd { conductor: cond, end: End::A, before: Some(term), after: None }];
     with_detach.extend(delete);
@@ -176,13 +159,7 @@ fn undo_and_redo_append_and_restore_state_with_the_same_ids() {
     let mut states = vec![f.ledger.document().clone()];
     for i in 0..3 {
         let item = f.ids.fresh();
-        f.ledger
-            .commit(
-                Author::User,
-                "line",
-                vec![Op::AddItem { id: item, item: line(&f, (0.0, i as f64), (1.0, i as f64)) }],
-            )
-            .unwrap();
+        f.ledger.commit(Author::User, "line", vec![Op::AddItem { id: item, item: line(&f, (0.0, i as f64), (1.0, i as f64)) }]).unwrap();
         states.push(f.ledger.document().clone());
     }
     let head = f.ledger.head();
@@ -228,9 +205,7 @@ fn unsaved_state_follows_head_and_persisted_position() {
     assert!(!f.ledger.is_unsaved());
     // A non-graphical edit moves the head.
     let comp = f.ids.fresh();
-    f.ledger
-        .commit(Author::User, "component", vec![Op::CreateComponent { id: comp, component: Component::default() }])
-        .unwrap();
+    f.ledger.commit(Author::User, "component", vec![Op::CreateComponent { id: comp, component: Component::default() }]).unwrap();
     assert!(f.ledger.is_unsaved());
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     // Undo back to saved content is still unsaved (SAVE-02).
@@ -289,17 +264,12 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
             ecad_model::TerminalDef { key: key2.into(), label: None, at: Pt::new(0.0, 1.0) },
         ],
     };
-    for (name, d) in [
-        ("nan", def(Pt::new(f64::NAN, 0.0), "A2")),
-        ("inf", def(Pt::new(f64::INFINITY, 0.0), "A2")),
-        ("dup", def(Pt::new(1.0, 0.0), "A1")),
-    ] {
+    for (name, d) in
+        [("nan", def(Pt::new(f64::NAN, 0.0), "A2")), ("inf", def(Pt::new(f64::INFINITY, 0.0), "A2")), ("dup", def(Pt::new(1.0, 0.0), "A1"))]
+    {
         let id = f.ids.fresh();
         assert!(
-            matches!(
-                f.ledger.commit(Author::User, name, vec![Op::EmbedDefinition { id, definition: d }]),
-                Err(ModelError::Invariant(_))
-            ),
+            matches!(f.ledger.commit(Author::User, name, vec![Op::EmbedDefinition { id, definition: d }]), Err(ModelError::Invariant(_))),
             "{name}"
         );
     }
@@ -308,13 +278,7 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
 #[test]
 fn a_symbol_must_show_its_components_own_definition() {
     let mut f = fixture();
-    let good = ecad_model::Definition {
-        bridges: Vec::new(),
-        name: "d".into(),
-        origin: None,
-        graphics: vec![],
-        terminals: vec![],
-    };
+    let good = ecad_model::Definition { bridges: Vec::new(), name: "d".into(), origin: None, graphics: vec![], terminals: vec![] };
     let (d1, d2, c, i, r) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     let item = Item {
         page: f.page,

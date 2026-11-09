@@ -27,8 +27,8 @@ use ecad_cadcraft::references::{diagnostics, markers_on_page, plan_continue};
 use ecad_cadcraft::{HandleMap, Persistence, ProjectHandle, project_page};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    CableId, CableMember, ConductorId, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt,
-    Representation, RepresentationId, Subject, TerminalId,
+    CableId, CableMember, ConductorId, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId,
+    Subject, TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -73,16 +73,9 @@ fn fixture(seed: u64, attached: bool) -> R {
         set_tag(&mut h, "conductor", &c.hex(), &format!("W{y}"));
         w.push(c);
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
-    let k2 = component(
-        &mut h,
-        field,
-        "line 100,-5 110,-5 110,15 100,15 c",
-        [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)],
-        "K2",
-    );
+    let k2 = component(&mut h, field, "line 100,-5 110,-5 110,15 100,15 c", [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)], "K2");
     h.activate(supply);
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k2 }
 }
@@ -280,8 +273,7 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
     let mut r = connected(SEED + 2);
     let two = nets(&r.h.doc());
     let shape = |n: &[ecad_model::derive::Net]| {
-        let mut v: Vec<(usize, usize)> =
-            n.iter().filter(|x| !x.conductors.is_empty()).map(|x| (x.conductors.len(), x.terminals.len())).collect();
+        let mut v: Vec<(usize, usize)> = n.iter().filter(|x| !x.conductors.is_empty()).map(|x| (x.conductors.len(), x.terminals.len())).collect();
         v.sort();
         v
     };
@@ -393,10 +385,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let mut r = connected(SEED + 6);
     let ring = |h: &mut H, page: PageId| {
         let u = uid(h, page);
-        h.p(|p| overlay_marks(p, u))
-            .into_iter()
-            .filter(|m| m.shape == MarkShape::Ring && m.stroke == 2.0)
-            .collect::<Vec<_>>()
+        h.p(|p| overlay_marks(p, u)).into_iter().filter(|m| m.shape == MarkShape::Ring && m.stroke == 2.0).collect::<Vec<_>>()
     };
     let linked_colour = ring(&mut r.h, r.supply)[0].color;
     r.h.activate(r.field);
@@ -414,11 +403,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let sid = ref_on(&mut r.h, r.supply).unwrap();
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(sid)).unwrap();
     let e = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == text).unwrap();
-    assert_eq!(
-        format!("{:?}", e.common.color),
-        format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)),
-        "red text"
-    );
+    assert_eq!(format!("{:?}", e.common.color), format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)), "red text");
     assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable C1 on page 1 (?)".to_string()]);
     // The Field stubs, slash and attachments stay: only the reference went.
     assert_eq!(orphaned.conductors, linked.conductors);
@@ -579,12 +564,7 @@ fn ac5_hover_on_member_wires_names_the_other_drawing() {
     }
     // The slash on Field lists both pages and both references.
     let doc = r.h.doc();
-    let slash = doc
-        .representations
-        .iter()
-        .find(|(_, x)| x.page == r.field && x.role == "slash")
-        .map(|(_, x)| x.items[0])
-        .unwrap();
+    let slash = doc.representations.iter().find(|(_, x)| x.page == r.field && x.role == "slash").map(|(_, x)| x.items[0]).unwrap();
     let hs = r.h.handle_of(r.field, slash);
     let u = uid(&mut r.h, r.field);
     let lines = r.h.p(|p| hover_lines(p, u, hs)).unwrap();
@@ -748,14 +728,7 @@ fn ac6_hostile_json_values_in_every_parameter_never_panic_or_prompt() {
 }
 
 fn ref_rep(subject: Subject, page: PageId, items: Vec<ItemId>) -> Representation {
-    Representation {
-        subject,
-        page,
-        form: Form::Drawn,
-        role: "reference".into(),
-        items,
-        connection_points: Default::default(),
-    }
+    Representation { subject, page, form: Form::Drawn, role: "reference".into(), items, connection_points: Default::default() }
 }
 
 /// Add a reference representation holding one Point item to a hand-built document.
@@ -780,8 +753,7 @@ fn ac6_hostile_documents_never_panic() {
         (
             "no item",
             Box::new(move |d| {
-                d.representations
-                    .insert(RepresentationId::from(0xbeef_0001), ref_rep(Subject::Cable(cable), page, vec![]));
+                d.representations.insert(RepresentationId::from(0xbeef_0001), ref_rep(Subject::Cable(cable), page, vec![]));
             }),
         ),
         (
@@ -796,15 +768,11 @@ fn ac6_hostile_documents_never_panic() {
                         kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(1.0, 1.0) }),
                     },
                 );
-                d.representations
-                    .insert(RepresentationId::from(0xbeef_0002), ref_rep(Subject::Cable(cable), page, vec![item]));
+                d.representations.insert(RepresentationId::from(0xbeef_0002), ref_rep(Subject::Cable(cable), page, vec![item]));
             }),
         ),
         ("NaN point", Box::new(move |d| add_ref(d, 3, Pt::new(f64::NAN, 0.0), page, Subject::Cable(cable)))),
-        (
-            "infinite point",
-            Box::new(move |d| add_ref(d, 4, Pt::new(f64::INFINITY, f64::NEG_INFINITY), page, Subject::Cable(cable))),
-        ),
+        ("infinite point", Box::new(move |d| add_ref(d, 4, Pt::new(f64::INFINITY, f64::NEG_INFINITY), page, Subject::Cable(cable)))),
         ("huge point", Box::new(move |d| add_ref(d, 5, Pt::new(-1e300, 1e300), page, Subject::Cable(cable)))),
         ("missing cable", Box::new(move |d| add_ref(d, 6, Pt::new(1.0, 1.0), page, Subject::Cable(CableId::from(77))))),
         (
@@ -830,17 +798,13 @@ fn ac6_hostile_documents_never_panic() {
                 add_ref(d, 9, Pt::new(0.0, 0.0), lost, Subject::Cable(cable));
             }),
         ),
-        (
-            "page missing entirely",
-            Box::new(move |d| add_ref(d, 10, Pt::new(0.0, 0.0), PageId::from(98), Subject::Cable(cable))),
-        ),
+        ("page missing entirely", Box::new(move |d| add_ref(d, 10, Pt::new(0.0, 0.0), PageId::from(98), Subject::Cable(cable)))),
         (
             "one item in two references",
             Box::new(move |d| {
                 add_ref(d, 11, Pt::new(3.0, 3.0), page, Subject::Cable(cable));
                 let item = ItemId::from(0xdead_0000 + 11);
-                d.representations
-                    .insert(RepresentationId::from(0xbeef_1011), ref_rep(Subject::Cable(cable), page, vec![item]));
+                d.representations.insert(RepresentationId::from(0xbeef_1011), ref_rep(Subject::Cable(cable), page, vec![item]));
             }),
         ),
         (
@@ -971,10 +935,9 @@ fn copying_reference_drawings_never_makes_a_third_reference() {
     let fid = ref_on(&mut r.h, r.field).unwrap();
     let text = r.h.p(|p| p.pages[&r.field].map.ref_text(fid)).unwrap();
     let head = r.h.head();
-    for (cmd, params) in [
-        ("copy", json!({"handles": [text.hex()], "delta": [0, 40]})),
-        ("rotate", json!({"handles": [text.hex()], "base": [0, 0], "angle": 90})),
-    ] {
+    for (cmd, params) in
+        [("copy", json!({"handles": [text.hex()], "delta": [0, 40]})), ("rotate", json!({"handles": [text.hex()], "base": [0, 0], "angle": 90}))]
+    {
         let res = r.h.run(cmd, params);
         if let Err(e) = &res {
             no_internal_error(e, cmd);
@@ -1039,10 +1002,7 @@ fn many_references_of_one_cable_derive_in_bounded_time() {
         let took = started.elapsed();
         let partners: usize = refs.iter().map(|r| r.partners.len()).sum();
         eprintln!("{n} references: {took:?}, {partners} partner entries");
-        assert!(
-            took < Duration::from_secs(secs),
-            "{n} references: one derivation took {took:?} ({partners} partner entries)"
-        );
+        assert!(took < Duration::from_secs(secs), "{n} references: one derivation took {took:?} ({partners} partner entries)");
         assert!(partners <= 3 * refs.len(), "{partners} partner entries for {} references", refs.len());
         let started = Instant::now();
         let lines = diagnostics(&doc);

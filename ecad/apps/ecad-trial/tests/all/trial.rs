@@ -395,16 +395,8 @@ fn the_quick_start_trial_runs_headless() {
     };
     // 1. Draw a rectangle and convert it into a component with a terminal.
     ok(&mut t, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<_> = t
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
-        .map(|e| e.handle)
-        .collect();
+    let lines: Vec<_> =
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
     ok(&mut t, "convertcomponent");
@@ -430,11 +422,8 @@ fn the_quick_start_trial_runs_headless() {
     assert!(c.ends.iter().all(Option::is_some), "both ends attached");
     let page = dc.page_order[0];
     // 4. Connected movement: move the rectangle; the wire end follows.
-    let (rid, rep) = dc
-        .representations
-        .iter()
-        .find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Component(_)))
-        .unwrap();
+    let (rid, rep) =
+        dc.representations.iter().find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Component(_))).unwrap();
     let rid = *rid;
     let ecad_model::Subject::Component(component) = rep.subject else { panic!("not a component") };
     let mut moved: Vec<String> = Vec::new();
@@ -445,8 +434,7 @@ fn the_quick_start_trial_runs_headless() {
         moved.push(p.read(&mut t.cad.session, |p, _| p.pages[&page].map.marker(rid, *term).unwrap().hex()).unwrap());
     }
     ok(&mut t, &format!("move {{\"handles\":{},\"delta\":[0,-5]}}", serde_json::to_string(&moved).unwrap()));
-    let route_start =
-        |d: &ecad_model::Document| ecad_model::derive::route_on_page(d, cid, page).unwrap().1.path_ends().unwrap();
+    let route_start = |d: &ecad_model::Document| ecad_model::derive::route_on_page(d, cid, page).unwrap().1.path_ends().unwrap();
     assert_eq!(route_start(&doc(&mut t)).0, ecad_model::Pt::new(40.0, 5.0), "the wire end followed the terminal");
     assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty());
     // 5. Undo/redo.
@@ -509,10 +497,7 @@ fn the_quick_start_trial_runs_headless() {
     assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
     // The component ID noted before saving still names the component.
     ok(&mut t, &format!("setprop {{\"component\":\"{}\",\"key\":\"tag\",\"value\":\"-K1\"}}", component.hex()));
-    assert!(
-        t.submit_command(r#"setprop {"component":"0123456789abcdef0123456789abcdef","key":"tag","value":"x"}"#)
-            .is_some()
-    );
+    assert!(t.submit_command(r#"setprop {"component":"0123456789abcdef0123456789abcdef","key":"tag","value":"x"}"#).is_some());
     ok(&mut t, "u");
     assert_eq!(doc(&mut t), saved, "undo of the property change");
     ok(&mut t, "u");
@@ -532,10 +517,7 @@ fn the_command_field_keeps_trailing_enters() {
     assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
     assert!(t.submit_command("").is_none());
     assert!(t.cad.session.running.is_none(), "an empty line is Enter");
-    assert_eq!(
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
-        2
-    );
+    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(), 2);
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
 
@@ -561,13 +543,7 @@ fn the_file_dialog_takes_typed_text_and_enter() {
     t.set_dialog_path("");
     frame_with(&mut t, &ctx, vec![Event::Text(d.path("typed"))]);
     assert_eq!(t.dialog().map(|x| x.1.to_string()), Some(d.path("typed")), "typing reaches the field");
-    let enter = |pressed| Event::Key {
-        key: Key::Enter,
-        physical_key: None,
-        pressed,
-        repeat: false,
-        modifiers: Modifiers::default(),
-    };
+    let enter = |pressed| Event::Key { key: Key::Enter, physical_key: None, pressed, repeat: false, modifiers: Modifiers::default() };
     frame_with(&mut t, &ctx, vec![enter(true), enter(false)]);
     frame_with(&mut t, &ctx, vec![]);
     assert!(t.dialog().is_none(), "Enter saves: {:?}", t.dialog());

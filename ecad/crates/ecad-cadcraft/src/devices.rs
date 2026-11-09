@@ -24,8 +24,8 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::derive::terminal_positions;
 use ecad_model::tag::{self, TAG_KEY};
 use ecad_model::{
-    Component, ComponentId, Definition, DefinitionId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op,
-    PageId, Placement, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    Component, ComponentId, Definition, DefinitionId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -71,8 +71,7 @@ pub fn padding(doc: &Document) -> u8 {
 pub fn valid_prefix(text: &str) -> Option<String> {
     let t = text.trim();
     let t = t.strip_prefix('-').unwrap_or(t);
-    ((1..=MAX_PREFIX_LETTERS).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphabetic()))
-        .then(|| t.to_ascii_uppercase())
+    ((1..=MAX_PREFIX_LETTERS).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphabetic())).then(|| t.to_ascii_uppercase())
 }
 
 /// The tag prefix a new device of symbol `s` gets in this project (letters, without `-`): the
@@ -261,12 +260,7 @@ pub fn labels_of(doc: &Document, c: ComponentId) -> BTreeSet<String> {
 ///
 /// # Errors
 /// Design 018 §3.1's refusals (T3).
-pub fn join_labels(
-    doc: &Document,
-    c: ComponentId,
-    s: &Starter,
-    extra: &BTreeSet<String>,
-) -> Result<Vec<String>, String> {
+pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, String> {
     let mut used = labels_of(doc, c);
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
@@ -284,15 +278,10 @@ pub fn join_labels(
             if next > 9 {
                 return Err(format!("{who} already has 9 contacts."));
             }
-            Ok(if make {
-                vec![format!("{next}3"), format!("{next}4")]
-            } else {
-                vec![format!("{next}1"), format!("{next}2")]
-            })
+            Ok(if make { vec![format!("{next}3"), format!("{next}4")] } else { vec![format!("{next}1"), format!("{next}2")] })
         }
         Kind::Terminal => {
-            let highest =
-                used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
+            let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
             Ok(vec![(highest + 1).to_string()])
         }
         Kind::Plc { letter } => {
@@ -361,14 +350,7 @@ pub struct Placed {
 /// The refusals of §3.1 (joining), an unknown device, no tag number left.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_place(
-    ledger: &Ledger,
-    ids: &mut IdAllocator,
-    high: &mut TagHigh,
-    page: PageId,
-    style: Style,
-    s: &Starter,
-    placement: Placement,
-    target: Target,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, s: &Starter, placement: Placement, target: Target,
 ) -> Result<Placed, String> {
     let doc = ledger.document();
     let mut ops = Vec::new();
@@ -405,10 +387,7 @@ pub fn plan_place(
             ops.push(Op::CreateComponent { id: c, component: Component { properties, definition: Some(definition) } });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
-                    id: tid,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) },
-                });
+                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.clone()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
@@ -423,17 +402,7 @@ pub fn plan_place(
                     connection_points: BTreeMap::new(),
                 },
             });
-            Ok(Placed {
-                ops,
-                label: "Place symbol".into(),
-                component: c,
-                representation,
-                item,
-                definition,
-                tag: t,
-                joined: false,
-                terminals,
-            })
+            Ok(Placed { ops, label: "Place symbol".into(), component: c, representation, item, definition, tag: t, joined: false, terminals })
         }
         Target::Join(c) => {
             if !doc.components.contains_key(&c) {
@@ -443,10 +412,7 @@ pub fn plan_place(
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
-                    id: tid,
-                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) },
-                });
+                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) } });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
             }
@@ -463,17 +429,7 @@ pub fn plan_place(
                 },
             });
             let t = tag_words(doc, c);
-            Ok(Placed {
-                ops,
-                label: format!("Add symbol to {t}"),
-                component: c,
-                representation,
-                item,
-                definition,
-                tag: t,
-                joined: true,
-                terminals,
-            })
+            Ok(Placed { ops, label: format!("Add symbol to {t}"), component: c, representation, item, definition, tag: t, joined: true, terminals })
         }
     }
 }
@@ -490,11 +446,7 @@ fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation) -> Vec<(T
             if r.connection_points.is_empty() {
                 def.terminals
                     .iter()
-                    .filter_map(|td| {
-                        doc.terminals_of(c)
-                            .find(|(_, t)| t.key.as_deref() == Some(td.key.as_str()))
-                            .map(|(t, _)| (t, td.at))
-                    })
+                    .filter_map(|td| doc.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| (t, td.at)))
                     .collect()
             } else {
                 let mut v: Vec<(TerminalId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
@@ -513,12 +465,7 @@ fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation) -> Vec<(T
 ///
 /// # Errors
 /// A label or exclusive symbol `into` already has (T3).
-pub fn plan_merge(
-    doc: &Document,
-    ids: &mut IdAllocator,
-    from: ComponentId,
-    into: ComponentId,
-) -> Result<Vec<Op>, String> {
+pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into: ComponentId) -> Result<Vec<Op>, String> {
     if from == into {
         return Err("A device cannot be merged with itself.".into());
     }
@@ -536,32 +483,20 @@ pub fn plan_merge(
         .any(|x| matches!(x.kind, Kind::Fixed { exclusive: true }));
     let who = tag_words(doc, into);
     let into_labels = labels_of(doc, into);
-    let add = |old: TerminalId,
-               label: String,
-               ops: &mut Vec<Op>,
-               ids: &mut IdAllocator,
-               map: &mut BTreeMap<TerminalId, TerminalId>|
-     -> TerminalId {
+    let add = |old: TerminalId, label: String, ops: &mut Vec<Op>, ids: &mut IdAllocator, map: &mut BTreeMap<TerminalId, TerminalId>| -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal {
-            id: nt,
-            terminal: Terminal { component: into, label: Some(label.clone()), key: Some(label) },
-        });
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label: Some(label.clone()), key: Some(label) } });
         map.insert(old, nt);
         nt
     };
-    let reps: Vec<(RepresentationId, Representation)> =
-        doc.representations_of(Subject::Component(from)).map(|(id, r)| (id, r.clone())).collect();
+    let reps: Vec<(RepresentationId, Representation)> = doc.representations_of(Subject::Component(from)).map(|(id, r)| (id, r.clone())).collect();
     let from_words = tag_words(doc, from);
     for (rid, r) in &reps {
         let shown = shown_terminals(doc, from, r);
         // A symbol whose device's connection points do not match its definition (an old or
         // hand-edited file) would move without any, which the model refuses (I14) with words
         // nobody can act on: say what is wrong instead.
-        if r.form == Form::Symbol
-            && shown.is_empty()
-            && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty())
-        {
+        if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty()) {
             let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.clone());
             return Err(format!(
                 "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
@@ -600,18 +535,11 @@ pub fn plan_merge(
             };
             cps.insert(nt, *at);
         }
-        let role = if r.role == "main" {
-            starter.map_or_else(|| r.role.clone(), |s| s.key.to_string())
-        } else {
-            r.role.clone()
-        };
+        let role = if r.role == "main" { starter.map_or_else(|| r.role.clone(), |s| s.key.to_string()) } else { r.role.clone() };
         let nr: RepresentationId = ids.fresh();
         ops_reps.push((
             Op::UnlinkRepresentation { id: *rid, rep: r.clone() },
-            Op::LinkRepresentation {
-                id: nr,
-                rep: Representation { subject: Subject::Component(into), role, connection_points: cps, ..r.clone() },
-            },
+            Op::LinkRepresentation { id: nr, rep: Representation { subject: Subject::Component(into), role, connection_points: cps, ..r.clone() } },
         ));
     }
     // Terminals no representation shows move too, with their labels.
@@ -666,17 +594,13 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     for (c, reps) in by_component {
         let Some(component) = doc.components.get(&c) else { continue };
-        let remaining: Vec<&Representation> = doc
-            .representations_of(Subject::Component(c))
-            .filter(|(id, _)| !gone.contains(id))
-            .map(|(_, r)| r)
-            .collect();
+        let remaining: Vec<&Representation> =
+            doc.representations_of(Subject::Component(c)).filter(|(id, _)| !gone.contains(id)).map(|(_, r)| r).collect();
         let who = tag_words(doc, c);
         let drop: Vec<TerminalId> = if remaining.is_empty() {
             doc.terminals_of(c).map(|(t, _)| t).collect()
         } else {
-            let kept: BTreeSet<TerminalId> =
-                remaining.iter().flat_map(|r| shown_terminals(doc, c, r)).map(|(t, _)| t).collect();
+            let kept: BTreeSet<TerminalId> = remaining.iter().flat_map(|r| shown_terminals(doc, c, r)).map(|(t, _)| t).collect();
             reps.iter()
                 .flat_map(|(_, r)| shown_terminals(doc, c, r))
                 .map(|(t, _)| t)
@@ -716,13 +640,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
 
 fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
     let pages: BTreeSet<PageId> = reps.iter().map(|r| r.page).collect();
-    let n: Vec<String> = doc
-        .page_order
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| pages.contains(p))
-        .map(|(i, _)| (i + 1).to_string())
-        .collect();
+    let n: Vec<String> = doc.page_order.iter().enumerate().filter(|(_, p)| pages.contains(p)).map(|(i, _)| (i + 1).to_string()).collect();
     if n.len() == 1 { format!("page {}", n.join(", ")) } else { format!("pages {}", n.join(", ")) }
 }
 
@@ -781,10 +699,7 @@ fn vertical(pl: &Placement) -> bool {
 /// The texts of one symbol representation at `pl` (also used by the placing preview): its
 /// device's tag and the labels `labels` at their page positions.
 pub fn texts_for(
-    def: &Definition,
-    pl: &Placement,
-    tag: Option<&str>,
-    labels: &[(TextOf, String, Pt)],
+    def: &Definition, pl: &Placement, tag: Option<&str>, labels: &[(TextOf, String, Pt)],
 ) -> Vec<(TextOf, String, Pt, f64, HAlign, VAlign)> {
     let Some((lo, hi)) = placed_box(def, pl) else { return Vec::new() };
     let centre = Pt::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0);
@@ -857,15 +772,7 @@ pub fn text_entity(t: &DerivedText, handle: Handle) -> Entity {
 }
 
 /// A justified text entity.
-pub fn text_entity_with(
-    value: &str,
-    at: Pt,
-    height: f64,
-    halign: HAlign,
-    valign: VAlign,
-    handle: Handle,
-    layer: &str,
-) -> Entity {
+pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: HAlign, valign: VAlign, handle: Handle, layer: &str) -> Entity {
     let p = Vec3::new(at.x, at.y, 0.0);
     let justified = !(halign == HAlign::Left && valign == VAlign::Baseline);
     Entity {
@@ -1062,11 +969,7 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
-        lines.push(format!(
-            "This symbol: {}, {}{cannot}",
-            rep_words(doc, c, r),
-            crate::references::page_words(doc, r.page)
-        ));
+        lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)));
     }
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let mut others: Vec<(usize, RepresentationId, String)> = doc

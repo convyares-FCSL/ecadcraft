@@ -109,11 +109,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
     let mut crash_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let status = std::process::Command::new(exe)
-            .arg("--crash-save")
-            .arg(&copy)
-            .status()
-            .map_err(|e| format!("starting the crash child: {e}"))?;
+        let status = std::process::Command::new(exe).arg("--crash-save").arg(&copy).status().map_err(|e| format!("starting the crash child: {e}"))?;
         if !status.success() {
             return Err(format!("the crash child failed ({status})"));
         }
@@ -287,16 +283,8 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
             |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
             |b| ecad_file::v2::pack::decode_ruzstd(b),
         ),
-        (
-            "zstd 1",
-            |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()),
-            |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b),
-        ),
-        (
-            "zstd 3",
-            |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()),
-            |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b),
-        ),
+        ("zstd 1", |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()), |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b)),
+        ("zstd 3", |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()), |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b)),
     ];
     for (name, enc, dec) in all {
         let t = Instant::now();
@@ -312,13 +300,7 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         let decompress_ms = ms(t);
         // Stored as the container stores them: compressed only when smaller.
         let size = |z: &[Vec<u8>], raw: &[Vec<u8>]| z.iter().zip(raw).map(|(z, r)| z.len().min(r.len()) as u64).sum();
-        codecs.push(Codec {
-            name,
-            rows_bytes: size(&z_rows, &rows),
-            parts_bytes: size(&z_chunks, &chunks),
-            compress_ms,
-            decompress_ms,
-        });
+        codecs.push(Codec { name, rows_bytes: size(&z_rows, &rows), parts_bytes: size(&z_chunks, &chunks), compress_ms, decompress_ms });
     }
     Ok(Compression { raw_rows, raw_chunks, codecs })
 }
@@ -340,12 +322,7 @@ pub fn growth(path: &Path, batches: u64) -> Result<(), String> {
             let before = o.ledger.document().properties.get("bench.growth").cloned();
             let after = if flip { "a" } else { "b" };
             flip = !flip;
-            let ops = vec![Op::SetProperty {
-                object: ObjectRef::Project,
-                key: "bench.growth".into(),
-                before,
-                after: Some(after.into()),
-            }];
+            let ops = vec![Op::SetProperty { object: ObjectRef::Project, key: "bench.growth".into(), before, after: Some(after.into()) }];
             o.ledger.commit(Author::User, "growth", ops).map_err(|e| e.to_string())?;
         }
         let t = Instant::now();

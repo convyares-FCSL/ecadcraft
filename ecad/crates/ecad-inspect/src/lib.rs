@@ -14,14 +14,7 @@
 //! The static viewer in `ecad/tools/inspector/` reads these files.
 //!
 //! This crate intentionally has **no** mutation API, no network server and no CADCraft dependency.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::collections::VecDeque;
 
@@ -108,25 +101,11 @@ impl Default for EventLog {
 
 impl EventLog {
     /// Record an event.
-    pub fn record(
-        &mut self,
-        kind: EventKind,
-        command: Option<&str>,
-        seq: u64,
-        page: Option<PageId>,
-        message: impl Into<String>,
-    ) {
+    pub fn record(&mut self, kind: EventKind, command: Option<&str>, seq: u64, page: Option<PageId>, message: impl Into<String>) {
         if self.events.len() >= self.cap {
             self.events.pop_front();
         }
-        self.events.push_back(Event {
-            n: self.next,
-            kind,
-            command: command.map(str::to_string),
-            seq,
-            page,
-            message: message.into(),
-        });
+        self.events.push_back(Event { n: self.next, kind, command: command.map(str::to_string), seq, page, message: message.into() });
         self.next += 1;
     }
     /// All retained events, oldest first.
@@ -178,15 +157,9 @@ pub struct LiveFacts {
 fn label_of(doc: &Document, s: Subject) -> String {
     let tag = |p: &ecad_model::Properties| p.get("tag").cloned();
     match s {
-        Subject::Component(c) => {
-            doc.components.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged component".into())
-        }
-        Subject::Conductor(c) => {
-            doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into())
-        }
-        Subject::Cable(c) => {
-            doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into())
-        }
+        Subject::Component(c) => doc.components.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged component".into()),
+        Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into()),
+        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
     }
 }
 
@@ -214,21 +187,14 @@ fn index(doc: &Document) -> Vec<Value> {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
     }
     for (id, r) in &doc.representations {
-        push(
-            "representation",
-            format!("{:032x}", id.0),
-            id.short(),
-            format!("{} of {}", r.role, label_of(doc, r.subject)),
-        );
+        push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));
     }
     for (id, d) in &doc.definitions {
         push("definition", format!("{:032x}", id.0), id.short(), d.name.clone());
     }
     for (id, i) in &doc.items {
         let what = match &i.kind {
-            ecad_model::ItemKind::Primitive(p) => {
-                format!("{p:?}").split([' ', '{']).next().unwrap_or("item").to_lowercase()
-            }
+            ecad_model::ItemKind::Primitive(p) => format!("{p:?}").split([' ', '{']).next().unwrap_or("item").to_lowercase(),
             ecad_model::ItemKind::Symbol(_) => "symbol".into(),
         };
         push("item", format!("{:032x}", id.0), id.short(), what);
@@ -249,13 +215,7 @@ fn index(doc: &Document) -> Vec<Value> {
 ///
 /// # Errors
 /// `seq` past the head, or a log that fails to replay.
-pub fn snapshot(
-    name: &str,
-    ledger: &Ledger,
-    at: Option<u64>,
-    events: &EventLog,
-    live: Option<&LiveFacts>,
-) -> Result<Value, ModelError> {
+pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog, live: Option<&LiveFacts>) -> Result<Value, ModelError> {
     let seq = at.unwrap_or(ledger.head());
     let reconstructed;
     let doc: &Document = match at {

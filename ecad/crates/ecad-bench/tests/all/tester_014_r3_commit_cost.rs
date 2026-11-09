@@ -45,9 +45,7 @@ fn tester_014_r3_whole_document_work_per_commit() {
     let copy = dir.join("cost.ecad");
     std::fs::copy(&path, &copy).unwrap();
     let mut s = Session::empty();
-    let (project, _) =
-        ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none())
-            .unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
     let page = *doc.page_order.first().unwrap();
     let runs = 9;

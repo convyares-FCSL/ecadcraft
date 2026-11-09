@@ -13,10 +13,7 @@ use ecad_model::{CableId, Document, Op, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
 use super::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
-use super::{
-    OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read,
-    ring_kind, v2,
-};
+use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
 use crate::project::{Mapped, Project};
 use crate::references::{self as refs, ORPHAN_ACI, REFERENCE_ACI};
 
@@ -59,8 +56,7 @@ fn reference_named(p: &Project, m: Mapped) -> Option<RepresentationId> {
 fn ring_and_text(s: &Session, at: Pt, text: &str, orphan: bool, left: bool) -> Vec<Entity> {
     let Some(px) = pixel(s) else { return Vec::new() };
     let aci = if orphan { ORPHAN_ACI } else { REFERENCE_ACI };
-    let mut out: Vec<Entity> =
-        [RING - 1.0, RING, RING + 1.0].into_iter().map(|d| preview_entity(s, ring_kind(at, d, px), aci)).collect();
+    let mut out: Vec<Entity> = [RING - 1.0, RING, RING + 1.0].into_iter().map(|d| preview_entity(s, ring_kind(at, d, px), aci)).collect();
     // The preview text is left-aligned; its width is estimated from its characters.
     let width = text.chars().count() as f64 * PREVIEW_TEXT_PX * 0.8 * px;
     let x = if left { at.x - RING * px - width } else { at.x + RING * px };
@@ -101,11 +97,7 @@ impl CableRef {
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(format!(
-                "Reference for cable {} placed on {}.",
-                crate::views::cable_title(doc, k),
-                refs::page_number_words(doc, page)
-            ))
+            Ok(format!("Reference for cable {} placed on {}.", crate::views::cable_title(doc, k), refs::page_number_words(doc, page)))
         })
         .unwrap_or_else(|_| "Reference placed.".into());
         s.echo(line);
@@ -231,12 +223,8 @@ const MAX_LISTED: usize = 20;
 /// or a leading hex prefix of at least 8 digits naming one cable.
 fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     let t = typed.trim();
-    let tagged: Vec<CableId> = doc
-        .cables
-        .iter()
-        .filter(|(_, c)| c.properties.get("tag").is_some_and(|x| x.eq_ignore_ascii_case(t)))
-        .map(|(k, _)| *k)
-        .collect();
+    let tagged: Vec<CableId> =
+        doc.cables.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
     let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
         let lower = t.to_ascii_lowercase();
         doc.cables.keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()
@@ -294,8 +282,7 @@ impl Continue {
     }
 
     fn finish(&mut self, s: &mut Session, k: CableId, at: Pt, toward: Pt) -> R<Step> {
-        let r =
-            commit(s, "cablecontinue", &json!({"cable": k.hex(), "at": [at.x, at.y], "toward": [toward.x, toward.y]}))?;
+        let r = commit(s, "cablecontinue", &json!({"cable": k.hex(), "at": [at.x, at.y], "toward": [toward.x, toward.y]}))?;
         for l in r.get("messages").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
             s.echo(l.to_string());
         }
@@ -308,30 +295,28 @@ impl Continue {
 
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
         match (self.cable, self.at) {
-            (None, _) => {
-                match i {
-                    Input::Enter => match self.default {
-                        Some((k, _)) => self.pick_cable(s, k),
-                        None => {
-                            s.echo("No cable reference is waiting for its other end; place one with Cable Reference first.");
-                            Ok(Step::Done)
-                        }
-                    },
-                    Input::Keyword(k) if k == "List" => {
-                        Self::list(s);
-                        Ok(Step::Continue)
+            (None, _) => match i {
+                Input::Enter => match self.default {
+                    Some((k, _)) => self.pick_cable(s, k),
+                    None => {
+                        s.echo("No cable reference is waiting for its other end; place one with Cable Reference first.");
+                        Ok(Step::Done)
                     }
-                    Input::Text(t) | Input::Keyword(t) => {
-                        if matches!(t.trim().to_ascii_lowercase().as_str(), "l" | "list") {
-                            Self::list(s);
-                            return Ok(Step::Continue);
-                        }
-                        let k = read(s, |p, _| cable_typed(p.ledger.document(), &t)).map_err(other)?;
-                        self.pick_cable(s, k)
-                    }
-                    _ => Ok(Step::Continue),
+                },
+                Input::Keyword(k) if k == "List" => {
+                    Self::list(s);
+                    Ok(Step::Continue)
                 }
-            }
+                Input::Text(t) | Input::Keyword(t) => {
+                    if matches!(t.trim().to_ascii_lowercase().as_str(), "l" | "list") {
+                        Self::list(s);
+                        return Ok(Step::Continue);
+                    }
+                    let k = read(s, |p, _| cable_typed(p.ledger.document(), &t)).map_err(other)?;
+                    self.pick_cable(s, k)
+                }
+                _ => Ok(Step::Continue),
+            },
             (Some(_), None) => match i {
                 Input::Point(p) if !in_range(p) => Err(other(OUT_OF_RANGE)),
                 Input::Point(p) => {
@@ -359,9 +344,7 @@ impl Continue {
 
     /// The plan a click at `toward` would commit (the JSON form's own planning).
     fn plan(s: &Session, k: CableId, at: Pt, toward: Pt) -> Option<refs::Plan> {
-        read(s, |p, page| Ok(refs::plan_continue(p.ledger.document(), page, k, None, at, toward, p.tolerance).ok()))
-            .ok()
-            .flatten()
+        read(s, |p, page| Ok(refs::plan_continue(p.ledger.document(), page, k, None, at, toward, p.tolerance).ok())).ok().flatten()
     }
 }
 
@@ -379,9 +362,7 @@ impl Interactive for Continue {
                 }
             }
             (Some(_), None) => Prompt::new("Specify reference point", Accept::POINT),
-            (Some(_), Some(at)) => {
-                Prompt::new("Specify direction and length of the wires", Accept::POINT).kw(&["Undo"]).base(v2(at))
-            }
+            (Some(_), Some(at)) => Prompt::new("Specify direction and length of the wires", Accept::POINT).kw(&["Undo"]).base(v2(at)),
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -415,8 +396,7 @@ impl Interactive for Continue {
                 let words = match Self::plan(s, k, at, pt(cursor)) {
                     Some(plan) => {
                         let n = plan.stubs.len();
-                        let mut w =
-                            format!("-> {} continue", if n == 1 { "1 wire".to_string() } else { format!("{n} wires") });
+                        let mut w = format!("-> {} continue", if n == 1 { "1 wire".to_string() } else { format!("{n} wires") });
                         if !plan.skipped.is_empty() {
                             w.push_str(&format!(", {} skipped", plan.skipped.len()));
                         }
@@ -444,8 +424,7 @@ struct Goto;
 
 const NOT_A_REFERENCE: &str = "That is not a cable reference.";
 const NOTHING_TO_GO: &str = "Nothing there. Click a cable reference.";
-const ORPHAN: &str =
-    "This reference has no other end (orphan); continue the cable on another page with Continue Cable.";
+const ORPHAN: &str = "This reference has no other end (orphan); continue the cable on another page with Continue Cable.";
 
 impl Goto {
     /// The reference under a handle and whether it has another end.

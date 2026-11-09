@@ -8,13 +8,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings,
-    Representation, Terminal,
+    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal,
 };
 use crate::error::{ModelError, Result};
-use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
-};
+use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::Delta;
 
 /// An object that carries properties.
@@ -191,13 +188,7 @@ fn absent<K: Ord + Copy + std::fmt::Display, V>(map: &BTreeMap<K, V>, id: K, wha
 
 /// Precondition: `map` holds exactly `v` at `id` (only that it holds something at `id` when not
 /// `checked`).
-fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(
-    map: &BTreeMap<K, V>,
-    id: K,
-    v: &V,
-    what: &str,
-    checked: bool,
-) -> Result<()> {
+fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(map: &BTreeMap<K, V>, id: K, v: &V, what: &str, checked: bool) -> Result<()> {
     match map.get(&id) {
         Some(cur) if !checked || cur == v => Ok(()),
         Some(_) => Err(pre(format!("{what} {id} differs from the recorded value"))),
@@ -222,21 +213,15 @@ impl Op {
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
-            Op::ModifyRepresentation { id, before, after } => {
-                Op::ModifyRepresentation { id, before: after, after: before }
-            }
+            Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
             Op::CreateConductor { id, conductor } => Op::DeleteConductor { id, conductor },
             Op::DeleteConductor { id, conductor } => Op::CreateConductor { id, conductor },
-            Op::AttachEnd { conductor, end, before, after } => {
-                Op::AttachEnd { conductor, end, before: after, after: before }
-            }
+            Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
             Op::AddCableMember { cable, index, member } => Op::RemoveCableMember { cable, index, member },
             Op::RemoveCableMember { cable, index, member } => Op::AddCableMember { cable, index, member },
-            Op::SetProperty { object, key, before, after } => {
-                Op::SetProperty { object, key, before: after, after: before }
-            }
+            Op::SetProperty { object, key, before, after } => Op::SetProperty { object, key, before: after, after: before },
             Op::EmbedDefinition { id, definition } => Op::RemoveDefinition { id, definition },
             Op::RemoveDefinition { id, definition } => Op::EmbedDefinition { id, definition },
             Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: after, after: before },
@@ -400,10 +385,7 @@ impl Op {
                 }
             }
             Op::AttachEnd { conductor, end, before, after } => {
-                let c = doc
-                    .conductors
-                    .get_mut(conductor)
-                    .ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
+                let c = doc.conductors.get_mut(conductor).ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
                 let current = c.end(*end);
                 if checked && current != *before {
                     return Err(pre(format!("conductor {conductor} end {end:?} is not attached as recorded")));

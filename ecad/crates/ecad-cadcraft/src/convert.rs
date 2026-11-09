@@ -4,14 +4,9 @@
 //! reproduces it exactly (H2, projection fidelity). Anything else is reported as unsupported
 //! rather than silently simplified.
 
-use cadcraft_engine::doc::{
-    Arc as CArc, Circle, Common, Entity, EntityKind, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint,
-    Text,
-};
+use cadcraft_engine::doc::{Arc as CArc, Circle, Common, Entity, EntityKind, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text};
 use cadcraft_engine::geom::{PolyVertex, Vec2, Vec3};
-use ecad_model::{
-    Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance,
-};
+use ecad_model::{Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance};
 
 /// Layer that carries terminal markers in projected drawings. Reserved: users' edits on it are refused.
 pub const MARKER_LAYER: &str = "ECAD-TERMINALS";
@@ -71,18 +66,13 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
     match p {
         Primitive::Line { a, b } => EntityKind::Line(Line { a: v3(*a), b: v3(*b) }),
         Primitive::Polyline { vertices, closed } => EntityKind::LwPolyline(LwPolyline {
-            vertices: vertices
-                .iter()
-                .map(|p| PolyVertex { p: Vec2::new(p.x, p.y), bulge: 0.0, start_width: 0.0, end_width: 0.0 })
-                .collect(),
+            vertices: vertices.iter().map(|p| PolyVertex { p: Vec2::new(p.x, p.y), bulge: 0.0, start_width: 0.0, end_width: 0.0 }).collect(),
             closed: *closed,
             const_width: 0.0,
             elevation: 0.0,
             plinegen: false,
         }),
-        Primitive::Arc { center, radius, start, end } => {
-            EntityKind::Arc(CArc { center: v3(*center), radius: *radius, start: *start, end: *end })
-        }
+        Primitive::Arc { center, radius, start, end } => EntityKind::Arc(CArc { center: v3(*center), radius: *radius, start: *start, end: *end }),
         Primitive::Circle { center, radius } => EntityKind::Circle(Circle { center: v3(*center), radius: *radius }),
         Primitive::Text { at, height, rotation, value } => EntityKind::Text(Text {
             insert: v3(*at),
@@ -127,11 +117,7 @@ pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity>
 
 /// A terminal marker entity.
 pub fn marker_entity(at: Pt, handle: Handle) -> Entity {
-    Entity {
-        handle,
-        common: Common { layer: MARKER_LAYER.into(), ..Common::default() },
-        kind: EntityKind::Point(CPoint { p: v3(at), angle: 0.0 }),
-    }
+    Entity { handle, common: Common { layer: MARKER_LAYER.into(), ..Common::default() }, kind: EntityKind::Point(CPoint { p: v3(at), angle: 0.0 }) }
 }
 
 /// Position of a marker entity, if it is one.
@@ -145,15 +131,10 @@ pub fn marker_position(e: &Entity) -> Option<Pt> {
 fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
     Some(match kind {
         EntityKind::Line(l) => Primitive::Line { a: pt(l.a), b: pt(l.b) },
-        EntityKind::LwPolyline(p) => Primitive::Polyline {
-            vertices: p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(),
-            closed: p.closed,
-        },
+        EntityKind::LwPolyline(p) => Primitive::Polyline { vertices: p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(), closed: p.closed },
         EntityKind::Arc(a) => Primitive::Arc { center: pt(a.center), radius: a.radius, start: a.start, end: a.end },
         EntityKind::Circle(c) => Primitive::Circle { center: pt(c.center), radius: c.radius },
-        EntityKind::Text(t) => {
-            Primitive::Text { at: pt(t.insert), height: t.height, rotation: t.rotation, value: t.value.clone() }
-        }
+        EntityKind::Text(t) => Primitive::Text { at: pt(t.insert), height: t.height, rotation: t.rotation, value: t.value.clone() },
         EntityKind::Point(p) => Primitive::Point { at: pt(p.p) },
         _ => return None,
     })
@@ -163,10 +144,7 @@ fn symbol_from(kind: &EntityKind) -> Option<SymbolInstance> {
     let EntityKind::Insert(i) = kind else { return None };
     let definition = definition_of_block(&i.block)?;
     let scale = i.scale.y;
-    Some(SymbolInstance {
-        definition,
-        placement: Placement { origin: pt(i.insert), rotation: i.rotation, mirror: i.scale.x < 0.0, scale },
-    })
+    Some(SymbolInstance { definition, placement: Placement { origin: pt(i.insert), rotation: i.rotation, mirror: i.scale.x < 0.0, scale } })
 }
 
 /// Why an entity cannot be recorded.
@@ -200,16 +178,13 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     if e.common.layer == crate::views::LAYER {
         return Err(crate::views::LAYER_RESERVED.into());
     }
-    let layer: LayerId =
-        doc.layers.iter().find(|(_, l)| l.name == e.common.layer).map(|(id, _)| *id).ok_or_else(|| {
-            format!("layer {} is not part of the project (layer edits are not supported yet)", e.common.layer)
-        })?;
-    let style = Style {
-        layer,
-        color: color_from(e.common.color),
-        linetype: e.common.linetype.clone(),
-        lineweight: e.common.lineweight.to_dxf(),
-    };
+    let layer: LayerId = doc
+        .layers
+        .iter()
+        .find(|(_, l)| l.name == e.common.layer)
+        .map(|(id, _)| *id)
+        .ok_or_else(|| format!("layer {} is not part of the project (layer edits are not supported yet)", e.common.layer))?;
+    let style = Style { layer, color: color_from(e.common.color), linetype: e.common.linetype.clone(), lineweight: e.common.lineweight.to_dxf() };
     let kind = match (primitive_from(&e.kind), symbol_from(&e.kind)) {
         (Some(p), _) => ItemKind::Primitive(p),
         (_, Some(s)) => ItemKind::Symbol(s),

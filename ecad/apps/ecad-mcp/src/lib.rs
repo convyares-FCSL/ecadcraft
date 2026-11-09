@@ -19,14 +19,7 @@
 //!
 //! Excluded on purpose: the bridged mode (an agent driving the running trial; a later brief),
 //! proposals held outside the log, library tools and anything beyond stdio on this machine.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod args;
 pub mod demo;
@@ -61,15 +54,12 @@ const INVALID_REQUEST: i64 = -32600;
 const INVALID_PARAMS: i64 = -32602;
 
 /// CADCraft's tools that ECAD's server offers; the others are refused as unknown tools.
-pub const CADCRAFT_TOOLS: &[&str] =
-    &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
+pub const CADCRAFT_TOOLS: &[&str] = &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
 
 /// Said when an agent asks for a CADCraft tool ECAD's server does not offer.
 pub fn not_offered(name: &str) -> String {
     let why = match name {
-        "command_line" | "script" | "cancel" => {
-            " ECAD changes go through `execute` only (one command with JSON parameters per call)."
-        }
+        "command_line" | "script" | "cancel" => " ECAD changes go through `execute` only (one command with JSON parameters per call).",
         "new_drawing" | "open" => " The project is opened by the person who starts the server.",
         _ => "",
     };
@@ -112,8 +102,7 @@ pub fn author_text(a: &Author) -> String {
 }
 
 /// Said when the project cannot be read to check a call; the call is refused (fail closed).
-pub const UNREADABLE: &str =
-    "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
+pub const UNREADABLE: &str = "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
 
 /// The session, the project and the gate, shared by the server and its backend.
 pub(crate) struct State {
@@ -215,9 +204,8 @@ impl State {
         let before = self.log_len()?;
         let r = self.headless.call("engine.execute", json!({ "command": given, "params": params }));
         let name = id.to_ascii_uppercase();
-        let new = self.log_since(before).map_err(|e| {
-            format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history.")
-        })?;
+        let new =
+            self.log_since(before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
         let used = self.line_transactions;
         if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
             let what = if used > 0 {
@@ -326,14 +314,7 @@ fn install() -> Result<(), String> {
 
 impl EcadMcp {
     fn with(headless: Headless, project: ProjectHandle, opts: Options) -> Result<Self, String> {
-        let state = Rc::new(RefCell::new(State {
-            headless,
-            project,
-            write: opts.write,
-            agent: String::new(),
-            named: false,
-            line_transactions: 0,
-        }));
+        let state = Rc::new(RefCell::new(State { headless, project, write: opts.write, agent: String::new(), named: false, line_transactions: 0 }));
         let inner = Server::new(Box::new(Gated(Rc::clone(&state))));
         let mut me = EcadMcp { inner, state, agent_override: opts.agent.clone() };
         // No agent edit is ever recorded as the person's, even before `initialize`.
@@ -380,10 +361,8 @@ impl EcadMcp {
             return Err(format!("the folder {} does not exist; create it first. Nothing was written.", dir.display()));
         }
         let mut headless = Headless { session: Session::empty() };
-        let name =
-            std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-        let project =
-            Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
+        let name = std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        let project = Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
         headless.session.execute("saveas", &json!({ "path": path })).map_err(|e| e.to_string())?;
         Self::with(headless, project, opts)
     }
@@ -439,16 +418,11 @@ impl EcadMcp {
                 return Ok(());
             }
             let reply = if over {
-                Some(
-                    error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)"))
-                        .to_string(),
-                )
+                Some(error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)")).to_string())
             } else {
                 match std::str::from_utf8(&line) {
                     Ok(text) => self.handle_line(text),
-                    Err(_) => {
-                        Some(error(Value::Null, PARSE_ERROR, "parse error: the request is not UTF-8").to_string())
-                    }
+                    Err(_) => Some(error(Value::Null, PARSE_ERROR, "parse error: the request is not UTF-8").to_string()),
                 }
             };
             if let Some(reply) = reply {
@@ -466,10 +440,7 @@ impl EcadMcp {
             return None;
         }
         if line.len() > MAX_REQUEST_BYTES {
-            return Some(
-                error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)"))
-                    .to_string(),
-            );
+            return Some(error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)")).to_string());
         }
         // One request line is one call for the transaction cap, batches included.
         if let Ok(mut st) = self.state_mut() {
@@ -523,10 +494,7 @@ impl EcadMcp {
                 let writes = self.writes();
                 let agent = self.agent();
                 if let Some(res) = r.get_mut("result").and_then(Value::as_object_mut) {
-                    res.insert(
-                        "serverInfo".into(),
-                        json!({"name": "ecad", "title": "ECAD (headless)", "version": env!("CARGO_PKG_VERSION")}),
-                    );
+                    res.insert("serverInfo".into(), json!({"name": "ecad", "title": "ECAD (headless)", "version": env!("CARGO_PKG_VERSION")}));
                     res.insert("instructions".into(), json!(tools::instructions(writes, &agent)));
                 }
                 Some(r)

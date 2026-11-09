@@ -128,9 +128,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
     let kind = rng.below(100);
     Some(match kind {
         // Move components (their wires follow, M2).
-        0..=19 => {
-            ("move component", "move", json!({"handles": hexes(&some(rng, &st.symbols, 3)), "delta": rng.delta()}))
-        }
+        0..=19 => ("move component", "move", json!({"handles": hexes(&some(rng, &st.symbols, 3)), "delta": rng.delta()})),
         // Move a component together with some routes and other entities.
         20..=27 => {
             let mut hs = some(rng, &st.symbols, 2);
@@ -169,11 +167,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
                 let angle = [90.0, 180.0, 270.0][rng.below(3)];
                 ("rotate", "rotate", json!({"handles": [h.hex()], "base": [at.x, at.y], "angle": angle}))
             } else {
-                (
-                    "mirror",
-                    "mirror",
-                    json!({"handles": [h.hex()], "p1": [at.x, at.y], "p2": [at.x, at.y + 10.0], "erase": true}),
-                )
+                ("mirror", "mirror", json!({"handles": [h.hex()], "p1": [at.x, at.y], "p2": [at.x, at.y + 10.0], "erase": true}))
             }
         }
         // Erase anything.
@@ -228,26 +222,21 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
     std::fs::write(&path, g.file_bytes().unwrap()).unwrap();
 
     let mut s = Session::empty();
-    let (project, _) =
-        ProjectHandle::open_file_in(&mut s, path.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none())
-            .unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, path.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
     let page = g.pages[0];
     let seed = seed();
     // Straight to stderr, past the test harness's capture: the oracle aborts the process on a
     // difference, and the seed must still be on screen to replay it.
     {
         use std::io::Write;
-        let _ =
-            writeln!(std::io::stderr(), "translate_differential: seed {seed:#x} (rerun with ECAD_DIFF_SEED={seed:#x})");
+        let _ = writeln!(std::io::stderr(), "translate_differential: seed {seed:#x} (rerun with ECAD_DIFF_SEED={seed:#x})");
     }
     let mut rng = Rng(seed | 1);
     let start = translate_oracle::comparisons();
     let accepted_start = translate_oracle::accepted();
     let mut per_kind: std::collections::BTreeMap<&str, (u64, u64)> = Default::default();
     let mut attempts = 0;
-    while (translate_oracle::comparisons() - start < EDITS || translate_oracle::accepted() - accepted_start < ACCEPTED)
-        && attempts < MAX_ATTEMPTS
-    {
+    while (translate_oracle::comparisons() - start < EDITS || translate_oracle::accepted() - accepted_start < ACCEPTED) && attempts < MAX_ATTEMPTS {
         attempts += 1;
         let st = page_state(&project, &mut s, page);
         let Some((name, cmd, params)) = edit(&mut rng, &st, &s) else { continue };
@@ -269,9 +258,7 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
     }
     assert!(compared >= EDITS, "seed {seed:#x}: only {compared} translations compared in {attempts} edits");
     assert!(accepted >= ACCEPTED, "seed {seed:#x}: only {accepted} translations accepted with ops");
-    for kind in
-        ["move component", "move route", "drag one end", "erase", "copy", "pasteclip", "line", "rotate", "mirror"]
-    {
+    for kind in ["move component", "move route", "drag one end", "erase", "copy", "pasteclip", "line", "rotate", "mirror"] {
         assert!(per_kind.get(kind).is_some_and(|(_, c)| *c > 0), "seed {seed:#x}: no {kind} was translated");
     }
     // The project is still whole: the log replays to the live document.

@@ -25,10 +25,7 @@ impl TempDir {
     }
     /// File names in the folder, sorted.
     fn names(&self) -> Vec<String> {
-        let mut v: Vec<String> = std::fs::read_dir(&self.0)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
+        let mut v: Vec<String> = std::fs::read_dir(&self.0).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         v.sort();
         v
     }
@@ -46,11 +43,7 @@ fn edit(ledger: &mut Ledger, title: &str) {
     ledger.commit(Author::User, title, vec![Op::AddPage { id, page: Page::new(title), index }]).unwrap();
 }
 
-fn create(
-    path: &Path,
-    ledger: &mut Ledger,
-    faults: StepFaults,
-) -> std::result::Result<(DiskProject, Durability), DiskError> {
+fn create(path: &Path, ledger: &mut Ledger, faults: StepFaults) -> std::result::Result<(DiskProject, Durability), DiskError> {
     DiskProject::create(path, PROJECT, ledger, None, WRITER, faults)
 }
 
@@ -482,9 +475,7 @@ fn save_as_is_confirmed_only_when_the_folder_flush_ran_and_succeeded() {
     // acknowledged.
     let failed = StepFaults { fail_dir_sync: true, ..StepFaults::default() };
     let unavailable = StepFaults { dir_sync_unavailable: true, ..StepFaults::default() };
-    for (name, faults, reason) in
-        [("failed", failed, "injected folder flush failure"), ("unavailable", unavailable, "not available")]
-    {
+    for (name, faults, reason) in [("failed", failed, "injected folder flush failure"), ("unavailable", unavailable, "not available")] {
         let mut ledger = fixture().ledger;
         let (project, durability) = create(&d.path(&format!("{name}.ecad")), &mut ledger, faults).unwrap();
         let Durability::Unconfirmed(why) = durability else { panic!("{name}: confirmed without a flush") };

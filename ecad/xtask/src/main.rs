@@ -115,21 +115,14 @@ fn patches() -> Result<(), String> {
     let upstream = std::fs::read_to_string(root.join("UPSTREAM.md")).map_err(|e| e.to_string())?;
     let base = upstream_commit(&upstream).ok_or("ecad/UPSTREAM.md has no `Commit:` line")?;
     let listed = inventory(&std::fs::read_to_string(root.join("UPSTREAM-PATCHES.md")).map_err(|e| e.to_string())?);
-    let out = Command::new("git")
-        .args(["diff", "--name-only", &format!("{base}...HEAD")])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let out = Command::new("git").args(["diff", "--name-only", &format!("{base}...HEAD")]).current_dir(repo).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("git diff against {base} failed: {}", String::from_utf8_lossy(&out.stderr)));
     }
     let changed: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect();
     let unlisted: Vec<&String> = changed.iter().filter(|p| !p.starts_with("ecad/") && !listed.contains(p)).collect();
     let stale: Vec<&String> = listed.iter().filter(|p| !changed.contains(p)).collect();
-    println!(
-        "patches: {} upstream-tree files differ from {base}",
-        changed.iter().filter(|p| !p.starts_with("ecad/")).count()
-    );
+    println!("patches: {} upstream-tree files differ from {base}", changed.iter().filter(|p| !p.starts_with("ecad/")).count());
     if !stale.is_empty() {
         println!("patches: listed but unchanged (fine before the patch lands): {stale:?}");
     }
@@ -152,8 +145,7 @@ fn wasm() -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     let meta: Value = serde_json::from_slice(&meta.stdout).map_err(|e| e.to_string())?;
-    let present: Vec<&str> =
-        meta["packages"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
+    let present: Vec<&str> = meta["packages"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
     let mut cmd = Command::new(env!("CARGO"));
     cmd.args(["build", "--target", "wasm32-unknown-unknown"]).current_dir(&root);
     for c in WASM_CRATES.iter().filter(|c| present.contains(c)) {
@@ -168,14 +160,10 @@ fn ci() -> Result<(), String> {
     let root = ecad_root();
     let cargo = env!("CARGO");
     run(Command::new(cargo).args(["fmt", "--all", "--check"]).current_dir(&root))?;
-    run(Command::new(cargo)
-        .args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"])
-        .current_dir(&root))?;
+    run(Command::new(cargo).args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]).current_dir(&root))?;
     // All features: the fault-injection containment tests run in CI, never in normal builds.
     // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
-    run(Command::new(cargo)
-        .args(["test", "--workspace", "--all-features", "--", "--include-ignored"])
-        .current_dir(&root))?;
+    run(Command::new(cargo).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
     patches()?;
@@ -203,10 +191,7 @@ fn demo(args: &[String]) -> Result<(), String> {
 
 /// The load benchmark in release, with `args` passed through. Never called by [`ci`].
 fn bench(args: &[String]) -> Result<(), String> {
-    run(Command::new(env!("CARGO"))
-        .args(["run", "--release", "--package", "ecad-bench", "--"])
-        .args(args)
-        .current_dir(ecad_root()))
+    run(Command::new(env!("CARGO")).args(["run", "--release", "--package", "ecad-bench", "--"]).args(args).current_dir(ecad_root()))
 }
 
 /// Files that change every crate's build: the workspace manifest and lock file, cargo's
@@ -216,8 +201,7 @@ fn bench(args: &[String]) -> Result<(), String> {
 /// own). `path` is lower case, relative to the repository root; `workspace` is the workspace
 /// folder the same way, with a trailing `/` (empty at the root).
 fn affects_everything(path: &str, workspace: &str) -> bool {
-    let build =
-        |p: &str| matches!(p, "cargo.toml" | "rust-toolchain.toml" | "rust-toolchain") || p.starts_with(".cargo/");
+    let build = |p: &str| matches!(p, "cargo.toml" | "rust-toolchain.toml" | "rust-toolchain") || p.starts_with(".cargo/");
     path.strip_prefix(workspace).is_some_and(|p| build(p) || p == "cargo.lock") || build(path)
 }
 
@@ -253,14 +237,11 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
     let workspace_root = norm(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let workspace = relative(&workspace_root).map(|w| if w == "/" { String::new() } else { w }).unwrap_or_default();
     let pkgs = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
-    let members: BTreeSet<&str> =
-        meta["workspace_members"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let members: BTreeSet<&str> = meta["workspace_members"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     // (id, name, folder relative to the repository root with a trailing `/`) of each local package.
     let mut local: Vec<(&str, &str, String)> = Vec::new();
     for p in pkgs.iter().filter(|p| p["source"].is_null()) {
-        let (Some(id), Some(name), Some(manifest)) =
-            (p["id"].as_str(), p["name"].as_str(), p["manifest_path"].as_str())
-        else {
+        let (Some(id), Some(name), Some(manifest)) = (p["id"].as_str(), p["name"].as_str(), p["manifest_path"].as_str()) else {
             continue;
         };
         let manifest = norm(manifest);
@@ -278,8 +259,7 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             hit.extend(members.iter().copied());
             continue;
         }
-        let owner =
-            local.iter().filter(|(_, _, dir)| path.starts_with(dir.as_str())).max_by_key(|(_, _, dir)| dir.len());
+        let owner = local.iter().filter(|(_, _, dir)| path.starts_with(dir.as_str())).max_by_key(|(_, _, dir)| dir.len());
         if let Some((id, _, _)) = owner {
             hit.insert(id);
         } else if let Some(rest) = path.strip_prefix(workspace.as_str()) {
@@ -309,11 +289,8 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             break;
         }
     }
-    let mut out: Vec<String> = local
-        .iter()
-        .filter(|(id, _, _)| hit.contains(id) && members.contains(id))
-        .map(|(_, name, _)| name.to_string())
-        .collect();
+    let mut out: Vec<String> =
+        local.iter().filter(|(id, _, _)| hit.contains(id) && members.contains(id)).map(|(_, name, _)| name.to_string()).collect();
     out.sort();
     out.dedup();
     Ok(out)
@@ -322,12 +299,8 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
 /// `git <args>` in `dir`, its output split into lines. Paths are printed as they are, not quoted
 /// (`core.quotepath=off`), so a non-ASCII file name still matches its package.
 fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
-    let out = Command::new("git")
-        .args(["-c", "core.quotepath=off"])
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map_err(|e| format!("git {args:?}: {e}"))?;
+    let out =
+        Command::new("git").args(["-c", "core.quotepath=off"]).args(args).current_dir(dir).output().map_err(|e| format!("git {args:?}: {e}"))?;
     if !out.status.success() {
         return Err(format!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
@@ -366,11 +339,7 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     changed.extend(git_lines(repo, &["diff", "--no-renames", "--name-only", &format!("{base}...HEAD")])?);
     changed.extend(git_lines(repo, &["diff", "--no-renames", "--name-only", "HEAD"])?);
     changed.extend(git_lines(repo, &["ls-files", "--others", "--exclude-standard"])?);
-    let out = Command::new(env!("CARGO"))
-        .args(["metadata", "--format-version", "1"])
-        .current_dir(&root)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let out = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1"]).current_dir(&root).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("cargo metadata failed: {}", String::from_utf8_lossy(&out.stderr)));
     }
@@ -438,7 +407,8 @@ mod tests {
     /// crate `up` ← `mid`, with the workspace in `ws/`.
     fn graph() -> Value {
         let pkg = |name: &str, dir: &str| serde_json::json!({"id": name, "name": name, "source": null, "manifest_path": format!("C:\\r\\{dir}\\Cargo.toml")});
-        let node = |id: &str, deps: &[&str]| serde_json::json!({"id": id, "deps": deps.iter().map(|d| serde_json::json!({"pkg": d})).collect::<Vec<_>>()});
+        let node =
+            |id: &str, deps: &[&str]| serde_json::json!({"id": id, "deps": deps.iter().map(|d| serde_json::json!({"pkg": d})).collect::<Vec<_>>()});
         serde_json::json!({
             "packages": [
                 pkg("core", "ws\\crates\\core"), pkg("mid", "ws\\crates\\mid"), pkg("app", "ws\\apps\\app"),
@@ -483,27 +453,14 @@ mod tests {
     #[test]
     fn test_changed_on_this_workspace() {
         let root = ecad_root();
-        let out = Command::new(env!("CARGO"))
-            .args(["metadata", "--format-version", "1"])
-            .current_dir(&root)
-            .output()
-            .unwrap();
+        let out = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1"]).current_dir(&root).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
         let repo = root.parent().unwrap().to_string_lossy().to_string();
         let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            [
-                "ecad-bench",
-                "ecad-cadcraft",
-                "ecad-cli",
-                "ecad-file",
-                "ecad-inspect",
-                "ecad-mcp",
-                "ecad-model",
-                "ecad-trial"
-            ]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(

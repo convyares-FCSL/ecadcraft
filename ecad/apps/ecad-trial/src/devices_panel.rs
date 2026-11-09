@@ -99,11 +99,7 @@ impl DevicesPanel {
         for (k, &i) in shown.iter().enumerate() {
             let Some(e) = self.list.entries.get(i) else { continue };
             if last != Some(e.group.as_str()) {
-                let n = shown
-                    .iter()
-                    .skip(k)
-                    .take_while(|j| self.list.entries.get(**j).is_some_and(|x| x.group == e.group))
-                    .count();
+                let n = shown.iter().skip(k).take_while(|j| self.list.entries.get(**j).is_some_and(|x| x.group == e.group)).count();
                 rows.push(Row::Group(e.group.clone(), n));
                 last = Some(e.group.as_str());
             }
@@ -129,27 +125,22 @@ impl DevicesPanel {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         let mut out = Vec::new();
         let t = Tokens::get();
-        ui.add(
-            egui::TextEdit::singleline(&mut self.filter).hint_text("Filter: tag or text").desired_width(f32::INFINITY),
-        )
-        .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
+        ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("Filter: tag or text").desired_width(f32::INFINITY))
+            .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
         let count = self.shown;
-        ui.label(
-            RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim),
-        );
+        ui.label(RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim));
         // The selected device's properties, at the bottom of the tab.
-        let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 }
-            + if self.error.is_some() { 60.0 } else { 0.0 };
+        let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
         let list_h = (ui.available_height() - editor_h).max(ROW_H * 3.0);
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         let mut toggled = None;
-        egui::ScrollArea::vertical()
-            .id_salt("ecad.devices.list")
-            .max_height(list_h)
-            .auto_shrink([false, false])
-            .show_rows(ui, ROW_H, self.rows.len(), |ui, range| {
+        egui::ScrollArea::vertical().id_salt("ecad.devices.list").max_height(list_h).auto_shrink([false, false]).show_rows(
+            ui,
+            ROW_H,
+            self.rows.len(),
+            |ui, range| {
                 for i in range {
                     let Some(row) = self.rows.get(i).cloned() else { continue };
                     drawn += 1;
@@ -171,11 +162,7 @@ impl DevicesPanel {
                             let selected = self.selected == Some(e.id);
                             if selected {
                                 p.rect_filled(rect, 0.0, t.tab_active);
-                                p.rect_filled(
-                                    egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
-                                    0.0,
-                                    t.accent,
-                                );
+                                p.rect_filled(egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height())), 0.0, t.accent);
                             } else if resp.hovered() {
                                 p.rect_filled(rect, 0.0, t.chrome);
                             }
@@ -190,13 +177,7 @@ impl DevicesPanel {
                             let tag = e.tag.as_deref().unwrap_or("(no tag)");
                             let text = format!("{arrow} {tag:<7} {}", e.description);
                             let colour = if selected { t.text } else { t.text_dim };
-                            p.text(
-                                pos2(rect.left() + 8.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                text,
-                                font,
-                                colour,
-                            );
+                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, colour);
                             let label = device_label(e);
                             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
                             if resp.clicked() {
@@ -223,13 +204,7 @@ impl DevicesPanel {
                                 p.rect_filled(rect, 0.0, t.chrome);
                             }
                             let text = format!("    {}  {}", sym.place, sym.name);
-                            p.text(
-                                pos2(rect.left() + 8.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                text,
-                                font,
-                                t.text_dim,
-                            );
+                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, t.text_dim);
                             let label = symbol_label(e, sym);
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
                             let rep: RepresentationId = sym.rep;
@@ -240,7 +215,8 @@ impl DevicesPanel {
                         }
                     }
                 }
-            });
+            },
+        );
         self.rows_drawn = drawn;
         if let Some(c) = toggled {
             self.toggle(c);
@@ -263,19 +239,11 @@ impl DevicesPanel {
         ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(1.0, t.border));
         ui.add_space(4.0);
         ui.spacing_mut().item_spacing.y = 2.0;
-        ui.label(
-            RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)")))
-                .small()
-                .strong()
-                .color(t.text_dim),
-        );
+        ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(t.text_dim));
         if let Some((msg, offer)) = self.error.clone() {
             ui.add(egui::Label::new(RichText::new(msg).small().color(ui.visuals().warn_fg_color)).wrap());
             if let Some((target, tag)) = offer
-                && ui
-                    .small_button(MERGE)
-                    .on_hover_text("Make this device part of the device that has that tag (one undo step)")
-                    .clicked()
+                && ui.small_button(MERGE).on_hover_text("Make this device part of the device that has that tag (one undo step)").clicked()
             {
                 self.error = None;
                 out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag, merge: true });
@@ -289,9 +257,7 @@ impl DevicesPanel {
                 let mut text = mine.map_or_else(|| stored.clone(), |(_, _, x)| x.clone());
                 let field = ui.add_enabled(
                     writable,
-                    egui::TextEdit::singleline(&mut text)
-                        .id(egui::Id::unique(("ecad.devices.prop", *key)))
-                        .desired_width(f32::INFINITY),
+                    egui::TextEdit::singleline(&mut text).id(egui::Id::unique(("ecad.devices.prop", *key))).desired_width(f32::INFINITY),
                 );
                 let field = field.accessible_name(format!("{name} field"));
                 if field.changed() {

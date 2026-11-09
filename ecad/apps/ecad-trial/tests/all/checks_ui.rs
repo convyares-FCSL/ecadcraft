@@ -34,9 +34,7 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
 fn demo_file(dir: &std::path::Path) -> String {
     let path = dir.join("demo.ecad").to_string_lossy().into_owned();
     let _ = std::fs::remove_file(&path);
-    let mut mcp =
-        ecad_mcp::EcadMcp::create(&path, ecad_mcp::Options { write: true, agent: Some(ecad_mcp::demo::AUTHOR.into()) })
-            .unwrap();
+    let mut mcp = ecad_mcp::EcadMcp::create(&path, ecad_mcp::Options { write: true, agent: Some(ecad_mcp::demo::AUTHOR.into()) }).unwrap();
     ecad_mcp::demo::run(&mut mcp, ecad_mcp::demo::COMMANDS).unwrap();
     let saved = mcp
         .handle(serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -91,16 +89,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Pages 2 and 1: every wire labelled.
     let (p1, p2, p3) = (page(&mut h, 0), page(&mut h, 1), page(&mut h, 2));
     show(&mut h, p2);
-    let labels = h
-        .state()
-        .cad
-        .session
-        .doc()
-        .unwrap()
-        .model
-        .iter()
-        .filter(|e| e.common.layer == ecad_cadcraft::wires::LABEL_LAYER)
-        .count();
+    let labels = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::LABEL_LAYER).count();
     assert!(labels >= 12, "{labels} labels on page 2");
     // The circuit, not the whole sheet: labels are small (owner, 2026-11-09).
     view(&mut h, 10.0, 35.0, 160.0, 195.0);
@@ -152,16 +141,8 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     };
     h.state_mut().cad.session.set_selection(vec![wire]);
     h.run_steps(4);
-    let rows: Vec<(String, String)> = h
-        .state()
-        .props
-        .lock()
-        .unwrap()
-        .view
-        .sections
-        .iter()
-        .flat_map(|s| s.rows.iter().map(|r| (r.label.clone(), r.value.clone())))
-        .collect();
+    let rows: Vec<(String, String)> =
+        h.state().props.lock().unwrap().view.sections.iter().flat_map(|s| s.rows.iter().map(|r| (r.label.clone(), r.value.clone()))).collect();
     assert!(rows.iter().any(|(l, v)| l == "Wire number" && v == "0V-01"), "{rows:?}");
     assert!(rows.iter().any(|(l, v)| l == "Potential" && v == "0V (continuation)"), "{rows:?}");
     save(&h, &deltas, "022-props-wire.png");

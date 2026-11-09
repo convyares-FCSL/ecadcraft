@@ -321,28 +321,11 @@ pub fn open_project(bytes: &[u8], seed: u64) -> Result<Opened, OpenError> {
         Some((n, seq, check, detail)) => {
             let offset = lines.get(n).map_or(fragment_start as u64, |l| l.offset as u64);
             let omitted_records = (lines.len() - n.min(lines.len())) as u64;
-            (
-                Outcome::Corrupt(Corruption {
-                    offset,
-                    seq,
-                    check,
-                    detail,
-                    omitted_records,
-                    omitted_bytes: file_len.saturating_sub(offset),
-                }),
-                None,
-            )
+            (Outcome::Corrupt(Corruption { offset, seq, check, detail, omitted_records, omitted_bytes: file_len.saturating_sub(offset) }), None)
         }
         None if fragment_start < bytes.len() => {
             let frag = bytes.get(fragment_start..).unwrap_or_default();
-            (
-                Outcome::IncompleteTail {
-                    offset: fragment_start as u64,
-                    len: frag.len() as u64,
-                    preview: preview(frag),
-                },
-                Some(frag.to_vec()),
-            )
+            (Outcome::IncompleteTail { offset: fragment_start as u64, len: frag.len() as u64, preview: preview(frag) }, Some(frag.to_vec()))
         }
         None => (Outcome::Clean, None),
     };

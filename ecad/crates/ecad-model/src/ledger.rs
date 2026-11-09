@@ -151,12 +151,8 @@ impl Stacks {
         let top = |stack: &Vec<(u64, TxId)>| stack.last().map(|(_, t)| *t);
         match kind {
             TxKind::Edit => Ok(()),
-            TxKind::Undo { of } if top(&self.undo) != Some(of) => {
-                Err(ModelError::CorruptLog(format!("undo {id} does not undo the latest step")))
-            }
-            TxKind::Redo { of } if top(&self.redo) != Some(of) => {
-                Err(ModelError::CorruptLog(format!("redo {id} does not redo the latest undo")))
-            }
+            TxKind::Undo { of } if top(&self.undo) != Some(of) => Err(ModelError::CorruptLog(format!("undo {id} does not undo the latest step"))),
+            TxKind::Redo { of } if top(&self.redo) != Some(of) => Err(ModelError::CorruptLog(format!("redo {id} does not redo the latest undo"))),
             TxKind::Undo { .. } | TxKind::Redo { .. } => Ok(()),
         }
     }
@@ -483,8 +479,7 @@ fn validate(doc: &Document, touched: &Touched, verify: bool) -> (Result<()>, Opt
     let scoped = doc.check_touched(touched);
     if verifying(verify) {
         let full = doc.check().and_then(|()| doc.check_index());
-        let disagreement = (scoped.is_ok() != full.is_ok())
-            .then(|| format!("scoped check {scoped:?} disagrees with the full check {full:?}"));
+        let disagreement = (scoped.is_ok() != full.is_ok()).then(|| format!("scoped check {scoped:?} disagrees with the full check {full:?}"));
         return (full.and(scoped), disagreement);
     }
     // On failure, report the full check's first violation, so messages do not depend on which
@@ -498,12 +493,7 @@ fn validate(doc: &Document, touched: &Touched, verify: bool) -> (Result<()>, Opt
 /// The first op's precondition failure, an invariant failure of the end state, or `then`'s
 /// error. On error, or if anything panics, `doc` is exactly as it was (see [`Journal`]).
 fn apply_tx(
-    doc: &mut Document,
-    ops: &[Op],
-    verify: bool,
-    history: Option<Committed<'_>>,
-    health: &mut Health,
-    then: impl FnOnce() -> Result<()>,
+    doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, then: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
     let mut journal = Journal::new(doc, ops, history, health);
     let (result, disagreement) = match journal.apply() {
@@ -528,13 +518,8 @@ fn apply_tx(
 /// returns more ops for the same transaction, applied before the end state is checked. Returns
 /// those extra ops.
 fn apply_tx_extended(
-    doc: &mut Document,
-    ops: &[Op],
-    verify: bool,
-    history: Option<Committed<'_>>,
-    health: &mut Health,
-    extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
-    then: impl FnOnce() -> Result<()>,
+    doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health,
+    extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>, then: impl FnOnce() -> Result<()>,
 ) -> Result<Vec<Op>> {
     let mut journal = Journal::new(doc, ops, history, health);
     let mut touched = Touched::default();
@@ -565,12 +550,7 @@ fn apply_tx_extended(
 /// result and, apart from the result, any rollback failure (the document has then been restored
 /// from `history` when possible).
 fn applied_then_reverted<R>(
-    doc: &mut Document,
-    ops: &[Op],
-    verify: bool,
-    history: Option<Committed<'_>>,
-    health: &mut Health,
-    read: impl FnOnce(&Document) -> R,
+    doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, read: impl FnOnce(&Document) -> R,
 ) -> (Result<R>, Option<String>) {
     let mut journal = Journal::new(doc, ops, history, health);
     let (checked, disagreement) = match journal.apply() {
@@ -634,9 +614,7 @@ fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
         if let Op::NameVersion { name, at } = op
             && *at >= seq
         {
-            return Err(ModelError::Invariant(format!(
-                "version {name:?} names transaction {at}, which does not precede transaction {seq}"
-            )));
+            return Err(ModelError::Invariant(format!("version {name:?} names transaction {at}, which does not precede transaction {seq}")));
         }
     }
     Ok(())
@@ -714,26 +692,18 @@ impl Ledger {
         let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, stack_cap, history } = base;
         // Each transaction up to the base is on at most one stack: more entries than that (a
         // crafted file) is damage, never an allocation or a loop.
-        let depth = [undo.len() as u64, undo_hidden, redo.len() as u64, redo_hidden]
-            .into_iter()
-            .try_fold(0u64, u64::checked_add);
+        let depth = [undo.len() as u64, undo_hidden, redo.len() as u64, redo_hidden].into_iter().try_fold(0u64, u64::checked_add);
         if depth.is_none_or(|n| n > seq) {
-            return Err(ModelError::CorruptLog(format!(
-                "the undo and redo stacks recorded at {seq} are deeper than the history"
-            )));
+            return Err(ModelError::CorruptLog(format!("the undo and redo stacks recorded at {seq} are deeper than the history")));
         }
         if stack_cap == 0 && (undo_hidden > 0 || redo_hidden > 0) {
-            return Err(ModelError::CorruptLog(format!(
-                "the stacks recorded at {seq} have entries below them but no cap"
-            )));
+            return Err(ModelError::CorruptLog(format!("the stacks recorded at {seq} have entries below them but no cap")));
         }
         for stack in [&undo, &redo] {
             let bad_entry = stack.iter().any(|(s, _)| *s == 0 || *s > seq);
             let unordered = stack.windows(2).any(|w| matches!(w, [a, b] if a.0 >= b.0));
             if bad_entry || unordered {
-                return Err(ModelError::CorruptLog(format!(
-                    "the undo or redo stack recorded at {seq} is inconsistent"
-                )));
+                return Err(ModelError::CorruptLog(format!("the undo or redo stack recorded at {seq} is inconsistent")));
             }
         }
         if !indexed {
@@ -747,14 +717,7 @@ impl Ledger {
             older: BTreeMap::new(),
             persisted: seq,
             ids: IdAllocator::seeded(seed),
-            stacks: Stacks {
-                undo_known: undo.len() as u64,
-                redo_known: redo.len() as u64,
-                undo,
-                redo,
-                undo_hidden,
-                redo_hidden,
-            },
+            stacks: Stacks { undo_known: undo.len() as u64, redo_known: redo.len() as u64, undo, redo, undo_hidden, redo_hidden },
             verify: false,
             health: Health::default(),
             stack_rebuilds: 0,
@@ -780,16 +743,12 @@ impl Ledger {
             let step = if let Err(e) = full {
                 Err(e)
             } else if Some(tx.seq) != expected {
-                Err(ModelError::CorruptLog(format!(
-                    "transaction {} has sequence {} at position {:?}",
-                    tx.id, tx.seq, expected
-                )))
+                Err(ModelError::CorruptLog(format!("transaction {} has sequence {} at position {:?}", tx.id, tx.seq, expected)))
             } else {
                 let stacks = &self.stacks;
                 let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
-                check_bookmarks(&tx.ops, tx.seq).and_then(|()| {
-                    apply_tx(&mut self.doc, &tx.ops, false, Some(committed), &mut self.health, || stacks.admit(&tx))
-                })
+                check_bookmarks(&tx.ops, tx.seq)
+                    .and_then(|()| apply_tx(&mut self.doc, &tx.ops, false, Some(committed), &mut self.health, || stacks.admit(&tx)))
             };
             if self.health.broken {
                 // Never expected: a rollback failed and the good prefix did not replay either.
@@ -839,9 +798,8 @@ impl Ledger {
             if held > 0 || hidden == 0 {
                 continue;
             }
-            let h = self.history.as_ref().ok_or_else(|| {
-                ModelError::CorruptLog("the undo history before the base cannot be read: no history".into())
-            })?;
+            let h =
+                self.history.as_ref().ok_or_else(|| ModelError::CorruptLog("the undo history before the base cannot be read: no history".into()))?;
             let n = hidden.min(self.stack_read);
             let more = h.stack_slice(self.base, undo, known, n)?;
             if more.len() as u64 != n || more.iter().any(|(s, _)| *s > self.base) {
@@ -868,10 +826,7 @@ impl Ledger {
 
     /// The depths of the undo and redo stacks, entries not read yet included.
     pub fn stack_depths(&self) -> (u64, u64) {
-        (
-            self.stacks.undo.len() as u64 + self.stacks.undo_hidden,
-            self.stacks.redo.len() as u64 + self.stacks.redo_hidden,
-        )
+        (self.stacks.undo.len() as u64 + self.stacks.undo_hidden, self.stacks.redo.len() as u64 + self.stacks.redo_hidden)
     }
 
     /// Read the tops of the undo and redo stacks that lie before the base, if not read yet.
@@ -881,9 +836,10 @@ impl Ledger {
             if seq > self.base || self.older.contains_key(&seq) {
                 continue;
             }
-            let h = self.history.as_ref().ok_or_else(|| {
-                ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history"))
-            })?;
+            let h = self
+                .history
+                .as_ref()
+                .ok_or_else(|| ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history")))?;
             let tx = h.transaction(seq)?;
             if tx.seq != seq || tx.id != id {
                 return Err(ModelError::CorruptLog(format!(
@@ -917,12 +873,7 @@ impl Ledger {
         doc.rebuild_index();
         for (i, tx) in log.iter().enumerate() {
             if tx.seq != i as u64 + 1 {
-                return Err(ModelError::CorruptLog(format!(
-                    "transaction {} has sequence {} at position {}",
-                    tx.id,
-                    tx.seq,
-                    i + 1
-                )));
+                return Err(ModelError::CorruptLog(format!("transaction {} has sequence {} at position {}", tx.id, tx.seq, i + 1)));
             }
             if tx.seq > at {
                 let history = log.get(..i).map(Committed::root);
@@ -1016,9 +967,7 @@ impl Ledger {
 
     /// The sequence number the next transaction gets.
     fn next_seq(&self) -> Result<u64> {
-        self.head()
-            .checked_add(1)
-            .ok_or_else(|| ModelError::CorruptLog("the history has no room for another transaction".into()))
+        self.head().checked_add(1).ok_or_else(|| ModelError::CorruptLog("the history has no room for another transaction".into()))
     }
 
     /// Sequence number of the last applied transaction (0 when empty).
@@ -1078,13 +1027,10 @@ impl Ledger {
     /// could not restore the document either, from this call on, as commits are refused then.
     pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
         if self.health.broken {
-            return Err(ModelError::CorruptLog(
-                "the document could not be restored after a failed rollback; reopen the project".into(),
-            ));
+            return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
         let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
-        let (result, failure) =
-            applied_then_reverted(&mut self.doc, ops, self.verify, Some(committed), &mut self.health, read);
+        let (result, failure) = applied_then_reverted(&mut self.doc, ops, self.verify, Some(committed), &mut self.health, read);
         match failure {
             // The revert failed and replaying the log could not restore the document either.
             Some(f) if self.health.broken => Err(ModelError::CorruptLog(format!("{f}; reopen the project"))),
@@ -1119,20 +1065,13 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::commit`]; the extra ops are checked like any other.
     pub fn commit_extended(
-        &mut self,
-        author: Author,
-        label: &str,
-        ops: Vec<Op>,
-        time_ms: Option<u64>,
-        extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
+        &mut self, author: Author, label: &str, ops: Vec<Op>, time_ms: Option<u64>, extend: impl FnOnce(&Document, &[Op]) -> Vec<Op>,
     ) -> Result<TxId> {
         if ops.is_empty() {
             return Err(ModelError::Empty);
         }
         if self.health.broken {
-            return Err(ModelError::CorruptLog(
-                "the document could not be restored after a failed rollback; reopen the project".into(),
-            ));
+            return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
         let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
@@ -1140,8 +1079,7 @@ impl Ledger {
         let stacks = &self.stacks;
         let committed = Committed { log: &self.log, base: self.base, history: self.history.as_ref() };
         let admit = || stacks.admit_kind(kind, "the new transaction");
-        let more =
-            apply_tx_extended(&mut self.doc, &ops, self.verify, Some(committed), &mut self.health, extend, admit)?;
+        let more = apply_tx_extended(&mut self.doc, &ops, self.verify, Some(committed), &mut self.health, extend, admit)?;
         let mut ops = ops;
         ops.extend(more);
         let id: TxId = self.ids.fresh();
@@ -1152,18 +1090,9 @@ impl Ledger {
         Ok(id)
     }
 
-    fn append(
-        &mut self,
-        author: Author,
-        label: String,
-        kind: TxKind,
-        ops: Vec<Op>,
-        time_ms: Option<u64>,
-    ) -> Result<TxId> {
+    fn append(&mut self, author: Author, label: String, kind: TxKind, ops: Vec<Op>, time_ms: Option<u64>) -> Result<TxId> {
         if self.health.broken {
-            return Err(ModelError::CorruptLog(
-                "the document could not be restored after a failed rollback; reopen the project".into(),
-            ));
+            return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
         let seq = self.next_seq()?;
         check_bookmarks(&ops, seq)?;
@@ -1291,9 +1220,10 @@ impl Ledger {
             return Ok(doc);
         }
         if seq < self.base {
-            let h = self.history.as_ref().ok_or_else(|| {
-                ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history"))
-            })?;
+            let h = self
+                .history
+                .as_ref()
+                .ok_or_else(|| ModelError::CorruptLog(format!("transaction {seq} is before the base and there is no history")))?;
             return h.state_at(seq);
         }
         let mut doc = self.doc.clone();
@@ -1363,11 +1293,7 @@ mod tests {
     fn three_ops() -> Vec<Op> {
         vec![
             Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(5)) },
-            Op::RemoveCableMember {
-                cable: CableId(7),
-                index: 0,
-                member: CableMember { conductor: ConductorId(6), core: None },
-            },
+            Op::RemoveCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: ConductorId(6), core: None } },
             Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
         ]
     }
@@ -1450,10 +1376,7 @@ mod tests {
         bad.seq = 3;
         bad.ops = vec![
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
-            Op::RemoveTerminal {
-                id: TerminalId(5),
-                terminal: Terminal { component: ComponentId(3), label: None, key: None },
-            },
+            Op::RemoveTerminal { id: TerminalId(5), terminal: Terminal { component: ComponentId(3), label: None, key: None } },
         ];
         log.push(bad);
         hooks::FAIL_REVERT.with(|c| c.set(true));
@@ -1489,11 +1412,8 @@ mod tests {
     fn with_applied_shows_the_changed_document_and_reverts_it() {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
-        let seen = l
-            .with_applied(&three_ops(), |d| {
-                (d.ends_at(TerminalId(5)), d.cables_of(ConductorId(6)), d.pages.len(), d.check().is_ok())
-            })
-            .unwrap();
+        let seen =
+            l.with_applied(&three_ops(), |d| (d.ends_at(TerminalId(5)), d.cables_of(ConductorId(6)), d.pages.len(), d.check().is_ok())).unwrap();
         assert_eq!(seen, (vec![(ConductorId(6), End::B)], vec![], 2, true));
         assert_unchanged(&l, &doc, head);
         // The plain document form does the same.
@@ -1511,8 +1431,7 @@ mod tests {
             Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
             Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
         ];
-        let bad_before =
-            vec![Op::AttachEnd { conductor: ConductorId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
+        let bad_before = vec![Op::AttachEnd { conductor: ConductorId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
         for ops in [bad_end, bad_before] {
             let mut ran = false;
             let previewed = l.with_applied(&ops, |_| ran = true).map_err(|e| e.to_string());
@@ -1547,9 +1466,7 @@ mod tests {
         }
         // And the plain document form.
         let mut d = l.document().clone();
-        let r = catch_unwind(AssertUnwindSafe(|| {
-            d.with_applied(&three_ops(), |_| std::panic::resume_unwind(Box::new("boom")))
-        }));
+        let r = catch_unwind(AssertUnwindSafe(|| d.with_applied(&three_ops(), |_| std::panic::resume_unwind(Box::new("boom")))));
         assert!(r.is_err());
         assert_eq!(json(&d), doc);
         d.check_index().unwrap();

@@ -87,26 +87,18 @@ impl Header {
     /// A message naming what this build does not support.
     pub fn validate(&self) -> Result<(ChainKind, u128), String> {
         if self.container_version != CONTAINER_VERSION {
-            return Err(format!(
-                "container version {} is not supported (this build reads {CONTAINER_VERSION})",
-                self.container_version
-            ));
+            return Err(format!("container version {} is not supported (this build reads {CONTAINER_VERSION})", self.container_version));
         }
         if self.codec != CODEC {
             return Err(format!("codec {:?} is not supported (this build reads {CODEC:?})", self.codec));
         }
         if self.schema_version > SCHEMA_VERSION || self.schema_version == 0 {
-            return Err(format!(
-                "schema version {} is not supported (this build reads 1 to {SCHEMA_VERSION})",
-                self.schema_version
-            ));
+            return Err(format!("schema version {} is not supported (this build reads 1 to {SCHEMA_VERSION})", self.schema_version));
         }
         match (self.container.as_str(), self.project_id, self.library_id) {
             (CONTAINER_PROJECT, Some(p), None) => Ok((ChainKind::Project, p.0)),
             (CONTAINER_LIBRARY, None, Some(l)) => Ok((ChainKind::Library, l.0)),
-            (CONTAINER_PROJECT | CONTAINER_LIBRARY, _, _) => {
-                Err(format!("a {} header must carry exactly its own ID", self.container))
-            }
+            (CONTAINER_PROJECT | CONTAINER_LIBRARY, _, _) => Err(format!("a {} header must carry exactly its own ID", self.container)),
             (other, _, _) => Err(format!("container {other:?} is not an ECAD file")),
         }
     }
@@ -248,9 +240,7 @@ pub fn decode_tx(v: &Value) -> Result<m::Transaction, DecodeError> {
     match record_type(v) {
         Some("tx") => {}
         Some("checkpoint") => {
-            return Err(DecodeError::RecordType(
-                "checkpoint records are not supported (checkpoints are disabled, §20.8)".into(),
-            ));
+            return Err(DecodeError::RecordType("checkpoint records are not supported (checkpoints are disabled, §20.8)".into()));
         }
         Some(other) => return Err(DecodeError::RecordType(format!("unknown record type {other:?}"))),
         None => return Err(DecodeError::RecordType("record has no type".into())),
@@ -266,15 +256,7 @@ pub fn decode_tx(v: &Value) -> Result<m::Transaction, DecodeError> {
             other => other,
         })?);
     }
-    Ok(m::Transaction {
-        id: raw.id,
-        seq: raw.seq,
-        author: raw.author.into(),
-        label: raw.label,
-        kind: raw.kind.into(),
-        time_ms: raw.time_ms,
-        ops,
-    })
+    Ok(m::Transaction { id: raw.id, seq: raw.seq, author: raw.author.into(), label: raw.label, kind: raw.kind.into(), time_ms: raw.time_ms, ops })
 }
 
 fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
@@ -286,10 +268,7 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
     if !OP_NAMES.contains(&name.as_str()) {
         return Err(DecodeError::UnknownOp(format!("op {name:?} is not known to this build")));
     }
-    let version = obj
-        .remove("v")
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| DecodeError::Parse(format!("op {name} has no version")))?;
+    let version = obj.remove("v").and_then(|v| v.as_u64()).ok_or_else(|| DecodeError::Parse(format!("op {name} has no version")))?;
     upcast_op(&name, version, &mut obj).map_err(DecodeError::Upcast)?;
     let mut tagged = Map::new();
     tagged.insert(name, Value::Object(obj));

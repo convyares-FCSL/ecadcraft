@@ -87,8 +87,7 @@ impl View {
 
 /// Refusal of an edit or a pick on a computed part of a traditional-view cable: a core label at
 /// the slash, or a reference end's flag (design 009 §8).
-pub const DRAWN_REFUSED: &str =
-    "This is drawn from the cable; use Core Label to change it, or move the reference point.";
+pub const DRAWN_REFUSED: &str = "This is drawn from the cable; use Core Label to change it, or move the reference point.";
 
 /// The refusal for an edit of computed drawing of `cable` on a page mapped by `map`.
 pub fn refusal(map: &crate::project::HandleMap, cable: CableId) -> &'static str {
@@ -115,10 +114,8 @@ pub type Fan = crate::look::CableDrawing;
 /// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
-    let routed = doc
-        .cables
-        .get(&cable)
-        .is_some_and(|c| c.members.iter().any(|m| ecad_model::derive::route_on_page(doc, m.conductor, page).is_some()));
+    let routed =
+        doc.cables.get(&cable).is_some_and(|c| c.members.iter().any(|m| ecad_model::derive::route_on_page(doc, m.conductor, page).is_some()));
     if !routed {
         return FanOnPage::Nothing;
     }
@@ -132,12 +129,7 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
 
 /// Every cable's computed drawing on `page` (design 009): fans for the cables in `fan` where they
 /// can be drawn, and core labels and reference ends for every cable, by cable.
-pub fn drawings_on_page(
-    doc: &Document,
-    page: PageId,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
-) -> BTreeMap<CableId, crate::look::CableDrawing> {
+pub fn drawings_on_page(doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64) -> BTreeMap<CableId, crate::look::CableDrawing> {
     crate::look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
 }
 
@@ -219,9 +211,7 @@ impl Settings {
             #[cfg(windows)]
             let dir = env_dir("APPDATA").map(|d| d.join("ECAD"));
             #[cfg(not(windows))]
-            let dir = env_dir("XDG_CONFIG_HOME")
-                .map(|d| d.join("ecad"))
-                .or_else(|| env_dir("HOME").map(|d| d.join(".config").join("ecad")));
+            let dir = env_dir("XDG_CONFIG_HOME").map(|d| d.join("ecad")).or_else(|| env_dir("HOME").map(|d| d.join(".config").join("ecad")));
             Settings { dir }
         }
     }
@@ -263,9 +253,7 @@ impl Settings {
         }
         let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { return FileState::NotJson };
         let Value::Object(top) = v else { return FileState::Unusable(OTHER_FORMAT.into()) };
-        if top.get("format").and_then(Value::as_str) != Some(FORMAT)
-            || !top.get("projects").is_some_and(Value::is_object)
-        {
+        if top.get("format").and_then(Value::as_str) != Some(FORMAT) || !top.get("projects").is_some_and(Value::is_object) {
             return FileState::Unusable(OTHER_FORMAT.into());
         }
         FileState::Usable(top)
@@ -278,17 +266,8 @@ impl Settings {
             FileState::Missing => Loaded::default(),
             FileState::NotJson | FileState::Unusable(_) => Loaded { fan: BTreeSet::new(), unreadable: true },
             FileState::Usable(top) => {
-                let list = top
-                    .get("projects")
-                    .and_then(|p| p.get(project.hex()))
-                    .and_then(|p| p.get("fan"))
-                    .and_then(Value::as_array);
-                let fan = list
-                    .into_iter()
-                    .flatten()
-                    .take(MAX_CABLES_PER_PROJECT)
-                    .filter_map(|v| v.as_str().and_then(CableId::parse))
-                    .collect();
+                let list = top.get("projects").and_then(|p| p.get(project.hex())).and_then(|p| p.get("fan")).and_then(Value::as_array);
+                let fan = list.into_iter().flatten().take(MAX_CABLES_PER_PROJECT).filter_map(|v| v.as_str().and_then(CableId::parse)).collect();
                 Loaded { fan, unreadable: false }
             }
         }
@@ -367,8 +346,7 @@ enum FileState {
 fn fit(mut top: Map<String, Value>, mut projects: Map<String, Value>, keep: &str) -> Result<String, String> {
     let used = |v: &Value| v.get("used").and_then(Value::as_u64).unwrap_or(0);
     // Oldest first; equal times by key, so the order is total and repeatable.
-    let mut others: Vec<(u64, String)> =
-        projects.iter().filter(|(k, _)| k.as_str() != keep).map(|(k, v)| (used(v), k.clone())).collect();
+    let mut others: Vec<(u64, String)> = projects.iter().filter(|(k, _)| k.as_str() != keep).map(|(k, v)| (used(v), k.clone())).collect();
     others.sort();
     let mut others = others.into_iter();
     loop {

@@ -19,8 +19,8 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::derive::{route_on_page, terminal_positions};
 use ecad_model::{
-    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op,
-    PageId, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId,
+    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Pt, Representation,
+    RepresentationId, Subject, Terminal, TerminalId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -83,12 +83,7 @@ pub(crate) struct Inputs<'a> {
 
 /// Run the old translation on `inputs` with `ids_before` (the allocator as the new translation
 /// found it) and compare with what the new one returned and left in `ids_after`.
-pub(crate) fn compare(
-    inputs: Inputs<'_>,
-    ids_before: IdAllocator,
-    ids_after: &IdAllocator,
-    new: &Result<Translation, String>,
-) {
+pub(crate) fn compare(inputs: Inputs<'_>, ids_before: IdAllocator, ids_after: &IdAllocator, new: &Result<Translation, String>) {
     let mut ids = ids_before;
     let mut tags = inputs.tags;
     let old = translate(&mut OldCtx {
@@ -152,8 +147,7 @@ pub(crate) struct OldCtx<'a> {
 /// to any of them is refused.
 fn table_changes(last: &Drawing, now: &Drawing) -> Vec<&'static str> {
     let mut out = Vec::new();
-    let user_groups =
-        |d: &Drawing| d.groups.iter().filter(|g| !g.name.starts_with(ECAD_PREFIX)).cloned().collect::<Vec<_>>();
+    let user_groups = |d: &Drawing| d.groups.iter().filter(|g| !g.name.starts_with(ECAD_PREFIX)).cloned().collect::<Vec<_>>();
     let checks: [(&'static str, bool); 15] = [
         ("layers", last.layers != now.layers),
         ("linetypes", last.linetypes != now.linetypes),
@@ -163,10 +157,7 @@ fn table_changes(last: &Drawing, now: &Drawing) -> Vec<&'static str> {
         ("table styles", last.table_styles != now.table_styles),
         ("multiline styles", last.mline_styles != now.mline_styles),
         ("block definitions", last.blocks != now.blocks),
-        (
-            "layouts",
-            last.layouts.iter().map(|l| (&l.name, &l.entities)).ne(now.layouts.iter().map(|l| (&l.name, &l.entities))),
-        ),
+        ("layouts", last.layouts.iter().map(|l| (&l.name, &l.entities)).ne(now.layouts.iter().map(|l| (&l.name, &l.entities)))),
         ("named views", last.views != now.views),
         ("UCSs", last.ucss != now.ucss),
         ("layer states", last.layer_states != now.layer_states),
@@ -220,10 +211,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     let (now_order, after) = entities(cx.now);
     let mut t = Translation::default();
     let mut reps: BTreeMap<RepresentationId, Representation> = BTreeMap::new();
-    let rep = |reps: &mut BTreeMap<RepresentationId, Representation>,
-               id: RepresentationId,
-               doc: &Document|
-     -> Result<(), String> {
+    let rep = |reps: &mut BTreeMap<RepresentationId, Representation>, id: RepresentationId, doc: &Document| -> Result<(), String> {
         if let std::collections::btree_map::Entry::Vacant(e) = reps.entry(id) {
             e.insert(doc.representations.get(&id).cloned().ok_or("representation missing")?);
         }
@@ -234,8 +222,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     let mut linked_removed = false;
 
     // Removed and changed entities.
-    let mut removed: Vec<(Handle, &Arc<Entity>)> =
-        before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
+    let mut removed: Vec<(Handle, &Arc<Entity>)> = before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
     removed.sort_by_key(|(h, _)| *h);
 
     // Computed parts of a traditional-view cable (core labels at the slash, reference flags;
@@ -244,9 +231,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // the document. An edit of nothing but such parts is refused (brief 009 review S2).
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
     // Conductor labels (brief 022) are left out the same way: drawn again from the document.
-    let drawn = |map: &HandleMap, h: Handle| {
-        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_)))
-    };
+    let drawn =
+        |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_)));
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
     let tag_text = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Tag(_)));
@@ -256,11 +242,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         None => false,
     };
     let copied_drawn = |h: &Handle| copied_source(h, &|m, x| drawn(m, x) || tag_text(m, x));
-    let changed_handles: Vec<Handle> = before
-        .iter()
-        .filter(|(h, old)| after.get(h).is_some_and(|new| !Arc::ptr_eq(old, new) && ****old != ***new))
-        .map(|(h, _)| *h)
-        .collect();
+    let changed_handles: Vec<Handle> =
+        before.iter().filter(|(h, old)| after.get(h).is_some_and(|new| !Arc::ptr_eq(old, new) && ****old != ***new)).map(|(h, _)| *h).collect();
     let added_handles: Vec<Handle> = now_order.iter().copied().filter(|h| !before.contains_key(h)).collect();
     let skipped: BTreeSet<Handle> = removed
         .iter()
@@ -350,12 +333,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             r.items.clear();
         }
     }
-    let mut changed: Vec<(Handle, &Arc<Entity>)> = before
-        .iter()
-        .filter_map(|(h, old)| {
-            after.get(h).filter(|new| !Arc::ptr_eq(old, new) && **old != ***new).map(|new| (*h, *new))
-        })
-        .collect();
+    let mut changed: Vec<(Handle, &Arc<Entity>)> =
+        before.iter().filter_map(|(h, old)| after.get(h).filter(|new| !Arc::ptr_eq(old, new) && **old != ***new).map(|new| (*h, *new))).collect();
     changed.sort_by_key(|(h, _)| *h);
     for (h, new) in &changed {
         match cx.map.get(*h) {
@@ -399,10 +378,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
     if linked_removed && added.iter().any(|h| !prov.contains_key(h)) {
-        return Err(
-            "this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet"
-                .into(),
-        );
+        return Err("this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet".into());
     }
     for h in &added {
         match prov.get(h) {
@@ -454,19 +430,14 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
 
     movement(cx, &mut t, &fresh_conductor_ends)?;
     preview(cx.doc, &t.ops)?;
-    t.summary =
-        format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
+    t.summary = format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
     Ok(t)
 }
 
 /// One copy operation's new entities (§11.1).
 fn copy_batch(
-    cx: &mut OldCtx<'_>,
-    after: &HashMap<Handle, &Arc<Entity>>,
-    batch: &[(Handle, Source)],
-    t: &mut Translation,
-    fresh_ends: &mut Vec<(ConductorId, End)>,
-    counts: &mut [usize; 4],
+    cx: &mut OldCtx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation,
+    fresh_ends: &mut Vec<(ConductorId, End)>, counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
     let mut src_doc: Option<&Document> = None;
@@ -476,10 +447,7 @@ fn copy_batch(
         let (doc, map, h) = match src {
             Source::Entity(h) => (cx.doc, cx.map, *h),
             Source::Clipboard { serial, handle } => {
-                let snap = cx
-                    .clips
-                    .get(serial)
-                    .ok_or("the clipboard was filled before this project recorded it; copy again")?;
+                let snap = cx.clips.get(serial).ok_or("the clipboard was filled before this project recorded it; copy again")?;
                 if snap.page != cx.page {
                     return Err("pasting onto another page is not supported in the experiment yet".into());
                 }
@@ -586,10 +554,7 @@ fn copy_batch(
         }
         let c = sdoc.conductors.get(&src_c).cloned().ok_or("source conductor missing")?;
         let new_c: ConductorId = cx.ids.fresh();
-        t.ops.push(Op::CreateConductor {
-            id: new_c,
-            conductor: Conductor { properties: c.properties.clone(), ends: [None, None] },
-        });
+        t.ops.push(Op::CreateConductor { id: new_c, conductor: Conductor { properties: c.properties.clone(), ends: [None, None] } });
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
         for sh in &handles {
@@ -656,13 +621,11 @@ fn movement(cx: &OldCtx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, En
     for (cid, c) in &proposed.conductors {
         let Some((route_id, prim)) = route_on_page(&proposed, *cid, cx.page) else { continue };
         let Some((new_a, new_b)) = prim.path_ends() else { continue };
-        let old_ends =
-            route_on_page(cx.doc, *cid, cx.page).and_then(|(id, p)| (id == route_id).then(|| p.path_ends()).flatten());
+        let old_ends = route_on_page(cx.doc, *cid, cx.page).and_then(|(id, p)| (id == route_id).then(|| p.path_ends()).flatten());
         let mut route = prim.clone();
         for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
             let fresh = fresh_ends.contains(&(*cid, end));
-            let end_moved =
-                fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
+            let end_moved = fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
             match c.end(end) {
                 Some(term) => {
                     let (op, np) = (old_pos.get(&term), new_pos.get(&term));

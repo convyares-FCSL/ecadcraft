@@ -145,9 +145,7 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
     let opened = read::open_project(&bytes, 0).map_err(|e| e.to_string())?;
     let omitted = match &opened.report.outcome {
         Outcome::Clean => None,
-        Outcome::IncompleteTail { offset, len, .. } => {
-            Some(format!("an interrupted trailing write of {len} bytes at offset {offset}"))
-        }
+        Outcome::IncompleteTail { offset, len, .. } => Some(format!("an interrupted trailing write of {len} bytes at offset {offset}")),
         Outcome::Corrupt(_) => {
             return Err(format!(
                 "the source is damaged, so it is not converted: {} Rescue it with Save As in a build that \

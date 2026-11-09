@@ -18,14 +18,7 @@
 //!   since the last flush), for the version 2 container's crash tests.
 //!
 //! Excluded: the order of those steps and what is written (`ecad-file`), and any file format.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io;
 

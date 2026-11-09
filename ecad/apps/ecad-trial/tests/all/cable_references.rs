@@ -150,12 +150,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     click(t, 40.0, 5.0);
     assert!(t.cad.session.running.is_none());
     let said = t.cad.session.log.join("\n");
-    assert!(
-        said.contains(
-            "Cable C1 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."
-        ),
-        "{said}"
-    );
+    assert!(said.contains("Cable C1 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."), "{said}");
     assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
@@ -193,9 +188,7 @@ fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
         let texts = p.pages[&page]
             .map
             .ref_text_handles()
-            .filter_map(|hd| {
-                d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).find(|e| e.handle == hd)
-            })
+            .filter_map(|hd| d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
                 _ => None,
@@ -225,10 +218,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     let cable = doc(t).cables.keys().next().copied().unwrap();
     assert!(t.submit_command(&format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
     assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
-    assert!(
-        t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex()))
-            .is_none()
-    );
+    assert!(t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex())).is_none());
     let (page1, page2) = (doc(t).page_order[0], doc(t).page_order[1]);
     h.run_steps(3);
     // Erase page 2's end: every drawn object on page 2 except terminal markers.
@@ -276,8 +266,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut Trial, page: ecad_model::PageId| {
         let d = doc(t);
-        let mut v: Vec<String> =
-            ecad_cadcraft::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
+        let mut v: Vec<String> = ecad_cadcraft::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
         v.sort();
         v
     };

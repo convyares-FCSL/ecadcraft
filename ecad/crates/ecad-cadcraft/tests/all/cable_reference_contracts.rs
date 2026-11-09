@@ -24,8 +24,8 @@ use ecad_cadcraft::references::{markers_on_page, plan_continue};
 use ecad_cadcraft::{Mapped, ProjectHandle};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    Cable, CableId, CableMember, Color, ConductorId, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page,
-    PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, TerminalId,
+    Cable, CableId, CableMember, Color, ConductorId, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt,
+    Representation, RepresentationId, Style, Subject, TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -67,16 +67,9 @@ fn before_reference() -> R {
         tag(&mut h, "conductor", &c.hex(), &format!("W{y}"));
         w.push(c);
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
-    let k2 = component(
-        &mut h,
-        field,
-        "line 100,-5 110,-5 110,15 100,15 c",
-        [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)],
-        "K2",
-    );
+    let k2 = component(&mut h, field, "line 100,-5 110,-5 110,15 100,15 c", [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)], "K2");
     h.activate(supply);
     let _ = h.s.zoom_extents();
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k2 }
@@ -178,21 +171,14 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     let lines: Vec<(Pt, Pt)> = ops
         .iter()
         .filter_map(|op| match op {
-            Op::AddItem { item: Item { kind: ItemKind::Primitive(Primitive::Line { a, b }), .. }, .. } => {
-                Some((*a, *b))
-            }
+            Op::AddItem { item: Item { kind: ItemKind::Primitive(Primitive::Line { a, b }), .. }, .. } => Some((*a, *b)),
             _ => None,
         })
         .collect();
     let p = Pt::new;
     assert_eq!(
         lines,
-        vec![
-            (p(20.0, 0.0), p(40.0, 0.0)),
-            (p(20.0, 5.0), p(40.0, 5.0)),
-            (p(20.0, 10.0), p(40.0, 10.0)),
-            (p(27.5, -2.5), p(32.5, 12.5))
-        ]
+        vec![(p(20.0, 0.0), p(40.0, 0.0)), (p(20.0, 5.0), p(40.0, 5.0)), (p(20.0, 10.0), p(40.0, 10.0)), (p(27.5, -2.5), p(32.5, 12.5))]
     );
     let roles: Vec<(String, Subject)> = ops
         .iter()
@@ -269,17 +255,13 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
     }
     let ends = |h: &mut H, page: PageId, x: f64| {
         let u = uid(h, page);
-        h.p(|p| overlay_marks(p, u))
-            .into_iter()
-            .filter(|m| m.shape != MarkShape::Ring && (m.at.x - x).abs() < 1e-9)
-            .count()
+        h.p(|p| overlay_marks(p, u)).into_iter().filter(|m| m.shape != MarkShape::Ring && (m.at.x - x).abs() < 1e-9).count()
     };
     assert_eq!(ends(&mut r.h, r.supply, 60.0), 0, "no end mark at the leaving ends on Supply");
     assert_eq!(ends(&mut r.h, r.field, 20.0), 0, "no end mark at the leaving ends on Field");
     assert_eq!(ends(&mut r.h, r.field, 100.0), 3, "dots at K2");
     let u = uid(&mut r.h, r.supply);
-    let rings: Vec<_> =
-        r.h.p(|p| overlay_marks(p, u)).into_iter().filter(|m| m.shape == MarkShape::Ring && m.stroke == 2.0).collect();
+    let rings: Vec<_> = r.h.p(|p| overlay_marks(p, u)).into_iter().filter(|m| m.shape == MarkShape::Ring && m.stroke == 2.0).collect();
     assert_eq!(rings.len(), 1, "a bold ring on the reference point");
     assert_eq!(rings[0].at, Vec2::new(65.0, 5.0));
 }
@@ -360,11 +342,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(te.common.color, CColor::Index(1));
     assert_eq!(doc.conductors, before.conductors, "conductors and attachments stay");
     assert_eq!(doc.cables, before.cables);
-    assert!(
-        log_since(&r.h, n).contains("Cable C1's reference on page 1 now has no other end."),
-        "{}",
-        log_since(&r.h, n)
-    );
+    assert!(log_since(&r.h, n).contains("Cable C1's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
     assert_eq!(ecad_cadcraft::references::diagnostics(&doc), vec!["Orphan: cable C1 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["orphan_references"].as_array().map(Vec::len), Some(1));
@@ -501,12 +479,7 @@ fn refusals_say_why_and_change_nothing() {
             json!({"cable": c1, "at": [0, 0], "toward": [10, 0]}),
             "Cable C1 already continues to another page; a cable can have only two references in this version.",
         ),
-        (
-            third,
-            "cableref",
-            json!({"cable": c2.hex(), "at": [0, 0]}),
-            "Cable C2 has no wires drawn on this page; draw or continue it here first.",
-        ),
+        (third, "cableref", json!({"cable": c2.hex(), "at": [0, 0]}), "Cable C2 has no wires drawn on this page; draw or continue it here first."),
         (
             third,
             "cablecontinue",
@@ -519,10 +492,7 @@ fn refusals_say_why_and_change_nothing() {
         let head = r.h.head();
         let e = r.h.run(cmd, params.clone()).unwrap_err();
         // R1 on Third reads as R2 when the cable already has its two references elsewhere.
-        assert!(
-            e.contains(want) || (page == third && cmd == "cableref" && e.contains("already continues")),
-            "{cmd} {params}: {e}"
-        );
+        assert!(e.contains(want) || (page == third && cmd == "cableref" && e.contains("already continues")), "{cmd} {params}: {e}");
         assert_eq!(r.h.head(), head, "{cmd}: nothing recorded");
     }
     // R5: continuing on the reference's own page; R6: every wire connected at both ends.
@@ -538,10 +508,7 @@ fn refusals_say_why_and_change_nothing() {
         both.conductors.get_mut(&w).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
     }
     let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err();
-    assert_eq!(
-        e,
-        "None of cable C1's wires can continue: each is connected at both ends or already drawn on this page."
-    );
+    assert_eq!(e, "None of cable C1's wires can continue: each is connected at both ends or already drawn on this page.");
     // A mixed cable: the both-ends wire is skipped and reported.
     let mut mixed = doc.clone();
     mixed.conductors.get_mut(&f.w[2]).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
@@ -563,13 +530,7 @@ fn json_forms_of_the_reference_and_page_commands() {
         (r.supply, "cablerefs", json!({}), Ok(r#"{"references":[]}"#), 0),
         (r.supply, "cableref", json!({"cable": c1, "at": [65, 5]}), Ok(r#""orphan":true"#), 1),
         (r.supply, "cablerefs", json!({"cable": c1}), Ok(r#""text":"?""#), 0),
-        (
-            r.supply,
-            "cablegoto",
-            json!({"reference": "<Supply's reference>"}),
-            Err("this reference has no other end"),
-            0,
-        ),
+        (r.supply, "cablegoto", json!({"reference": "<Supply's reference>"}), Err("this reference has no other end"), 0),
         (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1-B-6""#), 1),
         (r.field, "cablerefs", json!({}), Ok(r#""text":"2-A-6""#), 0),
         (r.field, "cablegoto", json!({"reference": "0"}), Err("no such reference"), 0),
@@ -624,30 +585,14 @@ fn hostile_input_is_refused_in_words() {
         ("cableref", json!({"cable": c1, "at": "x"}), "is not a finite [x,y] point"),
         ("cablecontinue", json!({"cable": c1, "at": [0, 0]}), "`toward` [x,y] is required"),
         ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
-        (
-            "cablecontinue",
-            json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": "x"}),
-            "`members` must be a list of conductor ids",
-        ),
-        (
-            "cablecontinue",
-            json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": [1]}),
-            "`members` must be a list of conductor ids",
-        ),
-        (
-            "cablecontinue",
-            json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": many}),
-            "`members` lists more than 10000 wires",
-        ),
+        ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": "x"}), "`members` must be a list of conductor ids"),
+        ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": [1]}), "`members` must be a list of conductor ids"),
+        ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": many}), "`members` lists more than 10000 wires"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": w0}), "no such reference"),
         ("cablerefs", json!({"cable": "nope"}), "`cable` (hex id) is required"),
         ("cablerefs", json!({"cable": "1"}), "no such cable"),
-        (
-            "renamepage",
-            json!({"page": page, "title": ""}),
-            "`title` must be a non-empty string of at most 200 characters",
-        ),
+        ("renamepage", json!({"page": page, "title": ""}), "`title` must be a non-empty string of at most 200 characters"),
         ("renamepage", json!({"page": page, "title": "   "}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": "x".repeat(10_000)}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": "a\u{7}b"}), "`title` must be a non-empty string"),
@@ -672,20 +617,12 @@ fn hostile_input_is_refused_in_words() {
     let mut f = before_reference();
     f.h.run("cableref", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
     f.h.activate(f.field);
-    for (members, want) in
-        [(json!([f.c1.hex()]), "is not a member of cable"), (json!([f.w[0].hex(), f.w[0].hex()]), "is listed twice")]
-    {
-        let e = f
-            .h
-            .run("cablecontinue", json!({"cable": f.c1.hex(), "at": [20, 5], "toward": [40, 5], "members": members}))
-            .unwrap_err();
+    for (members, want) in [(json!([f.c1.hex()]), "is not a member of cable"), (json!([f.w[0].hex(), f.w[0].hex()]), "is listed twice")] {
+        let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [20, 5], "toward": [40, 5], "members": members})).unwrap_err();
         assert!(e.contains(want), "{e}");
     }
     // `members` restricts and orders the continuation.
-    let v = f
-        .h
-        .run("cablecontinue", json!({"cable": f.c1.hex(), "at": [20, 5], "toward": [40, 5], "members": [f.w[2].hex()]}))
-        .unwrap();
+    let v = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [20, 5], "toward": [40, 5], "members": [f.w[2].hex()]})).unwrap();
     assert_eq!(v["routes"].as_array().map(Vec::len), Some(1));
 }
 
@@ -704,10 +641,7 @@ fn hostile_documents_derive_without_panicking() {
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
         let item = ItemId::from(100 + i as u128);
-        doc.items.insert(
-            item,
-            Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }) },
-        );
+        doc.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }) });
         doc.representations.insert(
             RepresentationId::from(200 + i as u128),
             Representation {
@@ -742,14 +676,7 @@ fn hostile_documents_derive_without_panicking() {
     two.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
     for (i, pg) in [page, lost_page].into_iter().enumerate() {
         let item = ItemId::from(300 + i as u128);
-        two.items.insert(
-            item,
-            Item {
-                page: pg,
-                style: style.clone(),
-                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }),
-            },
-        );
+        two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
         two.representations.insert(
             RepresentationId::from(400 + i as u128),
             Representation {
@@ -789,14 +716,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     let n: usize = 20_000;
     for i in 0..n {
         let item = ItemId::from(1_000_000 + i as u128);
-        doc.items.insert(
-            item,
-            Item {
-                page,
-                style: style.clone(),
-                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }),
-            },
-        );
+        doc.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }) });
         doc.representations.insert(
             RepresentationId::from(2_000_000 + i as u128),
             Representation {
@@ -841,11 +761,7 @@ fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
     let n = r.h.s.log.len();
     r.h.run("move", json!({"handles": [w5.hex()], "delta": [80, 0]})).unwrap();
     assert_eq!(r.h.doc().conductors, before, "end A is still connected on Supply only");
-    assert!(
-        log_since(&r.h, n).contains("End A of W5 is connected on another page, so it was not connected here"),
-        "{}",
-        log_since(&r.h, n)
-    );
+    assert!(log_since(&r.h, n).contains("End A of W5 is connected on another page, so it was not connected here"), "{}", log_since(&r.h, n));
 }
 
 // ---------------------------------------------------------------- scope 5 (check M), fan (check L)
@@ -868,10 +784,7 @@ fn the_debugger_trail_follows_references_across_pages() {
         })
         .collect();
     assert_eq!(reps, vec![r.supply, r.supply, r.field, r.field], "grouped by page in page order");
-    let routes = used_by(&doc, ObjectId::Conductor(r.w[0]))
-        .into_iter()
-        .filter(|o| matches!(o, ObjectId::Representation(_)))
-        .count();
+    let routes = used_by(&doc, ObjectId::Conductor(r.w[0])).into_iter().filter(|o| matches!(o, ObjectId::Representation(_))).count();
     assert_eq!(routes, 2, "a route on each page");
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["cable_references"].as_array().map(Vec::len), Some(2));
@@ -932,10 +845,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
             ops.push(Op::AddCableMember { cable, index: i, member: CableMember { conductor: c, core: None } });
         }
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-        ops.push(Op::AddItem {
-            id: it,
-            item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) },
-        });
+        ops.push(Op::AddItem { id: it, item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) } });
         ops.push(Op::LinkRepresentation {
             id: r,
             rep: Representation {
@@ -1047,8 +957,7 @@ fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
     for x in [0.0, 5.0, 10.0] {
         h.run("wire", json!({"points": [[x, 0.0], [x, 60.0]]})).unwrap();
     }
-    let c1: CableId =
-        id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
+    let c1: CableId = id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
     h.run("cableref", json!({"cable": c1.hex(), "at": at})).unwrap();
     (h, page, c1)
 }
@@ -1074,11 +983,7 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
     h.pv(|p, pg| {
         let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
         let view = &p.pages[&page];
-        view.map
-            .ref_text_handles()
-            .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
-            .map(|e| format!("{:?}", e.kind))
-            .collect()
+        view.map.ref_text_handles().filter_map(|hd| d.model.iter().find(|e| e.handle == hd)).map(|e| format!("{:?}", e.kind)).collect()
     })
 }
 

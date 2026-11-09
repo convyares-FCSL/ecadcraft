@@ -181,8 +181,7 @@ fn project(st: &mut State, limit: u64) -> Result<Value, String> {
             })
         });
         let components = doc.components.iter().map(|(id, c)| {
-            let terminals: Vec<Value> =
-                doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
+            let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
         let cable_of = |c| doc.cables.iter().find(|(_, k)| k.members.iter().any(|m| m.conductor == c)).map(|(id, _)| id.hex());
@@ -195,8 +194,7 @@ fn project(st: &mut State, limit: u64) -> Result<Value, String> {
             })
         });
         let cables = doc.cables.iter().map(|(id, c)| {
-            let members: Vec<Value> =
-                c.members.iter().map(|m| json!({"conductor": m.conductor.hex(), "core": m.core})).collect();
+            let members: Vec<Value> = c.members.iter().map(|m| json!({"conductor": m.conductor.hex(), "core": m.core})).collect();
             json!({"id": id.hex(), "properties": c.properties, "members": members})
         });
         let nets = derive::nets(doc);

@@ -2,14 +2,7 @@
 //! `ecad/examples/demo/commands.jsonl` through the MCP `execute` tool. The default path is
 //! `C:\dev\ecad-projects\demo.ecad` on Windows and `~/ecad-projects/demo.ecad` elsewhere. An
 //! existing file is never overwritten without `--force`.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use ecad_mcp::{EcadMcp, Options, demo};
 

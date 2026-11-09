@@ -15,9 +15,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{
-    CableId, ConductorId, Document, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, Subject, Transaction,
-};
+use ecad_model::{CableId, ConductorId, Document, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, Subject, Transaction};
 use serde_json::{Value, json};
 
 const SEED: u64 = 404;
@@ -110,9 +108,7 @@ fn ring_centres(e: &[cadcraft_engine::doc::Entity]) -> Vec<(i64, i64)> {
     let mut out: Vec<(i64, i64)> = e
         .iter()
         .filter_map(|x| match &x.kind {
-            cadcraft_engine::doc::EntityKind::Circle(c) => {
-                Some(((c.center.x * 1e6).round() as i64, (c.center.y * 1e6).round() as i64))
-            }
+            cadcraft_engine::doc::EntityKind::Circle(c) => Some(((c.center.x * 1e6).round() as i64, (c.center.y * 1e6).round() as i64)),
             _ => None,
         })
         .collect();
@@ -199,8 +195,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
 fn ac1_n_parallel_wires_give_one_cable_of_exactly_n() {
     for n in [1usize, 2, 7] {
         let mut h = H::new(SEED + n as u64);
-        let ws: Vec<ConductorId> =
-            (0..n).map(|i| wire(&mut h, &[(0.0, i as f64 * 3.0), (50.0, i as f64 * 3.0)])).collect();
+        let ws: Vec<ConductorId> = (0..n).map(|i| wire(&mut h, &[(0.0, i as f64 * 3.0), (50.0, i as f64 * 3.0)])).collect();
         // A wire elsewhere that the slash does not reach.
         let other = wire(&mut h, &[(100.0, 0.0), (150.0, 0.0)]);
         let r = slash(&mut h, (25.0, -1.0), (25.0, n as f64 * 3.0)).unwrap();
@@ -533,11 +528,7 @@ fn ac6_erase_keeps_the_cable_and_delete_keeps_the_conductors() {
     assert!(!d.items.contains_key(&item), "the slash item is gone");
     assert_eq!(d.representations_of(Subject::Cable(k)).count(), 0, "the representation is gone");
     let tx = last_tx(&mut f.h);
-    assert!(
-        tx.ops.iter().all(|o| matches!(o, Op::RemoveItem { .. } | Op::UnlinkRepresentation { .. })),
-        "{:?}",
-        tx.ops
-    );
+    assert!(tx.ops.iter().all(|o| matches!(o, Op::RemoveItem { .. } | Op::UnlinkRepresentation { .. })), "{:?}", tx.ops);
     // The cable still blocks: its wires are still members.
     assert!(slash(&mut f.h, (40.0, 3.0), (40.0, 7.0)).unwrap_err().contains("already in cable"));
     // Delete the cable.
@@ -577,16 +568,11 @@ fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
     // Design §8 lists `RemoveItem` then `UnlinkRepresentation`; the implementation unlinks first.
     // Both replay to the same state (checked by the harness), so either order is accepted here.
     assert!(
-        kinds == ["member", "member", "member", "item", "unlink", "cable"]
-            || kinds == ["member", "member", "member", "unlink", "item", "cable"],
+        kinds == ["member", "member", "member", "item", "unlink", "cable"] || kinds == ["member", "member", "member", "unlink", "item", "cable"],
         "{:?}",
         tx.ops
     );
-    let idx: Vec<usize> = tx
-        .ops
-        .iter()
-        .filter_map(|o| if let Op::RemoveCableMember { index, .. } = o { Some(*index) } else { None })
-        .collect();
+    let idx: Vec<usize> = tx.ops.iter().filter_map(|o| if let Op::RemoveCableMember { index, .. } = o { Some(*index) } else { None }).collect();
     assert_eq!(idx, [2, 1, 0], "last index first");
     let d = f.h.doc();
     assert!(d.cables.is_empty() && !d.items.contains_key(&id::<ItemId>(&r, "item")));
@@ -731,43 +717,15 @@ fn ac7_preview_shows_what_the_click_will_do() {
 #[test]
 fn crossing_rules_table() {
     // (case, extra wire, from, to, Ok(members by y-name) or Err(message part), touched by name)
-    type Case = (
-        &'static str,
-        Option<Vec<(f64, f64)>>,
-        (f64, f64),
-        (f64, f64),
-        Result<Vec<&'static str>, &'static str>,
-        Vec<&'static str>,
-    );
+    type Case = (&'static str, Option<Vec<(f64, f64)>>, (f64, f64), (f64, f64), Result<Vec<&'static str>, &'static str>, Vec<&'static str>);
     let cases: Vec<Case> = vec![
         ("C1 plain crossing", None, (20.0, -1.0), (20.0, 1.0), Ok(vec!["W0"]), vec![]),
-        (
-            "C2 through a bend",
-            Some(vec![(0.0, 20.0), (10.0, 20.0), (10.0, 30.0)]),
-            (5.0, 15.0),
-            (15.0, 25.0),
-            Ok(vec!["X"]),
-            vec![],
-        ),
+        ("C2 through a bend", Some(vec![(0.0, 20.0), (10.0, 20.0), (10.0, 30.0)]), (5.0, 15.0), (15.0, 25.0), Ok(vec!["X"]), vec![]),
         ("C3 slash end on a wire", None, (20.0, 0.0), (20.0, -10.0), Ok(vec!["W0"]), vec![]),
         ("C3 other end on a wire", None, (20.0, -10.0), (20.0, 0.0), Ok(vec!["W0"]), vec![]),
-        (
-            "C4 only a wire end",
-            None,
-            (60.0, -2.0),
-            (60.0, 2.0),
-            Err("The slash crosses no wires; nothing was created."),
-            vec![],
-        ),
+        ("C4 only a wire end", None, (60.0, -2.0), (60.0, 2.0), Err("The slash crosses no wires; nothing was created."), vec![]),
         ("C4 with others", None, (28.0, -3.0), (60.0, 10.0), Ok(vec!["W0", "W5"]), vec!["W10"]),
-        (
-            "C5 along a wire",
-            None,
-            (10.0, 0.0),
-            (20.0, 0.0),
-            Err("The slash crosses no wires; nothing was created."),
-            vec![],
-        ),
+        ("C5 along a wire", None, (10.0, 0.0), (20.0, 0.0), Err("The slash crosses no wires; nothing was created."), vec![]),
         (
             "C6 U-shaped wire crossed twice",
             Some(vec![(70.0, 0.0), (70.0, 10.0), (80.0, 10.0), (80.0, 0.0)]),
@@ -1040,15 +998,7 @@ fn scope5_debugger_trail_slash_cable_conductors() {
     let d = f.h.doc();
     let rep = d.representations_of(Subject::Cable(k)).next().unwrap().0;
     let related = used_by(&d, ObjectId::Cable(k));
-    assert_eq!(
-        related,
-        vec![
-            ObjectId::Conductor(f.w10),
-            ObjectId::Conductor(f.w5),
-            ObjectId::Conductor(f.w0),
-            ObjectId::Representation(rep)
-        ]
-    );
+    assert_eq!(related, vec![ObjectId::Conductor(f.w10), ObjectId::Conductor(f.w5), ObjectId::Conductor(f.w0), ObjectId::Representation(rep)]);
     // Each conductor lists the cable.
     for w in [f.w0, f.w5, f.w10] {
         assert!(used_by(&d, ObjectId::Conductor(w)).contains(&ObjectId::Cable(k)));
@@ -1088,8 +1038,7 @@ fn r2_near_tolerance_crossings_order_by_id_and_are_deterministic() {
             let up = slash_members(&mut h, (5.0, 0.0), (5.0, 10.0)).unwrap();
             h.run("u", Value::Null).unwrap();
             let down = slash_members(&mut h, (5.0, 10.0), (5.0, 0.0)).unwrap();
-            let want_up: Vec<String> =
-                if by_id { sorted(ws.iter().map(|w| w.hex()).collect()) } else { ws.iter().map(|w| w.hex()).collect() };
+            let want_up: Vec<String> = if by_id { sorted(ws.iter().map(|w| w.hex()).collect()) } else { ws.iter().map(|w| w.hex()).collect() };
             assert_eq!(up, want_up, "{case}: upward");
             if by_id {
                 assert_eq!(down, want_up, "{case}: ID order whichever way the slash runs");
@@ -1106,9 +1055,7 @@ fn r2_near_tolerance_crossings_order_by_id_and_are_deterministic() {
 /// next to non-finite input: no panic, ID order, deterministic.
 #[test]
 fn r2_many_wires_crossing_at_nearly_one_point() {
-    for (case, cx, cy, jitter) in
-        [("origin exact", 10.0, 10.0, 0.0), ("origin jitter", 10.0, 10.0, 1e-9), ("huge", 1e11, -1e11, 1e-3)]
-    {
+    for (case, cx, cy, jitter) in [("origin exact", 10.0, 10.0, 0.0), ("origin jitter", 10.0, 10.0, 1e-9), ("huge", 1e11, -1e11, 1e-3)] {
         let mut runs = Vec::new();
         for _ in 0..2 {
             let mut h = H::new(SEED);
@@ -1156,11 +1103,9 @@ fn r2_preview_text_is_red_when_refused() {
     f.h.s.start("cableslash").unwrap();
     click(&mut f.h, 28.0, -3.0);
     let (green, red) = (CColor::Index(3), CColor::Index(1));
-    for (to, want, colour) in [
-        ((32.0, 18.0), "-> 3 wires, 1 other object ignored", green),
-        ((28.5, 2.0), "-> 1 wire", green),
-        ((20.0, -10.0), "-> no wires", red),
-    ] {
+    for (to, want, colour) in
+        [((32.0, 18.0), "-> 3 wires, 1 other object ignored", green), ((28.5, 2.0), "-> 1 wire", green), ((20.0, -10.0), "-> no wires", red)]
+    {
         let p = f.h.s.preview(Vec2::new(to.0, to.1));
         assert_eq!(text(&p), Some((want.to_string(), colour)), "{want}");
     }
@@ -1186,11 +1131,7 @@ fn r2_preview_text_is_red_when_refused() {
 fn r2_cableadd_refuses_a_wire_listed_twice() {
     let mut f = fixture(SEED);
     let (w0, w5) = (f.w0.hex(), f.w5.hex());
-    for params in [
-        json!({"conductors": [w0, w0]}),
-        json!({"conductors": [w0, w5, w0], "tag": "X"}),
-        json!({"conductors": [w5, w5.to_uppercase()]}),
-    ] {
+    for params in [json!({"conductors": [w0, w0]}), json!({"conductors": [w0, w5, w0], "tag": "X"}), json!({"conductors": [w5, w5.to_uppercase()]})] {
         let (head, before) = (f.h.head(), f.h.doc());
         let r = f.h.run("cableadd", params.clone());
         assert_eq!(f.h.head(), head, "{params}");

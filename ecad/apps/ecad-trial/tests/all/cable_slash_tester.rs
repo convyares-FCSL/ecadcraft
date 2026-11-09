@@ -158,9 +158,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
     let config = egui_wgpu::WgpuConfiguration { wgpu_setup: setup, ..Default::default() };
-    let rs =
-        block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE))
-            .ok()?;
+    let rs = block_on(egui_wgpu::RenderState::create(&config, &instance, None, egui_wgpu::RendererOptions::PREDICTABLE)).ok()?;
     let ctx = &h.ctx;
     let ppp = ctx.pixels_per_point();
     {
@@ -173,19 +171,12 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
         }
     }
     let size = ctx.content_rect().size() * ppp;
-    let screen = egui_wgpu::ScreenDescriptor {
-        pixels_per_point: ppp,
-        size_in_pixels: [size.x.round() as u32, size.y.round() as u32],
-    };
+    let screen = egui_wgpu::ScreenDescriptor { pixels_per_point: ppp, size_in_pixels: [size.x.round() as u32, size.y.round() as u32] };
     let tess = ctx.tessellate(h.output().shapes.clone(), ppp);
     let mut encoder = rs.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let texture = rs.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d {
-            width: screen.size_in_pixels[0],
-            height: screen.size_in_pixels[1],
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: screen.size_in_pixels[0], height: screen.size_in_pixels[1], depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -204,10 +195,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     ..Default::default()
@@ -238,9 +226,7 @@ fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) ->
     let idx = rs.queue.submit(std::iter::once(enc.finish()));
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| drop(tx.send(v)));
-    rs.device
-        .poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) })
-        .ok()?;
+    rs.device.poll(wgpu::PollType::Wait { submission_index: Some(idx), timeout: Some(std::time::Duration::from_secs(20)) }).ok()?;
     rx.recv().ok()?.ok()?;
     let data = buffer.slice(..).get_mapped_range().ok()?.to_vec();
     let bgra = matches!(rs.target_format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -264,9 +250,7 @@ fn pixel(img: &egui::ColorImage, at: Pos2) -> egui::Color32 {
 
 /// Whether a colour near `want` is painted within `r` pixels of `at`.
 fn painted_near(img: &egui::ColorImage, at: Pos2, r: f32, want: egui::Color32) -> bool {
-    let close = |c: egui::Color32| {
-        c.r().abs_diff(want.r()) < 60 && c.g().abs_diff(want.g()) < 60 && c.b().abs_diff(want.b()) < 60
-    };
+    let close = |c: egui::Color32| c.r().abs_diff(want.r()) < 60 && c.g().abs_diff(want.g()) < 60 && c.b().abs_diff(want.b()) < 60;
     let ri = r.ceil() as i32;
     (-ri..=ri).any(|dx| (-ri..=ri).any(|dy| close(pixel(img, at + egui::vec2(dx as f32, dy as f32)))))
 }

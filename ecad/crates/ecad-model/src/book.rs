@@ -223,8 +223,7 @@ impl Book {
 
     /// The number `page` is shown with: its `number` property, else its book position, else `?`.
     pub fn number(&self, doc: &Document, page: PageId) -> String {
-        stored_number(doc, page)
-            .map_or_else(|| self.position(page).map_or_else(|| "?".to_string(), |i| i.to_string()), str::to_string)
+        stored_number(doc, page).map_or_else(|| self.position(page).map_or_else(|| "?".to_string(), |i| i.to_string()), str::to_string)
     }
 }
 

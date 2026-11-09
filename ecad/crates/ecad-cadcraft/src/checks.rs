@@ -30,9 +30,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{
-    ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId,
-};
+use ecad_model::{ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::wires::{self, ON_WIRE, kind_of};
@@ -155,12 +153,7 @@ impl Kind {
     pub fn severity(self) -> Severity {
         match self {
             Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed => Severity::Error,
-            Kind::OpenEnd
-            | Kind::LooseWire
-            | Kind::LooksConnected
-            | Kind::DrawnAway
-            | Kind::SinglePoint
-            | Kind::UnknownName => Severity::Warning,
+            Kind::OpenEnd | Kind::LooseWire | Kind::LooksConnected | Kind::DrawnAway | Kind::SinglePoint | Kind::UnknownName => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -460,12 +453,7 @@ fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>)
 /// A conductor's words: its cable and core, or its net's number.
 fn conductor_words(doc: &Document, c: ConductorId) -> String {
     if let Some(k) = doc.cables_of(c).first() {
-        let core = doc
-            .cables
-            .get(k)
-            .and_then(|x| x.members.iter().find(|m| m.conductor == c))
-            .and_then(|m| m.core.clone())
-            .unwrap_or_default();
+        let core = doc.cables.get(k).and_then(|x| x.members.iter().find(|m| m.conductor == c)).and_then(|m| m.core.clone()).unwrap_or_default();
         return format!("{} {core}", crate::references::cable_words(doc, *k)).trim().to_string();
     }
     let conn = doc.connectivity();
@@ -481,10 +469,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     let joined = wiring::joined_potentials(doc, net);
     if !joined.is_empty() {
         // Point at a continuation in it, when it has one.
-        let cont = net
-            .terminals
-            .iter()
-            .find(|t| doc.terminals.get(t).is_some_and(|x| kind_of(doc, x.component) == Some(CONTINUATION)));
+        let cont = net.terminals.iter().find(|t| doc.terminals.get(t).is_some_and(|x| kind_of(doc, x.component) == Some(CONTINUATION)));
         let (page, at, object) = match cont {
             Some(t) => {
                 let (p, a) = terminal_place(doc, *t);
@@ -495,14 +480,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
         out.push(Check { kind: Kind::JoinsPotentials, page, at, object, which: joined.join(" and "), fix: None });
     }
     if net.fixed.len() > 1 {
-        out.push(Check {
-            kind: Kind::TwoFixed,
-            page,
-            at,
-            object,
-            which: net.fixed.keys().cloned().collect::<Vec<_>>().join(", "),
-            fix: None,
-        });
+        out.push(Check { kind: Kind::TwoFixed, page, at, object, which: net.fixed.keys().cloned().collect::<Vec<_>>().join(", "), fix: None });
     }
     if let Some(number) = wiring::net_number(doc, net)
         && wiring::sharing(doc, &number).contains(&id)
@@ -517,24 +495,15 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
             && let Some(t) = t
         {
             let (p, a) = terminal_place(doc, t);
-            out.push(Check {
-                kind: Kind::SinglePoint,
-                page: p,
-                at: a,
-                object: Object::Terminal(t),
-                which: wires::point_words(doc, t),
-                fix: None,
-            });
+            out.push(Check { kind: Kind::SinglePoint, page: p, at: a, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None });
         }
     }
     if net.potentials.len() > 1 {
         let main = wiring::net_potential(doc, net).name;
-        let odd = net.conductors.iter().find(|c| {
-            doc.conductors
-                .get(c)
-                .and_then(|x| x.properties.get(wiring::POTENTIAL_KEY))
-                .is_some_and(|p| Some(p) != main.as_ref())
-        });
+        let odd = net
+            .conductors
+            .iter()
+            .find(|c| doc.conductors.get(c).and_then(|x| x.properties.get(wiring::POTENTIAL_KEY)).is_some_and(|p| Some(p) != main.as_ref()));
         let (p, a) = odd.map_or((page, at), |c| conductor_place(doc, *c, None));
         out.push(Check {
             kind: Kind::MixedPotentials,
@@ -556,8 +525,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
         let cont = net.terminals.iter().find_map(|t| {
             let x = doc.terminals.get(t)?;
             let c = doc.components.get(&x.component)?;
-            (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key))
-                .then_some((*t, x.component))
+            (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key)).then_some((*t, x.component))
         });
         let (p, a, o, which) = match cont {
             Some((t, c)) => {
@@ -581,25 +549,11 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
     match loose.len() {
         2 => {
             let (page, at) = conductor_place(doc, c, None);
-            out.push(Check {
-                kind: Kind::LooseWire,
-                page,
-                at,
-                object: Object::Conductor(c),
-                which: which.clone(),
-                fix: None,
-            });
+            out.push(Check { kind: Kind::LooseWire, page, at, object: Object::Conductor(c), which: which.clone(), fix: None });
         }
         1 => {
             let (page, at) = conductor_place(doc, c, loose.first().copied());
-            out.push(Check {
-                kind: Kind::OpenEnd,
-                page,
-                at,
-                object: Object::Conductor(c),
-                which: which.clone(),
-                fix: None,
-            });
+            out.push(Check { kind: Kind::OpenEnd, page, at, object: Object::Conductor(c), which: which.clone(), fix: None });
         }
         _ => {}
     }
@@ -655,14 +609,7 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
         return Vec::new();
     }
     let (page, at) = terminal_place(doc, t);
-    vec![Check {
-        kind: Kind::Unconnected,
-        page,
-        at,
-        object: Object::Terminal(t),
-        which: wires::point_words(doc, t),
-        fix: None,
-    }]
+    vec![Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None }]
 }
 
 /// The checks of component `c`: a junction with fewer than three wires, a continuation with no
@@ -675,14 +622,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
             let wires_here: usize = doc.terminals_of(c).map(|(t, _)| doc.ends_at(t).len()).sum();
             if wires_here < 3 {
                 let (page, at) = place();
-                out.push(Check {
-                    kind: Kind::ThinJunction,
-                    page,
-                    at,
-                    object: Object::Component(c),
-                    which: format!("{wires_here} wires"),
-                    fix: None,
-                });
+                out.push(Check { kind: Kind::ThinJunction, page, at, object: Object::Component(c), which: format!("{wires_here} wires"), fix: None });
             }
         }
         Some(CONTINUATION) => {
@@ -690,14 +630,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
             let partners = doc.continuations_named(&name_key(&name)).len();
             if partners < 2 {
                 let (page, at) = place();
-                out.push(Check {
-                    kind: Kind::LonelyContinuation,
-                    page,
-                    at,
-                    object: Object::Component(c),
-                    which: name,
-                    fix: None,
-                });
+                out.push(Check { kind: Kind::LonelyContinuation, page, at, object: Object::Component(c), which: name, fix: None });
             }
         }
         _ => {}
@@ -973,10 +906,7 @@ impl Scope {
                 // (colour style, height), tag settings and units change nothing here.
                 Op::SetProjectSettings { before, after } => {
                     let (b, a) = (&before.wiring, &after.wiring);
-                    if b.scheme != a.scheme
-                        || b.digits != a.digits
-                        || b.unclassified_prefix != a.unclassified_prefix
-                        || b.potentials != a.potentials
+                    if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
                     {
                         self.all = true;
                     } else if before.sheet != after.sheet
@@ -1008,8 +938,7 @@ impl Scope {
     /// A component and, for a continuation name, every continuation with that name.
     fn component(&mut self, doc: &Document, c: ComponentId, name: Option<&str>) {
         self.components.insert(c);
-        let name =
-            name.map(str::to_string).or_else(|| doc.components.get(&c).and_then(|x| x.properties.get(NAME).cloned()));
+        let name = name.map(str::to_string).or_else(|| doc.components.get(&c).and_then(|x| x.properties.get(NAME).cloned()));
         if let Some(n) = name {
             self.components.extend(doc.continuations_named(&name_key(&n)));
         }
@@ -1059,10 +988,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         },
         Object::None => return Vec::new(),
     };
-    doc.representations_of(subject)
-        .filter(|(_, r)| r.page == page)
-        .flat_map(|(_, r)| r.items.iter().filter_map(|i| map.item(*i)))
-        .collect()
+    doc.representations_of(subject).filter(|(_, r)| r.page == page).flat_map(|(_, r)| r.items.iter().filter_map(|i| map.item(*i))).collect()
 }
 
 /// `rows` in book order.

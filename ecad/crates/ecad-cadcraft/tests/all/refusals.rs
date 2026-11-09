@@ -15,14 +15,10 @@ fn fixture() -> (H, ComponentId, ComponentId, ConductorId) {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
     let lines = h.lines_on(first);
-    let c1: ComponentId = id(
-        &h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(),
-        "component",
-    );
+    let c1: ComponentId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
     h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     let c2: ComponentId = id(&h.run("place", json!({"at": [100, 0]})).unwrap(), "component");
-    let w: ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
+    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
     (h, c1, c2, w)
 }
 
@@ -171,10 +167,7 @@ fn group_pick_moves_the_whole_component_and_its_wire_ends() {
     h.cmdline("move 0,10  0,0 0,-5 ");
     assert!(h.s.running.is_none());
     h.check();
-    assert!(
-        h.terminal_pos(page, t).near(ecad_model::Pt::new(40.0, 5.0), 1e-9),
-        "the terminal moved with the component"
-    );
+    assert!(h.terminal_pos(page, t).near(ecad_model::Pt::new(40.0, 5.0), 1e-9), "the terminal moved with the component");
     assert!(h.route_ends(page, w).0.near(ecad_model::Pt::new(40.0, 5.0), 1e-9), "the wire end followed (M2)");
 }
 
@@ -186,8 +179,7 @@ fn drag_preview_shows_following_wire_ends() {
     h.s.set_selection(handles.iter().filter_map(|x| cadcraft_engine::doc::Handle::parse_hex(x)).collect());
     h.cmdline("move 0,0");
     let (_, extra) = h.s.drag(cadcraft_engine::geom::Vec2::new(0.0, -5.0)).expect("MOVE drags");
-    let routes: Vec<_> =
-        extra.iter().filter(|e| matches!(e.kind, cadcraft_engine::doc::EntityKind::LwPolyline(_))).collect();
+    let routes: Vec<_> = extra.iter().filter(|e| matches!(e.kind, cadcraft_engine::doc::EntityKind::LwPolyline(_))).collect();
     assert_eq!(routes.len(), 1, "the attached wire is previewed following the component");
     if let cadcraft_engine::doc::EntityKind::LwPolyline(p) = &routes[0].kind {
         assert!((p.vertices[0].p.y - 5.0).abs() < 1e-9, "end A previewed at the dragged terminal");

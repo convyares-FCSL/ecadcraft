@@ -17,9 +17,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Cable, CableId, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, Folder,
-    FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation,
-    RepresentationId, Terminal, TerminalId, Touched,
+    Cable, CableId, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, Folder, FolderId, Item, ItemId, Layer,
+    LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation, RepresentationId, Terminal, TerminalId, Touched,
 };
 use serde::{Deserialize, Serialize};
 
@@ -276,11 +275,7 @@ fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, 
     let mut out = Vec::new();
     for id in pages {
         let Some(page) = doc.pages.get(id) else { continue };
-        let chunk = PageChunkRef {
-            page,
-            items: items.remove(id).unwrap_or_default(),
-            representations: reps.remove(id).unwrap_or_default(),
-        };
+        let chunk = PageChunkRef { page, items: items.remove(id).unwrap_or_default(), representations: reps.remove(id).unwrap_or_default() };
         out.push((*id, encode(&chunk)?));
     }
     Ok(out)
@@ -315,22 +310,11 @@ pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<New
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_incremental(
-    doc: &Document,
-    prev: &ChunkSet,
-    dirty: &Dirty,
-    meta: &ModelMeta,
-) -> Result<(ChunkSet, Vec<NewChunk>), String> {
+pub fn build_incremental(doc: &Document, prev: &ChunkSet, dirty: &Dirty, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
     build(doc, prev, dirty, false, meta)
 }
 
-fn build(
-    doc: &Document,
-    prev: &ChunkSet,
-    dirty: &Dirty,
-    full: bool,
-    meta: &ModelMeta,
-) -> Result<(ChunkSet, Vec<NewChunk>), String> {
+fn build(doc: &Document, prev: &ChunkSet, dirty: &Dirty, full: bool, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
     let mut set = prev.clone();
     let mut new = Vec::new();
     let mut put = |set: &mut ChunkSet, key: String, chunk: NewChunk| {
@@ -371,11 +355,7 @@ fn build(
 }
 
 /// Insert `from` into `into`, refusing an ID already present.
-fn merge<K: Ord + Copy + std::fmt::Display, V>(
-    into: &mut BTreeMap<K, V>,
-    from: BTreeMap<K, V>,
-    what: &str,
-) -> Result<(), String> {
+fn merge<K: Ord + Copy + std::fmt::Display, V>(into: &mut BTreeMap<K, V>, from: BTreeMap<K, V>, what: &str) -> Result<(), String> {
     for (k, v) in from {
         if into.insert(k, v).is_some() {
             return Err(format!("{what} {k} is in two chunks"));
@@ -407,10 +387,7 @@ enum Parsed {
 
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.
 fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>(
-    body: &[u8],
-    key: &str,
-    b: u32,
-    count: u32,
+    body: &[u8], key: &str, b: u32, count: u32,
 ) -> Result<BTreeMap<K, V>, String> {
     let m: BTreeMap<K, V> = serde_json::from_slice(body).map_err(|e| format!("chunk {key}: {e}"))?;
     check_bucket(&m, key, b, count)?;
@@ -455,11 +432,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String>
 /// `f` over `items`, on up to 8 threads where the platform has them (results in the order of
 /// `items`); on one thread on wasm. A share whose thread cannot start is left out.
 pub(crate) fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
-    let threads = if cfg!(target_arch = "wasm32") {
-        1
-    } else {
-        std::thread::available_parallelism().map_or(1, std::num::NonZero::get).clamp(1, 8)
-    };
+    let threads = if cfg!(target_arch = "wasm32") { 1 } else { std::thread::available_parallelism().map_or(1, std::num::NonZero::get).clamp(1, 8) };
     if threads == 1 || items.len() < 2 {
         return items.into_iter().map(f).collect();
     }
@@ -493,10 +466,7 @@ pub(crate) fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync
 /// # Errors
 /// As [`assemble`], a chunk that does not decompress or match its hash, or a chunk that could
 /// not be read (a worker thread could not start).
-pub fn assemble_stored(
-    set: &ChunkSet,
-    stored: Vec<(String, Hash, u8, Vec<u8>)>,
-) -> Result<(Document, Option<ModelMeta>), String> {
+pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
     let n = stored.len();
     let parsed = par_map(stored, |(key, hash, flag, body)| {
         let body = super::pack::unpack(flag, &body)?;
@@ -599,9 +569,7 @@ mod tests {
         use ecad_model::{Component, ComponentId, Document, Op};
         let mut doc = Document::default();
         for i in 0..5_000u128 {
-            ecad_model::Op::CreateComponent { id: ComponentId(0x1000 + i * 7), component: Component::default() }
-                .apply(&mut doc)
-                .unwrap();
+            ecad_model::Op::CreateComponent { id: ComponentId(0x1000 + i * 7), component: Component::default() }.apply(&mut doc).unwrap();
         }
         let meta = ModelMeta::default();
         let (set, _) = build_full(&doc, &meta).unwrap();
@@ -612,8 +580,7 @@ mod tests {
         dirty.add_ops(std::slice::from_ref(&add));
         let (next, new) = build_incremental(&doc, &set, &dirty, &meta).unwrap();
         assert_eq!(new.len(), 1, "one chunk written");
-        let changed: Vec<_> =
-            next.chunks.iter().filter(|(k, h)| set.chunks.get(*k) != Some(*h)).map(|(k, _)| k).collect();
+        let changed: Vec<_> = next.chunks.iter().filter(|(k, h)| set.chunks.get(*k) != Some(*h)).map(|(k, _)| k).collect();
         assert_eq!(changed, vec![&model_key("component", bucket(0x9_9999, 8))]);
         // The same set as building everything again.
         assert_eq!(next, build_full(&doc, &meta).unwrap().0);

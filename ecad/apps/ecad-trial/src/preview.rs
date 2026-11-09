@@ -183,8 +183,7 @@ impl Preview {
         let bg = [t.canvas.r(), t.canvas.g(), t.canvas.b()];
         match rasterise(d, self.view, self.size[0], self.size[1], bg, 96.0 / 25.4) {
             Ok(img) => {
-                let image =
-                    egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
+                let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
                 match &mut self.texture {
                     Some(tex) => tex.set(image, egui::TextureOptions::LINEAR),
                     None => {
@@ -250,8 +249,7 @@ impl Preview {
             // The image fills the rest.
             let avail = ui.available_size().max(vec2(16.0, 16.0));
             let ppp = ctx.pixels_per_point();
-            self.size =
-                [((avail.x * ppp).round() as u32).clamp(16, 4096), ((avail.y * ppp).round() as u32).clamp(16, 4096)];
+            self.size = [((avail.x * ppp).round() as u32).clamp(16, 4096), ((avail.y * ppp).round() as u32).clamp(16, 4096)];
             let (rect, resp) = ui.allocate_exact_size(avail, Sense::click_and_drag());
             self.redraw(ctx);
             if let Some(tex) = &self.texture {
@@ -260,13 +258,7 @@ impl Preview {
                 ui.painter().rect_filled(rect, 0.0, t.canvas);
             }
             if let Some(e) = &self.error {
-                ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    e,
-                    egui::FontId::proportional(12.0),
-                    t.warn,
-                );
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, e, egui::FontId::proportional(12.0), t.warn);
             }
             if let Some(at) = self.ring {
                 let c = self.to_screen(rect, at);
@@ -280,8 +272,7 @@ impl Preview {
             let k = self.view.height / f64::from(rect.height().max(1.0));
             if resp.dragged() {
                 let d = resp.drag_delta();
-                self.view.center =
-                    Pt::new(self.view.center.x - f64::from(d.x) * k, self.view.center.y + f64::from(d.y) * k);
+                self.view.center = Pt::new(self.view.center.x - f64::from(d.x) * k, self.view.center.y + f64::from(d.y) * k);
             }
             if resp.hovered() {
                 let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -289,17 +280,12 @@ impl Preview {
                     && let Some(p) = resp.hover_pos()
                 {
                     let factor = f64::from((scroll / 200.0).exp());
-                    let about = Pt::new(
-                        self.view.center.x + f64::from(p.x - rect.center().x) * k,
-                        self.view.center.y - f64::from(p.y - rect.center().y) * k,
-                    );
+                    let about =
+                        Pt::new(self.view.center.x + f64::from(p.x - rect.center().x) * k, self.view.center.y - f64::from(p.y - rect.center().y) * k);
                     let h = (self.view.height / factor).clamp(1e-3, 1e9);
                     let s = h / self.view.height;
                     self.view = PreviewView {
-                        center: Pt::new(
-                            about.x + (self.view.center.x - about.x) * s,
-                            about.y + (self.view.center.y - about.y) * s,
-                        ),
+                        center: Pt::new(about.x + (self.view.center.x - about.x) * s, about.y + (self.view.center.y - about.y) * s),
                         height: h,
                     };
                 }

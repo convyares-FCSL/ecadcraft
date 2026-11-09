@@ -50,14 +50,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{
-    Cable, Component, Conductor, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject,
-    Terminal,
-};
+use crate::doc::{Cable, Component, Conductor, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal};
 use crate::error::{ModelError, Result};
-use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
-};
+use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 
@@ -115,9 +110,7 @@ impl Touched {
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
                 self.terminals.insert(*id);
             }
-            Op::LinkRepresentation { id, .. }
-            | Op::ModifyRepresentation { id, .. }
-            | Op::UnlinkRepresentation { id, .. } => {
+            Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 self.representations.insert(*id);
             }
             Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } => {
@@ -352,10 +345,7 @@ impl Document {
     /// I19.
     fn check_folder_order(&self) -> Result<()> {
         let order: BTreeSet<_> = self.folder_order.iter().collect();
-        if order.len() != self.folder_order.len()
-            || order.len() != self.folders.len()
-            || !self.folders.keys().all(|f| order.contains(f))
-        {
+        if order.len() != self.folder_order.len() || order.len() != self.folders.len() || !self.folders.keys().all(|f| order.contains(f)) {
             return bad("folder order does not list each folder exactly once".into());
         }
         Ok(())
@@ -364,10 +354,7 @@ impl Document {
     /// I20.
     fn check_folder(&self, id: FolderId) -> Result<()> {
         if crate::book::folder_depth(self, id).is_none() {
-            return bad(format!(
-                "folder {id} has a missing parent, is inside itself or nests more than {} deep",
-                crate::book::MAX_FOLDER_DEPTH
-            ));
+            return bad(format!("folder {id} has a missing parent, is inside itself or nests more than {} deep", crate::book::MAX_FOLDER_DEPTH));
         }
         Ok(())
     }
@@ -386,10 +373,7 @@ impl Document {
     /// I1.
     fn check_page_order(&self) -> Result<()> {
         let order: BTreeSet<_> = self.page_order.iter().collect();
-        if order.len() != self.page_order.len()
-            || order.len() != self.pages.len()
-            || !self.pages.keys().all(|p| order.contains(p))
-        {
+        if order.len() != self.page_order.len() || order.len() != self.pages.len() || !self.pages.keys().all(|p| order.contains(p)) {
             return bad("page order does not list each page exactly once".into());
         }
         Ok(())
@@ -405,9 +389,7 @@ impl Document {
         }
         match &item.kind {
             ItemKind::Primitive(p) if !p.is_finite() => bad(format!("item {id} has non-finite geometry")),
-            ItemKind::Symbol(s) if !self.definitions.contains_key(&s.definition) => {
-                bad(format!("item {id} places a missing definition"))
-            }
+            ItemKind::Symbol(s) if !self.definitions.contains_key(&s.definition) => bad(format!("item {id} places a missing definition")),
             ItemKind::Symbol(s) if !s.placement.is_valid() => bad(format!("item {id} has an invalid placement")),
             _ => Ok(()),
         }
@@ -432,12 +414,7 @@ impl Document {
     }
 
     /// I10 to I16. `doc05` is called for each listed item, in order, and decides I13.
-    fn check_representation(
-        &self,
-        id: RepresentationId,
-        r: &Representation,
-        mut doc05: impl FnMut(ItemId) -> Result<()>,
-    ) -> Result<()> {
+    fn check_representation(&self, id: RepresentationId, r: &Representation, mut doc05: impl FnMut(ItemId) -> Result<()>) -> Result<()> {
         let subject_exists = match r.subject {
             Subject::Component(c) => self.components.contains_key(&c),
             Subject::Conductor(c) => self.conductors.contains_key(&c),
@@ -476,9 +453,7 @@ impl Document {
                 // Without connection points its terminals are matched to the definition by key, so
                 // the symbol shown must be the component's own definition. With them (one device
                 // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
-                if r.connection_points.is_empty()
-                    && self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition)
-                {
+                if r.connection_points.is_empty() && self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
                     return bad(format!("symbol representation {id} shows a definition its component does not use"));
                 }
             }
