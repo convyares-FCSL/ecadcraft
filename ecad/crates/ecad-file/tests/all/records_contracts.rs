@@ -40,7 +40,7 @@ fn output_is_deterministic_and_incremental_saves_match_one_write() {
     assert_eq!(a, b, "identical records give identical bytes");
     // Writing a prefix and saving the rest gives the same bytes as writing everything at once.
     let f = fixture();
-    let full = f.ledger.log().to_vec();
+    let full = f.ledger.full_log().unwrap();
     let mut prefix = Ledger::replay(full[..5].to_vec(), SEED).unwrap();
     prefix.mark_persisted(0).ok();
     let mut file =

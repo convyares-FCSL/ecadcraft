@@ -230,7 +230,7 @@ fn damaged_files_open_read_only_at_the_last_good_transaction_with_the_same_repor
     let bytes = written(&mut f.ledger);
     // The log as read back from the file: the canonical form writes -0.0 as 0, so the documents
     // compared are those of transactions read from bytes, as `open_project` sees them.
-    let log = open_project(&bytes, SEED).unwrap().ledger.log().to_vec();
+    let log = open_project(&bytes, SEED).unwrap().ledger.full_log().unwrap();
     let mut reports = String::new();
     let page = f.page;
     let w = f.ledger.document().conductors.keys().next().copied().unwrap();

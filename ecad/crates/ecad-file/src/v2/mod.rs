@@ -14,11 +14,13 @@
 pub mod convert;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
+pub mod inspect;
 pub mod pack;
 pub mod parts;
 pub mod project;
 pub mod schema;
 pub mod store;
+pub mod verify;
 
 pub use project::{DamageV2, OpenErrorV2, OpenedV2, ProjectV2, ReportV2, SaveErrorV2, SavedV2, StoreHistory};
 pub use store::{Reader, Store, StoreError, TableStat, Writer};

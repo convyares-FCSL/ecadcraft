@@ -114,8 +114,22 @@ impl ReportV2 {
     }
 }
 
-/// A transaction row decoded: the transaction, its record bytes and its chain value.
-fn decode_row(seq: u64, flag: u8, stored_chain: &Hash, body: &[u8], prev: &Hash) -> Result<Transaction, String> {
+/// The project ID and cache of a file, after checking its container facts.
+pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenErrorV2> {
+    read_facts(r).map(|f| (f.project, f.cache))
+}
+
+pub(crate) use decode_row as decode_row_pub;
+
+/// A transaction row decoded and checked: its record against its stored chain value, its `seq`,
+/// and its `prev` against the previous row's chain value.
+pub(crate) fn decode_row(
+    seq: u64,
+    flag: u8,
+    stored_chain: &Hash,
+    body: &[u8],
+    prev: &Hash,
+) -> Result<Transaction, String> {
     let record = pack::unpack(flag, body)?;
     if chain::tx_hash(&record) != *stored_chain {
         return Err("the record does not match its chain value".into());
@@ -215,17 +229,21 @@ fn read_rows(
     Ok((out, prev, None))
 }
 
-/// Reads the history before a ledger's base from the file, on demand (never on open).
+/// Reads the history before a ledger's base from the file, on demand (never on open). It does
+/// not keep the file open: once the project lets go of it (closed, or bound to another file by
+/// Save As, which rebinds the ledger), reads report that the file is closed.
 #[derive(Debug)]
 pub struct StoreHistory {
-    store: Arc<Store>,
+    store: std::sync::Weak<Store>,
     branch: BranchId,
     seed: Hash,
 }
 
 impl StoreHistory {
     fn read(&self) -> ecad_model::Result<Reader> {
-        self.store.reader().map_err(|e| ModelError::CorruptLog(e.to_string()))
+        let store =
+            self.store.upgrade().ok_or_else(|| ModelError::CorruptLog("the project's file is closed".into()))?;
+        store.reader().map_err(|e| ModelError::CorruptLog(e.to_string()))
     }
 
     /// The chain value before `seq` (the seed before 1).
@@ -250,6 +268,17 @@ impl History for StoreHistory {
             .ok_or_else(|| ModelError::CorruptLog(format!("transaction {seq} is missing")))?;
         decode_row(seq, flag, &chain, &body, &prev)
             .map_err(|e| ModelError::CorruptLog(format!("transaction {seq}: {e}")))
+    }
+
+    fn transactions(&self, from: u64, to: u64) -> ecad_model::Result<Vec<Transaction>> {
+        let r = self.read()?;
+        let prev = self.prev_of(&r, from)?;
+        let (txs, _, damage) =
+            read_rows(&r, self.branch, from, to, prev).map_err(|e| ModelError::CorruptLog(e.to_string()))?;
+        match damage {
+            Some(d) => Err(ModelError::CorruptLog(format!("transaction {:?}: {}", d.seq, d.detail))),
+            None => Ok(txs),
+        }
     }
 
     fn state_at(&self, seq: u64) -> ecad_model::Result<Document> {
@@ -457,7 +486,8 @@ impl ProjectV2 {
         let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq + 1, to, snap_chain)?;
         drop(r);
         let damage = damage.or(row_damage);
-        let history: Arc<dyn History> = Arc::new(StoreHistory { store: store.clone(), branch, seed: seed_chain });
+        let history: Arc<dyn History> =
+            Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
         let base = Base { seq: snap_seq, doc, undo: stacks.0.clone(), redo: stacks.1.clone(), history };
         let tail_len = tail.len() as u64;
         let (ledger, failure) = Ledger::from_base(base, tail, seed)
@@ -889,6 +919,15 @@ impl ProjectV2 {
         }
         w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         Ok(())
+    }
+
+    /// A reader of this file's history, for a ledger based on one of its snapshots.
+    pub fn history(&self) -> Arc<dyn History> {
+        Arc::new(StoreHistory {
+            store: Arc::downgrade(&self.store),
+            branch: self.branch,
+            seed: chain::seed(ChainKind::Project, self.project.0),
+        })
     }
 
     /// The database.

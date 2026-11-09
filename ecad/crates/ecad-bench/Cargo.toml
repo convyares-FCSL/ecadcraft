@@ -18,6 +18,9 @@ ecad-file = { workspace = true }
 ecad-cadcraft = { path = "../ecad-cadcraft" }
 cadcraft-engine = { path = "../../../crates/engine" }
 serde_json = { workspace = true }
+# Brief 021: the Zstandard comparison (ruzstd, as the container uses, against the zstd crate).
+ruzstd = { workspace = true }
+zstd = "0.13"
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).

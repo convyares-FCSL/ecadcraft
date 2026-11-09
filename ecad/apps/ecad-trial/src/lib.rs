@@ -280,6 +280,9 @@ pub struct Trial {
     seen_events: u64,
     /// A message waiting in a dialog.
     notice: Option<String>,
+    /// A version 1 file the user tried to open, and the new file converting it would write
+    /// (brief 021: offered, never silent).
+    convert_offer: Option<(String, String)>,
     snapshot_count: u32,
     /// The ECAD command field's field (whole lines, spaces included).
     pub command: String,
@@ -435,6 +438,7 @@ impl Trial {
             save_as_requested: requested,
             seen_events: 0,
             notice: None,
+            convert_offer: None,
             snapshot_count: 0,
             command: String::new(),
             command_hint: None,
@@ -491,6 +495,14 @@ impl Trial {
             return Err("an ECAD project is already open; close it first".into());
         }
         let path = ecad_cadcraft::normalize_with(path, self.home.as_deref())?;
+        if let Some(out) = ecad_cadcraft::file::needs_conversion(&path) {
+            // Never opened for editing, never converted silently: offer it.
+            self.convert_offer = Some((path.clone(), out.clone()));
+            return Err(format!(
+                "{path} is a version 1 project file. It can be converted to a new version 2 file, {out}; \
+                 the original is left untouched."
+            ));
+        }
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -597,6 +609,44 @@ impl Trial {
     /// Title of the project close waiting for an answer.
     pub fn pending_close(&self) -> Option<&str> {
         self.held.as_ref().map(|h| h.title.as_str())
+    }
+
+    /// The version 1 file waiting for the user's answer to the conversion offer, and the file it
+    /// would write.
+    pub fn convert_offer(&self) -> Option<(&str, &str)> {
+        self.convert_offer.as_ref().map(|(a, b)| (a.as_str(), b.as_str()))
+    }
+
+    /// Accept the conversion offer: convert the version 1 file to its new version 2 file
+    /// (verified by replaying both; the original is untouched), then open the new file.
+    ///
+    /// # Errors
+    /// Nothing is offered, the conversion failed (nothing was written), or the new file could
+    /// not be opened.
+    pub fn accept_conversion(&mut self) -> Result<String, String> {
+        let (source, output) = self.convert_offer.take().ok_or("no conversion is offered")?;
+        // The blank project the trial started with (a file was given at startup) closes first;
+        // one with unsaved work asks, and then the offer stays.
+        if self.project_open() {
+            self.close_project();
+            if self.project_open() {
+                self.convert_offer = Some((source, output));
+                return Err("close the open project first; the conversion is still offered".into());
+            }
+        }
+        let (report, out) = ecad_cadcraft::file::convert(&source, Some(&output), &ecad_cadcraft::writer())?;
+        self.cad.session.echo(report.clone());
+        self.dialog = None;
+        let summary = self.open_project(&out)?;
+        self.notice = Some(format!("{report}\n\n{summary}"));
+        Ok(summary)
+    }
+
+    /// Decline the conversion offer: nothing is opened or written.
+    pub fn decline_conversion(&mut self) {
+        if self.convert_offer.take().is_some() {
+            self.cad.session.echo("Not converted; nothing was opened or written.");
+        }
     }
 
     /// The message waiting in the notice dialog.
@@ -2135,6 +2185,36 @@ impl Trial {
     fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(h) = &self.held {
             self.close_dialog(ctx, h.title.clone(), h.changes);
+        } else if let Some((source, output)) = self.convert_offer.clone() {
+            let mut answer = None;
+            egui::Modal::new(egui::Id::unique("ecad_trial_convert")).show(ctx, |ui| {
+                ui.set_width(520.0);
+                ui.label(RichText::new("Convert this project to the new file format?").strong());
+                ui.add_space(4.0);
+                ui.label(format!("{source} is a version 1 project file. This version saves projects in version 2."));
+                ui.label(format!(
+                    "Converting writes a new file, {output}, checks it by replaying both, and opens it. \
+                     The original file is left untouched."
+                ));
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Convert and open").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        answer = Some(false);
+                    }
+                });
+            });
+            match answer {
+                Some(true) => {
+                    if let Err(e) = self.accept_conversion() {
+                        self.notice = Some(format!("The project was not converted.\n\n{e}"));
+                    }
+                }
+                Some(false) => self.decline_conversion(),
+                None => {}
+            }
         } else if self.dialog.is_some() {
             self.file_dialog(ctx);
         } else if self.name_box.is_some() {

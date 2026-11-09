@@ -20,7 +20,7 @@ use ecad_cadcraft::ProjectHandle;
 use ecad_cadcraft::debug::{
     self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve,
 };
-use ecad_model::{Author, Document, Transaction};
+use ecad_model::{Author, Document, ProjectId, Transaction};
 use eframe::egui::{self, Color32, RichText};
 
 /// The ECAD Dev Debugger button's hover text.
@@ -41,17 +41,23 @@ pub enum View {
     Definitions,
     History,
     Persistence,
+    /// The version 2 file's tables and snapshots (brief 021).
+    Storage,
+    /// The version 2 file's branches (brief 021).
+    Branches,
     Diagnostics,
     Checks,
 }
 
 impl View {
-    pub const ALL: [View; 7] = [
+    pub const ALL: [View; 9] = [
         View::Selection,
         View::Model,
         View::Definitions,
         View::History,
         View::Persistence,
+        View::Storage,
+        View::Branches,
         View::Diagnostics,
         View::Checks,
     ];
@@ -63,6 +69,8 @@ impl View {
             View::Definitions => "Definitions",
             View::History => "History",
             View::Persistence => "Persistence",
+            View::Storage => "Storage",
+            View::Branches => "Branches",
             View::Diagnostics => "Diagnostics",
             View::Checks => "Checks",
         }
@@ -86,6 +94,8 @@ pub enum Action {
     Refresh,
     Close,
     Check(CheckKind),
+    /// Read the file's table sizes and version rows (on request: it walks the tables).
+    ReadStorage,
 }
 
 /// A check that ran, and when.
@@ -132,6 +142,12 @@ pub struct Debugger {
     at_text: String,
     historical: Option<Historical>,
     checks: Vec<Ran>,
+    /// The Storage view's file read, on request.
+    storage: Option<(Result<debug::StorageRead, String>, String)>,
+    /// The Branches view's rows, read after each save (a few rows), and the saved position they
+    /// were read at.
+    branches: Option<Result<Vec<debug::BranchRow>, String>>,
+    branches_at: Option<(ProjectId, u64)>,
 }
 
 impl Default for Debugger {
@@ -157,6 +173,9 @@ impl Default for Debugger {
             at_text: String::new(),
             historical: None,
             checks: Vec::new(),
+            storage: None,
+            branches: None,
+            branches_at: None,
         }
     }
 }
@@ -247,8 +266,19 @@ impl Debugger {
 
     /// Install a new snapshot.
     pub fn take(&mut self, mut snap: DebugSnapshot) {
-        if snap.log_from == 0 || self.snap.as_ref().is_some_and(|old| old.project != snap.project) {
+        let other = self.snap.as_ref().is_some_and(|old| old.project != snap.project || old.base != snap.base);
+        if snap.log_from == 0 || other {
             self.log.clear();
+        }
+        if other {
+            self.storage = None;
+        }
+        // The Branches view follows saves: its few rows are read again when the saved position
+        // moves (outside the project lock: the snapshot is already a copy).
+        let at = (snap.project, snap.persisted);
+        if self.branches_at != Some(at) {
+            self.branches = snap.store_arc().map(|s| debug::read_branches(&s));
+            self.branches_at = Some(at);
         }
         self.log.truncate(usize::try_from(snap.log_from).unwrap_or(usize::MAX));
         self.log.append(&mut snap.new_transactions);
@@ -317,28 +347,57 @@ impl Debugger {
             self.record = Some(Err("the test store keeps its file in memory".into()));
             return;
         };
-        let expected = self.log.get(usize::try_from(seq).unwrap_or(usize::MAX).wrapping_sub(1));
+        let expected = snap.tx_in(&self.log, seq);
         self.record = Some(debug::read_record(Path::new(path), span, expected));
     }
 
-    /// Rebuild the document after transaction `seq` from the panel's copy of the history.
+    /// Read the trail transaction's row from a version 2 file (no project lock).
+    pub fn read_row(&mut self) {
+        let (Some(snap), Some(seq)) = (&self.snap, self.tx) else { return };
+        let Some(store) = snap.store_arc() else {
+            self.record = Some(Err("the project has no version 2 file".into()));
+            return;
+        };
+        if !snap.record_state(seq).durable() {
+            self.record = Some(Err(format!("transaction {seq} is not saved yet")));
+            return;
+        }
+        self.record = Some(debug::read_row(&store, seq, snap.tx_in(&self.log, seq)));
+    }
+
+    /// Rebuild the document after transaction `seq` from the panel's copy of the history (and,
+    /// before the snapshot the project was opened from, from the file).
     pub fn show_at(&mut self, seq: u64) {
-        let doc = debug::state_at(&self.log, seq);
+        let Some(snap) = &self.snap else { return };
+        let doc = debug::state_at_from(snap.base, snap.history.as_ref(), &self.log, seq);
         self.historical = Some(Historical { seq, doc, focus: None });
+    }
+
+    /// Read the Storage view's table sizes and version rows (on request).
+    pub fn read_storage(&mut self) {
+        let Some(snap) = &self.snap else { return };
+        let read = match snap.store_arc() {
+            Some(st) => debug::read_storage(&st, snap.file.path.as_deref().map(Path::new)),
+            None => Err("the project has no version 2 file yet".into()),
+        };
+        self.storage = Some((read, now()));
     }
 
     /// Run a check now (only ever on request).
     pub fn run_check(&mut self, kind: CheckKind, project: &ProjectHandle, s: &mut Session) {
         let check = match (kind, &self.snap) {
             (_, None) => return,
-            (CheckKind::Replay, Some(snap)) => debug::verify_replay(&self.log, &snap.doc),
+            (CheckKind::Replay, Some(snap)) => {
+                debug::verify_replay_from(snap.base, snap.history.as_ref(), &self.log, &snap.doc)
+            }
             (CheckKind::Projection, Some(snap)) => match project.debug_projection_inputs(s) {
                 Ok(inputs) => debug::verify_projection(&inputs),
                 Err(e) => Check { what: "projection", at_seq: snap.head, ok: false, lines: vec![e] },
             },
-            (CheckKind::File, Some(snap)) => match &snap.file.path {
-                Some(p) => debug::verify_file(Path::new(p), &self.log, &snap.file, snap.persisted),
-                None => Check {
+            (CheckKind::File, Some(snap)) => match (snap.store_arc(), &snap.file.path) {
+                (Some(st), _) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
+                (None, Some(p)) => debug::verify_file(Path::new(p), &self.log, &snap.file, snap.persisted),
+                (None, None) => Check {
                     what: "file",
                     at_seq: snap.head,
                     ok: false,
@@ -355,6 +414,7 @@ impl Debugger {
             Action::Refresh => self.refresh(project, s, true),
             Action::Close => self.open = false,
             Action::Check(k) => self.run_check(k, project, s),
+            Action::ReadStorage => self.read_storage(),
         }
     }
 
@@ -401,6 +461,12 @@ impl Debugger {
                 View::Definitions => self.model_view(ui, true),
                 View::History => self.history_view(ui),
                 View::Persistence => self.persistence_view(ui),
+                View::Storage => {
+                    if self.storage_view(ui) {
+                        action = Some(Action::ReadStorage);
+                    }
+                }
+                View::Branches => self.branches_view(ui),
                 View::Diagnostics => self.diagnostics_view(ui),
                 View::Checks => {
                     if let Some(k) = self.checks_view(ui) {
@@ -666,6 +732,111 @@ impl Debugger {
         }
     }
 
+    /// The version 2 file's facts (live, from the snapshot) and, on request, its table sizes and
+    /// version rows. Returns whether the read was asked for.
+    fn storage_view(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some(snap) = &self.snap else { return false };
+        let Some(st) = &snap.file.storage else {
+            ui.label("The project has no version 2 file yet (Save As writes one).");
+            return false;
+        };
+        egui::Grid::new("dbg_storage").num_columns(2).striped(true).show(ui, |ui| {
+            let mut row = |k: &str, v: String| {
+                ui.label(k);
+                ui.add(egui::Label::new(v).wrap());
+                ui.end_row();
+            };
+            row("Container", "version 2 (redb), codec json/1, Zstandard".into());
+            row("Branch", st.branch.clone());
+            row("Head in the file", st.head.to_string());
+            row("Opened from (base)", format!("the snapshot at {}", snap.base));
+            row("Latest snapshot", format!("{} (every {} transactions)", st.snapshot_seq, st.snapshot_every));
+            row(
+                "Last save",
+                st.last_save.as_ref().map_or_else(
+                    || "none in this session".into(),
+                    |l| {
+                        format!(
+                            "transactions {}–{}, {} bytes, {} new parts, {} snapshots",
+                            l.first_seq, l.last_seq, l.bytes, l.parts_written, l.snapshots
+                        )
+                    },
+                ),
+            );
+            row(
+                "Converted from version 1",
+                st.link_v1.as_ref().map_or_else(|| "no".into(), |(h, n)| format!("{n} transactions, final hash {h}")),
+            );
+            row("Writable", if st.writable { "yes".into() } else { "no (read-only)".into() });
+        });
+        let ask = ui
+            .button("Read table sizes")
+            .on_hover_text("Reads the file's tables and version rows (on request; the project is not locked)")
+            .clicked();
+        if let Some((read, when)) = &self.storage {
+            ui.label(format!("Read {when}:"));
+            match read {
+                Ok(r) => {
+                    ui.label(format!("File: {} bytes", r.file_bytes));
+                    egui::Grid::new("dbg_tables").num_columns(5).striped(true).show(ui, |ui| {
+                        for h in ["table", "rows", "stored bytes", "metadata", "fragmented"] {
+                            ui.label(RichText::new(h).strong());
+                        }
+                        ui.end_row();
+                        for t in &r.tables {
+                            ui.label(t.name);
+                            ui.label(t.rows.to_string());
+                            ui.label(t.stored_bytes.to_string());
+                            ui.label(t.metadata_bytes.to_string());
+                            ui.label(t.fragmented_bytes.to_string());
+                            ui.end_row();
+                        }
+                    });
+                    ui.label(format!("{} version rows:", r.versions.len()));
+                    for (b, kind, name, seq, parts) in r.versions.iter().rev().take(PAGE) {
+                        ui.label(format!("{b}: {kind} {name:?} at {seq} ({parts} parts)"));
+                    }
+                }
+                Err(e) => {
+                    ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
+                }
+            }
+        }
+        ask
+    }
+
+    /// The version 2 file's branches: name, status, head, rows, fork point.
+    fn branches_view(&mut self, ui: &mut egui::Ui) {
+        match &self.branches {
+            None => {
+                ui.label("The project has no version 2 file yet (Save As writes one).");
+            }
+            Some(Err(e)) => {
+                ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
+            }
+            Some(Ok(rows)) => {
+                ui.label("Each branch is its own append-only log; a branch starts after a transaction of its parent.");
+                for b in rows {
+                    let from = match &b.fork {
+                        Some((p, seq)) => format!("forked from {p} after transaction {seq}"),
+                        None => "from the project root".into(),
+                    };
+                    let frame = egui::Frame::group(ui.style());
+                    frame.show(ui, |ui| {
+                        ui.label(RichText::new(format!("{} ({})", b.name, b.status)).strong());
+                        ui.label(format!(
+                            "head {}, {} rows, {from}{}",
+                            b.head,
+                            b.rows,
+                            if b.release_line { ", release line" } else { "" }
+                        ));
+                        ui.monospace(format!("ID {}  head chain {}", b.id, b.head_chain));
+                    });
+                }
+            }
+        }
+    }
+
     fn diagnostics_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
         ui.label(RichText::new("Pages").strong());
@@ -781,7 +952,7 @@ impl Debugger {
         }
         let mut pick = None;
         for seq in touching.iter().rev().take(PAGE) {
-            let Some(tx) = self.log.get(usize::try_from(*seq).unwrap_or(usize::MAX).wrapping_sub(1)) else { continue };
+            let Some(tx) = snap.tx_in(&self.log, *seq) else { continue };
             let state = snap.record_state(*seq);
             let chosen = self.tx == Some(*seq);
             let text = RichText::new(format!("#{} [{}] {}", seq, state.label(), tx.label));
@@ -796,7 +967,7 @@ impl Debugger {
         }
         // → the transaction, its ops with before/after values, and its record.
         let Some(seq) = self.tx else { return };
-        let Some(tx) = self.log.get(usize::try_from(seq).unwrap_or(usize::MAX).wrapping_sub(1)) else { return };
+        let Some(tx) = snap.tx_in(&self.log, seq) else { return };
         let state = snap.record_state(seq);
         ui.separator();
         ui.label(RichText::new(format!("Transaction #{seq}: {}", tx.label)).strong().color(state_color(state, warn)));
@@ -817,7 +988,14 @@ impl Debugger {
             ));
         }
         let mut read = false;
+        let mut read_row = false;
         match state {
+            RecordState::Saved(None) if snap.store.is_some() => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Saved: a row of the file's transactions table.");
+                    read_row = ui.button("Read row").clicked();
+                });
+            }
             RecordState::Saved(Some(s)) | RecordState::Unconfirmed(s) => {
                 let what = if state.durable() { "Saved" } else { "Written but NOT confirmed durable" };
                 ui.horizontal_wrapped(|ui| {
@@ -879,6 +1057,9 @@ impl Debugger {
         }
         if read {
             self.read_record();
+        }
+        if read_row {
+            self.read_row();
         }
     }
 }

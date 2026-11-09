@@ -432,18 +432,18 @@ fn undo_and_redo_use_the_kept_stacks_and_restore_state() {
     assert_eq!(b.ledger.undo_label(), Some("bookmark"));
     b.ledger.redo(Author::User).unwrap();
     assert_eq!(b.ledger.document().cables_of(b.wire2), vec![b.cable]);
-    let replayed = Ledger::replay(b.ledger.log().to_vec(), 0).unwrap();
+    let replayed = Ledger::replay(b.ledger.full_log().unwrap(), 0).unwrap();
     assert_eq!(replayed.undo_label(), b.ledger.undo_label());
     assert_eq!(replayed.redo_label(), b.ledger.redo_label());
     assert_eq!(replayed.document(), b.ledger.document());
-    let verified = Ledger::replay_verified(b.ledger.log().to_vec(), 0).unwrap();
+    let verified = Ledger::replay_verified(b.ledger.full_log().unwrap(), 0).unwrap();
     assert_eq!(verified.document(), b.ledger.document());
 }
 
 #[test]
 fn a_damaged_history_opens_at_its_last_good_transaction() {
     let b = base();
-    let mut log = b.ledger.log().to_vec();
+    let mut log = b.ledger.full_log().unwrap();
     let mut bad = log[1].clone();
     bad.seq = 3;
     bad.ops = vec![
@@ -979,7 +979,8 @@ fn sequence(seed: u64, tally: &mut Tally) {
             }
         }
     }
-    let replayed = Ledger::replay_verified(ledger.log().to_vec(), 0).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    let replayed =
+        Ledger::replay_verified(ledger.full_log().unwrap(), 0).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
     assert_eq!(replayed.document(), ledger.document(), "seed {seed}: replay");
     assert_eq!(replayed.undo_label(), ledger.undo_label());
     assert_eq!(replayed.redo_label(), ledger.redo_label());

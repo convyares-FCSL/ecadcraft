@@ -6,6 +6,7 @@
 mod common;
 
 mod canonical_contracts;
+mod container_crash;
 mod container_v2;
 mod disk_contracts;
 mod disk_edge_contracts;

@@ -129,6 +129,15 @@ impl Store {
         Ok(me)
     }
 
+    /// Open a database from its bytes, held in memory (EEP-0005 §11: what a wasm build reads).
+    /// Writes go to the memory copy only.
+    ///
+    /// # Errors
+    /// The bytes are not a redb database.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, StoreError> {
+        Self::with_backend(ecad_store::power::PowerLoss::from_image(bytes))
+    }
+
     /// Make sure every table exists (an empty database has none).
     fn init(&self) -> Result<(), StoreError> {
         let Db::Writable(db) = &self.db else { return Ok(()) };

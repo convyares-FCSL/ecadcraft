@@ -13,10 +13,14 @@ pub struct Row {
     pub tier: String,
     pub variant: String,
     pub measured: Measured,
+    /// The same project in container version 2 (brief 021).
+    pub v2: Option<crate::v2::MeasuredV2>,
+    /// Zstandard codecs compared on that file (brief 021).
+    pub compression: Option<crate::v2::Compression>,
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 23] = [
+const COLUMNS: [(&str, &str); 28] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -40,9 +44,16 @@ const COLUMNS: [(&str, &str); 23] = [
     ("tbupd_ms", "tbupd ms"),
     ("gridchange_ms", "gridchange ms"),
     ("revopen_ms", "revopen ms"),
+    ("convert_ms", "v2 convert ms"),
+    ("v2_open_ms", "v2 open ms"),
+    ("v2_save_ms", "v2 save ms"),
+    ("v2_crash_open_ms", "v2 crash open ms"),
+    ("v2_open_x10_ms", "v2 open x10 ms"),
 ];
 
-fn values(m: &Measured) -> [Option<f64>; 23] {
+fn values(r: &Row) -> [Option<f64>; 28] {
+    let m = &r.measured;
+    let v = r.v2.as_ref();
     [
         Some(m.open_ms),
         Some(m.derive_ms),
@@ -67,6 +78,11 @@ fn values(m: &Measured) -> [Option<f64>; 23] {
         Some(m.tbupd_ms),
         Some(m.gridchange_ms),
         Some(m.revopen_ms),
+        v.map(|v| v.convert_ms),
+        v.map(|v| v.open_ms),
+        v.map(|v| v.save_ms),
+        v.map(|v| v.crash_open_ms),
+        v.map(|v| v.open_x10_ms),
     ]
 }
 
@@ -158,8 +174,54 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          new device, a NO contact added to it, and its tag renamed. pnum, frame, tbupd, gridchange and \
          revopen (brief 019): renumber page 2 with its references refreshed; work out one page's frame \
          and title block; change the project title; change the grid (A3 and A2 in turn); open Rev A \
-         read-only. Peak memory is not measured.\n"
+         read-only. Peak memory is not measured. Since brief 021 the app opens version 2 files: every \
+         column from 1st page on is measured on the version 2 file; open, edit and save are version 1.\n"
     ));
+    out.push_str(&format!(
+        "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>11} {:>11} {:>14} {:>15} {:>11}\n",
+        "tier", "history", "v1 MB", "v2 MB", "convert ms", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
+    ));
+    for r in rows {
+        let Some(v) = &r.v2 else { continue };
+        out.push_str(&format!(
+            "{:<8} {:<8} {:>9.2} {:>11.2} {:>11.0} {:>11.1} {:>14.2} {:>15.1} {:>11.1}   (x10: {:.2} MB)\n",
+            r.tier,
+            r.variant,
+            mb(r.measured.bytes),
+            mb(v.bytes),
+            v.convert_ms,
+            v.open_ms,
+            v.save_ms,
+            v.crash_open_ms,
+            v.open_x10_ms,
+            mb(v.bytes_x10)
+        ));
+    }
+    out.push_str(
+        "v2 open: the latest snapshot and its tail (DiskProjectV2::open). v2 save: one add-wire transaction \
+         saved, durable. crash open: after a child saved and exited without closing the file (redb quick \
+         repair). open x10: after the history grew tenfold.\n",
+    );
+    for r in rows {
+        let Some(c) = &r.compression else { continue };
+        out.push_str(&format!(
+            "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of parts uncompressed\n",
+            r.tier,
+            r.variant,
+            mb(c.raw_rows),
+            mb(c.raw_parts)
+        ));
+        for k in &c.codecs {
+            out.push_str(&format!(
+                "  {:<18} records {:>8.2} MB, parts {:>8.2} MB, compress {:>9.1} ms, decompress {:>9.1} ms\n",
+                k.name,
+                mb(k.rows_bytes),
+                mb(k.parts_bytes),
+                k.compress_ms,
+                k.decompress_ms
+            ));
+        }
+    }
     out
 }
 
@@ -224,7 +286,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
         "peak_memory": "not measured",
         "rows": rows.iter().map(|r| {
             let m = &r.measured;
-            json!({
+            let mut row = json!({
                 "tier": r.tier,
                 "variant": r.variant,
                 "bytes": m.bytes,
@@ -252,7 +314,28 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "tbupd_ms": m.tbupd_ms,
                 "gridchange_ms": m.gridchange_ms,
                 "revopen_ms": m.revopen_ms,
-            })
+            });
+            let v2 = json!({
+                "v2_bytes": r.v2.as_ref().map(|v| v.bytes),
+                "convert_ms": r.v2.as_ref().map(|v| v.convert_ms),
+                "v2_open_ms": r.v2.as_ref().map(|v| v.open_ms),
+                "v2_save_ms": r.v2.as_ref().map(|v| v.save_ms),
+                "v2_crash_open_ms": r.v2.as_ref().map(|v| v.crash_open_ms),
+                "v2_open_x10_ms": r.v2.as_ref().map(|v| v.open_x10_ms),
+                "v2_bytes_x10": r.v2.as_ref().map(|v| v.bytes_x10),
+                "compression": r.compression.as_ref().map(|c| json!({
+                    "raw_rows": c.raw_rows,
+                    "raw_parts": c.raw_parts,
+                    "codecs": c.codecs.iter().map(|k| json!({
+                        "name": k.name, "rows_bytes": k.rows_bytes, "parts_bytes": k.parts_bytes,
+                        "compress_ms": k.compress_ms, "decompress_ms": k.decompress_ms,
+                    })).collect::<Vec<_>>(),
+                })),
+            });
+            if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
+                o.extend(extra);
+            }
+            row
         }).collect::<Vec<_>>(),
     })
 }
@@ -282,7 +365,7 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
             out.push_str("(not in the earlier run)\n");
             continue;
         };
-        for ((key, _), now) in COLUMNS.iter().zip(values(&r.measured)) {
+        for ((key, _), now) in COLUMNS.iter().zip(values(r)) {
             let cell = match (before.get(*key).and_then(Value::as_f64), now) {
                 (Some(was), Some(now)) if was > 0.0 => {
                     format!("{was:.1} → {now:.1} ({:+.0}%)", (now - was) / was * 100.0)

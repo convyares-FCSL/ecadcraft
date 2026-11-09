@@ -180,6 +180,14 @@ pub trait History: std::fmt::Debug + Send + Sync {
     /// # Errors
     /// As [`History::transaction`], and replay failures.
     fn state_at(&self, seq: u64) -> Result<Document>;
+
+    /// Transactions `from..=to` (all before the ledger's base), in order.
+    ///
+    /// # Errors
+    /// As [`History::transaction`].
+    fn transactions(&self, from: u64, to: u64) -> Result<Vec<Transaction>> {
+        (from..=to).map(|s| self.transaction(s)).collect()
+    }
 }
 
 /// A snapshot a ledger starts from instead of the project root (brief 021): the state after
@@ -732,6 +740,24 @@ impl Ledger {
         &self.log
     }
 
+    /// The whole history, oldest first: the transactions before the base read from the history
+    /// (reads everything before the base: for checks and tools, never on an ordinary path), then
+    /// the in-memory log.
+    ///
+    /// # Errors
+    /// The history could not be read.
+    pub fn full_log(&self) -> Result<Vec<Transaction>> {
+        let mut all = match (&self.history, self.base) {
+            (_, 0) => Vec::new(),
+            (Some(h), base) => h.transactions(1, base)?,
+            (None, base) => {
+                return Err(ModelError::CorruptLog(format!("transactions 1 to {base} cannot be read: no history")));
+            }
+        };
+        all.extend(self.log.iter().cloned());
+        Ok(all)
+    }
+
     /// The `seq` the in-memory log starts after: 0, or the snapshot this ledger was opened from.
     pub fn base(&self) -> u64 {
         self.base
@@ -740,6 +766,14 @@ impl Ledger {
     /// Where transactions before [`Ledger::base`] are read, when it is not 0.
     pub fn history(&self) -> Option<&Arc<dyn History>> {
         self.history.as_ref()
+    }
+
+    /// Read the history before the base from `history` from now on: the same history in another
+    /// file (Save As copies it). Transactions already read are kept.
+    pub fn set_history(&mut self, history: Arc<dyn History>) {
+        if self.base > 0 {
+            self.history = Some(history);
+        }
     }
 
     /// The undo and redo stacks as `(seq, id)` pairs, oldest first (recorded with snapshots).

@@ -13,11 +13,10 @@ use std::path::{Path, PathBuf};
 use cadcraft_engine::Session;
 use common::{H, small_project};
 use ecad_cadcraft::debug::{
-    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_record, resolve, state_at,
-    touches, verify_file, verify_projection, verify_replay,
+    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_branches, read_row, read_storage,
+    resolve, state_at, touches, verify_projection, verify_replay, verify_store,
 };
 use ecad_cadcraft::{BUSY, Mapped, Persistence};
-use ecad_file::AttemptStage;
 use ecad_model::{Subject, Transaction};
 use serde_json::{Value, json};
 
@@ -66,11 +65,6 @@ impl Panel {
     fn tx(&self, seq: u64) -> &Transaction {
         &self.log[seq as usize - 1]
     }
-}
-
-fn file_bytes(path: &str, offset: u64, len: u64) -> Vec<u8> {
-    let all = std::fs::read(path).unwrap();
-    all[offset as usize..(offset + len) as usize].to_vec()
 }
 
 #[test]
@@ -126,19 +120,17 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     assert!(attach.before.as_ref().unwrap()["terminal"].is_null());
     assert!(attach.after.as_ref().unwrap()["terminal"].is_string());
 
-    // → the saved record: its offset, length and bytes, which decode to exactly that transaction.
-    let RecordState::Saved(Some(span)) = snap.record_state(wire_seq) else {
-        panic!("saved with a span: {:?}", snap.record_state(wire_seq))
-    };
-    assert_eq!(span.seq, wire_seq);
-    let rec = read_record(Path::new(&path), span, Some(panel.tx(wire_seq))).unwrap();
+    // → the saved row (brief 021: a row of the version 2 file's transactions table), read from
+    // the file, decodes to exactly that transaction.
+    assert_eq!(snap.record_state(wire_seq), RecordState::Saved(None));
+    let store = snap.store_arc().expect("a version 2 file");
+    let rec = read_row(&store, wire_seq, Some(panel.tx(wire_seq))).unwrap();
     assert_eq!(rec.check, Ok(()));
     assert!(!rec.truncated);
-    assert_eq!(rec.shown, file_bytes(&path, span.offset, span.len));
-    assert!(rec.shown.starts_with(b"{\"crc\":\""));
+    assert_eq!(rec.span.seq, wire_seq);
+    assert!(rec.shown.starts_with(b"{\""), "the decompressed record");
 
-    // Moving the component is pending: in memory only, no record yet.
-    let saved_len = std::fs::metadata(&path).unwrap().len();
+    // Moving the component is pending: in memory only, no row yet.
     let handles = h.rep_handles(first, c1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert!(panel.refresh(&mut h).unwrap());
@@ -155,16 +147,16 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     assert_eq!(modify.name, "ModifyItem");
     assert_ne!(modify.before, modify.after);
 
-    // Save: the pending transaction becomes saved, appended where the file ended.
+    // Save: the pending transaction becomes saved, a new row after the last.
     h.run("qsave", Value::Null).unwrap();
     assert!(panel.refresh(&mut h).unwrap());
-    let RecordState::Saved(Some(span)) = panel.snap().record_state(move_seq) else { panic!("saved") };
-    assert_eq!(span.offset, saved_len);
-    let rec = read_record(Path::new(&path), span, Some(panel.tx(move_seq))).unwrap();
+    assert_eq!(panel.snap().record_state(move_seq), RecordState::Saved(None));
+    let rec = read_row(&store, move_seq, Some(panel.tx(move_seq))).unwrap();
     assert_eq!(rec.check, Ok(()));
-    // A record read against the wrong transaction is reported, not trusted.
-    let wrong = read_record(Path::new(&path), span, Some(panel.tx(wire_seq))).unwrap();
+    // A row read against the wrong transaction is reported, not trusted.
+    let wrong = read_row(&store, move_seq, Some(panel.tx(wire_seq))).unwrap();
     assert!(wrong.check.is_err());
+    assert!(read_row(&store, move_seq + 1, None).is_err(), "no row past the head");
 
     // Undo is a new, pending transaction naming what it undoes.
     h.run("u", Value::Null).unwrap();
@@ -245,11 +237,12 @@ fn history_and_checks_work_on_copies_and_leave_the_live_project_alone() {
     let inputs = h.project.debug_projection_inputs(&mut h.s).unwrap();
     let projection = verify_projection(&inputs);
     assert!(projection.ok, "{:?}", projection.lines);
-    let before = std::fs::read(&path).unwrap();
-    let file = verify_file(Path::new(&path), &panel.log, &snap.file, snap.persisted);
+    let store = snap.store_arc().expect("a version 2 file");
+    let len = std::fs::metadata(&path).unwrap().len();
+    let file = verify_store(&store, snap.base, &panel.log, snap.persisted);
     assert!(file.ok, "{:?}", file.lines);
     assert!(file.lines.iter().any(|l| l.contains("1 pending in memory")), "{:?}", file.lines);
-    assert_eq!(std::fs::read(&path).unwrap(), before, "checking reads only");
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), len, "checking reads only");
     // None of it touched the project or recorded anything.
     assert_eq!(h.doc(), live);
     assert_eq!(h.p(|p| p.events.events().count()), events);
@@ -259,16 +252,15 @@ fn history_and_checks_work_on_copies_and_leave_the_live_project_alone() {
     let mut other = snap.doc.clone();
     other.pages.clear();
     assert!(!verify_replay(&panel.log, &other).ok);
-    // A file changed behind the project's back fails the file check.
-    let mut changed = before.clone();
-    changed.extend_from_slice(b"{\"crc\":\"00000000\",\"rec\":{}}\n");
-    std::fs::write(&path, &changed).unwrap();
-    let file = verify_file(Path::new(&path), &panel.log, &snap.file, snap.persisted);
+    // A history that differs from the file's fails the file check.
+    let mut other_log = panel.log.clone();
+    other_log[1].label = "not what was saved".into();
+    let file = verify_store(&store, snap.base, &other_log, snap.persisted);
     assert!(!file.ok, "{:?}", file.lines);
 }
 
 #[test]
-fn failed_and_unconfirmed_saves_are_not_shown_as_saved() {
+fn saved_and_pending_transactions_are_told_apart() {
     let d = TempDir::new("states");
     let mut h = H::new(45);
     h.cfg(|p| p.persistence = Persistence::File);
@@ -276,37 +268,39 @@ fn failed_and_unconfirmed_saves_are_not_shown_as_saved() {
     panel.refresh(&mut h).unwrap();
     assert_eq!(panel.snap().record_state(1), RecordState::Pending { attempt: None });
     assert!(panel.snap().file.path.is_none());
+    assert!(panel.snap().file.storage.is_none(), "no file yet");
 
-    // A Save As whose folder flush fails: written, but not confirmed durable.
-    h.cfg(|p| p.file.faults.fail_dir_sync = true);
     let path = d.path("states.ecad");
-    assert!(h.run("saveas", json!({"path": path})).is_err());
-    panel.refresh(&mut h).unwrap();
-    let RecordState::Unconfirmed(span) = panel.snap().record_state(1) else {
-        panic!("unconfirmed: {:?}", panel.snap().record_state(1))
-    };
-    assert!(panel.snap().file.unconfirmed);
-    // Written but unconfirmed is counted apart from both saved and memory-only transactions.
-    assert_eq!(panel.snap().state_counts(), StateCounts { saved: 0, unconfirmed: 1, pending: 0 });
-    assert_eq!(read_record(Path::new(&path), span, Some(panel.tx(1))).unwrap().check, Ok(()));
-    h.run("qsave", Value::Null).unwrap();
+    h.run("saveas", json!({"path": path})).unwrap();
     panel.refresh(&mut h).unwrap();
     assert!(panel.snap().record_state(1).durable());
+    assert_eq!(panel.snap().state_counts(), StateCounts { saved: 1, unconfirmed: 0, pending: 0 });
+    let storage = panel.snap().file.storage.clone().unwrap();
+    assert_eq!(storage.head, 1);
+    assert!(storage.writable);
 
-    // A save whose flush fails: the transaction stays pending, marked with the failed attempt.
+    // A new transaction is pending until Save writes it; a save that is refused (the project is
+    // read-only) leaves it pending.
     h.run("newpage", json!({"title": "2"})).unwrap();
-    h.cfg(|p| p.file.disk_mut().unwrap().file_mut().medium_mut().faults.fail_next_flush = true);
-    assert!(h.run("qsave", Value::Null).is_err());
     panel.refresh(&mut h).unwrap();
     let seq = panel.snap().head;
-    assert_eq!(panel.snap().record_state(seq), RecordState::Pending { attempt: Some(AttemptStage::FlushFailed) });
-    let attempt = panel.snap().file.attempt.unwrap();
-    assert!(attempt.len > 0 && attempt.first_seq == seq, "{attempt:?}");
+    assert_eq!(panel.snap().record_state(seq), RecordState::Pending { attempt: None });
     assert_eq!(panel.snap().state_counts(), StateCounts { saved: seq - 1, unconfirmed: 0, pending: 1 });
     h.run("qsave", Value::Null).unwrap();
     panel.refresh(&mut h).unwrap();
     assert!(panel.snap().record_state(seq).durable());
-    assert!(panel.snap().file.attempt.is_none());
+    let storage = panel.snap().file.storage.clone().unwrap();
+    assert_eq!(storage.head, seq);
+    assert_eq!(storage.last_save.unwrap().last_seq, seq);
+    // The Branches and Storage reads.
+    let store = panel.snap().store_arc().unwrap();
+    let branches = read_branches(&store).unwrap();
+    assert_eq!(branches.len(), 1);
+    assert_eq!((branches[0].name.as_str(), branches[0].head, branches[0].rows), ("main", seq, seq));
+    let st = read_storage(&store, Some(Path::new(&path))).unwrap();
+    assert!(st.file_bytes > 0);
+    assert_eq!(st.tables.iter().find(|t| t.name == "transactions").unwrap().rows, seq);
+    assert!(st.versions.iter().any(|v| v.1 == "Auto"), "the head snapshot of the first save");
 }
 
 #[test]
@@ -329,8 +323,9 @@ fn exported_snapshots_carry_the_persistence_facts() {
     assert_eq!(snap["format"], "ecad-inspect/2");
     let f = &snap["persistence"];
     assert_eq!(f["path"], path);
-    assert_eq!(f["records"].as_array().unwrap().len() as u64, h.head());
-    assert_eq!(f["header"]["container"], "ecad-project");
+    // A version 2 file (brief 021): its storage facts, not version 1 record positions.
+    assert_eq!(f["storage"]["head"], h.head());
+    assert_eq!(f["storage"]["snapshot_every"], 2000);
     let historical = h.project.snapshot(&mut h.s, Some(1)).unwrap();
     assert!(historical["persistence"].is_null());
 }

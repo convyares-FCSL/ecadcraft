@@ -144,6 +144,20 @@ pub fn cable_references_ms(doc: &Document) -> Option<f64> {
 /// # Errors
 /// The file does not open cleanly, the page cannot be projected, or the edit or save fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Document), String> {
+    let app = scratch.join("measure-app.v2.ecad");
+    crate::v2::convert(path, &app)?;
+    let r = measure_with(path, &app, runs, scratch);
+    release_lock_file(&app);
+    remove(&app);
+    r
+}
+
+/// [`measure`] with the version 2 file the app timings open (since brief 021 the app opens only
+/// version 2): `path` (version 1) for open, edit and save; `app` for every timing through the app.
+///
+/// # Errors
+/// As [`measure`].
+pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Document), String> {
     let runs = runs.clamp(1, MAX_RUNS);
     let bytes = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
 
@@ -175,17 +189,18 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     }
 
     let mut first_page_ms = Vec::with_capacity(runs);
-    let text = path_text(path)?;
+    let text = path_text(app)?;
     for _ in 0..runs {
         first_page_ms.push(first_page(text)?);
     }
+    release_lock_file(app);
 
     let (mut edit_ms, mut save_ms) = edit_and_save(path, &scratch.join("edit.ecad"), runs)?;
-    let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(path, &scratch.join("draw.ecad"), runs)?;
+    let (mut draw_move_ms, mut draw_window_ms, mut draw_wire_ms) = draw_edits(app, &scratch.join("draw.ecad"), runs)?;
     let (mut switch_ms, mut preview_ms, mut panel_ms, mut devices_ms, mut goto_ms, mut devupd_ms) =
-        switch_pages(path, &scratch.join("switch.ecad"))?;
-    let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(path, &scratch.join("devices.ecad"), runs)?;
-    let mut sheet = sheet_edits(path, &scratch.join("sheets.ecad"), runs)?;
+        switch_pages(app, &scratch.join("switch.ecad"))?;
+    let (mut place_ms, mut join_ms, mut tag_ms) = device_edits(app, &scratch.join("devices.ecad"), runs)?;
+    let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
 
     let m = Measured {
         bytes,

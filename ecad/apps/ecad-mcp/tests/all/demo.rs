@@ -10,7 +10,7 @@ fn the_demo_command_list_builds_the_control_panel() {
     let n = demo::run(&mut mcp, demo::COMMANDS).unwrap_or_else(|e| panic!("{e}"));
     assert!(n > 60, "{n} commands");
     let (doc, log) = mcp
-        .with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.log().to_vec())).unwrap())
+        .with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap())
         .unwrap();
     // Three pages, as named.
     let titles: Vec<&str> = doc.page_order.iter().map(|p| doc.pages[p].title.as_str()).collect();

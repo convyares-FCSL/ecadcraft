@@ -249,7 +249,7 @@ fn historical_state_is_reconstructed_without_touching_the_live_document() {
     assert!(at1.items.is_empty());
     assert_eq!(f.ledger.document(), &live);
     assert!(f.ledger.replay_matches().unwrap());
-    let replayed = Ledger::replay(f.ledger.log().to_vec(), 9).unwrap();
+    let replayed = Ledger::replay(f.ledger.full_log().unwrap(), 9).unwrap();
     assert_eq!(replayed.document(), &live);
     assert!(f.ledger.state_at(99).is_err());
 }
@@ -354,7 +354,7 @@ fn a_named_version_must_name_existing_history() {
     f.ledger.undo(Author::User).unwrap();
     f.ledger.redo(Author::User).unwrap();
     // A log holding a bookmark to the future does not replay.
-    let mut log = f.ledger.log().to_vec();
+    let mut log = f.ledger.full_log().unwrap();
     let bad_seq = log.len() as u64 + 1;
     log.push(ecad_model::Transaction {
         id: f.ids.fresh(),

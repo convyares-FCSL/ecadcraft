@@ -76,6 +76,9 @@ pub struct DiskProjectV2 {
     lock: Option<WriterLock>,
     identity: Option<FileIdentity>,
     read_only: Option<ReadOnly>,
+    /// Save As renamed the file into place, but the folder flush failed: nothing it wrote is
+    /// acknowledged until a later Save confirms it.
+    unconfirmed: bool,
 }
 
 fn holder_text(holder: Option<&str>) -> String {
@@ -92,12 +95,34 @@ impl DiskProjectV2 {
     /// # Errors
     /// [`DiskErrorV2::Open`]: the file cannot be read or is not a version 2 project.
     pub fn open(path: &Path, seed: u64, writer: &str) -> Result<OpenedDiskV2, DiskErrorV2> {
+        Self::open_as(path, seed, writer, false)
+    }
+
+    /// [`DiskProjectV2::open`] without taking the writer lock or opening the database for
+    /// writing: the file is never changed, not even redb's own bookkeeping (an agent with writes
+    /// off). A file that needs recovery after a crash is refused until a writer opens it.
+    ///
+    /// # Errors
+    /// As [`DiskProjectV2::open`].
+    pub fn open_read_only(path: &Path, seed: u64, writer: &str) -> Result<OpenedDiskV2, DiskErrorV2> {
+        Self::open_as(path, seed, writer, true)
+    }
+
+    fn open_as(path: &Path, seed: u64, writer: &str, reading: bool) -> Result<OpenedDiskV2, DiskErrorV2> {
         let open_err = |e: String| DiskErrorV2::Open { path: show(path), error: e };
         if !path.is_file() {
             return Err(open_err("there is no file there".into()));
         }
-        let (mut lock, mut read_only, reclaimed) = match WriterLock::try_acquire(path, &holder_record(writer)) {
+        let attempt = if reading {
+            Ok(LockAttempt::HeldByOther { holder: None })
+        } else {
+            WriterLock::try_acquire(path, &holder_record(writer))
+        };
+        let (mut lock, mut read_only, reclaimed) = match attempt {
             Ok(LockAttempt::Acquired { lock, leftover }) => (Some(lock), None, leftover),
+            Ok(LockAttempt::HeldByOther { .. }) if reading => {
+                (None, Some(ReadOnly::NotWritable("it was opened for reading only".into())), None)
+            }
             Ok(LockAttempt::HeldByOther { holder }) => (None, Some(ReadOnly::Locked { holder }), None),
             Err(e) => (None, Some(ReadOnly::NoLock(e.to_string())), None),
         };
@@ -133,7 +158,7 @@ impl DiskProjectV2 {
         if let Some(r) = &read_only {
             project.set_read_only(r.to_string());
         }
-        let me = Self { path: path.to_path_buf(), project, lock, identity, read_only };
+        let me = Self { path: path.to_path_buf(), project, lock, identity, read_only, unconfirmed: false };
         Ok(OpenedDiskV2 { project: me, ledger, report, reclaimed_lock: reclaimed })
     }
 
@@ -152,7 +177,7 @@ impl DiskProjectV2 {
         from: Option<&ProjectV2>,
         created_ms: Option<u64>,
         writer: &str,
-    ) -> Result<Self, DiskErrorV2> {
+    ) -> Result<(Self, Option<String>), DiskErrorV2> {
         let before = |step: &'static str, error: String| DiskErrorV2::BeforeReplacement { step, error };
         let lock = match WriterLock::try_acquire(path, &holder_record(writer)) {
             Ok(LockAttempt::Acquired { lock, .. }) => lock,
@@ -197,19 +222,38 @@ impl DiskProjectV2 {
         }
         let synced = disk::sync_dir(&disk::parent_dir(path));
         let store = Store::open(path, true).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
-        let OpenedV2 { project: mut opened, .. } =
+        let OpenedV2 { project: opened, .. } =
             ProjectV2::open(store, 0, writer).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
         let identity = disk::retry_transient(|| FileIdentity::at(path)).ok();
+        // The history before the ledger's base is now read from the new file.
+        if from.is_some() {
+            ledger.set_history(opened.history());
+        }
+        let mut me = Self {
+            path: path.to_path_buf(),
+            project: opened,
+            lock: Some(lock),
+            identity,
+            read_only: None,
+            unconfirmed: false,
+        };
         if let Err(e) = synced {
-            return Err(DiskErrorV2::Unconfirmed(e.to_string()));
+            // Bound to the new file, but nothing is acknowledged: the next Save confirms it.
+            me.unconfirmed = true;
+            return Ok((me, Some(e.to_string())));
         }
         // The pending transactions (Save As of a project opened from a file).
         if from.is_some() {
-            opened.save(ledger)?;
+            me.project.save(ledger)?;
         } else {
             ledger.mark_persisted(ledger.head()).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
         }
-        Ok(Self { path: path.to_path_buf(), project: opened, lock: Some(lock), identity, read_only: None })
+        Ok((me, None))
+    }
+
+    /// Whether the last Save As is still not confirmed durable.
+    pub fn unconfirmed(&self) -> bool {
+        self.unconfirmed
     }
 
     /// Save the transactions after the file's head.
@@ -227,6 +271,18 @@ impl DiskProjectV2 {
             }
             _ => return Err(DiskErrorV2::Replaced(show(&self.path))),
         }
+        if self.unconfirmed {
+            disk::sync_dir(&disk::parent_dir(&self.path)).map_err(|e| {
+                DiskErrorV2::Unconfirmed(format!(
+                    "the earlier Save As is still not confirmed durable ({e}); the new changes were not written"
+                ))
+            })?;
+            self.unconfirmed = false;
+            let head = self.project.head().0;
+            if head > ledger.persisted() {
+                ledger.mark_persisted(head).map_err(|e| DiskErrorV2::Unconfirmed(e.to_string()))?;
+            }
+        }
         Ok(self.project.save(ledger)?)
     }
 
@@ -242,14 +298,15 @@ impl DiskProjectV2 {
         ledger: &mut Ledger,
         created_ms: Option<u64>,
         writer: &str,
-    ) -> Result<(), DiskErrorV2> {
+    ) -> Result<Option<String>, DiskErrorV2> {
         if same_file(path, &self.path) {
             self.save(ledger)?;
-            return Ok(());
+            return Ok(None);
         }
-        let next = Self::create(path, self.project.project_id(), ledger, Some(&self.project), created_ms, writer)?;
+        let (next, unconfirmed) =
+            Self::create(path, self.project.project_id(), ledger, Some(&self.project), created_ms, writer)?;
         *self = next;
-        Ok(())
+        Ok(unconfirmed)
     }
 
     /// The file's path.

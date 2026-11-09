@@ -9,6 +9,10 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+# The version 2 container's engine: the power-loss simulation implements its storage backend.
+redb = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # File identity (device and inode on Unix, volume serial and file index on Windows) without
 # `unsafe` (BurntSushi, Unlicense OR MIT; owner approved 2026-10-31, brief 002).

@@ -59,6 +59,8 @@ fn row(variant: &str, open_ms: f64) -> Row {
     Row {
         tier: "small".into(),
         variant: variant.into(),
+        v2: None,
+        compression: None,
         measured: Measured {
             bytes: 1000,
             transactions: 10,

@@ -497,14 +497,14 @@ fn the_quick_start_trial_runs_headless() {
     assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"), "the tab the guide quotes");
     assert!(t.cad.session.log.iter().any(|l| l.starts_with("Saved:")));
     let saved = doc(&mut t);
-    let history = p.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap();
+    let history = p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap();
     t.close_project();
     assert!(t.pending_close().is_none(), "nothing unsaved: no question");
     assert!(!t.project_open());
     t.open_project(&path).unwrap();
     assert_eq!(doc(&mut t), saved);
     let reopened = t.project().unwrap().clone();
-    assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.log().to_vec()).unwrap(), history);
+    assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap(), history);
     assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
     // The component ID noted before saving still names the component.
     ok(&mut t, &format!("setprop {{\"component\":\"{}\",\"key\":\"tag\",\"value\":\"-K1\"}}", component.hex()));

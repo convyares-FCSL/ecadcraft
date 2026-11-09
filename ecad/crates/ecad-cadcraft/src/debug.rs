@@ -209,6 +209,8 @@ pub struct FileFacts {
     pub preserved_tail: Option<String>,
     /// What opening found, when the project was opened from a file.
     pub open_report: Option<String>,
+    /// A version 2 file's facts (the debugger's Storage view).
+    pub storage: Option<crate::file::StorageFacts>,
 }
 
 impl FileFacts {
@@ -232,6 +234,15 @@ impl FileFacts {
             "unconfirmed": self.unconfirmed,
             "preserved_tail": self.preserved_tail,
             "open_report": self.open_report,
+            "storage": self.storage.as_ref().map(|s| json!({
+                "branch": s.branch, "head": s.head, "snapshot_seq": s.snapshot_seq,
+                "snapshot_every": s.snapshot_every, "writable": s.writable,
+                "link_v1": s.link_v1.as_ref().map(|(h, n)| json!({"hash": h, "transactions": n})),
+                "last_save": s.last_save.as_ref().map(|l| json!({
+                    "first_seq": l.first_seq, "last_seq": l.last_seq, "bytes": l.bytes,
+                    "parts_written": l.parts_written, "snapshots": l.snapshots,
+                })),
+            })),
         })
     }
 }
@@ -301,9 +312,27 @@ pub struct DebugSnapshot {
     /// The most recent runtime events (at most [`MAX_EVENTS`]); never part of the saved history.
     pub events: Vec<Event>,
     pub file: FileFacts,
+    /// The `seq` the copied history starts after (a project opened from a version 2 snapshot);
+    /// `new_transactions[i].seq == base + log_from + i + 1`.
+    pub base: u64,
+    /// Where the history before `base` is read, on request only.
+    pub history: Option<Arc<dyn ecad_model::History>>,
+    /// The bound version 2 file's database, for on-request reads (records, Verify file, the
+    /// Storage and Branches views). Reads only; weak, so a copy never keeps a closed project's
+    /// file open.
+    pub store: Option<std::sync::Weak<ecad_file::v2::Store>>,
 }
 
 impl DebugSnapshot {
+    /// The bound file's database, while the project still has it open.
+    pub fn store_arc(&self) -> Option<Arc<ecad_file::v2::Store>> {
+        self.store.as_ref().and_then(std::sync::Weak::upgrade)
+    }
+
+    /// The copied history's transaction `seq`, from a copy that starts after [`Self::base`].
+    pub fn tx_in<'a>(&self, log: &'a [Transaction], seq: u64) -> Option<&'a Transaction> {
+        seq.checked_sub(self.base + 1).and_then(|i| usize::try_from(i).ok()).and_then(|i| log.get(i))
+    }
     /// What the snapshot shows, for its heading.
     pub fn label(&self) -> String {
         format!("live at seq {}", self.head)
@@ -384,7 +413,11 @@ impl Project {
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
             persistence: Some(self.persistence),
-            open_report: self.open_report.as_ref().map(ecad_file::OpenReport::describe),
+            open_report: self
+                .open_report
+                .as_ref()
+                .map(ecad_file::OpenReport::describe)
+                .or_else(|| self.open_report_v2.as_ref().map(ecad_file::v2::ReportV2::describe)),
             ..FileFacts::default()
         };
         let writer = match self.persistence {
@@ -399,7 +432,9 @@ impl Project {
                 f.unconfirmed = st.unconfirmed;
                 f.preserved_tail = st.preserved_tail;
                 f.lock_file = self.file.lock_file();
-                self.file.writer()
+                f.storage = self.file.storage();
+                f.writer_persisted = f.storage.as_ref().map(|s| s.head);
+                None
             }
             Persistence::Unavailable => None,
         };
@@ -475,6 +510,9 @@ impl Project {
             pages,
             events,
             file: self.file_facts(),
+            base: self.ledger.base(),
+            history: self.ledger.history().cloned(),
+            store: self.file.store().as_ref().map(Arc::downgrade),
         }
     }
 
@@ -556,6 +594,222 @@ pub fn verify_replay(log: &[Transaction], live: &Document) -> Check {
         Err(e) => lines.push(format!("document invariants fail: {e}")),
     }
     Check { what: "replay", at_seq, ok: ok && invariants.is_ok(), lines }
+}
+
+/// [`verify_replay`] for a copy of the history that starts after `base` (a project opened from a
+/// version 2 snapshot): the state at `base` is read from `history`, then the copy is applied.
+pub fn verify_replay_from(
+    base: u64,
+    history: Option<&Arc<dyn ecad_model::History>>,
+    log: &[Transaction],
+    live: &Document,
+) -> Check {
+    if base == 0 {
+        return verify_replay(log, live);
+    }
+    let at_seq = base + log.len() as u64;
+    let mut lines = Vec::new();
+    let replayed = history
+        .ok_or_else(|| "no history to read the snapshot from".to_string())
+        .and_then(|h| h.state_at(base).map_err(|e| e.to_string()))
+        .and_then(|mut doc| {
+            lines.push(format!("the state at the snapshot ({base}) was rebuilt from the file"));
+            for tx in log {
+                for op in &tx.ops {
+                    op.apply(&mut doc).map_err(|e| format!("transaction {}: {e}", tx.seq))?;
+                }
+            }
+            Ok(doc)
+        });
+    let ok = match replayed {
+        Ok(d) if &d == live => {
+            lines.push(format!("replaying the {} transactions after it gives the live document", log.len()));
+            true
+        }
+        Ok(_) => {
+            lines.push(format!("replaying the {} transactions after it gives a DIFFERENT document", log.len()));
+            false
+        }
+        Err(e) => {
+            lines.push(format!("replay failed: {e}"));
+            false
+        }
+    };
+    let invariants = live.check();
+    match &invariants {
+        Ok(()) => lines.push("document invariants hold".into()),
+        Err(e) => lines.push(format!("document invariants fail: {e}")),
+    }
+    Check { what: "replay", at_seq, ok: ok && invariants.is_ok(), lines }
+}
+
+/// **Verify file** for a version 2 file (EEP-0005 §5.8): replay the branch from the root with
+/// every check and check every snapshot against the replay, then compare the file's rows with the
+/// copied history (after `base`) up to the saved position. Reads only, on request.
+pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
+    let at_seq = base + log.len() as u64;
+    let v = ecad_file::v2::verify::verify(store);
+    let mut ok = v.ok;
+    let mut lines = v.lines;
+    let rows = store.reader().map_err(|e| e.to_string()).and_then(|r| {
+        let branch = r
+            .branches()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|(_, b)| b.name == "main")
+            .map(|(id, _)| id)
+            .ok_or("no main branch")?;
+        let head = r.last_seq(branch).map_err(|e| e.to_string())?.unwrap_or(0);
+        Ok((r, branch, head))
+    });
+    match rows {
+        Ok((r, branch, head)) => {
+            if head < persisted {
+                ok = false;
+                lines.push(format!("the file ends at transaction {head}, before the saved position {persisted}"));
+            }
+            let mut differ = None;
+            for tx in log.iter().filter(|t| t.seq <= head.min(persisted)) {
+                let row = r.tx(branch, tx.seq).ok().flatten();
+                let same =
+                    row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
+                        serde_json::from_slice::<Value>(&rec)
+                            .ok()
+                            .and_then(|v| ecad_file::record::decode_tx(&v).ok())
+                            .is_some_and(|t| &t == tx)
+                    });
+                if !same {
+                    differ = Some(tx.seq);
+                    break;
+                }
+            }
+            match differ {
+                Some(seq) => {
+                    ok = false;
+                    lines.push(format!("transaction {seq} in the file DIFFERS from the project's"));
+                }
+                None => lines.push(format!(
+                    "the file's rows match the project's history; saved through {persisted}, {} pending in memory",
+                    at_seq.saturating_sub(persisted)
+                )),
+            }
+        }
+        Err(e) => {
+            ok = false;
+            lines.push(format!("the file's rows could not be read: {e}"));
+        }
+    }
+    Check { what: "file", at_seq, ok, lines }
+}
+
+/// Read transaction `seq`'s row from a version 2 file (no project lock) and check that it decodes
+/// to exactly `expected`. `shown` is the record, decompressed; the span gives its stored size.
+///
+/// # Errors
+/// The file cannot be read, or holds no such row.
+pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let branch = r
+        .branches()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|(_, b)| b.name == "main")
+        .map(|(id, _)| id)
+        .ok_or("no main branch")?;
+    let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
+    let record = ecad_file::v2::pack::unpack(flag, &body)?;
+    let check = (|| {
+        if ecad_file::chain::tx_hash(&record) != chain {
+            return Err("the record does not match its chain value".to_string());
+        }
+        let v: Value = serde_json::from_slice(&record).map_err(|e| format!("not JSON: {e}"))?;
+        let tx = ecad_file::record::decode_tx(&v).map_err(|e| format!("not a transaction record: {e:?}"))?;
+        match expected {
+            Some(e) if *e != tx => Err(format!("transaction {seq} in the file differs from the one in memory")),
+            _ => Ok(()),
+        }
+    })();
+    let span = RecordSpan { seq, offset: 0, len: (body.len() + 33) as u64 };
+    let mut shown = record;
+    let truncated = shown.len() > MAX_RECORD_SHOWN;
+    shown.truncate(MAX_RECORD_SHOWN);
+    Ok(RecordBytes { span, shown, truncated, check })
+}
+
+/// What the Storage and Branches views read from a version 2 file, on request: table sizes, the
+/// file's size, branches and version rows (without their part maps).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StorageRead {
+    pub file_bytes: u64,
+    pub tables: Vec<ecad_file::v2::TableStat>,
+    /// Name, ID, status, head, rows, parent and fork point.
+    pub branches: Vec<BranchRow>,
+    /// Branch name, kind, name, point and part count.
+    pub versions: Vec<(String, String, String, u64, usize)>,
+}
+
+/// One branch, for the Branches view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchRow {
+    pub name: String,
+    pub id: String,
+    pub status: String,
+    pub head: u64,
+    pub head_chain: String,
+    pub rows: u64,
+    pub release_line: bool,
+    /// Parent branch and fork point, for a branch that is not the original.
+    pub fork: Option<(String, u64)>,
+}
+
+/// The branches of a version 2 file (a few rows; read after each save).
+///
+/// # Errors
+/// The file cannot be read.
+pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for (id, b) in r.branches().map_err(|e| e.to_string())? {
+        out.push(BranchRow {
+            name: b.name.clone(),
+            id: id.hex(),
+            status: format!("{:?}", b.status),
+            head: b.head.seq,
+            head_chain: b.head.chain.clone(),
+            rows: r.tx_count(id).map_err(|e| e.to_string())?,
+            release_line: b.release_line,
+            fork: b.parent.clone().zip(b.fork_point.as_ref().map(|f| f.seq)),
+        });
+    }
+    Ok(out)
+}
+
+/// Read the Storage view's facts (on request: table statistics walk the tables).
+///
+/// # Errors
+/// The file cannot be read.
+pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result<StorageRead, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let tables = r.stats().map_err(|e| e.to_string())?;
+    let mut versions = Vec::new();
+    for (id, b) in r.branches().map_err(|e| e.to_string())? {
+        for kind in [
+            ecad_file::v2::schema::VersionKind::User,
+            ecad_file::v2::schema::VersionKind::Revision,
+            ecad_file::v2::schema::VersionKind::Auto,
+        ] {
+            for v in r.versions(id, kind).map_err(|e| e.to_string())? {
+                versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.parts.len()));
+            }
+        }
+    }
+    drop(r);
+    Ok(StorageRead {
+        file_bytes: path.and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len()),
+        tables,
+        branches: read_branches(store)?,
+        versions,
+    })
 }
 
 /// Reproject every open page from the document and compare (same handles), then check each page
@@ -695,6 +949,34 @@ fn check_record(bytes: &[u8], seq: u64, expected: Option<&Transaction>) -> Resul
 ///
 /// # Errors
 /// `seq` past the end of `log`, or replay failure.
+pub fn state_at_from(
+    base: u64,
+    history: Option<&Arc<dyn ecad_model::History>>,
+    log: &[Transaction],
+    seq: u64,
+) -> Result<Document, String> {
+    if base == 0 {
+        return state_at(log, seq);
+    }
+    let h = history.ok_or("no history to read older states from")?;
+    if seq <= base {
+        return h.state_at(seq).map_err(|e| e.to_string());
+    }
+    let n = usize::try_from(seq - base).map_err(|e| e.to_string())?;
+    let tail = log.get(..n).ok_or_else(|| format!("transaction {seq} is past the head {}", base + log.len() as u64))?;
+    let mut doc = h.state_at(base).map_err(|e| e.to_string())?;
+    for tx in tail {
+        for op in &tx.ops {
+            op.apply(&mut doc).map_err(|e| format!("transaction {}: {e}", tx.seq))?;
+        }
+    }
+    Ok(doc)
+}
+
+/// The document after transaction `seq`, replayed from a copy of the history from the root.
+///
+/// # Errors
+/// Past the copy's end, or replay failed.
 pub fn state_at(log: &[Transaction], seq: u64) -> Result<Document, String> {
     let n = usize::try_from(seq).map_err(|e| e.to_string())?;
     let prefix = log.get(..n).ok_or_else(|| format!("transaction {seq} is past the head {}", log.len()))?;

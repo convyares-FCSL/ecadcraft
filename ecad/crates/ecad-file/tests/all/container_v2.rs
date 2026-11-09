@@ -130,8 +130,11 @@ fn saves_append_and_snapshots_keep_the_tail_short() {
     assert_eq!(r.tx_count(o.project.branch()).unwrap(), head);
     let autos = r.versions(o.project.branch(), VersionKind::Auto).unwrap();
     assert!(autos.len() >= 3, "{}", autos.len());
+    let v = ecad_file::v2::verify::verify(o.project.store());
+    assert!(v.ok, "{:#?}", v.lines);
+    assert_eq!(v.transactions, head);
     // Every automatic snapshot equals the replayed state at its point.
-    let full = Ledger::replay(f.ledger.log().to_vec(), 0).unwrap();
+    let full = Ledger::replay(f.ledger.full_log().unwrap(), 0).unwrap();
     for v in autos {
         let doc = o.ledger.state_at(v.point.seq).unwrap();
         assert_eq!(doc, full.state_at(v.point.seq).unwrap(), "snapshot at {}", v.point.seq);
@@ -178,6 +181,8 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     drop(proj);
     let o = open(&p);
     assert_eq!(o.ledger.document(), f.ledger.document());
+    let v = ecad_file::v2::verify::verify(o.project.store());
+    assert!(v.ok, "{:#?}", v.lines);
     // A version's snapshot is the state at its point.
     let reader = o.project.store().reader().unwrap();
     for (kind, name, seq) in [(VersionKind::User, "Before", at), (VersionKind::Revision, "Rev A", at3)] {
@@ -255,4 +260,22 @@ fn a_damaged_tail_or_snapshot_opens_read_only_at_what_verifies() {
     let mut proj = o.project;
     assert!(proj.save(&mut ledger).is_err(), "a damaged file is never written");
     assert!(o.report.describe().contains("read-only"));
+}
+
+#[test]
+fn a_file_opens_from_its_bytes_in_memory() {
+    // EEP-0005 §11: what a wasm build does.
+    let dir = TempDir::new("bytes");
+    let mut f = fixture();
+    let p = dir.path("p.ecad");
+    let mut proj = create(&p, &f.ledger, 16);
+    f.ledger.mark_persisted(f.ledger.head()).unwrap();
+    edits(&mut f, 20);
+    proj.save(&mut f.ledger).unwrap();
+    drop(proj);
+    let bytes = std::fs::read(&p).unwrap();
+    let o = ProjectV2::open(Store::from_bytes(bytes).unwrap(), 1, WRITER).unwrap();
+    assert!(o.report.damage.is_none(), "{:?}", o.report);
+    assert_eq!(o.ledger.document(), f.ledger.document());
+    assert_eq!(o.ledger.head(), f.ledger.head());
 }
