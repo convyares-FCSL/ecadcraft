@@ -35,6 +35,14 @@ Rules:
   Documentation-only commits need no cargo at all.
   Commit in small, clear steps.
 - Update `docs/quick-start.md` in the same branch if anything the owner runs or sees changes.
+- **Keep long output out of your context.** Benches, the crash suite and `test-changed` write to a
+  log file (in the feature folder or your scratchpad); read only the summary and the failures,
+  never the whole output. Waits are bounded: run in the foreground with a timeout, never an
+  open-ended `until` loop on a file that may not appear.
+- **One worker per feature.** You stay on the feature through its fix rounds. Only if your context
+  is nearly full, write a short state note first (done, commits, which tests passed at which commit,
+  what is left) and say so in your report; the next worker starts from that note and does not re-run
+  tests that already passed or re-explore the code.
 
 When done, report: branch name, commits, what was built, what was deliberately left out, anything you
 were unsure of, and the exact commands to check it.

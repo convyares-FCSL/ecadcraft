@@ -1,2 +1,6 @@
-max_width = 120
+# Owner's standard (2026-11-08): widescreen, fewer wrapped lines. Stable rustfmt only.
+max_width = 150
+fn_params_layout = "Compressed"
 use_small_heuristics = "Max"
+chain_width = 150
+# where_single_line = true  # nightly-only; enable when stable

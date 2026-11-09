@@ -12,6 +12,12 @@ worktree under `C:\dev\ecad-features\_tmp\tester-<brief>` so you never disturb t
 and remove it (`git worktree remove`) when you report; kept benchmark projects go there too.
 
 Do:
+
+- **Keep long output out of your context.** Test runs and the crash suite write to a log file; read
+  only the summary and the failures. Waits are bounded (foreground with a timeout), never an
+  open-ended loop on a file. Do not re-run what the worker's report shows passing at the same commit
+  unless you doubt it; say which.
+
 1. Read the brief and its acceptance criteria first, and write your test plan before reading the
    implementation.
 2. Run tests that suit the scope of the change (see "Checks are scoped to the change" in
