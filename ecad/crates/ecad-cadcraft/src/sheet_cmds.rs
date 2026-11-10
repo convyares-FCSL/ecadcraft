@@ -30,6 +30,17 @@ pub struct RevisionView {
     /// The transaction it names.
     pub at: u64,
     pub doc: Arc<Document>,
+    /// The point bar's text when this is a point of the history (brief 020, `showpoint`), not an
+    /// issued revision opened from Revisions.
+    pub bar: Option<String>,
+    /// Distinct for every view opened in this process (the panel re-reads its pages when it moves).
+    pub id: u64,
+}
+
+/// A fresh [`RevisionView::id`].
+pub fn next_view_id() -> u64 {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The question a plain undo across an issue stops with (owner answer Q7).
@@ -734,8 +745,26 @@ fn revision_ops(doc: &Document, params: &Value) -> Result<Vec<Op>, String> {
     Ok(ops)
 }
 
+/// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
+/// owner answer 10): on another branch, the refusal names the way forward.
+pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
+    let v = p.file.v2()?;
+    if v.branch_record().release_line {
+        return None;
+    }
+    let name = &v.branch_record().name;
+    Some(if issuing {
+        format!("Revisions are issued on main. Merge \"{name}\" into main first.")
+    } else {
+        format!("The pending revision is edited on main; on branch \"{name}\" its fields are read-only.")
+    })
+}
+
 fn run_revision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_project(s, |p, pg, _| {
+        if let Some(r) = release_line_refusal(p, false) {
+            return Err(r);
+        }
         let ops = revision_ops(p.ledger.document(), params)?;
         if ops.is_empty() {
             return Ok(json!({"changed": false, "pending_rev": revisions::pending_rev(p.ledger.document())}));
@@ -747,6 +776,9 @@ fn run_revision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
 
 fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_project(s, |p, pg, _| {
+        if let Some(r) = release_line_refusal(p, true) {
+            return Err(r);
+        }
         let head = p.ledger.head();
         if head == 0 {
             return Err("Nothing to issue yet.".into());
@@ -791,7 +823,12 @@ fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             .ok_or_else(|| format!("Rev {rev} has not been issued."))?;
         let name = row.issued.clone().unwrap_or_else(|| revisions::version_name(&rev));
         let at = *doc.versions.get(&name).ok_or_else(|| format!("Rev {rev}'s log point is missing."))?;
-        let mut then = p.ledger.state_at(at).map_err(|e| e.to_string())?;
+        // On a branch, a revision issued before the fork names a step of the parent (brief 020).
+        let cur = crate::history::current(p);
+        let point = crate::history::named_points(p, cur)?.into_iter().find(|n| n.name == name);
+        let (branch, at) = point.map_or((cur, at), |n| (n.branch, n.seq));
+        let pt = crate::history::Point { branch, seq: at, title: name.clone(), kind: crate::history::NodeKind::Revision };
+        let mut then = crate::history::state_at(p, &pt)?;
         // The revision table as at that revision (design 019 §7.3): `at` precedes the issue, so
         // the live project's issued rows up to and including this one are copied in (issued rows
         // never change, so this is exact).
@@ -815,7 +852,8 @@ fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             })
             .collect();
         let date = row.get("date").to_string();
-        p.revision_view = Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then) });
+        p.revision_view =
+            Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then), bar: None, id: next_view_id() });
         Ok(json!({"rev": row.rev(), "date": date, "at": at, "pages": pages}))
     })
 }

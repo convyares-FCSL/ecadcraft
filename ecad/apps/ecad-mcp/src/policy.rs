@@ -41,6 +41,14 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",
     "closerevision",
+    // Brief 020a: the History graph, steps, a point's details, the branch list, and a point
+    // shown read-only, read the project or open a session view; nothing is recorded.
+    "history",
+    "steps",
+    "pointinfo",
+    "branches",
+    "showpoint",
+    "closepoint",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and

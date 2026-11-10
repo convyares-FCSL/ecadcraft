@@ -445,6 +445,9 @@ pub struct Revisions {
     /// The question of Issue Rev B… is open.
     pub confirming: bool,
     pub error: Option<String>,
+    /// Brief 020a: shown on a branch other than a release line (its name): Issue is disabled,
+    /// saying why, and Merge into main… is offered (design 020 §2.5.2, owner answer 10).
+    pub off_main: Option<String>,
 }
 
 impl Revisions {
@@ -466,7 +469,7 @@ impl Revisions {
         }
         let mut issued: Vec<RevRow> = rows.into_iter().filter(|r| r.issued).collect();
         issued.reverse();
-        Revisions { issued, orig: pending.clone(), pending, read_only, confirming: false, error: None }
+        Revisions { issued, orig: pending.clone(), pending, read_only, confirming: false, error: None, off_main: None }
     }
 
     /// Take `fresh` (the project now), keeping what the user typed in the pending row and has not
@@ -549,6 +552,12 @@ impl Revisions {
                     ui.label(RichText::new(e).small().color(RED));
                 }
                 ui.horizontal(|ui| {
+                    if let Some(b) = self.off_main.clone() {
+                        let rev = self.pending[0].clone();
+                        ui.add_enabled(false, egui::Button::new(format!("Issue Rev {rev}…")))
+                            .on_disabled_hover_text(format!("Revisions are issued on main. Merge \"{b}\" into main first."));
+                        ui.add_enabled(false, egui::Button::new("Merge into main…")).on_disabled_hover_text(crate::history_panel::MERGE_LATER);
+                    }
                     if !self.read_only {
                         let rev = self.pending[0].clone();
                         let b =

@@ -19,6 +19,22 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 020a (design `ecad/docs/design/020.md`), on `feature/history`, not yet in `dev`:** the
+project's history is a **History** tab in the PROJECT panel: a graph of the main line with its
+versions and issued revisions, and branches drawn from where they start. Select a row to see it,
+**Show** it read-only, **Restore** it (one new step, undoable), make a **New version**, and work
+on **branches** (create, rename, switch with **Save and switch**, archive, reopen). A project
+reopens on the branch you last used; the window title and a branch bar say which branch is shown
+once there is more than one. Merging a branch back is the next part (020b): its buttons are shown,
+disabled. Section 5J describes it.
+- *Automated checks:* `ecad/crates/ecad-file/tests/all/branches_contracts.rs` (branch rows,
+  switching, reopening on the last branch, snapshots on a branch, deep branches, Verify, readers
+  ignoring unknown optional fields), `ecad/apps/ecad-mcp/tests/all/history_contracts.rs` (every
+  history and branch command through MCP, refused with writes off), and the unit tests of the
+  graph's order and lanes in `ecad/crates/ecad-cadcraft/src/history.rs`.
+- *Agent-observed:* not yet clicked through by an agent in the live window.
+- *Owner-tried:* not yet.
+
 **Brief 021 (container v2 on redb, EEP-0005), on `feature/container-v2` (built on
 `dev`, brief 022 included), not yet in `dev`:** a `.ecad` file is now one **redb** database. Saving writes
 one transaction in a few milliseconds and opening reads the latest snapshot and the changes after
@@ -937,6 +953,61 @@ text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
 `setprop` refuses `wire_number` and `potential` on a wire (use `wirenumber` and `potential`, which
 change the whole net); it takes `cross_section` and `colour`, which only that wire shows.
 
+## 5J. History and branches (by clicking)
+
+On the demo project, opened from its file (section 7; branches live in the file, so a project
+never saved says `Branches live in the project file. Save it first.` with **Save As…**).
+Design 020 (020a: merge comes next, in 020b).
+
+1. **The History tab.** In the PROJECT panel, click **History** (after **Checks**). Expected: the
+   graph, newest at the top: `Now · main` (a ring on it: the branch shown), any revision issued in
+   section 5H as a filled diamond (`Rev A`), and `Project created` at the bottom. Click **New
+   version**, type `Before change`, **Create**. Expected: the echo `Version "Before change"
+   created. Save to keep it.`, and a hollow circle `Before change` under `Now`. `u` takes it away
+   without asking; redo brings it back. **Save**.
+2. **Details and Show.** Click the `Before change` row. Expected, under the graph: `── Version
+   "Before change"`, `Version on main`, its time and `you`, and `Since …: n steps`. Click
+   **Show**. Expected: the bar `Version "Before change" · main · read-only` with **Back to
+   current**; the Pages tab lists that state's pages; click a page: its preview opens read-only.
+   **Back to current**. **Steps ▾** lists the steps before it, newest first (`#12  Wire  you …`);
+   a step can be selected and shown the same way.
+3. **A branch.** With `Before change` selected, click **Branch from here…**, name `Option B`,
+   keep **Switch to the new branch** ticked, **Create**. Expected: `Branch "Option B" created from
+   Before change. Now on branch "Option B".`; the window title ends `demo.ecad · Option B`; the
+   header line starts `Branch Option B`; a bar `Branch "Option B" · from Before change` with
+   **Merge into main…** and **Update from main…** (disabled: they come with 020b); in the graph
+   the Option B line starts at `Before change`, drawn in the accent colour down to the root (the
+   line you are on). Select `-K01` and change its description in **Properties**.
+4. **Switch back.** In the History tab's **Branch** list, pick `main`. Expected: `Option B has 1
+   unsaved change. They are saved, then the project shows "main". [Save and switch] [Cancel]`.
+   **Save and switch**. Expected: `Now on branch "main". Undo works on this branch's own steps.`;
+   `-K01`'s description is as before; `u` undoes main's own last step, never Option B's.
+5. **Revisions on a branch.** Switch to `Option B` again and open **Revisions**. Expected:
+   **Issue Rev …** is disabled with `Revisions are issued on main. Merge "Option B" into main
+   first.`, the pending row's fields are read-only, and **Merge into main…** is shown (disabled
+   until 020b).
+6. **Restore.** On main, make two edits (draw two wires), then select `Before change` and click
+   **Restore…**. Expected: `Make the project on main as it was at Version "Before change"? 2
+   objects change, on page 1. Nothing is deleted from the history: this is one new step, and Undo
+   takes it back.` (and `It lands after Rev A…` when a revision lies between). **Restore**.
+   Expected: `Restored "Before change" (2 changes). Undo takes it back.`; the two wires are gone,
+   the graph still has every row; `u` brings them back.
+7. **Rename and archive.** On Option B, **⋯ > Rename branch…** (`Option C`), then **⋯ > Archive
+   branch…**: it says the project first shows main; **Archive**. Expected: the branch is hidden;
+   **⋯ > Show merged and archived branches** shows it faint, `Archived "Option C"`; select its row
+   and **Reopen branch**.
+8. **Save, close and reopen** (section 7). Expected: the project opens on the branch you were on,
+   and the History tab shows the same graph. **⋯ > Show automatic snapshots** adds faint
+   `Auto · <time>` rows (one every 2 000 steps, so few on the demo).
+
+Typed instead, in the ECAD command field: `version {"name":"Before change"}`,
+`history {}`, `steps {"limit":10}`, `pointinfo {"version":"Before change"}`,
+`showpoint {"version":"Before change"}` / `closepoint {}`, `restore {"version":"Before change"}`,
+`branch {"name":"Option B","from":{"version":"Before change"}}`,
+`switchbranch {"branch":"main","save":true}` (without `save` it is refused while changes are
+unsaved), `renamebranch {"branch":"Option B","name":"Option C"}`,
+`archivebranch {"branch":"Option C"}`, `reopenbranch {"branch":"Option C"}`, `branches {}`.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1446,6 +1517,12 @@ launch and about 0.15 s on the next two (measured from Git Bash's clock, so appr
 Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
+
+- **History and branches (brief 020a):** merging a branch into main and updating a branch from
+  main are brief 020b: their buttons are shown, disabled. The graph is read whole (no paging
+  past 200 rows yet); the change summary of a version names the pages changed, added and removed
+  and says when devices or wiring changed, but does not yet name them (`-K05 added`). Times are
+  shown in UTC. New versions are made at Now only (owner answer 13).
 
 - **Connectivity and wire numbers (brief 022).** Labels are placed on each route's longest
   segment with no collision avoidance and cannot be dragged (owner answer Q11), so a label can

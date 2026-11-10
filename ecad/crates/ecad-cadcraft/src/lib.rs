@@ -40,6 +40,7 @@ pub mod device_list;
 pub mod devices;
 pub mod file;
 pub mod frame;
+pub mod history;
 pub mod interact;
 pub mod look;
 pub mod oops;

@@ -1630,6 +1630,29 @@ impl ProjectV2 {
         Ok((l.ledger, l.report))
     }
 
+    /// Transactions `from..=to` of `branch` as stored, for display (the History tab's times,
+    /// authors and labels, design 020 §2.4): each row is decoded and checked against its own
+    /// chain value, not linked to its neighbours (Verify does that).
+    ///
+    /// # Errors
+    /// The engine failed, or a row does not decode.
+    pub fn tx_display(&self, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, String> {
+        if from > to {
+            return Ok(Vec::new());
+        }
+        let r = self.store.reader().map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for (seq, flag, stored, body) in r.tx_range(branch, from..=to).map_err(|e| e.to_string())? {
+            let record = pack::unpack(flag, &body)?;
+            if chain::tx_hash(&record) != stored {
+                return Err(format!("transaction {seq} does not match its chain value"));
+            }
+            let value: Value = serde_json::from_slice(&record).map_err(|e| format!("transaction {seq}: {e}"))?;
+            out.push(record::decode_tx(&value).map_err(|e| format!("transaction {seq}: {e:?}"))?);
+        }
+        Ok(out)
+    }
+
     /// The document at `seq` of `branch` (any branch of the file): from its nearest snapshot, or
     /// its ancestry's, and at most the transactions after it (design 020 §2.4, on a copy).
     ///

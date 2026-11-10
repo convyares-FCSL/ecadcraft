@@ -328,7 +328,7 @@ impl Binding {
         let d = self.disk.as_ref()?;
         let p = d.project();
         Some(StorageFacts {
-            branch: format!("main ({})", p.branch().hex()),
+            branch: format!("{} ({})", p.branch_record().name, p.branch().hex()),
             head: p.head().0,
             snapshot_seq: p.snapshot_seq(),
             snapshot_every: p.snapshot_every(),
@@ -342,6 +342,16 @@ impl Binding {
     /// versions). Reads only.
     pub fn store(&self) -> Option<std::sync::Arc<ecad_file::v2::Store>> {
         self.disk.as_ref().map(|d| d.project().store().clone())
+    }
+
+    /// The project in the bound file (brief 020: its branches and history).
+    pub fn v2(&self) -> Option<&ecad_file::v2::ProjectV2> {
+        self.disk.as_deref().map(|d| d.project())
+    }
+
+    /// The project in the bound file, for branch actions (brief 020).
+    pub(crate) fn v2_mut(&mut self) -> Option<&mut ecad_file::v2::ProjectV2> {
+        self.disk.as_deref_mut().map(|d| d.project_mut())
     }
 }
 
@@ -388,6 +398,16 @@ impl Binding {
 
     /// No file.
     pub fn store(&self) -> Option<std::sync::Arc<ecad_file::v2::Store>> {
+        None
+    }
+
+    /// No file.
+    pub fn v2(&self) -> Option<&ecad_file::v2::ProjectV2> {
+        None
+    }
+
+    /// No file.
+    pub(crate) fn v2_mut(&mut self) -> Option<&mut ecad_file::v2::ProjectV2> {
         None
     }
 
