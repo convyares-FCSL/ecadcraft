@@ -50,7 +50,7 @@ fn edit(ledger: &mut Ledger, rng: &mut Rng, n: u64, version: bool) {
     if version {
         let at = ledger.head();
         let name = format!("V{at}");
-        ledger.commit(Author::User, "Name", vec![Op::NameVersion { name, at }]).unwrap();
+        ledger.commit(Author::User, "Name", vec![Op::NameVersion { name, at, description: None }]).unwrap();
     }
 }
 

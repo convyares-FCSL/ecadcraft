@@ -150,13 +150,13 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     edits(&mut f, 3);
     let at = f.ledger.head();
-    f.commit("Name", vec![Op::NameVersion { name: "Before".into(), at }]);
+    f.commit("Name", vec![Op::NameVersion { name: "Before".into(), at, description: None }]);
     edits(&mut f, 2);
     let at2 = f.ledger.head();
     let set = |key: &str, after: &str| Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: None, after: Some(after.into()) };
     f.commit("Rev fields", vec![set("rev.1.rev", "A"), set("rev.1.description", "First issue"), set("rev.1.drawn", "CV")]);
     let at3 = f.ledger.head();
-    f.commit("Issue", vec![set("rev.1.issued", "Rev A"), Op::NameVersion { name: "Rev A".into(), at: at3 }]);
+    f.commit("Issue", vec![set("rev.1.issued", "Rev A"), Op::NameVersion { name: "Rev A".into(), at: at3, description: None }]);
     edits(&mut f, 2);
     proj.save(&mut f.ledger).unwrap();
     let r = proj.store().reader().unwrap();

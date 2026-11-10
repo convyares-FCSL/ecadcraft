@@ -611,7 +611,7 @@ fn apply_scratch(doc: &mut Document, ops: &[Op], verify: bool) -> Result<()> {
 /// [`Ledger::state_at`] can always resolve it.
 fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
     for op in ops {
-        if let Op::NameVersion { name, at } = op
+        if let Op::NameVersion { name, at, .. } = op
             && *at >= seq
         {
             return Err(ModelError::Invariant(format!("version {name:?} names transaction {at}, which does not precede transaction {seq}")));
@@ -659,6 +659,15 @@ impl Ledger {
     /// As [`Ledger::replay`].
     pub fn replay_verified(log: Vec<Transaction>, seed: u64) -> Result<Self> {
         Self::rebuild(Document::default(), 0, log, seed, true)
+    }
+
+    /// [`Ledger::replay_verified`] from `doc` instead of the empty project: a branch's history
+    /// replayed on its parent's state at the fork point (brief 020; Verify).
+    ///
+    /// # Errors
+    /// As [`Ledger::replay`].
+    pub fn replay_verified_from(doc: Document, log: Vec<Transaction>, seed: u64) -> Result<Self> {
+        Self::rebuild(doc, 0, log, seed, true)
     }
 
     /// Replay as much of `log` as is valid: the ledger of the longest valid prefix and, when a
@@ -1212,7 +1221,9 @@ impl Ledger {
         if seq > self.head() {
             return Err(ModelError::Precondition(format!("sequence {seq} is past the head {}", self.head())));
         }
-        if self.base == 0 {
+        // From the root only when nothing precedes the log: a branch's ledger based at its `seq` 0
+        // starts from its parent's state, which its history gives (brief 020).
+        if self.base == 0 && self.history.is_none() {
             let mut doc = Document::default();
             for tx in self.log.iter().take(usize::try_from(seq).unwrap_or(usize::MAX)) {
                 apply_scratch(&mut doc, &tx.ops, self.verify)?;
@@ -1240,8 +1251,8 @@ impl Ledger {
     /// Replay failures.
     pub fn replay_matches(&self) -> Result<bool> {
         let mut doc = match (&self.history, self.base) {
-            (_, 0) => Document::default(),
             (Some(h), base) => h.state_at(base)?,
+            (None, 0) => Document::default(),
             (None, base) => {
                 return Err(ModelError::CorruptLog(format!("the state at {base} cannot be read: no history")));
             }

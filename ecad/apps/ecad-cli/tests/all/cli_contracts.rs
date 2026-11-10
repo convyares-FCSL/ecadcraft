@@ -51,7 +51,7 @@ fn history() -> Ledger {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
         if i == 10 {
             let at = l.head();
-            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at }]).unwrap();
+            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at, description: None }]).unwrap();
         }
     }
     l.undo(Author::User).unwrap();

@@ -309,7 +309,7 @@ fn a_symbol_must_show_its_components_own_definition() {
 fn a_named_version_must_name_existing_history() {
     let mut f = fixture();
     let head = f.ledger.head();
-    let name = |at| vec![Op::NameVersion { name: format!("v{at}"), at }];
+    let name = |at| vec![Op::NameVersion { name: format!("v{at}"), at, description: None }];
     // The future, or the naming transaction itself, is refused and nothing is appended.
     for at in [head + 1, head + 5] {
         let r = f.ledger.commit(Author::User, "name", name(at));

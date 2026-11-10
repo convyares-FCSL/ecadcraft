@@ -620,10 +620,16 @@ pub enum Op {
     NameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
     UnnameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
     /// Brief 019 (decision FP3).
     AddFolder {
@@ -862,8 +868,8 @@ impl From<&m::Op> for Op {
             m::Op::EmbedDefinition { id, definition } => Op::EmbedDefinition { id: *id, definition: definition.into() },
             m::Op::RemoveDefinition { id, definition } => Op::RemoveDefinition { id: *id, definition: definition.into() },
             m::Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: before.into(), after: after.into() },
-            m::Op::NameVersion { name, at } => Op::NameVersion { name: name.clone(), at: *at },
-            m::Op::UnnameVersion { name, at } => Op::UnnameVersion { name: name.clone(), at: *at },
+            m::Op::NameVersion { name, at, description } => Op::NameVersion { name: name.clone(), at: *at, description: description.clone() },
+            m::Op::UnnameVersion { name, at, description } => Op::UnnameVersion { name: name.clone(), at: *at, description: description.clone() },
             m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
@@ -1079,8 +1085,8 @@ impl TryFrom<Op> for m::Op {
             Op::EmbedDefinition { id, definition } => m::Op::EmbedDefinition { id, definition: definition.into() },
             Op::RemoveDefinition { id, definition } => m::Op::RemoveDefinition { id, definition: definition.into() },
             Op::SetProjectSettings { before, after } => m::Op::SetProjectSettings { before: before.into(), after: after.into() },
-            Op::NameVersion { name, at } => m::Op::NameVersion { name, at },
-            Op::UnnameVersion { name, at } => m::Op::UnnameVersion { name, at },
+            Op::NameVersion { name, at, description } => m::Op::NameVersion { name, at, description },
+            Op::UnnameVersion { name, at, description } => m::Op::UnnameVersion { name, at, description },
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
             Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
             Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },

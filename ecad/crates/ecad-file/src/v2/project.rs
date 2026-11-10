@@ -20,8 +20,8 @@ use serde_json::{Value, json};
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, META_NAMES, Point, Release,
-    SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, Point, Release, SNAPSHOT_EVERY_RANGE,
+    STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
 use crate::chain::{self, ChainKind, Hash};
@@ -52,6 +52,45 @@ pub enum SaveErrorV2 {
     Store(#[from] StoreError),
     #[error("could not encode: {0}")]
     Encode(String),
+}
+
+/// Why a branch action (create, rename, archive, reopen, switch) did not happen. The file is then
+/// unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BranchError {
+    #[error("the file was opened read-only: {0}")]
+    ReadOnly(String),
+    /// Refused, in words for the user.
+    #[error("{0}")]
+    Refused(String),
+    /// Reopening a branch whose name another open branch now has: rename it first.
+    #[error("Another open branch is called \"{0}\"; give this one a new name.")]
+    NameTaken(String),
+    #[error("{0}")]
+    Store(#[from] StoreError),
+}
+
+/// Longest branch name, in characters (design 020 §3.1).
+pub const MAX_BRANCH_NAME: usize = 60;
+
+/// A branch name checked (design 020 §3.1): trimmed, 1–60 characters, no control characters,
+/// not `main`.
+///
+/// # Errors
+/// [`BranchError::Refused`] in words.
+pub fn check_branch_name(name: &str) -> Result<String, BranchError> {
+    let n = name.trim();
+    let len = n.chars().count();
+    if len == 0 || len > MAX_BRANCH_NAME {
+        return Err(BranchError::Refused(format!("A branch name is 1 to {MAX_BRANCH_NAME} characters.")));
+    }
+    if n.chars().any(char::is_control) {
+        return Err(BranchError::Refused("A branch name cannot hold control characters.".into()));
+    }
+    if n.eq_ignore_ascii_case("main") {
+        return Err(BranchError::Refused("\"main\" is the release line's name; choose another.".into()));
+    }
+    Ok(n.to_string())
 }
 
 /// What a successful save wrote.
@@ -224,11 +263,157 @@ fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, String> {
     s.iter().map(|(q, id)| TxId::parse(id).map(|t| (*q, t)).ok_or_else(|| format!("{id:?} is not a transaction ID"))).collect()
 }
 
-/// The tag high-water mark of rows `1..=upto` of `branch`, read from the file: for a snapshot
-/// written without `model:meta`, and for a point before the ledger's base.
-fn scan_tag_high(r: &Reader, branch: BranchId, upto: u64, seed: Hash) -> Result<HighWater, String> {
-    let mut high = HighWater::new();
-    let mut from = 1;
+/// One branch of a lineage: the branch, its chain seed (its chain value at `seq` 0) and, for a
+/// branch other than `main`, the index of its parent in the lineage and the parent's `seq` it
+/// forks after (EEP-0005 §3.3 items 3–5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Line {
+    pub branch: BranchId,
+    pub seed: Hash,
+    pub fork: Option<(usize, u64)>,
+}
+
+/// A branch and its ancestry up to `main`: element 0 is the branch itself, the last is `main`.
+pub type Lineage = Arc<Vec<Line>>;
+
+/// The most levels of branches on branches read (a crafted file cannot make it loop).
+const MAX_DEPTH: usize = 64;
+
+/// The lineage of `branch`, from its own row up through its parents to `main`.
+///
+/// # Errors
+/// A missing or inconsistent row, a cycle, or more than [`MAX_DEPTH`] levels.
+pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Lineage, String> {
+    let main = BranchId::main_of(project.0);
+    let mut out: Vec<Line> = Vec::new();
+    let mut at = branch;
+    loop {
+        if out.len() >= MAX_DEPTH || out.iter().any(|l| l.branch == at) {
+            return Err("the branches' parents form a loop or are too deep".into());
+        }
+        let rec = r.branch(at).map_err(|e| e.to_string())?.ok_or_else(|| format!("branch {} is missing", at.hex()))?;
+        if at == main {
+            if rec.parent.is_some() || rec.fork_point.is_some() {
+                return Err("the main branch's record is inconsistent".into());
+            }
+            out.push(Line { branch: at, seed: chain::seed(ChainKind::Project, project.0), fork: None });
+            break;
+        }
+        let (Some(parent), Some(fork)) = (rec.parent.as_deref().and_then(BranchId::parse), rec.fork_point.as_ref()) else {
+            return Err(format!("branch {:?} has no parent or fork point", rec.name));
+        };
+        let fork_chain = fork.hash()?;
+        let i = out.len();
+        out.push(Line { branch: at, seed: chain::branch_seed(project.0, &at.0, &fork_chain), fork: Some((i + 1, fork.seq)) });
+        at = parent;
+    }
+    // Each fork point must be the parent's stored row (its chain value), or the parent's seed.
+    for i in 0..out.len() {
+        if let Some(Line { fork: Some((pi, seq)), branch, .. }) = out.get(i).cloned() {
+            let parent = out.get(pi).ok_or("a lineage index is out of range")?;
+            let want = r.branch(branch).map_err(|e| e.to_string())?.and_then(|b| b.fork_point).map(|p| p.chain).unwrap_or_default();
+            let have = if seq == 0 { Some(parent.seed) } else { r.tx(parent.branch, seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) };
+            if have.map(|h| chain::hex(&h)) != Some(want) {
+                return Err(format!("the fork point of branch {} does not match its parent's transaction {seq}", branch.hex()));
+            }
+        }
+    }
+    Ok(Arc::new(out))
+}
+
+/// The nearest snapshot of `branch` at or before `seq` (an automatic one or a named version).
+fn nearest_snapshot(r: &Reader, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, String> {
+    let mut best: Option<VersionRecord> = r.auto_at_or_before(branch, seq).map_err(|e| e.to_string())?;
+    for kind in [VersionKind::User, VersionKind::Revision] {
+        for v in r.versions(branch, kind).map_err(|e| e.to_string())? {
+            if v.point.seq <= seq && best.as_ref().is_none_or(|b| b.point.seq < v.point.seq) {
+                best = Some(v);
+            }
+        }
+    }
+    Ok(best)
+}
+
+/// The document and tag high-water mark of lineage entry `i` after its transaction `seq`: from
+/// its nearest snapshot at or before `seq`, or else from its parent's state at the fork point (or
+/// the empty project for `main`), then its own rows, each checked against its chain value.
+///
+/// # Errors
+/// Missing or damaged rows or chunks, and replay failures.
+pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(Document, HighWater), String> {
+    let line = lineage.get(i).ok_or("a lineage index is out of range")?;
+    let (mut doc, mut high, from, prev) = match nearest_snapshot(r, line.branch, seq)? {
+        Some(v) => {
+            let (mut doc, meta) = load_snapshot(r, &v)?;
+            doc.rebuild_index();
+            let high = match meta {
+                Some(m) => m.tag_high,
+                None => line_high(r, lineage, i, v.point.seq)?,
+            };
+            (doc, high, v.point.seq, v.point.hash()?)
+        }
+        None => match line.fork {
+            Some((pi, fseq)) => {
+                let (doc, high) = line_state(r, lineage, pi, fseq)?;
+                (doc, high, 0, line.seed)
+            }
+            None => (Document::default(), HighWater::new(), 0, line.seed),
+        },
+    };
+    let mut from = from.saturating_add(1);
+    let mut prev = prev;
+    while from <= seq {
+        let to = seq.min(from.saturating_add(4_095));
+        let (txs, last, damage) = read_rows(r, line.branch, from, to, prev).map_err(|e| e.to_string())?;
+        if let Some(d) = damage {
+            return Err(format!("transaction {:?}: {}", d.seq, d.detail));
+        }
+        for tx in &txs {
+            for op in &tx.ops {
+                op.apply(&mut doc).map_err(|e| format!("replaying {}: {e}", tx.seq))?;
+            }
+            ecad_model::tag::note_ops(&mut high, &tx.ops);
+        }
+        prev = last;
+        let Some(next) = to.checked_add(1) else { break };
+        from = next;
+    }
+    Ok((doc, high))
+}
+
+/// The tag high-water mark of lineage entry `i` after its transaction `seq`, read from the file
+/// without rebuilding documents: the nearest snapshot's `model:meta` (or the parent's mark at the
+/// fork), then the rows after it.
+fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWater, String> {
+    let line = lineage.get(i).ok_or("a lineage index is out of range")?;
+    let snap = nearest_snapshot(r, line.branch, seq)?;
+    let meta = match &snap {
+        Some(v) => {
+            let set = ChunkSet::from_record(&v.chunks)?;
+            match set.chunks.get(chunks::META_KEY) {
+                Some(h) => {
+                    let body = r.chunk_body(h).map_err(|e| e.to_string())?;
+                    let m: ModelMeta = serde_json::from_slice(&body).map_err(|e| format!("chunk {}: {e}", chunks::META_KEY))?;
+                    Some((m.tag_high, v.point.seq, v.point.hash()?))
+                }
+                None => None,
+            }
+        }
+        None => None,
+    };
+    let (high, from, prev) = match meta {
+        Some(found) => found,
+        None => match line.fork {
+            Some((pi, fseq)) => (line_high(r, lineage, pi, fseq)?, 0, line.seed),
+            None => (HighWater::new(), 0, line.seed),
+        },
+    };
+    scan_tag_high(r, line.branch, high, from, prev, seq)
+}
+
+/// `high` advanced over rows `after + 1 ..= upto` of `branch` (`prev`: the chain value at `after`).
+fn scan_tag_high(r: &Reader, branch: BranchId, mut high: HighWater, after: u64, seed: Hash, upto: u64) -> Result<HighWater, String> {
+    let mut from = after.saturating_add(1);
     let mut prev = seed;
     while from <= upto {
         let to = upto.min(from.saturating_add(4_095));
@@ -293,6 +478,9 @@ pub struct StoreHistory {
     store: std::sync::Weak<Store>,
     branch: BranchId,
     seed: Hash,
+    /// The branch and its ancestry: a state before the branch's own first snapshot starts from
+    /// its parent's state at the fork point.
+    lineage: Lineage,
 }
 
 impl StoreHistory {
@@ -512,40 +700,18 @@ impl History for StoreHistory {
 
     fn state_at(&self, seq: u64) -> ecad_model::Result<Document> {
         let r = self.read()?;
-        let err = |e: String| ModelError::CorruptLog(e);
-        // The nearest snapshot at or before `seq`: an automatic one, or a named version.
-        let mut best: Option<VersionRecord> = r.auto_at_or_before(self.branch, seq).map_err(|e| err(e.to_string()))?;
-        for kind in [VersionKind::User, VersionKind::Revision] {
-            for v in r.versions(self.branch, kind).map_err(|e| err(e.to_string()))? {
-                if v.point.seq <= seq && best.as_ref().is_none_or(|b| b.point.seq < v.point.seq) {
-                    best = Some(v);
-                }
-            }
-        }
-        let (mut doc, from, prev) = match &best {
-            Some(v) => (load_snapshot(&r, v).map_err(err)?.0, v.point.seq, v.point.hash().map_err(err)?),
-            None => (Document::default(), 0, self.seed),
-        };
-        let (txs, _, damage) = read_rows(&r, self.branch, from.saturating_add(1), seq, prev).map_err(|e| err(e.to_string()))?;
-        if let Some(d) = damage {
-            return Err(err(format!("transaction {:?}: {}", d.seq, d.detail)));
-        }
-        doc.rebuild_index();
-        for tx in &txs {
-            for op in &tx.ops {
-                op.apply(&mut doc)?;
-            }
-        }
+        let (doc, _) = line_state(&r, &self.lineage, 0, seq).map_err(ModelError::CorruptLog)?;
         doc.check()?;
         Ok(doc)
     }
 }
 
-/// The in-memory snapshot the next one is built from.
+/// The in-memory snapshot the next one is built from. `set` is `None` for a branch opened from
+/// its parent's state (it has no snapshot of its own yet): its first snapshot is built whole.
 #[derive(Debug, Clone)]
 struct Snap {
     seq: u64,
-    set: ChunkSet,
+    set: Option<ChunkSet>,
 }
 
 /// A project bound to a version 2 database.
@@ -554,6 +720,10 @@ pub struct ProjectV2 {
     store: Arc<Store>,
     project: ProjectId,
     branch: BranchId,
+    /// The branch's row as last read or written (its head is written by each save).
+    rec: BranchRecord,
+    /// The branch and its ancestry.
+    lineage: Lineage,
     /// The branch head in the file: `seq` and chain value.
     head: (u64, Hash),
     cache: Cache,
@@ -567,6 +737,8 @@ pub struct ProjectV2 {
     base_seq: u64,
     writer: String,
     read_only: Option<String>,
+    /// Why the file is read-only, apart from damage on the branch shown (kept across a switch).
+    file_read_only: Option<String>,
     link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
     last_save: Option<SavedV2>,
@@ -595,14 +767,13 @@ struct Facts {
     cache: Cache,
     link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
+    /// `meta.active`: the branch the project was last shown on (FQ4).
+    active: Option<BranchId>,
 }
 
 fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
-    for (name, _) in r.meta_all()? {
-        if !META_NAMES.contains(&name.as_str()) {
-            return Err(OpenErrorV2::Unsupported(format!("meta {name:?} is not something this build reads")));
-        }
-    }
+    // Unknown `meta` names are ignored (brief 020, forward compatibility): every name this build
+    // needs is checked below.
     let format = meta_json(r, "format")?;
     if format.as_ref().and_then(Value::as_str) != Some(FORMAT_PROJECT) {
         return Err(OpenErrorV2::Unsupported(format!("not an ECAD project file (format {format:?})")));
@@ -634,7 +805,9 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
         None => None,
     };
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
-    Ok(Facts { project, cache, link_v1, created_ms })
+    // An unreadable `active` is not damage: the project opens on `main`.
+    let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
+    Ok(Facts { project, cache, link_v1, created_ms, active })
 }
 
 /// The original branch, `main`.
@@ -647,9 +820,170 @@ fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord
     Ok((id, rec))
 }
 
+/// What loading one branch gave.
+struct Loaded {
+    ledger: Ledger,
+    report: ReportV2,
+    lineage: Lineage,
+    head: (u64, Hash),
+    snap: Snap,
+    base_tag_high: HighWater,
+    snap_ref: Option<SnapshotRef>,
+    base_stacks: StackState,
+    damage: Option<String>,
+}
+
+/// Load `branch` (EEP-0005 §5 items 1–2): its latest snapshot and the transactions after it; a
+/// branch with no snapshot of its own starts from its parent's state at the fork point. Damage
+/// found loads the last state that verifies, with a report.
+fn load_branch(
+    store: &Arc<Store>, project: ProjectId, cache: &Cache, link: Option<&LinkV1>, branch: BranchId, rec: &BranchRecord, seed: u64,
+) -> Result<Loaded, OpenErrorV2> {
+    let r = store.reader()?;
+    let lineage = lineage(&r, project, branch).map_err(OpenErrorV2::Damaged)?;
+    let own = lineage.first().cloned().ok_or_else(|| OpenErrorV2::Damaged("an empty lineage".into()))?;
+    let seed_chain = own.seed;
+    let head = rec.head.seq;
+    let head_chain = rec.head.hash().map_err(OpenErrorV2::Damaged)?;
+    let mut damage = None;
+    // The head must be the branch's last row, with the recorded chain value.
+    let last = r.last_seq(branch)?.unwrap_or(0);
+    if last != head {
+        damage = Some(DamageV2 { seq: Some(head), detail: format!("the head is {head} but the last stored transaction is {last}") });
+    } else if head > 0 && r.tx(branch, head)?.map(|(_, c, _)| c) != Some(head_chain) {
+        damage = Some(DamageV2 { seq: Some(head), detail: "the head transaction does not match the branch head".into() });
+    } else if head == 0 && head_chain != seed_chain {
+        damage = Some(DamageV2 { seq: Some(0), detail: "the branch head does not match its fork point".into() });
+    }
+    // The latest snapshot at or before the head.
+    let latest = cache.latest.get(&branch.hex()).filter(|s| s.seq <= head);
+    let mut loaded = None;
+    let mut snap_ref = None;
+    if let Some(s) = latest {
+        match r.version(branch, s.kind, &s.name)? {
+            Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
+                Ok((mut doc, meta)) => {
+                    // Every invariant of the snapshot is checked in debug builds and after a
+                    // crash repair (overseer, 2026-11-09: about 38 ms on the large project, so
+                    // not on every normal release open). Its chunks were checked against their
+                    // hashes in any case, and Verify checks everything on request.
+                    doc.rebuild_index();
+                    let checked = if cfg!(debug_assertions) || store.repaired() { doc.check() } else { Ok(()) };
+                    match checked {
+                        Ok(()) => {
+                            loaded = Some((v, doc, meta));
+                            snap_ref = Some(s.clone());
+                        }
+                        Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot breaks an invariant: {e}") })),
+                    }
+                }
+                Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
+            },
+            _ => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: "the latest snapshot is missing".into() })),
+        }
+    }
+    // Start from the snapshot; if anything about it fails (its point row, its stack record,
+    // the rows under it), open from the branch's start instead (the project root, or the
+    // parent's state at the fork point), read-only with the damage reported (EEP-0005 §5.8).
+    let to = head.min(last);
+    let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
+        let using = loaded.take();
+        let from_snapshot = using.as_ref().map(|(v, _, _)| v.point.seq);
+        let attempt = (|| -> Result<_, String> {
+            let (snap_seq, snap_chain, doc, stacks, set, high) = match using {
+                Some((v, doc, meta)) => {
+                    let chain = v.point.hash()?;
+                    let stacks = StackState::from_record(&v)?;
+                    let set = ChunkSet::from_record(&v.chunks)?;
+                    // The snapshot's point must be the stored row's chain value.
+                    if r.tx(branch, v.point.seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) != Some(chain) {
+                        return Err("the snapshot's point does not match its transaction".into());
+                    }
+                    // The tag high-water mark at the snapshot: carried by `model:meta`; a
+                    // snapshot written without it is scanned once (a cache, rebuilt from the
+                    // history).
+                    let high = match meta {
+                        Some(m) => m.tag_high,
+                        None => line_high(&r, &lineage, 0, v.point.seq)?,
+                    };
+                    (v.point.seq, chain, doc, stacks, Some(set), high)
+                }
+                None => match own.fork {
+                    // A branch without a snapshot of its own: its parent's state at the fork.
+                    Some((pi, fseq)) => {
+                        let (mut doc, high) = line_state(&r, &lineage, pi, fseq)?;
+                        doc.rebuild_index();
+                        (0, seed_chain, doc, StackState::default(), None, high)
+                    }
+                    None => (0, seed_chain, Document::default(), StackState::default(), Some(ChunkSet::default()), HighWater::new()),
+                },
+            };
+            let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain).map_err(|e| e.to_string())?;
+            let history: Arc<dyn History> =
+                Arc::new(StoreHistory { store: Arc::downgrade(store), branch, seed: seed_chain, lineage: lineage.clone() });
+            let base = Base {
+                seq: snap_seq,
+                doc,
+                undo: stacks.undo.clone(),
+                redo: stacks.redo.clone(),
+                undo_hidden: stacks.undo_hidden,
+                redo_hidden: stacks.redo_hidden,
+                indexed: true,
+                stack_cap: stacks.cap,
+                history,
+            };
+            let tail_len = tail.len() as u64;
+            let (ledger, failure) = Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
+            Ok((ledger, failure, snap_seq, snap_chain, stacks, set, high, tail_len, verified_chain, row_damage))
+        })();
+        match (attempt, from_snapshot) {
+            (Ok(done), _) => break done,
+            (Err(e), Some(seq)) => {
+                damage = damage.or(Some(DamageV2 { seq: Some(seq), detail: format!("snapshot: {e}") }));
+                snap_ref = None;
+            }
+            (Err(e), None) => return Err(OpenErrorV2::Damaged(e)),
+        }
+    };
+    drop(r);
+    let damage = damage.or(row_damage);
+    let damage =
+        damage.or(failure.map(|(i, e)| DamageV2 { seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)), detail: e.to_string() }));
+    let verified = ledger.head();
+    let verified_chain = if verified == snap_seq + tail_len {
+        verified_chain
+    } else {
+        // Replay stopped early: the chain value of the last good row.
+        store.reader()?.tx(branch, verified)?.map(|(_, c, _)| c).unwrap_or(snap_chain)
+    };
+    let damage_text = damage.as_ref().map(|d| format!("the file is damaged ({})", d.detail));
+    let report = ReportV2 {
+        head,
+        verified_seq: verified,
+        snapshot_seq: snap_seq,
+        tail: verified - snap_seq,
+        repaired: store.repaired(),
+        damage,
+        link_v1: link.cloned(),
+    };
+    Ok(Loaded {
+        ledger,
+        report,
+        lineage,
+        head: (verified, verified_chain),
+        snap: Snap { seq: snap_seq, set },
+        base_tag_high,
+        snap_ref,
+        base_stacks: stacks,
+        damage: damage_text,
+    })
+}
+
 impl ProjectV2 {
-    /// Open the project in `store` (EEP-0005 §5). `seed` seeds IDs allocated after opening.
-    /// Damage found while loading opens read-only, at the last state that verifies, with a report.
+    /// Open the project in `store` (EEP-0005 §5) on the branch it was last shown on
+    /// (`meta.active`, FQ4), or `main` when that is absent, unknown or not open. `seed` seeds IDs
+    /// allocated after opening. Damage found while loading opens read-only, at the last state that
+    /// verifies, with a report.
     ///
     /// # Errors
     /// [`OpenErrorV2`] when the container facts or the branch row are unusable.
@@ -657,141 +991,40 @@ impl ProjectV2 {
         let store = Arc::new(store);
         let r = store.reader()?;
         let facts = read_facts(&r)?;
-        let (branch, rec) = main_branch(&r, facts.project)?;
-        let seed_chain = chain::seed(ChainKind::Project, facts.project.0);
-        let head = rec.head.seq;
-        let head_chain = rec.head.hash().map_err(OpenErrorV2::Damaged)?;
-        let mut damage = None;
-        // The head must be the branch's last row, with the recorded chain value.
-        let last = r.last_seq(branch)?.unwrap_or(0);
-        if last != head {
-            damage = Some(DamageV2 { seq: Some(head), detail: format!("the head is {head} but the last stored transaction is {last}") });
-        } else if head > 0 && r.tx(branch, head)?.map(|(_, c, _)| c) != Some(head_chain) {
-            damage = Some(DamageV2 { seq: Some(head), detail: "the head transaction does not match the branch head".into() });
-        }
-        // The latest snapshot at or before the head.
-        let latest = facts.cache.latest.get(&branch.hex()).filter(|s| s.seq <= head);
-        let mut loaded = None;
-        let mut snap_ref = None;
-        if let Some(s) = latest {
-            match r.version(branch, s.kind, &s.name)? {
-                Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
-                    Ok((mut doc, meta)) => {
-                        // Every invariant of the snapshot is checked in debug builds and after a
-                        // crash repair (overseer, 2026-11-09: about 38 ms on the large project, so
-                        // not on every normal release open). Its chunks were checked against their
-                        // hashes in any case, and Verify checks everything on request.
-                        doc.rebuild_index();
-                        let checked = if cfg!(debug_assertions) || store.repaired() { doc.check() } else { Ok(()) };
-                        match checked {
-                            Ok(()) => {
-                                loaded = Some((v, doc, meta));
-                                snap_ref = Some(s.clone());
-                            }
-                            Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot breaks an invariant: {e}") })),
-                        }
-                    }
-                    Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
-                },
-                _ => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: "the latest snapshot is missing".into() })),
-            }
-        }
-        // Start from the snapshot; if anything about it fails (its point row, its stack record,
-        // the rows under it), open from the project root instead, read-only with the damage
-        // reported (EEP-0005 §5.8), as for a damaged chunk.
-        let to = head.min(last);
-        let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
-            let using = loaded.take();
-            let from_snapshot = using.as_ref().map(|(v, _, _)| v.point.seq);
-            let attempt = (|| -> Result<_, String> {
-                let (snap_seq, snap_chain, doc, stacks, set, meta) = match using {
-                    Some((v, doc, meta)) => {
-                        let chain = v.point.hash()?;
-                        let stacks = StackState::from_record(&v)?;
-                        let set = ChunkSet::from_record(&v.chunks)?;
-                        // The snapshot's point must be the stored row's chain value.
-                        if r.tx(branch, v.point.seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) != Some(chain) {
-                            return Err("the snapshot's point does not match its transaction".into());
-                        }
-                        (v.point.seq, chain, doc, stacks, set, meta)
-                    }
-                    None => (0, seed_chain, Document::default(), StackState::default(), ChunkSet::default(), None),
-                };
-                // The tag high-water mark at the snapshot: carried by `model:meta`; a snapshot
-                // written without it is scanned once (a cache, rebuilt from the history).
-                let base_tag_high = match meta {
-                    Some(m) => m.tag_high,
-                    None if snap_seq > 0 => scan_tag_high(&r, branch, snap_seq, seed_chain)?,
-                    None => HighWater::new(),
-                };
-                let (tail, verified_chain, row_damage) =
-                    read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain).map_err(|e| e.to_string())?;
-                let history: Arc<dyn History> = Arc::new(StoreHistory { store: Arc::downgrade(&store), branch, seed: seed_chain });
-                let base = Base {
-                    seq: snap_seq,
-                    doc,
-                    undo: stacks.undo.clone(),
-                    redo: stacks.redo.clone(),
-                    undo_hidden: stacks.undo_hidden,
-                    redo_hidden: stacks.redo_hidden,
-                    indexed: true,
-                    stack_cap: stacks.cap,
-                    history,
-                };
-                let tail_len = tail.len() as u64;
-                let (ledger, failure) = Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
-                Ok((ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage))
-            })();
-            match (attempt, from_snapshot) {
-                (Ok(done), _) => break done,
-                (Err(e), Some(seq)) => {
-                    damage = damage.or(Some(DamageV2 { seq: Some(seq), detail: format!("snapshot: {e}") }));
-                    snap_ref = None;
-                }
-                (Err(e), None) => return Err(OpenErrorV2::Damaged(e)),
-            }
+        let (main, main_rec) = main_branch(&r, facts.project)?;
+        let (branch, rec) = match facts.active.filter(|a| *a != main) {
+            Some(a) => match r.branch(a)? {
+                Some(rec) if rec.status == BranchStatus::Open => (a, rec),
+                _ => (main, main_rec),
+            },
+            None => (main, main_rec),
         };
         drop(r);
-        let damage = damage.or(row_damage);
-        let damage =
-            damage.or(failure.map(|(i, e)| DamageV2 { seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)), detail: e.to_string() }));
-        let verified = ledger.head();
-        let verified_chain = if verified == snap_seq + tail_len {
-            verified_chain
-        } else {
-            // Replay stopped early: the chain value of the last good row.
-            store.reader()?.tx(branch, verified)?.map(|(_, c, _)| c).unwrap_or(snap_chain)
-        };
-        let read_only = damage.as_ref().map(|d| format!("the file is damaged ({})", d.detail));
-        let read_only = read_only.or_else(|| (!store.writable()).then(|| "it is open in another session".to_string()));
-        let report = ReportV2 {
-            head,
-            verified_seq: verified,
-            snapshot_seq: snap_seq,
-            tail: verified - snap_seq,
-            repaired: store.repaired(),
-            damage,
-            link_v1: facts.link_v1.clone(),
-        };
+        let l = load_branch(&store, facts.project, &facts.cache, facts.link_v1.as_ref(), branch, &rec, seed)?;
+        let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string());
+        let read_only = l.damage.clone().or_else(|| file_read_only.clone());
         let project = ProjectV2 {
             store,
             project: facts.project,
             branch,
-            head: (verified, verified_chain),
+            rec,
+            lineage: l.lineage,
+            head: l.head,
             cache: facts.cache,
-            snap: Snap { seq: snap_seq, set },
-            base_tag_high,
-            snap_ref,
-            base_stacks: stacks,
-            base_seq: snap_seq,
+            snap: l.snap,
+            base_tag_high: l.base_tag_high,
+            snap_ref: l.snap_ref,
+            base_stacks: l.base_stacks,
+            base_seq: l.report.snapshot_seq,
             writer: writer.to_string(),
             read_only,
+            file_read_only,
             link_v1: facts.link_v1,
             created_ms: facts.created_ms,
             last_save: None,
             wrote_writer: false,
         };
-        Ok(OpenedV2 { project, ledger, report })
+        Ok(OpenedV2 { project, ledger: l.ledger, report: l.report })
     }
 
     /// Write `ledger`'s whole history into the empty database `store` as a new project file:
@@ -845,7 +1078,7 @@ impl ProjectV2 {
         let mut doc = Document::default();
         let mut stacks = StackState::default();
         let mut done = 0u64;
-        let mut snap = Snap { seq: 0, set: ChunkSet::default() };
+        let mut snap = (0u64, ChunkSet::default());
         let mut first = true;
         let mut latest: Option<SnapshotRef> = None;
         let mut high = HighWater::new();
@@ -862,7 +1095,7 @@ impl ProjectV2 {
             stacks.advance(range);
             done = at;
             let meta = ModelMeta { tag_high: high.clone() };
-            let (set, new) = if first { chunks::build_full(&doc, &meta) } else { chunks::build_incremental(&doc, &snap.set, &dirty, &meta) }
+            let (set, new) = if first { chunks::build_full(&doc, &meta) } else { chunks::build_incremental(&doc, &snap.1, &dirty, &meta) }
                 .map_err(SaveErrorV2::Encode)?;
             first = false;
             for p in &new {
@@ -886,28 +1119,20 @@ impl ProjectV2 {
                     undo_hidden: rec.2,
                     redo_hidden: rec.3,
                     stack_cap: STACK_CAP,
+                    description: None,
                 },
             )?;
             saved.snapshots += 1;
             latest = Some(SnapshotRef { kind, name, seq: at });
-            snap = Snap { seq: at, set };
+            snap = (at, set);
         }
         let mut cache = Cache { every, ..Cache::default() };
         if let Some(l) = &latest {
             cache.latest.insert(branch.hex(), l.clone());
         }
         let head = (ledger.head(), prev);
-        w.put_branch(
-            branch,
-            &BranchRecord {
-                name: "main".into(),
-                status: BranchStatus::Open,
-                parent: None,
-                fork_point: None,
-                head: Point::new(head.0, &head.1),
-                release_line: true,
-            },
-        )?;
+        let rec = BranchRecord::main(Point::new(head.0, &head.1));
+        w.put_branch(branch, &rec)?;
         w.set_meta("format", &json!(FORMAT_PROJECT))?;
         w.set_meta("container_version", &json!(CONTAINER_VERSION))?;
         w.set_meta("schema_version", &json!(SCHEMA_VERSION))?;
@@ -920,19 +1145,23 @@ impl ProjectV2 {
             w.set_meta("link_v1", &serde_json::to_value(l).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         }
         w.commit()?;
+        let lineage = Arc::new(vec![Line { branch, seed, fork: None }]);
         let me = ProjectV2 {
             store,
             project,
             branch,
+            rec,
+            lineage,
             head,
             cache,
-            snap: snap.clone(),
+            snap: Snap { seq: snap.0, set: Some(snap.1) },
             base_tag_high: HighWater::new(),
             snap_ref: latest,
             base_stacks: StackState::default(),
             base_seq: 0,
             writer: writer.to_string(),
             read_only: None,
+            file_read_only: None,
             link_v1: link,
             created_ms,
             last_save: Some(saved.clone()),
@@ -992,7 +1221,7 @@ impl ProjectV2 {
         for tx in &pending {
             for op in &tx.ops {
                 match op {
-                    Op::NameVersion { name, at } => {
+                    Op::NameVersion { name, at, description } => {
                         let kind = if issues(tx, name) { VersionKind::Revision } else { VersionKind::User };
                         // Replaced if it existed under the other kind.
                         for k in [VersionKind::User, VersionKind::Revision] {
@@ -1002,6 +1231,9 @@ impl ProjectV2 {
                             if kind == VersionKind::Revision { Some(release_at(ledger, tx, name).map_err(SaveErrorV2::Encode)?) } else { None };
                         let chain = self.chain_at(*at, &chains)?;
                         self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, *at, chain, kind, name, release, &mut saved)?;
+                        if let Some(d) = description {
+                            w.describe_version(self.branch, kind, name, d)?;
+                        }
                     }
                     Op::UnnameVersion { name, .. } => {
                         for k in [VersionKind::User, VersionKind::Revision] {
@@ -1017,17 +1249,11 @@ impl ProjectV2 {
             let chain = prev;
             self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, end, chain, VersionKind::Auto, &auto_name(end), None, &mut saved)?;
         }
-        w.put_branch(
-            self.branch,
-            &BranchRecord {
-                name: "main".into(),
-                status: BranchStatus::Open,
-                parent: None,
-                fork_point: None,
-                head: Point::new(end, &prev),
-                release_line: true,
-            },
-        )?;
+        // The row as stored now (a rename or archive may have changed it since it was read), with
+        // the new head.
+        let mut rec = w.branch(self.branch)?.unwrap_or_else(|| self.rec.clone());
+        rec.head = Point::new(end, &prev);
+        w.put_branch(self.branch, &rec)?;
         if !self.wrote_writer {
             w.set_meta("writer", &json!(self.writer))?;
         }
@@ -1035,6 +1261,7 @@ impl ProjectV2 {
             w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
         }
         w.commit()?;
+        self.rec = rec;
         self.head = (end, prev);
         self.snap = snap;
         self.snap_ref = cache.latest.get(&self.branch.hex()).cloned();
@@ -1051,7 +1278,7 @@ impl ProjectV2 {
             return Ok(*c);
         }
         if seq == 0 {
-            return Ok(chain::seed(ChainKind::Project, self.project.0));
+            return Ok(self.seed());
         }
         let r = self.store.reader()?;
         r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or_else(|| SaveErrorV2::Encode(format!("transaction {seq} is not stored")))
@@ -1069,7 +1296,7 @@ impl ProjectV2 {
         let meta = ModelMeta { tag_high: self.tag_high_at(ledger, at)? };
         let (lo, hi) = (at.min(snap.seq), at.max(snap.seq));
         let in_memory = lo >= base;
-        let built = if in_memory {
+        let built = if let (true, Some(prev)) = (in_memory, snap.set.clone()) {
             let mut dirty = Dirty::default();
             for seq in lo.saturating_add(1)..=hi {
                 if let Some(tx) = ledger.transaction(seq) {
@@ -1078,7 +1305,6 @@ impl ProjectV2 {
             }
             let undo_after: Vec<Op> =
                 ledger.log().iter().rev().take_while(|t| t.seq > at).flat_map(|t| t.ops.iter().rev().map(Op::inverse)).collect();
-            let prev = snap.set.clone();
             if undo_after.is_empty() {
                 chunks::build_incremental(ledger.document(), &prev, &dirty, &meta)
             } else {
@@ -1109,6 +1335,7 @@ impl ProjectV2 {
                 undo_hidden,
                 redo_hidden,
                 stack_cap: STACK_CAP,
+                description: None,
             },
         )?;
         saved.snapshots += 1;
@@ -1118,7 +1345,7 @@ impl ProjectV2 {
             cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at });
         }
         if in_memory {
-            *snap = Snap { seq: at, set };
+            *snap = Snap { seq: at, set: Some(set) };
         }
         Ok(())
     }
@@ -1131,17 +1358,9 @@ impl ProjectV2 {
     /// The engine failed.
     pub fn write_rescue(&self, w: &mut super::store::Writer, r: &Reader) -> Result<(), SaveErrorV2> {
         let (seq, chain) = self.head;
-        w.put_branch(
-            self.branch,
-            &BranchRecord {
-                name: "main".into(),
-                status: BranchStatus::Open,
-                parent: None,
-                fork_point: None,
-                head: Point::new(seq, &chain),
-                release_line: true,
-            },
-        )?;
+        let mut rec = self.rec.clone();
+        rec.head = Point::new(seq, &chain);
+        w.put_branch(self.branch, &rec)?;
         for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
             for v in r.versions(self.branch, kind)? {
                 if v.point.seq > seq {
@@ -1215,7 +1434,212 @@ impl ProjectV2 {
             return Ok(high);
         }
         let r = self.store.reader()?;
-        scan_tag_high(&r, self.branch, at, chain::seed(ChainKind::Project, self.project.0)).map_err(SaveErrorV2::Encode)
+        line_high(&r, &self.lineage, 0, at).map_err(SaveErrorV2::Encode)
+    }
+
+    /// This branch's chain value at `seq` 0: the project seed on `main`, the branch seed
+    /// elsewhere.
+    fn seed(&self) -> Hash {
+        self.lineage.first().map_or_else(|| chain::seed(ChainKind::Project, self.project.0), |l| l.seed)
+    }
+
+    /// The row of the branch shown, as last read or written.
+    pub fn branch_record(&self) -> &BranchRecord {
+        &self.rec
+    }
+
+    /// The branch shown and its ancestry up to `main`.
+    pub fn lineage(&self) -> &Lineage {
+        &self.lineage
+    }
+
+    /// Every branch row of the file (`main` first, then by creation time and name).
+    ///
+    /// # Errors
+    /// The engine failed.
+    pub fn branches(&self) -> Result<Vec<(BranchId, BranchRecord)>, StoreError> {
+        let main = BranchId::main_of(self.project.0);
+        let mut all = self.store.reader()?.branches()?;
+        all.sort_by(|(a, x), (b, y)| (*a != main, x.created_ms, &x.name).cmp(&(*b != main, y.created_ms, &y.name)));
+        Ok(all)
+    }
+
+    /// Why branch actions cannot write to the file, if they cannot.
+    fn check_writable(&self) -> Result<(), BranchError> {
+        match &self.read_only {
+            Some(r) => Err(BranchError::ReadOnly(r.clone())),
+            None => Ok(()),
+        }
+    }
+
+    /// Create a branch named `name` forking from `from` at its transaction `seq` (FQ7: a random
+    /// ID; FQ8: written at once, in a write transaction of its own; FQ9: no snapshot is written).
+    /// A fork at a branch's `seq` 0 is its parent's fork point, so the new branch's parent is the
+    /// branch that holds the transaction. The caller saves pending transactions first.
+    ///
+    /// # Errors
+    /// [`BranchError`]: the file is read-only, the name is refused, the point does not exist, or
+    /// the engine failed.
+    pub fn create_branch(
+        &mut self, name: &str, from: BranchId, seq: u64, created_ms: Option<u64>, created_by: Option<String>,
+    ) -> Result<(BranchId, BranchRecord), BranchError> {
+        self.check_writable()?;
+        let name = check_branch_name(name)?;
+        let r = self.store.reader()?;
+        let all = r.branches()?;
+        if let Some((_, b)) = all.iter().find(|(_, b)| b.status == BranchStatus::Open && b.name.to_lowercase() == name.to_lowercase()) {
+            return Err(BranchError::Refused(format!("There is already a branch \"{}\".", b.name)));
+        }
+        // Walk a fork at `seq` 0 up to the branch holding the transaction.
+        let (mut at, mut seq) = (from, seq);
+        for _ in 0..MAX_DEPTH {
+            if seq > 0 {
+                break;
+            }
+            match r.branch(at)?.and_then(|b| b.parent.as_deref().and_then(BranchId::parse).zip(b.fork_point.map(|p| p.seq))) {
+                Some((parent, fseq)) => (at, seq) = (parent, fseq),
+                None => break,
+            }
+        }
+        let holder = r.branch(at)?.ok_or_else(|| BranchError::Refused("That branch does not exist.".into()))?;
+        // An unsaved point of the branch shown counts as its saved head (the caller saved first).
+        if seq > holder.head.seq {
+            return Err(BranchError::Refused(format!("Branch \"{}\" has no step {seq}.", holder.name)));
+        }
+        let fork_chain = if seq == 0 {
+            chain::seed(ChainKind::Project, self.project.0)
+        } else {
+            r.tx(at, seq)?.map(|(_, c, _)| c).ok_or_else(|| BranchError::Refused(format!("Step {seq} is not stored.")))?
+        };
+        drop(r);
+        let id = BranchId::random();
+        let seed = chain::branch_seed(self.project.0, &id.0, &fork_chain);
+        let rec = BranchRecord {
+            name: name.clone(),
+            status: BranchStatus::Open,
+            parent: Some(at.hex()),
+            fork_point: Some(Point::new(seq, &fork_chain)),
+            head: Point::new(0, &seed),
+            release_line: false,
+            merged: None,
+            created_ms,
+            created_by,
+        };
+        let mut w = self.store.writer()?;
+        if w.branch(id)?.is_some() {
+            return Err(BranchError::Refused("A new branch ID was already used; try again.".into()));
+        }
+        w.put_branch(id, &rec)?;
+        w.commit()?;
+        Ok((id, rec))
+    }
+
+    /// Rename `branch` (not `main`), written at once.
+    ///
+    /// # Errors
+    /// As [`ProjectV2::create_branch`].
+    pub fn rename_branch(&mut self, branch: BranchId, name: &str) -> Result<BranchRecord, BranchError> {
+        self.check_writable()?;
+        let name = check_branch_name(name)?;
+        if branch == BranchId::main_of(self.project.0) {
+            return Err(BranchError::Refused("main is the release line and keeps its name.".into()));
+        }
+        let all = self.store.reader()?.branches()?;
+        if let Some((_, b)) =
+            all.iter().find(|(id, b)| *id != branch && b.status == BranchStatus::Open && b.name.to_lowercase() == name.to_lowercase())
+        {
+            return Err(BranchError::Refused(format!("There is already a branch \"{}\".", b.name)));
+        }
+        self.update_branch(branch, |b| b.name = name.clone())
+    }
+
+    /// Archive `branch` (`archive`) or reopen it, written at once. `main` cannot be archived;
+    /// the branch shown cannot be archived (switch away first). Reopening checks the name is
+    /// unique among open branches again.
+    ///
+    /// # Errors
+    /// As [`ProjectV2::create_branch`].
+    pub fn set_branch_open(&mut self, branch: BranchId, open: bool) -> Result<BranchRecord, BranchError> {
+        self.check_writable()?;
+        if branch == BranchId::main_of(self.project.0) {
+            return Err(BranchError::Refused("main is the release line and cannot be archived.".into()));
+        }
+        if !open && branch == self.branch {
+            return Err(BranchError::Refused("Switch to another branch before archiving this one.".into()));
+        }
+        if open {
+            let all = self.store.reader()?.branches()?;
+            let name = all.iter().find(|(id, _)| *id == branch).map(|(_, b)| b.name.to_lowercase()).unwrap_or_default();
+            if let Some((_, b)) = all.iter().find(|(id, b)| *id != branch && b.status == BranchStatus::Open && b.name.to_lowercase() == name) {
+                return Err(BranchError::NameTaken(b.name.clone()));
+            }
+        }
+        self.update_branch(branch, |b| {
+            b.status = if open { BranchStatus::Open } else { BranchStatus::Archived };
+            if open {
+                b.merged = None;
+            }
+        })
+    }
+
+    fn update_branch(&mut self, branch: BranchId, change: impl FnOnce(&mut BranchRecord)) -> Result<BranchRecord, BranchError> {
+        let mut w = self.store.writer()?;
+        let mut rec = w.branch(branch)?.ok_or_else(|| BranchError::Refused("That branch does not exist.".into()))?;
+        change(&mut rec);
+        w.put_branch(branch, &rec)?;
+        w.commit()?;
+        if branch == self.branch {
+            self.rec = rec.clone();
+        }
+        Ok(rec)
+    }
+
+    /// Show `branch` instead (design 020 §3.3): load it as opening does (its latest snapshot and
+    /// tail, or its parent's state at the fork) and, when the file is writable, write
+    /// `meta.active` (FQ4) at once. The caller saves the branch shown first: switching with
+    /// unsaved transactions is refused. A read-only file switches and writes nothing.
+    ///
+    /// # Errors
+    /// [`BranchError`]; on an error the project still shows the previous branch.
+    pub fn switch_to(&mut self, ledger: &Ledger, branch: BranchId, seed: u64) -> Result<(Ledger, ReportV2), BranchError> {
+        if self.read_only.is_none() && ledger.head() != self.head.0 {
+            return Err(BranchError::Refused("Save first: the branch shown has unsaved changes.".into()));
+        }
+        let rec = self.store.reader()?.branch(branch)?.ok_or_else(|| BranchError::Refused("That branch does not exist.".into()))?;
+        if rec.status != BranchStatus::Open {
+            return Err(BranchError::Refused(format!("Branch \"{}\" is not open; reopen it first.", rec.name)));
+        }
+        let l = load_branch(&self.store, self.project, &self.cache, self.link_v1.as_ref(), branch, &rec, seed)
+            .map_err(|e| BranchError::Refused(e.to_string()))?;
+        let writable = self.file_read_only.is_none();
+        if writable {
+            let mut w = self.store.writer()?;
+            w.set_meta("active", &json!(branch.hex()))?;
+            w.commit()?;
+        }
+        self.branch = branch;
+        self.rec = rec;
+        self.lineage = l.lineage;
+        self.head = l.head;
+        self.snap = l.snap;
+        self.base_tag_high = l.base_tag_high;
+        self.snap_ref = l.snap_ref;
+        self.base_stacks = l.base_stacks;
+        self.base_seq = l.report.snapshot_seq;
+        self.read_only = l.damage.or_else(|| self.file_read_only.clone());
+        Ok((l.ledger, l.report))
+    }
+
+    /// The document at `seq` of `branch` (any branch of the file): from its nearest snapshot, or
+    /// its ancestry's, and at most the transactions after it (design 020 §2.4, on a copy).
+    ///
+    /// # Errors
+    /// The branch or point does not exist, or the file cannot be read.
+    pub fn point_state(&self, branch: BranchId, seq: u64) -> Result<Document, String> {
+        let r = self.store.reader().map_err(|e| e.to_string())?;
+        let line = lineage(&r, self.project, branch)?;
+        let (doc, _) = line_state(&r, &line, 0, seq)?;
+        Ok(doc)
     }
 
     /// The tag high-water mark at the snapshot this project was opened from (brief 018: the next
@@ -1226,7 +1650,7 @@ impl ProjectV2 {
 
     /// A reader of this file's history, for a ledger based on one of its snapshots.
     pub fn history(&self) -> Arc<dyn History> {
-        Arc::new(StoreHistory { store: Arc::downgrade(&self.store), branch: self.branch, seed: chain::seed(ChainKind::Project, self.project.0) })
+        Arc::new(StoreHistory { store: Arc::downgrade(&self.store), branch: self.branch, seed: self.seed(), lineage: self.lineage.clone() })
     }
 
     /// The database.

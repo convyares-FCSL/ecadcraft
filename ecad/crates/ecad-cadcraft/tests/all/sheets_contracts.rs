@@ -265,7 +265,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(s.h.head(), at + 1);
     let (label, ops) = last_ops(&mut s.h);
     assert_eq!(label, "Issue Rev A");
-    assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, at: a } if name == "Rev A" && *a == at)), "{ops:?}");
+    assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, at: a, .. } if name == "Rev A" && *a == at)), "{ops:?}");
     let texts = frame_texts(&mut s.h, s.supply);
     assert!(texts.iter().any(|t| t == "A") && texts.iter().any(|t| t == "First issue"), "{texts:?}");
     // An issued row cannot change.

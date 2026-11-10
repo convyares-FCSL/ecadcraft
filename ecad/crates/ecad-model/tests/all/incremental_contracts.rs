@@ -142,7 +142,7 @@ fn base() -> Base {
             ],
         )
         .unwrap();
-    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1 }]).unwrap();
+    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
     Base {
         ledger,
         ids,
@@ -209,8 +209,8 @@ fn applicable(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings::default(),
             after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
-        Op::NameVersion { name: "w".into(), at: 2 },
-        Op::UnnameVersion { name: "v".into(), at: 1 },
+        Op::NameVersion { name: "w".into(), at: 2, description: None },
+        Op::UnnameVersion { name: "v".into(), at: 1, description: None },
     ]
 }
 
@@ -254,8 +254,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
-        Op::NameVersion { name: "v".into(), at: 1 },
-        Op::UnnameVersion { name: "v".into(), at: 2 },
+        Op::NameVersion { name: "v".into(), at: 1, description: None },
+        Op::UnnameVersion { name: "v".into(), at: 2, description: None },
     ]
 }
 
@@ -798,11 +798,11 @@ impl Gen {
                     } else {
                         format!("v{}", self.rng.next() % 1000)
                     };
-                    Op::NameVersion { name, at }
+                    Op::NameVersion { name, at, description: None }
                 }
                 _ => match doc.versions.iter().next() {
-                    Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil) },
-                    None => Op::NameVersion { name: "v".into(), at: 0 },
+                    Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil), description: None },
+                    None => Op::NameVersion { name: "v".into(), at: 0, description: None },
                 },
             },
         }

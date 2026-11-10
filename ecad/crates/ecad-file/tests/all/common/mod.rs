@@ -209,7 +209,7 @@ pub fn fixture() -> Fixture {
         );
     }
     let at = f.ledger.head();
-    f.commit("Name version", vec![Op::NameVersion { name: "review-1".into(), at }]);
+    f.commit("Name version", vec![Op::NameVersion { name: "review-1".into(), at, description: None }]);
     f.time += 1000;
     f.ledger.undo_at(Author::User, Some(f.time)).unwrap();
     f.time += 1000;

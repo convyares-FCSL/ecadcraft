@@ -179,7 +179,7 @@ fn failures(f: &File, n: usize) -> Vec<(&'static str, Check, Vec<u8>)> {
     let tx = Transaction { ops: vec![Op::EmbedDefinition { id: DefinitionId(0xd0d0), definition }], ..tx };
     out.push(("content hash", Check::ContentHash, tx_line(f, n, &tx)));
     // A named version that points past the history.
-    let tx = Transaction { ops: vec![Op::NameVersion { name: "future".into(), at: seq }], ..tx };
+    let tx = Transaction { ops: vec![Op::NameVersion { name: "future".into(), at: seq, description: None }], ..tx };
     out.push(("future bookmark", Check::Invariant, tx_line(f, n, &tx)));
     out
 }

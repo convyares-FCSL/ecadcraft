@@ -77,7 +77,7 @@ fn lines(ledger: &mut Ledger, rng: &mut Rng, n: u64) {
 
 fn name_version(ledger: &mut Ledger, name: &str) {
     let at = ledger.head();
-    ledger.commit(Author::User, "Name", vec![Op::NameVersion { name: name.into(), at }]).unwrap();
+    ledger.commit(Author::User, "Name", vec![Op::NameVersion { name: name.into(), at, description: None }]).unwrap();
 }
 
 /// The durable bytes of a simulated disk (after a clean close nothing is pending).

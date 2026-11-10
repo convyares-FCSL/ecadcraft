@@ -772,7 +772,7 @@ fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result
             }
         }
         ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
-        ops.push(Op::NameVersion { name: name.clone(), at: head });
+        ops.push(Op::NameVersion { name: name.clone(), at: head, description: None });
         p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
         let tx = p.ledger.head();
         let line = format!("Rev {rev} issued (transaction {tx}). Save to keep it.");
