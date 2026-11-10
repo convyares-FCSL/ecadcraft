@@ -1132,14 +1132,12 @@ impl Ledger {
     }
 
     /// Commit a merge (brief 020b, FQ1): `ops` as one transaction of kind [`TxKind::Merge`],
-    /// checked like any edit.
+    /// checked like any edit. A merge may have no ops (the target's side kept for every
+    /// conflict): it is still recorded, so the next merge compares against it.
     ///
     /// # Errors
-    /// [`ModelError::Empty`] for no ops; otherwise as [`Ledger::commit`].
+    /// As [`Ledger::commit`].
     pub fn commit_merge(&mut self, author: Author, label: &str, kind: TxKind, ops: Vec<Op>, time_ms: Option<u64>) -> Result<TxId> {
-        if ops.is_empty() {
-            return Err(ModelError::Empty);
-        }
         if !matches!(kind, TxKind::Merge { .. }) {
             return Err(ModelError::Precondition("a merge must be recorded as a merge".into()));
         }

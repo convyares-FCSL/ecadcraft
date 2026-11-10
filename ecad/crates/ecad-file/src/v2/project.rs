@@ -853,6 +853,11 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
     Ok(Facts { project, cache, link_v1, created_ms, active })
 }
 
+/// [`main_branch`], for Verify: the check that opening applies.
+pub(crate) fn main_branch_pub(r: &Reader, project: ProjectId) -> Result<(), String> {
+    main_branch(r, project).map(|_| ()).map_err(|e| e.to_string())
+}
+
 /// The original branch, `main`.
 fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord), OpenErrorV2> {
     let id = BranchId::main_of(project.0);
@@ -1303,7 +1308,8 @@ impl ProjectV2 {
             }
         }
         for (source, merged) in &follow.status {
-            if let Some(mut b) = w.branch(*source)? {
+            // The release line (or any branch without a parent) is never closed by a merge.
+            if let Some(mut b) = w.branch(*source)?.filter(|b| !b.release_line && b.parent.is_some()) {
                 match merged {
                     Some(seq) if b.status == BranchStatus::Open => {
                         b.status = BranchStatus::Merged;
@@ -1378,6 +1384,21 @@ impl ProjectV2 {
         }
         let Some(first) = steps.first() else { return Ok(out) };
         let mut stacks = self.stacks_at_ro(ledger, first.seq.saturating_sub(1))?;
+        // The live merges that closed their source (tester 020b, defect 1): only those reopen it
+        // when undone, and only a redo of such an undo closes it again. A stored merge closed its
+        // source when the source's row says it was merged into this branch at that step.
+        let mut closed: BTreeMap<u64, BranchId> = BTreeMap::new();
+        for (x, row) in &live {
+            let Some(source) = row.source_id() else { continue };
+            let rec = match w {
+                Some(w) => w.branch(source)?,
+                None => self.store.reader()?.branch(source)?,
+            };
+            if rec.is_some_and(|b| b.status == BranchStatus::Merged && b.merged.as_ref().is_some_and(|m| m.into == self.branch.hex() && m.seq == *x))
+            {
+                closed.insert(*x, source);
+            }
+        }
         // Merges undone in this pass, by the undo's `seq`.
         let mut undone: BTreeMap<u64, MergeRow> = BTreeMap::new();
         for tx in steps {
@@ -1387,6 +1408,7 @@ impl ProjectV2 {
                         out.rows.insert(tx.seq, Some(row.clone()));
                         if let Some(source) = self.closing.get(&tx.id) {
                             out.status.push((*source, Some(tx.seq)));
+                            closed.insert(tx.seq, *source);
                         }
                         live.insert(tx.seq, row);
                     }
@@ -1399,7 +1421,7 @@ impl ProjectV2 {
                         && let Some(row) = live.remove(&x)
                     {
                         out.rows.insert(x, None);
-                        if let Some(source) = row.source_id() {
+                        if let Some(source) = closed.remove(&x) {
                             out.status.push((source, None));
                             out.reopened.insert(tx.seq, source);
                         }
@@ -1419,6 +1441,7 @@ impl ProjectV2 {
                             out.rows.insert(tx.seq, Some(row.clone()));
                             if let Some(source) = out.reopened.remove(&u).or_else(|| reopened_before.get(&u).copied()) {
                                 out.status.push((source, Some(tx.seq)));
+                                closed.insert(tx.seq, source);
                             }
                             live.insert(tx.seq, row);
                         }

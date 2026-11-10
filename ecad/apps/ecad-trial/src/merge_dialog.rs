@@ -181,7 +181,7 @@ impl MergeDialog {
                                     "branch" => (format!("Keep {branch_word}"), "branch"),
                                     "bringback" => ("Bring it back".to_string(), "bringback"),
                                     "loose" => (
-                                        if c["main"].as_str() == Some("leave unconnected") {
+                                        if c["kind"] != "needed" || c["main"].as_str() == Some("leave unconnected") {
                                             "Leave unconnected".into()
                                         } else {
                                             "Leave it out".to_string()
@@ -238,11 +238,14 @@ impl MergeDialog {
                     ui.label(RichText::new(e).small().color(red));
                 }
                 let unanswered = p["unanswered"].as_array().map_or(0, Vec::len);
+                let problem = p["problem"].as_str().map(str::to_string);
                 ui.horizontal(|ui| {
-                    let ok =
-                        ui.add_enabled(unanswered == 0, egui::Button::new(if update { "Update" } else { "Merge" })).accessible_name("ecad.merge.ok");
-                    let ok = if unanswered == 0 {
+                    let can = unanswered == 0 && problem.is_none();
+                    let ok = ui.add_enabled(can, egui::Button::new(if update { "Update" } else { "Merge" })).accessible_name("ecad.merge.ok");
+                    let ok = if can {
                         ok
+                    } else if let Some(pr) = &problem {
+                        ok.on_disabled_hover_text(pr.as_str())
                     } else {
                         ok.on_disabled_hover_text(format!(
                             "Choose for {unanswered} conflict{} first, or use Keep {main_word} for all / Keep {branch_word} for all.",

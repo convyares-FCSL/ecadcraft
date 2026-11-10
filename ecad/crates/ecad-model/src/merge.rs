@@ -224,9 +224,12 @@ pub struct Plan {
     pub conflicts: Vec<Conflict>,
     /// Conflicts without a (valid) choice.
     pub unanswered: Vec<String>,
-    /// The merge's ops from the target's state; empty while a conflict is unanswered or when
-    /// there is nothing to change.
+    /// The merge's ops from the target's state; empty while a conflict is unanswered, while
+    /// [`Plan::problem`] is set, or when there is nothing to change.
     pub ops: Vec<Op>,
+    /// Answers that contradict each other, or a result that would still break a rule: what to
+    /// change before Merge (never a refusal after the preview said yes).
+    pub problem: Option<String>,
 }
 
 /// What a merge reads.
@@ -263,6 +266,7 @@ struct Ctx<'a, 'b> {
     choices: &'a BTreeMap<String, Choice>,
     conflicts: Vec<Conflict>,
     seen: BTreeSet<String>,
+    problems: Vec<String>,
 }
 
 impl Ctx<'_, '_> {
@@ -587,9 +591,30 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 let v = object(ctx, obj, &what, a.conductors.get(&id), t.conductors.get(&id), s.conductors.get(&id), |ctx, a, t, s| {
                     let mut c =
                         Conductor { properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all), ends: t.ends };
+                    // A connection conflict always offers Leave unconnected (design §5.3, owner
+                    // answer 7): the end stays where the kept drawing has it, loose.
                     for (end, name, word) in [(End::A, "end.a", "end A"), (End::B, "end.b", "end B")] {
-                        let show = |x: &Option<TerminalId>| x.map_or_else(|| "unconnected".into(), |x| name_of(&docs, Obj::Terminal(x)));
-                        let v = field(ctx, obj, name, format!("{what} {word}"), &a.end(end), &t.end(end), &s.end(end), &show);
+                        let show = |x: Option<TerminalId>| x.map_or_else(|| "unconnected".into(), |x| name_of(&docs, Obj::Terminal(x)));
+                        let v = match pick(Some(&a.end(end)), Some(&t.end(end)), Some(&s.end(end))) {
+                            Some(Some(v)) => v,
+                            _ => {
+                                let k = Conflict {
+                                    id: format!("{}/{name}", obj.hex()),
+                                    kind: ConflictKind::Value,
+                                    object: obj,
+                                    what: format!("{what} {word}"),
+                                    target: show(t.end(end)),
+                                    source: show(s.end(end)),
+                                    choices: vec![Choice::Target, Choice::Source, Choice::Drop],
+                                    chosen: None,
+                                };
+                                match ctx.ask(k) {
+                                    Some(Choice::Source) => s.end(end),
+                                    Some(Choice::Drop) => None,
+                                    _ => t.end(end),
+                                }
+                            }
+                        };
                         c.set_end(end, v);
                     }
                     c
@@ -618,6 +643,12 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     }),
                 });
                 set(&mut m.folders, id, v);
+            }
+            Obj::Representation(id) if let Some(v) = folded(ctx, Obj::Representation(id)) => {
+                set(&mut m.representations, id, v.and_then(|d| d.representations.get(&id).cloned()));
+            }
+            Obj::Item(id) if let Some(v) = folded(ctx, Obj::Item(id)) => {
+                set(&mut m.items, id, v.and_then(|d| d.items.get(&id).cloned()));
             }
             Obj::Representation(id) => {
                 let v =
@@ -661,6 +692,47 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
         }
     }
+}
+
+/// A wire's drawing (its symbol or route item) changed on both sides while one of its ends is a
+/// connection conflict: it follows that conflict's answer instead of being a second conflict
+/// (tester 020b, defect 2): the source's drawing for `branch`, else the target's. `None` when
+/// it is not such a case; `Some(None)` when the chosen side has no such object.
+fn folded<'a>(ctx: &Ctx<'a, '_>, obj: Obj) -> Option<Option<&'a Document>> {
+    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
+    let conductor = |d: &Document| -> Option<ConductorId> {
+        let rep = match obj {
+            Obj::Representation(r) => d.representations.get(&r)?,
+            Obj::Item(i) => d.representation_of_item(i)?.1,
+            _ => return None,
+        };
+        match rep.subject {
+            Subject::Conductor(c) => Some(c),
+            _ => None,
+        }
+    };
+    let changed_on_both = match obj {
+        Obj::Representation(r) => {
+            let (x, y, z) = (a.representations.get(&r), t.representations.get(&r), s.representations.get(&r));
+            y.is_some() && z.is_some() && pick(x, y, z).is_none()
+        }
+        Obj::Item(i) => {
+            let (x, y, z) = (a.items.get(&i), t.items.get(&i), s.items.get(&i));
+            y.is_some() && z.is_some() && pick(x, y, z).is_none()
+        }
+        _ => false,
+    };
+    if !changed_on_both {
+        return None;
+    }
+    let c = conductor(t).or_else(|| conductor(s))?;
+    let (ca, ct, cs) = (a.conductors.get(&c), t.conductors.get(&c)?, s.conductors.get(&c)?);
+    let end = End::BOTH.into_iter().find(|e| pick(Some(&ca.and_then(|x| x.end(*e))), Some(&ct.end(*e)), Some(&cs.end(*e))).is_none())?;
+    let id = format!("{}/end.{}", c.hex(), if end == End::A { "a" } else { "b" });
+    Some(match ctx.choices.get(&id) {
+        Some(Choice::Source) => Some(s),
+        _ => Some(t),
+    })
 }
 
 /// Cable members: adds and removes from both sides combine (design §5.1); a member's core is
@@ -894,6 +966,9 @@ fn remove_whole(m: &mut Document, x: Obj, check: &mut BTreeSet<Obj>) {
 fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<Obj>) -> BTreeSet<Obj> {
     let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
     let mut changed: BTreeSet<Obj> = BTreeSet::new();
+    // What was brought back here, and what could not be settled (contradicting answers).
+    let mut brought: BTreeSet<Obj> = BTreeSet::new();
+    let mut stuck: BTreeSet<Obj> = BTreeSet::new();
     for _ in 0..64 {
         let mut missing: BTreeMap<Obj, Vec<(Obj, Use)>> = BTreeMap::new();
         for x in &check {
@@ -901,7 +976,7 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
                 continue;
             }
             for (y, how) in refs(m, *x) {
-                if !holds(m, y) {
+                if !holds(m, y) && !stuck.contains(&y) {
                     missing.entry(y).or_default().push((*x, how));
                 }
             }
@@ -940,6 +1015,21 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
                 chosen: None,
             };
             let chosen = ctx.ask(c);
+            // Bringing something back that needs `y` while `y`'s answer removes what uses it
+            // contradicts itself (tester 020b, defect 3): say so, before Merge.
+            if matches!(chosen, Some(Choice::Drop))
+                && let Some((x, _)) = users.iter().find(|(x, _)| brought.contains(x))
+            {
+                ctx.problems.push(format!(
+                    "Bringing back {} needs {}: choose Bring it back for {} too, or leave {} out, first.",
+                    name_of(&docs, *x),
+                    name_of(&docs, y),
+                    name_of(&docs, y),
+                    name_of(&docs, *x)
+                ));
+                stuck.insert(y);
+                continue;
+            }
             match (chosen, from) {
                 (Some(Choice::Drop), _) | (_, None) => {
                     for (x, how) in users {
@@ -950,6 +1040,7 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
                 // Brought back (also provisionally while unanswered, so what it needs shows).
                 (_, Some(d)) => {
                     copy(m, d, y);
+                    brought.insert(y);
                     next.insert(y);
                     changed.insert(y);
                 }
@@ -1242,7 +1333,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
 
 /// Work out the merge of `inp` with `choices` (module docs).
 pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
-    let mut ctx = Ctx { inp, choices, conflicts: Vec::new(), seen: BTreeSet::new() };
+    let mut ctx = Ctx { inp, choices, conflicts: Vec::new(), seen: BTreeSet::new(), problems: Vec::new() };
     let objects = scope_objects(inp.scope);
     let (changes, pages) = changes(inp, &objects);
     let mut m = inp.target.clone();
@@ -1286,7 +1377,28 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
         }
     }
     let unanswered: Vec<String> = ctx.conflicts.iter().filter(|c| c.chosen.is_none()).map(|c| c.id.clone()).collect();
-    let ops = if unanswered.is_empty() {
+    // The same check the merge's transaction gets, on what it touches: every reference kept
+    // has its object (a preview that says yes never ends in a refused Merge).
+    if unanswered.is_empty() && ctx.problems.is_empty() {
+        let docs = [inp.target, inp.source, inp.ancestor];
+        'objects: for x in &all {
+            if !holds(&m, *x) {
+                continue;
+            }
+            for (y, _) in refs(&m, *x) {
+                if !holds(&m, y) {
+                    ctx.problems.push(format!(
+                        "{} would refer to {}, which the merge leaves out: choose differently for one of them first.",
+                        name_of(&docs, *x),
+                        name_of(&docs, y)
+                    ));
+                    break 'objects;
+                }
+            }
+        }
+    }
+    let problem = ctx.problems.first().cloned();
+    let ops = if unanswered.is_empty() && problem.is_none() {
         let mut scope = Touched::default();
         for o in &all {
             match *o {
@@ -1329,7 +1441,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     } else {
         Vec::new()
     };
-    Plan { changes, pages, conflicts: ctx.conflicts, unanswered, ops }
+    Plan { changes, pages, conflicts: ctx.conflicts, unanswered, ops, problem }
 }
 
 #[cfg(test)]

@@ -125,3 +125,21 @@ fn an_older_reader_refuses_a_merge_record_and_a_bad_merge_kind_is_refused() {
     bad["kind"]["merge"]["source"] = serde_json::json!("xyz");
     assert!(ecad_file::record::decode_tx(&bad).is_err());
 }
+
+#[test]
+fn verify_refuses_a_main_row_that_open_refuses() {
+    let dir = TempDir::new("merge-verify-main");
+    let f = fixture();
+    let p = dir.path("p.ecad");
+    let proj = create(&p, &f.ledger);
+    let main = proj.branch();
+    let mut rec = proj.store().reader().unwrap().branch(main).unwrap().unwrap();
+    rec.status = BranchStatus::Merged;
+    let mut w = proj.store().writer().unwrap();
+    w.put_branch(main, &rec).unwrap();
+    w.commit().unwrap();
+    drop(proj);
+    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    assert!(!v.ok && v.lines.iter().any(|l| l.contains("main")), "{:#?}", v.lines);
+    assert!(ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).is_err());
+}

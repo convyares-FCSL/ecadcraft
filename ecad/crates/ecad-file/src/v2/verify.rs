@@ -65,6 +65,10 @@ pub fn verify(store: &Store) -> VerifyReport {
         }
     };
     rep.lines.push(format!("{} branch(es)", branches.len()));
+    // The check opening applies to main's row (tester 020b: Verify must refuse what open refuses).
+    if let Err(e) = super::project::main_branch_pub(&r, project) {
+        fail(&mut rep, format!("main: {e}"));
+    }
     let mut referenced: BTreeSet<Hash> = BTreeSet::new();
     for (id, b) in &branches {
         // A branch replays on its parent's state at the fork point (brief 020).

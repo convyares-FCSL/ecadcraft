@@ -515,7 +515,12 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
         })).collect::<Vec<_>>(),
         "conflicts": conflicts, "unanswered": plan.unanswered, "ops": plan.ops.len(),
         "nothing": plan.changes.is_empty() && plan.conflicts.is_empty(),
-        "after": if plan.unanswered.is_empty() { "The Checks tab lists what the merge leaves to check.".to_string() } else { "Resolve the conflicts above first.".to_string() },
+        "problem": plan.problem,
+        "after": match (&plan.problem, plan.unanswered.is_empty()) {
+            (_, false) => "Resolve the conflicts above first.".to_string(),
+            (Some(p), true) => p.clone(),
+            (None, true) => "The Checks tab lists what the merge leaves to check.".to_string(),
+        },
     })
 }
 
@@ -598,7 +603,13 @@ fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
         if !plan.unanswered.is_empty() {
             return Err(format!("{said}{}", unanswered_refusal(&prep, &plan)));
         }
-        if plan.ops.is_empty() {
+        if let Some(problem) = &plan.problem {
+            return Err(format!("{said}{problem}"));
+        }
+        // Nothing to merge only when the branch changed nothing; keeping main's side of every
+        // conflict is still a merge (tester 020b, defect 4): it is recorded, so the next merge
+        // starts from it, and it closes the branch like any other.
+        if plan.ops.is_empty() && plan.changes.is_empty() && plan.conflicts.is_empty() {
             let mut line = format!("{said}\"{}\" has no changes since {}.", sides.source_name, prep.ancestor_text);
             if sides.update {
                 line = format!("{said}This branch already has {}'s changes.", sides.source_name);
@@ -669,7 +680,27 @@ pub fn undo_question(p: &Project) -> Option<String> {
         return Some(format!("The last step updated this branch from {from} ({changes}).\nUndo the update?"));
     }
     let name = label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()).unwrap_or(&label).to_string();
-    Some(format!("The last step merged {name} into {} ({changes}).\nUndo the merge? {name} is reopened.", history::current_name(p)))
+    // Only a merge that closed its branch reopens it (tester 020b, defect 1).
+    let closes = match top.kind {
+        TxKind::Merge { source, .. } => {
+            let source = BranchId(source);
+            p.file.v2().is_some_and(|v| {
+                v.closes_on_save(top.id) == Some(source)
+                    || v.store().reader().ok().and_then(|r| r.branch(source).ok().flatten()).is_some_and(|b| {
+                        b.status == BranchStatus::Merged && b.merged.as_ref().is_some_and(|m| m.seq == top.seq && m.into == history::current(p).hex())
+                    })
+            })
+        }
+        _ => p.file.v2().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| {
+            m.iter().any(|x| {
+                x.seq == top.seq
+                    && history::find_branch(p, &x.source.hex())
+                        .is_ok_and(|(_, b)| b.status == BranchStatus::Merged && b.merged.as_ref().is_some_and(|mm| mm.seq == top.seq))
+            })
+        }),
+    };
+    let reopened = if closes { format!(" {name} is reopened.") } else { String::new() };
+    Some(format!("The last step merged {name} into {} ({changes}).\nUndo the merge?{reopened}", history::current_name(p)))
 }
 
 fn run_undomerge(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
