@@ -48,7 +48,7 @@ fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<serde_js
 
 /// A property toggle: one ordinary transaction.
 fn toggle(s: &mut Session, n: u64) -> Result<(), String> {
-    run(s, "projectprops", json!({"props": {"bench.history": format!("{n}")}})).map(|_| ())
+    run(s, "projectprops", json!({"props": {"bench_history": format!("{n}")}})).map(|_| ())
 }
 
 /// Measure on a copy of `path` (a version 2 file), `runs` times each where it repeats.
