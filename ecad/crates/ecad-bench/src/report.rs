@@ -17,6 +17,8 @@ pub struct Row {
     pub v2: Option<crate::v2::MeasuredV2>,
     /// Zstandard codecs compared on that file (brief 021).
     pub compression: Option<crate::v2::Compression>,
+    /// History and branches on that file (brief 020a).
+    pub history: Option<crate::history::MeasuredHistory>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -230,6 +232,24 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          repair). open x10: after the history grew tenfold.\n",
     );
     for r in rows {
+        let Some(h) = &r.history else { continue };
+        out.push_str(&format!(
+            "\nHistory on {} {} ({} rows, {} branches): histshow {:.1} ms, histupd {:.1} ms, histsel {:.1} ms, \
+             pointshow {:.1} ms, pointstep {:.1} ms, brswitch {:.1} ms, restore {:.1} ms\n",
+            r.tier,
+            r.variant,
+            h.nodes,
+            h.branches,
+            h.histshow_ms,
+            h.histupd_ms,
+            h.histsel_ms,
+            h.pointshow_ms,
+            h.pointstep_ms,
+            h.brswitch_ms,
+            h.restore_ms
+        ));
+    }
+    for r in rows {
         let Some(c) = &r.compression else { continue };
         out.push_str(&format!(
             "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of chunks uncompressed\n",
@@ -359,6 +379,11 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "v2_compacted_x10": r.v2.as_ref().map(|v| v.compacted_x10),
                 "v2_undo_ms": r.v2.as_ref().map(|v| v.undo_ms),
                 "v2_undo_past_cap_ms": r.v2.as_ref().map(|v| v.undo_past_cap_ms),
+                "history": r.history.as_ref().map(|h| json!({
+                    "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
+                    "pointshow_ms": h.pointshow_ms, "pointstep_ms": h.pointstep_ms, "brswitch_ms": h.brswitch_ms,
+                    "restore_ms": h.restore_ms, "nodes": h.nodes, "branches": h.branches,
+                })),
                 "compression": r.compression.as_ref().map(|c| json!({
                     "raw_rows": c.raw_rows,
                     "raw_chunks": c.raw_chunks,

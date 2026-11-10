@@ -50,6 +50,7 @@ pub mod checks_panel;
 pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
+pub mod history_panel;
 pub mod preview;
 pub mod project_panel;
 pub mod search;
@@ -256,6 +257,30 @@ pub struct Status {
     pub file: FileStatus,
 }
 
+/// What the title, header and Revisions show about branches (design 020 §3.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchInfo {
+    /// The branch shown.
+    pub name: String,
+    /// Branches in the file (open or not).
+    pub count: usize,
+    /// On a branch other than main: `Branch "Option B" · from Rev A`.
+    pub bar: Option<String>,
+    pub parent: Option<String>,
+    /// Revisions may be issued here.
+    pub release_line: bool,
+    /// The file's name, for the title.
+    pub file: Option<String>,
+}
+
+/// The window title (owner answer 15): the branch once the project has more than one.
+pub fn window_title(info: Option<&BranchInfo>) -> String {
+    match info {
+        Some(b) if b.count > 1 => format!("{TITLE} — {} · {}", b.file.as_deref().unwrap_or("unsaved"), b.name),
+        _ => TITLE.to_string(),
+    }
+}
+
 /// The harness state around CADCraft's [`CadApp`].
 pub struct Trial {
     pub cad: CadApp,
@@ -288,8 +313,18 @@ pub struct Trial {
     pub panel: ProjectPanel,
     /// The read-only preview of another page (brief 016), when open.
     pub preview: Option<Preview>,
-    /// Which project the panel's copy belongs to: counts projects attached in this session.
+    /// Which project the panel's copy belongs to: counts projects attached in this session, and
+    /// branch switches (brief 020a: every copy rebuilds once, as on open).
     project_serial: u64,
+    /// Brief 020a: the branch facts the title, header and Revisions show, with the project serial
+    /// and branch-action count they were read at (read again only when either moves).
+    branch_info: Option<((u64, u64), Option<BranchInfo>)>,
+    /// The project's branch-action count and the branch shown, as last seen ([`Trial::sync_branch`]).
+    branch_seen: Option<(u64, Option<String>)>,
+    /// Counts branch actions run (rename, archive, a new branch): the branch facts are read again.
+    branch_rev: u64,
+    /// The window title last sent.
+    title_sent: String,
     /// The `keep_open` the trial last gave the project: on, except while a close or quit asks.
     keep_open: Option<bool>,
     /// The page name box (New Page and Rename Page), when open.
@@ -437,6 +472,10 @@ impl Trial {
             panel: ProjectPanel::default(),
             preview: None,
             project_serial: 0,
+            branch_info: None,
+            branch_seen: None,
+            branch_rev: 0,
+            title_sent: TITLE.to_string(),
             keep_open: None,
             confirming_close: false,
             name_box: None,
@@ -507,6 +546,7 @@ impl Trial {
     fn attach(&mut self, p: ProjectHandle) {
         self.project = Some(p);
         self.project_serial += 1;
+        self.branch_seen = None;
         self.keep_open = None;
         self.panel.clear();
         self.preview = None;
@@ -1311,7 +1351,9 @@ impl Trial {
     /// Lay out the harness dialogs, the debugger (when open), the Project panel, CADCraft's window
     /// contents, the ECAD command field and the preview (when open).
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        self.sync_branch();
         self.dialogs(ui.ctx());
+        self.sync_title(&ui.ctx().clone());
         if self.debugger.open && self.developer.open && self.developer.body == developer::Body::Debugger {
             // The snapshot is taken (and the project released) before anything is drawn.
             self.refresh_debugger(false);
@@ -1489,10 +1531,13 @@ impl Trial {
             // An issued revision opened read-only (design 019 §7.3): its pages, under its bar.
             match &p.revision_view {
                 Some(rv) => {
-                    if *panel_revision != Some(rv.at) {
+                    if *panel_revision != Some(rv.id) {
                         panel.set_tree(ecad_cadcraft::tree_rows(&rv.doc, |_| false));
-                        panel.revision = Some(sheets_ui::revision_bar(&rv.rev, &rv.date));
-                        *panel_revision = Some(rv.at);
+                        panel.revision = Some(rv.bar.clone().unwrap_or_else(|| sheets_ui::revision_bar(&rv.rev, &rv.date)));
+                        *panel_revision = Some(rv.id);
+                    }
+                    if panel.tab == project_panel::Tab::History {
+                        panel.history.sync(serial, p);
                     }
                     return;
                 }
@@ -1510,6 +1555,10 @@ impl Trial {
             // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {
                 panel.devices.sync(serial, p);
+            }
+            // The History tab's copy, only while it is shown (brief 020a; its own update map).
+            if panel.tab == project_panel::Tab::History {
+                panel.history.sync(serial, p);
             }
         });
         // The Checks tab's copy, only while it is shown (brief 022): the project builds its list
@@ -1532,13 +1581,22 @@ impl Trial {
                 if s.file.unconfirmed {
                     warnings.push("Last save not confirmed durable: Save again.".to_string());
                 }
+                let info = self.branch_info();
+                let mut status = status_line(&s);
+                let branch = info.as_ref().filter(|b| b.count > 1).map(|b| b.name.clone());
+                if let Some(b) = &branch {
+                    status = format!("Branch {b} · {status}");
+                }
                 Header {
                     snapshots: self.snapshots.is_some(),
                     name: Some(s.name.clone()),
-                    status: status_line(&s),
+                    status,
                     read_only: s.file.read_only.is_some(),
                     warnings,
                     note: NOTE,
+                    branch,
+                    branch_bar: info.as_ref().and_then(|b| b.bar.clone()),
+                    parent: info.as_ref().and_then(|b| b.parent.clone()),
                 }
             }
             None => Header { note: NOTE, snapshots: self.snapshots.is_some(), ..Header::default() },
@@ -1719,6 +1777,7 @@ impl Trial {
                 self.preview = None;
             }
             A::RevisionPage(page) => self.preview_revision_page(page),
+            A::History(d) => self.history_action(d),
             A::SetDeviceProperty { component, key, value, merge } => {
                 let line = format!("setprop {}", json!({"component": component.hex(), "key": key, "value": value, "merge": merge}));
                 if let Some(e) = self.run_line(&line) {
@@ -1729,6 +1788,129 @@ impl Trial {
             }
         }
         self.refresh_panel();
+    }
+
+    /// The branch facts (design 020 §3.6), read again only after a switch or a branch action.
+    pub fn branch_info(&mut self) -> Option<BranchInfo> {
+        let key = (self.project_serial, self.branch_rev);
+        if let Some((k, v)) = &self.branch_info
+            && *k == key
+        {
+            return v.clone();
+        }
+        let p = self.project.clone()?;
+        let info = p
+            .read(&mut self.cad.session, |p, _| {
+                use ecad_cadcraft::history;
+                let file = p.path.as_deref().and_then(|x| std::path::Path::new(x).file_name()).map(|f| f.to_string_lossy().into_owned());
+                let Some(v) = p.file.v2() else {
+                    return BranchInfo { name: "main".into(), count: 1, bar: None, parent: None, release_line: true, file };
+                };
+                let rec = v.branch_record().clone();
+                let rows = history::branch_rows(p).unwrap_or_default();
+                let parent = rec.parent.as_deref().and_then(ecad_file::v2::schema::BranchId::parse);
+                let parent_name = parent.and_then(|id| rows.iter().find(|(i, _)| *i == id)).map(|(_, b)| b.name.clone());
+                let bar = parent.zip(rec.fork_point.as_ref()).map(|(pid, f)| {
+                    let named = history::named_points(p, pid).unwrap_or_default();
+                    let from = named
+                        .iter()
+                        .find(|n| n.branch == pid && n.seq == f.seq)
+                        .map_or_else(|| format!("{}, step {}", parent_name.clone().unwrap_or_default(), f.seq), |n| n.name.clone());
+                    format!("Branch \"{}\" · from {from}", rec.name)
+                });
+                BranchInfo { name: rec.name.clone(), count: rows.len(), bar, parent: parent_name, release_line: rec.release_line, file }
+            })
+            .ok();
+        self.branch_info = Some((key, info.clone()));
+        info
+    }
+
+    /// The one refresh path for branch actions, clicked or typed (reviewer finding 1): when the
+    /// project's branch-action count or the branch shown moved, the title, branch bar, Revisions
+    /// and History are read again; after a switch, every copy rebuilds once as on open and a
+    /// preview closes. One integer and one ID compared per frame otherwise.
+    pub fn sync_branch(&mut self) {
+        let Some(p) = self.project.clone() else { return };
+        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.file.v2().map(|v| v.branch().hex()))) else { return };
+        let Some(seen) = self.branch_seen.replace(now.clone()) else { return };
+        if seen == now {
+            return;
+        }
+        self.branch_rev += 1;
+        self.panel.history.invalidate();
+        if seen.1 != now.1 {
+            self.project_serial += 1;
+            self.preview = None;
+            self.panel.devices.invalidate();
+            self.panel.checks.invalidate();
+            self.panel.history.selected = None;
+        }
+        if self.revisions.is_some() {
+            self.open_revisions();
+        }
+    }
+
+    /// Show branch `branch` (named `name`) as the Branch list does: straight away with nothing
+    /// unsaved, else through Save and switch (or Save As on a read-only file).
+    pub fn ask_switch(&mut self, branch: &str, name: &str) {
+        let (unsaved, read_only) = match self.status() {
+            Some(s) => (s.unsaved, s.file.read_only.is_some()),
+            None => return,
+        };
+        if unsaved == 0 {
+            self.history_action(history_panel::Do::Run("switchbranch", json!({"branch": branch})));
+            return;
+        }
+        self.panel.tab = project_panel::Tab::History;
+        self.panel.history.dialog = Some(if read_only {
+            history_panel::Dialog::SwitchReadOnly
+        } else {
+            history_panel::Dialog::Switch { branch: branch.to_string(), name: name.to_string() }
+        });
+    }
+
+    /// Keep the window title in step with the branch shown (owner answer 15); sent only when it
+    /// changes.
+    fn sync_title(&mut self, ctx: &egui::Context) {
+        let info = if self.project_open() { self.branch_info() } else { None };
+        let title = window_title(info.as_ref());
+        if title != self.title_sent {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title_sent = title;
+        }
+    }
+
+    /// Act on what the History tab asked for (brief 020a): each write is its command's JSON form.
+    pub fn history_action(&mut self, d: history_panel::Do) {
+        use history_panel::Do;
+        match d {
+            Do::Run(cmd, params) => {
+                match self.run_value(cmd, params) {
+                    Ok(_) => {
+                        self.panel.history.done();
+                        // The same refresh as for a typed command (reviewer finding 1).
+                        self.sync_branch();
+                    }
+                    Err(e) => self.panel.history.refused(e),
+                }
+            }
+            Do::AskRestore(params) => {
+                let mut ask = params.clone();
+                ask["preview"] = json!(true);
+                match self.run_value("restore", ask) {
+                    Ok(v) => {
+                        let question = v["question"].as_str().unwrap_or_default().to_string();
+                        self.panel.history.dialog = Some(history_panel::Dialog::Restore { params, question });
+                    }
+                    Err(e) => self.panel.history.refused(e),
+                }
+            }
+            Do::SaveAs => self.request_save_as(),
+            Do::ShowPoint(params) => match self.run_value("showpoint", params) {
+                Ok(_) => self.preview = None,
+                Err(e) => self.panel.history.refused(e),
+            },
+        }
     }
 
     /// Make `page` the active page, as a click on its row does: a command waiting at a prompt is
@@ -1890,9 +2072,12 @@ impl Trial {
     /// Open the Revisions dialog, filled from `projectprops {}` (reads only).
     pub fn open_revisions(&mut self) {
         let read_only = self.header().read_only;
+        let off_main = self.branch_info().filter(|b| !b.release_line).map(|b| b.name);
         match self.run_value("projectprops", json!({})) {
             Ok(v) => {
-                self.revisions = Some(sheets_ui::Revisions::from_json(&v, read_only));
+                let mut r = sheets_ui::Revisions::from_json(&v, read_only || off_main.is_some());
+                r.off_main = off_main;
+                self.revisions = Some(r);
                 self.revisions_seen = self.change_count();
             }
             Err(e) => self.cad.session.echo(e),
@@ -2052,7 +2237,7 @@ impl Trial {
                 },
                 Some(sheets_ui::Out::Close) => self.project_props = None,
                 Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(sheets_ui::Out::Open(_)) | None => {}
+                Some(sheets_ui::Out::Open(_) | sheets_ui::Out::SwitchToMain) | None => {}
             }
         }
         self.refresh_revisions();
@@ -2077,6 +2262,7 @@ impl Trial {
                     self.refresh_panel();
                 }
                 Some(sheets_ui::Out::Close) => self.revisions = None,
+                Some(sheets_ui::Out::SwitchToMain) => self.ask_switch("main", "main"),
                 Some(sheets_ui::Out::OpenRevisions) | None => {}
             }
         }

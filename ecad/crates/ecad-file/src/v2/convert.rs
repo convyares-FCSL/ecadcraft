@@ -162,6 +162,7 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
         transactions: n as u64,
         source_container: opened.header.container_version,
         source_schema: opened.header.schema_version,
+        extra: std::collections::BTreeMap::new(),
     };
     // The output is created with create-new semantics (`Store::create`): never a check and then
     // a rename, so a file that appears at that name meanwhile is never replaced. The whole project

@@ -119,3 +119,15 @@ The ECAD trial is used with CADCraft's dark theme. On the light theme, ACI cyan 
 contrast; until a spec says otherwise ECAD keeps the same ACI colours (as CADCraft does for drawing
 colours) and this is a known limitation.
 
+
+## History graph (020, `design/020.md` §11; in use since 020a)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.history-lane` | `cad.text_dim`, 1 px | History graph lines |
+| `ecad.history-current` | `cad.accent`, 2 px | The current branch's lane and its ancestry |
+| `ecad.history-revision` | `cad.accent`, filled diamond 9 px | Issued revision nodes |
+| `ecad.history-version` | `cad.text`, hollow circle 8 px, 1 px stroke | Version nodes |
+| `ecad.history-auto` | `cad.text_faint`, filled dot 3 px | Automatic snapshots, when shown |
+| `ecad.branch-bar` | `cad.chrome_dark` fill, 3 px `cad.accent` left bar | Branch bar in the Project panel |
+| `ecad.point-bar` | same as `ecad.revision-bar` | Read-only point bar (019's revision bar, generalised) |

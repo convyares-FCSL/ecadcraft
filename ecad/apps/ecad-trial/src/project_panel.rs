@@ -135,6 +135,8 @@ pub enum Action {
     BackToCurrent,
     /// Preview this page of the revision opened read-only.
     RevisionPage(PageId),
+    /// Brief 020a: something the History tab asked for.
+    History(crate::history_panel::Do),
 }
 
 /// A field typed in place over a row: a page number or a folder name.
@@ -166,6 +168,8 @@ pub enum Tab {
     Devices,
     /// Brief 022.
     Checks,
+    /// Brief 020a.
+    History,
 }
 
 /// Accessible labels of the tabs.
@@ -210,6 +214,12 @@ pub struct Header {
     pub note: &'static str,
     /// Snapshots can be exported (`--snapshots`).
     pub snapshots: bool,
+    /// Brief 020a: the branch shown, once the project has more than one branch.
+    pub branch: Option<String>,
+    /// The branch bar's text, on a branch other than `main` (`Branch "Option B" · from Rev A`).
+    pub branch_bar: Option<String>,
+    /// The parent's name, for Merge into… and Update from… (brief 020b).
+    pub parent: Option<String>,
 }
 
 /// The panel's state.
@@ -222,6 +232,8 @@ pub struct ProjectPanel {
     pub devices: crate::devices_panel::DevicesPanel,
     /// The Checks tab (brief 022).
     pub checks: crate::checks_panel::ChecksPanel,
+    /// The History tab (brief 020a).
+    pub history: crate::history_panel::HistoryPanel,
     /// The copy of the project's pages.
     rows: Vec<PageRow>,
     /// The project change count the copy was taken at, and which project (its pointer value).
@@ -493,6 +505,23 @@ impl ProjectPanel {
             });
         }
         self.status(ui, header, &mut out);
+        // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
+        if let Some(bar) = &header.branch_bar {
+            let t = Tokens::get();
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.branch"));
+                    let parent = header.parent.clone().unwrap_or_else(|| "main".into());
+                    ui.add_enabled(false, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
+                        .on_disabled_hover_text(crate::history_panel::MERGE_LATER);
+                    ui.add_enabled(false, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
+                        .on_disabled_hover_text(crate::history_panel::MERGE_LATER);
+                });
+            });
+            let r = shown.response.rect;
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        }
         // The revision opened read-only (design 019 §7.3): its bar and Back to current.
         let writable = writable && self.revision.is_none();
         if let Some(bar) = self.revision.clone() {
@@ -521,7 +550,12 @@ impl ProjectPanel {
         // Pages | Devices, and on Pages the New folder button (owner: folders must be found).
         ui.horizontal(|ui| {
             let checks = self.checks.title();
-            for (tab, name) in [(Tab::Pages, PAGES_TAB), (Tab::Devices, DEVICES_TAB), (Tab::Checks, checks.as_str())] {
+            for (tab, name) in [
+                (Tab::Pages, PAGES_TAB),
+                (Tab::Devices, DEVICES_TAB),
+                (Tab::Checks, checks.as_str()),
+                (Tab::History, crate::history_panel::HISTORY_TAB),
+            ] {
                 let resp = ui.selectable_label(self.tab == tab, RichText::new(name).small());
                 let resp = if tab == Tab::Checks {
                     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, self.tab == tab, crate::checks_panel::CHECKS_TAB));
@@ -536,6 +570,9 @@ impl ProjectPanel {
                     }
                     if tab == Tab::Checks && self.tab != Tab::Checks {
                         self.checks.invalidate();
+                    }
+                    if tab == Tab::History && self.tab != Tab::History {
+                        self.history.invalidate();
                     }
                     self.tab = tab;
                     self.armed = false;
@@ -558,6 +595,12 @@ impl ProjectPanel {
         }
         if self.tab == Tab::Checks {
             out.extend(self.checks.show(ui, writable));
+            self.rows_drawn = 0;
+            return out;
+        }
+        if self.tab == Tab::History {
+            // Writes are off while a point is shown read-only, as for the revision view.
+            out.extend(self.history.show(ui, writable, header.read_only));
             self.rows_drawn = 0;
             return out;
         }

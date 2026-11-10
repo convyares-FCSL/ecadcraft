@@ -51,7 +51,7 @@ fn history() -> Ledger {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
         if i == 10 {
             let at = l.head();
-            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at }]).unwrap();
+            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at, description: None }]).unwrap();
         }
     }
     l.undo(Author::User).unwrap();
@@ -153,5 +153,98 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
     }
     for t in ["meta", "branches", "transactions", "versions", "chunks"] {
         assert!(tables_seen.contains(t), "{t}");
+    }
+}
+
+/// Tester, brief 020a: `ecadinspect` on a file with branches (one forked from a version, one
+/// archived, a branch of a branch): `verify` passes, `branches` shows each fork, `log` reads a
+/// branch by name and `versions` lists a branch's own version.
+#[test]
+fn ecadinspect_verifies_and_shows_a_file_with_branches() {
+    use ecad_file::v2::{ProjectV2, Store};
+    let dir = TempDir::new("inspect-branches");
+    let mut l = history();
+    let src = dir.path("p.ecad");
+    std::fs::write(&src, v1_bytes(&l)).unwrap();
+    let out = dir.path("p2.ecad");
+    let o = out.to_str().unwrap();
+    run(ecad_cli::ecad, &["upgrade", src.to_str().unwrap(), "--out", o]).unwrap();
+    let ten = l.document().versions["Ten"];
+    {
+        let opened = ProjectV2::open(Store::open(&out, true).unwrap(), 3, "tester").unwrap();
+        let mut proj = opened.project;
+        l = opened.ledger;
+        let main = proj.branch();
+        let (b, _) = proj.create_branch("Option B", main, ten, None, None).unwrap();
+        let (mut bl, _) = proj.switch_to(&l, b, 4).unwrap();
+        let page = bl.document().page_order[0];
+        let layer = *bl.document().layers.keys().next().unwrap();
+        let mut ids = IdAllocator::seeded(99);
+        for i in 0..40 {
+            let id: ItemId = ids.fresh();
+            let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+            let kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(100.0 + i as f64, 0.0), b: Pt::new(0.0, 1.0) });
+            bl.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
+        }
+        let at = bl.head();
+        bl.commit(Author::User, "Name", vec![Op::NameVersion { name: "On B".into(), at, description: Some("why".into()) }]).unwrap();
+        proj.save(&mut bl).unwrap();
+        let (c, _) = proj.create_branch("Deeper", b, 5, None, None).unwrap();
+        let (gone, _) = proj.create_branch("Gone", main, 3, None, None).unwrap();
+        proj.set_branch_open(gone, false).unwrap();
+        let (mut cl, _) = proj.switch_to(&bl, c, 5).unwrap();
+        let id: ItemId = ids.fresh();
+        let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        cl.commit(
+            Author::User,
+            "LINE",
+            vec![Op::AddItem {
+                id,
+                item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(1.0, 1.0), b: Pt::new(2.0, 2.0) }) },
+            }],
+        )
+        .unwrap();
+        proj.save(&mut cl).unwrap();
+    }
+    let verify = run(ecad_cli::ecadinspect, &[o, "verify"]).unwrap();
+    assert!(verify.trim_end().ends_with("OK"), "{verify}");
+    let branches = run(ecad_cli::ecadinspect, &[o, "branches"]).unwrap();
+    assert!(branches.contains("Option B") && branches.contains(&format!("after {ten}")), "{branches}");
+    assert!(branches.contains("Deeper") && branches.contains("after 5") && branches.contains("Archived"), "{branches}");
+    let log = run(ecad_cli::ecadinspect, &[o, "log", "Option B", "--last", "2"]).unwrap();
+    assert!(log.contains("# 41:") && log.contains("# 40:"), "{log}");
+    let versions = run(ecad_cli::ecadinspect, &[o, "versions"]).unwrap();
+    assert!(versions.contains("Option B User \"On B\" at 40"), "{versions}");
+    // export-jsonl of a branch: its own records, the others named on stderr.
+    let (mut lines, mut notes) = (Vec::new(), Vec::new());
+    ecad_cli::ecadinspect_with(&[o.into(), "export-jsonl".into(), "--branch".into(), "Option B".into()], &mut lines, &mut notes).unwrap();
+    assert_eq!(String::from_utf8(lines).unwrap().lines().count(), 1 + 41, "a header and the branch's 41 records");
+    let notes = String::from_utf8(notes).unwrap();
+    assert!(notes.contains("left out: 3 other branch(es)") && notes.contains("main (") && notes.contains("Gone ("), "{notes}");
+    // A second branch named "Gone" (the first is archived, so the name is free): a name is no
+    // longer enough, an ID is.
+    let ids: Vec<(String, String)> = {
+        let opened = ProjectV2::open(Store::open(&out, true).unwrap(), 6, "tester").unwrap();
+        let mut proj = opened.project;
+        let main = BranchIdOf::main(&proj);
+        proj.create_branch("Gone", main, 2, None, None).unwrap();
+        proj.branches().unwrap().into_iter().map(|(id, b)| (id.hex(), b.name)).collect()
+    };
+    let e = run(ecad_cli::ecadinspect, &[o, "log", "Gone"]).unwrap_err();
+    let gone: Vec<&String> = ids.iter().filter(|(_, n)| n == "Gone").map(|(id, _)| id).collect();
+    assert_eq!(gone.len(), 2);
+    assert!(e.contains("2 branches are named \"Gone\"") && gone.iter().all(|id| e.contains(id.as_str())), "{e}");
+    let by_id = run(ecad_cli::ecadinspect, &[o, "log", gone[0].as_str()]).unwrap();
+    assert!(!by_id.contains("no branch"), "{by_id}");
+    let b_id = ids.iter().find(|(_, n)| n == "Option B").map(|(id, _)| id.clone()).unwrap();
+    let log = run(ecad_cli::ecadinspect, &[o, "log", b_id.as_str(), "--last", "1"]).unwrap();
+    assert!(log.contains("# 41:"), "{log}");
+}
+
+/// `main`'s ID of a project.
+struct BranchIdOf;
+impl BranchIdOf {
+    fn main(p: &ecad_file::v2::ProjectV2) -> ecad_file::v2::schema::BranchId {
+        ecad_file::v2::schema::BranchId::main_of(p.project_id().0)
     }
 }

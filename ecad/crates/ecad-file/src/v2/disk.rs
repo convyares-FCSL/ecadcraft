@@ -186,6 +186,9 @@ impl DiskProjectV2 {
                     if rescue {
                         src.write_rescue(&mut w, &r).map_err(|e| before("copying the history", e.to_string()))?;
                     }
+                    // The new file opens on the branch shown (FQ4): a read-only session's switch
+                    // wrote no `meta.active`, and the pending transactions are that branch's.
+                    w.set_meta("active", &serde_json::json!(src.branch().hex())).map_err(|e| before("writing the temporary file", e.to_string()))?;
                     w.commit().map_err(|e| before("writing the temporary file", e.to_string()))?;
                     store.compact().map_err(|e| before("compacting the temporary file", e.to_string()))?;
                 }

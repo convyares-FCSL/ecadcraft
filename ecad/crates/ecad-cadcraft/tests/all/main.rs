@@ -18,6 +18,7 @@ mod debugger;
 mod device_contracts;
 mod experiment;
 mod files;
+mod history_tester_contracts;
 mod interactive_contracts;
 mod mouse_tools_contracts;
 mod project_pages;

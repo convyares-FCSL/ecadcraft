@@ -516,6 +516,9 @@ pub struct Project {
     pub confirm_issue_undo: bool,
     /// The question an undo across an issue is waiting on, for the trial's popup.
     pub issue_undo_question: Option<String>,
+    /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
+    /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
+    branch_gen: u64,
 }
 
 /// A new project's first page: titled and numbered `1`.
@@ -888,6 +891,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -960,6 +964,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1073,6 +1078,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1092,6 +1098,102 @@ impl Project {
     /// Where the project's file stands (`Persistence::File`).
     pub fn file_status(&self) -> crate::file::FileStatus {
         self.file.status()
+    }
+
+    /// Save the pending transactions to the bound file (Save, as the branch actions of brief 020
+    /// need before they write: owner answer 3, "Save and switch").
+    ///
+    /// # Errors
+    /// No file, or the save failed (in words).
+    pub(crate) fn save_pending(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
+        if !self.unsaved() {
+            return Ok(());
+        }
+        self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Show another branch's state (design 020 §3.3): `ledger` replaces the project's, every view
+    /// rebuilds once as on open, the active page stays if it exists on the new branch (else the
+    /// first page in book order), and a read-only point view closes. Not a step.
+    pub(crate) fn adopt_branch(&mut self, pg: &mut Pages<'_>, ledger: Ledger, tag_high: ecad_model::tag::HighWater) -> Result<(), String> {
+        let seed = session_seed();
+        let window = self.window();
+        let doc = ledger.document();
+        let target = self.active.filter(|p| doc.pages.contains_key(p)).or_else(|| ecad_model::book::Book::of(doc).order.first().copied());
+        self.ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
+        self.baseline = ledger.head();
+        let pages: Vec<PageId> = doc.page_order.clone();
+        let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
+        self.ledger = ledger;
+        self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
+        self.catch_up_tags();
+        self.views.retain(|c| cables.contains(c));
+        self.checks = None;
+        self.goto_ring = None;
+        self.frame = None;
+        self.frame_stale = false;
+        self.revision_view = None;
+        self.clips.clear();
+        self.last_placed = None;
+        // Every change-driven copy (pages, devices, properties, checks) rebuilds once.
+        self.changes.clear();
+        self.change_count += 2;
+        self.page_list_version += 1;
+        let mut views: BTreeMap<PageId, PageView> = pages.iter().map(|p| (*p, PageView::default())).collect();
+        if let Some((old, uid)) = window {
+            self.oops.stale_doc(uid);
+            if let Some(st) = pg.doc_mut(uid) {
+                st.selection.clear();
+                st.previous_selection.clear();
+                st.undo.clear();
+                st.redo.clear();
+            }
+            match target {
+                Some(t) if t == old => {
+                    // The same page: projected again, with fresh handles, in the same window.
+                    views.insert(old, PageView { uid: Some(uid), ..PageView::default() });
+                    self.pages = views;
+                    if let Some(st) = pg.doc_mut(uid) {
+                        st.doc = Arc::new(base_drawing());
+                    }
+                    self.refresh_page(pg, old, None, None, true);
+                    if let Some(st) = pg.doc_mut(uid) {
+                        st.title = self.page_title(old);
+                    }
+                }
+                Some(t) => {
+                    // Another page, shown in the same window; the old page's entry goes if the
+                    // branch has no such page.
+                    views.insert(old, PageView { uid: Some(uid), ..PageView::default() });
+                    self.pages = views;
+                    self.open_page(pg, t)?;
+                    if !self.ledger.document().pages.contains_key(&old) {
+                        self.pages.remove(&old);
+                    }
+                }
+                None => {
+                    self.pages = views;
+                    self.active = None;
+                }
+            }
+        } else {
+            self.pages = views;
+        }
+        self.sync_saved(pg);
+        let head = self.ledger.head();
+        self.events.record(EventKind::ProjectOpened, Some("switchbranch"), head, None, "another branch shown");
+        self.branch_gen += 1;
+        Ok(())
+    }
+
+    /// How many branch actions this session has seen ([`Project`]'s `branch_gen`).
+    pub fn branch_gen(&self) -> u64 {
+        self.branch_gen
+    }
+
+    /// A branch action happened (brief 020a): every view of the branches refreshes.
+    pub(crate) fn note_branch_change(&mut self) {
+        self.branch_gen += 1;
     }
 
     /// Bind the project to the file at `path`: its name, and every open page's path and title.
@@ -1615,6 +1717,14 @@ impl Project {
     /// # Errors
     /// Validation failure; nothing changes.
     pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, String> {
+        self.apply_edit_with(pg, command, label, ops, true)
+    }
+
+    /// [`Project::apply_edit`], with the numbering pass (brief 022) only when `numbering`: a
+    /// Restore (brief 020) records exactly the state it returns to, wire numbers included.
+    pub(crate) fn apply_edit_with(
+        &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool,
+    ) -> Result<ecad_model::TxId, String> {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
@@ -1634,7 +1744,8 @@ impl Project {
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
-        let tx = self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), ecad_model::wiring::assign).map_err(|e| {
+        let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
+        let tx = self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass).map_err(|e| {
             self.frame_stale = frame_before;
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()

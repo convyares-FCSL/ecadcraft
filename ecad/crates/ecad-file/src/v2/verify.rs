@@ -9,7 +9,7 @@ use ecad_model::{Document, Ledger, TxId, TxKind};
 use super::chunks::{self, ChunkSet};
 use super::schema::{VersionKind, VersionRecord};
 use super::store::{Reader, Store};
-use crate::chain::{self, ChainKind, Hash};
+use crate::chain::{self, Hash};
 
 /// What Verify found: one line per fact, and whether everything held.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -67,10 +67,28 @@ pub fn verify(store: &Store) -> VerifyReport {
     rep.lines.push(format!("{} branch(es)", branches.len()));
     let mut referenced: BTreeSet<Hash> = BTreeSet::new();
     for (id, b) in &branches {
-        if b.parent.is_some() {
-            fail(&mut rep, format!("branch {} has a parent; only main exists in this version", b.name));
-            continue;
-        }
+        // A branch replays on its parent's state at the fork point (brief 020).
+        let line = match super::project::lineage(&r, project, *id) {
+            Ok(l) => l,
+            Err(e) => {
+                fail(&mut rep, format!("{}: {e}", b.name));
+                continue;
+            }
+        };
+        let (start_doc, start_high, seed) = match line.first().map(|l| (l.seed, l.fork)) {
+            Some((seed, Some((pi, fseq)))) => match super::project::line_state(&r, &line, pi, fseq) {
+                Ok((d, h)) => (d, h, seed),
+                Err(e) => {
+                    fail(&mut rep, format!("{}: its parent's state at the fork: {e}", b.name));
+                    continue;
+                }
+            },
+            Some((seed, None)) => (Document::default(), ecad_model::tag::HighWater::new(), seed),
+            None => {
+                fail(&mut rep, format!("{}: an empty lineage", b.name));
+                continue;
+            }
+        };
         let last = r.last_seq(*id).ok().flatten().unwrap_or(0);
         let rows = match r.tx_range(*id, 1..=last) {
             Ok(x) => x,
@@ -79,7 +97,7 @@ pub fn verify(store: &Store) -> VerifyReport {
                 continue;
             }
         };
-        let mut prev = chain::seed(ChainKind::Project, project.0);
+        let mut prev = seed;
         let mut chains = vec![prev];
         let mut txs = Vec::with_capacity(rows.len());
         let mut broken = false;
@@ -104,15 +122,18 @@ pub fn verify(store: &Store) -> VerifyReport {
             fail(&mut rep, format!("{}: the head ({}) is not the last transaction ({last})", b.name, b.head.seq));
         }
         let n = txs.len() as u64;
-        rep.transactions = n;
-        let ledger = match Ledger::replay_verified(txs, 0) {
+        if line.len() == 1 {
+            rep.transactions = n;
+        }
+        let ledger = match Ledger::replay_verified_from(start_doc.clone(), txs, 0) {
             Ok(l) => l,
             Err(e) => {
                 fail(&mut rep, format!("{}: replay failed: {e}", b.name));
                 continue;
             }
         };
-        rep.lines.push(format!("{}: {n} transactions replay from the root with every check", b.name));
+        let from = if line.len() == 1 { "the root" } else { "the fork point" };
+        rep.lines.push(format!("{}: {n} transactions replay from {from} with every check", b.name));
         // Snapshots, in point order, against one forward replay.
         let mut versions: Vec<VersionRecord> = Vec::new();
         for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
@@ -122,9 +143,10 @@ pub fn verify(store: &Store) -> VerifyReport {
             }
         }
         versions.sort_by_key(|v| v.point.seq);
-        let named: BTreeMap<&String, &u64> = ledger.document().versions.iter().collect();
-        let mut doc = Document::default();
-        let mut high = ecad_model::tag::HighWater::new();
+        // Versions named on this branch (those inherited from the parent are its rows).
+        let named: BTreeMap<&String, &u64> = ledger.document().versions.iter().filter(|(k, at)| start_doc.versions.get(*k) != Some(*at)).collect();
+        let mut doc = start_doc;
+        let mut high = start_high;
         let mut done = 0u64;
         let mut stacks: (Vec<(u64, TxId)>, Vec<(u64, TxId)>) = (Vec::new(), Vec::new());
         for v in &versions {

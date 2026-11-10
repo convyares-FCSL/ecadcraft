@@ -16,6 +16,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod generate;
+pub mod history;
 pub mod measure;
 pub mod report;
 pub mod v2;
@@ -129,7 +130,17 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         let v2m = v2::measure(&v2_path, runs, scratch, convert_ms);
         measure::release_lock_file(&v2_path);
         let compression = v2::compression(&v2_path)?;
-        rows.push(report::Row { tier: tier.name.into(), variant: variant.name().into(), measured, v2: Some(v2m?), compression: Some(compression) });
+        eprintln!("{} {}: measuring history and branches…", tier.name, variant.name());
+        let hist = history::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
+        rows.push(report::Row {
+            tier: tier.name.into(),
+            variant: variant.name().into(),
+            measured,
+            v2: Some(v2m?),
+            compression: Some(compression),
+            history: Some(hist?),
+        });
     }
     Ok(rows)
 }

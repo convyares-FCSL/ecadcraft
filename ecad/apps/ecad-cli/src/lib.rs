@@ -28,9 +28,11 @@ ecadinspect <file.ecad> <view>, where <view> is one of:
   versions                   named versions, revisions and automatic snapshots
   chunk <hash>                one snapshot chunk, decompressed
   verify                     replay from the root and check every snapshot (reads everything)
-  export-jsonl [--with-raw] [--out <file>]
-                             the whole history as a version 1 JSON Lines file (stdout by default);
-                             --with-raw writes every stored row with its raw bytes instead";
+  export-jsonl [--branch <name|id>] [--with-raw] [--out <file>]
+                             a branch's history (default main) as a version 1 JSON Lines file
+                             (stdout by default; the branches left out are named on stderr);
+                             --with-raw writes every stored row with its raw bytes instead
+  <branch> is a name or a branch ID (32 hex digits); a name several branches share is refused";
 
 /// The value after `flag` in `args`, and `args` without both.
 fn take_opt(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, String> {
@@ -80,7 +82,16 @@ pub fn writer() -> String {
 /// # Errors
 /// Bad usage, a version 1 or unreadable file, or the view failed.
 pub fn ecadinspect(args: &[String], out: &mut dyn Write) -> Result<(), String> {
+    ecadinspect_with(args, out, &mut std::io::stderr())
+}
+
+/// [`ecadinspect`], with notes (the branches `export-jsonl` left out) written to `err`.
+///
+/// # Errors
+/// As [`ecadinspect`].
+pub fn ecadinspect_with(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(), String> {
     let mut args = args.to_vec();
+    let branch = take_opt(&mut args, "--branch")?;
     let last = take_opt(&mut args, "--last")?;
     let to = take_opt(&mut args, "--out")?;
     let with_raw = take_flag(&mut args, "--with-raw");
@@ -121,12 +132,16 @@ pub fn ecadinspect(args: &[String], out: &mut dyn Write) -> Result<(), String> {
                         return Err(format!("{dest} already exists; it is never overwritten"));
                     }
                     let mut f = std::io::BufWriter::new(std::fs::File::create_new(dest).map_err(|e| format!("{dest}: {e}"))?);
-                    let n = inspect::export_jsonl(&store, with_raw, &mut f)?;
+                    let n = inspect::export_branch_jsonl(&store, with_raw, branch.as_deref().unwrap_or("main"), &mut f)?;
                     f.flush().map_err(|e| e.to_string())?;
                     n
                 }
-                None => inspect::export_jsonl(&store, with_raw, out)?,
+                None => inspect::export_branch_jsonl(&store, with_raw, branch.as_deref().unwrap_or("main"), out)?,
             };
+            let (n, left) = n;
+            if !left.is_empty() {
+                writeln!(err, "left out: {} other branch(es): {}", left.len(), left.join(", ")).map_err(|e| e.to_string())?;
+            }
             match to {
                 Some(dest) => format!("wrote {n} lines to {dest}"),
                 None => return Ok(()),

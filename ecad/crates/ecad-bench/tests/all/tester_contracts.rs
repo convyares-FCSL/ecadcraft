@@ -61,6 +61,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
         variant: variant.into(),
         v2: None,
         compression: None,
+        history: None,
         measured: Measured {
             bytes: 1000,
             transactions: 10,

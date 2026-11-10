@@ -31,6 +31,13 @@ ecad-inspect = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Brief 020a: dates of the History tab (calendar only on every target; the zone below).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+
+# Brief 020a: the History tab shows local time (overseer, 2026-11-10: chrono's `clock`, native
+# only; a wasm build and a failed lookup show UTC, labelled).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).

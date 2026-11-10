@@ -5,5 +5,6 @@
 
 mod cable_command_contracts;
 mod demo;
+mod history_contracts;
 mod mcp_contracts;
 mod mcp_tester_contracts;

@@ -150,10 +150,16 @@ pub enum Op {
     NameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
     UnnameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
     /// A folder of pages at `index` in the folder order (brief 019, decision FP3).
     AddFolder {
@@ -225,8 +231,8 @@ impl Op {
             Op::EmbedDefinition { id, definition } => Op::RemoveDefinition { id, definition },
             Op::RemoveDefinition { id, definition } => Op::EmbedDefinition { id, definition },
             Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: after, after: before },
-            Op::NameVersion { name, at } => Op::UnnameVersion { name, at },
-            Op::UnnameVersion { name, at } => Op::NameVersion { name, at },
+            Op::NameVersion { name, at, description } => Op::UnnameVersion { name, at, description },
+            Op::UnnameVersion { name, at, description } => Op::NameVersion { name, at, description },
             Op::AddFolder { id, folder, index } => Op::RemoveFolder { id, folder, index },
             Op::RemoveFolder { id, folder, index } => Op::AddFolder { id, folder, index },
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
@@ -497,13 +503,13 @@ impl Op {
                 }
                 doc.settings = after.clone();
             }
-            Op::NameVersion { name, at } => {
+            Op::NameVersion { name, at, .. } => {
                 if doc.versions.contains_key(name) {
                     return Err(pre(format!("version name {name:?} is already used")));
                 }
                 doc.versions.insert(name.clone(), *at);
             }
-            Op::UnnameVersion { name, at } => {
+            Op::UnnameVersion { name, at, .. } => {
                 if doc.versions.get(name) != Some(at) {
                     return Err(pre(format!("version name {name:?} does not name transaction {at}")));
                 }

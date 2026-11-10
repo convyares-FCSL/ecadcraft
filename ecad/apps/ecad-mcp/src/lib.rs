@@ -147,14 +147,22 @@ impl State {
         }
     }
 
-    fn log_len(&mut self) -> Result<usize, String> {
+    /// The branch shown and the length of its log in memory: where a call's transactions start.
+    fn log_len(&mut self) -> Result<(String, usize), String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.ledger.log().len()).map_err(|_| UNREADABLE.to_string())
+        p.read(self.session(), |p, _| (ecad_cadcraft::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
     }
 
-    fn log_since(&mut self, from: usize) -> Result<Vec<Transaction>, String> {
+    /// The transactions recorded since `from`. A call that switched branch (brief 020) recorded
+    /// none: the log shown is another branch's, and switching is not a step.
+    fn log_since(&mut self, from: &(String, usize)) -> Result<Vec<Transaction>, String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.ledger.log().get(from..).map(<[Transaction]>::to_vec).unwrap_or_default())
+        p.read(self.session(), |p, _| {
+            if ecad_cadcraft::history::current(p).hex() != from.0 {
+                return Vec::new();
+            }
+            p.ledger.log().get(from.1..).map(<[Transaction]>::to_vec).unwrap_or_default()
+        })
     }
 
     /// Record the agent's name as the author of the project's next transactions.
@@ -205,7 +213,7 @@ impl State {
         let r = self.headless.call("engine.execute", json!({ "command": given, "params": params }));
         let name = id.to_ascii_uppercase();
         let new =
-            self.log_since(before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
+            self.log_since(&before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
         let used = self.line_transactions;
         if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
             let what = if used > 0 {

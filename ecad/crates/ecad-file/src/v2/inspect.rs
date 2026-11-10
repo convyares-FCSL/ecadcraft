@@ -70,12 +70,25 @@ pub fn branches(store: &Store) -> Result<String, StoreError> {
 }
 
 /// The branch named `name`.
-fn branch_named(r: &Reader, name: &str) -> Result<BranchId, StoreError> {
-    r.branches()?
-        .into_iter()
-        .find(|(_, b)| b.name == name)
-        .map(|(id, _)| id)
-        .ok_or_else(|| StoreError::Damaged(format!("there is no branch named {name:?}")))
+/// The branch `text` names: its ID (32 hex digits), or its name. A name that more than one
+/// branch has (an archived one and an open one may share it) is refused, listing their IDs:
+/// never a guess.
+pub fn branch_named(r: &Reader, text: &str) -> Result<BranchId, StoreError> {
+    let all = r.branches()?;
+    if let Some(id) = BranchId::parse(text)
+        && all.iter().any(|(i, _)| *i == id)
+    {
+        return Ok(id);
+    }
+    let named: Vec<&(BranchId, super::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
+    match named.as_slice() {
+        [(id, _)] => Ok(*id),
+        [] => Err(StoreError::Damaged(format!("there is no branch named {text:?}"))),
+        many => {
+            let ids: Vec<String> = many.iter().map(|(id, b)| format!("{} ({:?})", id.hex(), b.status)).collect();
+            Err(StoreError::Refused(format!("{} branches are named {text:?}; give one of their IDs: {}", many.len(), ids.join(", "))))
+        }
+    }
 }
 
 /// The last `last` transactions of branch `name`, decompressed and readable (one JSON record a
@@ -158,6 +171,17 @@ pub fn chunk(store: &Store, hash: &str) -> Result<String, StoreError> {
 /// # Errors
 /// The file cannot be read, a row does not decode, or `out` cannot be written.
 pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Result<u64, String> {
+    export_branch_jsonl(store, with_raw, "main", out).map(|(n, _)| n)
+}
+
+/// [`export_jsonl`] of branch `branch` (a name or an ID; see [`branch_named`]). Also returns the
+/// branches left out, as `name (ID)`, for the caller to say so. A branch other than `main` is
+/// its own records only, after its fork point (its chain starts at its branch seed, EEP-0005
+/// §3.3), so it is a record of that branch, not a file a version 1 reader opens on its own.
+///
+/// # Errors
+/// As [`export_jsonl`], and an unknown or ambiguous branch.
+pub fn export_branch_jsonl(store: &Store, with_raw: bool, branch: &str, out: &mut dyn Write) -> Result<(u64, Vec<String>), String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut lines = 0u64;
     if with_raw {
@@ -169,8 +193,11 @@ pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Resul
             Ok(())
         })
         .map_err(|e| e.to_string())?;
-        return Ok(lines);
+        return Ok((lines, Vec::new()));
     }
+    let id = branch_named(&r, branch).map_err(|e| e.to_string())?;
+    let left_out: Vec<String> =
+        r.branches().map_err(|e| e.to_string())?.into_iter().filter(|(i, _)| *i != id).map(|(i, b)| format!("{} ({})", b.name, i.hex())).collect();
     let (project, _) = super::project::read_facts_pub(&r).map_err(|e| e.to_string())?;
     let created = r.meta("created_ms").map_err(|e| e.to_string())?;
     let created_ms = created.and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.as_u64());
@@ -185,7 +212,6 @@ pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Resul
     let hv = serde_json::to_value(&header).map_err(|e| e.to_string())?;
     out.write_all(&codec.encode(&hv).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     lines += 1;
-    let id = branch_named(&r, "main").map_err(|e| e.to_string())?;
     let head = r.last_seq(id).map_err(|e| e.to_string())?.unwrap_or(0);
     // In chunks, so a long history never sits in memory at once.
     let mut from = 1;
@@ -205,7 +231,7 @@ pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Resul
         let Some(next) = to.checked_add(1) else { break };
         from = next;
     }
-    Ok(lines)
+    Ok((lines, left_out))
 }
 
 /// A stored value's flag and readable form, by table.

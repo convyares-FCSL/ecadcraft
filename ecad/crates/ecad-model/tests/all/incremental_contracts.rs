@@ -142,7 +142,7 @@ fn base() -> Base {
             ],
         )
         .unwrap();
-    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1 }]).unwrap();
+    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
     Base {
         ledger,
         ids,
@@ -209,8 +209,8 @@ fn applicable(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings::default(),
             after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
-        Op::NameVersion { name: "w".into(), at: 2 },
-        Op::UnnameVersion { name: "v".into(), at: 1 },
+        Op::NameVersion { name: "w".into(), at: 2, description: None },
+        Op::UnnameVersion { name: "v".into(), at: 1, description: None },
     ]
 }
 
@@ -254,8 +254,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
-        Op::NameVersion { name: "v".into(), at: 1 },
-        Op::UnnameVersion { name: "v".into(), at: 2 },
+        Op::NameVersion { name: "v".into(), at: 1, description: None },
+        Op::UnnameVersion { name: "v".into(), at: 2, description: None },
     ]
 }
 
@@ -798,11 +798,11 @@ impl Gen {
                     } else {
                         format!("v{}", self.rng.next() % 1000)
                     };
-                    Op::NameVersion { name, at }
+                    Op::NameVersion { name, at, description: None }
                 }
                 _ => match doc.versions.iter().next() {
-                    Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil) },
-                    None => Op::NameVersion { name: "v".into(), at: 0 },
+                    Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil), description: None },
+                    None => Op::NameVersion { name: "v".into(), at: 0, description: None },
                 },
             },
         }
@@ -1032,4 +1032,64 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
     b.ledger.commit(Author::User, "valid", valid).unwrap();
     assert!(b.ledger.replay_matches().unwrap());
     b.ledger.document().check_index().unwrap();
+}
+
+/// Brief 020a, Restore: the ops [`ecad_model::diff::ops_between`] gives turn the live document
+/// into the state at any earlier point exactly as undoing every step after it does (versions
+/// aside, which Restore never touches), and they commit as an ordinary transaction.
+#[test]
+fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores() {
+    let mut points = 0;
+    for seed in 1..=150u64 {
+        let mut g = Gen { rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), ids: IdAllocator::seeded(seed), pools: Pools::default() };
+        let mut ledger = Ledger::new(seed);
+        for step in 0..14 {
+            if step > 0 && g.rng.chance(15) {
+                let _ = if g.rng.chance(50) { ledger.undo(Author::User) } else { ledger.redo(Author::User) };
+                continue;
+            }
+            let mut scratch = ledger.document().clone();
+            let mut ops = Vec::new();
+            for _ in 0..1 + g.rng.below(4) {
+                let op = g.op(&scratch, ledger.head());
+                if op.apply(&mut scratch).is_err() {
+                    break;
+                }
+                ops.push(op);
+            }
+            if !ops.is_empty() {
+                let _ = ledger.commit(Author::User, "random", ops);
+            }
+        }
+        let live = ledger.document().clone();
+        let head = ledger.head();
+        let log = ledger.full_log().unwrap();
+        for k in 0..head {
+            let target = ledger.state_at(k).unwrap();
+            let walk: Vec<Op> = log
+                .iter()
+                .rev()
+                .take_while(|t| t.seq > k)
+                .flat_map(|t| t.ops.iter().rev().filter(|o| !matches!(o, Op::NameVersion { .. } | Op::UnnameVersion { .. })).map(Op::inverse))
+                .collect();
+            let diff = ecad_model::diff::ops_between(&live, &target, &|_| true);
+            let by_walk = ledger.preview(&walk).unwrap_or_else(|e| panic!("seed {seed} k {k}: walk {e}"));
+            let by_diff = ledger.preview(&diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: diff {e}: {diff:#?}"));
+            assert_eq!(by_diff, by_walk, "seed {seed} k {k}");
+            let mut want = target.clone();
+            want.versions = live.versions.clone();
+            assert_eq!(by_diff, want, "seed {seed} k {k}: the target state");
+            // It scales with what differs: nothing differs, no ops (however many steps lie between).
+            let mut same = live.clone();
+            same.versions = want.versions.clone();
+            assert_eq!(diff.is_empty(), same == want, "seed {seed} k {k}: {} ops", diff.len());
+            if !diff.is_empty() {
+                let mut l = ledger.clone();
+                l.commit(Author::User, "Restore", diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: commit {e}"));
+                assert_eq!(l.document(), &want);
+            }
+            points += 1;
+        }
+    }
+    assert!(points > 500, "{points} points restored");
 }

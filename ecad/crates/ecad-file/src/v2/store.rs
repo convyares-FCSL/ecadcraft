@@ -697,8 +697,25 @@ impl Writer {
         Ok(())
     }
 
-    /// Remove a version row (a version unnamed by `UnnameVersion`). Its chunks stay until
-    /// compaction.
+    /// Set the description of a `versions` row this write transaction holds (FQ5).
+    ///
+    /// # Errors
+    /// No such row; the engine failed.
+    pub fn describe_version(&mut self, branch: BranchId, kind: VersionKind, name: &str, description: &str) -> Result<(), StoreError> {
+        let key = version_key(branch, kind, name);
+        let rec = {
+            let t = self.txn.open_table(VERSIONS).map_err(engine)?;
+            let v = t.get(key.as_slice()).map_err(engine)?;
+            match v {
+                Some(v) => serde_json::from_slice::<VersionRecord>(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?,
+                None => return Err(StoreError::Refused(format!("version {name:?} has no row to describe"))),
+            }
+        };
+        self.put_version(branch, &VersionRecord { description: Some(description.to_string()), ..rec })
+    }
+
+    /// Remove a version row (a version unnamed by `UnnameVersion`, or a rescue dropping rows past
+    /// the verified head). Its chunks stay until compaction.
     ///
     /// # Errors
     /// The engine failed.

@@ -16,16 +16,16 @@ use ecad_mcp::{EcadMcp, MAX_BATCH, MAX_REQUEST_BYTES, Options, policy};
 use ecad_model::{Author, Document, Transaction};
 use serde_json::{Value, json};
 
-const AGENT: &str = "test-agent";
+pub(crate) const AGENT: &str = "test-agent";
 const SEED: u64 = 0x0E_CAD0_0110;
 
-struct Client {
-    s: EcadMcp,
+pub(crate) struct Client {
+    pub(crate) s: EcadMcp,
     next: u64,
 }
 
 impl Client {
-    fn new(s: EcadMcp) -> Self {
+    pub(crate) fn new(s: EcadMcp) -> Self {
         let mut c = Client { s, next: 1 };
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
@@ -50,35 +50,35 @@ impl Client {
     }
 
     /// A tool call's `result` (the call must not be a protocol error).
-    fn call(&mut self, tool: &str, args: Value) -> Value {
+    pub(crate) fn call(&mut self, tool: &str, args: Value) -> Value {
         let r = self.request("tools/call", json!({"name": tool, "arguments": args}));
         assert!(r.get("error").is_none(), "{tool} {r}");
         r["result"].clone()
     }
 
     /// A successful tool call's JSON.
-    fn ok(&mut self, tool: &str, args: Value) -> Value {
+    pub(crate) fn ok(&mut self, tool: &str, args: Value) -> Value {
         let r = self.call(tool, args.clone());
         assert_ne!(r["isError"], json!(true), "{tool} {args}: {r}");
         serde_json::from_str(r["content"][0]["text"].as_str().unwrap()).unwrap()
     }
 
     /// A refused tool call's message.
-    fn refused(&mut self, tool: &str, args: Value) -> String {
+    pub(crate) fn refused(&mut self, tool: &str, args: Value) -> String {
         let r = self.call(tool, args.clone());
         assert_eq!(r["isError"], json!(true), "{tool} {args} should be refused: {r}");
         r["content"][0]["text"].as_str().unwrap().to_string()
     }
 
-    fn exec(&mut self, command: &str, params: Value) -> Value {
+    pub(crate) fn exec(&mut self, command: &str, params: Value) -> Value {
         self.ok("execute", json!({"command": command, "params": params}))
     }
 
-    fn log(&mut self) -> Vec<Transaction> {
+    pub(crate) fn log(&mut self) -> Vec<Transaction> {
         self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.full_log().unwrap()).unwrap()).unwrap()
     }
 
-    fn doc(&mut self) -> Document {
+    pub(crate) fn doc(&mut self) -> Document {
         self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap()
     }
 }
@@ -87,7 +87,7 @@ fn writer() -> Client {
     Client::new(EcadMcp::in_memory("mcp", SEED, Options { write: true, agent: None }).unwrap())
 }
 
-fn reader() -> Client {
+pub(crate) fn reader() -> Client {
     Client::new(EcadMcp::in_memory("mcp", SEED, Options { write: false, agent: None }).unwrap())
 }
 
@@ -110,16 +110,16 @@ impl Direct {
     }
 }
 
-struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    fn new(tag: &str) -> Self {
+    pub(crate) fn new(tag: &str) -> Self {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let p = std::env::temp_dir().join(format!("ecad-mcp-{tag}-{}-{nanos}", std::process::id()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
-    fn file(&self, name: &str) -> String {
+    pub(crate) fn file(&self, name: &str) -> String {
         self.0.join(name).to_string_lossy().into_owned()
     }
 }
