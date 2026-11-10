@@ -7,9 +7,10 @@
 //!   It never reads the logs (design 020 §8.1).
 //! - A point is shown on a copy, from its nearest snapshot (the branch's own or its ancestry's)
 //!   and at most the snapshot interval of steps; nothing is recorded.
-//! - Restore is one ordinary transaction labelled `Restore "…"` (FQ6) whose ops undo, on the
-//!   live state, every step after the point on the branch's line; versions and revision fields
-//!   are never restored (they are history, not design).
+//! - Restore is one ordinary transaction labelled `Restore "…"` (FQ6) whose ops are the
+//!   difference between the live state and the point's ([`ecad_model::diff`]), so they scale with
+//!   what differs; versions and revision fields are never restored (they are history, not
+//!   design).
 //! - Branch actions are written to the file at once (owner answer 4, FQ8), after saving the
 //!   branch shown (owner answer 3, "Save and switch").
 //!
@@ -21,7 +22,7 @@ use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_file::v2::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
-use ecad_model::{Document, ObjectRef, Op, Transaction, TxKind};
+use ecad_model::{Document, Op, Transaction, TxKind};
 use serde_json::{Value, json};
 
 use crate::access::Pages;
@@ -668,90 +669,19 @@ fn on_current_line(p: &Project, pt: &Point) -> Result<bool, String> {
 
 // ---------------------------------------------------------------- restore
 
-/// Whether `op` restores design: versions and revision fields are history and stay as they are
-/// now (design 020 §2.5.3, §6.4 rule 1).
-fn restorable(op: &Op) -> bool {
-    match op {
-        Op::NameVersion { .. } | Op::UnnameVersion { .. } => false,
-        Op::SetProperty { object: ObjectRef::Project, key, .. } => !key.starts_with("rev."),
-        _ => true,
-    }
+/// Whether Restore compares this project property: revision fields are history and stay as they
+/// are now (design 020 §2.5.3, §6.4 rule 1).
+fn restores_key(key: &str) -> bool {
+    !key.starts_with("rev.")
 }
 
-/// The ops that turn the live state into `pt`'s (on the branch shown's line): the inverse of
-/// every step after it, newest first, versions and revision fields left out.
-fn restore_ops(p: &Project, pt: &Point) -> Result<Vec<Op>, String> {
-    let line = lineage_of(p, current(p))?;
-    let mut ops = Vec::new();
-    // Walk down the line: the branch shown's steps, then each ancestor's after `pt` up to its
-    // child's fork.
-    let mut top = p.ledger.head();
-    for (i, (b, fork)) in line.iter().enumerate() {
-        let lo = if *b == pt.branch { pt.seq } else { 0 };
-        for tx in txs(p, *b, lo + 1, top)?.iter().rev() {
-            ops.extend(tx.ops.iter().rev().filter(|o| restorable(o)).map(Op::inverse));
-        }
-        if *b == pt.branch {
-            return Ok(ops);
-        }
-        let _ = i;
-        top = fork.unwrap_or(0);
-    }
-    Err("That point is not on this branch's line.".into())
-}
-
-/// One object as `restore` counts it: kind and ID.
-fn object_of(op: &Op) -> Option<(&'static str, u128)> {
-    Some(match op {
-        Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
-        Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
-        Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
-        Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => ("component", id.0),
-        Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
-        Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
-        Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
-        Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::AddCableMember { cable: id, .. } | Op::RemoveCableMember { cable: id, .. } => {
-            ("cable", id.0)
-        }
-        Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => ("definition", id.0),
-        Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
-        Op::SetProperty { object, .. } => match object {
-            ObjectRef::Component(c) => ("component", c.0),
-            ObjectRef::Conductor(c) => ("conductor", c.0),
-            ObjectRef::Cable(c) => ("cable", c.0),
-            ObjectRef::Page(c) => ("page", c.0),
-            ObjectRef::Project => ("project", 0),
-            #[allow(unreachable_patterns)]
-            _ => ("object", 0),
-        },
-        Op::SetProjectSettings { .. } => ("settings", 0),
-        Op::NameVersion { .. } | Op::UnnameVersion { .. } => return None,
-    })
-}
-
-/// Whether object `(kind, id)` differs between `a` and `b`.
-fn differs(a: &Document, b: &Document, kind: &str, id: u128) -> bool {
-    match kind {
-        "page" => {
-            let pid = ecad_model::PageId(id);
-            a.pages.get(&pid) != b.pages.get(&pid) || a.page_order.iter().position(|x| *x == pid) != b.page_order.iter().position(|x| *x == pid)
-        }
-        "layer" => a.layers.get(&ecad_model::LayerId(id)) != b.layers.get(&ecad_model::LayerId(id)),
-        "item" => a.items.get(&ecad_model::ItemId(id)) != b.items.get(&ecad_model::ItemId(id)),
-        "component" => a.components.get(&ecad_model::ComponentId(id)) != b.components.get(&ecad_model::ComponentId(id)),
-        "terminal" => a.terminals.get(&ecad_model::TerminalId(id)) != b.terminals.get(&ecad_model::TerminalId(id)),
-        "representation" => a.representations.get(&ecad_model::RepresentationId(id)) != b.representations.get(&ecad_model::RepresentationId(id)),
-        "conductor" => a.conductors.get(&ecad_model::ConductorId(id)) != b.conductors.get(&ecad_model::ConductorId(id)),
-        "cable" => a.cables.get(&ecad_model::CableId(id)) != b.cables.get(&ecad_model::CableId(id)),
-        "definition" => a.definitions.get(&ecad_model::DefinitionId(id)) != b.definitions.get(&ecad_model::DefinitionId(id)),
-        "folder" => a.folders.get(&ecad_model::FolderId(id)) != b.folders.get(&ecad_model::FolderId(id)),
-        "project" => {
-            let design =
-                |d: &Document| d.properties.iter().filter(|(k, _)| !k.starts_with("rev.")).map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
-            design(a) != design(b)
-        }
-        "settings" => a.settings != b.settings,
-        _ => true,
+/// The state Restore returns to: a saved point from the file (its nearest snapshot and at most
+/// the snapshot interval of steps), an unsaved one from the ledger.
+fn restore_target(p: &Project, pt: &Point) -> Result<Document, String> {
+    let saved = p.file.v2().filter(|v| pt.branch != v.branch() || pt.seq <= v.head().0);
+    match saved {
+        Some(v) => v.point_state(pt.branch, pt.seq),
+        None => state_at(p, pt),
     }
 }
 
@@ -765,7 +695,9 @@ pub struct RestorePlan {
     pub after_revisions: Vec<String>,
 }
 
-/// Work out a restore of `pt` (design 020 §2.5.3).
+/// Work out a restore of `pt` (design 020 §2.5.3): the ops are the difference between the live
+/// state and the point's (overseer, 2026-11-10: they scale with what differs, not with how far
+/// back the point is), without version names or revision fields.
 ///
 /// # Errors
 /// Not on the branch shown's line, or the history could not be read.
@@ -773,25 +705,19 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
     if !on_current_line(p, pt)? {
         return Err(format!("{} is on another branch: branch from here, or merge that branch.", pt.title));
     }
-    let ops = restore_ops(p, pt)?;
     let live = p.ledger.document();
-    let then = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
-    let mut seen = BTreeSet::new();
+    let then = restore_target(p, pt)?;
+    let ops = ecad_model::diff::ops_between(live, &then, &restores_key);
+    let objects = ecad_model::diff::objects(&ops);
     let mut pages = BTreeSet::new();
-    let mut objects = 0;
-    for op in &ops {
-        let Some(key) = object_of(op) else { continue };
-        if !seen.insert(key) || !differs(live, &then, key.0, key.1) {
-            continue;
-        }
-        objects += 1;
-        let page = match key.0 {
-            "item" => live.items.get(&ecad_model::ItemId(key.1)).or_else(|| then.items.get(&ecad_model::ItemId(key.1))).map(|i| i.page),
-            "page" => Some(ecad_model::PageId(key.1)),
+    for (kind, id) in objects.keys() {
+        let page = match *kind {
+            "item" => live.items.get(&ecad_model::ItemId(*id)).or_else(|| then.items.get(&ecad_model::ItemId(*id))).map(|i| i.page),
+            "page" => Some(ecad_model::PageId(*id)),
             "representation" => live
                 .representations
-                .get(&ecad_model::RepresentationId(key.1))
-                .or_else(|| then.representations.get(&ecad_model::RepresentationId(key.1)))
+                .get(&ecad_model::RepresentationId(*id))
+                .or_else(|| then.representations.get(&ecad_model::RepresentationId(*id)))
                 .map(|r| r.page),
             _ => None,
         };
@@ -810,7 +736,7 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
         .filter(|n| n.branch == current(p) || n.branch == pt.branch)
         .map(|n| n.name)
         .collect();
-    Ok(RestorePlan { ops, objects, pages: pages.into_iter().collect(), after_revisions })
+    Ok(RestorePlan { objects: objects.len(), ops, pages: pages.into_iter().collect(), after_revisions })
 }
 
 // ---------------------------------------------------------------- versions

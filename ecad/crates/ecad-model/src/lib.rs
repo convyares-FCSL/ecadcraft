@@ -21,6 +21,7 @@
 pub mod book;
 pub mod connectivity;
 pub mod derive;
+pub mod diff;
 pub mod doc;
 pub mod error;
 pub mod geom;
