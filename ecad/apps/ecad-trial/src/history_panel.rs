@@ -7,7 +7,8 @@
 //! Update map (design 020 §8.2), from the project's change count, its unsaved count and the
 //! actions run here:
 //! - a commit or undo/redo on the branch shown: the Now row's label only, unless it named or
-//!   unnamed a version (then the graph is read again: branch and version rows, one step each);
+//!   unnamed a version, or was a merge or the undo or redo of one (then the graph is read again:
+//!   branch, version and merge rows, one step per row of the page);
 //! - Save: the Now row's label; a branch action or switch: the graph is read again;
 //! - the details box: computed when a row is selected, kept until another is (history is
 //!   immutable), except Now's, refreshed with the Now row;
@@ -173,7 +174,9 @@ impl HistoryPanel {
                 || seen.0 != key.0
                 || (seen.3 < key.3
                     && (seen.3 + 1..=key.3).any(|s| {
-                        p.ledger.transaction(s).is_some_and(|t| t.ops.iter().any(|o| matches!(o, Op::NameVersion { .. } | Op::UnnameVersion { .. })))
+                        p.ledger.transaction(s).is_some_and(|t| {
+                            t.ops.iter().any(|o| matches!(o, Op::NameVersion { .. } | Op::UnnameVersion { .. })) || changes_merges(t)
+                        })
                     }));
             if versions_moved {
                 self.rebuild(p, key);
@@ -926,6 +929,16 @@ impl HistoryPanel {
                 self.note = Some(e);
             }
         }
+    }
+}
+
+/// Whether `t` adds or removes a merge row (brief 020b): a merge, or the undo or redo of one (their
+/// labels are the merge's own).
+fn changes_merges(t: &ecad_model::Transaction) -> bool {
+    match t.kind {
+        ecad_model::TxKind::Merge { .. } => true,
+        ecad_model::TxKind::Undo { .. } | ecad_model::TxKind::Redo { .. } => t.label.starts_with("Merge \"") || t.label.starts_with("Update from "),
+        ecad_model::TxKind::Edit => false,
     }
 }
 

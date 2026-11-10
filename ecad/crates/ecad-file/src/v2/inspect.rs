@@ -124,8 +124,12 @@ pub fn versions(store: &Store) -> Result<String, StoreError> {
     let r = store.reader()?;
     let mut s = String::new();
     for (id, b) in r.branches()? {
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
             for v in r.versions(id, kind)? {
+                if let Some(m) = &v.merge {
+                    s.push_str(&format!("{} Merge at {} from {} at {}\n", b.name, v.point.seq, m.source, m.source_head.seq));
+                    continue;
+                }
                 s.push_str(&format!(
                     "{} {:?} {:?} at {} ({} chunks, undo {} / redo {}){}\n",
                     b.name,
