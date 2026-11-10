@@ -18,3 +18,4 @@ mod merge_store_contracts;
 mod records_contracts;
 mod recovery_contracts;
 mod save_contracts;
+mod merge_store_tester_contracts;

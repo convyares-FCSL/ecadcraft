@@ -27,3 +27,4 @@ mod startup_tester;
 mod tools;
 mod trial;
 mod windows_trial_contracts;
+mod merge_tester_ui;
