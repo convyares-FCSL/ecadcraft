@@ -10,7 +10,7 @@ use ecad_file::v2::project::BranchError;
 use ecad_file::v2::schema::{BranchId, BranchStatus, VersionKind};
 use ecad_file::v2::{ProjectV2, Store};
 use ecad_model::*;
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 
 fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     let store = Store::create(path).unwrap();
@@ -209,5 +209,75 @@ fn readers_ignore_unknown_optional_fields_in_meta_branch_and_version_rows() {
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.ledger.document(), f.ledger.document());
     let v = ecad_file::v2::verify::verify(o.project.store());
+    assert!(v.ok, "{:#?}", v.lines);
+}
+
+/// Put `field` into the JSON row `key` of `table` (a newer build's optional addition).
+fn add_field<K: redb::Key + 'static>(p: &std::path::Path, table: redb::TableDefinition<K, &[u8]>, key: K::SelfType<'_>, field: &str)
+where
+    for<'a> K::SelfType<'a>: Clone,
+{
+    let db = redb::Database::open(p).unwrap();
+    let w = db.begin_write().unwrap();
+    {
+        let mut t = w.open_table(table).unwrap();
+        let row = t.get(key.clone()).unwrap().unwrap().value().to_vec();
+        let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
+        v[field] = serde_json::json!({"kept": [1, 2]});
+        t.insert(key, serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
+    }
+    w.commit().unwrap();
+}
+
+/// Whether row `key` of `table` still holds `field`.
+fn has_field<K: redb::Key + 'static>(p: &std::path::Path, table: redb::TableDefinition<K, &[u8]>, key: K::SelfType<'_>, field: &str) -> bool {
+    let db = redb::ReadOnlyDatabase::open(p).unwrap();
+    let r = db.begin_read().unwrap();
+    let t = r.open_table(table).unwrap();
+    let row = t.get(key).unwrap().unwrap().value().to_vec();
+    let v: serde_json::Value = serde_json::from_slice(&row).unwrap();
+    v.get(field) == Some(&serde_json::json!({"kept": [1, 2]}))
+}
+
+#[test]
+fn writers_keep_the_unknown_fields_a_newer_build_wrote_through_save_switch_and_rename() {
+    use ecad_file::v2::schema::{BRANCHES, META, VERSIONS, version_key};
+    let dir = TempDir::new("preserve");
+    let mut f = fixture();
+    let p = dir.path("p.ecad");
+    let proj = create(&p, &f.ledger, 16);
+    let main = proj.branch();
+    let named = proj.store().reader().unwrap().versions(main, VersionKind::User).unwrap();
+    let vname = named.first().map(|v| v.name.clone()).unwrap();
+    drop(proj);
+    let vkey = version_key(main, VersionKind::User, &vname);
+    add_field(&p, BRANCHES, main.0, "future_main");
+    add_field(&p, META, "cache", "future_cache");
+    add_field(&p, VERSIONS, vkey.as_slice(), "future_version");
+    // This build: edits saved (an automatic snapshot rewrites meta.cache), a branch made, the
+    // future field put on it too, then switch, rename, switch back and save again.
+    let mut o = open(&p);
+    let base = o.ledger.head();
+    f.ledger = o.ledger;
+    for i in 0..20 {
+        line(&mut f.ledger, &mut f.ids, f.page, f.layer, 200.0 + f64::from(i));
+    }
+    o.project.save(&mut f.ledger).unwrap();
+    assert!(o.project.snapshot_seq() > base, "an automatic snapshot was written, so meta.cache was");
+    let (b, _) = o.project.create_branch("Next", main, f.ledger.head(), None, None).unwrap();
+    drop(o.project);
+    add_field(&p, BRANCHES, b.0, "future_branch");
+    let mut o = open(&p);
+    let (bl, _) = o.project.switch_to(&o.ledger, b, 3).unwrap();
+    o.project.rename_branch(b, "Later").unwrap();
+    let (mut ml, _) = o.project.switch_to(&bl, main, 4).unwrap();
+    line(&mut ml, &mut f.ids, f.page, f.layer, 300.0);
+    o.project.save(&mut ml).unwrap();
+    drop(o.project);
+    assert!(has_field(&p, BRANCHES, main.0, "future_main"), "main's row");
+    assert!(has_field(&p, BRANCHES, b.0, "future_branch"), "the renamed branch's row");
+    assert!(has_field(&p, META, "cache", "future_cache"), "meta.cache");
+    assert!(has_field(&p, VERSIONS, vkey.as_slice(), "future_version"), "the version row");
+    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }

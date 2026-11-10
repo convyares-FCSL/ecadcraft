@@ -600,7 +600,7 @@ impl ProjectPanel {
         }
         if self.tab == Tab::History {
             // Writes are off while a point is shown read-only, as for the revision view.
-            out.extend(self.history.show(ui, writable));
+            out.extend(self.history.show(ui, writable, header.read_only));
             self.rows_drawn = 0;
             return out;
         }

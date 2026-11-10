@@ -1120,10 +1120,11 @@ impl ProjectV2 {
                     redo_hidden: rec.3,
                     stack_cap: STACK_CAP,
                     description: None,
+                    extra: BTreeMap::new(),
                 },
             )?;
             saved.snapshots += 1;
-            latest = Some(SnapshotRef { kind, name, seq: at });
+            latest = Some(SnapshotRef { kind, name, seq: at, extra: BTreeMap::new() });
             snap = (at, set);
         }
         let mut cache = Cache { every, ..Cache::default() };
@@ -1336,13 +1337,14 @@ impl ProjectV2 {
                 redo_hidden,
                 stack_cap: STACK_CAP,
                 description: None,
+                extra: BTreeMap::new(),
             },
         )?;
         saved.snapshots += 1;
         // The latest snapshot (the one opening uses) only moves forward.
         let latest = cache.latest.get(&self.branch.hex()).map_or(0, |s| s.seq);
         if at >= latest {
-            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at });
+            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at, extra: BTreeMap::new() });
         }
         if in_memory {
             *snap = Snap { seq: at, set: Some(set) };
@@ -1524,6 +1526,7 @@ impl ProjectV2 {
             merged: None,
             created_ms,
             created_by,
+            extra: BTreeMap::new(),
         };
         let mut w = self.store.writer()?;
         if w.branch(id)?.is_some() {
@@ -1602,7 +1605,8 @@ impl ProjectV2 {
     /// # Errors
     /// [`BranchError`]; on an error the project still shows the previous branch.
     pub fn switch_to(&mut self, ledger: &Ledger, branch: BranchId, seed: u64) -> Result<(Ledger, ReportV2), BranchError> {
-        if self.read_only.is_none() && ledger.head() != self.head.0 {
+        // Unsaved transactions are never switched away from, read-only or not (design 020 §3.3).
+        if ledger.head() != self.head.0 {
             return Err(BranchError::Refused("Save first: the branch shown has unsaved changes.".into()));
         }
         let rec = self.store.reader()?.branch(branch)?.ok_or_else(|| BranchError::Refused("That branch does not exist.".into()))?;
@@ -1762,7 +1766,7 @@ fn revision_of(doc: &Document, name: &str) -> Option<Release> {
         .take_while(|(k, _)| k.starts_with(prefix))
         .filter_map(|(k, v)| k.strip_prefix(prefix).filter(|f| *f != "issued").map(|f| (f.to_string(), v.clone())))
         .collect();
-    Some(Release { fields, assets: Vec::new() })
+    Some(Release { fields, assets: Vec::new(), extra: BTreeMap::new() })
 }
 
 /// The release data of revision `name` as issued by `tx`: the revision row's fields once `tx`

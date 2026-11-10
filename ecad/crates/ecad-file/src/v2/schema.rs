@@ -209,6 +209,10 @@ pub struct BranchRecord {
     /// Who created it (an author's display text; for display).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl BranchRecord {
@@ -224,6 +228,7 @@ impl BranchRecord {
             merged: None,
             created_ms: None,
             created_by: None,
+            extra: BTreeMap::new(),
         }
     }
 }
@@ -236,6 +241,10 @@ pub struct Release {
     pub fields: BTreeMap<String, String>,
     /// Asset hashes of the frozen outputs; none exist yet.
     pub assets: Vec<String>,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// A `versions` row: a point, the hashes of its chunks, and what opening there needs. Unknown
@@ -265,6 +274,10 @@ pub struct VersionRecord {
     /// The version's description, when it was given one (FQ5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// `meta.cache`: the snapshot policy and, per branch, the latest snapshot (EEP-0005 §3.1).
@@ -275,11 +288,15 @@ pub struct Cache {
     pub every: u64,
     /// Branch ID (hex) → the latest snapshot on it.
     pub latest: BTreeMap<String, SnapshotRef>,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for Cache {
     fn default() -> Self {
-        Self { every: DEFAULT_SNAPSHOT_EVERY, latest: BTreeMap::new() }
+        Self { every: DEFAULT_SNAPSHOT_EVERY, latest: BTreeMap::new(), extra: BTreeMap::new() }
     }
 }
 
@@ -290,6 +307,10 @@ pub struct SnapshotRef {
     pub kind: VersionKind,
     pub name: String,
     pub seq: u64,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// `meta.link_v1`: the version 1 history a converted file continues (EEP-0005 §10).
@@ -301,6 +322,10 @@ pub struct LinkV1 {
     pub transactions: u64,
     pub source_container: u64,
     pub source_schema: u64,
+    /// Fields this build does not know (a newer build's optional additions): kept as read and
+    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// The content address of a chunk: `SHA-256("ecad-chunk/1\0" ‖ uncompressed body)`.

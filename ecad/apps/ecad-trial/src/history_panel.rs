@@ -67,12 +67,37 @@ impl Sel {
 /// A dialog of the tab (design 020 §2.5, §3).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
-    NewVersion { name: String, description: String, error: Option<String> },
-    NewBranch { name: String, from: Value, from_text: String, switch: bool, error: Option<String> },
-    Rename { branch: String, name: String, error: Option<String> },
-    Archive { branch: String, name: String },
-    Restore { params: Value, question: String },
-    Switch { branch: String, name: String },
+    NewVersion {
+        name: String,
+        description: String,
+        error: Option<String>,
+    },
+    NewBranch {
+        name: String,
+        from: Value,
+        from_text: String,
+        switch: bool,
+        error: Option<String>,
+    },
+    Rename {
+        branch: String,
+        name: String,
+        error: Option<String>,
+    },
+    Archive {
+        branch: String,
+        name: String,
+    },
+    Restore {
+        params: Value,
+        question: String,
+    },
+    Switch {
+        branch: String,
+        name: String,
+    },
+    /// Unsaved changes on a file that cannot be written: Save As or Cancel (design 020 §3.3).
+    SwitchReadOnly,
 }
 
 /// One step row of the Steps list.
@@ -257,7 +282,7 @@ impl HistoryPanel {
 
     /// The tab's contents; `writable`: a project that can be changed; `file`: it has a version 2
     /// file.
-    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
+    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool) -> Vec<Action> {
         let mut out = Vec::new();
         let t = Tokens::get();
         let (next_version, next_branch, unsaved, cur_name, has_file) = self.defaults.clone();
@@ -269,7 +294,9 @@ impl HistoryPanel {
             combo.show_ui(ui, |ui| {
                 for b in self.graph.branches.iter().filter(|b| b.status == BranchStatus::Open) {
                     if ui.selectable_label(b.current, &b.name).clicked() && !b.current {
-                        if unsaved > 0 && writable {
+                        if unsaved > 0 && read_only {
+                            self.dialog = Some(Dialog::SwitchReadOnly);
+                        } else if unsaved > 0 {
                             self.dialog = Some(Dialog::Switch { branch: b.id.hex(), name: b.name.clone() });
                         } else {
                             out.push(Action::History(Do::Run("switchbranch", json!({"branch": b.id.hex(), "save": false}))));
@@ -384,7 +411,9 @@ impl HistoryPanel {
             if double {
                 if node.kind == NodeKind::Now && Some(node.branch) != self.graph.current {
                     let name = self.graph.branches.iter().find(|b| b.id == node.branch).map(|b| b.name.clone()).unwrap_or_default();
-                    if unsaved > 0 && writable {
+                    if unsaved > 0 && read_only {
+                        self.dialog = Some(Dialog::SwitchReadOnly);
+                    } else if unsaved > 0 {
                         self.dialog = Some(Dialog::Switch { branch: node.branch.hex(), name });
                     } else {
                         out.push(Action::History(Do::Run("switchbranch", json!({"branch": node.branch.hex()}))));
@@ -614,7 +643,7 @@ impl HistoryPanel {
             Dialog::Rename { .. } => ("RENAME BRANCH", "ecad.renamebranch"),
             Dialog::Archive { .. } => ("ARCHIVE BRANCH", "ecad.archivebranch"),
             Dialog::Restore { .. } => ("RESTORE", "ecad.restore"),
-            Dialog::Switch { .. } => ("SWITCH BRANCH", "ecad.switchbranch"),
+            Dialog::Switch { .. } | Dialog::SwitchReadOnly => ("SWITCH BRANCH", "ecad.switchbranch"),
         };
         egui::Window::new(title).id(egui::Id::unique(id)).collapsible(false).resizable(false).default_width(380.0).show(&ctx, |ui| {
             let red = Color32::from_rgb(0xe0, 0x60, 0x60);
@@ -717,6 +746,14 @@ impl HistoryPanel {
                         out.push(Action::History(Do::Run("restore", params.clone())));
                     }
                     close = cancel;
+                }
+                Dialog::SwitchReadOnly => {
+                    ui.label(format!("{cur_name} has {unsaved} unsaved change{} and the file is read-only.", if unsaved == 1 { "" } else { "s" }));
+                    let (ok, cancel) = ok_cancel(ui, "Save As…");
+                    if ok {
+                        out.push(Action::History(Do::SaveAs));
+                    }
+                    close = ok || cancel;
                 }
                 Dialog::Switch { branch, name } => {
                     ui.label(format!(

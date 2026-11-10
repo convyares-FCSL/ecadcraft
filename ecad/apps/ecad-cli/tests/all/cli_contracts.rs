@@ -215,4 +215,36 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     assert!(log.contains("# 41:") && log.contains("# 40:"), "{log}");
     let versions = run(ecad_cli::ecadinspect, &[o, "versions"]).unwrap();
     assert!(versions.contains("Option B User \"On B\" at 40"), "{versions}");
+    // export-jsonl of a branch: its own records, the others named on stderr.
+    let (mut lines, mut notes) = (Vec::new(), Vec::new());
+    ecad_cli::ecadinspect_with(&[o.into(), "export-jsonl".into(), "--branch".into(), "Option B".into()], &mut lines, &mut notes).unwrap();
+    assert_eq!(String::from_utf8(lines).unwrap().lines().count(), 1 + 41, "a header and the branch's 41 records");
+    let notes = String::from_utf8(notes).unwrap();
+    assert!(notes.contains("left out: 3 other branch(es)") && notes.contains("main (") && notes.contains("Gone ("), "{notes}");
+    // A second branch named "Gone" (the first is archived, so the name is free): a name is no
+    // longer enough, an ID is.
+    let ids: Vec<(String, String)> = {
+        let opened = ProjectV2::open(Store::open(&out, true).unwrap(), 6, "tester").unwrap();
+        let mut proj = opened.project;
+        let main = BranchIdOf::main(&proj);
+        proj.create_branch("Gone", main, 2, None, None).unwrap();
+        proj.branches().unwrap().into_iter().map(|(id, b)| (id.hex(), b.name)).collect()
+    };
+    let e = run(ecad_cli::ecadinspect, &[o, "log", "Gone"]).unwrap_err();
+    let gone: Vec<&String> = ids.iter().filter(|(_, n)| n == "Gone").map(|(id, _)| id).collect();
+    assert_eq!(gone.len(), 2);
+    assert!(e.contains("2 branches are named \"Gone\"") && gone.iter().all(|id| e.contains(id.as_str())), "{e}");
+    let by_id = run(ecad_cli::ecadinspect, &[o, "log", gone[0].as_str()]).unwrap();
+    assert!(!by_id.contains("no branch"), "{by_id}");
+    let b_id = ids.iter().find(|(_, n)| n == "Option B").map(|(id, _)| id.clone()).unwrap();
+    let log = run(ecad_cli::ecadinspect, &[o, "log", b_id.as_str(), "--last", "1"]).unwrap();
+    assert!(log.contains("# 41:"), "{log}");
+}
+
+/// `main`'s ID of a project.
+struct BranchIdOf;
+impl BranchIdOf {
+    fn main(p: &ecad_file::v2::ProjectV2) -> ecad_file::v2::schema::BranchId {
+        ecad_file::v2::schema::BranchId::main_of(p.project_id().0)
+    }
 }

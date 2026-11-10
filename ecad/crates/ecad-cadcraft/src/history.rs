@@ -1235,6 +1235,17 @@ fn run_renamebranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
     })
 }
 
+/// The refusal of a switch with unsaved changes on a file that cannot be written (design 020
+/// §3.3: Save As or Cancel, never a silent loss).
+pub fn read_only_refusal(p: &Project) -> String {
+    let n = p.unsaved_transactions();
+    format!(
+        "{} has {n} unsaved change{} and the file is read-only. Use Save As to keep them; the branch was not switched.",
+        current_name(p),
+        if n == 1 { "" } else { "s" }
+    )
+}
+
 /// The unsaved-steps refusal of `switchbranch` without `save` (design 020 §10).
 pub fn unsaved_refusal(p: &Project) -> String {
     let n = p.unsaved_transactions();
@@ -1253,7 +1264,11 @@ fn run_switchbranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
         }
         let read_only = p.file.v2().and_then(|v| v.read_only()).is_some();
-        if p.unsaved() && !read_only {
+        if p.unsaved() && read_only {
+            // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
+            return Err(read_only_refusal(p));
+        }
+        if p.unsaved() {
             if !save {
                 return Err(unsaved_refusal(p));
             }
