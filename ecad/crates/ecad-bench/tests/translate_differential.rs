@@ -220,9 +220,12 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("small-lean.ecad");
     std::fs::write(&path, g.file_bytes().unwrap()).unwrap();
+    // The app opens version 2 files for editing (brief 021): convert the generated one first.
+    let v2 = dir.join("small-lean.v2.ecad");
+    ecad_bench::v2::convert(&path, &v2).unwrap();
 
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, path.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
     let page = g.pages[0];
     let seed = seed();
     // Straight to stderr, past the test harness's capture: the oracle aborts the process on a
