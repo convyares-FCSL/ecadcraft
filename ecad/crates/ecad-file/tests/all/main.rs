@@ -6,6 +6,7 @@
 mod common;
 
 mod branches_contracts;
+mod branches_tester_contracts;
 mod canonical_contracts;
 mod container_crash;
 mod container_recovery;
