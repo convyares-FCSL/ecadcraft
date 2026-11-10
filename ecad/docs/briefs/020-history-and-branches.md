@@ -1,6 +1,8 @@
 # Brief 020: History and Branches
 
-Status: **Approved** (owner, 2026-11-10: "lets do History and branches")
+Status: **Approved** (owner, 2026-11-10: "lets do History and branches"); **split** (owner, 2026-11-10):
+**020a** (history, versions, restore, branches) **in progress**, **020b** (merge) next. Decisions:
+`docs/design/020.md` §17 and `../docs/decisions.md` (2026-11-10).
 Branch: `feature/history` (worktree `C:\dev\ecad-features\history`), from `dev` at `b4a17783`
 (021 container v2, 022 and CADCraft 0.19.0 merged).
 Designer: **yes** (`docs/design/020.md`) · Size: L (the designer may split it into 020a/020b) ·
