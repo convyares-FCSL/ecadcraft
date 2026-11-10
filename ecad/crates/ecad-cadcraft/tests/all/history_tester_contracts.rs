@@ -334,3 +334,36 @@ fn revisions_are_refused_off_main_with_a_way_forward() {
     assert!(e.contains("issued on main") && e.contains("Merge") && e.contains("Option B"), "{e}");
     assert_eq!(h.head(), head, "nothing recorded");
 }
+
+/// Review of PR #48: Save As from a read-only session that switched branch keeps the work on that
+/// branch. A read-only switch writes no `meta.active`, so the copy used to open on `main` and
+/// save the branch's pending steps there.
+#[test]
+fn save_as_after_a_read_only_switch_keeps_the_branch() {
+    let d = TempDir::new("rosaveas");
+    let (mut h, path) = saved(&d, 2099);
+    let main_doc = h.doc();
+    raw(&mut h, "branch", json!({"name": "B", "switch": false})).unwrap();
+    let mut s = Session::empty();
+    let (project, _) = ProjectHandle::open_file(&mut s, &path, 95).unwrap();
+    let mut h2 = H { s, project, trail: Vec::new() };
+    raw(&mut h2, "switchbranch", json!({"branch": "B"})).unwrap();
+    assert_eq!(current(&mut h2), "B");
+    h2.run("newpage", json!({"title": "mine"})).unwrap();
+    let mine = h2.doc();
+    let other = d.path("rescued.ecad");
+    let r = raw(&mut h2, "saveas", json!({"path": other}));
+    assert!(r.is_ok(), "{r:?}");
+    assert_eq!(current(&mut h2), "B");
+    close_all(&mut h2.s);
+    drop(h2);
+    let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(&other), 1, "probe").unwrap();
+    assert_eq!(o.project.project().branch_record().name, "B");
+    let opened_doc = o.ledger.document().clone();
+    drop(o);
+    verify(&other);
+    verify(&path);
+    assert_eq!(opened_doc, mine, "the rescued file opens on B with the edits");
+    assert_ne!(opened_doc, main_doc);
+    drop(h);
+}

@@ -264,8 +264,6 @@ impl HistoryPanel {
             return;
         }
         let limit = history::STEPS_PAGE * (self.steps_more + 1);
-        let now = ecad_cadcraft::history::short_time(None, None);
-        let _ = now;
         let rows = history::steps(p, sel.branch, Some(sel.seq + 1), limit).unwrap_or_default();
         let today = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
         self.steps = rows

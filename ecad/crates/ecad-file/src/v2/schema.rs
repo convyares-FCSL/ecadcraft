@@ -75,7 +75,11 @@ impl BranchId {
 
     /// From 32 hex digits.
     pub fn parse(text: &str) -> Option<Self> {
-        let n = u128::from_str_radix(text.trim(), 16).ok().filter(|_| text.trim().len() == 32)?;
+        let t = text.trim();
+        if t.len() != 32 || !t.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let n = u128::from_str_radix(t, 16).ok()?;
         Some(BranchId(n.to_be_bytes()))
     }
 
