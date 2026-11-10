@@ -18,6 +18,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{Document, End, Properties};
+use crate::id::{FolderId, PageId};
+use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
@@ -61,118 +63,134 @@ fn kept<T: Copy + Ord>(a: &[T], b: &[T]) -> BTreeSet<T> {
 /// The ops that turn `from` into `to` (module docs). `keep_project_key` filters the project's
 /// own properties.
 pub fn ops_between(from: &Document, to: &Document, keep_project_key: &dyn Fn(&str) -> bool) -> Vec<Op> {
+    ops_between_in(from, to, keep_project_key, None, true)
+}
+
+/// The IDs to compare: those of `scope` when given, else every key of either map.
+fn ids<K: Ord + Copy, A, B>(a: &BTreeMap<K, A>, b: &BTreeMap<K, B>, scope: Option<&BTreeSet<K>>) -> Vec<K> {
+    match scope {
+        Some(s) => s.iter().copied().collect(),
+        None => a.keys().chain(b.keys()).copied().collect::<BTreeSet<K>>().into_iter().collect(),
+    }
+}
+
+/// [`ops_between`] over the objects `scope` names only (brief 020b, merge: its cost follows
+/// the touched set, not the project). Objects outside it are assumed equal in both states. The
+/// page and folder orders are compared whole when the scope says they changed; the project's
+/// own properties and settings only with `project`.
+pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(&str) -> bool, scope: Option<&Touched>, project: bool) -> Vec<Op> {
     let all = |_: &str| true;
     let mut removes = Vec::new();
     let mut adds = Vec::new();
     let mut changes = Vec::new();
 
     // Cables: members are compared whole; a cable whose members differ is removed and added.
-    for (id, a) in &from.cables {
-        match to.cables.get(id) {
-            Some(b) if a.members == b.members => props(ObjectRef::Cable(*id), &a.properties, &b.properties, &all, &mut changes),
-            _ => removes.push(Op::DeleteCable { id: *id, cable: a.clone() }),
-        }
-    }
-    for (id, b) in &to.cables {
-        if from.cables.get(id).is_none_or(|a| a.members != b.members) {
-            adds.push(Op::CreateCable { id: *id, cable: b.clone() });
+    for id in ids(&from.cables, &to.cables, scope.map(|s| &s.cables)) {
+        match (from.cables.get(&id), to.cables.get(&id)) {
+            (Some(a), Some(b)) if a.members == b.members => props(ObjectRef::Cable(id), &a.properties, &b.properties, &all, &mut changes),
+            (Some(a), Some(b)) => {
+                removes.push(Op::DeleteCable { id, cable: a.clone() });
+                adds.push(Op::CreateCable { id, cable: b.clone() });
+            }
+            (Some(a), None) => removes.push(Op::DeleteCable { id, cable: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateCable { id, cable: b.clone() }),
+            (None, None) => {}
         }
     }
     // Conductors: properties and ends change in place.
-    for (id, a) in &from.conductors {
-        match to.conductors.get(id) {
-            Some(b) => {
-                props(ObjectRef::Conductor(*id), &a.properties, &b.properties, &all, &mut changes);
+    for id in ids(&from.conductors, &to.conductors, scope.map(|s| &s.conductors)) {
+        match (from.conductors.get(&id), to.conductors.get(&id)) {
+            (Some(a), Some(b)) => {
+                props(ObjectRef::Conductor(id), &a.properties, &b.properties, &all, &mut changes);
                 for end in End::BOTH {
                     if a.end(end) != b.end(end) {
-                        changes.push(Op::AttachEnd { conductor: *id, end, before: a.end(end), after: b.end(end) });
+                        changes.push(Op::AttachEnd { conductor: id, end, before: a.end(end), after: b.end(end) });
                     }
                 }
             }
-            None => removes.push(Op::DeleteConductor { id: *id, conductor: a.clone() }),
-        }
-    }
-    for (id, b) in &to.conductors {
-        if !from.conductors.contains_key(id) {
-            adds.push(Op::CreateConductor { id: *id, conductor: b.clone() });
+            (Some(a), None) => removes.push(Op::DeleteConductor { id, conductor: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateConductor { id, conductor: b.clone() }),
+            (None, None) => {}
         }
     }
     // Representations change in place.
-    for (id, a) in &from.representations {
-        match to.representations.get(id) {
-            Some(b) if a != b => changes.push(Op::ModifyRepresentation { id: *id, before: a.clone(), after: b.clone() }),
-            Some(_) => {}
-            None => removes.push(Op::UnlinkRepresentation { id: *id, rep: a.clone() }),
-        }
-    }
-    for (id, b) in &to.representations {
-        if !from.representations.contains_key(id) {
-            adds.push(Op::LinkRepresentation { id: *id, rep: b.clone() });
+    for id in ids(&from.representations, &to.representations, scope.map(|s| &s.representations)) {
+        match (from.representations.get(&id), to.representations.get(&id)) {
+            (Some(a), Some(b)) if a != b => changes.push(Op::ModifyRepresentation { id, before: a.clone(), after: b.clone() }),
+            (Some(_), Some(_)) | (None, None) => {}
+            (Some(a), None) => removes.push(Op::UnlinkRepresentation { id, rep: a.clone() }),
+            (None, Some(b)) => adds.push(Op::LinkRepresentation { id, rep: b.clone() }),
         }
     }
     // Terminals: removed and added when they differ.
-    for (id, a) in &from.terminals {
-        if to.terminals.get(id) != Some(a) {
-            removes.push(Op::RemoveTerminal { id: *id, terminal: a.clone() });
-        }
-    }
-    for (id, b) in &to.terminals {
-        if from.terminals.get(id) != Some(b) {
-            adds.push(Op::AddTerminal { id: *id, terminal: b.clone() });
+    for id in ids(&from.terminals, &to.terminals, scope.map(|s| &s.terminals)) {
+        let (a, b) = (from.terminals.get(&id), to.terminals.get(&id));
+        if a != b {
+            if let Some(a) = a {
+                removes.push(Op::RemoveTerminal { id, terminal: a.clone() });
+            }
+            if let Some(b) = b {
+                adds.push(Op::AddTerminal { id, terminal: b.clone() });
+            }
         }
     }
     // Components: properties in place; another definition is a remove and an add.
-    for (id, a) in &from.components {
-        match to.components.get(id) {
-            Some(b) if a.definition == b.definition => props(ObjectRef::Component(*id), &a.properties, &b.properties, &all, &mut changes),
-            _ => removes.push(Op::DeleteComponent { id: *id, component: a.clone() }),
-        }
-    }
-    for (id, b) in &to.components {
-        if from.components.get(id).is_none_or(|a| a.definition != b.definition) {
-            adds.push(Op::CreateComponent { id: *id, component: b.clone() });
+    for id in ids(&from.components, &to.components, scope.map(|s| &s.components)) {
+        match (from.components.get(&id), to.components.get(&id)) {
+            (Some(a), Some(b)) if a.definition == b.definition => props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes),
+            (Some(a), Some(b)) => {
+                removes.push(Op::DeleteComponent { id, component: a.clone() });
+                adds.push(Op::CreateComponent { id, component: b.clone() });
+            }
+            (Some(a), None) => removes.push(Op::DeleteComponent { id, component: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateComponent { id, component: b.clone() }),
+            (None, None) => {}
         }
     }
     // Items change in place.
-    for (id, a) in &from.items {
-        match to.items.get(id) {
-            Some(b) if a != b => changes.push(Op::ModifyItem { id: *id, before: a.clone(), after: b.clone() }),
-            Some(_) => {}
-            None => removes.push(Op::RemoveItem { id: *id, item: a.clone() }),
-        }
-    }
-    for (id, b) in &to.items {
-        if !from.items.contains_key(id) {
-            adds.push(Op::AddItem { id: *id, item: b.clone() });
+    for id in ids(&from.items, &to.items, scope.map(|s| &s.items)) {
+        match (from.items.get(&id), to.items.get(&id)) {
+            (Some(a), Some(b)) if a != b => changes.push(Op::ModifyItem { id, before: a.clone(), after: b.clone() }),
+            (Some(_), Some(_)) | (None, None) => {}
+            (Some(a), None) => removes.push(Op::RemoveItem { id, item: a.clone() }),
+            (None, Some(b)) => adds.push(Op::AddItem { id, item: b.clone() }),
         }
     }
     // Definitions and layers: removed and added when they differ.
-    for (id, a) in &from.definitions {
-        if to.definitions.get(id) != Some(a) {
-            removes.push(Op::RemoveDefinition { id: *id, definition: a.clone() });
+    for id in ids(&from.definitions, &to.definitions, scope.map(|s| &s.definitions)) {
+        let (a, b) = (from.definitions.get(&id), to.definitions.get(&id));
+        if a != b {
+            if let Some(a) = a {
+                removes.push(Op::RemoveDefinition { id, definition: a.clone() });
+            }
+            if let Some(b) = b {
+                adds.push(Op::EmbedDefinition { id, definition: b.clone() });
+            }
         }
     }
-    for (id, b) in &to.definitions {
-        if from.definitions.get(id) != Some(b) {
-            adds.push(Op::EmbedDefinition { id: *id, definition: b.clone() });
-        }
-    }
-    for (id, a) in &from.layers {
-        if to.layers.get(id) != Some(a) {
-            removes.push(Op::RemoveLayer { id: *id, layer: a.clone() });
-        }
-    }
-    for (id, b) in &to.layers {
-        if from.layers.get(id) != Some(b) {
-            adds.push(Op::AddLayer { id: *id, layer: b.clone() });
+    for id in ids(&from.layers, &to.layers, scope.map(|s| &s.layers)) {
+        let (a, b) = (from.layers.get(&id), to.layers.get(&id));
+        if a != b {
+            if let Some(a) = a {
+                removes.push(Op::RemoveLayer { id, layer: a.clone() });
+            }
+            if let Some(b) = b {
+                adds.push(Op::AddLayer { id, layer: b.clone() });
+            }
         }
     }
 
     // Pages: those kept in place change only their properties; the others are removed (from the
     // highest index down) and inserted in the target's order.
-    let same_title: Vec<_> =
-        from.page_order.iter().copied().filter(|p| to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.title == b.title)).collect();
-    let stay = kept(&same_title, &to.page_order);
+    let scoped_pages: Option<BTreeSet<PageId>> = scope.map(|s| s.pages.iter().chain(&s.page_properties).copied().collect());
+    let page_changed = |p: &PageId| scoped_pages.as_ref().is_none_or(|s| s.contains(p));
+    let same_title: Vec<PageId> = from
+        .page_order
+        .iter()
+        .copied()
+        .filter(|p| !page_changed(p) || to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.title == b.title))
+        .collect();
+    let stay: BTreeSet<PageId> = if same_title == to.page_order { same_title.iter().copied().collect() } else { kept(&same_title, &to.page_order) };
     let mut order = from.page_order.clone();
     let mut page_removes = Vec::new();
     for i in (0..order.len()).rev() {
@@ -187,7 +205,9 @@ pub fn ops_between(from: &Document, to: &Document, keep_project_key: &dyn Fn(&st
     let mut page_adds = Vec::new();
     for (i, id) in to.page_order.iter().enumerate() {
         if stay.contains(id) {
-            if let (Some(a), Some(b)) = (from.pages.get(id), to.pages.get(id)) {
+            if page_changed(id)
+                && let (Some(a), Some(b)) = (from.pages.get(id), to.pages.get(id))
+            {
                 props(ObjectRef::Page(*id), &a.properties, &b.properties, &all, &mut changes);
             }
         } else if let Some(page) = to.pages.get(id) {
@@ -196,7 +216,8 @@ pub fn ops_between(from: &Document, to: &Document, keep_project_key: &dyn Fn(&st
     }
 
     // Folders: as pages; a kept folder's name or parent changes in place.
-    let stay = kept(&from.folder_order.iter().copied().filter(|f| to.folders.contains_key(f)).collect::<Vec<_>>(), &to.folder_order);
+    let present: Vec<FolderId> = from.folder_order.iter().copied().filter(|f| to.folders.contains_key(f)).collect();
+    let stay: BTreeSet<FolderId> = if present == to.folder_order { present.iter().copied().collect() } else { kept(&present, &to.folder_order) };
     let mut order = from.folder_order.clone();
     let mut folder_removes = Vec::new();
     for i in (0..order.len()).rev() {
@@ -219,9 +240,11 @@ pub fn ops_between(from: &Document, to: &Document, keep_project_key: &dyn Fn(&st
     }
 
     // The project.
-    props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
-    if from.settings != to.settings {
-        changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
+    if project {
+        props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        if from.settings != to.settings {
+            changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
+        }
     }
 
     let mut out = Vec::with_capacity(removes.len() + adds.len() + changes.len());

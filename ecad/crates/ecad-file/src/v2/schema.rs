@@ -125,6 +125,9 @@ pub enum VersionKind {
     Revision,
     /// An automatic snapshot, a loading accelerator only: never shown as a version.
     Auto,
+    /// The merge index (brief 020b, FQ2): one row per live merge into the branch, named by its
+    /// `seq` as [`auto_name`]; no chunks.
+    Merge,
 }
 
 impl VersionKind {
@@ -134,6 +137,7 @@ impl VersionKind {
             VersionKind::User => 1,
             VersionKind::Revision => 2,
             VersionKind::Auto => 3,
+            VersionKind::Merge => 4,
         }
     }
 }
@@ -278,10 +282,65 @@ pub struct VersionRecord {
     /// The version's description, when it was given one (FQ5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// A merge index row's facts (kind `merge` only, FQ2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge: Option<MergeRow>,
     /// Fields this build does not know (a newer build's optional additions): kept as read and
     /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
     #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// What a merge index row records (FQ2): the merge's source branch, the source head it merged and
+/// the common ancestor it compared against. The row's `point` is the merge step itself (or the
+/// redo that made it live again).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MergeRow {
+    pub source: String,
+    pub source_head: Point,
+    pub ancestor: AncestorPoint,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// A step of a named branch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AncestorPoint {
+    pub branch: String,
+    pub seq: u64,
+    pub chain: String,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl MergeRow {
+    /// The row of a merge transaction's kind (`None` for any other kind).
+    pub fn of(kind: &ecad_model::TxKind) -> Option<Self> {
+        match kind {
+            ecad_model::TxKind::Merge { source, source_head, ancestor } => Some(Self {
+                source: BranchId(*source).hex(),
+                source_head: Point::new(source_head.seq, &source_head.chain),
+                ancestor: AncestorPoint {
+                    branch: BranchId(ancestor.branch).hex(),
+                    seq: ancestor.seq,
+                    chain: chain::hex(&ancestor.chain),
+                    extra: BTreeMap::new(),
+                },
+                extra: BTreeMap::new(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// The source branch's ID.
+    pub fn source_id(&self) -> Option<BranchId> {
+        BranchId::parse(&self.source)
+    }
+
+    /// The ancestor's branch ID.
+    pub fn ancestor_id(&self) -> Option<BranchId> {
+        BranchId::parse(&self.ancestor.branch)
+    }
 }
 
 /// `meta.cache`: the snapshot policy and, per branch, the latest snapshot (EEP-0005 §3.1).

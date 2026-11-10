@@ -1005,6 +1005,7 @@ fn kind_word(k: TxKind) -> &'static str {
         TxKind::Edit => "edit",
         TxKind::Undo { .. } => "undo",
         TxKind::Redo { .. } => "redo",
+        TxKind::Merge { .. } => "merge",
     }
 }
 

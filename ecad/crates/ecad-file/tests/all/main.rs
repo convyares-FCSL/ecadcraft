@@ -14,6 +14,7 @@ mod container_v2;
 mod disk_contracts;
 mod disk_edge_contracts;
 mod incremental_acceptance;
+mod merge_store_contracts;
 mod records_contracts;
 mod recovery_contracts;
 mod save_contracts;

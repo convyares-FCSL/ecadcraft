@@ -160,7 +160,7 @@ pub fn verify(store: &Store) -> VerifyReport {
                     ecad_model::tag::note_ops(&mut high, std::slice::from_ref(op));
                 }
                 match tx.kind {
-                    TxKind::Edit => {
+                    TxKind::Edit | TxKind::Merge { .. } => {
                         stacks.0.push((tx.seq, tx.id));
                         stacks.1.clear();
                     }

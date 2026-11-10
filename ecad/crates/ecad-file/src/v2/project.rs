@@ -20,8 +20,8 @@ use serde_json::{Value, json};
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, Point, Release, SNAPSHOT_EVERY_RANGE,
-    STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, MergeRow, Merged, Point, Release,
+    SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
 use crate::chain::{self, ChainKind, Hash};
@@ -204,7 +204,7 @@ impl StackState {
     fn advance(&mut self, txs: &[Transaction]) -> bool {
         for tx in txs {
             match tx.kind {
-                TxKind::Edit => {
+                TxKind::Edit | TxKind::Merge { .. } => {
                     self.undo.push((tx.seq, tx.id));
                     self.redo.clear();
                     self.redo_hidden = 0;
@@ -571,11 +571,11 @@ impl History for StoreHistory {
             for (h, _) in heads.into_iter().rev() {
                 use crate::v1::TxKind as K;
                 let (push, pop, clears) = match (h.kind, undo) {
-                    (K::Edit, true) | (K::Redo(_), true) => (true, false, false),
+                    (K::Edit | K::Merge(_), true) | (K::Redo(_), true) => (true, false, false),
                     (K::Undo(_), true) => (false, true, false),
                     (K::Undo(_), false) => (true, false, false),
                     (K::Redo(_), false) => (false, true, false),
-                    (K::Edit, false) => (false, false, true),
+                    (K::Edit | K::Merge(_), false) => (false, false, true),
                 };
                 if clears {
                     break 'walk;
@@ -675,7 +675,7 @@ impl History for StoreHistory {
                 prev = range.last;
                 for (q, id, kind) in range.rows {
                     match kind {
-                        crate::v1::TxKind::Edit => {
+                        crate::v1::TxKind::Edit | crate::v1::TxKind::Merge(_) => {
                             undo.push((q, id));
                             redo.clear();
                         }
@@ -744,6 +744,49 @@ pub struct ProjectV2 {
     last_save: Option<SavedV2>,
     /// `meta.writer` names this build already (written by the first save of a session).
     wrote_writer: bool,
+    /// Merges committed this session that close their source branch when saved (design 020
+    /// §4.2, owner answer 9): the merge's ID and the source.
+    closing: BTreeMap<TxId, BranchId>,
+    /// Sources reopened by an undo of a merge, by the branch and the undo's `seq`: a redo of
+    /// that undo closes them again (design 020 §4.3). Kept for the session.
+    reopened: BTreeMap<(BranchId, u64), BranchId>,
+}
+
+/// A live merge into a branch (the merge index, FQ2): its step and what it recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeIndex {
+    /// The step that made it live: the merge, or the redo of its undo.
+    pub seq: u64,
+    pub source: BranchId,
+    pub source_head: (u64, Hash),
+    pub ancestor: (BranchId, u64, Hash),
+}
+
+impl MergeIndex {
+    fn of(seq: u64, row: &MergeRow) -> Result<Self, String> {
+        Ok(Self {
+            seq,
+            source: row.source_id().ok_or("a merge row names no source branch")?,
+            source_head: (row.source_head.seq, row.source_head.hash()?),
+            ancestor: (
+                row.ancestor_id().ok_or("a merge row names no ancestor branch")?,
+                row.ancestor.seq,
+                chain::parse_hex(&row.ancestor.chain).ok_or("a merge row's ancestor has no chain value")?,
+            ),
+        })
+    }
+}
+
+/// What following merges, their undos and redos over some steps gives (shared by Save, which
+/// writes it, and [`ProjectV2::merge_index`], which only reads).
+#[derive(Debug, Default)]
+struct MergeFollow {
+    /// Rows to write (`Some`) or remove (`None`), by `seq`.
+    rows: BTreeMap<u64, Option<MergeRow>>,
+    /// Source branches to close (merged into this branch at `seq`) or reopen (`None`).
+    status: Vec<(BranchId, Option<u64>)>,
+    /// Sources reopened by an undo, by the undo's `seq`.
+    reopened: BTreeMap<u64, BranchId>,
 }
 
 /// A project opened from a version 2 database.
@@ -1023,6 +1066,8 @@ impl ProjectV2 {
             created_ms: facts.created_ms,
             last_save: None,
             wrote_writer: false,
+            closing: BTreeMap::new(),
+            reopened: BTreeMap::new(),
         };
         Ok(OpenedV2 { project, ledger: l.ledger, report: l.report })
     }
@@ -1120,6 +1165,7 @@ impl ProjectV2 {
                     redo_hidden: rec.3,
                     stack_cap: STACK_CAP,
                     description: None,
+                    merge: None,
                     extra: BTreeMap::new(),
                 },
             )?;
@@ -1167,6 +1213,8 @@ impl ProjectV2 {
             created_ms,
             last_save: Some(saved.clone()),
             wrote_writer: true,
+            closing: BTreeMap::new(),
+            reopened: BTreeMap::new(),
         };
         Ok((me, saved))
     }
@@ -1245,8 +1293,35 @@ impl ProjectV2 {
                 }
             }
         }
+        // The merge index and the sources' statuses follow merges, their undos and redos (FQ2,
+        // FQ3; design 020 §4.3).
+        let follow = self.follow_merges(ledger, &pending, Some(&w))?;
+        for (seq, row) in &follow.rows {
+            match row {
+                Some(row) => w.put_version(self.branch, &merge_record(*seq, self.chain_at(*seq, &chains)?, row))?,
+                None => w.remove_version(self.branch, VersionKind::Merge, &auto_name(*seq))?,
+            }
+        }
+        for (source, merged) in &follow.status {
+            if let Some(mut b) = w.branch(*source)? {
+                match merged {
+                    Some(seq) if b.status == BranchStatus::Open => {
+                        b.status = BranchStatus::Merged;
+                        b.merged = Some(Merged { into: self.branch.hex(), seq: *seq });
+                    }
+                    None if b.status == BranchStatus::Merged => {
+                        b.status = BranchStatus::Open;
+                        b.merged = None;
+                    }
+                    _ => continue,
+                }
+                w.put_branch(*source, &b)?;
+            }
+        }
         let end = ledger.head();
-        if end.saturating_sub(snap.seq) >= cache.every {
+        // A branch's first save writes its first snapshot (020b): until then it opens from its
+        // parent's state at the fork, which costs more than an open.
+        if end.saturating_sub(snap.seq) >= cache.every || (snap.set.is_none() && end > snap.seq) {
             let chain = prev;
             self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, end, chain, VersionKind::Auto, &auto_name(end), None, &mut saved)?;
         }
@@ -1268,9 +1343,208 @@ impl ProjectV2 {
         self.snap_ref = cache.latest.get(&self.branch.hex()).cloned();
         self.cache = cache;
         ledger.mark_persisted(end).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
+        for tx in &pending {
+            self.closing.remove(&tx.id);
+        }
+        for (u, source) in follow.reopened {
+            self.reopened.insert((self.branch, u), source);
+        }
         self.last_save = Some(saved.clone());
         self.wrote_writer = true;
         Ok(saved)
+    }
+
+    /// Follow merges, their undos and redos over `steps` (the branch shown's steps after the
+    /// file's head): which merge index rows to write or remove, and which sources to close or
+    /// reopen. Only the steps' kinds are read, plus the undo and redo stacks when the branch has
+    /// merges at all (in the file, or in `steps`) and a step is an undo or redo. `w`: read the
+    /// stored rows inside Save's write transaction.
+    fn follow_merges(&self, ledger: &Ledger, steps: &[Transaction], w: Option<&super::store::Writer>) -> Result<MergeFollow, SaveErrorV2> {
+        let mut out = MergeFollow::default();
+        let any_merge = steps.iter().any(|t| matches!(t.kind, TxKind::Merge { .. }));
+        let any_step = steps.iter().any(|t| matches!(t.kind, TxKind::Undo { .. } | TxKind::Redo { .. }));
+        if !any_merge && !any_step {
+            return Ok(out);
+        }
+        let rows = match w {
+            Some(w) => w.versions(self.branch, VersionKind::Merge)?,
+            None => self.store.reader()?.versions(self.branch, VersionKind::Merge)?,
+        };
+        let mut live: BTreeMap<u64, MergeRow> = rows.into_iter().filter_map(|v| v.merge.map(|m| (v.point.seq, m))).collect();
+        let reopened_before: BTreeMap<u64, BranchId> =
+            self.reopened.iter().filter(|((b, _), _)| *b == self.branch).map(|((_, u), s)| (*u, *s)).collect();
+        if !any_merge && live.is_empty() && reopened_before.is_empty() && !self.has_undone_merges(ledger, steps) {
+            return Ok(out);
+        }
+        let Some(first) = steps.first() else { return Ok(out) };
+        let mut stacks = self.stacks_at_ro(ledger, first.seq.saturating_sub(1))?;
+        // Merges undone in this pass, by the undo's `seq`.
+        let mut undone: BTreeMap<u64, MergeRow> = BTreeMap::new();
+        for tx in steps {
+            match tx.kind {
+                TxKind::Merge { .. } => {
+                    if let Some(row) = MergeRow::of(&tx.kind) {
+                        out.rows.insert(tx.seq, Some(row.clone()));
+                        if let Some(source) = self.closing.get(&tx.id) {
+                            out.status.push((*source, Some(tx.seq)));
+                        }
+                        live.insert(tx.seq, row);
+                    }
+                }
+                TxKind::Undo { .. } => {
+                    if stacks.undo.is_empty() && stacks.undo_hidden > 0 {
+                        stacks = self.stacks_at_ro(ledger, tx.seq.saturating_sub(1))?;
+                    }
+                    if let Some((x, _)) = stacks.undo.last().copied()
+                        && let Some(row) = live.remove(&x)
+                    {
+                        out.rows.insert(x, None);
+                        if let Some(source) = row.source_id() {
+                            out.status.push((source, None));
+                            out.reopened.insert(tx.seq, source);
+                        }
+                        undone.insert(tx.seq, row);
+                    }
+                }
+                TxKind::Redo { .. } => {
+                    if stacks.redo.is_empty() && stacks.redo_hidden > 0 {
+                        stacks = self.stacks_at_ro(ledger, tx.seq.saturating_sub(1))?;
+                    }
+                    if let Some((u, _)) = stacks.redo.last().copied() {
+                        let row = match undone.remove(&u) {
+                            Some(r) => Some(r),
+                            None => self.undone_merge(ledger, u),
+                        };
+                        if let Some(row) = row {
+                            out.rows.insert(tx.seq, Some(row.clone()));
+                            if let Some(source) = out.reopened.remove(&u).or_else(|| reopened_before.get(&u).copied()) {
+                                out.status.push((source, Some(tx.seq)));
+                            }
+                            live.insert(tx.seq, row);
+                        }
+                    }
+                }
+                TxKind::Edit => {}
+            }
+            if !stacks.advance(std::slice::from_ref(tx)) {
+                stacks = self.stacks_at_ro(ledger, tx.seq)?;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Whether a redo in `steps` may redo a merge undone before them: a redo whose undo's label
+    /// is a merge's (a cheap filter; [`ProjectV2::undone_merge`] then reads the stacks).
+    fn has_undone_merges(&self, ledger: &Ledger, steps: &[Transaction]) -> bool {
+        let _ = ledger;
+        steps.iter().any(|t| matches!(t.kind, TxKind::Redo { .. }) && (t.label.starts_with("Merge ") || t.label.starts_with("Update from ")))
+    }
+
+    /// The merge an undo at `u` undid, when the undo is of a merge (or of a redo of one): read
+    /// from the undo's own stack position. Used for a redo whose undo was saved before.
+    fn undone_merge(&self, ledger: &Ledger, u: u64) -> Option<MergeRow> {
+        let mut at = u;
+        for _ in 0..64 {
+            // The step the undo at `at` undid: the undo stack's top just before it.
+            let (x, _) = *self.stacks_at_ro(ledger, at.checked_sub(1)?).ok()?.undo.last()?;
+            let tx = match ledger.transaction(x) {
+                Some(t) => t.clone(),
+                None => self.history().transaction(x).ok()?,
+            };
+            match tx.kind {
+                TxKind::Merge { .. } => return MergeRow::of(&tx.kind),
+                // A redo: the undo it redid is the redo stack's top just before it.
+                TxKind::Redo { .. } => at = self.stacks_at_ro(ledger, x.checked_sub(1)?).ok()?.redo.last()?.0,
+                TxKind::Edit | TxKind::Undo { .. } => return None,
+            }
+        }
+        None
+    }
+
+    /// The live merges into the branch shown (the merge index, FQ2), its unsaved steps
+    /// included, oldest first.
+    ///
+    /// # Errors
+    /// The file could not be read.
+    pub fn merge_index(&self, ledger: &Ledger) -> Result<Vec<MergeIndex>, String> {
+        let mut rows: BTreeMap<u64, MergeRow> = self
+            .store
+            .reader()
+            .map_err(|e| e.to_string())?
+            .versions(self.branch, VersionKind::Merge)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter_map(|v| v.merge.map(|m| (v.point.seq, m)))
+            .collect();
+        if ledger.head() > self.head.0 && ledger.base() <= self.head.0 {
+            let start = usize::try_from(self.head.0 - ledger.base()).unwrap_or(usize::MAX);
+            let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
+            let follow = self.follow_merges(ledger, &pending, None).map_err(|e| e.to_string())?;
+            for (seq, row) in follow.rows {
+                match row {
+                    Some(r) => rows.insert(seq, r),
+                    None => rows.remove(&seq),
+                };
+            }
+        }
+        rows.iter().map(|(seq, r)| MergeIndex::of(*seq, r)).collect()
+    }
+
+    /// The live merges into `branch` as saved (the merge index, FQ2), oldest first.
+    ///
+    /// # Errors
+    /// The file could not be read.
+    pub fn merge_rows(&self, branch: BranchId) -> Result<Vec<MergeIndex>, String> {
+        let r = self.store.reader().map_err(|e| e.to_string())?;
+        let rows = r.versions(branch, VersionKind::Merge).map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for v in &rows {
+            if let Some(m) = &v.merge {
+                out.push(MergeIndex::of(v.point.seq, m)?);
+            }
+        }
+        out.sort_by_key(|m| m.seq);
+        Ok(out)
+    }
+
+    /// Close `source` when the merge `tx` is saved (the merge dialog's Close branch, design 020
+    /// §4.2). Forgotten if the merge is never saved.
+    pub fn close_on_save(&mut self, tx: TxId, source: BranchId) {
+        self.closing.insert(tx, source);
+    }
+
+    /// The chain value of `branch` at its stored step `seq` (its seed at 0).
+    ///
+    /// # Errors
+    /// The step is not stored, or the branch's lineage cannot be read.
+    pub fn chain_of(&self, branch: BranchId, seq: u64) -> Result<Hash, String> {
+        let r = self.store.reader().map_err(|e| e.to_string())?;
+        if seq == 0 {
+            let line = lineage(&r, self.project, branch)?;
+            return line.first().map(|l| l.seed).ok_or_else(|| "an empty lineage".to_string());
+        }
+        r.tx(branch, seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c).ok_or_else(|| format!("step {seq} is not stored"))
+    }
+
+    /// Mark `source` merged into `into` at its step `seq`, written at once (a merge with nothing
+    /// to merge, closed from the merge dialog: design 020 §4.2).
+    ///
+    /// # Errors
+    /// As [`ProjectV2::create_branch`].
+    pub fn mark_merged(&mut self, source: BranchId, into: BranchId, seq: u64) -> Result<BranchRecord, BranchError> {
+        self.check_writable()?;
+        if source == BranchId::main_of(self.project.0) {
+            return Err(BranchError::Refused("main is the release line and is always open.".into()));
+        }
+        self.update_branch(source, |b| {
+            b.status = BranchStatus::Merged;
+            b.merged = Some(Merged { into: into.hex(), seq });
+        })
+    }
+
+    /// Whether the merge `tx` (unsaved) will close its source when saved.
+    pub fn closes_on_save(&self, tx: TxId) -> Option<BranchId> {
+        self.closing.get(&tx).copied()
     }
 
     /// The chain value at `seq`: from this save's rows, or the stored row.
@@ -1337,6 +1611,7 @@ impl ProjectV2 {
                 redo_hidden,
                 stack_cap: STACK_CAP,
                 description: None,
+                merge: None,
                 extra: BTreeMap::new(),
             },
         )?;
@@ -1363,7 +1638,7 @@ impl ProjectV2 {
         let mut rec = self.rec.clone();
         rec.head = Point::new(seq, &chain);
         w.put_branch(self.branch, &rec)?;
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
             for v in r.versions(self.branch, kind)? {
                 if v.point.seq > seq {
                     w.remove_version(self.branch, kind, &v.name)?;
@@ -1384,43 +1659,17 @@ impl ProjectV2 {
     /// entries of the snapshot's stacks are read from the file (the record's cap at a time, walking
     /// back only as far as they go) and kept. A point before the snapshot is read from the file.
     fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
-        let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
-        if at >= self.base_seq && self.base_seq >= ledger.base() {
-            let from = usize::try_from(self.base_seq - ledger.base()).unwrap_or(usize::MAX);
-            let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
-            let txs = ledger.log().get(from..to).unwrap_or_default();
-            loop {
-                let mut s = self.base_stacks.clone();
-                if s.advance(txs) {
-                    return Ok(s);
-                }
-                let history = self.history();
-                let base = &mut self.base_stacks;
-                let cap = base.cap.max(1);
-                let mut grew = false;
-                for undo in [true, false] {
-                    let (stack, hidden) = if undo { (&mut base.undo, &mut base.undo_hidden) } else { (&mut base.redo, &mut base.redo_hidden) };
-                    if *hidden == 0 {
-                        continue;
-                    }
-                    let n = (*hidden).min(cap);
-                    let more = history.stack_slice(self.base_seq, undo, stack.len() as u64, n).map_err(enc)?;
-                    if more.len() as u64 != n {
-                        return Err(SaveErrorV2::Encode("the history holds fewer undo steps than recorded".into()));
-                    }
-                    let mut all = more;
-                    all.append(stack);
-                    *stack = all;
-                    *hidden -= n;
-                    grew = true;
-                }
-                if !grew {
-                    return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
-                }
-            }
-        }
-        let (undo, redo) = self.history().stacks_at(at).map_err(enc)?;
-        Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0, cap: 0 })
+        let history = self.history();
+        let mut base = std::mem::take(&mut self.base_stacks);
+        let r = stacks_from(&*history, &mut base, self.base_seq, ledger, at);
+        self.base_stacks = base;
+        r
+    }
+
+    /// [`ProjectV2::stacks_at`] without keeping what it read (for reads that do not save).
+    fn stacks_at_ro(&self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
+        let mut base = self.base_stacks.clone();
+        stacks_from(&*self.history(), &mut base, self.base_seq, ledger, at)
     }
 
     /// The tag high-water mark at `at`: from the one at the snapshot this project was opened from
@@ -1796,6 +2045,67 @@ impl ProjectV2 {
 }
 
 /// Whether `tx` issues revision `name`: it sets some `rev.<n>.issued` to `name` (brief 019).
+/// The undo and redo stacks at `at`: from `base` (those at `base_seq`, the snapshot opened from)
+/// and the transactions after it in memory. When that pops below what `base` holds, its next
+/// entries are read from `history` (the record's cap at a time, walking back only as far as they
+/// go) and kept in `base`. A point before `base_seq` is read from the history.
+fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
+    let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
+    if at >= base_seq && base_seq >= ledger.base() {
+        let from = usize::try_from(base_seq - ledger.base()).unwrap_or(usize::MAX);
+        let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
+        let txs = ledger.log().get(from..to).unwrap_or_default();
+        loop {
+            let mut s = base.clone();
+            if s.advance(txs) {
+                return Ok(s);
+            }
+            let cap = base.cap.max(1);
+            let mut grew = false;
+            for undo in [true, false] {
+                let (stack, hidden) = if undo { (&mut base.undo, &mut base.undo_hidden) } else { (&mut base.redo, &mut base.redo_hidden) };
+                if *hidden == 0 {
+                    continue;
+                }
+                let n = (*hidden).min(cap);
+                let more = history.stack_slice(base_seq, undo, stack.len() as u64, n).map_err(enc)?;
+                if more.len() as u64 != n {
+                    return Err(SaveErrorV2::Encode("the history holds fewer undo steps than recorded".into()));
+                }
+                let mut all = more;
+                all.append(stack);
+                *stack = all;
+                *hidden -= n;
+                grew = true;
+            }
+            if !grew {
+                return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
+            }
+        }
+    }
+    let (undo, redo) = history.stacks_at(at).map_err(enc)?;
+    Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0, cap: 0 })
+}
+
+/// A merge index row (FQ2) for the step at `seq` with chain value `chain`.
+fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
+    VersionRecord {
+        kind: VersionKind::Merge,
+        name: auto_name(seq),
+        point: Point::new(seq, &chain),
+        chunks: BTreeMap::new(),
+        release: None,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        undo_hidden: 0,
+        redo_hidden: 0,
+        stack_cap: 0,
+        description: None,
+        merge: Some(row.clone()),
+        extra: BTreeMap::new(),
+    }
+}
+
 fn issues(tx: &Transaction, name: &str) -> bool {
     tx.ops.iter().any(|op| {
         matches!(op, Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }
