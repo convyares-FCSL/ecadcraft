@@ -394,6 +394,18 @@ fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>
     Ok(m)
 }
 
+/// The components a `model:component:<b>` chunk of `set` holds (brief 020b: naming the devices a
+/// version changed without building the document).
+///
+/// # Errors
+/// Not a component chunk of `set`, or its JSON does not decode.
+pub fn components_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<ComponentId, Component>, String> {
+    match parse_chunk(set, key, body)? {
+        Parsed::Component(m) => Ok(m),
+        _ => Err(format!("{key} is not a component chunk")),
+    }
+}
+
 fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String> {
     let json = |e: serde_json::Error| format!("chunk {key}: {e}");
     if key == META_KEY {

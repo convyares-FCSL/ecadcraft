@@ -35,6 +35,7 @@ pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
     v.extend(crate::sheet_cmds::specs());
     v.extend(crate::history::specs());
+    v.extend(crate::merging::specs());
     v
 }
 

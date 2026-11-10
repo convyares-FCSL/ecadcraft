@@ -1152,6 +1152,19 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
         if seen.contains(&shown_as) {
             continue;
         }
+        // A symbol of a wire, cable or device listed itself is shown through it.
+        if let Obj::Representation(r) = shown_as
+            && let Some(rep) = s.representations.get(&r).or_else(|| a.representations.get(&r))
+        {
+            let subject = match rep.subject {
+                Subject::Component(c) => Obj::Component(c),
+                Subject::Conductor(c) => Obj::Conductor(c),
+                Subject::Cable(c) => Obj::Cable(c),
+            };
+            if objects.contains(&subject) && differs(a, s, subject) && holds(a, subject) == holds(a, shown_as) {
+                continue;
+            }
+        }
         seen.insert(shown_as);
         let (sign, detail) = match (holds(a, obj), holds(s, obj)) {
             (false, true) => ('+', "added".to_string()),
