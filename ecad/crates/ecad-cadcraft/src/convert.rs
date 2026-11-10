@@ -98,6 +98,7 @@ fn kind_for_symbol(s: &SymbolInstance) -> EntityKind {
         scale: Vec3::new(sx, s.placement.scale, 1.0),
         rotation: s.placement.rotation,
         attribs: Vec::new(),
+        clip: None,
         cols: 1,
         rows: 1,
         col_spacing: 0.0,

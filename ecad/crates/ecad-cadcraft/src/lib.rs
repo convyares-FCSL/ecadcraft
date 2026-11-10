@@ -42,6 +42,7 @@ pub mod file;
 pub mod frame;
 pub mod interact;
 pub mod look;
+pub mod oops;
 pub mod preview;
 pub mod project;
 pub mod props;

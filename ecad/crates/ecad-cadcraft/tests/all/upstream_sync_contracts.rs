@@ -389,8 +389,10 @@ fn the_ui_entry_points_on_an_ecad_page_change_nothing() {
         let mut h = fixture();
         let b = before(&mut h);
         let s = std::mem::replace(&mut h.s, cadcraft_engine::Session::empty());
-        let mut app =
-            cadcraft_ui_egui::CadApp::new(s, cadcraft_ui_egui::Services { pick_open: None, pick_save: None, pick_lisp: None, no_file_system: false });
+        let mut app = cadcraft_ui_egui::CadApp::new(
+            s,
+            cadcraft_ui_egui::Services { pick_open: None, pick_save: None, pick_lisp: None, no_file_system: false, pick_pgp: None },
+        );
         let r = f(&mut app);
         let dialog = app.ui.dialog.take();
         h.s = std::mem::replace(&mut app.session, cadcraft_engine::Session::empty());

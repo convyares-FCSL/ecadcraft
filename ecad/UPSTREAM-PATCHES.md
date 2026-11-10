@@ -11,6 +11,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | File | Why |
 | --- | --- |
 | `README.md` | ECAD repository front page |
+| `.git-blame-ignore-revs` | Commits `git blame` skips: the ECAD workspace reformat (PR #46) |
 | `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
@@ -62,3 +63,24 @@ steps of their own are refused on owned documents by the start check instead (th
 `REFUSED_COMMANDS` and `LISP_REFUSED`, owner decision 2026-10-31): the Block Editor (BEDIT, BSAVE,
 BSAVEAS, BCLOSE), in-place reference editing (REFEDIT, REFSET, REFCLOSE), and LISP (expressions
 typed at the command line, APPLOAD, the LISP command, `c:` commands and `(command …)` routines).
+
+The sync to CADCraft 0.19.0 (brief 023, 2026-11-09) needed no new seam points; the three
+conflicting files (`execute.rs`, `interactive.rs`, `file.rs`) keep the same hand-overs, ordered
+before upstream's LISP `U` handling and save options. Paths CADCraft 0.16.0 to 0.19.0 added that
+change a page all reach the commit gate, and the ECAD adapter records or refuses them (overseer
+decisions, 2026-11-09):
+- BREAK and TRIM keep the object's handle for one piece (#2545). The adapter refuses a commit
+  that changes an object with an electrical meaning in place while adding objects without
+  provenance, as it refuses a replacement; on plain drawing they are recorded.
+- OOPS brings back erased objects with their old handles. The adapter records it when it brings
+  back only plain drawing removed by the last erase on the same page, and refuses it, with a
+  reason, otherwise (`ecad-cadcraft/src/oops.rs`).
+- `-ARRAY` copies carry provenance (the transform copy path) and are recorded as copies; MINSERT
+  of an ECAD symbol is refused by the gate, and BLOCK stays refused, so MINSERT has nothing else
+  to insert on an ECAD page.
+- The Find and Replace and TEXTEDIT windows run commands, so they pass the gate.
+
+**Candidate to offer upstream later (not implemented, brief 023):** CADCraft 0.18.0's UI panic
+guard autosaves open drawings through `autosave::plan_with`, which skips owned documents (X5), so
+an ECAD page's unsaved work is not saved when the UI panics (the app keeps running, so the
+project can still be saved). A generic `DocumentOwner::emergency_save` hook would close that gap.

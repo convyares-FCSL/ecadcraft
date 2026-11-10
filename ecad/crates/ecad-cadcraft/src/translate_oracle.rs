@@ -9,7 +9,9 @@
 //! that expects a refusal or runs inside the engine's panic guard, can pass over it.
 //!
 //! Below the comparison, the code is the pre-014 `translate.rs` unchanged, except that its
-//! context is named [`OldCtx`] and it uses the shared [`Translation`] type.
+//! context is named [`OldCtx`] and it uses the shared [`Translation`] type, and that brief 023's
+//! rule (an object with a meaning changed in place beside new objects without provenance is a
+//! split, refused like a replacement) is applied here too, as in the new code.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -220,6 +222,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     let mut counts = [0usize; 4]; // added, modified, removed, copied components
     // Whether an object with a meaning (an item of a representation, a terminal marker) was removed.
     let mut linked_removed = false;
+    // Whether such an object was changed in place (BREAK and TRIM keep the handle since CADCraft
+    // 0.18.0, brief 023).
+    let mut linked_changed = false;
 
     // Removed and changed entities.
     let mut removed: Vec<(Handle, &Arc<Entity>)> = before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
@@ -345,6 +350,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
                 if item != old {
+                    linked_changed |= cx.doc.representation_of_item(id).is_some();
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     counts[1] += 1;
                 }
@@ -377,7 +383,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     let mut fresh_conductor_ends: Vec<(ConductorId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
-    if linked_removed && added.iter().any(|h| !prov.contains_key(h)) {
+    // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
+    // object's handle for one of the pieces since CADCraft 0.18.0; brief 023).
+    if (linked_removed || linked_changed) && added.iter().any(|h| !prov.contains_key(h)) {
         return Err("this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet".into());
     }
     for h in &added {

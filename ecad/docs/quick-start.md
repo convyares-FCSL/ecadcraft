@@ -87,11 +87,13 @@ folded **Developer** section at the bottom of the panel (design 016, "Top bar re
 - *Owner-tried:* not yet.
 
 This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
-Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.15.1**
-(upstream tag `v0.15.1`, commit `660e15c`, brief 007, 2026-10-31; egui 0.37, Rust 1.95 or later).
-The steps below did not change with that sync; the Block Editor, REFEDIT and LISP are refused on ECAD pages (section 9). Your trials recorded below were on the
-earlier CADCraft 0.6.2 base, except your click-only trial of brief 008 on native Windows, which
-was on 0.15.1.
+Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.19.0**
+(upstream tag `v0.19.0`, commit `227e3c38`, brief 023, 2026-11-09; egui 0.37, Rust 1.95 or later;
+before that CADCraft 0.15.1, brief 007). The steps below did not change with either sync; the
+Block Editor, REFEDIT and LISP are refused on ECAD pages, and BREAK, TRIM and OOPS are refused
+where they would split or bring back an object with an electrical meaning (section 9). Your trials
+recorded below were on the earlier CADCraft 0.6.2 base, except your click-only trial of brief 008
+on native Windows, which was on 0.15.1.
 
 **Brief 008 (design `ecad/docs/design/008.md`)**, merged into `dev` (PR #16), changed how
 sections 4 to 7 are done: the ECAD tools work by clicking, connection points and wire ends are marked on
@@ -907,7 +909,8 @@ shows the same facts.
    number as an automatic one. **Potential** and **Cross-section**/**Colour** are edited the same
    way: Potential sets the whole net, the others this wire only; empty returns to the default shown
    faint with its potential (`0.5 (24V)`). Now fix another net to `24V-50`: it is never a dead end;
-   the prompt asks `24V-50 is used by another net. [Swap/Another/Merge] <Another>:`. Enter gives
+   the prompt asks `24V-50 is used by another net. Swap, use another or merge? [Swap/Another/Merge]
+   <Another>:`. Enter gives
    it the next free number (`24V-51`); `S` swaps the two numbers; `M` joins the nets with a pair
    of continuations named `24V-50` when that is electrically sensible, otherwise it says why (for
    example two different potentials).
@@ -1617,6 +1620,16 @@ Your table of three clean runs goes here once you have run it.
   and commands defined in LISP. Each is refused with a message before the drawing changes (a
   command still running is cancelled first, as for any new command); the page, its history and
   the project stay as they were.
+- **Since CADCraft 0.19.0 (brief 023):** BREAK and TRIM that cut a wire, a component's line or
+  another object with an electrical meaning into pieces are refused (on plain drawing they work,
+  and the object keeps its handle). OOPS brings back plain drawing removed by the last erase on
+  the page you are on; for a wire, a device or anything else ECAD records, and after UNDO, REDO or
+  a page switch, it is refused with a message: use UNDO. `-ARRAY` copies devices and wires as COPY
+  does. MINSERT of a symbol is refused.
+- **Window size and position (brief 023):** the trial's window opens centred the first time; after
+  that it reopens at the size and position (and maximized state) it had when you closed it, as
+  CADCraft's own app does. The state is kept by eframe in its `app.ron` under the id `ecad-trial`
+  (on Windows `%APPDATA%\ecad-trial\data\app.ron`); delete that file to start centred again.
 - **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The trial never
   checks at start. CADCraft's **Help > Check for Updates…** item is still in the menu: choosing
   it asks GitHub (`api.github.com`) for CADCraft's releases and may offer a newer CADCraft

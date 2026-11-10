@@ -1039,3 +1039,67 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     assert!(m.contains("no net has number 24V-99"), "{m}");
     assert_eq!(r.log(), before);
 }
+
+// ---------- brief 023: CADCraft 0.19.0 commands on ECAD pages ----------
+
+/// The handles of the lines and polylines on the active page (the sheet frame's included).
+fn page_handles(c: &mut Client) -> Vec<String> {
+    let mut out = Vec::new();
+    for ty in ["line", "lwpolyline"] {
+        let r = c.exec("entities", json!({"type": ty}));
+        out.extend(r["entities"].as_array().into_iter().flatten().filter_map(|e| e["handle"].as_str().map(str::to_string)));
+    }
+    out
+}
+
+/// OOPS, TRIM and -ARRAY through `execute`: OOPS of plain drawing and -ARRAY copies are recorded
+/// as the agent; OOPS of a wire and TRIM through a wire are refused with their reasons; with writes
+/// off all three are refused before anything runs.
+#[test]
+fn oops_trim_and_classic_array_from_an_agent_are_recorded_or_refused() {
+    let mut c = writer();
+    let frame = page_handles(&mut c);
+    c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    let wire: Vec<String> = page_handles(&mut c).into_iter().filter(|h| !frame.contains(h)).collect();
+    assert_eq!(wire.len(), 1, "the wire's route");
+    c.exec("line", json!({"points": [[0, 15], [60, 15]]}));
+    let line: Vec<String> = page_handles(&mut c).into_iter().filter(|h| !wire.contains(h) && !frame.contains(h)).collect();
+    assert_eq!(line.len(), 1);
+    // OOPS of a plain line: one transaction, the agent's.
+    c.exec("erase", json!({"handles": line}));
+    let n = c.log().len();
+    c.exec("oops", json!({}));
+    let log = c.log();
+    assert_eq!(log.len(), n + 1);
+    assert_eq!((log.last().unwrap().label.as_str(), &log.last().unwrap().author), ("OOPS", &Author::Agent(AGENT.into())));
+    // -ARRAY of the line: one transaction, the agent's.
+    c.exec("-array", json!({"handles": line, "rows": 2, "cols": 1, "rowSpacing": 10}));
+    let log = c.log();
+    assert_eq!((log.len(), log.last().unwrap().label.as_str(), &log.last().unwrap().author), (n + 2, "-ARRAY", &Author::Agent(AGENT.into())));
+    // TRIM through the wire's middle, between two cutting edges, is refused.
+    let before = page_handles(&mut c);
+    c.exec("line", json!({"points": [[20, -5], [20, 20]]}));
+    c.exec("line", json!({"points": [[40, -5], [40, 20]]}));
+    let edges: Vec<String> = page_handles(&mut c).into_iter().filter(|h| !before.contains(h)).collect();
+    let doc = c.doc();
+    let n = c.log().len();
+    let m = c.refused("execute", json!({"command": "trim", "params": {"handle": wire[0], "pick": [30, 0], "edges": edges}}));
+    assert!(m.contains("electrical meaning"), "{m}");
+    // OOPS of an erased wire is refused with its reason.
+    c.exec("erase", json!({"handles": [wire[0]]}));
+    let doc_erased = c.doc();
+    let m = c.refused("execute", json!({"command": "oops", "params": {}}));
+    assert!(m.contains("use UNDO"), "{m}");
+    assert_eq!(c.doc(), doc_erased);
+    c.exec("u", json!({}));
+    assert_eq!(c.doc(), doc);
+    assert_eq!(c.log().len(), n + 2, "the erase and its undo; nothing for the refusals");
+
+    let mut r = reader();
+    let before = r.log();
+    for (cmd, params) in [("oops", json!({})), ("trim", json!({"handle": "1", "pick": [0, 0]})), ("-array", json!({"handles": [], "rows": 2}))] {
+        let m = r.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+        assert_eq!(r.log(), before, "{cmd}");
+    }
+}

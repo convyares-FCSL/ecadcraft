@@ -22,7 +22,7 @@ fn mark(x: f64, y: f64, shape: MarkShape, size: f32) -> Mark {
 }
 
 fn xf(scale: f64) -> Xf {
-    Xf { rect: Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0)), center: Vec2::new(0.0, 0.0), scale }
+    Xf { rect: Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0)), center: Vec2::new(0.0, 0.0), scale, twist: 0.0 }
 }
 
 /// Centre and size on screen of one shape.

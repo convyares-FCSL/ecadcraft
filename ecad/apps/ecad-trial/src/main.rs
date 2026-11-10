@@ -17,6 +17,7 @@
 
 use cadcraft_ui_egui::switch::Switch;
 use ecad_trial::startup::{Adapter, StartupTiming, Step, preferred_folder};
+use ecad_trial::window::{self, STENCIL_BITS};
 use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
@@ -70,9 +71,6 @@ impl eframe::App for App {
     }
 }
 
-/// Stencil bits of the window's render pass, as in CADCraft's desktop app (the canvas needs them).
-const STENCIL_BITS: u8 = 8;
-
 fn main() -> eframe::Result {
     let mut timing = StartupTiming::from_env();
     let (snapshots, project) = match parse_args(std::env::args_os().skip(1)) {
@@ -99,13 +97,9 @@ fn main() -> eframe::Result {
         Switch::parse("CADCRAFT_VSYNC", std::env::var("CADCRAFT_VSYNC").ok().as_deref()),
         cfg!(all(unix, not(target_os = "macos"))),
     );
-    let mut options = eframe::NativeOptions {
-        wgpu_options: eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface),
-        viewport: egui::ViewportBuilder::default().with_title(TITLE).with_inner_size([1400.0, 900.0]).with_min_inner_size([900.0, 560.0]),
-        persist_window: false,
-        stencil_buffer: STENCIL_BITS,
-        ..Default::default()
-    };
+    // The window's size and position are remembered between sessions (brief 023).
+    let mut options = window::options(window::restores_window());
+    options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface);
     // As in CADCraft's desktop app: large command previews outgrow wgpu's default buffer cap.
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
         let base = std::sync::Arc::clone(&create.device_descriptor);
