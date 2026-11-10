@@ -516,6 +516,9 @@ pub struct Project {
     pub confirm_issue_undo: bool,
     /// The question an undo across an issue is waiting on, for the trial's popup.
     pub issue_undo_question: Option<String>,
+    /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
+    /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
+    branch_gen: u64,
 }
 
 /// A new project's first page: titled and numbered `1`.
@@ -888,6 +891,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -960,6 +964,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1073,6 +1078,7 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
         p.me = Arc::downgrade(&project);
@@ -1176,7 +1182,18 @@ impl Project {
         self.sync_saved(pg);
         let head = self.ledger.head();
         self.events.record(EventKind::ProjectOpened, Some("switchbranch"), head, None, "another branch shown");
+        self.branch_gen += 1;
         Ok(())
+    }
+
+    /// How many branch actions this session has seen ([`Project`]'s `branch_gen`).
+    pub fn branch_gen(&self) -> u64 {
+        self.branch_gen
+    }
+
+    /// A branch action happened (brief 020a): every view of the branches refreshes.
+    pub(crate) fn note_branch_change(&mut self) {
+        self.branch_gen += 1;
     }
 
     /// Bind the project to the file at `path`: its name, and every open page's path and title.

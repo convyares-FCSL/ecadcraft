@@ -319,6 +319,8 @@ pub struct Trial {
     /// Brief 020a: the branch facts the title, header and Revisions show, with the project serial
     /// and branch-action count they were read at (read again only when either moves).
     branch_info: Option<((u64, u64), Option<BranchInfo>)>,
+    /// The project's branch-action count and the branch shown, as last seen ([`Trial::sync_branch`]).
+    branch_seen: Option<(u64, Option<String>)>,
     /// Counts branch actions run (rename, archive, a new branch): the branch facts are read again.
     branch_rev: u64,
     /// The window title last sent.
@@ -471,6 +473,7 @@ impl Trial {
             preview: None,
             project_serial: 0,
             branch_info: None,
+            branch_seen: None,
             branch_rev: 0,
             title_sent: TITLE.to_string(),
             keep_open: None,
@@ -543,6 +546,7 @@ impl Trial {
     fn attach(&mut self, p: ProjectHandle) {
         self.project = Some(p);
         self.project_serial += 1;
+        self.branch_seen = None;
         self.keep_open = None;
         self.panel.clear();
         self.preview = None;
@@ -1347,6 +1351,7 @@ impl Trial {
     /// Lay out the harness dialogs, the debugger (when open), the Project panel, CADCraft's window
     /// contents, the ECAD command field and the preview (when open).
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        self.sync_branch();
         self.dialogs(ui.ctx());
         self.sync_title(&ui.ctx().clone());
         if self.debugger.open && self.developer.open && self.developer.body == developer::Body::Debugger {
@@ -1820,6 +1825,50 @@ impl Trial {
         info
     }
 
+    /// The one refresh path for branch actions, clicked or typed (reviewer finding 1): when the
+    /// project's branch-action count or the branch shown moved, the title, branch bar, Revisions
+    /// and History are read again; after a switch, every copy rebuilds once as on open and a
+    /// preview closes. One integer and one ID compared per frame otherwise.
+    pub fn sync_branch(&mut self) {
+        let Some(p) = self.project.clone() else { return };
+        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.file.v2().map(|v| v.branch().hex()))) else { return };
+        let Some(seen) = self.branch_seen.replace(now.clone()) else { return };
+        if seen == now {
+            return;
+        }
+        self.branch_rev += 1;
+        self.panel.history.invalidate();
+        if seen.1 != now.1 {
+            self.project_serial += 1;
+            self.preview = None;
+            self.panel.devices.invalidate();
+            self.panel.checks.invalidate();
+            self.panel.history.selected = None;
+        }
+        if self.revisions.is_some() {
+            self.open_revisions();
+        }
+    }
+
+    /// Show branch `branch` (named `name`) as the Branch list does: straight away with nothing
+    /// unsaved, else through Save and switch (or Save As on a read-only file).
+    pub fn ask_switch(&mut self, branch: &str, name: &str) {
+        let (unsaved, read_only) = match self.status() {
+            Some(s) => (s.unsaved, s.file.read_only.is_some()),
+            None => return,
+        };
+        if unsaved == 0 {
+            self.history_action(history_panel::Do::Run("switchbranch", json!({"branch": branch})));
+            return;
+        }
+        self.panel.tab = project_panel::Tab::History;
+        self.panel.history.dialog = Some(if read_only {
+            history_panel::Dialog::SwitchReadOnly
+        } else {
+            history_panel::Dialog::Switch { branch: branch.to_string(), name: name.to_string() }
+        });
+    }
+
     /// Keep the window title in step with the branch shown (owner answer 15); sent only when it
     /// changes.
     fn sync_title(&mut self, ctx: &egui::Context) {
@@ -1836,19 +1885,11 @@ impl Trial {
         use history_panel::Do;
         match d {
             Do::Run(cmd, params) => {
-                let switching = matches!(cmd, "switchbranch" | "archivebranch") || (cmd == "branch" && params["switch"] != json!(false));
                 match self.run_value(cmd, params) {
                     Ok(_) => {
                         self.panel.history.done();
-                        self.branch_rev += 1;
-                        if switching {
-                            // Every copy rebuilds once, as on open; a preview closes.
-                            self.project_serial += 1;
-                            self.preview = None;
-                            self.panel.devices.invalidate();
-                            self.panel.checks.invalidate();
-                            self.panel.history.selected = None;
-                        }
+                        // The same refresh as for a typed command (reviewer finding 1).
+                        self.sync_branch();
                     }
                     Err(e) => self.panel.history.refused(e),
                 }
@@ -2196,7 +2237,7 @@ impl Trial {
                 },
                 Some(sheets_ui::Out::Close) => self.project_props = None,
                 Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(sheets_ui::Out::Open(_)) | None => {}
+                Some(sheets_ui::Out::Open(_) | sheets_ui::Out::SwitchToMain) | None => {}
             }
         }
         self.refresh_revisions();
@@ -2221,6 +2262,7 @@ impl Trial {
                     self.refresh_panel();
                 }
                 Some(sheets_ui::Out::Close) => self.revisions = None,
+                Some(sheets_ui::Out::SwitchToMain) => self.ask_switch("main", "main"),
                 Some(sheets_ui::Out::OpenRevisions) | None => {}
             }
         }

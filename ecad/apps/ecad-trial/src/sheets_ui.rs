@@ -103,6 +103,8 @@ pub enum Out {
     OpenRevisions,
     /// Open this issued revision read-only.
     Open(String),
+    /// Brief 020a: show main (Save and switch rules apply), from Revisions on another branch.
+    SwitchToMain,
 }
 
 impl ProjectProps {
@@ -556,6 +558,9 @@ impl Revisions {
                         let rev = self.pending[0].clone();
                         ui.add_enabled(false, egui::Button::new(format!("Issue Rev {rev}…")))
                             .on_disabled_hover_text(format!("Revisions are issued on main. Merge \"{b}\" into main first."));
+                        if ui.button("Switch to main").accessible_name("ecad.revisions.switchmain").clicked() {
+                            out = Some(Out::SwitchToMain);
+                        }
                         ui.add_enabled(false, egui::Button::new("Merge into main…")).on_disabled_hover_text(crate::history_panel::MERGE_LATER);
                     }
                     if !self.read_only {

@@ -371,20 +371,9 @@ pub fn full_time_in(ms: Option<u64>, offset: Option<i64>) -> String {
 
 /// Year, month, day, hour and minute (UTC) of milliseconds since 1970.
 fn civil(ms: u64) -> (i64, u32, u32, u32, u32) {
-    let secs = ms / 1000;
-    let days = i64::try_from(secs / 86_400).unwrap_or(0);
-    let rem = secs % 86_400;
-    // Howard Hinnant's days-to-civil.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = u32::try_from(doy - (153 * mp + 2) / 5 + 1).unwrap_or(1);
-    let m = u32::try_from(if mp < 10 { mp + 3 } else { mp - 9 }).unwrap_or(1);
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    (y, m, d, u32::try_from(rem / 3600).unwrap_or(0), u32::try_from(rem % 3600 / 60).unwrap_or(0))
+    use chrono::{Datelike, Timelike};
+    let t = chrono::DateTime::from_timestamp_millis(i64::try_from(ms).unwrap_or(i64::MAX)).unwrap_or_default();
+    (i64::from(t.year()), t.month(), t.day(), t.hour(), t.minute())
 }
 
 /// Options of the graph (design 020 §2.3: both off by default, per session).
@@ -683,11 +672,18 @@ pub fn point(p: &Project, params: &Value) -> Result<Point, String> {
 /// # Errors
 /// The file could not be read or replayed.
 pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
-    if pt.branch == current(p) {
-        return p.ledger.state_at(pt.seq).map_err(|e| e.to_string());
+    match reads_saved(p, pt) {
+        true => p.file.v2().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq),
+        false => p.ledger.state_at(pt.seq).map_err(|e| e.to_string()),
     }
-    let v = p.file.v2().ok_or("this branch is not in a file")?;
-    v.point_state(pt.branch, pt.seq)
+}
+
+/// Whether `pt`'s state is read from the file (its nearest snapshot and at most the snapshot
+/// interval of steps, reviewer finding 2) rather than from the ledger: every saved point, of any
+/// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
+/// unsaved steps, so the cost never grows with the session's length.
+pub fn reads_saved(p: &Project, pt: &Point) -> bool {
+    p.file.v2().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
 }
 
 /// Whether `pt` lies on the branch shown's line: its own steps, or its ancestry's at or before
@@ -714,11 +710,7 @@ fn restores_key(key: &str) -> bool {
 /// The state Restore returns to: a saved point from the file (its nearest snapshot and at most
 /// the snapshot interval of steps), an unsaved one from the ledger.
 fn restore_target(p: &Project, pt: &Point) -> Result<Document, String> {
-    let saved = p.file.v2().filter(|v| pt.branch != v.branch() || pt.seq <= v.head().0);
-    match saved {
-        Some(v) => v.point_state(pt.branch, pt.seq),
-        None => state_at(p, pt),
-    }
+    state_at(p, pt)
 }
 
 /// What a restore would do: its ops, how many objects change, and the pages they are on.
@@ -946,7 +938,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .params("{branch, save?: bool} (refused with unsaved changes unless save is true)")
             .noundo(),
         CommandSpec::new("archivebranch", "Archive Branch", run_archivebranch).params("{branch}").noundo(),
-        CommandSpec::new("reopenbranch", "Reopen Branch", run_reopenbranch).params("{branch}").noundo(),
+        CommandSpec::new("reopenbranch", "Reopen Branch", run_reopenbranch)
+            .params("{branch, name?} (name: reopen under that name, in one step, when another open branch has its name)")
+            .noundo(),
     ]
 }
 
@@ -1197,6 +1191,7 @@ fn run_branch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
         let by = Some(author_text(&p.author));
         let v = p.file.v2_mut().ok_or("Branches live in the project file. Save it first.")?;
         let (id, rec) = v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| e.to_string())?;
+        p.note_branch_change();
         let mut line = format!("Branch \"{}\" created from {}.", rec.name, from_text(p, &from));
         if switch {
             switch_to(p, pg, id)?;
@@ -1229,6 +1224,7 @@ fn run_renamebranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         let (id, old) = find_branch(p, &which)?;
         let v = p.file.v2_mut().ok_or("no file")?;
         let rec = v.rename_branch(id, &name).map_err(|e| e.to_string())?;
+        p.note_branch_change();
         let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
         pg.echo(line.clone());
         Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
@@ -1302,28 +1298,76 @@ fn run_archivebranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         }
         let mut line = String::new();
         if id == current(p) {
-            // Archiving the branch shown first switches to its parent, saving first.
+            // Archiving the branch shown first switches to its parent, saving first; a parent that
+            // is not open itself gives main instead, saying so (never a refusal after the save).
             let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+            let rows = branch_rows(p)?;
+            let parent_row = rows.iter().find(|(i, _)| *i == parent).map(|(_, b)| b.clone());
+            let (to, why) = match parent_row {
+                Some(b) if b.status == BranchStatus::Open => (parent, String::new()),
+                Some(b) => (main_of(p), format!("Its parent \"{}\" is {}, so the project shows main. ", b.name, status_word(&b.status))),
+                None => (main_of(p), String::new()),
+            };
             p.save_pending(pg)?;
-            switch_to(p, pg, parent)?;
-            line.push_str(&format!("Now on branch \"{}\". ", current_name(p)));
+            switch_to(p, pg, to)?;
+            line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
         }
         let v = p.file.v2_mut().ok_or("no file")?;
         v.set_branch_open(id, false).map_err(|e| e.to_string())?;
+        p.note_branch_change();
         line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
         pg.echo(line.clone());
         Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
     })
 }
 
+/// A name no open branch has: `base`, else `base (2)`, `base (3)`… (a reopen whose name was
+/// taken, brief 020a).
+pub fn free_branch_name(p: &Project, base: &str, except: Option<BranchId>) -> String {
+    let taken: BTreeSet<String> = branch_rows(p)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(id, b)| b.status == BranchStatus::Open && Some(*id) != except)
+        .map(|(_, b)| b.name.to_lowercase())
+        .collect();
+    if !taken.contains(&base.to_lowercase()) {
+        return base.to_string();
+    }
+    (2..).map(|n| format!("{base} ({n})")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| base.to_string())
+}
+
 fn run_reopenbranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let which = params.get("branch").and_then(Value::as_str).ok_or_else(|| err("`branch` is required"))?.to_string();
+    let name = params.get("name").and_then(Value::as_str).map(str::to_string);
     with_any_page(s, |p, pg| {
         branch_file(p)?;
         let (id, rec) = find_branch(p, &which)?;
+        if rec.status == BranchStatus::Open {
+            let line = format!("Branch \"{}\" is already open.", rec.name);
+            return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
+        }
+        let free = free_branch_name(p, &rec.name, Some(id));
         let v = p.file.v2_mut().ok_or("no file")?;
-        let rec2 = v.set_branch_open(id, true).map_err(|e| e.to_string())?;
-        let line = format!("Branch \"{}\" is open again.", rec.name);
+        let reopened = match &name {
+            Some(n) => v.reopen_as(id, n),
+            None => v.set_branch_open(id, true),
+        };
+        let rec2 = match reopened {
+            Ok(r) => r,
+            Err(ecad_file::v2::BranchError::NameTaken(other)) => {
+                return Err(format!(
+                    "Another open branch is called \"{other}\"; reopen this one under a new name, for example {{\"branch\": \"{}\", \"name\": \"{free}\"}}.",
+                    id.hex()
+                ));
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        p.note_branch_change();
+        let line = if rec2.name == rec.name {
+            format!("Branch \"{}\" is open again.", rec.name)
+        } else {
+            format!("Branch \"{}\" is open again as \"{}\".", rec.name, rec2.name)
+        };
         pg.echo(line.clone());
         Ok(json!({"branch": id.hex(), "name": rec2.name, "message": line}))
     })

@@ -82,13 +82,26 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     assert_eq!(h["branches"].as_array().unwrap().len(), 1, "archived branches are hidden: {h}");
     let h = c.exec("history", json!({"archived": true}));
     assert_eq!(h["branches"].as_array().unwrap().len(), 2);
-    c.exec("reopenbranch", json!({"branch": "Option C"}));
+    // Another open branch takes the name meanwhile: reopening offers the next free name and
+    // reopens under it in one step (never a dead end).
+    let archived = c.exec("branches", json!({}))["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["status"] == json!("archived"))
+        .map(|b| b["id"].as_str().unwrap().to_string())
+        .unwrap();
+    c.exec("branch", json!({"name": "Option C", "switch": false}));
+    let m = c.refused("execute", json!({"command": "reopenbranch", "params": {"branch": archived}}));
+    assert!(m.contains("Option C (2)"), "{m}");
+    let r = c.exec("reopenbranch", json!({"branch": archived, "name": "Option C (2)"}));
+    assert_eq!(r["name"], json!("Option C (2)"));
     let m = c.refused("execute", json!({"command": "archivebranch", "params": {"branch": "main"}}));
     assert!(m.contains("release line"), "{m}");
-    // The graph names the version and both heads; steps list the newest first.
+    // The graph names the version and every open branch's head; steps list the newest first.
     let h = c.exec("history", json!({}));
     let kinds: Vec<&str> = h["nodes"].as_array().unwrap().iter().map(|n| n["kind"].as_str().unwrap()).collect();
-    assert!(kinds.contains(&"version") && kinds.iter().filter(|k| **k == "now").count() == 2, "{h}");
+    assert!(kinds.contains(&"version") && kinds.iter().filter(|k| **k == "now").count() == 3, "{h}");
     let steps = c.exec("steps", json!({"limit": 2}));
     let s = steps["steps"].as_array().unwrap();
     assert_eq!(s.len(), 2);
@@ -120,4 +133,21 @@ fn with_writes_off_the_history_reads_and_every_branch_write_is_refused() {
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
     }
     assert_eq!(c.log().len(), before, "nothing recorded");
+}
+
+#[test]
+fn archiving_the_branch_shown_whose_parent_is_archived_shows_main() {
+    let dir = TempDir::new("archive-parent");
+    let mut c = project(&dir);
+    c.exec("branch", json!({"name": "Parent", "switch": true}));
+    c.exec("wire", json!({"points": [[0, 20], [60, 20]]}));
+    c.exec("branch", json!({"name": "Child", "switch": false}));
+    c.exec("switchbranch", json!({"branch": "Child", "save": true}));
+    c.exec("archivebranch", json!({"branch": "Parent"}));
+    let r = c.exec("archivebranch", json!({"branch": "Child"}));
+    let m = r["message"].as_str().unwrap();
+    assert!(m.contains("parent \"Parent\" is archived") && m.contains("Now on branch \"main\""), "{m}");
+    let list = c.exec("branches", json!({}));
+    let cur = list["branches"].as_array().unwrap().iter().find(|b| b["current"] == json!(true)).unwrap().clone();
+    assert_eq!(cur["name"], json!("main"));
 }

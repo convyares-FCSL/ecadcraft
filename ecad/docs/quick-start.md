@@ -1000,13 +1000,21 @@ Design 020 (020a: merge comes next, in 020b).
    and the History tab shows the same graph. **⋯ > Show automatic snapshots** adds faint
    `Auto · <time>` rows (one every 2 000 steps, so few on the demo).
 
-Typed instead, in the ECAD command field: `version {"name":"Before change"}`,
+Typed instead, in the ECAD command field: `version {"name":"Before change"}` (or
+`version {"name":"Before change","description":"before the cable rework"}`),
 `history {}`, `steps {"limit":10}`, `pointinfo {"version":"Before change"}`,
-`showpoint {"version":"Before change"}` / `closepoint {}`, `restore {"version":"Before change"}`,
+`showpoint {"version":"Before change"}` / `closepoint {}`,
+`restore {"version":"Before change","preview":true}` (the Restore question, nothing recorded),
+`restore {"version":"Before change"}`,
 `branch {"name":"Option B","from":{"version":"Before change"}}`,
 `switchbranch {"branch":"main","save":true}` (without `save` it is refused while changes are
 unsaved), `renamebranch {"branch":"Option B","name":"Option C"}`,
-`archivebranch {"branch":"Option C"}`, `reopenbranch {"branch":"Option C"}`, `branches {}`.
+`archivebranch {"branch":"Option C"}`, `reopenbranch {"branch":"Option C"}` (when another open
+branch took its name: `reopenbranch {"branch":"Option C","name":"Option C (2)"}`; by clicking, the
+dialog offers that name), `branches {}`. Typed branch commands update the title, the branch bar,
+Revisions and the History tab exactly as clicks do.
+On a branch, **Revisions** has **Switch to main** (Save and switch applies); archiving the branch
+shown when its parent is archived too shows main, saying so.
 
 ## 6. Check connected movement, undo/redo and pages
 

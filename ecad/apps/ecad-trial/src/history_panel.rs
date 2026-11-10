@@ -98,6 +98,13 @@ pub enum Dialog {
     },
     /// Unsaved changes on a file that cannot be written: Save As or Cancel (design 020 §3.3).
     SwitchReadOnly,
+    /// Reopen an archived branch whose name another open branch took, under a new name.
+    Reopen {
+        branch: String,
+        old: String,
+        name: String,
+        error: Option<String>,
+    },
 }
 
 /// One step row of the Steps list.
@@ -431,6 +438,15 @@ impl HistoryPanel {
         out
     }
 
+    /// `None` when no other open branch has `name`; else the next free `name (n)`.
+    fn free_name(&self, branch: BranchId, name: &str) -> Option<String> {
+        let taken = |n: &str| self.graph.branches.iter().any(|b| b.id != branch && b.status == BranchStatus::Open && b.name.eq_ignore_ascii_case(n));
+        if !taken(name) {
+            return None;
+        }
+        (2..).map(|n| format!("{name} ({n})")).find(|n| !taken(n))
+    }
+
     fn parent_name(&self, b: &history::BranchRow) -> String {
         b.fork.and_then(|(p, _)| self.graph.branches.iter().find(|x| x.id == p)).map_or_else(|| "main".into(), |x| x.name.clone())
     }
@@ -601,7 +617,12 @@ impl HistoryPanel {
                     out.push(Action::History(Do::AskRestore(sel.params())));
                 }
                 if closed && writable && ui.small_button("Reopen branch").accessible_name("ecad.history.reopen").clicked() {
-                    out.push(Action::History(Do::Run("reopenbranch", json!({"branch": sel.branch.hex()}))));
+                    let name = branch_row.as_ref().map(|b| b.name.clone()).unwrap_or_default();
+                    match self.free_name(sel.branch, &name) {
+                        // Another open branch has its name: offer the next free one (never a dead end).
+                        Some(free) => self.dialog = Some(Dialog::Reopen { branch: sel.branch.hex(), old: name, name: free, error: None }),
+                        None => out.push(Action::History(Do::Run("reopenbranch", json!({"branch": sel.branch.hex()})))),
+                    }
                 }
                 let steps = if self.steps_open { "Steps \u{25b4}" } else { "Steps \u{25be}" };
                 if ui.small_button(steps).accessible_name("ecad.history.steps").clicked() {
@@ -640,6 +661,7 @@ impl HistoryPanel {
             Dialog::NewBranch { .. } => ("NEW BRANCH", "ecad.newbranch"),
             Dialog::Rename { .. } => ("RENAME BRANCH", "ecad.renamebranch"),
             Dialog::Archive { .. } => ("ARCHIVE BRANCH", "ecad.archivebranch"),
+            Dialog::Reopen { .. } => ("REOPEN BRANCH", "ecad.reopenbranch"),
             Dialog::Restore { .. } => ("RESTORE", "ecad.restore"),
             Dialog::Switch { .. } | Dialog::SwitchReadOnly => ("SWITCH BRANCH", "ecad.switchbranch"),
         };
@@ -706,6 +728,18 @@ impl HistoryPanel {
                             v["from"] = from.clone();
                         }
                         out.push(Action::History(Do::Run("branch", v)));
+                    }
+                    close = cancel;
+                }
+                Dialog::Reopen { branch, old, name, error } => {
+                    ui.label(format!("Another open branch is called \"{old}\". Reopen this one as:"));
+                    ui.text_edit_singleline(name).accessible_name("ecad.reopenbranch.name");
+                    if let Some(e) = error {
+                        ui.label(RichText::new(e.as_str()).small().color(red));
+                    }
+                    let (ok, cancel) = ok_cancel(ui, "Reopen");
+                    if ok {
+                        out.push(Action::History(Do::Run("reopenbranch", json!({"branch": branch, "name": name.trim()}))));
                     }
                     close = cancel;
                 }
@@ -783,7 +817,9 @@ impl HistoryPanel {
     /// A command run from the tab was refused: under the dialog's fields, or under the header.
     pub fn refused(&mut self, e: String) {
         match &mut self.dialog {
-            Some(Dialog::NewVersion { error, .. } | Dialog::NewBranch { error, .. } | Dialog::Rename { error, .. }) => *error = Some(e),
+            Some(
+                Dialog::NewVersion { error, .. } | Dialog::NewBranch { error, .. } | Dialog::Rename { error, .. } | Dialog::Reopen { error, .. },
+            ) => *error = Some(e),
             _ => {
                 self.dialog = None;
                 self.note = Some(e);

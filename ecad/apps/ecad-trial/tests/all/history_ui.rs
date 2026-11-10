@@ -118,10 +118,14 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     h.state_mut().open_revisions();
     h.run_steps(2);
     assert_eq!(h.state().revisions.as_ref().and_then(|r| r.off_main.clone()).as_deref(), Some("Option B"));
-    h.state_mut().revisions = None;
-    h.state_mut().history_action(Do::Run("switchbranch", json!({"branch": "main", "save": true})));
-    h.run_steps(3);
+    // Switch to main from Revisions: the edit is unsaved, so Save and switch asks first.
+    click(&mut h, "ecad.revisions.switchmain");
+    assert!(matches!(&h.state().panel.history.dialog, Some(Dialog::Switch { branch, .. }) if branch == "main"));
+    click(&mut h, "ecad.switchbranch.ok");
     assert_eq!(h.state_mut().branch_info().unwrap().name, "main");
+    // Revisions, still open, now allows issuing.
+    assert_eq!(h.state().revisions.as_ref().map(|r| r.off_main.clone()), Some(None));
+    h.state_mut().revisions = None;
     assert_eq!(doc(&mut h).conductors.len(), wires, "main is as it was");
     // C: Restore the version after an edit on main: one step, undone by u.
     ok(&mut h, r#"wire {"points":[[0,160],[30,160]]}"#);
@@ -133,5 +137,20 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     assert_eq!(doc(&mut h).conductors.len(), wires);
     ok(&mut h, "u");
     assert_eq!(doc(&mut h).conductors.len(), wires + 1);
+    // A typed switch refreshes the title, bar and History as a click does (reviewer finding 1).
+    ok(&mut h, r#"switchbranch {"branch":"Option B","save":true}"#);
+    h.run_steps(3);
+    let info = h.state_mut().branch_info().unwrap();
+    assert_eq!(info.name, "Option B");
+    assert!(info.bar.is_some());
+    assert!(ecad_trial::window_title(Some(&info)).ends_with("· Option B"));
+    let g = h.state().panel.history.graph().clone();
+    let cur = g.branches.iter().find(|b| b.current).map(|b| b.name.clone());
+    assert_eq!(cur.as_deref(), Some("Option B"), "the graph's current branch");
+    // A typed rename too.
+    ok(&mut h, r#"renamebranch {"branch":"Option B","name":"Option Z"}"#);
+    h.run_steps(3);
+    assert_eq!(h.state_mut().branch_info().unwrap().name, "Option Z");
+    assert!(ecad_trial::window_title(h.state_mut().branch_info().as_ref()).ends_with("· Option Z"));
     let _ = std::fs::remove_dir_all(&dir);
 }

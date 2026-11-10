@@ -281,3 +281,44 @@ fn writers_keep_the_unknown_fields_a_newer_build_wrote_through_save_switch_and_r
     let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
+
+/// Showing a point costs its nearest snapshot plus a bounded replay, however long the history
+/// (reviewer finding 2), on main and on a branch: snapshots are written by the save at or after
+/// each interval, so the replay is at most the interval plus one save's steps per level.
+#[test]
+fn a_point_is_read_from_its_nearest_snapshot_never_further_back_than_the_interval() {
+    let dir = TempDir::new("bounded");
+    let mut f = fixture();
+    let p = dir.path("p.ecad");
+    let every = 16;
+    let mut proj = create(&p, &f.ledger, every);
+    f.ledger.mark_persisted(f.ledger.head()).unwrap();
+    let main = proj.branch();
+    let (page, layer) = (f.page, f.layer);
+    for i in 0..150 {
+        line(&mut f.ledger, &mut f.ids, page, layer, f64::from(i));
+        if i % 10 == 9 {
+            proj.save(&mut f.ledger).unwrap();
+        }
+    }
+    proj.save(&mut f.ledger).unwrap();
+    let head = f.ledger.head();
+    let (b, _) = proj.create_branch("Late", main, head - 3, None, None).unwrap();
+    let (mut bl, _) = proj.switch_to(&f.ledger, b, 2).unwrap();
+    let mut ids = IdAllocator::seeded(5);
+    for i in 0..60 {
+        line(&mut bl, &mut ids, page, layer, 500.0 + f64::from(i));
+        if i % 10 == 9 {
+            proj.save(&mut bl).unwrap();
+        }
+    }
+    for seq in (0..=head).step_by(23) {
+        let n = proj.point_replay(main, seq).unwrap();
+        assert!(n <= every + 10, "main step {seq}: {n} steps replayed");
+        assert_eq!(proj.point_state(main, seq).unwrap(), f.ledger.state_at(seq).unwrap(), "main step {seq}");
+    }
+    for seq in 0..=bl.head() {
+        let n = proj.point_replay(b, seq).unwrap();
+        assert!(n <= 2 * (every + 10), "branch step {seq}: {n} steps replayed");
+    }
+}

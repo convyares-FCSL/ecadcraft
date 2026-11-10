@@ -1585,6 +1585,30 @@ impl ProjectV2 {
         })
     }
 
+    /// Reopen `branch` under `name` in one write (brief 020a: a reopen whose name another open
+    /// branch took is never a dead end).
+    ///
+    /// # Errors
+    /// As [`ProjectV2::set_branch_open`]; the new name is checked as a rename's.
+    pub fn reopen_as(&mut self, branch: BranchId, name: &str) -> Result<BranchRecord, BranchError> {
+        self.check_writable()?;
+        let name = check_branch_name(name)?;
+        if branch == BranchId::main_of(self.project.0) {
+            return Err(BranchError::Refused("main is the release line and is always open.".into()));
+        }
+        let all = self.store.reader()?.branches()?;
+        if let Some((_, b)) =
+            all.iter().find(|(id, b)| *id != branch && b.status == BranchStatus::Open && b.name.to_lowercase() == name.to_lowercase())
+        {
+            return Err(BranchError::NameTaken(b.name.clone()));
+        }
+        self.update_branch(branch, |b| {
+            b.name = name.clone();
+            b.status = BranchStatus::Open;
+            b.merged = None;
+        })
+    }
+
     fn update_branch(&mut self, branch: BranchId, change: impl FnOnce(&mut BranchRecord)) -> Result<BranchRecord, BranchError> {
         let mut w = self.store.writer()?;
         let mut rec = w.branch(branch)?.ok_or_else(|| BranchError::Refused("That branch does not exist.".into()))?;
@@ -1655,6 +1679,29 @@ impl ProjectV2 {
             out.push(record::decode_tx(&value).map_err(|e| format!("transaction {seq}: {e:?}"))?);
         }
         Ok(out)
+    }
+
+    /// How many transactions [`ProjectV2::point_state`] replays for `seq` of `branch`: from the
+    /// nearest snapshot at or before it on its line (never more than the snapshot interval past a
+    /// snapshot, wherever the point is).
+    ///
+    /// # Errors
+    /// The branch does not exist, or the file cannot be read.
+    pub fn point_replay(&self, branch: BranchId, seq: u64) -> Result<u64, String> {
+        let r = self.store.reader().map_err(|e| e.to_string())?;
+        let line = lineage(&r, self.project, branch)?;
+        let (mut i, mut at, mut steps) = (0usize, seq, 0u64);
+        loop {
+            let l = line.get(i).ok_or("a lineage index is out of range")?;
+            if let Some(v) = nearest_snapshot(&r, l.branch, at)? {
+                return Ok(steps + at - v.point.seq);
+            }
+            steps += at;
+            match l.fork {
+                Some((pi, fseq)) => (i, at) = (pi, fseq),
+                None => return Ok(steps),
+            }
+        }
     }
 
     /// The document at `seq` of `branch` (any branch of the file): from its nearest snapshot, or
