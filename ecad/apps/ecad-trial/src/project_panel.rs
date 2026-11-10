@@ -513,10 +513,22 @@ impl ProjectPanel {
                     ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
                         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.branch"));
                     let parent = header.parent.clone().unwrap_or_else(|| "main".into());
-                    ui.add_enabled(false, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
-                        .on_disabled_hover_text(crate::history_panel::MERGE_LATER);
-                    ui.add_enabled(false, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
-                        .on_disabled_hover_text(crate::history_panel::MERGE_LATER);
+                    let branch = header.branch.clone().unwrap_or_default();
+                    let can = writable && !header.read_only;
+                    let merge = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
+                        .on_hover_text(format!("Bring this branch's changes into {parent}: a preview first, then one step on {parent}"))
+                        .accessible_name("ecad.project.branch.merge");
+                    if merge.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
+                    }
+                    let update = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
+                        .on_hover_text(format!("Bring {parent}'s changes into this branch: a preview first, then one step here"))
+                        .accessible_name("ecad.project.branch.update");
+                    if update.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
+                    }
                 });
             });
             let r = shown.response.rect;

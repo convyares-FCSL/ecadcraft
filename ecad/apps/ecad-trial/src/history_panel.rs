@@ -13,7 +13,11 @@
 //!   immutable), except Now's, refreshed with the Now row;
 //! - every other change: nothing.
 //!
-//! Merge and update from the parent are brief 020b: their entries are shown, disabled, saying so.
+//! - Merge into the parent and Update from the parent (brief 020b) open the merge dialog
+//!   ([`crate::merge_dialog`]); merges are rows of the graph with a join from the source's line.
+//! - The graph reads one page of rows; scrolling to its end reads the next page.
+//! - F2 (or double-click on the Branch list's name) renames the branch shown; a Now row's
+//!   right-click offers switch, merge, update, rename and archive.
 
 use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::history::{self, Graph, Layout, NodeKind, Show};
@@ -28,8 +32,6 @@ use crate::project_panel::{Action, ROW_H};
 pub const HISTORY_TAB: &str = "History";
 /// Width of one lane of the graph.
 pub const LANE_W: f32 = 12.0;
-/// Said where merge will be (brief 020b).
-pub const MERGE_LATER: &str = "Merging comes with the next part of this feature (brief 020b).";
 
 /// What the History tab asks the trial to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +44,8 @@ pub enum Do {
     SaveAs,
     /// Preview this page of the point shown (`RevisionPage`).
     ShowPoint(Value),
+    /// Open the merge dialog for `{from, into?}` (brief 020b).
+    AskMerge(Value),
 }
 
 /// A selected row: a node of the graph, or a step of the Steps list.
@@ -296,7 +300,7 @@ impl HistoryPanel {
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.label(RichText::new("Branch").small());
             let combo = egui::ComboBox::from_id_salt("ecad.history.branch").selected_text(RichText::new(&cur_name).small());
-            combo.show_ui(ui, |ui| {
+            let shown = combo.show_ui(ui, |ui| {
                 for b in self.graph.branches.iter().filter(|b| b.status == BranchStatus::Open) {
                     if ui.selectable_label(b.current, &b.name).clicked() && !b.current {
                         if unsaved > 0 && read_only {
@@ -313,6 +317,15 @@ impl HistoryPanel {
                     self.invalidate();
                 }
             });
+            // Double-click on the Branch list's name, or F2, renames the branch shown (design §3.2).
+            let cur_row = self.graph.branches.iter().find(|b| b.current).cloned();
+            let f2 = ui.input(|i| i.key_pressed(egui::Key::F2)) && self.dialog.is_none();
+            if writable
+                && (shown.response.double_clicked() || f2)
+                && let Some(b) = cur_row.filter(|b| b.fork.is_some())
+            {
+                self.dialog = Some(Dialog::Rename { branch: b.id.hex(), name: b.name.clone(), error: None });
+            }
             if writable {
                 if ui
                     .small_button("New version")
@@ -362,8 +375,14 @@ impl HistoryPanel {
                             ui.close();
                         }
                         let parent = self.parent_name(&b);
-                        ui.add_enabled(false, egui::Button::new(format!("Merge into {parent}…"))).on_disabled_hover_text(MERGE_LATER);
-                        ui.add_enabled(false, egui::Button::new(format!("Update from {parent}…"))).on_disabled_hover_text(MERGE_LATER);
+                        if ui.button(format!("Merge into {parent}…")).clicked() {
+                            out.push(Action::History(Do::AskMerge(json!({"from": b.id.hex()}))));
+                            ui.close();
+                        }
+                        if ui.button(format!("Update from {parent}…")).clicked() {
+                            out.push(Action::History(Do::AskMerge(json!({"from": parent, "into": b.id.hex()}))));
+                            ui.close();
+                        }
                     }
                 }
             })
@@ -385,11 +404,14 @@ impl HistoryPanel {
         let mut drawn = 0;
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut clicked: Option<(usize, bool)> = None;
+        let mut at_end = false;
+        let mut menu: Option<Action> = None;
         egui::ScrollArea::vertical().id_salt("ecad.history.graph").max_height(list_h).auto_shrink([false, true]).show_rows(
             ui,
             ROW_H,
             n,
             |ui, range| {
+                at_end = range.end >= n;
                 for i in range {
                     drawn += 1;
                     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
@@ -402,9 +424,28 @@ impl HistoryPanel {
                     } else if resp.clicked() {
                         clicked = Some((i, false));
                     }
+                    // A branch's Now row: its actions (design §4.1).
+                    if let Some(node) = self.graph.nodes.get(i).cloned()
+                        && node.kind == NodeKind::Now
+                    {
+                        let row = self.graph.branches.iter().find(|b| b.id == node.branch).cloned();
+                        resp.context_menu(|ui| {
+                            if let Some(a) = self.now_menu(ui, row.as_ref(), writable, unsaved, read_only) {
+                                menu = Some(a);
+                            }
+                        });
+                    }
                 }
             },
         );
+        if let Some(a) = menu {
+            out.push(a);
+        }
+        // The next page of rows, read when the list is scrolled to its end (design §8.2).
+        if at_end && self.graph.more {
+            self.show.limit = self.graph.nodes.len() + history::PAGE;
+            self.invalidate();
+        }
         self.rows_drawn = drawn;
         if n <= 2 && self.graph.nodes.iter().all(|x| matches!(x.kind, NodeKind::Now | NodeKind::Root)) {
             ui.label(RichText::new("Create a version to keep this point, or a branch to try something.").small().color(t.text_dim));
@@ -445,6 +486,52 @@ impl HistoryPanel {
             return None;
         }
         (2..).map(|n| format!("{name} ({n})")).find(|n| !taken(n))
+    }
+
+    /// The right-click menu of a branch's Now row: switch, merge into the parent, update from
+    /// the parent (the branch shown), rename and archive.
+    fn now_menu(&mut self, ui: &mut egui::Ui, row: Option<&history::BranchRow>, writable: bool, unsaved: u64, read_only: bool) -> Option<Action> {
+        let b = row?;
+        let mut out = None;
+        if !b.current && b.status == BranchStatus::Open && ui.button(format!("Switch to \"{}\"", b.name)).clicked() {
+            if unsaved > 0 && read_only {
+                self.dialog = Some(Dialog::SwitchReadOnly);
+            } else if unsaved > 0 {
+                self.dialog = Some(Dialog::Switch { branch: b.id.hex(), name: b.name.clone() });
+            } else {
+                out = Some(Action::History(Do::Run("switchbranch", json!({"branch": b.id.hex()}))));
+            }
+            ui.close();
+        }
+        if b.fork.is_none() || !writable {
+            if b.fork.is_none() {
+                ui.label(RichText::new("main is the release line").small());
+            }
+            return out;
+        }
+        let parent = self.parent_name(b);
+        if b.status == BranchStatus::Open {
+            if ui.button(format!("Merge into {parent}…")).clicked() {
+                out = Some(Action::History(Do::AskMerge(json!({"from": b.id.hex()}))));
+                ui.close();
+            }
+            if b.current && ui.button(format!("Update from {parent}…")).clicked() {
+                out = Some(Action::History(Do::AskMerge(json!({"from": parent, "into": b.id.hex()}))));
+                ui.close();
+            }
+            if ui.button("Rename branch…").clicked() {
+                self.dialog = Some(Dialog::Rename { branch: b.id.hex(), name: b.name.clone(), error: None });
+                ui.close();
+            }
+            if ui.button("Archive branch…").clicked() {
+                self.dialog = Some(Dialog::Archive { branch: b.id.hex(), name: b.name.clone() });
+                ui.close();
+            }
+        } else if ui.button("Reopen branch").clicked() {
+            out = Some(Action::History(Do::Run("reopenbranch", json!({"branch": b.id.hex()}))));
+            ui.close();
+        }
+        out
     }
 
     fn parent_name(&self, b: &history::BranchRow) -> String {
@@ -508,6 +595,20 @@ impl HistoryPanel {
             }
             if bends && let Some(into) = s.into {
                 painter.line_segment([pos2(x, rect.top()), pos2(lane_x(into), cy)], stroke(i.saturating_sub(1)));
+            }
+        }
+        // Merge joins (brief 020b): from the source's row up its lane, then into the merge row.
+        for j in &self.layout.joins {
+            if i < j.row || i > j.from_row {
+                continue;
+            }
+            let x = lane_x(j.from_lane);
+            if i == j.row {
+                painter.line_segment([pos2(x, rect.bottom()), pos2(lane_x(j.lane), cy)], dim);
+            } else if i == j.from_row {
+                painter.line_segment([pos2(x, rect.top()), pos2(x, cy)], dim);
+            } else {
+                painter.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], dim);
             }
         }
         let lane = self.layout.lanes.get(i).copied().unwrap_or(0);

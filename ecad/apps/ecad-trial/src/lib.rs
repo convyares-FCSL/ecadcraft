@@ -51,6 +51,7 @@ pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
+pub mod merge_dialog;
 pub mod preview;
 pub mod project_panel;
 pub mod search;
@@ -355,6 +356,8 @@ pub struct Trial {
     /// The Project Properties and Revisions dialogs, when open.
     pub project_props: Option<sheets_ui::ProjectProps>,
     pub revisions: Option<sheets_ui::Revisions>,
+    /// The merge dialog (brief 020b), when open.
+    pub merge: Option<merge_dialog::MergeDialog>,
     /// The folder the page name box's new page goes in.
     new_page_folder: Option<ecad_model::FolderId>,
     /// The revision shown in the panel (its log point), when one is open.
@@ -491,6 +494,7 @@ impl Trial {
             props_rebuilds: 0,
             project_props: None,
             revisions: None,
+            merge: None,
             new_page_folder: None,
             panel_revision: None,
             revisions_seen: 0,
@@ -1374,6 +1378,7 @@ impl Trial {
         self.drop_frame_selection();
         self.handle_tools();
         self.sheet_windows(ui.ctx());
+        self.merge_windows(ui.ctx());
         self.preview_window(ui.ctx());
         self.symbol_search(ui.ctx());
         if std::mem::take(&mut self.focus_drawing) {
@@ -1910,6 +1915,76 @@ impl Trial {
                 Ok(_) => self.preview = None,
                 Err(e) => self.panel.history.refused(e),
             },
+            Do::AskMerge(target) => self.ask_merge(target),
+        }
+    }
+
+    /// Open the merge dialog for `target` (`{from, into?}`) with its preview (design 020 §4.1):
+    /// nothing is written until Merge; a merge into another branch than the one shown says it
+    /// switches there first.
+    pub fn ask_merge(&mut self, target: serde_json::Value) {
+        let mut ask = target.clone();
+        ask["preview"] = json!(true);
+        match self.run_value("merge", ask) {
+            Ok(v) => {
+                let shown = self.branch_info().map(|b| b.name).unwrap_or_else(|| "main".into());
+                let into = v["into"].as_str().unwrap_or("main").to_string();
+                let note = (v["update"] != json!(true) && into != shown)
+                    .then(|| format!("This switches to {into} (saving \"{shown}\" first) and merges into it."));
+                self.merge = Some(merge_dialog::MergeDialog::new(target, v, note));
+            }
+            Err(e) => self.panel.history.refused(e),
+        }
+    }
+
+    /// The merge dialog and the question an undo of a merge stops at (brief 020b).
+    fn merge_windows(&mut self, ctx: &egui::Context) {
+        if let Some(d) = &mut self.merge {
+            match d.show(ctx) {
+                Some(merge_dialog::Out::Preview(params)) => match self.run_value("merge", params) {
+                    Ok(v) => {
+                        if let Some(d) = &mut self.merge {
+                            d.preview = v;
+                            d.error = None;
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(d) = &mut self.merge {
+                            d.error = Some(e);
+                        }
+                    }
+                },
+                Some(merge_dialog::Out::Merge(params)) => match self.run_value("merge", params) {
+                    Ok(_) => {
+                        self.merge = None;
+                        self.panel.history.done();
+                        self.sync_branch();
+                    }
+                    Err(e) => {
+                        if let Some(d) = &mut self.merge {
+                            d.error = Some(e);
+                        }
+                        self.sync_branch();
+                    }
+                },
+                Some(merge_dialog::Out::Cancel) => self.merge = None,
+                None => {}
+            }
+        }
+        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.merge_undo_question.clone()).ok().flatten());
+        if let Some(q) = question {
+            match merge_dialog::undo_merge(ctx, &q) {
+                Some(true) => {
+                    let _ = self.run_line("undomerge {}");
+                    self.panel.history.invalidate();
+                }
+                Some(false) => {
+                    if let Some(p) = self.project.clone() {
+                        let _ = p.configure(&mut self.cad.session, |p| p.merge_undo_question = None);
+                    }
+                }
+                None => {}
+            }
         }
     }
 
@@ -2237,7 +2312,7 @@ impl Trial {
                 },
                 Some(sheets_ui::Out::Close) => self.project_props = None,
                 Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(sheets_ui::Out::Open(_) | sheets_ui::Out::SwitchToMain) | None => {}
+                Some(sheets_ui::Out::Open(_) | sheets_ui::Out::SwitchToMain | sheets_ui::Out::MergeIntoMain) | None => {}
             }
         }
         self.refresh_revisions();
@@ -2263,6 +2338,11 @@ impl Trial {
                 }
                 Some(sheets_ui::Out::Close) => self.revisions = None,
                 Some(sheets_ui::Out::SwitchToMain) => self.ask_switch("main", "main"),
+                Some(sheets_ui::Out::MergeIntoMain) => {
+                    self.revisions = None;
+                    let shown = self.branch_info().map(|b| b.name).unwrap_or_default();
+                    self.ask_merge(json!({"from": shown, "into": "main"}));
+                }
                 Some(sheets_ui::Out::OpenRevisions) | None => {}
             }
         }
