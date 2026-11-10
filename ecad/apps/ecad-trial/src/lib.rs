@@ -56,6 +56,7 @@ pub mod search;
 pub mod sheets_ui;
 pub mod startup;
 pub mod tools;
+pub mod window;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

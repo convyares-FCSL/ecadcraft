@@ -1625,8 +1625,11 @@ Your table of three clean runs goes here once you have run it.
   and the object keeps its handle). OOPS brings back plain drawing removed by the last erase on
   the page you are on; for a wire, a device or anything else ECAD records, and after UNDO, REDO or
   a page switch, it is refused with a message: use UNDO. `-ARRAY` copies devices and wires as COPY
-  does. MINSERT of a symbol is refused. The window does not remember its size yet (CADCraft's own
-  app does; for ECAD it is a follow-up).
+  does. MINSERT of a symbol is refused.
+- **Window size and position (brief 023):** the trial's window opens centred the first time; after
+  that it reopens at the size and position (and maximized state) it had when you closed it, as
+  CADCraft's own app does. The state is kept by eframe in its `app.ron` under the id `ecad-trial`
+  (on Windows `%APPDATA%\ecad-trial\data\app.ron`); delete that file to start centred again.
 - **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The trial never
   checks at start. CADCraft's **Help > Check for Updates…** item is still in the menu: choosing
   it asks GitHub (`api.github.com`) for CADCraft's releases and may offer a newer CADCraft
