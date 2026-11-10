@@ -318,19 +318,55 @@ pub fn author_text(a: &ecad_model::Author) -> String {
     }
 }
 
-/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise (UTC; design 020 §2.2).
-pub fn short_time(ms: Option<u64>, now_ms: Option<u64>) -> String {
-    let Some(ms) = ms else { return String::new() };
-    let (y, mo, d, h, mi) = civil(ms);
-    let this_year = now_ms.map(|n| civil(n).0) == Some(y);
-    if this_year { format!("{mo:02}-{d:02} {h:02}:{mi:02}") } else { format!("{y:04}-{mo:02}-{d:02}") }
+/// The local zone's offset from UTC at `ms`, in seconds (overseer, 2026-11-10: the graph and the
+/// details show local time; the file keeps UTC). `None` in a wasm build, where times are shown in
+/// UTC, labelled.
+pub fn local_offset(ms: u64) -> Option<i64> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use chrono::{Offset, TimeZone};
+        let utc = chrono::DateTime::from_timestamp(i64::try_from(ms / 1000).ok()?, 0)?.naive_utc();
+        Some(i64::from(chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = ms;
+        None
+    }
 }
 
-/// `YYYY-MM-DD HH:MM` (UTC).
-pub fn full_time(ms: Option<u64>) -> String {
+/// `ms` moved by `offset` seconds (none: UTC).
+fn shifted(ms: u64, offset: Option<i64>) -> u64 {
+    let ms = i128::from(ms) + i128::from(offset.unwrap_or(0)) * 1000;
+    u64::try_from(ms.max(0)).unwrap_or(0)
+}
+
+/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, in local time (design 020 §2.2); ` UTC`
+/// follows when the local zone cannot be read.
+pub fn short_time(ms: Option<u64>, now_ms: Option<u64>) -> String {
+    short_time_in(ms, now_ms, ms.and_then(local_offset))
+}
+
+/// [`short_time`] with the zone's offset given (`None`: UTC, labelled).
+pub fn short_time_in(ms: Option<u64>, now_ms: Option<u64>, offset: Option<i64>) -> String {
     let Some(ms) = ms else { return String::new() };
-    let (y, mo, d, h, mi) = civil(ms);
-    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}")
+    let (y, mo, d, h, mi) = civil(shifted(ms, offset));
+    let this_year = now_ms.map(|n| civil(shifted(n, offset)).0) == Some(y);
+    let utc = if offset.is_none() { " UTC" } else { "" };
+    if this_year { format!("{mo:02}-{d:02} {h:02}:{mi:02}{utc}") } else { format!("{y:04}-{mo:02}-{d:02}{utc}") }
+}
+
+/// `YYYY-MM-DD HH:MM` in local time; ` UTC` follows when the local zone cannot be read.
+pub fn full_time(ms: Option<u64>) -> String {
+    full_time_in(ms, ms.and_then(local_offset))
+}
+
+/// [`full_time`] with the zone's offset given (`None`: UTC, labelled).
+pub fn full_time_in(ms: Option<u64>, offset: Option<i64>) -> String {
+    let Some(ms) = ms else { return String::new() };
+    let (y, mo, d, h, mi) = civil(shifted(ms, offset));
+    let utc = if offset.is_none() { " UTC" } else { "" };
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}{utc}")
 }
 
 /// Year, month, day, hour and minute (UTC) of milliseconds since 1970.
@@ -1358,12 +1394,17 @@ mod tests {
     }
 
     #[test]
-    fn times_read_in_utc() {
+    fn times_read_in_the_local_zone_or_in_utc_labelled() {
         // 2026-11-10 09:12 UTC.
         let ms = 1_794_301_920_000;
-        assert_eq!(full_time(Some(ms)), "2026-11-10 09:12");
-        assert_eq!(short_time(Some(ms), Some(ms)), "11-10 09:12");
-        assert_eq!(short_time(Some(ms), Some(ms + 400 * 86_400_000)), "2026-11-10");
-        assert_eq!(short_time(None, Some(ms)), "");
+        assert_eq!(full_time_in(Some(ms), Some(0)), "2026-11-10 09:12");
+        assert_eq!(full_time_in(Some(ms), None), "2026-11-10 09:12 UTC");
+        assert_eq!(full_time_in(Some(ms), Some(-10 * 3600)), "2026-11-09 23:12");
+        assert_eq!(short_time_in(Some(ms), Some(ms), Some(3600)), "11-10 10:12");
+        assert_eq!(short_time_in(Some(ms), Some(ms + 400 * 86_400_000), Some(0)), "2026-11-10");
+        assert_eq!(short_time_in(None, Some(ms), Some(0)), "");
+        // This build reads the local zone: no label.
+        assert!(local_offset(ms).is_some());
+        assert!(!full_time(Some(ms)).ends_with("UTC"));
     }
 }

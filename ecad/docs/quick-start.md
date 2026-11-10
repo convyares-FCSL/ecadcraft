@@ -1522,7 +1522,7 @@ Your table of three clean runs goes here once you have run it.
   main are brief 020b: their buttons are shown, disabled. The graph is read whole (no paging
   past 200 rows yet); the change summary of a version names the pages changed, added and removed
   and says when devices or wiring changed, but does not yet name them (`-K05 added`). Times are
-  shown in UTC. New versions are made at Now only (owner answer 13).
+  shown in local time (the file keeps UTC). New versions are made at Now only (owner answer 13).
 
 - **Connectivity and wire numbers (brief 022).** Labels are placed on each route's longest
   segment with no collision avoidance and cannot be dragged (owner answer Q11), so a label can
