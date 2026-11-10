@@ -120,7 +120,7 @@ contrast; until a spec says otherwise ECAD keeps the same ACI colours (as CADCra
 colours) and this is a known limitation.
 
 
-## History graph (020, proposed in `design/020.md` §11)
+## History graph (020, `design/020.md` §11; in use since 020a)
 
 | Token | Value | Used for |
 | --- | --- | --- |

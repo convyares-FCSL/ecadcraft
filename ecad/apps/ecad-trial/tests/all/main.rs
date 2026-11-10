@@ -14,6 +14,7 @@ mod cable_view_tester;
 mod checks_ui;
 mod debugger;
 mod devices_ui;
+mod history_ui;
 mod layouts_and_hover;
 mod mouse;
 mod mouse_tester;

@@ -450,27 +450,21 @@ impl HistoryPanel {
                 continue;
             }
             let x = lane_x(s.lane);
-            let stroke = |row: usize| if s.current_from.is_some_and(|f| row >= f) { cur } else { dim };
-            // Up from this row's centre (unless it is the top), down to the next (unless the bottom).
-            if i > s.top {
-                painter.line_segment([pos2(x, rect.top()), pos2(x, cy)], stroke(i));
+            // The segment between rows `upper` and `upper + 1` is on the current line when its upper
+            // end is at or below where the current line starts on this lane.
+            let stroke = |upper: usize| if s.current_from.is_some_and(|f| upper >= f) { cur } else { dim };
+            let bends = i == s.bottom && s.into.is_some();
+            // Up from this row's centre (unless it is the top, or the fork row, where the line
+            // bends into the parent's lane instead).
+            if i > s.top && !bends {
+                painter.line_segment([pos2(x, rect.top()), pos2(x, cy)], stroke(i - 1));
             }
+            // Down to the next row (unless this is the bottom).
             if i < s.bottom {
-                if i + 1 == s.bottom
-                    && let Some(into) = s.into
-                {
-                    // The bend into the parent's lane at the fork row.
-                    painter.line_segment([pos2(x, cy), pos2(x, rect.bottom())], stroke(i + 1));
-                    let _ = into;
-                } else {
-                    painter.line_segment([pos2(x, cy), pos2(x, rect.bottom())], stroke(i + 1));
-                }
+                painter.line_segment([pos2(x, cy), pos2(x, rect.bottom())], stroke(i));
             }
-            if i == s.bottom
-                && let Some(into) = s.into
-            {
-                let px = lane_x(into);
-                painter.line_segment([pos2(x, rect.top()), pos2(px, cy)], stroke(i));
+            if bends && let Some(into) = s.into {
+                painter.line_segment([pos2(x, rect.top()), pos2(lane_x(into), cy)], stroke(i.saturating_sub(1)));
             }
         }
         let lane = self.layout.lanes.get(i).copied().unwrap_or(0);

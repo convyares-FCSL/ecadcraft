@@ -1217,7 +1217,8 @@ fn fork_of(p: &Project, params: &Value) -> Result<Point, String> {
 fn from_text(p: &Project, pt: &Point) -> String {
     let bname = find_branch(p, &pt.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
     match pt.kind {
-        NodeKind::Version | NodeKind::Revision => pt.title.clone(),
+        NodeKind::Version => pt.title.trim_start_matches("Version ").to_string(),
+        NodeKind::Revision => pt.title.clone(),
         _ => format!("{bname}, step {}", pt.seq),
     }
 }
@@ -1433,7 +1434,7 @@ mod tests {
     #[test]
     fn times_read_in_utc() {
         // 2026-11-10 09:12 UTC.
-        let ms = 1_794_302_520_000;
+        let ms = 1_794_301_920_000;
         assert_eq!(full_time(Some(ms)), "2026-11-10 09:12");
         assert_eq!(short_time(Some(ms), Some(ms)), "11-10 09:12");
         assert_eq!(short_time(Some(ms), Some(ms + 400 * 86_400_000)), "2026-11-10");

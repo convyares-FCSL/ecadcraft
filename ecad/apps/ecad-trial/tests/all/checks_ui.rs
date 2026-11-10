@@ -31,7 +31,7 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
 }
 
 /// The demo project (`cargo xtask demo`), written to `dir` through the MCP `execute` tool.
-fn demo_file(dir: &std::path::Path) -> String {
+pub(crate) fn demo_file(dir: &std::path::Path) -> String {
     let path = dir.join("demo.ecad").to_string_lossy().into_owned();
     let _ = std::fs::remove_file(&path);
     let mut mcp = ecad_mcp::EcadMcp::create(&path, ecad_mcp::Options { write: true, agent: Some(ecad_mcp::demo::AUTHOR.into()) }).unwrap();

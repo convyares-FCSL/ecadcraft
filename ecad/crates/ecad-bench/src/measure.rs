@@ -125,7 +125,7 @@ fn ms(since: Instant) -> f64 {
     since.elapsed().as_secs_f64() * 1000.0
 }
 
-fn path_text(path: &Path) -> Result<&str, String> {
+pub(crate) fn path_text(path: &Path) -> Result<&str, String> {
     path.to_str().ok_or_else(|| format!("{} is not valid Unicode", path.display()))
 }
 
