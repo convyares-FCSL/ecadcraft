@@ -29,6 +29,8 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.check-error` | 1 (red) | `#FF0000` | Checks error glyph and go-to ring (022); same as `ecad.orphan` |
 | `ecad.check-warning` | 2 (yellow) | `#FFFF00` | Checks warning glyph and go-to ring (022) |
 | `ecad.continuation` | ByLayer | — | Continuation arrow (022), drawn on its symbol's layer |
+| `ecad.provisional` | 30 (orange) | `#FF7F00` | Provisional tags on the sheet, provisional wire labels (`24V-?`), provisional text in lists, fields and the Renumber preview (026) |
+| `ecad.fixed-mark` | `cad.text_dim`, small text | — | The `F` after a fixed tag in the Devices tab and the Renumber preview (026); not drawn on the sheet |
 
 Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
 does not recolour stored objects. Computed drawing that is not stored (the fan view of a cable) is
