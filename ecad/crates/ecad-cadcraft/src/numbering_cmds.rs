@@ -174,8 +174,9 @@ pub fn applied_words(plan: &Plan, finalise: bool) -> String {
     format!("{verb} {what}{kept}. U undoes it.")
 }
 
-fn row_json(r: &numbering::Row) -> Value {
+fn row_json(doc: &Document, r: &numbering::Row) -> Value {
     json!({
+        "desc": desc(doc, r.object),
         "page": r.page.map(|p| p.hex()),
         "point": r.point.map(|a| [a.x, a.y]),
         "object": numbering::object_id(r.object).to_string(),
@@ -191,9 +192,26 @@ fn row_json(r: &numbering::Row) -> Value {
     })
 }
 
+/// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
+fn desc(doc: &Document, o: ObjectRef) -> String {
+    match o {
+        ObjectRef::Component(c) => devices::description(doc, c),
+        ObjectRef::Cable(k) => {
+            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            format!("Cable, {}", plural(n, "wire", "wires"))
+        }
+        ObjectRef::Conductor(w) => {
+            let conn = doc.connectivity();
+            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::wiring::net_potential(doc, n).name).unwrap_or_default()
+        }
+        _ => String::new(),
+    }
+}
+
 /// The preview as JSON (design §13).
-pub fn preview_json(plan: &Plan, change_count: u64) -> Value {
-    let rows: Vec<Value> = plan.rows.iter().filter(|r| !matches!(r.mark, Mark::Skipped(_))).take(MAX_PREVIEW_ROWS).map(row_json).collect();
+pub fn preview_json(doc: &Document, plan: &Plan, change_count: u64) -> Value {
+    let rows: Vec<Value> =
+        plan.rows.iter().filter(|r| !matches!(r.mark, Mark::Skipped(_))).take(MAX_PREVIEW_ROWS).map(|r| row_json(doc, r)).collect();
     let skipped: Vec<Value> = plan
         .rows
         .iter()
@@ -249,7 +267,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
         let plan = plan_for(p, &req)?;
         let count = p.change_count();
         if preview {
-            return Ok(preview_json(&plan, count));
+            return Ok(preview_json(p.ledger.document(), &plan, count));
         }
         if let Some(b) = based_on
             && b != count

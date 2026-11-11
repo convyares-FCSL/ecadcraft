@@ -333,7 +333,7 @@ impl RenumberDialog {
                                 )
                             };
                             let new = if matches!(mark.as_str(), "→" | "F" | "=") { new } else { String::new() };
-                            let why = r["why"].as_str().unwrap_or_default();
+                            let why = r["why"].as_str().or_else(|| r["desc"].as_str()).unwrap_or_default();
                             let kind = match r["kind"].as_str() {
                                 Some("devices") => "Dev  ",
                                 Some("cables") => "Cbl  ",
