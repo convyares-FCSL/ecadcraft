@@ -1001,7 +1001,9 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    lines.push(format!("Location: {words}   Function: {}", get("function")));
+    if loc.value.is_some() || props.contains_key("function") {
+        lines.push(format!("Location: {words}   Function: {}", get("function")));
+    }
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
