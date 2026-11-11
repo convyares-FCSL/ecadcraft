@@ -323,6 +323,13 @@ fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some_and(|v| v == "1")
 }
 
+/// Whether verify mode is on for this build or process (the `verify-invariants` feature, which
+/// every `cargo test` turns on, or `ECAD_VERIFY_INVARIANTS=1`): derived indexes kept outside the
+/// model (brief 025's reference index) compare themselves with a rebuild after every change.
+pub fn verify_mode() -> bool {
+    verifying(false)
+}
+
 /// Whether to run the full check alongside the scoped one.
 fn verifying(local: bool) -> bool {
     local || cfg!(feature = "verify-invariants") || verify_env()
