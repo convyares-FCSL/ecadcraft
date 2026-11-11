@@ -181,7 +181,7 @@ impl Reports {
                     if self.tab == Tab::Bom {
                         ui.label(RichText::new("Group").small());
                         let words = if self.group == Group::Location { "By location" } else { "By part" };
-                        ui.menu_button(RichText::new(format!("{words} \u{25be}")).small(), |ui| {
+                        ui.menu_button(RichText::new(format!("{words} v")).small(), |ui| {
                             if ui.button("By location").clicked() {
                                 self.group = Group::Location;
                                 ui.close();
@@ -245,8 +245,8 @@ impl Reports {
                     let r = egui::Rect::from_min_size(pos2(x, hr.top()), vec2(w, ROW));
                     let resp = ui.interact(r, ui.scope_id().with(("hdr", col)), Sense::click());
                     let arrow = match self.sort {
-                        Some((c, false)) if c == col => " \u{25b4}",
-                        Some((c, true)) if c == col => " \u{25be}",
+                        Some((c, false)) if c == col => " ^",
+                        Some((c, true)) if c == col => " v",
                         _ => "",
                     };
                     ui.painter().text(pos2(x + 2.0, hr.center().y), egui::Align2::LEFT_CENTER, format!("{h}{arrow}"), font.clone(), t.text_dim);

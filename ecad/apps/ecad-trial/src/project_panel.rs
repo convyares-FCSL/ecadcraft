@@ -494,7 +494,7 @@ impl ProjectPanel {
                 }
                 // Brief 024: the kind of a new page (design 024 §5.1).
                 ui.add_enabled_ui(writable, |ui| {
-                    ui.menu_button(RichText::new("\u{25be}").small(), |ui| {
+                    ui.menu_button(RichText::new("v").small(), |ui| {
                         if ui.button("Page").clicked() {
                             out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
                             ui.close();

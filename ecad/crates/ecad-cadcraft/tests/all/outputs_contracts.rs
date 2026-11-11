@@ -141,17 +141,22 @@ fn a_box_needs_room_and_a_closed_polyline() {
     let e = h.run("locationbox", json!({"location": "+A", "corners": [[0, 0], [50, 50]], "points": [[0, 0]]})).unwrap_err();
     assert!(e.contains("exactly one"), "{e}");
     // An existing closed polyline becomes a box; an open one is refused.
-    let r = h.run("pline", json!({"points": pts(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)]), "closed": true}));
-    if let Ok(v) = r {
-        let doc = h.doc();
-        let item = *doc.items.keys().last().unwrap();
-        let _ = v;
-        let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
-        let doc = h.doc();
-        let it = &doc.items[&item];
-        assert_eq!(it.style.linetype, "DASHED");
-        assert!(doc.components.contains_key(&id::<ComponentId>(&made, "component")));
-    }
+    let new_item = |h: &mut H, before: &std::collections::BTreeSet<ecad_model::ItemId>| *h.doc().items.keys().find(|i| !before.contains(i)).unwrap();
+    let before: std::collections::BTreeSet<_> = h.doc().items.keys().copied().collect();
+    h.run("pline", json!({"vertices": pts(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)]), "closed": true})).unwrap();
+    let item = new_item(&mut h, &before);
+    let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
+    let doc = h.doc();
+    assert_eq!(doc.items[&item].style.linetype, "DASHED");
+    assert!(doc.components.contains_key(&id::<ComponentId>(&made, "component")));
+    // The same outline again: it belongs to a box now.
+    let e = h.run("locationbox", json!({"location": "+JB8", "item": item.hex()})).unwrap_err();
+    assert!(e.contains("belongs to another location box"), "{e}");
+    let before: std::collections::BTreeSet<_> = h.doc().items.keys().copied().collect();
+    h.run("pline", json!({"vertices": pts(&[(100.0, 0.0), (160.0, 0.0), (160.0, 40.0)])})).unwrap();
+    let open = new_item(&mut h, &before);
+    let e = h.run("locationbox", json!({"location": "+JB7", "item": open.hex()})).unwrap_err();
+    assert!(e.contains("Pick a closed polyline"), "{e}");
 }
 
 /// §13 C: a symbol drawn away from its device's location shows the prefix; the device keeps its
