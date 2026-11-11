@@ -95,7 +95,8 @@ pub enum Action {
         component: ecad_model::ComponentId,
         key: &'static str,
         value: String,
-        merge: bool,
+        /// Brief 026: how a taken tag is resolved (`swap`, `merge`, `next`).
+        conflict: Option<&'static str>,
     },
     /// Rename this page in the name box (the row's right-click menu).
     RenameInBox(PageId),
@@ -105,6 +106,10 @@ pub enum Action {
     AddJunction(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
     NumberThem,
+    /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
+    Finalise,
+    /// Devices tab (brief 026): open the Renumber dialog.
+    Renumber,
     /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
     /// the end).
     MoveInto {
@@ -123,6 +128,8 @@ pub enum Action {
     RenameFolder(FolderId, String),
     /// `deletefolder`.
     DeleteFolder(FolderId),
+    /// Brief 026: open Renumber with this folder chosen.
+    RenumberFolder(FolderId),
     /// New page in this folder (the name box, then `newpage {title, folder}`).
     NewPageIn(Option<FolderId>),
     /// `pageprops {page, number}`.
@@ -860,6 +867,11 @@ impl ProjectPanel {
             }
             if ui.add_enabled(writable, egui::Button::new("Delete folder")).clicked() {
                 out.push(Action::DeleteFolder(id));
+                ui.close();
+            }
+            // Brief 026 (design 026 §3): Renumber with this folder chosen.
+            if ui.add_enabled(writable, egui::Button::new("Renumber in this folder…")).clicked() {
+                out.push(Action::RenumberFolder(id));
                 ui.close();
             }
         });

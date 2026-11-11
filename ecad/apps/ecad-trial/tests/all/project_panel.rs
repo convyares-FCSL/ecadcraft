@@ -786,7 +786,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     h.run_steps(2);
     let other = doc(&mut h).components.keys().copied().find(|c| *c != coil).unwrap();
     let before = head(&mut h);
-    h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), merge: false });
+    h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), conflict: None });
     h.run_steps(2);
     assert_eq!(head(&mut h), before, "refused");
     let err = h.state().panel.devices.error.clone().expect("the refusal is shown");

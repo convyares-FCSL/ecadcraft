@@ -318,12 +318,12 @@ fn cablecore_json_contract_table() {
         Row {
             name: "batch, cores too short",
             params: |f| json!({"cable": f.c1.hex(), "cores": []}),
-            want: Err("`cores` must list one label (or null) per member: cable C1 has 4 members"),
+            want: Err("`cores` must list one label (or null) per member: cable -C01 has 4 members"),
         },
         Row {
             name: "batch, cores too long (out of range core 5)",
             params: |f| json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4", "5"]}),
-            want: Err("`cores` must list one label (or null) per member: cable C1 has 4 members"),
+            want: Err("`cores` must list one label (or null) per member: cable -C01 has 4 members"),
         },
         Row {
             name: "batch, cores an object",
@@ -779,6 +779,8 @@ fn ac6_unnamed_cable_box_shows_a_question_mark() {
         h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
     let k: CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 8]})).unwrap(), "cable");
+    // Brief 026: a new cable is tagged; clear the tag to see an unnamed one.
+    h.run("setprop", json!({"cable": k.hex(), "key": "tag", "value": null})).unwrap();
     view(&mut h, k, "fan");
     let d = fan(&mut h, page, k);
     let lines: Vec<String> = of_role(&d, Role::BoxText).into_iter().map(|p| text_of(p).2).collect();
@@ -1319,7 +1321,7 @@ fn s2_window_round_a_labelled_cable_with_components() {
 }
 
 /// Round 2 (round-1 finding 3): a blank stored core (empty or spaces, by another route) is shown
-/// in the hover as no core at all: `  W4`, and `In cable C1` on the wire.
+/// in the hover as no core at all: `  W4`, and `In cable -C01` on the wire.
 #[test]
 fn hover_shows_blank_cores_as_unset() {
     let mut f = fixture(true, true);
@@ -1334,5 +1336,5 @@ fn hover_shows_blank_cores_as_unset() {
     assert!(lines.iter().all(|l| !l.ends_with("core ") && !l.contains("core    ")), "{lines:?}");
     let route = f.h.route_handle(f.page, f.wires[3]);
     let lines = f.h.p(|p| hover_lines(p, uid, route)).unwrap();
-    assert!(lines.iter().any(|l| l == "In cable C1"), "{lines:?}");
+    assert!(lines.iter().any(|l| l == "In cable -C01"), "{lines:?}");
 }

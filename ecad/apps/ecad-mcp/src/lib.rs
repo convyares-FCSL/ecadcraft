@@ -220,7 +220,10 @@ impl State {
         let new =
             self.log_since(&before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
         let used = self.line_transactions;
-        if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
+        // Brief 026 (design §5.5): `issuerevision {provisional: "finalise"}` records Finalise, then
+        // the issue: two transactions by design (the revision point holds the finalised tags).
+        let allowed = policy::transactions_allowed(&id, &params);
+        if used.saturating_add(new.len()) > allowed {
             let what = if used > 0 {
                 format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
             } else {
@@ -231,13 +234,13 @@ impl State {
             return Err(match self.roll_back(&new) {
                 Ok(n) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). They were taken back by {n} \
+                     {allowed} transaction(s); {what} ({seqs}). They were taken back by {n} \
                      undo/redo transaction(s) recorded after them, so the design is as before {name}; the history \
                      keeps both."
                 ),
                 Err((done, e)) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). Taking them back stopped after {done} \
+                     {allowed} transaction(s); {what} ({seqs}). Taking them back stopped after {done} \
                      of {}: {e}. The project is NOT as before {name}; check ecad_history.",
                     new.len()
                 ),

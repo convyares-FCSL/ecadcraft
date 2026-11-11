@@ -44,6 +44,7 @@ pub mod history;
 pub mod interact;
 pub mod look;
 pub mod merging;
+pub mod numbering_cmds;
 pub mod oops;
 pub mod preview;
 pub mod project;

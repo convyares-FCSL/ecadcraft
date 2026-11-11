@@ -23,6 +23,11 @@ use crate::project_panel::{Action, ROW_H};
 pub const FILTER: &str = "Filter devices";
 /// The merge offer's button.
 pub const MERGE: &str = "Make it the same device";
+/// Brief 026: the clash box's first button, and the header's Renumber.
+pub const SWAP: &str = "Swap";
+pub const RENUMBER: &str = "Renumber…";
+/// `ecad.provisional` (design 026 §10): ACI 30.
+pub const PROVISIONAL: egui::Color32 = egui::Color32::from_rgb(0xff, 0x7f, 0x00);
 
 /// The accessible label of a device row: `Device -K01: Contactor / relay coil`.
 pub fn device_label(e: &DeviceEntry) -> String {
@@ -129,7 +134,13 @@ impl DevicesPanel {
             .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
         let count = self.shown;
-        ui.label(RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim));
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim));
+            // Brief 026 (design §9): Renumber in the header.
+            if ui.add_enabled(writable, egui::Button::new(RichText::new(RENUMBER).small())).accessible_name("ecad.devices.renumber").clicked() {
+                out.push(Action::Renumber);
+            }
+        });
         // The selected device's properties, at the bottom of the tab.
         let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
         let list_h = (ui.available_height() - editor_h).max(ROW_H * 3.0);
@@ -149,10 +160,18 @@ impl DevicesPanel {
                     let font = egui::FontId::monospace(12.0);
                     match row {
                         Row::Group(g, n) => {
+                            // Brief 026: `-K  (12, 2 prov)`.
+                            let prov = self
+                                .list
+                                .entries
+                                .iter()
+                                .filter(|e| e.group == g && e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional))
+                                .count();
+                            let counts = if prov > 0 { format!("{n}, {prov} prov") } else { n.to_string() };
                             p.text(
                                 pos2(rect.left() + 4.0, rect.center().y),
                                 egui::Align2::LEFT_CENTER,
-                                format!("{g}  ({n})"),
+                                format!("{g}  ({counts})"),
                                 egui::FontId::proportional(11.0),
                                 t.text_dim,
                             );
@@ -175,8 +194,16 @@ impl DevicesPanel {
                                 "▸"
                             };
                             let tag = e.tag.as_deref().unwrap_or("(no tag)");
-                            let text = format!("{arrow} {tag:<7} {}", e.description);
-                            let colour = if selected { t.text } else { t.text_dim };
+                            // Brief 026: `F` after a fixed tag; a provisional one in its colour.
+                            let fixed = if e.fixed { " F" } else { "" };
+                            let text = format!("{arrow} {tag:<7}{fixed} {}", e.description);
+                            let colour = if ecad_model::tag::is_provisional(tag) {
+                                PROVISIONAL
+                            } else if selected {
+                                t.text
+                            } else {
+                                t.text_dim
+                            };
                             p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, colour);
                             let label = device_label(e);
                             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
@@ -241,13 +268,49 @@ impl DevicesPanel {
         ui.spacing_mut().item_spacing.y = 2.0;
         ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(t.text_dim));
         if let Some((msg, offer)) = self.error.clone() {
-            ui.add(egui::Label::new(RichText::new(msg).small().color(ui.visuals().warn_fg_color)).wrap());
-            if let Some((target, tag)) = offer
-                && ui.small_button(MERGE).on_hover_text("Make this device part of the device that has that tag (one undo step)").clicked()
-            {
-                self.error = None;
-                out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag, merge: true });
+            ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
+            // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
+            if let Some((target, tag)) = offer {
+                let next = msg.split(r#""next" (use "#).nth(1).and_then(|r| r.split(')').next()).map(str::to_string);
+                let same_kind = msg.contains(r#""swap""#);
+                ui.horizontal(|ui| {
+                    if same_kind {
+                        let swap = egui::Button::new(RichText::new(SWAP).small().color(t.text)).fill(t.accent);
+                        if ui.add(swap).accessible_name("ecad.tagclash.swap").on_hover_text("Exchange the two tags (one undo step)").clicked() {
+                            self.error = None;
+                            out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("swap") });
+                        }
+                        if ui
+                            .small_button(MERGE)
+                            .accessible_name("ecad.tagclash.merge")
+                            .on_hover_text("Make this device part of the device that has that tag (one undo step)")
+                            .clicked()
+                        {
+                            self.error = None;
+                            out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("merge") });
+                        }
+                    }
+                    let label = next.map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
+                    if ui.small_button(label).accessible_name("ecad.tagclash.next").clicked() {
+                        self.error = None;
+                        out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("next") });
+                    }
+                });
             }
+        }
+        // Brief 026 (design §4): the Fixed box beside the tag; greyed for a provisional tag.
+        let provisional = e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional);
+        let mut fixed = e.fixed;
+        let can = writable && e.tag.is_some() && !provisional;
+        let r = ui.add_enabled(can, egui::Checkbox::new(&mut fixed, RichText::new("Fixed").small())).accessible_name("ecad.props.tagfixed");
+        let r = if provisional { r.on_disabled_hover_text("A provisional tag can't be fixed; give it a number first.") } else { r };
+        if r.changed() {
+            out.push(Action::SetDeviceProperty {
+                component: c,
+                key: "tag_fixed",
+                value: if fixed { "yes".into() } else { String::new() },
+                conflict: None,
+            });
         }
         egui::Grid::new("ecad.devices.props").num_columns(2).spacing(vec2(6.0, 2.0)).show(ui, |ui| {
             for (i, (key, name)) in PROPERTIES.iter().enumerate() {
@@ -274,7 +337,7 @@ impl DevicesPanel {
                     let edited = self.editing.take().map(|(_, _, x)| x).unwrap_or_default();
                     if !esc && edited.trim() != stored.trim() {
                         let _ = enter;
-                        out.push(Action::SetDeviceProperty { component: c, key, value: edited, merge: false });
+                        out.push(Action::SetDeviceProperty { component: c, key, value: edited, conflict: None });
                     }
                 }
                 ui.end_row();
@@ -284,10 +347,15 @@ impl DevicesPanel {
 
     /// The trial reports a refused property edit; a tag held by another device offers the merge.
     pub fn refused(&mut self, c: ComponentId, key: &str, value: &str, message: String) {
-        let offer = (key == "tag" && message.contains("already used by")).then(|| (c, value.to_string()));
-        // The command's way forward names its JSON parameter; here the button is the way.
-        let message = match message.find(" Set `merge` to true") {
-            Some(i) if offer.is_some() => message.get(..i).unwrap_or(&message).to_string(),
+        let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
+        // The command's ways forward name its JSON parameter; here the buttons are the ways, so
+        // only the first sentence is shown (the `next` tag is read from the rest).
+        let message = match message.find(" Give conflict:").or_else(|| message.find(" It is a ")) {
+            Some(i) if offer.is_some() => format!(
+                "{}{}",
+                message.get(..i).unwrap_or(&message),
+                message.get(i..).and_then(|r| r.find("(use ").map(|j| &r[j..])).map(|x| format!(" {x}")).unwrap_or_default()
+            ),
             _ => message,
         };
         self.error = Some((message, offer));

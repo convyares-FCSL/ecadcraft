@@ -1,7 +1,7 @@
 //! Brief 010 (cable references across pages), written from the brief and design 010.
 //!
 //! Fixture R (design §11): page 1 renamed `Supply` holds K1 with connection points at (0,0), (0,5),
-//! (0,10), wires W0, W5, W10 from there to x = 60, and cable C1 slashed across them; page 2
+//! (0,10), wires W0, W5, W10 from there to x = 60, and cable -C01 slashed across them; page 2
 //! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
 //! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablerefs`,
@@ -342,8 +342,8 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(te.common.color, CColor::Index(1));
     assert_eq!(doc.conductors, before.conductors, "conductors and attachments stay");
     assert_eq!(doc.cables, before.cables);
-    assert!(log_since(&r.h, n).contains("Cable C1's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
-    assert_eq!(ecad_cadcraft::references::diagnostics(&doc), vec!["Orphan: cable C1 on page 1 (?)".to_string()]);
+    assert!(log_since(&r.h, n).contains("Cable -C01's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
+    assert_eq!(ecad_cadcraft::references::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["orphan_references"].as_array().map(Vec::len), Some(1));
     r.h.cmdline("u");
@@ -407,7 +407,7 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     let fid = reference_on(&mut r.h, r.field);
     assert_eq!(v["reference"], json!(fid.hex()));
     assert_eq!(v["page"], json!(r.field.hex()));
-    assert_eq!(v["message"], "Page 2 \"Field\", at the other end of cable C1 (2-A-6).");
+    assert_eq!(v["message"], "Page 2 \"Field\", at the other end of cable -C01 (2-A-6).");
     let want = uid(&mut r.h, r.field);
     assert_eq!(r.h.s.state().unwrap().uid, want, "Field is current");
     let point = r.h.doc().representations[&fid].items[0];
@@ -446,7 +446,7 @@ fn interactive_forms_record_the_json_forms_transactions() {
     r.h.activate(r.field);
     let _ = r.h.s.zoom_extents();
     r.h.s.start("cablecontinue").unwrap();
-    assert_eq!(prompt(&r.h), "Enter cable to continue or [List] <C1>:");
+    assert_eq!(prompt(&r.h), "Enter cable to continue or [List] <-C01>:");
     r.h.s.input(Input::Enter).unwrap();
     assert_eq!(prompt(&r.h), "Specify reference point:");
     click(&mut r.h, 20.0, 5.0);
@@ -471,20 +471,20 @@ fn refusals_say_why_and_change_nothing() {
     let lone: ConductorId = id(&r.h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap(), "conductor");
     let c2: CableId = id(&r.h.run("cableadd", json!({"conductors": [lone.hex()], "tag": "C2"})).unwrap(), "cable");
     let cases: Vec<(PageId, &str, Value, &str)> = vec![
-        (r.supply, "cableref", json!({"cable": c1, "at": [70, 0]}), "Cable C1 already has a reference on this page."),
-        (third, "cableref", json!({"cable": c1, "at": [0, 0]}), "Cable C1 already has a reference on this page."),
+        (r.supply, "cableref", json!({"cable": c1, "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
+        (third, "cableref", json!({"cable": c1, "at": [0, 0]}), "Cable -C01 already has a reference on this page."),
         (
             third,
             "cablecontinue",
             json!({"cable": c1, "at": [0, 0], "toward": [10, 0]}),
-            "Cable C1 already continues to another page; a cable can have only two references in this version.",
+            "Cable -C01 already continues to another page; a cable can have only two references in this version.",
         ),
-        (third, "cableref", json!({"cable": c2.hex(), "at": [0, 0]}), "Cable C2 has no wires drawn on this page; draw or continue it here first."),
+        (third, "cableref", json!({"cable": c2.hex(), "at": [0, 0]}), "Cable -C02 has no wires drawn on this page; draw or continue it here first."),
         (
             third,
             "cablecontinue",
             json!({"cable": c2.hex(), "at": [0, 0], "toward": [10, 0]}),
-            "Cable C2 has no reference to continue from; place one with Cable Reference on its page first.",
+            "Cable -C02 has no reference to continue from; place one with Cable Reference on its page first.",
         ),
     ];
     for (page, cmd, params, want) in cases {
@@ -500,7 +500,7 @@ fn refusals_say_why_and_change_nothing() {
     f.h.run("cableref", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
     let head = f.h.head();
     let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [80, 5], "toward": [90, 5]})).unwrap_err();
-    assert!(e.contains("Cable C1 is already drawn on this page; continue it on another page."), "{e}");
+    assert!(e.contains("Cable -C01 is already drawn on this page; continue it on another page."), "{e}");
     assert_eq!(f.h.head(), head);
     let doc = f.h.doc();
     let mut both = doc.clone();
@@ -508,7 +508,7 @@ fn refusals_say_why_and_change_nothing() {
         both.conductors.get_mut(&w).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
     }
     let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err();
-    assert_eq!(e, "None of cable C1's wires can continue: each is connected at both ends or already drawn on this page.");
+    assert_eq!(e, "None of cable -C01's wires can continue: each is connected at both ends or already drawn on this page.");
     // A mixed cable: the both-ends wire is skipped and reported.
     let mut mixed = doc.clone();
     mixed.conductors.get_mut(&f.w[2]).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
@@ -559,7 +559,7 @@ fn json_forms_of_the_reference_and_page_commands() {
     // cablegoto from Field reaches Supply (still page 1, now "Source").
     let rid = reference_hex(&mut r.h, r.field);
     let v = r.h.run("cablegoto", json!({"reference": rid})).unwrap();
-    assert_eq!(v["message"], "Page 1 \"Source\", at the other end of cable C1 (1-B-6).");
+    assert_eq!(v["message"], "Page 1 \"Source\", at the other end of cable -C01 (1-B-6).");
 }
 
 fn reference_hex(h: &mut H, page: PageId) -> String {
@@ -950,7 +950,7 @@ fn the_flag_points_left_when_the_wires_leave_to_the_right() {
     assert_flag_away(&mut r.h, r.field, r.c1, Pt::new(-1.0, 0.0));
 }
 
-/// Three vertical wires (x = 0, 5, 10, y = 0 to 60) slashed into cable C1, with a reference at `at`.
+/// Three vertical wires (x = 0, 5, 10, y = 0 to 60) slashed into cable -C01, with a reference at `at`.
 fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
     let mut h = H::new(SEED);
     let page = h.first_page();

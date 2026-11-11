@@ -22,6 +22,8 @@ pub const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
 pub const ADD_JUNCTION: &str = "Add junction";
 pub const NUMBER_THEM: &str = "Number them";
+/// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
+pub const FINALISE: &str = "Finalise";
 
 /// One copied row, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -196,12 +198,13 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let what = if r.check.kind == Kind::Unnumbered { r.check.which.clone() } else { r.check.what() };
+                let summary = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires);
+                let what = if summary { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
                 // description takes the room left, cut with an ellipsis.
                 let right = if fix.is_some() { rect.right() - 92.0 } else { rect.right() - 4.0 };
-                let tail = if r.check.kind == Kind::Unnumbered { String::new() } else { format!("{} {}", r.locator, r.check.which) };
+                let tail = if summary { String::new() } else { format!("{} {}", r.locator, r.check.which) };
                 let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
                 let tail_w = tail_g.size().x;
                 let room = (right - tail_w - 6.0 - (rect.left() + 18.0)).max(0.0);
@@ -216,11 +219,13 @@ impl ChecksPanel {
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
                         Fix::NumberThem => NUMBER_THEM,
+                        Fix::Finalise => FINALISE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
                             (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
                             (Fix::NumberThem, _) => out.push(Action::NumberThem),
+                            (Fix::Finalise, _) => out.push(Action::Finalise),
                             _ => {}
                         }
                         continue;
