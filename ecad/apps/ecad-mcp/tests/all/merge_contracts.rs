@@ -182,3 +182,50 @@ fn with_writes_off_the_merge_preview_reads_and_merge_is_refused() {
     }
     assert_eq!(c.log().len(), before, "nothing recorded");
 }
+
+fn exec_call(id: u64, command: &str, params: Value) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": "execute", "arguments": {"command": command, "params": params}}})
+}
+
+/// Reviewer 020b: a merge as the second transaction of a request line is taken back by
+/// `undomerge` (a plain undo of a merge asks first); `close: false` undone says nothing about
+/// reopening; an Edit value goes through the property's rules; Verify checks the merge rows.
+#[test]
+fn a_merge_over_the_cap_is_taken_back_close_false_undo_and_edit_rules() {
+    let dir = TempDir::new("merge-review");
+    let (mut c, coil, path) = project(&dir, "review.ecad");
+    let _ = &path;
+    c.exec("branch", json!({"name": "Option R"}));
+    c.exec("setprop", json!({"component": coil, "key": "description", "value": "Pump R"}));
+    c.exec("switchbranch", json!({"branch": "main", "save": true}));
+    let before = c.doc();
+    let reply = c.s.handle_line(
+        &Value::Array(vec![exec_call(1, "wire", json!({"points": [[0, 300], [60, 300]]})), exec_call(2, "merge", json!({"from": "Option R"}))])
+            .to_string(),
+    );
+    let replies: Vec<Value> = serde_json::from_str::<Value>(&reply.unwrap()).unwrap().as_array().unwrap().clone();
+    let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
+    assert!(m.contains("taken back") && !m.contains("NOT as before"), "{m}");
+    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 1, "only the wire stays");
+    assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump"));
+    // close:false: the branch stays open, and undoing says nothing about reopening it.
+    c.exec("merge", json!({"from": "Option R", "close": false}));
+    let q = c.refused("execute", json!({"command": "u", "params": {}}));
+    assert!(!q.contains("reopened"), "{q}");
+    let u = c.exec("undomerge", json!({}));
+    assert!(!u["message"].as_str().unwrap().contains("open again"), "{u}");
+    // An Edit value is checked as the property's own edit: a tag Edit is normalised.
+    c.exec("setprop", json!({"component": coil, "key": "description", "value": "Main pump"}));
+    let pv = c.exec("merge", json!({"from": "Option R", "preview": true}));
+    let id = pv["conflicts"][0]["id"].as_str().unwrap().to_string();
+    let pv = c.exec("merge", json!({"from": "Option R", "preview": true, "choices": {id.clone(): {"value": ""}}}));
+    assert!(pv["problem"].as_str().is_some_and(|p| p.contains("cannot be empty")), "{pv}");
+    let r = c.call("execute", json!({"command": "merge", "params": {"from": "Option R", "choices": {id.clone(): {"value": ""}}}}));
+    assert_eq!(r["isError"], json!(true), "{r}");
+    c.exec("merge", json!({"from": "Option R", "choices": {id: {"value": "Pump 9"}}}));
+    assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump 9"));
+    c.ok("save", json!({}));
+    drop(c);
+    let v = ecad_file::v2::verify::verify(&ecad_file::v2::Store::open(std::path::Path::new(&path), false).unwrap());
+    assert!(v.ok, "{:#?}", v.lines);
+}

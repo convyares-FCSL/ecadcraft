@@ -230,6 +230,9 @@ pub struct Plan {
     /// Answers that contradict each other, or a result that would still break a rule: what to
     /// change before Merge (never a refusal after the preview said yes).
     pub problem: Option<String>,
+    /// Answers given for conflicts the merge does not raise (any more), in words: they have no
+    /// effect (reviewer 020b, finding 3).
+    pub ignored: Vec<String>,
 }
 
 /// What a merge reads.
@@ -245,6 +248,9 @@ pub struct Inputs<'a> {
     pub keep_project_key: &'a dyn Fn(&str) -> bool,
     /// The larger of both sides' tag high-water marks (renumbering takes the next free number).
     pub high: &'a HighWater,
+    /// Checks a value typed in an Edit field as an ordinary edit of that object's property would
+    /// (design §5.2): the value as stored, or why it is refused.
+    pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, String>,
 }
 
 /// How a kept object uses another one (what "leave it unconnected / remove what uses it" does).
@@ -336,7 +342,13 @@ fn merge_props(
                 };
                 match ctx.ask(c) {
                     Some(Choice::Source) => s.get(k).cloned(),
-                    Some(Choice::Value(x)) => Some(x).filter(|x| !x.is_empty()),
+                    Some(Choice::Value(x)) => match (ctx.inp.edit_rule)(obj, k, &x) {
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            ctx.problems.push(format!("{what} · {}: {e}", key_words(k)));
+                            t.get(k).cloned()
+                        }
+                    },
                     _ => t.get(k).cloned(),
                 }
             }
@@ -733,6 +745,101 @@ fn folded<'a>(ctx: &Ctx<'a, '_>, obj: Obj) -> Option<Option<&'a Document>> {
         Some(Choice::Source) => Some(s),
         _ => Some(t),
     })
+}
+
+/// The object with ID `hex` in any of `docs`.
+fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
+    let id = u128::from_str_radix(hex, 16).ok()?;
+    docs.iter().find_map(|d| {
+        use crate::id::*;
+        [
+            Obj::Component(ComponentId(id)),
+            Obj::Terminal(TerminalId(id)),
+            Obj::Conductor(ConductorId(id)),
+            Obj::Cable(CableId(id)),
+            Obj::Page(PageId(id)),
+            Obj::Representation(RepresentationId(id)),
+            Obj::Item(ItemId(id)),
+            Obj::Folder(FolderId(id)),
+            Obj::Layer(LayerId(id)),
+            Obj::Definition(DefinitionId(id)),
+        ]
+        .into_iter()
+        .find(|o| holds(d, *o))
+    })
+}
+
+/// What a device kept from the source brings back with it (design §5.2: "re-adds it with the
+/// branch's values and whatever it needs"): its connection points and its symbols (with their
+/// drawing items) that the source has and the result lacks.
+fn device_needs(m: &Document, s: &Document, c: ComponentId) -> Vec<Obj> {
+    let mut out: Vec<Obj> =
+        s.terminals.iter().filter(|(k, t)| t.component == c && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
+    for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Component(c)) {
+        if !m.representations.contains_key(r) {
+            out.push(Obj::Representation(*r));
+            out.extend(rep.items.iter().filter(|i| !m.items.contains_key(i)).map(|i| Obj::Item(*i)));
+        }
+    }
+    out
+}
+
+/// Devices kept from the source by a removed conflict's answer bring back what they need, listed
+/// in the conflict's row (reviewer 020b, finding 4). A connection point or symbol another answer
+/// removes is a problem with a choice, never a device merged silently without it. Returns what
+/// was brought back.
+fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
+    let (t, s) = (ctx.inp.target, ctx.inp.source);
+    let docs = [s, t, ctx.inp.ancestor];
+    let mut out = BTreeSet::new();
+    let removed: Vec<(usize, ComponentId)> = ctx
+        .conflicts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, k)| match k.object {
+            Obj::Component(c) if k.kind == ConflictKind::Removed && !t.components.contains_key(&c) && s.components.contains_key(&c) => Some((i, c)),
+            _ => None,
+        })
+        .collect();
+    for (i, c) in removed {
+        // What keeping it brings back, listed in the row whatever the answer.
+        let needs = device_needs(t, s, c);
+        let terminals = needs.iter().filter(|o| matches!(o, Obj::Terminal(_))).count();
+        let symbols = needs.iter().filter(|o| matches!(o, Obj::Representation(_))).count();
+        if let Some(k) = ctx.conflicts.get_mut(i) {
+            let mut parts = Vec::new();
+            if terminals > 0 {
+                let names: Vec<String> = needs.iter().filter(|o| matches!(o, Obj::Terminal(_))).take(4).map(|o| name_of(&docs, *o)).collect();
+                parts.push(format!("connection point{} {}", if terminals == 1 { "" } else { "s" }, names.join(", ")));
+            }
+            if symbols > 0 {
+                parts.push(format!("{symbols} symbol{}", if symbols == 1 { "" } else { "s" }));
+            }
+            if !parts.is_empty() {
+                k.source = format!("{} (brings back {})", k.source, parts.join(" and "));
+            }
+        }
+        if !m.components.contains_key(&c) {
+            continue;
+        }
+        for o in device_needs(m, s, c) {
+            // Another answer removed it: say so with the way through.
+            let answered_out = ctx.conflicts.iter().any(|k| k.object == o && k.kind == ConflictKind::Removed && k.chosen == Some(Choice::Target));
+            if answered_out {
+                ctx.problems.push(format!(
+                    "Keeping {} needs {}: keep {} too, or keep {} removed, first.",
+                    name_of(&docs, Obj::Component(c)),
+                    name_of(&docs, o),
+                    name_of(&docs, o),
+                    name_of(&docs, Obj::Component(c))
+                ));
+                continue;
+            }
+            copy(m, s, o);
+            out.insert(o);
+        }
+    }
+    out
 }
 
 /// Cable members: adds and removes from both sides combine (design §5.1); a member's core is
@@ -1338,6 +1445,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     let (changes, pages) = changes(inp, &objects);
     let mut m = inp.target.clone();
     merge_objects(&mut ctx, &mut m, &objects);
+    let kept_devices = keep_devices(&mut ctx, &mut m);
     // Orders.
     let (a, t, s) = (inp.ancestor, inp.target, inp.source);
     if inp.scope.touched.page_order || a.page_order != s.page_order || a.page_order != t.page_order {
@@ -1355,6 +1463,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     }
     // Rules.
     let mut all: BTreeSet<Obj> = objects.iter().copied().collect();
+    all.extend(kept_devices);
     let needed = resolve_needed(&mut ctx, &mut m, all.clone());
     all.extend(needed);
     let renamed = resolve_tags(&mut ctx, &mut m, &all);
@@ -1398,6 +1507,17 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
         }
     }
     let problem = ctx.problems.first().cloned();
+    let ignored: Vec<String> = {
+        let docs = [inp.target, inp.source, inp.ancestor];
+        choices
+            .keys()
+            .filter(|id| !ctx.seen.contains(*id))
+            .map(|id| {
+                let what = id.split('/').next().and_then(|h| obj_by_hex(&docs, h)).map_or_else(|| id.clone(), |o| name_of(&docs, o));
+                format!("{what}: the answer has no effect (that conflict is not raised with the other answers)")
+            })
+            .collect()
+    };
     let ops = if unanswered.is_empty() && problem.is_none() {
         let mut scope = Touched::default();
         for o in &all {
@@ -1441,7 +1561,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     } else {
         Vec::new()
     };
-    Plan { changes, pages, conflicts: ctx.conflicts, unanswered, ops, problem }
+    Plan { changes, pages, conflicts: ctx.conflicts, unanswered, ops, problem, ignored }
 }
 
 #[cfg(test)]
@@ -1463,7 +1583,18 @@ mod tests {
     fn run(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &BTreeMap<String, Choice>) -> Plan {
         let all = |_: &str| true;
         let high = HighWater::new();
-        let inp = Inputs { ancestor: a, target: t, source: s, scope, target_name: "main", source_name: "\"B\"", keep_project_key: &all, high: &high };
+        let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
+        let inp = Inputs {
+            ancestor: a,
+            target: t,
+            source: s,
+            scope,
+            target_name: "main",
+            source_name: "\"B\"",
+            keep_project_key: &all,
+            high: &high,
+            edit_rule: &rule,
+        };
         plan(&inp, choices)
     }
 
@@ -1547,5 +1678,197 @@ mod tests {
             op.apply(&mut doc).unwrap();
         }
         assert!(doc.components.contains_key(&ComponentId(1)));
+    }
+
+    // ---- each conflict kind with each of its answers (reviewer 020b, finding 10)
+
+    fn applied(t: &Document, p: &Plan) -> Document {
+        assert!(p.problem.is_none() && p.unanswered.is_empty(), "{:?} {:?}", p.problem, p.unanswered);
+        let mut doc = t.clone();
+        for op in &p.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        doc
+    }
+
+    fn one(id: &str, c: Choice) -> BTreeMap<String, Choice> {
+        BTreeMap::from([(id.to_string(), c)])
+    }
+
+    fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
+        let mut comp = Component::default();
+        comp.properties.insert(tag::TAG_KEY.into(), tag_text.into());
+        d.components.insert(ComponentId(c), comp);
+        for t in terminals {
+            d.terminals.insert(TerminalId(*t), Terminal { component: ComponentId(c), label: Some(format!("A{t}")), key: None });
+        }
+    }
+
+    fn wire(d: &mut Document, w: u128, b: Option<u128>) {
+        d.conductors.insert(ConductorId(w), Conductor { properties: Properties::new(), ends: [None, b.map(TerminalId)] });
+    }
+
+    fn scope_all(ids: &[Obj]) -> Scope {
+        let mut s = Scope::default();
+        for o in ids {
+            match *o {
+                Obj::Component(c) => s.touched.components.insert(c),
+                Obj::Terminal(t) => s.touched.terminals.insert(t),
+                Obj::Conductor(c) => s.touched.conductors.insert(c),
+                Obj::Page(p) => s.touched.pages.insert(p),
+                _ => false,
+            };
+        }
+        s
+    }
+
+    #[test]
+    fn a_value_conflict_keeps_main_and_an_empty_or_refused_edit_is_a_problem() {
+        let a = doc_with(&[(1, "-K01")]);
+        let mut t = a.clone();
+        t.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
+        let mut s = a.clone();
+        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
+        let scope = scope_of(&[1]);
+        let id = format!("{}/prop.rating", ComponentId(1).hex());
+        let p = run(&a, &t, &s, &scope, &one(&id, Choice::Target));
+        assert_eq!(applied(&t, &p).components[&ComponentId(1)].properties["rating"], "16 A");
+        let p = run(&a, &t, &s, &scope, &one(&id, Choice::Value("  ".into())));
+        assert!(p.problem.as_deref().is_some_and(|m| m.contains("Rating")), "{:?}", p.problem);
+        assert!(p.ops.is_empty());
+    }
+
+    #[test]
+    fn removed_on_main_and_kept_from_the_branch_brings_back_its_connection_points() {
+        let mut a = Document::default();
+        device(&mut a, 1, "-K01", &[11, 12]);
+        let t = Document::default();
+        let mut s = a.clone();
+        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        let scope = scope_all(&[Obj::Component(ComponentId(1)), Obj::Terminal(TerminalId(11)), Obj::Terminal(TerminalId(12))]);
+        let p = run(&a, &t, &s, &scope, &BTreeMap::new());
+        let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
+        assert!(k.source.contains("connection points"), "{}", k.source);
+        let id = k.id.clone();
+        // Keep removed: nothing comes back.
+        let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Target)));
+        assert!(doc.components.is_empty() && doc.terminals.is_empty());
+        // Keep the device: its connection points come back with it.
+        let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Source)));
+        assert!(doc.components.contains_key(&ComponentId(1)));
+        assert_eq!(doc.terminals.len(), 2);
+    }
+
+    #[test]
+    fn a_wire_end_conflict_offers_main_branch_and_leave_unconnected() {
+        let mut a = Document::default();
+        device(&mut a, 1, "-K01", &[11, 12, 13]);
+        wire(&mut a, 5, None);
+        let mut t = a.clone();
+        t.conductors.get_mut(&ConductorId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        let mut s = a.clone();
+        s.conductors.get_mut(&ConductorId(5)).unwrap().set_end(End::B, Some(TerminalId(12)));
+        let scope = scope_all(&[Obj::Conductor(ConductorId(5))]);
+        let id = format!("{}/end.b", ConductorId(5).hex());
+        let p = run(&a, &t, &s, &scope, &BTreeMap::new());
+        assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source, Choice::Drop]);
+        for (c, want) in [(Choice::Target, Some(11)), (Choice::Source, Some(12)), (Choice::Drop, None)] {
+            let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c.clone())));
+            assert_eq!(doc.conductors[&ConductorId(5)].end(End::B), want.map(TerminalId), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn a_point_the_branch_uses_and_main_removed_is_brought_back_or_left_unconnected() {
+        let mut a = Document::default();
+        device(&mut a, 1, "-K01", &[11]);
+        wire(&mut a, 5, None);
+        let mut s = a.clone();
+        s.conductors.get_mut(&ConductorId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        let mut t = a.clone();
+        t.terminals.clear();
+        t.components.clear();
+        let scope = scope_all(&[Obj::Conductor(ConductorId(5)), Obj::Terminal(TerminalId(11)), Obj::Component(ComponentId(1))]);
+        let tid = format!("{}/needed", TerminalId(11).hex());
+        let cid = format!("{}/needed", ComponentId(1).hex());
+        // Leave unconnected: the end is loose, nothing comes back.
+        let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
+        assert_eq!(doc.conductors[&ConductorId(5)].end(End::B), None);
+        assert!(doc.terminals.is_empty());
+        // Bring back the point and its device.
+        let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
+        let doc = applied(&t, &run(&a, &t, &s, &scope, &both));
+        assert!(doc.terminals.contains_key(&TerminalId(11)) && doc.components.contains_key(&ComponentId(1)));
+        // Bring back the point but not what it needs: a problem with the way through, no ops.
+        let contradiction = BTreeMap::from([(tid, Choice::BringBack), (cid, Choice::Drop)]);
+        let p = run(&a, &t, &s, &scope, &contradiction);
+        assert!(p.problem.as_deref().is_some_and(|m| m.contains("first")), "{:?}", p.problem);
+        assert!(p.ops.is_empty());
+    }
+
+    #[test]
+    fn a_duplicate_tag_renumbers_main_s_device_when_asked() {
+        let a = doc_with(&[]);
+        let t = doc_with(&[(1, "-K05")]);
+        let s = doc_with(&[(2, "-K05")]);
+        let p = run(&a, &t, &s, &scope_of(&[1, 2]), &one("rule/tag/K5", Choice::RenumberTarget));
+        let doc = applied(&t, &p);
+        assert_eq!(doc.components[&ComponentId(1)].properties["tag"], "-K06");
+        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K05");
+    }
+
+    #[test]
+    fn a_page_number_added_on_both_is_renumbered_either_way() {
+        let page = |n: &str| {
+            let mut p = Page::new("x");
+            p.properties.insert(crate::book::NUMBER_KEY.into(), n.into());
+            p
+        };
+        let a = Document::default();
+        let mut t = a.clone();
+        t.pages.insert(PageId(1), page("5"));
+        t.page_order.push(PageId(1));
+        let mut s = a.clone();
+        s.pages.insert(PageId(2), page("5"));
+        s.page_order.push(PageId(2));
+        let mut scope = scope_all(&[Obj::Page(PageId(1)), Obj::Page(PageId(2))]);
+        scope.touched.page_order = true;
+        let p = run(&a, &t, &s, &scope, &BTreeMap::new());
+        let id = p.conflicts.iter().find(|c| c.kind == ConflictKind::PageNumber).map(|c| c.id.clone()).unwrap();
+        for (c, renumbered) in [(Choice::RenumberSource, PageId(2)), (Choice::RenumberTarget, PageId(1))] {
+            let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c)));
+            assert_eq!(doc.pages[&renumbered].properties[crate::book::NUMBER_KEY], "6");
+            assert_eq!(doc.page_order.len(), 2);
+        }
+    }
+
+    #[test]
+    fn page_order_changed_differently_on_both_sides_is_chosen() {
+        let mut a = Document::default();
+        for i in 1..=3u128 {
+            a.pages.insert(PageId(i), Page::new(format!("{i}")));
+            a.page_order.push(PageId(i));
+        }
+        let mut t = a.clone();
+        t.page_order = vec![PageId(3), PageId(1), PageId(2)];
+        let mut s = a.clone();
+        s.page_order = vec![PageId(2), PageId(1), PageId(3)];
+        let mut scope = Scope::default();
+        scope.touched.page_order = true;
+        for (c, want) in [(Choice::Target, t.page_order.clone()), (Choice::Source, s.page_order.clone())] {
+            let doc = applied(&t, &run(&a, &t, &s, &scope, &one("rule/pageorder", c)));
+            assert_eq!(doc.page_order, want);
+        }
+    }
+
+    #[test]
+    fn an_answer_for_a_conflict_not_raised_is_reported_as_ignored() {
+        let a = doc_with(&[(1, "-K01")]);
+        let mut s = a.clone();
+        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        let p = run(&a, &a, &s, &scope_of(&[1]), &one(&format!("{}/prop.rating", ComponentId(1).hex()), Choice::Source));
+        assert_eq!(p.ignored.len(), 1, "{:?}", p.ignored);
+        assert!(p.ignored[0].starts_with("-K01"), "{:?}", p.ignored);
+        assert!(!p.ops.is_empty(), "the merge itself goes ahead");
     }
 }

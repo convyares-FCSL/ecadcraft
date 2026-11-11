@@ -143,3 +143,40 @@ fn verify_refuses_a_main_row_that_open_refuses() {
     assert!(!v.ok && v.lines.iter().any(|l| l.contains("main")), "{:#?}", v.lines);
     assert!(ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).is_err());
 }
+
+#[test]
+fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
+    let dir = TempDir::new("merge-verify-row");
+    let mut f = fixture();
+    let p = dir.path("p.ecad");
+    let proj = create(&p, &f.ledger);
+    f.ledger.mark_persisted(f.ledger.head()).unwrap();
+    let main = proj.branch();
+    let at = f.ledger.head();
+    // A kind 4 row at an ordinary edit (a stale or damaged index row).
+    let rec = ecad_file::v2::schema::VersionRecord {
+        kind: VersionKind::Merge,
+        name: ecad_file::v2::schema::auto_name(at),
+        point: ecad_file::v2::schema::Point::new(at, &proj.chain_of(main, at).unwrap()),
+        chunks: Default::default(),
+        release: None,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        undo_hidden: 0,
+        redo_hidden: 0,
+        stack_cap: 0,
+        description: None,
+        merge: ecad_file::v2::schema::MergeRow::of(&TxKind::Merge {
+            source: [9; 16],
+            source_head: StepPoint { seq: 1, chain: [1; 32] },
+            ancestor: BranchPoint { branch: main.0, seq: 0, chain: [2; 32] },
+        }),
+        extra: Default::default(),
+    };
+    let mut w = proj.store().writer().unwrap();
+    w.put_version(main, &rec).unwrap();
+    w.commit().unwrap();
+    drop(proj);
+    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    assert!(!v.ok && v.lines.iter().any(|l| l.contains("names no live merge")), "{:#?}", v.lines);
+}

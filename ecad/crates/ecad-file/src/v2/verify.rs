@@ -138,6 +138,43 @@ pub fn verify(store: &Store) -> VerifyReport {
         };
         let from = if line.len() == 1 { "the root" } else { "the fork point" };
         rep.lines.push(format!("{}: {n} transactions replay from {from} with every check", b.name));
+        // The merge index (FQ2, reviewer 020b finding 6): its rows decide the next merge's
+        // ancestor, so they must be exactly the live merges of the replay, with their facts and
+        // chain values.
+        let live = live_merges(ledger.log());
+        match r.versions(*id, VersionKind::Merge) {
+            Ok(rows) => {
+                let mut seen = BTreeSet::new();
+                for v in &rows {
+                    let at = v.point.seq;
+                    seen.insert(at);
+                    let Some(m) = &v.merge else {
+                        fail(&mut rep, format!("{}: the merge row at {at} has no merge facts", b.name));
+                        continue;
+                    };
+                    if m.source_id().is_none()
+                        || m.ancestor_id().is_none()
+                        || m.source_head.hash().is_err()
+                        || chain::parse_hex(&m.ancestor.chain).is_none()
+                    {
+                        fail(&mut rep, format!("{}: the merge row at {at} does not decode", b.name));
+                        continue;
+                    }
+                    if chains.get(at as usize).map(chain::hex) != Some(v.point.chain.clone()) {
+                        fail(&mut rep, format!("{}: the merge row at {at}: its chain value differs from the log's", b.name));
+                    }
+                    match live.get(&at) {
+                        Some(want) if want == m => {}
+                        Some(_) => fail(&mut rep, format!("{}: the merge row at {at} differs from its merge transaction", b.name)),
+                        None => fail(&mut rep, format!("{}: the merge row at {at} names no live merge in the history", b.name)),
+                    }
+                }
+                for at in live.keys().filter(|s| !seen.contains(*s)) {
+                    fail(&mut rep, format!("{}: the live merge at {at} has no merge row", b.name));
+                }
+            }
+            Err(e) => fail(&mut rep, format!("{}: merge rows: {e}", b.name)),
+        }
         // Snapshots, in point order, against one forward replay.
         let mut versions: Vec<VersionRecord> = Vec::new();
         for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
@@ -230,4 +267,40 @@ pub fn verify(store: &Store) -> VerifyReport {
         rep.lines.push("everything verifies".into());
     }
     rep
+}
+
+/// The live merges after `log` (a branch's whole log), by the step that made each live: a merge,
+/// removed by its undo, live again at the redo of that undo.
+fn live_merges(log: &[ecad_model::Transaction]) -> BTreeMap<u64, super::schema::MergeRow> {
+    let mut live: BTreeMap<u64, super::schema::MergeRow> = BTreeMap::new();
+    let mut undone: BTreeMap<u64, super::schema::MergeRow> = BTreeMap::new();
+    let (mut undo, mut redo): (Vec<u64>, Vec<u64>) = (Vec::new(), Vec::new());
+    for tx in log {
+        match tx.kind {
+            TxKind::Edit | TxKind::Merge { .. } => {
+                if let Some(row) = super::schema::MergeRow::of(&tx.kind) {
+                    live.insert(tx.seq, row);
+                }
+                undo.push(tx.seq);
+                redo.clear();
+            }
+            TxKind::Undo { .. } => {
+                if let Some(x) = undo.pop()
+                    && let Some(row) = live.remove(&x)
+                {
+                    undone.insert(tx.seq, row);
+                }
+                redo.push(tx.seq);
+            }
+            TxKind::Redo { .. } => {
+                if let Some(u) = redo.pop()
+                    && let Some(row) = undone.remove(&u)
+                {
+                    live.insert(tx.seq, row);
+                }
+                undo.push(tx.seq);
+            }
+        }
+    }
+    live
 }

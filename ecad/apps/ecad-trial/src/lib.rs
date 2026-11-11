@@ -1890,7 +1890,7 @@ impl Trial {
         use history_panel::Do;
         match d {
             Do::Run(cmd, params) => {
-                match self.run_value(cmd, params) {
+                match self.run_click(cmd, params) {
                     Ok(_) => {
                         self.panel.history.done();
                         // The same refresh as for a typed command (reviewer finding 1).
@@ -1902,7 +1902,7 @@ impl Trial {
             Do::AskRestore(params) => {
                 let mut ask = params.clone();
                 ask["preview"] = json!(true);
-                match self.run_value("restore", ask) {
+                match self.run_click("restore", ask) {
                     Ok(v) => {
                         let question = v["question"].as_str().unwrap_or_default().to_string();
                         self.panel.history.dialog = Some(history_panel::Dialog::Restore { params, question });
@@ -1911,7 +1911,7 @@ impl Trial {
                 }
             }
             Do::SaveAs => self.request_save_as(),
-            Do::ShowPoint(params) => match self.run_value("showpoint", params) {
+            Do::ShowPoint(params) => match self.run_click("showpoint", params) {
                 Ok(_) => self.preview = None,
                 Err(e) => self.panel.history.refused(e),
             },
@@ -1925,7 +1925,7 @@ impl Trial {
     pub fn ask_merge(&mut self, target: serde_json::Value) {
         let mut ask = target.clone();
         ask["preview"] = json!(true);
-        match self.run_value("merge", ask) {
+        match self.run_click("merge", ask) {
             Ok(v) => {
                 let shown = self.branch_info().map(|b| b.name).unwrap_or_else(|| "main".into());
                 let into = v["into"].as_str().unwrap_or("main").to_string();
@@ -1941,7 +1941,7 @@ impl Trial {
     fn merge_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.merge {
             match d.show(ctx) {
-                Some(merge_dialog::Out::Preview(params)) => match self.run_value("merge", params) {
+                Some(merge_dialog::Out::Preview(params)) => match self.run_click("merge", params) {
                     Ok(v) => {
                         if let Some(d) = &mut self.merge {
                             d.preview = v;
@@ -1954,7 +1954,7 @@ impl Trial {
                         }
                     }
                 },
-                Some(merge_dialog::Out::Merge(params)) => match self.run_value("merge", params) {
+                Some(merge_dialog::Out::Merge(params)) => match self.run_click("merge", params) {
                     Ok(_) => {
                         self.merge = None;
                         self.panel.history.done();
@@ -1967,7 +1967,13 @@ impl Trial {
                         self.sync_branch();
                     }
                 },
-                Some(merge_dialog::Out::Cancel) => self.merge = None,
+                Some(merge_dialog::Out::Cancel) => {
+                    // The prepared states are dropped with the dialog.
+                    self.merge = None;
+                    if let Some(p) = self.project.clone() {
+                        let _ = p.configure(&mut self.cad.session, |p| p.merge_cache = None);
+                    }
+                }
                 None => {}
             }
         }
@@ -2129,6 +2135,18 @@ impl Trial {
     // ---------------------------------------------------------------- brief 019
 
     /// Run a command's JSON form as the command path does, returning its result.
+    /// A History or merge click's command (reviewer 020b, finding 2): the command echoes its own
+    /// line, so only a refusal is echoed here (`CadApp::run` would echo the reply's `message` a
+    /// second time).
+    fn run_click(&mut self, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        let r = self.cad.session.execute(cmd, &params).map_err(|e| e.to_string());
+        if let Err(e) = &r {
+            self.cad.session.echo(e.clone());
+        }
+        self.after_logic();
+        r
+    }
+
     fn run_value(&mut self, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
         let r = self.cad.run(cmd, params).map_err(|e| e.to_string());
         self.after_logic();

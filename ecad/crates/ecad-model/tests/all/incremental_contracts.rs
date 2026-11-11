@@ -1093,3 +1093,53 @@ fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores
     }
     assert!(points > 500, "{points} points restored");
 }
+
+/// Brief 020b (reviewer finding 10): the scoped diff [`ecad_model::diff::ops_between_in`] over a
+/// scope that covers every difference (what the steps between the two states touched) gives the
+/// same ops as the whole-document diff, and they turn one state into the other.
+#[test]
+fn a_scoped_state_diff_equals_the_whole_diff_when_the_scope_covers_every_difference() {
+    let mut points = 0;
+    for seed in 1..=120u64 {
+        let mut g = Gen { rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 7), ids: IdAllocator::seeded(seed), pools: Pools::default() };
+        let mut ledger = Ledger::new(seed);
+        for step in 0..14 {
+            if step > 0 && g.rng.chance(15) {
+                let _ = if g.rng.chance(50) { ledger.undo(Author::User) } else { ledger.redo(Author::User) };
+                continue;
+            }
+            let mut scratch = ledger.document().clone();
+            let mut ops = Vec::new();
+            for _ in 0..1 + g.rng.below(4) {
+                let op = g.op(&scratch, ledger.head());
+                if op.apply(&mut scratch).is_err() {
+                    break;
+                }
+                ops.push(op);
+            }
+            if !ops.is_empty() {
+                let _ = ledger.commit(Author::User, "random", ops);
+            }
+        }
+        let live = ledger.document().clone();
+        let head = ledger.head();
+        let log = ledger.full_log().unwrap();
+        for k in 0..head {
+            let target = ledger.state_at(k).unwrap();
+            let mut scope = ecad_model::merge::Scope::default();
+            for t in log.iter().filter(|t| t.seq > k) {
+                scope.add_ops(&t.ops);
+            }
+            let whole = ecad_model::diff::ops_between(&live, &target, &|_| true);
+            let scoped = ecad_model::diff::ops_between_in(&live, &target, &|_| true, Some(&scope.touched), scope.project);
+            assert_eq!(scoped, whole, "seed {seed} k {k}");
+            let mut want = target.clone();
+            want.versions = live.versions.clone();
+            if !scoped.is_empty() {
+                assert_eq!(ledger.preview(&scoped).unwrap_or_else(|e| panic!("seed {seed} k {k}: {e}")), want, "seed {seed} k {k}");
+            }
+            points += 1;
+        }
+    }
+    assert!(points > 400, "{points} points");
+}

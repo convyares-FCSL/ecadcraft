@@ -125,7 +125,8 @@ pub struct Prepared {
     ancestor_doc: Arc<Document>,
     source_doc: Arc<Document>,
     /// The target's state when it is not the branch shown.
-    target_doc: Option<Arc<Document>>,
+    /// (Locked to try a plan's ops on it, which are always reverted.)
+    target_doc: Option<std::sync::Mutex<Document>>,
     scope: Scope,
     high: ecad_model::tag::HighWater,
     /// The target's last step touching each object (for "changed in Rev B").
@@ -196,7 +197,11 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     };
     let ancestor_doc = doc_of(anc_branch, anc_seq)?;
     let source_doc = if sides.source == cur { Arc::new(p.ledger.document().clone()) } else { doc_of(sides.source, source_head)? };
-    let target_doc = if sides.target == cur { None } else { Some(doc_of(sides.target, target_head)?) };
+    let target_doc = if sides.target == cur {
+        None
+    } else {
+        Some(std::sync::Mutex::new(Arc::try_unwrap(doc_of(sides.target, target_head)?).unwrap_or_else(|d| (*d).clone())))
+    };
     // The touched set: both branches' steps since the fork (states on both lines are the fork's
     // state plus those steps, so every difference lies there).
     let (child, parent) = (sides.child(), sides.parent());
@@ -319,29 +324,69 @@ fn keeps(update: bool) -> impl Fn(&str) -> bool {
     move |k: &str| update || !k.starts_with("rev.")
 }
 
-/// Plan the prepared merge with `choices` (nothing is written).
-pub fn plan(p: &Project, prep: &Prepared, choices: &BTreeMap<String, Choice>) -> Plan {
-    let target: &Document = match &prep.target_doc {
-        Some(d) => d,
-        None => p.ledger.document(),
+/// Check a value typed in a conflict's Edit field as an ordinary property edit of that object
+/// would be (design §5.2: the property's own rules from 018/019/022): `Ok(value)` as stored.
+fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String, String> {
+    let checked = match obj {
+        Obj::Component(c) if crate::device_cmds::is_device_property(ecad_model::ObjectRef::Component(c), key) => {
+            crate::devices::property_value(doc, key, Some(value))?
+        }
+        Obj::Conductor(c) => match crate::wire_cmds::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
+            Some(v) => v,
+            None => crate::devices::property_value(doc, "", Some(value))?,
+        },
+        Obj::Cable(c) => match crate::wire_cmds::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
+            Some(v) => v,
+            None => crate::devices::property_value(doc, "", Some(value))?,
+        },
+        _ => crate::devices::property_value(doc, "", Some(value))?,
     };
+    checked.ok_or_else(|| "An Edit value cannot be empty: type one, or keep one side's value.".to_string())
+}
+
+/// Plan the prepared merge with `choices` (nothing is written). The plan's ops are then tried
+/// with the commit's own check, on the live document (the branch shown) or the prepared copy,
+/// and reverted (reviewer 020b, finding 1): a preview that says yes never ends in a refused
+/// Merge. The cost follows the ops.
+pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>) -> Plan {
     let keep = keeps(prep.sides.update);
     let (tname, sname) = if prep.sides.update {
         ("this branch".to_string(), prep.sides.source_name.clone())
     } else {
         (prep.sides.target_name.clone(), "the branch".to_string())
     };
-    let inp = Inputs {
-        ancestor: &prep.ancestor_doc,
-        target,
-        source: &prep.source_doc,
-        scope: &prep.scope,
-        target_name: &tname,
-        source_name: &sname,
-        keep_project_key: &keep,
-        high: &prep.high,
+    let mut copy = prep.target_doc.as_ref().map(|m| m.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    let mut plan = {
+        let target: &Document = match &copy {
+            Some(d) => d,
+            None => p.ledger.document(),
+        };
+        let rule = |obj: Obj, key: &str, v: &str| edit_rule(target, obj, key, v);
+        let inp = Inputs {
+            ancestor: &prep.ancestor_doc,
+            target,
+            source: &prep.source_doc,
+            scope: &prep.scope,
+            target_name: &tname,
+            source_name: &sname,
+            keep_project_key: &keep,
+            high: &prep.high,
+            edit_rule: &rule,
+        };
+        merge::plan(&inp, choices)
     };
-    merge::plan(&inp, choices)
+    if !plan.ops.is_empty() {
+        let tried = match copy.as_mut() {
+            Some(d) => d.with_applied(&plan.ops, |_| ()),
+            None => p.ledger.with_applied(&plan.ops, |_| ()),
+        };
+        if let Err(e) = tried {
+            plan.problem =
+                Some(format!("These answers would leave the project inconsistent ({e}); choose differently for the objects it names, first."));
+            plan.ops.clear();
+        }
+    }
+    plan
 }
 
 /// The prepared merge for `sides`, from the project's cache when nothing it read changed.
@@ -472,8 +517,7 @@ fn kind_word(k: ConflictKind) -> &'static str {
 pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     let s = &prep.sides;
     let pt = s.parent_is_target();
-    let target_doc: &Document = prep.target_doc.as_deref().unwrap_or(&prep.ancestor_doc);
-    let docs = [target_doc, &prep.source_doc, &prep.ancestor_doc];
+    let docs = [&*prep.source_doc, &*prep.ancestor_doc];
     let pages: Vec<String> =
         plan.pages.iter().map(|p| ecad_model::book::stored_number(&prep.source_doc, *p).map_or_else(|| p.short(), str::to_string)).collect();
     let n = plan.changes.len();
@@ -516,9 +560,13 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
         "conflicts": conflicts, "unanswered": plan.unanswered, "ops": plan.ops.len(),
         "nothing": plan.changes.is_empty() && plan.conflicts.is_empty(),
         "problem": plan.problem,
+        "ignored": plan.ignored,
         "after": match (&plan.problem, plan.unanswered.is_empty()) {
             (_, false) => "Resolve the conflicts above first.".to_string(),
             (Some(p), true) => p.clone(),
+            (None, true) if !plan.ignored.is_empty() => {
+                format!("Ignored: {}. The Checks tab lists what the merge leaves to check.", plan.ignored.join("; "))
+            }
             (None, true) => "The Checks tab lists what the merge leaves to check.".to_string(),
         },
     })
@@ -640,11 +688,12 @@ fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
         p.note_branch_change();
         let resolved_text =
             if resolved > 0 { format!(", {resolved} conflict{} resolved", if resolved == 1 { "" } else { "s" }) } else { String::new() };
+        let ignored = if plan.ignored.is_empty() { String::new() } else { format!(" Ignored: {}.", plan.ignored.join("; ")) };
         let line = if sides.update {
-            format!("{said}Updated \"{}\" from {} ({}). Save to keep it.", sides.target_name, sides.source_name, prep_latest_revision(&prep))
+            format!("{said}Updated \"{}\" from {} ({}). Save to keep it.{ignored}", sides.target_name, sides.source_name, prep_latest_revision(&prep))
         } else {
             format!(
-                "{said}Merged \"{}\" into {} ({changes} change{}{resolved_text}). Save to keep it.",
+                "{said}Merged \"{}\" into {} ({changes} change{}{resolved_text}). Save to keep it.{ignored}",
                 sides.source_name,
                 sides.target_name,
                 if changes == 1 { "" } else { "s" }
@@ -660,19 +709,51 @@ fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
 
 /// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
 /// not a merge.
-pub fn undo_question(p: &Project) -> Option<String> {
-    let top = p.ledger.undo_top()?;
-    let is_merge = match top.kind {
+/// Whether `label` is a merge's or an update's (their undos and redos carry the same label).
+fn merge_label(label: &str) -> bool {
+    label.starts_with("Merge \"") || label.starts_with("Update from ")
+}
+
+/// Whether the step on top of the undo stack is a merge (or the redo of one), cheaply: a redo is
+/// looked up in the merge index only when its label is a merge's (reviewer 020b, finding 8).
+fn top_is_merge(p: &Project) -> bool {
+    let Some(top) = p.ledger.undo_top() else { return false };
+    match top.kind {
         TxKind::Merge { .. } => true,
-        TxKind::Redo { .. } => p.file.v2().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq)),
+        TxKind::Redo { .. } if merge_label(&top.label) => {
+            p.file.v2().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq))
+        }
         _ => false,
+    }
+}
+
+/// The branch the merge on top of the undo stack closed (or will close when saved), if it did:
+/// only that branch is reopened by undoing it (tester 020b, defect 1).
+fn closed_by_top(p: &Project) -> Option<BranchId> {
+    let top = p.ledger.undo_top()?;
+    let v = p.file.v2()?;
+    let cur = history::current(p).hex();
+    let source = match top.kind {
+        TxKind::Merge { source, .. } => BranchId(source),
+        _ => v.merge_index(&p.ledger).ok()?.into_iter().find(|x| x.seq == top.seq)?.source,
     };
-    if !is_merge {
+    if v.closes_on_save(top.id) == Some(source) {
+        return Some(source);
+    }
+    let rec = v.store().reader().ok()?.branch(source).ok()??;
+    (rec.status == BranchStatus::Merged && rec.merged.as_ref().is_some_and(|m| m.seq == top.seq && m.into == cur)).then_some(source)
+}
+
+/// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
+/// not a merge.
+pub fn undo_question(p: &Project) -> Option<String> {
+    if !top_is_merge(p) {
         return None;
     }
+    let top = p.ledger.undo_top()?;
     // Counted as the preview counts: devices, wires, cables, pages, folders and the project (a
     // symbol and its drawing are shown through what they depict).
-    let n = ecad_model::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "terminal")).count().max(1);
+    let n = ecad_model::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "terminal")).count();
     let changes = format!("{n} change{}", if n == 1 { "" } else { "s" });
     let label = top.label.clone();
     if let Some(rest) = label.strip_prefix("Update from ") {
@@ -680,26 +761,7 @@ pub fn undo_question(p: &Project) -> Option<String> {
         return Some(format!("The last step updated this branch from {from} ({changes}).\nUndo the update?"));
     }
     let name = label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()).unwrap_or(&label).to_string();
-    // Only a merge that closed its branch reopens it (tester 020b, defect 1).
-    let closes = match top.kind {
-        TxKind::Merge { source, .. } => {
-            let source = BranchId(source);
-            p.file.v2().is_some_and(|v| {
-                v.closes_on_save(top.id) == Some(source)
-                    || v.store().reader().ok().and_then(|r| r.branch(source).ok().flatten()).is_some_and(|b| {
-                        b.status == BranchStatus::Merged && b.merged.as_ref().is_some_and(|m| m.seq == top.seq && m.into == history::current(p).hex())
-                    })
-            })
-        }
-        _ => p.file.v2().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| {
-            m.iter().any(|x| {
-                x.seq == top.seq
-                    && history::find_branch(p, &x.source.hex())
-                        .is_ok_and(|(_, b)| b.status == BranchStatus::Merged && b.merged.as_ref().is_some_and(|mm| mm.seq == top.seq))
-            })
-        }),
-    };
-    let reopened = if closes { format!(" {name} is reopened.") } else { String::new() };
+    let reopened = if closed_by_top(p).is_some() { format!(" {name} is reopened.") } else { String::new() };
     Some(format!("The last step merged {name} into {} ({changes}).\nUndo the merge?{reopened}", history::current_name(p)))
 }
 
@@ -709,14 +771,18 @@ fn run_undomerge(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Va
             return Err("The last step is not a merge; use Undo.".into());
         }
         let label = p.ledger.undo_top().map(|t| t.label.clone()).unwrap_or_default();
+        let reopens = closed_by_top(p).is_some();
         p.confirm_merge_undo = true;
         let r = p.undo_step(pg);
         p.confirm_merge_undo = false;
         r?;
         p.merge_cache = None;
         p.note_branch_change();
+        // Worded for what changed (reviewer 020b, finding 9): only a merge that closed its branch
+        // reopens it.
         let line = match label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()) {
-            Some(name) => format!("Merge of {name} undone; the branch is open again when saved."),
+            Some(name) if reopens => format!("Merge of {name} undone; the branch is open again (saved with the next Save)."),
+            Some(name) => format!("Merge of {name} undone."),
             None => format!("{label} undone."),
         };
         pg.echo(line.clone());

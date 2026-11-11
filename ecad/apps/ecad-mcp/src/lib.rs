@@ -194,7 +194,10 @@ impl State {
         for (done, t) in txs.iter().rev().enumerate() {
             let step = match t.kind {
                 TxKind::Undo { .. } => "redo",
-                TxKind::Edit | TxKind::Merge { .. } | TxKind::Redo { .. } => "u",
+                // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
+                TxKind::Merge { .. } => "undomerge",
+                TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
+                TxKind::Edit | TxKind::Redo { .. } => "u",
             };
             if let Err(e) = self.session().execute(step, &json!({})) {
                 return Err((done, format!("{} failed: {e}", step.to_ascii_uppercase())));
