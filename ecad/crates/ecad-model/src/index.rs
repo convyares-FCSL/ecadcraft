@@ -86,6 +86,9 @@ pub(crate) struct Index {
     pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
     /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
     pub(crate) tags: Multi<String, ComponentId>,
+    /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
+    /// namespace).
+    pub(crate) cable_tags: Multi<String, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
     pub(crate) continuations: Multi<String, ComponentId>,
@@ -253,6 +256,14 @@ impl Index {
         for m in &c.members {
             self.cable_member(id, m, delta);
         }
+        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+            self.cable_tag(id, t, delta);
+        }
+    }
+
+    /// A cable's tag `tag` (its stored value) is added or removed (brief 026).
+    pub(crate) fn cable_tag(&mut self, id: CableId, tag: &str, delta: Delta) {
+        bump(&mut self.cable_tags, crate::tag::key(tag), id, delta);
     }
 
     pub(crate) fn cable_member(&mut self, id: CableId, m: &CableMember, delta: Delta) {

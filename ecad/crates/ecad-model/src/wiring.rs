@@ -347,10 +347,31 @@ fn scope(doc: &Document, prefix: &str, page: &str, col: &str) -> String {
 }
 
 fn format_in(doc: &Document, scope: &str, n: u64) -> String {
+    format_digits(doc, scope, n, None)
+}
+
+/// A number `n` in sequence scope `scope`, padded to `digits` (default: the project's wire
+/// digits; the page-column scheme is never padded).
+pub(crate) fn format_digits(doc: &Document, scope: &str, n: u64, digits: Option<usize>) -> String {
     match doc.settings.wiring.scheme {
         Scheme::PageColumn => format!("{scope}{n}"),
-        _ => format!("{scope}{n:0width$}", width = doc.settings.wiring.digits()),
+        _ => format!("{scope}{n:0width$}", width = digits.unwrap_or_else(|| doc.settings.wiring.digits())),
     }
+}
+
+/// The sequence scope a new number of `net` (with potential `pot`) belongs to.
+pub(crate) fn scope_of(doc: &Document, net: &NetData, pot: &NetPotential) -> String {
+    let (page, col) = match doc.settings.wiring.scheme {
+        Scheme::Potential => (String::new(), String::new()),
+        _ => net_place(doc, net),
+    };
+    scope(doc, &pot.prefix, &page, &col)
+}
+
+/// The number net `id` keeps when numbering only nets without one: its most carried number, if
+/// no other net has a better claim to it.
+pub(crate) fn kept_number(doc: &Document, id: NetId, net: &NetData) -> Option<String> {
+    best_number(&net.numbers).filter(|w| keeps(doc, id, w))
 }
 
 /// Next free numbers handed out by one pass, so two new nets never get the same one.
@@ -535,7 +556,13 @@ fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, all
     if !pot.numbered {
         return Some((pot.prefix.clone(), false));
     }
-    let Some(winner) = best_number(&net.numbers) else { return Some((alloc.next(doc, net, &pot), false)) };
+    // Brief 026: with provisional tags on, a new net stays unnumbered (`24V-?`) until Finalise.
+    let Some(winner) = best_number(&net.numbers) else {
+        if crate::numbering::provisional_on(doc) {
+            return None;
+        }
+        return Some((alloc.next(doc, net, &pot), false));
+    };
     if potential_changed && !has_prefix(doc, &winner, &pot.prefix) {
         return Some((alloc.next(doc, net, &pot), false));
     }
@@ -547,85 +574,16 @@ fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, all
     Some((winner, false))
 }
 
-/// Renumber Wires (design 022 §5.2): every net with no number (`all == false`), or every
-/// automatic number (`all == true`, in book order: page, then route start top to bottom, left to
-/// right). Fixed numbers never change.
+/// Renumber Wires (design 022 §5.2, design 026 §2): every net with no number (`all == false`),
+/// or every automatic number (`all == true`), in drawing order (page in book order, column, row,
+/// then top to bottom and left to right; [`crate::numbering`]). Fixed numbers never change.
 pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
-    let conn = doc.connectivity();
-    let mut nets: Vec<(NetId, &NetData)> = conn
-        .nets()
-        .filter(|(_, n)| !n.conductors.is_empty() && n.fixed.is_empty())
-        .filter(|(_, n)| all || n.numbers.is_empty() || n.conductors.iter().any(|c| unnumbered(doc, *c)))
-        .collect();
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    let key = |n: &NetData| {
-        let first = n.first_conductor();
-        let place = first.and_then(|c| {
-            doc.representations_of(Subject::Conductor(c))
-                .filter_map(|(_, r)| {
-                    let at = crate::derive::route_ends_on(doc, c, r.page).map(|(a, _)| a)?;
-                    Some((order.get(&r.page).copied().unwrap_or(usize::MAX), at))
-                })
-                .min_by(|a, b| a.0.cmp(&b.0))
-        });
-        let (page, y, x) = place.map_or((usize::MAX, 0.0, 0.0), |(p, at)| (p, -at.y, at.x));
-        (page, y, x, first)
-    };
-    nets.sort_by(|a, b| {
-        let (ka, kb) = (key(a.1), key(b.1));
-        ka.0.cmp(&kb.0).then(ka.1.total_cmp(&kb.1)).then(ka.2.total_cmp(&kb.2)).then(ka.3.cmp(&kb.3))
-    });
-    let mut alloc = Allocator::default();
-    let mut out = Vec::new();
-    if all {
-        // Numbers are handed out afresh: count from 1 in every scope, ignoring the automatic
-        // numbers being replaced, but never reusing a fixed one.
-        let mut fixed_seqs: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
-        for (_, n) in conn.nets() {
-            for f in n.fixed.keys() {
-                if let Some((p, s)) = split_number(f) {
-                    fixed_seqs.entry(p.to_string()).or_default().insert(s);
-                }
-            }
-        }
-        let mut next: BTreeMap<String, u64> = BTreeMap::new();
-        for (_, net) in nets {
-            let pot = net_potential(doc, net);
-            let number = if pot.numbered {
-                let (page, col) = match doc.settings.wiring.scheme {
-                    Scheme::Potential => (String::new(), String::new()),
-                    _ => net_place(doc, net),
-                };
-                let sc = scope(doc, &pot.prefix, &page, &col);
-                let slot = next.entry(sc.clone()).or_insert(1);
-                while fixed_seqs.get(&sc).is_some_and(|s| s.contains(slot)) {
-                    *slot = slot.saturating_add(1);
-                }
-                let n = *slot;
-                *slot = slot.saturating_add(1);
-                format_in(doc, &sc, n)
-            } else {
-                pot.prefix.clone()
-            };
-            out.extend(write_ops(doc, net, &number, false));
-        }
-        return out;
-    }
-    for (id, net) in nets {
-        let pot = net_potential(doc, net);
-        let number = if !pot.numbered {
-            pot.prefix.clone()
-        } else if let Some(w) = best_number(&net.numbers).filter(|w| keeps(doc, id, w)) {
-            w
-        } else {
-            alloc.next(doc, net, &pot)
-        };
-        out.extend(write_ops(doc, net, &number, false));
-    }
-    out
+    let scope = if all { crate::numbering::Scope::All } else { crate::numbering::Scope::Provisional };
+    let req = crate::numbering::Request { kinds: [crate::numbering::Kind::Wires].into_iter().collect(), scope, start: None, digits: None };
+    crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
 
-fn unnumbered(doc: &Document, c: ConductorId) -> bool {
+pub(crate) fn unnumbered(doc: &Document, c: ConductorId) -> bool {
     doc.conductors.get(&c).is_some_and(|x| !x.properties.contains_key(WIRE_NUMBER))
 }
 
@@ -677,6 +635,9 @@ pub struct Label {
     /// The net is in a number error (two nets share it, or two fixed numbers): drawn in
     /// `ecad.orphan`.
     pub error: bool,
+    /// The net has no number while provisional tags are on (brief 026): `24V-?`, drawn in
+    /// `ecad.provisional`.
+    pub provisional: bool,
 }
 
 /// The label of conductor `c`: its net's number, then its own cross-section and colour or its
@@ -686,7 +647,16 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
     let number = net.and_then(|(_, n)| net_number(doc, n));
-    let mut words = vec![number.clone().unwrap_or_else(|| "?".into())];
+    // Brief 026: with provisional tags on, an unnumbered net shows its prefix and `?` (`24V-?`).
+    let provisional = number.is_none() && crate::numbering::provisional_on(doc);
+    let unnumbered = match net {
+        Some((_, n)) if provisional => {
+            let pot = net_potential(doc, n);
+            if pot.name.is_some() && pot.numbered { format!("{}?", pot.prefix) } else { "?".into() }
+        }
+        _ => "?".into(),
+    };
+    let mut words = vec![number.clone().unwrap_or(unnumbered)];
     if doc.cables_of(c).is_empty() {
         let pot = net.map(|(_, n)| net_potential(doc, n));
         let cs = cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
@@ -699,7 +669,7 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
         (Some((id, n)), Some(num)) => number_error(doc, id, n, num),
         _ => false,
     };
-    Some(Label { text: words.join(" "), error })
+    Some(Label { text: words.join(" "), error, provisional })
 }
 
 /// Whether net `id` (showing `number`) is in a number error: two different fixed numbers, or

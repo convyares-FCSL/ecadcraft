@@ -23,8 +23,15 @@
 //!   merged only where `keep_project_key` allows (revision fields are never merged into the
 //!   release line, owner answer 10).
 //!
-//! Excluded: "make them one device" for a duplicate tag and "combine" for sibling folders (the
-//! renumber and rename choices cover them); an inline editor for anything but property values.
+//! - A tag conflict also offers **Make them one** (brief 026, FP5, [`Choice::MakeOne`]): the
+//!   source's device joins the target's through [`Inputs::join`] (018's device merge), or the
+//!   source's cable's members join the target's cable; the target's property values are kept.
+//!   When they cannot be one, the choice is left out and [`Plan::unavailable`] says why.
+//!   Devices and cables share one tag namespace. Provisional tags (`-K?1`) added on both sides are
+//!   not conflicts: the source's gets the next provisional number ([`Plan::provisional_renumbered`]).
+//!
+//! Excluded: "combine" for sibling folders (the rename choice covers it); an inline editor for
+//! anything but property values.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -149,6 +156,9 @@ pub enum Choice {
     RenumberSource,
     /// Renumber (rename) the target's object.
     RenumberTarget,
+    /// Make the two devices (or cables) with one tag one (brief 026, FP5): the source's joins the
+    /// target's.
+    MakeOne,
 }
 
 impl Choice {
@@ -233,6 +243,10 @@ pub struct Plan {
     /// Answers given for conflicts the merge does not raise (any more), in words: they have no
     /// effect (reviewer 020b, finding 3).
     pub ignored: Vec<String>,
+    /// Why Make them one is not offered, per tag conflict ID (brief 026).
+    pub unavailable: BTreeMap<String, String>,
+    /// Provisional tags of the source given the next provisional number (brief 026).
+    pub provisional_renumbered: usize,
 }
 
 /// What a merge reads.
@@ -251,6 +265,9 @@ pub struct Inputs<'a> {
     /// Checks a value typed in an Edit field as an ordinary edit of that object's property would
     /// (design §5.2): the value as stored, or why it is refused.
     pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, String>,
+    /// The ops making device `from` part of device `into` in a state (018's device merge), or why
+    /// they cannot be one (brief 026, Make them one). The state's index is current.
+    pub join: &'a dyn Fn(&Document, ComponentId, ComponentId) -> Result<Vec<Op>, String>,
 }
 
 /// How a kept object uses another one (what "leave it unconnected / remove what uses it" does).
@@ -273,6 +290,8 @@ struct Ctx<'a, 'b> {
     conflicts: Vec<Conflict>,
     seen: BTreeSet<String>,
     problems: Vec<String>,
+    unavailable: BTreeMap<String, String>,
+    provisional: usize,
 }
 
 impl Ctx<'_, '_> {
@@ -1166,72 +1185,252 @@ fn next_tag(prefix: &str, high: &mut HighWater, padding: u8) -> String {
     tag::format(prefix, n, padding)
 }
 
-/// Two devices with one tag (018: one tag, one device) after the merge: a **tag** conflict per
-/// tag, renumbering the source's device (the default suggestion, owner answer 12) or the
-/// target's.
+/// What holds a tag in the merged state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Holder {
+    Device(ComponentId),
+    Cable(CableId),
+}
+
+impl Holder {
+    fn obj(self) -> Obj {
+        match self {
+            Holder::Device(c) => Obj::Component(c),
+            Holder::Cable(c) => Obj::Cable(c),
+        }
+    }
+
+    fn tag(self, d: &Document) -> Option<&String> {
+        match self {
+            Holder::Device(c) => d.components.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)),
+            Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)),
+        }
+    }
+
+    fn in_doc(self, d: &Document) -> bool {
+        match self {
+            Holder::Device(c) => d.components.contains_key(&c),
+            Holder::Cable(c) => d.cables.contains_key(&c),
+        }
+    }
+
+    fn set_tag(self, m: &mut Document, t: String) {
+        let props = match self {
+            Holder::Device(c) => m.components.get_mut(&c).map(|x| &mut x.properties),
+            Holder::Cable(c) => m.cables.get_mut(&c).map(|x| &mut x.properties),
+        };
+        if let Some(p) = props {
+            p.insert(tag::TAG_KEY.into(), t);
+        }
+    }
+}
+
+/// The objects `ops` name (for the merge's scope).
+fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                out.insert(Obj::Component(*id));
+            }
+            Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
+                out.insert(Obj::Terminal(*id));
+                out.insert(Obj::Component(terminal.component));
+            }
+            Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
+                out.insert(Obj::Representation(*id));
+            }
+            Op::AttachEnd { conductor, .. } => {
+                out.insert(Obj::Conductor(*conductor));
+            }
+            Op::SetProperty { object: ObjectRef::Component(c), .. } => {
+                out.insert(Obj::Component(*c));
+            }
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+                out.insert(Obj::Cable(*id));
+            }
+            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
+                out.insert(Obj::Cable(*cable));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The highest provisional number of `prefix` in `m` (a scan: merges only).
+fn top_provisional(m: &Document, prefix: &str) -> u64 {
+    let lo = format!("{prefix}?");
+    m.components
+        .values()
+        .filter_map(|c| c.properties.get(tag::TAG_KEY))
+        .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY)))
+        .filter_map(|x| tag::key(x).strip_prefix(&lo).and_then(|n| n.parse::<u64>().ok()))
+        .max()
+        .unwrap_or(0)
+}
+
+/// Two holders with one tag (018: one tag, one device; 026: devices and cables share it) after the
+/// merge: a **tag** conflict per tag, renumbering the source's (the default suggestion, owner
+/// answer 12) or the target's, or making them one (brief 026). Provisional tags added on both
+/// sides are renumbered silently (design 026 §8).
 fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let (t, s) = (ctx.inp.target, ctx.inp.source);
     let mut high = ctx.inp.high.clone();
-    for c in m.components.values() {
-        if let Some(x) = c.properties.get(tag::TAG_KEY) {
-            tag::note(&mut high, x);
-        }
+    let present: Vec<String> = m
+        .components
+        .values()
+        .filter_map(|c| c.properties.get(tag::TAG_KEY))
+        .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY)))
+        .cloned()
+        .collect();
+    for x in &present {
+        tag::note(&mut high, x);
     }
     let padding = m.settings.tag_padding;
     let mut out = BTreeSet::new();
     let mut done: BTreeSet<String> = BTreeSet::new();
-    let ours: Vec<ComponentId> = objects.iter().filter_map(|o| if let Obj::Component(c) = o { Some(*c) } else { None }).collect();
-    for c in ours {
-        let Some(tag_text) = m.components.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)).cloned() else { continue };
+    let ours: Vec<Holder> = objects
+        .iter()
+        .filter_map(|o| match o {
+            Obj::Component(c) => Some(Holder::Device(*c)),
+            Obj::Cable(c) => Some(Holder::Cable(*c)),
+            _ => None,
+        })
+        .collect();
+    // The merged state with a current index, built once, for the join (brief 026).
+    let mut indexed: Option<Document> = None;
+    for h in ours.iter().copied() {
+        let Some(tag_text) = h.tag(m).cloned() else { continue };
         // Only a tag the merge brought from the source.
-        if t.components.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)) == Some(&tag_text) {
+        if h.tag(t) == Some(&tag_text) {
             continue;
         }
         let key = tag::key(&tag_text);
         if done.contains(&key) {
             continue;
         }
-        let same = |d: &ComponentId| *d != c && m.components.get(d).and_then(|x| x.properties.get(tag::TAG_KEY)).is_some_and(|x| tag::key(x) == key);
-        let mut others: Vec<ComponentId> = t.components_tagged(&tag_text).into_iter().filter(|d| same(d)).collect();
-        let more: Vec<ComponentId> = objects
-            .iter()
-            .filter_map(|o| if let Obj::Component(d) = o { Some(*d) } else { None })
-            .filter(|d| same(d) && !others.contains(d))
+        let same = |d: Holder| d != h && d.tag(m).is_some_and(|x| tag::key(x) == key);
+        let mut others: Vec<Holder> = t
+            .components_tagged(&tag_text)
+            .into_iter()
+            .map(Holder::Device)
+            .chain(t.cables_tagged(&tag_text).into_iter().map(Holder::Cable))
+            .filter(|d| same(*d))
             .collect();
+        let more: Vec<Holder> = ours.iter().copied().filter(|d| same(*d) && !others.contains(d)).collect();
         others.extend(more);
         let Some(other) = others.first().copied() else { continue };
         done.insert(key.clone());
+        // The source's holder (the one the target does not have), and the target's.
+        let (src, tgt) = if !h.in_doc(t) && h.in_doc(s) { (h, other) } else { (other, h) };
+        // Provisional duplicates were never issued: the source's takes the next one, silently.
+        if let Some((p, _)) = tag::provisional(&tag_text) {
+            let n = top_provisional(m, &p).saturating_add(1);
+            src.set_tag(m, tag::format_provisional(&p, n));
+            out.insert(src.obj());
+            ctx.provisional += 1;
+            continue;
+        }
         let prefix = tag::parse(&tag_text).map(|p| p.0);
         let fresh = match &prefix {
             Some(p) => next_tag(p, &mut high, padding),
             None => format!("{tag_text}-2"),
         };
+        let id = format!("rule/tag/{key}");
+        // Make them one: two devices or two cables, never a device and a cable.
+        let one: Result<Vec<Op>, String> = match (src, tgt) {
+            (Holder::Device(a), Holder::Device(b)) => {
+                let d = indexed.get_or_insert_with(|| {
+                    let mut x = m.clone();
+                    x.rebuild_index();
+                    x
+                });
+                (ctx.inp.join)(d, a, b)
+            }
+            (Holder::Cable(a), Holder::Cable(b)) => join_cables(m, a, b),
+            _ => Err(format!("{tag_text} is a cable on one side and a device on the other.")),
+        };
+        let mut choices = vec![Choice::RenumberSource, Choice::RenumberTarget];
+        match &one {
+            Ok(_) => choices.push(Choice::MakeOne),
+            Err(why) => {
+                ctx.unavailable.insert(id.clone(), why.clone());
+            }
+        }
+        let noun = match h {
+            Holder::Device(_) => "device",
+            Holder::Cable(_) => "cable",
+        };
         let conflict = Conflict {
-            id: format!("rule/tag/{key}"),
+            id: id.clone(),
             kind: ConflictKind::Tag,
-            object: Obj::Component(c),
-            what: format!("{tag_text} · {} and {} each have a device {tag_text}", ctx.t(), ctx.s()),
+            object: h.obj(),
+            what: format!("{tag_text} · {} and {} each have a {noun} {tag_text}", ctx.t(), ctx.s()),
             target: format!("renumber {}'s to {fresh}", ctx.t()),
             source: format!("renumber {}'s to {fresh}", ctx.s()),
-            choices: vec![Choice::RenumberSource, Choice::RenumberTarget],
+            choices,
             chosen: None,
         };
-        let which = match ctx.ask(conflict) {
-            Some(Choice::RenumberSource) => Some(if s.components.contains_key(&c) { c } else { other }),
-            Some(Choice::RenumberTarget) => Some(if s.components.contains_key(&c) { other } else { c }),
+        let asked = ctx.ask(conflict);
+        if asked.is_none()
+            && ctx.choices.get(&id) == Some(&Choice::MakeOne)
+            && let Some(why) = ctx.unavailable.get(&id).cloned()
+        {
+            ctx.problems.push(format!("{tag_text}: they cannot be one ({why}) Renumber one of them instead."));
+        }
+        let which = match asked {
+            Some(Choice::RenumberSource) => Some(src),
+            Some(Choice::RenumberTarget) => Some(tgt),
+            Some(Choice::MakeOne) => {
+                if let Ok(ops) = one {
+                    for op in &ops {
+                        if let Err(e) = op.apply(m) {
+                            ctx.problems.push(format!("{tag_text}: they cannot be one ({e})."));
+                            break;
+                        }
+                        if let Some(d) = indexed.as_mut() {
+                            let _ = op.apply(d);
+                        }
+                    }
+                    out.extend(objs_of(&ops));
+                    out.insert(tgt.obj());
+                }
+                None
+            }
             _ => None,
         };
-        if let Some(d) = which
-            && let Some(x) = m.components.get_mut(&d)
-        {
-            x.properties.insert(tag::TAG_KEY.into(), fresh);
-            out.insert(Obj::Component(d));
+        if let Some(d) = which {
+            d.set_tag(m, fresh);
+            out.insert(d.obj());
         }
     }
     out
 }
 
-/// The next free page number after `n`.
+/// The ops making cable `from`'s members members of `into` (after its own), then deleting `from`.
+fn join_cables(m: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
+    let a = m.cables.get(&from).ok_or("No such cable.")?;
+    let b = m.cables.get(&into).ok_or("No such cable.")?;
+    let mut ops = Vec::new();
+    for (i, mem) in a.members.iter().enumerate().rev() {
+        ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });
+    }
+    let mut n = b.members.len();
+    for mem in &a.members {
+        if b.members.iter().any(|x| x.conductor == mem.conductor) {
+            continue;
+        }
+        ops.push(Op::AddCableMember { cable: into, index: n, member: mem.clone() });
+        n += 1;
+    }
+    let mut empty = a.clone();
+    empty.members.clear();
+    ops.push(Op::DeleteCable { id: from, cable: empty });
+    Ok(ops)
+}
+
+// The next free page number after `n`.
 fn next_number(n: &str, taken: &BTreeSet<String>, step: u32) -> String {
     if let Ok(v) = n.trim().parse::<u64>() {
         let mut x = v;
@@ -1440,7 +1639,8 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
 
 /// Work out the merge of `inp` with `choices` (module docs).
 pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
-    let mut ctx = Ctx { inp, choices, conflicts: Vec::new(), seen: BTreeSet::new(), problems: Vec::new() };
+    let mut ctx =
+        Ctx { inp, choices, conflicts: Vec::new(), seen: BTreeSet::new(), problems: Vec::new(), unavailable: BTreeMap::new(), provisional: 0 };
     let objects = scope_objects(inp.scope);
     let (changes, pages) = changes(inp, &objects);
     let mut m = inp.target.clone();
@@ -1561,7 +1761,17 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     } else {
         Vec::new()
     };
-    Plan { changes, pages, conflicts: ctx.conflicts, unanswered, ops, problem, ignored }
+    Plan {
+        changes,
+        pages,
+        conflicts: ctx.conflicts,
+        unanswered,
+        ops,
+        problem,
+        ignored,
+        unavailable: ctx.unavailable,
+        provisional_renumbered: ctx.provisional,
+    }
 }
 
 #[cfg(test)]
@@ -1584,6 +1794,15 @@ mod tests {
         let all = |_: &str| true;
         let high = HighWater::new();
         let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
+        // Two devices described "coil" cannot be one (a stand-in for 018's rules).
+        let join = |d: &Document, from: ComponentId, into: ComponentId| -> Result<Vec<Op>, String> {
+            let coil = |c: ComponentId| d.components.get(&c).and_then(|x| x.properties.get("description")).is_some_and(|v| v == "coil");
+            if coil(from) && coil(into) {
+                return Err("already has a coil.".into());
+            }
+            let comp = d.components.get(&from).cloned().ok_or("no such device")?;
+            Ok(vec![Op::DeleteComponent { id: from, component: comp }])
+        };
         let inp = Inputs {
             ancestor: a,
             target: t,
@@ -1594,6 +1813,7 @@ mod tests {
             keep_project_key: &all,
             high: &high,
             edit_rule: &rule,
+            join: &join,
         };
         plan(&inp, choices)
     }
@@ -1659,6 +1879,57 @@ mod tests {
         }
         assert_eq!(doc.components[&ComponentId(1)].properties["tag"], "-K05");
         assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K06");
+    }
+
+    #[test]
+    fn a_tag_added_on_both_sides_can_be_made_one() {
+        let a = doc_with(&[]);
+        let t = doc_with(&[(1, "-K05")]);
+        let s = doc_with(&[(2, "-K05")]);
+        let scope = scope_of(&[1, 2]);
+        let p = run(&a, &t, &s, &scope, &BTreeMap::new());
+        let c = p.conflicts.iter().find(|c| c.kind == ConflictKind::Tag).expect("a tag conflict");
+        assert!(c.choices.contains(&Choice::MakeOne));
+        let p = run(&a, &t, &s, &scope, &BTreeMap::from([(c.id.clone(), Choice::MakeOne)]));
+        assert!(p.problem.is_none() && p.unanswered.is_empty(), "{:?}", p.problem);
+        let mut doc = t.clone();
+        for op in &p.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        assert!(doc.components.contains_key(&ComponentId(1)) && !doc.components.contains_key(&ComponentId(2)));
+        // Two coils cannot be one: the choice is left out, with the reason; renumbering still works.
+        let mut t2 = doc_with(&[(1, "-K05")]);
+        let mut s2 = doc_with(&[(2, "-K05")]);
+        for (d, id) in [(&mut t2, 1), (&mut s2, 2)] {
+            d.components.get_mut(&ComponentId(id)).unwrap().properties.insert("description".into(), "coil".into());
+        }
+        let p = run(&a, &t2, &s2, &scope, &BTreeMap::new());
+        let c = p.conflicts.iter().find(|c| c.kind == ConflictKind::Tag).unwrap();
+        assert!(!c.choices.contains(&Choice::MakeOne));
+        assert_eq!(p.unavailable.get(&c.id).map(String::as_str), Some("already has a coil."));
+        let p = run(&a, &t2, &s2, &scope, &BTreeMap::from([(c.id.clone(), Choice::MakeOne)]));
+        assert!(p.ops.is_empty() && p.problem.is_some());
+        let p = run(&a, &t2, &s2, &scope, &BTreeMap::from([(c.id.clone(), Choice::RenumberSource)]));
+        let mut doc = t2.clone();
+        for op in &p.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K06");
+    }
+
+    #[test]
+    fn provisional_duplicates_are_not_conflicts() {
+        let a = doc_with(&[]);
+        let t = doc_with(&[(1, "-K?1")]);
+        let s = doc_with(&[(2, "-K?1")]);
+        let p = run(&a, &t, &s, &scope_of(&[1, 2]), &BTreeMap::new());
+        assert!(p.conflicts.is_empty(), "{:?}", p.conflicts);
+        assert_eq!(p.provisional_renumbered, 1);
+        let mut doc = t.clone();
+        for op in &p.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K?2");
     }
 
     #[test]
