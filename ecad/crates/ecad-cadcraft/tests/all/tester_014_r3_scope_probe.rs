@@ -14,7 +14,7 @@
 //!
 //! After each edit the probe also checks three things:
 //! - Every end attached on the other page is still attached: the M3 gate never detaches it.
-//! - Each drawn reference text reads `/page.column`, or `/?` for an orphan.
+//! - Each drawn reference text reads `page-column-row` (or `/page.column`), or `/?` for an orphan.
 //! - The 010 note is echoed when a stub end leaving toward a reference is dropped on a terminal.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -104,19 +104,26 @@ fn terminals_on(h: &mut H, page: PageId) -> Vec<Pt> {
     terminal_positions(&h.doc(), page).into_iter().map(|(_, _, p)| p).collect()
 }
 
-/// `/page.column` or `/?`.
+/// `page-column-row` (019's default, e.g. `2-A-6`), `/page.column` (the other style, e.g. `/105.C`),
+/// or `/?` for an orphan.
 fn well_formed(text: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.chars().all(|x| x.is_ascii_digit());
+    let column = |s: &str| !s.is_empty() && s.chars().all(|x| x.is_ascii_alphanumeric());
     if text == "/?" {
         return true;
     }
-    let Some(rest) = text.strip_prefix('/') else { return false };
-    let mut parts = rest.split('.');
-    let (Some(p), Some(c), None) = (parts.next(), parts.next(), parts.next()) else { return false };
-    !p.is_empty() && !c.is_empty() && p.chars().all(|x| x.is_ascii_digit()) && c.chars().all(|x| x.is_ascii_digit())
+    if let Some(rest) = text.strip_prefix('/') {
+        let mut parts = rest.split('.');
+        let (Some(p), Some(c), None) = (parts.next(), parts.next(), parts.next()) else { return false };
+        return digits(p) && column(c);
+    }
+    let mut parts = text.split('-');
+    let (Some(p), Some(c), Some(r), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else { return false };
+    digits(p) && column(c) && digits(r)
 }
 
 #[test]
-#[ignore = "slow: random-edit oracle probe, about 37 s"]
+#[ignore = "slow: random-edit oracle probe, about 4 min in a debug build"]
 fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
     let seed = std::env::var("ECAD_R3_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(0x14_3010_u64);
     let mut r = connected(seed);

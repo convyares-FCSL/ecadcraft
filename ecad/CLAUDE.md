@@ -61,6 +61,9 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     keep their own `#[ignore = "run by … in a child process"]` reasons, and do nothing unless the
     test that starts them set `ECAD_TEST_CHILD`, so an `--include-ignored` run is always safe. A
     new one follows the same pattern.
+    When a change alters the ops a command records or a derived text format (reference texts,
+    wire numbers, tags), also run that crate's slow set: `cargo xtask test-changed --
+    --include-ignored`. The 2026-11-11 QA pass found three slow tests left stale by 019 and 022.
   - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
     `translate.rs`, the store and locking, or anything the owner asks for. It runs only what the
     change can break. A re-test after a fix runs only what failed.

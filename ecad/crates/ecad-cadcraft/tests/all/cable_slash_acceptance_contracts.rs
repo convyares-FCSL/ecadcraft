@@ -15,7 +15,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{CableId, ConductorId, Document, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, Subject, Transaction};
+use ecad_model::{CableId, ConductorId, Document, Form, ItemId, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Subject, Transaction};
 use serde_json::{Value, json};
 
 const SEED: u64 = 404;
@@ -927,6 +927,9 @@ fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
                     rep.items = vec![it];
                     Op::LinkRepresentation { id: r, rep }
                 }
+                // Since 022 a new wire records its `wire_number`; the copies stay unnumbered,
+                // which these cap tests do not need.
+                Op::SetProperty { object: ObjectRef::Conductor(_), ref key, .. } if key == ecad_model::connectivity::WIRE_NUMBER => continue,
                 other => panic!("unexpected op in a wire transaction: {other:?}"),
             });
         }
@@ -947,7 +950,7 @@ fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
 /// AC8 and check L: `MAX_CABLE_MEMBERS` (10 000) crossed wires are accepted; 10 001 are refused with
 /// the design's message; neither panics, and the preview caps its rings at 200.
 #[test]
-#[ignore = "slow: builds a cable at the member cap, about 7 s"]
+#[ignore = "slow: builds a cable at the member cap, about 2 min in a debug build"]
 fn ac8_max_cable_members_is_the_cap() {
     let max = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
     assert_eq!(max, 10_000);
@@ -1154,7 +1157,7 @@ fn r2_cableadd_refuses_a_wire_listed_twice() {
 /// accepted and 10 001 refused; an existing cable of 9 999 takes one more (10 000) but not two, and
 /// a full cable takes none. Every refusal leaves head and document unchanged.
 #[test]
-#[ignore = "slow: builds a cable at the member cap, about 9 s"]
+#[ignore = "slow: builds a cable at the member cap, about 2 min in a debug build"]
 fn r2_cableadd_cap_holds_for_the_whole_cable() {
     let max = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
     let (mut h, ws) = bulk_wires(max);

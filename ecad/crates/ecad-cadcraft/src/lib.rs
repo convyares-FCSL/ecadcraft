@@ -70,7 +70,7 @@ pub use project::{
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).
-pub const UPSTREAM_COMMIT: &str = "00c7613f1af3c73f7157fa91d9fe2635c6f23c06";
+pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 
 /// Install the ECAD commands into the engine's registry. Call once, before the engine's command
 /// list is first used. Returns `false` if it was too late or already done.
