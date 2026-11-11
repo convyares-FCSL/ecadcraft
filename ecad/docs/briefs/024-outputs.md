@@ -1,6 +1,6 @@
 # Brief 024: Outputs: locations, the PDF book, generated pages and reports
 
-Status: Draft (designer, 2026-11-11, from the owner's scope decisions of 2026-11-11, revised the same day for his location-box correction; FP1–FP4 approved by the overseer; not started)
+Status: Approved (owner, 2026-11-11: design §14 Q1–Q11 accepted as recommended; FP1–FP4 and the Q7 PDF seam approved by the overseer)
 Branch: `feature/outputs` (worktree `C:\dev\ecad-features\sheets`, historical name), from `dev`
 `af2d41eb`.
 Designer: **yes** (`docs/design/024.md`) · Size: L
