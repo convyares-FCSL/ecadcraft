@@ -615,7 +615,8 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
 /// Brief 026 (design 026 §11): on a copy opened once in a headless session, per run: the device
 /// renumber's preview, the renumber itself (start 2, so every tag changes), its undo, the wire
 /// renumber (undone untimed), a swap of two tags, and Finalise numbering of 50 provisional devices
-/// (placed untimed, undone untimed). Every write must be one transaction.
+/// (placed untimed, undone untimed), after the nets were numbered (untimed). Every write must be
+/// one transaction.
 fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTimes, String> {
     use serde_json::json;
 
@@ -637,6 +638,9 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
             }
             Ok((took, r))
         };
+        // The generated tiers' nets carry no wire numbers: number them first (not timed), so that
+        // Finalise measures the 50 provisional devices, not every net of the project.
+        s.execute("renumberwires", &json!({"scope": "unnumbered"})).map_err(|e| format!("renumberwires: {e}"))?;
         let mut t = NumberingTimes::default();
         let (mut prev, mut renum, mut undo, mut wires, mut swap, mut fin) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         // Two tagged devices to swap.
