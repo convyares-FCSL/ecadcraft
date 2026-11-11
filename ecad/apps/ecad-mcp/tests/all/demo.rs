@@ -10,9 +10,9 @@ fn the_demo_command_list_builds_the_control_panel() {
     let n = demo::run(&mut mcp, demo::COMMANDS).unwrap_or_else(|e| panic!("{e}"));
     assert!(n > 60, "{n} commands");
     let (doc, log) = mcp.with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap()).unwrap();
-    // Three pages, as named.
+    // Three drawn pages, as named, then the generated revision list and BOM (brief 024).
     let titles: Vec<&str> = doc.page_order.iter().map(|p| doc.pages[p].title.as_str()).collect();
-    assert_eq!(titles, ["Supply", "Motor control", "Field"]);
+    assert_eq!(titles, ["Supply", "Motor control", "Field", "Revision list", "BOM by location"]);
     // Every transaction after the project's creation is the demo's, as an agent.
     assert!(log.iter().skip(1).all(|t| t.author == Author::Agent(demo::AUTHOR.into())));
     // The devices, by tag.
@@ -114,10 +114,50 @@ fn the_demo_nets_and_wire_numbers() {
     let k04 = conn.net(net("24V-04")[0]).unwrap();
     let points = ecad_cadcraft::wires::net_points(&doc, k04);
     assert_eq!(points, ["-H01:X1", "-K01:14", "-K01:A1", "-S02:14"], "{points:?}");
-    // Checks: -M01:PE, and the three L continuations whose partners are not drawn.
+    // Checks: -M01:PE, and the three L continuations whose partners are not drawn; brief 024's
+    // count of devices without a part number (-S01 among them, design 024 §13).
     assert_eq!(
         checks,
-        ["LonelyContinuation 2-C-4 L1", "LonelyContinuation 2-C-4 L2", "LonelyContinuation 2-C-4 L3", "Unconnected 3-C-5 -M01:PE"],
+        [
+            "LonelyContinuation 2-C-4 L1",
+            "LonelyContinuation 2-C-4 L2",
+            "LonelyContinuation 2-C-4 L3",
+            "Unconnected 3-C-5 -M01:PE",
+            "NoPartNumber  7 devices have no part number"
+        ],
         "{checks:#?}"
     );
+}
+
+/// Brief 024 (design 024 §13): the demo's locations, its location box, the prefix of -K01's NC
+/// contact on page 3, the reports and the generated pages.
+#[test]
+fn the_demo_locations_reports_and_generated_pages() {
+    let mut mcp = EcadMcp::in_memory("demo", 0xDE30, Options { write: true, agent: None }).unwrap();
+    demo::run(&mut mcp, demo::COMMANDS).unwrap_or_else(|e| panic!("{e}"));
+    let doc = mcp.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap();
+    let at = |tag: &str| {
+        let l = ecad_cadcraft::locations::resolve(&doc, doc.components_tagged(tag)[0]);
+        (l.value.unwrap_or_default(), l.source.word())
+    };
+    assert_eq!(at("-K01"), ("+CP1".to_string(), "project"));
+    assert_eq!(at("-G01"), ("+CP1".to_string(), "project"));
+    assert_eq!(at("-M01"), ("+FIELD".to_string(), "page"));
+    assert_eq!(at("-X02"), ("+JB1".to_string(), "box"));
+    // -K01's NC contact on page 3 reads +CP1-K01; its coil on page 2 reads -K01.
+    let texts = |i: usize| -> Vec<String> { ecad_cadcraft::devices::texts_on_page(&doc, doc.page_order[i]).into_iter().map(|t| t.value).collect() };
+    assert!(texts(2).contains(&"+CP1-K01".to_string()), "{:?}", texts(2));
+    assert!(texts(1).contains(&"-K01".to_string()));
+    // Reports: no wire on the BOM; the cable row.
+    let o = ecad_cadcraft::outputs::Outputs::build(&doc);
+    let bom = o.bom(ecad_cadcraft::outputs::Group::Location);
+    assert_eq!(bom.iter().map(|r| r.qty).sum::<usize>(), 11, "the eleven devices, nothing else");
+    let cables = o.cable_table();
+    let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
+    assert_eq!(row[..5], ["-W01", "4G1.5", "3", "+CP1", "+JB1"], "{row:?}");
+    let s01 = o.bom_table(ecad_cadcraft::outputs::Group::Location);
+    assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
+    // The generated pages.
+    let kinds: Vec<_> = doc.page_order.iter().filter_map(|p| ecad_cadcraft::generated::kind_of(&doc, *p)).collect();
+    assert_eq!(kinds, [ecad_cadcraft::generated::GenKind::Revisions, ecad_cadcraft::generated::GenKind::BomLocation]);
 }
