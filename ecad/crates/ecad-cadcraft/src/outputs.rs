@@ -45,6 +45,26 @@ fn clean(v: Option<&String>) -> Option<String> {
     v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Each page's position in the book and shown number, worked out once per build or update
+/// (O(pages)), so a wire's places never read the book order again.
+pub struct PageCx {
+    pages: std::collections::HashMap<PageId, (usize, String)>,
+}
+
+impl PageCx {
+    pub fn of(doc: &Document) -> PageCx {
+        let b = ecad_model::book::Book::of(doc);
+        PageCx { pages: b.order.iter().enumerate().map(|(i, p)| (*p, (i, b.number(doc, *p)))).collect() }
+    }
+    fn pos(&self, p: PageId) -> usize {
+        self.pages.get(&p).map_or(usize::MAX, |x| x.0)
+    }
+    fn place(&self, doc: &Document, p: PageId, at: Pt) -> Option<ecad_model::derive::Place> {
+        let number = self.pages.get(&p)?.1.as_str();
+        ecad_model::derive::place_on(&ecad_model::sheet::Grid::of(doc, p), number, at)
+    }
+}
+
 /// One device as the reports see it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceRow {
@@ -377,8 +397,9 @@ impl Outputs {
         for (_, c) in doc.tagged() {
             o.set_device(doc, c, &mut cache);
         }
+        let cx = PageCx::of(doc);
         for w in doc.conductors.keys() {
-            o.set_wire(doc, *w);
+            o.set_wire(doc, *w, &cx);
         }
         for k in doc.cables.keys() {
             o.set_cable(doc, *k);
@@ -436,8 +457,9 @@ impl Outputs {
                 }
             }
         }
+        let cx = PageCx::of(doc);
         for w in &scope.conductors {
-            self.set_wire(doc, *w);
+            self.set_wire(doc, *w, &cx);
             work += 1;
             scope.cables.extend(doc.cables_of(*w));
         }
@@ -516,10 +538,10 @@ impl Outputs {
         self.devices.insert(c, row);
     }
 
-    fn end_cell(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>) -> EndCell {
+    fn end_cell(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
         let order = at.map_or((usize::MAX, 0, 0), |(p, a)| {
-            let pos = doc.page_order.iter().position(|x| *x == p).unwrap_or(usize::MAX);
-            let place = ecad_model::wiring::place(doc, p, a);
+            let pos = cx.pos(p);
+            let place = cx.place(doc, p, a);
             (pos, place.as_ref().map_or(0, |x| x.column), place.as_ref().map_or(0, |x| x.row))
         });
         let Some(t) = t else { return EndCell { order, ..EndCell::default() } };
@@ -527,7 +549,7 @@ impl Outputs {
         let c = term.component;
         match crate::wires::kind_of(doc, c) {
             Some(ecad_model::connectivity::JUNCTION) => {
-                let place = at.and_then(|(p, a)| ecad_model::wiring::place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
+                let place = at.and_then(|(p, a)| cx.place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
                 EndCell { name: Some(format!("junction {}", place.unwrap_or_else(|| "?".into()))), order, ..EndCell::default() }
             }
             Some(ecad_model::connectivity::CONTINUATION) => {
@@ -547,7 +569,7 @@ impl Outputs {
         }
     }
 
-    fn set_wire(&mut self, doc: &Document, w: ConductorId) {
+    fn set_wire(&mut self, doc: &Document, w: ConductorId, cx: &PageCx) {
         let Some(cond) = doc.conductors.get(&w) else {
             self.wires.remove(&w);
             return;
@@ -561,7 +583,7 @@ impl Outputs {
                     ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
                     _ => None,
                 })?;
-                let pos = doc.page_order.iter().position(|x| *x == r.page).unwrap_or(usize::MAX);
+                let pos = cx.pos(r.page);
                 Some((pos, pts, r.page))
             })
             .collect();
@@ -572,7 +594,7 @@ impl Outputs {
             let (Some(a), Some(b)) = (v.first(), v.get(1).or(v.first())) else { return None };
             Some((*p, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
         });
-        let mut ends = [self.end_cell(doc, cond.end(End::A), a_at), self.end_cell(doc, cond.end(End::B), b_at)];
+        let mut ends = [self.end_cell(doc, cond.end(End::A), a_at, cx), self.end_cell(doc, cond.end(End::B), b_at, cx)];
         if ends[1].order < ends[0].order {
             ends.swap(0, 1);
         }
@@ -596,7 +618,7 @@ impl Outputs {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        let page = mid.and_then(|(p, a)| ecad_model::wiring::place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
+        let page = mid.and_then(|(p, a)| cx.place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
         self.wires.insert(
             w,
             WireRow {

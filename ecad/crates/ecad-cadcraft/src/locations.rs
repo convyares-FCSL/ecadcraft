@@ -340,6 +340,9 @@ pub fn main_rep(doc: &Document, c: ComponentId) -> Option<(RepresentationId, &Re
     if let Some(m) = reps.iter().find(|(_, r)| r.role == "main") {
         return Some(*m);
     }
+    if let [one] = reps.as_slice() {
+        return Some(*one);
+    }
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     reps.into_iter().min_by(|(ia, a), (ib, b)| {
         let pa = order.get(&a.page).copied().unwrap_or(usize::MAX);
