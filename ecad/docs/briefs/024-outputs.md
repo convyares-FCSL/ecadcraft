@@ -1,6 +1,6 @@
 # Brief 024: Outputs: locations, the PDF book, generated pages and reports
 
-Status: Draft (designer, 2026-11-11, from the owner's scope decisions of 2026-11-11; not started)
+Status: Draft (designer, 2026-11-11, from the owner's scope decisions of 2026-11-11, revised the same day for his location-box correction; FP1–FP4 approved by the overseer; not started)
 Branch: `feature/outputs` (worktree `C:\dev\ecad-features\sheets`, historical name), from `dev`
 `af2d41eb`.
 Designer: **yes** (`docs/design/024.md`) · Size: L
@@ -29,10 +29,18 @@ physically are (`+` location), so the BOM can be grouped by it and the reports s
 ## Scope (owner decisions, 2026-11-11)
 
 1. **Device location is a device property.** Set from the Properties panel (one or several
-   devices) and through MCP, with `setprop`. Unset, it is inherited: a location box, else the
-   page's `+`, else the project's `+`, and the panel says where it comes from. **Location boxes**
-   (dashed, labelled `+…`) on the drawing group the devices of one location. The design says how a
-   device resolves when its symbols sit on pages with different `+`.
+   devices) and through MCP, with `setprop`. Precedence: the device's own value, then the location
+   box its main symbol is in, then the page's `+`, then the project's `+`; the panel says where an
+   inherited value comes from (`from box on 110`). The design says how a device resolves when its
+   symbols sit in different locations (main-symbol rule).
+   **Location boxes** (owner correction, 2026-11-11): a dashed rectangle **or any closed
+   polyline**, labelled `+…`, drawn with the Location Box tool (rectangle or polyline mode) or made
+   from an existing closed polyline; grips edit the outline; the `+` is set when drawn and edited
+   in Properties. Every device symbol whose insertion point is inside takes the box's location;
+   nested boxes: the innermost wins. Containment is **live and derived** (writes nothing on
+   devices): moving a symbol in or out, or reshaping, moving or deleting the box, updates at once,
+   and only the devices in the old and new outlines are recomputed. A device whose own value
+   differs keeps it, with a Checks warning, go-to and a one-click **Use the box's location**.
 2. **PDF book** of all pages, a folder or a list of pages, in book order, with frame and title
    block, through CADCraft's plot path (no second PDF writer).
 3. **Generated pages**, derived and never stored as lines, each with an update map: cover,
@@ -52,15 +60,19 @@ strips and core usage (028); wire types; custom title-block templates; XLSX.
 
 ## Format and ops
 
-New ops and `.ecad` additions only when required; the designer proposes, the **overseer
-decides** (design §2). The design needs **no new op and no format change**: new property keys
-only (`generated` on pages; a location box is a tagless component, as 022's junctions are).
+**No new op and no format change.** The overseer approved design FP1–FP4 on 2026-11-11: the
+page property `generated`; a location box as a tagless drawn component (a closed polyline item),
+as 022's junctions are; device `location` stays a component property, inheritance derived; no
+report settings in the file.
 
 ## Acceptance criteria
 
 1. A device's location can be set for one or several devices (one transaction, one `u`), cleared
-   back to inherited, and its source (`box`, `page`, `project`) is shown. Location boxes draw
-   dashed with their `+` label and give their location to the symbols inside.
+   back to inherited, and its source (`box`, `page`, `project`) is shown. Location boxes, drawn as
+   rectangles or closed polylines or made from an existing closed polyline, draw dashed with their
+   `+` label and give their location, live, to the device symbols inside (innermost wins); moving
+   a symbol or editing the box updates it at once and `u` undoes it. A differing own value is kept
+   and flagged with a one-click fix.
 2. A device whose symbols lie in different locations resolves by design §3.3, and a symbol drawn
    away from its device's location shows the `+` prefix on its tag.
 3. **Print Book** writes one PDF of all pages, a folder or a page list, in book order, each sheet at
