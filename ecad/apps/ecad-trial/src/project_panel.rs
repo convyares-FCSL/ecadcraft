@@ -26,6 +26,9 @@ pub const ROW_H: f32 = 20.0;
 pub const STRIP_W: f32 = 22.0;
 /// Accessible labels of the header buttons (design 016 §8 names them `ecad.project.*`).
 pub const NEW_PAGE: &str = "New page";
+/// Brief 024: the Reports and Print Book buttons.
+pub const REPORTS: &str = "Reports: BOM, wires and cables";
+pub const PRINT_BOOK: &str = "Print Book: every page to one PDF";
 pub const MOVE_UP: &str = "Move page up";
 pub const MOVE_DOWN: &str = "Move page down";
 pub const PREVIEW: &str = "Preview page";
@@ -137,6 +140,16 @@ pub enum Action {
     RevisionPage(PageId),
     /// Brief 020a: something the History tab asked for.
     History(crate::history_panel::Do),
+    /// Brief 024: Checks' **Use the box's location** (`setprop … value: null`).
+    UseBoxLocation(ecad_model::ComponentId),
+    /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
+    ShowReports,
+    /// Brief 024: open the Reports window.
+    Reports,
+    /// Brief 024: open Print Book, scoped to this folder when given.
+    PrintBook(Option<FolderId>),
+    /// Brief 024: `newpage {generated}`.
+    NewGenerated(ecad_cadcraft::generated::GenKind),
 }
 
 /// A field typed in place over a row: a page number or a folder name.
@@ -479,6 +492,25 @@ impl ProjectPanel {
                 {
                     self.move_row(i, i - 1, &mut out);
                 }
+                // Brief 024: the kind of a new page (design 024 §5.1).
+                ui.add_enabled_ui(writable, |ui| {
+                    ui.menu_button(RichText::new("\u{25be}").small(), |ui| {
+                        if ui.button("Page").clicked() {
+                            out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
+                            ui.close();
+                        }
+                        for k in ecad_cadcraft::generated::GenKind::ALL {
+                            let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", k.value()));
+                            if b.clicked() {
+                                out.push(Action::NewGenerated(k));
+                                ui.close();
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("New page of a kind: page, cover, contents, revision list, BOM by location")
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.project.newpage.kind"));
+                });
                 if icon_button(ui, "ecad.project.new", Icon::Plus, tip(NEW_PAGE), writable).clicked() {
                     self.armed = true;
                     if self.has_folders() {
@@ -486,6 +518,13 @@ impl ProjectPanel {
                     } else {
                         out.push(Action::New);
                     }
+                }
+                // Brief 024: Reports and Print Book (design 024 §4.1, §6.2).
+                if icon_button(ui, "ecad.project.reports", Icon::Table, REPORTS, true).clicked() {
+                    out.push(Action::Reports);
+                }
+                if icon_button(ui, "ecad.project.print", Icon::Plot, PRINT_BOOK, true).clicked() {
+                    out.push(Action::PrintBook(None));
                 }
             });
         });

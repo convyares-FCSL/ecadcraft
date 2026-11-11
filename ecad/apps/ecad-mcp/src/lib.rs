@@ -319,6 +319,8 @@ pub struct EcadMcp {
 /// Install the ECAD commands, or say why they are missing.
 fn install() -> Result<(), String> {
     ecad_cadcraft::install();
+    // Brief 024: `printbook` plots through CADCraft's PDF plotter.
+    ecad_cadcraft::printbook::install_io();
     if cadcraft_engine::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }

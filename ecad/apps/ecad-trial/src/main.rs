@@ -90,6 +90,8 @@ fn main() -> eframe::Result {
     };
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
+    // Brief 024: Print Book plots through CADCraft's PDF plotter.
+    ecad_cadcraft::printbook::install_io();
     if let Some(t) = &mut timing {
         t.mark(Step::Install);
     }
