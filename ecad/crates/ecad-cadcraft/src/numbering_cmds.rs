@@ -367,8 +367,8 @@ pub fn choices(doc: &Document) -> Choices {
 
 // ---------------------------------------------------------------- provisional summary (§5.5)
 
-/// The provisional items of a project: the provisional tags (devices and cables, in tag order) and
-/// the unnumbered nets per potential.
+/// The provisional items of a project: the provisional tags (devices and cables, in tag order) and,
+/// with provisional tags on, the unnumbered nets per potential.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Provisional {
     pub tags: Vec<String>,
@@ -422,7 +422,10 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     tags.sort_by_key(|t| tag::provisional(t));
     let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     let mut nets = 0;
-    for (_, n) in doc.connectivity().nets() {
+    // Unnumbered nets are provisional only with provisional tags on; otherwise they are 022's
+    // nets with no number yet (an Info row), never a reason to stop an issue.
+    let on = numbering::provisional_on(doc);
+    for (_, n) in doc.connectivity().nets().filter(|_| on) {
         if n.conductors.is_empty() || !n.numbers.is_empty() {
             continue;
         }

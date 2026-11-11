@@ -20,6 +20,7 @@ mod merge_tester_ui;
 mod merge_ui;
 mod mouse;
 mod mouse_tester;
+mod numbering_ui;
 mod paths_contracts;
 mod project_panel;
 mod sheets_ui;

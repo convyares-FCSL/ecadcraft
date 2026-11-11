@@ -138,19 +138,19 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     assert_eq!(prompt(t), "Specify reference point or [Undo]:");
     click(t, 65.0, 5.0);
     assert!(t.cad.session.running.is_none());
-    assert!(t.cad.session.log.iter().any(|l| l == "Reference for cable C1 placed on page 1."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Reference for cable -C01 placed on page 1."));
     assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     let _ = t.cad.session.zoom_extents();
     h.get_by_label("Continue Cable").click();
     h.run_steps(3);
     let t = h.state_mut();
-    assert_eq!(prompt(t), "Enter cable to continue or [List] <C1>:");
+    assert_eq!(prompt(t), "Enter cable to continue or [List] <-C01>:");
     t.cad.session.input(Input::Enter).unwrap();
     click(t, 20.0, 5.0);
     click(t, 40.0, 5.0);
     assert!(t.cad.session.running.is_none());
     let said = t.cad.session.log.join("\n");
-    assert!(said.contains("Cable C1 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."), "{said}");
+    assert!(said.contains("Cable -C01 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."), "{said}");
     assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
@@ -175,7 +175,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
     assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
-    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable C1 (1-B-6)."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1-B-6)."));
 }
 
 /// The reference texts the active page draws now (the drawing as it is, not a fresh derivation),

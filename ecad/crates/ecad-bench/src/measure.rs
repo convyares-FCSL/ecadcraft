@@ -110,6 +110,27 @@ pub struct Measured {
     pub gridchange_ms: f64,
     /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
     pub revopen_ms: f64,
+    /// Brief 026's timings (design 026 §11).
+    pub numbering: NumberingTimes,
+}
+
+/// Brief 026 (design 026 §11): renumbering on a copy in a headless session, medians in ms.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct NumberingTimes {
+    /// `renumber {kind: devices, scope: all, preview}`: the plan, nothing written.
+    pub renumprev_ms: f64,
+    /// `renumber {kind: devices, scope: all, start: 2}`: every device tag changes, one transaction.
+    pub renum_ms: f64,
+    /// `renumber {kind: wires, scope: all, start: 2}`: every automatic wire number changes.
+    pub renumw_ms: f64,
+    /// `u` of the device renumber.
+    pub renumu_ms: f64,
+    /// `setprop` tag with `conflict: swap` between two devices.
+    pub swap_ms: f64,
+    /// `finalise` of 50 provisional devices.
+    pub finalise_ms: f64,
+    /// How many device tags `renum` changed.
+    pub renum_count: usize,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -224,6 +245,7 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
     // A debug build (the tests) uses a small rail: the release benchmark measures the real one.
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
     let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
+    let numbering = numbering_edits(app, &scratch.join("numbering.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -256,6 +278,7 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
         tbupd_ms: median(&mut sheet.tbupd),
         gridchange_ms: median(&mut sheet.gridchange),
         revopen_ms: median(&mut sheet.revopen),
+        numbering,
     };
     Ok((m, doc))
 }
@@ -584,6 +607,86 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
         drop(project);
         drop(s);
         Ok((places, joins, tags))
+    })();
+    remove(copy);
+    result
+}
+
+/// Brief 026 (design 026 §11): on a copy opened once in a headless session, per run: the device
+/// renumber's preview, the renumber itself (start 2, so every tag changes), its undo, the wire
+/// renumber (undone untimed), a swap of two tags, and Finalise numbering of 50 provisional devices
+/// (placed untimed, undone untimed). Every write must be one transaction.
+fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTimes, String> {
+    use serde_json::json;
+
+    remove(copy);
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
+        let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| -> Result<(f64, serde_json::Value), String> {
+            let before = head(s)?;
+            let t = Instant::now();
+            let r = s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
+            let took = ms(t);
+            let after = head(s)?;
+            if params.get("preview").is_none() && after != before + 1 {
+                return Err(format!("the {cmd} was not recorded as one transaction"));
+            }
+            Ok((took, r))
+        };
+        let mut t = NumberingTimes::default();
+        let (mut prev, mut renum, mut undo, mut wires, mut swap, mut fin) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        // Two tagged devices to swap.
+        let pair: Vec<String> = project.read(&mut s, |p, _| p.ledger.document().tagged().take(2).map(|(_, c)| c.hex()).collect())?;
+        let (a, b) = match pair.as_slice() {
+            [a, b] => (a.clone(), b.clone()),
+            _ => return Err("the project has fewer than two tagged devices".into()),
+        };
+        for r in 0..runs {
+            let (x, _) = run(&mut s, "renumber", json!({"kind": "devices", "scope": "all", "start": 2, "preview": true}))?;
+            prev.push(x);
+            let (x, v) = run(&mut s, "renumber", json!({"kind": "devices", "scope": "all", "start": 2}))?;
+            renum.push(x);
+            t.renum_count = v["devices"].as_u64().unwrap_or(0) as usize;
+            let (x, _) = run(&mut s, "u", json!({}))?;
+            undo.push(x);
+            let (x, _) = run(&mut s, "renumber", json!({"kind": "wires", "scope": "all", "start": 2}))?;
+            wires.push(x);
+            run(&mut s, "u", json!({}))?;
+            let b_tag: String = project.read(&mut s, |p, _| {
+                ecad_model::ComponentId::parse(&b)
+                    .and_then(|id| p.ledger.document().components.get(&id))
+                    .and_then(|c| c.properties.get("tag").cloned())
+                    .unwrap_or_default()
+            })?;
+            let (x, _) = run(&mut s, "setprop", json!({"component": a, "key": "tag", "value": b_tag, "conflict": "swap"}))?;
+            swap.push(x);
+            run(&mut s, "u", json!({}))?;
+            run(&mut s, "numbering", json!({"provisional": true}))?;
+            let base = head(&mut s)?;
+            for i in 0..50 {
+                let at = [-3000.0 - 30.0 * i as f64, -3000.0 - 400.0 * r as f64];
+                s.execute("place", &json!({"symbol": "coil", "at": at})).map_err(|e| format!("place: {e}"))?;
+            }
+            let (x, _) = run(&mut s, "finalise", json!({}))?;
+            fin.push(x);
+            for _ in 0..(head(&mut s)? - base) {
+                s.execute("u", &json!({})).map_err(|e| format!("u: {e}"))?;
+            }
+            run(&mut s, "numbering", json!({"provisional": false}))?;
+        }
+        t.renumprev_ms = median(&mut prev);
+        t.renum_ms = median(&mut renum);
+        t.renumu_ms = median(&mut undo);
+        t.renumw_ms = median(&mut wires);
+        t.swap_ms = median(&mut swap);
+        t.finalise_ms = median(&mut fin);
+        drop(project);
+        drop(s);
+        Ok(t)
     })();
     remove(copy);
     result

@@ -52,6 +52,15 @@ enum Row {
 type Editing = (ComponentId, &'static str, String);
 
 /// The tab's state.
+/// The clash box's ways for a taken tag (brief 026, design §7.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Clash {
+    /// The holder is a device, so Swap and Make it the same device are offered.
+    pub same_kind: bool,
+    /// The next free tag, for **Use -K08**.
+    pub next: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct DevicesPanel {
     pub filter: String,
@@ -69,6 +78,8 @@ pub struct DevicesPanel {
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
     /// offer as a merge.
     pub error: Option<(String, Option<(ComponentId, String)>)>,
+    /// Brief 026: what the clash box offers with that refusal.
+    pub clash: Option<Clash>,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
 }
@@ -271,8 +282,7 @@ impl DevicesPanel {
             ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
             // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
             if let Some((target, tag)) = offer {
-                let next = msg.split(r#""next" (use "#).nth(1).and_then(|r| r.split(')').next()).map(str::to_string);
-                let same_kind = msg.contains(r#""swap""#);
+                let (same_kind, next) = self.clash.as_ref().map_or((false, None), |k| (k.same_kind, k.next.clone()));
                 ui.horizontal(|ui| {
                     if same_kind {
                         let swap = egui::Button::new(RichText::new(SWAP).small().color(t.text)).fill(t.accent);
@@ -348,14 +358,15 @@ impl DevicesPanel {
     /// The trial reports a refused property edit; a tag held by another device offers the merge.
     pub fn refused(&mut self, c: ComponentId, key: &str, value: &str, message: String) {
         let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
+        // Brief 026: the ways are read from the refusal before it is shortened.
+        self.clash = offer.as_ref().map(|_| Clash {
+            same_kind: message.contains(r#""swap""#),
+            next: message.split("(use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string),
+        });
         // The command's ways forward name its JSON parameter; here the buttons are the ways, so
-        // only the first sentence is shown (the `next` tag is read from the rest).
+        // only the first sentence is shown.
         let message = match message.find(" Give conflict:").or_else(|| message.find(" It is a ")) {
-            Some(i) if offer.is_some() => format!(
-                "{}{}",
-                message.get(..i).unwrap_or(&message),
-                message.get(i..).and_then(|r| r.find("(use ").map(|j| &r[j..])).map(|x| format!(" {x}")).unwrap_or_default()
-            ),
+            Some(i) if offer.is_some() => message.get(..i).unwrap_or(&message).to_string(),
             _ => message,
         };
         self.error = Some((message, offer));

@@ -790,10 +790,11 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     h.run_steps(2);
     assert_eq!(head(&mut h), before, "refused");
     let err = h.state().panel.devices.error.clone().expect("the refusal is shown");
-    assert!(err.0.contains("already used by -K01") && err.1.is_some(), "{err:?}");
+    assert!(err.0.contains("is used by -K01") && err.1.is_some(), "{err:?}");
     h.state_mut().panel.devices.selected = Some(other);
     h.run_steps(2);
-    click(&mut h, ecad_trial::devices_panel::MERGE);
+    // Brief 026: the clash box names its buttons ecad.tagclash.*; Make it the same device is the second.
+    click(&mut h, "ecad.tagclash.merge");
     assert_eq!(head(&mut h), before + 1, "the merge is one transaction: {:?} {:?}", h.state().panel.devices.error, h.state().cad.session.log.last());
     assert_eq!(last_ops(&mut h).0, "Merge into -K01");
     ok(&mut h, "u");

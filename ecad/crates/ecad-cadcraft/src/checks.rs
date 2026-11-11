@@ -662,7 +662,10 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
         }
         _ => {
             // Brief 026: a provisional tag, and a tag a cable holds too.
-            if let Some(t) = crate::devices::tag_of(doc, c) {
+            if let Some(t) = crate::devices::tag_of(doc, c)
+                && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
+            {
+                // Located only when there is a row to show (a build visits every device).
                 let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
                 if ecad_model::tag::is_provisional(t) {
                     out.push(Check {
@@ -694,6 +697,9 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
     let mut out = Vec::new();
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
+    if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
+        return out;
+    }
     let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
     if ecad_model::tag::is_provisional(t) {
         out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });

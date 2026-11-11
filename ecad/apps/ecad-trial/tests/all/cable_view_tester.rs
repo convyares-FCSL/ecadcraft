@@ -354,7 +354,7 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     click(&mut h, slash);
     assert_eq!(views_of(&mut h)[&cable], "fan");
     assert_eq!(fan_lines(&mut h), 16, "brief 009: trunk 2, box 2, spines 2, bends 4, tails 6");
-    assert!(h.state().cad.session.log.iter().any(|l| l == "Cable C1 now shown in fan view."), "echo");
+    assert!(h.state().cad.session.log.iter().any(|l| l == "Cable -C01 now shown in fan view."), "echo");
     assert_eq!(prompt(&h), "Select a cable to switch its view:", "the prompt repeats");
     pointer_to(&mut h, away);
     h.run_steps(3);
@@ -385,7 +385,7 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     h.run_steps(5);
     let lines = h.state().hover_lines().map(<[String]>::to_vec).unwrap_or_default();
     assert!(lines.iter().any(|l| l == "View: fan"), "hover: {lines:?}");
-    assert!(lines.iter().any(|l| l == "Cable C1"), "hover: {lines:?}");
+    assert!(lines.iter().any(|l| l == "Cable -C01"), "hover: {lines:?}");
     // Nothing recorded, the banner's change count and unsaved state unchanged.
     assert_eq!(head(&mut h), before);
     let now = h.state_mut().status().unwrap();

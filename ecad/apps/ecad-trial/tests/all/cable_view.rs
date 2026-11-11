@@ -133,7 +133,7 @@ fn the_cable_view_button_switches_a_cable_both_ways() {
     // Brief 009, joining the middle of each spine: 2 trunk pieces, the label box and its text
     // `C1`, 2 spines, 4 bends (the middle wire leaves straight), 6 tails.
     assert_eq!(fan_lines(&mut h), 16, "the fan is drawn");
-    assert!(h.state().cad.session.log.iter().any(|l| l == "Cable C1 now shown in fan view."));
+    assert!(h.state().cad.session.log.iter().any(|l| l == "Cable -C01 now shown in fan view."));
     assert_eq!(prompt(&h), "Select a cable to switch its view:", "the prompt repeats");
     // Click the trunk: back to traditional.
     // Brief 009: the trunk joins the middle of the spine, at y = 5, left of the label box.
