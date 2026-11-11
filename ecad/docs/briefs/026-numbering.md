@@ -1,6 +1,7 @@
 # Brief 026: Numbering (renumber, fixed, swap, provisional tags)
 
-Status: Draft (designer, 2026-11-11; owner ideas 2026-11-09 to 2026-11-11). Not started.
+Status: Approved (owner, 2026-11-11: design §15 Q1–Q13 as recommended; overseer FP1–FP7 as
+written, design §17). Designer draft 2026-11-11; owner ideas 2026-11-09 to 2026-11-11.
 Branch: `feature/numbering` (worktree `C:\dev\ecad-features\components`, folder name historical),
 from `dev` `af2d41eb`.
 Designer: **yes** (`docs/design/026.md`) · Size: L
