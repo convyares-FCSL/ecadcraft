@@ -472,8 +472,13 @@ impl<'a> Places<'a> {
         let doc = self.doc;
         let book = &mut self.book;
         self.pages.entry(page).or_insert_with(|| {
-            let book = book.get_or_insert_with(|| ecad_model::book::Book::of(doc));
-            (ecad_model::sheet::Grid::of(doc, page), book.number(doc, page), book.position(page).is_some())
+            // A stored number needs no book order (the usual case): the book is built only for a
+            // page shown by its position.
+            let number = match ecad_model::book::stored_number(doc, page) {
+                Some(n) => n.to_string(),
+                None => book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).number(doc, page),
+            };
+            (ecad_model::sheet::Grid::of(doc, page), number, doc.page_order.contains(&page))
         })
     }
 
@@ -947,21 +952,25 @@ pub struct RefIndex {
 impl RefIndex {
     /// The whole index of `doc` (open, reload, branch switch): O(representations).
     pub fn build(doc: &Document) -> Self {
-        let mut groups: BTreeSet<Group> = BTreeSet::new();
-        for r in doc.representations.values() {
-            match r.subject {
-                Subject::Cable(k) if crate::references::is_reference(r) => {
-                    groups.insert(Group::Cable(k));
-                }
-                Subject::Component(c) if raw_class(doc, r) != Class::Other => {
-                    groups.insert(Group::Device(c));
-                }
-                _ => {}
-            }
+        // One pass in ID order: each member classified once (the first head of a device is its
+        // head, as `make` decides), then each group's edges.
+        let mut groups: BTreeMap<Group, Vec<(RepresentationId, Class)>> = BTreeMap::new();
+        for (rid, r) in &doc.representations {
+            let (g, c) = match r.subject {
+                Subject::Cable(k) if crate::references::is_reference(r) => (Group::Cable(k), Class::End),
+                Subject::Component(c) => match raw_class(doc, r) {
+                    Class::Other => continue,
+                    class => (Group::Device(c), class),
+                },
+                _ => continue,
+            };
+            let list = groups.entry(g).or_default();
+            let c = if c == Class::Head && list.iter().any(|(_, x)| *x == Class::Head) { Class::Other } else { c };
+            list.push((*rid, c));
         }
         let mut idx = RefIndex::default();
-        for g in groups {
-            idx.make(doc, g);
+        for (g, list) in groups {
+            idx.insert_group(g, list);
         }
         idx
     }
@@ -1010,6 +1019,11 @@ impl RefIndex {
                     .collect()
             }
         };
+        self.insert_group(g, list);
+    }
+
+    /// Add group `g` with its members `list` (classes decided) and its edges.
+    fn insert_group(&mut self, g: Group, list: Vec<(RepresentationId, Class)>) {
         if list.is_empty() {
             return;
         }
