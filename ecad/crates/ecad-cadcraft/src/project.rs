@@ -48,6 +48,11 @@ pub enum Mapped {
     /// A line or text of the page's sheet frame or title block (brief 019), by its index among
     /// the frame's parts: computed, not an item. Every edit of it is refused.
     Frame(u32),
+    /// A device cross-reference (brief 025): the text under a contact (by the contact's
+    /// representation) or a part of the contact table under a head (by the head's): computed,
+    /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
+    /// refused.
+    Xref(RepresentationId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -74,6 +79,10 @@ pub struct HandleMap {
     labels: BTreeMap<RepresentationId, (ConductorId, Handle)>,
     /// The sheet frame's parts (brief 019): index → handle.
     frame: BTreeMap<u32, Handle>,
+    /// Device cross-references (brief 025): (contact or head representation, part index) → handle.
+    xrefs: BTreeMap<(RepresentationId, u32), Handle>,
+    /// The part each cross-reference handle is.
+    xref_parts: HashMap<Handle, (RepresentationId, u32)>,
 }
 
 impl HandleMap {
@@ -172,6 +181,23 @@ impl HandleMap {
         self.frame.insert(index, h);
         self.by_handle.insert(h, Mapped::Frame(index));
     }
+    /// The handle of cross-reference part `index` of `rep` (brief 025).
+    pub fn xref(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
+        self.xrefs.get(&(rep, index)).copied()
+    }
+    pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
+        self.xrefs.insert((rep, index), h);
+        self.xref_parts.insert(h, (rep, index));
+        self.by_handle.insert(h, Mapped::Xref(rep));
+    }
+    /// Which cross-reference part a handle is: its representation and index.
+    pub fn xref_part(&self, h: Handle) -> Option<(RepresentationId, u32)> {
+        self.xref_parts.get(&h).copied()
+    }
+    /// Every handle of a cross-reference part.
+    pub fn xref_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.xrefs.values().copied()
+    }
     /// Every handle of the sheet frame.
     pub fn frame_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.frame.values().copied()
@@ -193,7 +219,16 @@ impl HandleMap {
     /// Whether the map is one-to-one in both directions.
     pub fn is_consistent(&self) -> bool {
         self.by_handle.len()
-            == self.items.len() + self.markers.len() + self.fans.len() + self.refs.len() + self.tags.len() + self.labels.len() + self.frame.len()
+            == self.items.len()
+                + self.markers.len()
+                + self.fans.len()
+                + self.refs.len()
+                + self.tags.len()
+                + self.labels.len()
+                + self.frame.len()
+                + self.xrefs.len()
+            && self.xref_parts.len() == self.xrefs.len()
+            && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
@@ -524,6 +559,9 @@ pub struct Project {
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
     pub merge_cache: Option<Arc<crate::merging::Prepared>>,
+    /// The general reference index (brief 025): built on open and branch switch, kept per commit
+    /// from the ops ([`crate::xref::Watch`]).
+    pub xref: crate::xref::RefIndex,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
@@ -608,6 +646,28 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
     };
     let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
     Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind }
+}
+
+/// One part of a device cross-reference (brief 025) as an entity on the tags layer: a text, or a
+/// line (the table's bar at the wire lineweight).
+pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
+    let mut e = match &part.shape {
+        crate::xref::Shape::Text { at, value, height, halign, valign } => {
+            crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER)
+        }
+        crate::xref::Shape::Line(a, b) => Entity {
+            handle,
+            common: Common { layer: crate::devices::TAG_LAYER.into(), ..Common::default() },
+            kind: kind_for_primitive(&ecad_model::Primitive::Line { a: *a, b: *b }),
+        },
+    };
+    if part.bar {
+        e.common.lineweight = Lineweight::Mm100(crate::look::WIRE_WEIGHT);
+    }
+    if let Some(aci) = part.aci {
+        e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
+    }
+    e
 }
 
 pub(crate) fn base_drawing() -> Drawing {
@@ -792,6 +852,13 @@ pub fn project_page_framed(
         ents.push(crate::devices::text_entity(&t, h));
         map.insert_tag_text(t.rep, t.of, h);
     }
+    // Device cross-references (brief 025): texts under contacts and tables under heads, derived
+    // on every draw of the page, never stored.
+    for part in crate::xref::parts_on_page(doc, page) {
+        let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
+        ents.push(xref_entity(&part, h));
+        map.insert_xref(part.rep, part.index, h);
+    }
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
@@ -856,6 +923,8 @@ impl Project {
             .map_err(|e| e.to_string())?;
         let baseline = ledger.head();
         let id: ProjectId = ids.fresh();
+        // The reference index is built once on open (brief 025).
+        let xref = crate::xref::RefIndex::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -892,6 +961,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            xref,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -932,6 +1002,8 @@ impl Project {
         // A fresh ID stream even when the caller reuses the creation seed.
         let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
+        // The reference index is built once on open (brief 025).
+        let xref = crate::xref::RefIndex::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -968,6 +1040,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            xref,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -1049,6 +1122,8 @@ impl Project {
         }
         let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
         let summary = summary.join("\n");
+        // The reference index is built once on open (brief 025).
+        let xref = crate::xref::RefIndex::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
             path: Some(path.clone()),
@@ -1085,6 +1160,7 @@ impl Project {
             last_continuation: None,
             wire_potential: None,
             checks: None,
+            xref,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -1142,6 +1218,7 @@ impl Project {
         let pages: Vec<PageId> = doc.page_order.clone();
         let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
         self.ledger = ledger;
+        self.xref = crate::xref::RefIndex::build(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.views.retain(|c| cables.contains(c));
@@ -1766,13 +1843,13 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        // References are derived for the cables the ops could touch only (brief 014).
-        let scope = crate::references::cables_touched(self.ledger.document(), &ops);
+        // References are derived for the cables and devices the ops could touch only (briefs 014,
+        // 025).
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops);
         let pages = pages_touched(self.ledger.document(), &ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
-        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let n = ops.len();
         let frame_before = self.frame_stale;
@@ -1789,16 +1866,24 @@ impl Project {
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
-        let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let refs = self.finish_watch(watch);
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
-        self.record_change(touched(touched(pages, refs_before.pages_changed(&refs_after)), numbered), devices, props, tree);
+        self.record_change(touched(touched(pages, refs.pages), numbered), devices, props, tree);
         self.redraw_window(pg, Some(command));
-        if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+        if let Some(line) = refs.orphaned {
             pg.echo(line);
         }
         Ok(tx)
+    }
+
+    /// Finish a commit's [`crate::xref::Watch`] with the last transaction: the reference index is
+    /// brought up to date and the pages whose references changed are named.
+    fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
+        let ledger = &self.ledger;
+        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        watch.finish(ledger.document(), &mut self.xref, ops)
     }
 
     /// Bring the kept Checks list (if shown once) in line with the last transaction, from its
@@ -2033,11 +2118,10 @@ impl DocumentOwner for Project {
         let label = c.command.to_ascii_uppercase();
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
-        let scope = crate::references::cables_touched(self.ledger.document(), &t.ops);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
-        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let n = t.ops.len();
         // The numbering pass (brief 022) extends the same transaction.
@@ -2061,15 +2145,15 @@ impl DocumentOwner for Project {
         // A reference end on another page may be drawn from this page's objects (brief 010). Only
         // the active page is drawn (brief 016); the change log says which other pages changed,
         // for a preview of one of them.
-        let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+        let refs = self.finish_watch(watch);
         self.update_checks(checks);
-        let changed = touched(refs_before.pages_changed(&refs_after), self.numbered_pages(n)).map(|mut c| {
+        let changed = touched(refs.pages, self.numbered_pages(n)).map(|mut c| {
             c.insert(page);
             c
         });
         let props = self.with_numbered(props, n);
         self.record_change(changed, devices, props, tree);
-        if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+        if let Some(line) = refs.orphaned {
             pg.echo(line);
         }
         for note in &t.notes {
@@ -2238,14 +2322,13 @@ impl Project {
         }
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
-        let scope = crate::references::cables_touched(self.ledger.document(), &ops);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops);
         let pages = pages_touched(self.ledger.document(), &ops);
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
-        let refs_before = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
@@ -2274,11 +2357,11 @@ impl Project {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
-                let refs_after = crate::references::Snapshot::take(self.ledger.document(), scope.as_ref());
+                let refs = self.finish_watch(watch);
                 self.update_checks(checks);
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
-                self.record_change(touched(pages, refs_before.pages_changed(&refs_after)), devices, props, tree);
+                self.record_change(touched(pages, refs.pages), devices, props, tree);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
@@ -2292,7 +2375,7 @@ impl Project {
                     }
                     _ => self.redraw_window(pg, Some(command)),
                 }
-                if let Some(line) = refs_before.orphaned_line(self.ledger.document(), &refs_after) {
+                if let Some(line) = refs.orphaned {
                     pg.echo(line);
                 }
                 Ok(Some(label))

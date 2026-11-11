@@ -31,3 +31,4 @@ mod tester_023_contracts;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
 mod wiring_contracts;
+mod xref_contracts;

@@ -109,6 +109,10 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     for t in crate::devices::texts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
     }
+    // Device cross-references (brief 025), derived the same way.
+    for part in crate::xref::parts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
+    }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
@@ -153,6 +157,13 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
             continue;
         }
         if let Some(Mapped::Frame(_)) = map.get(e.handle) {
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Xref(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a cross-reference is drawn for {r}, which does not exist"));
+            }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }

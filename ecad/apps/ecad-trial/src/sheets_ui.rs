@@ -78,6 +78,9 @@ pub struct ProjectProps {
     style_orig: String,
     /// `page-column-row` or `page-column`.
     pub style: String,
+    mirror_orig: String,
+    /// Where contact tables go by default (brief 025): `auto`, `below`, `right` or `off`.
+    pub mirror: String,
     padding_orig: String,
     pub padding: String,
     prefixes_orig: Vec<(String, String)>,
@@ -132,6 +135,7 @@ impl ProjectProps {
             None => "Current: none issued".into(),
         };
         let style = v.get("reference_style").and_then(Value::as_str).unwrap_or("page-column-row").to_string();
+        let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
         let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(|| "1.8".to_string(), |h| h.to_string());
@@ -144,6 +148,8 @@ impl ProjectProps {
             popout,
             style_orig: style.clone(),
             style,
+            mirror_orig: mirror.clone(),
+            mirror,
             padding_orig: padding.clone(),
             padding,
             prefixes_orig: prefixes.clone(),
@@ -194,6 +200,9 @@ impl ProjectProps {
     fn settings_fields(&self, m: &mut Map<String, Value>) -> Result<(), String> {
         if self.style != self.style_orig {
             m.insert("reference_style".into(), Value::String(self.style.clone()));
+        }
+        if self.mirror != self.mirror_orig {
+            m.insert("contact_mirror".into(), Value::String(self.mirror.clone()));
         }
         if self.padding.trim() != self.padding_orig {
             let n: u64 = self.padding.trim().parse().map_err(|_| "Tag digits is a whole number.".to_string())?;
@@ -363,6 +372,17 @@ impl ProjectProps {
                                 self.style = word.to_string();
                             }
                         }
+                    });
+                    // Brief 025 (FP3): where a coil's contact table goes unless the device says.
+                    ui.horizontal(|ui| {
+                        ui.label("Contact tables");
+                        egui::ComboBox::from_id_salt("ecad.projectprops.contact_mirror").selected_text(&self.mirror).show_ui(ui, |ui| {
+                            for w in ["auto", "below", "right", "off"] {
+                                if ui.selectable_label(self.mirror == w, w).clicked() {
+                                    self.mirror = w.to_string();
+                                }
+                            }
+                        });
                     });
                 });
                 ui.separator();
@@ -643,7 +663,7 @@ pub struct PropsShared {
     pub writable: bool,
     /// Edits: target, key, value (`None`: clear).
     pub edits: Vec<(Target, String, Option<String>)>,
-    /// Buttons pressed: `revisions`, `more`, `goto:<hex>`.
+    /// Buttons pressed: `revisions`, `more`, `goto:<hex>`, `refgoto:<source>:<target>:<label>`.
     pub buttons: Vec<String>,
     /// A refusal per row key, shown under the field.
     pub errors: BTreeMap<String, String>,
@@ -687,6 +707,8 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
                         "revisions" => "Revisions…".to_string(),
                         "more" => "More…".to_string(),
                         g if g.starts_with("goto:") => "Go to".to_string(),
+                        // Brief 025: `refgoto:<source>:<target>:<label>`.
+                        g if g.starts_with("refgoto:") => g.splitn(4, ':').nth(3).unwrap_or("Go to").to_string(),
                         other => other.to_string(),
                     };
                     if ui.small_button(label).clicked() {

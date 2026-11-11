@@ -183,7 +183,7 @@ pub fn rep_starter(doc: &Document, r: &Representation) -> Option<&'static Starte
 }
 
 /// The definition a representation's symbol shows.
-fn rep_definition<'a>(doc: &'a Document, r: &Representation) -> Option<(&'a Definition, Placement)> {
+pub(crate) fn rep_definition<'a>(doc: &'a Document, r: &Representation) -> Option<(&'a Definition, Placement)> {
     let item = doc.items.get(r.items.first()?)?;
     let ItemKind::Symbol(inst) = &item.kind else { return None };
     Some((doc.definitions.get(&inst.definition)?, inst.placement))
@@ -266,6 +266,10 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
     let who = tag_words(doc, c);
     match s.kind {
         Kind::Contact { make } => {
+            // Brief 025 (owner answer Q4): the part's next free offered contact of this kind.
+            if let Some(labels) = crate::xref::offer_labels(doc, c, make, &used) {
+                return Ok(labels);
+            }
             let highest = used
                 .iter()
                 .filter_map(|l| match l.as_bytes() {
@@ -438,7 +442,7 @@ pub fn plan_place(
 
 /// The terminals a representation shows, each with where it sits: in the definition's local frame
 /// for a symbol, on the page for a drawn representation; in definition order for a symbol.
-fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation) -> Vec<(TerminalId, Pt)> {
+pub(crate) fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation) -> Vec<(TerminalId, Pt)> {
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
         Form::Symbol => {
@@ -570,7 +574,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     Ok(ops)
 }
 
-fn label_of(doc: &Document, t: TerminalId) -> String {
+pub(crate) fn label_of(doc: &Document, t: TerminalId) -> String {
     doc.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| t.hex())
 }
 
@@ -679,7 +683,7 @@ pub struct DerivedText {
 }
 
 /// The page box of a placed definition.
-fn placed_box(def: &Definition, pl: &Placement) -> Option<(Pt, Pt)> {
+pub(crate) fn placed_box(def: &Definition, pl: &Placement) -> Option<(Pt, Pt)> {
     let (lo, hi) = symbols::bounds(def);
     let corners = [lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)].map(|q| pl.apply(q));
     let (mut a, mut b) = (corners[0], corners[0]);
@@ -691,7 +695,7 @@ fn placed_box(def: &Definition, pl: &Placement) -> Option<(Pt, Pt)> {
 }
 
 /// Whether a placement's terminal axis is vertical (rotation near 0° or 180°).
-fn vertical(pl: &Placement) -> bool {
+pub(crate) fn vertical(pl: &Placement) -> bool {
     let q = pl.rotation.rem_euclid(std::f64::consts::PI);
     q < std::f64::consts::FRAC_PI_4 || q > 3.0 * std::f64::consts::FRAC_PI_4
 }

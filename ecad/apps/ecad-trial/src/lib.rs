@@ -2309,6 +2309,15 @@ impl Trial {
                 g => {
                     if let Some(r) = g.strip_prefix("goto:") {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
+                    } else if let Some(rest) = g.strip_prefix("refgoto:") {
+                        // Brief 025: a device reference's Go to.
+                        let mut it = rest.splitn(3, ':');
+                        let (source, target) = (it.next().unwrap_or_default(), it.next().unwrap_or_default());
+                        let mut params = json!({ "source": source });
+                        if !target.is_empty() {
+                            params["target"] = json!(target);
+                        }
+                        let _ = self.run_line(&format!("refgoto {params}"));
                     }
                 }
             }

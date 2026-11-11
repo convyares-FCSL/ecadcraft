@@ -1130,6 +1130,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Label(_) => {}
         // A line or text of the sheet frame (brief 019) stands for nothing stored.
         Mapped::Frame(_) => {}
+        // A device cross-reference (brief 025) stands for its contact or head representation.
+        Mapped::Xref(rep) => r.representation = Some(rep),
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),

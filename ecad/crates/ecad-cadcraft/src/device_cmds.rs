@@ -86,10 +86,23 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         };
         let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let style = style(p);
+        // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
+        let offer_slot = match (&target, starter.kind) {
+            (Target::Join(c), crate::symbols::Kind::Contact { make }) => {
+                crate::xref::offer_labels(doc, *c, make, &devices::labels_of(doc, *c)).is_some()
+            }
+            _ => false,
+        };
         let plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         p.apply_edit(pg, "place", &plan.label, plan.ops.clone())?;
         p.last_placed = Some((starter.key.to_string(), plan.component));
         let doc = p.ledger.document();
+        if let (true, crate::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
+            let labels: Vec<String> = plan.terminals.iter().map(|(_, l, _)| l.clone()).collect();
+            if let Some(line) = crate::xref::over_line(doc, plan.component, &labels, make) {
+                pg.echo(line);
+            }
+        }
         Ok(json!({
             "component": plan.component.hex(),
             "representation": plan.representation.hex(),
@@ -98,6 +111,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "symbol": starter.key,
             "tag": plan.tag,
             "joined": plan.joined,
+            "offer_slot": offer_slot,
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         }))
