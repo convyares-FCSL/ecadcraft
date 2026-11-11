@@ -344,3 +344,49 @@ fn opening_a_box_outline_is_refused_with_the_way_out() {
     assert_eq!(h.head(), head, "nothing recorded");
     assert_eq!(loc(&h.doc(), k).0, s("+JB1"));
 }
+
+/// Review of PR #51, finding 1: project settings changes go through the update map. A potential's
+/// default reaches only its wires; colour and reference style re-format, recompute nothing; the
+/// sheet reaches the wires of pages using the project's sheet. The kept models always equal a
+/// fresh build.
+#[test]
+fn settings_changes_update_only_the_rows_they_reach() {
+    let mut h = H::new(0x24_09);
+    h.cfg(|p| {
+        p.outputs();
+    });
+    for i in 0..4 {
+        let y = 40.0 + f64::from(i) * 20.0;
+        h.run("place", json!({"symbol": "terminal", "at": [0, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminal", "at": [60, y]})).unwrap();
+        let potential = if i == 0 { "24V" } else { "0V" };
+        h.run("wire", json!({"points": pts(&[(0.0, y), (60.0, y)]), "potential": potential})).unwrap();
+    }
+    same_as_built(&mut h);
+    let work = |h: &mut H| h.p(|p| p.outputs.as_ref().map_or(0, |o| o.last_work));
+    // The 24V row's colour default changes: only the 24V wire.
+    let mut w = h.run("wiresettings", json!({})).unwrap();
+    let pots = w["potentials"].as_array_mut().unwrap();
+    for p in pots.iter_mut() {
+        if p["name"] == "24V" {
+            p["colour"] = json!("RD");
+        }
+    }
+    let pots = pots.clone();
+    h.run("wiresettings", json!({"potentials": pots})).unwrap();
+    assert_eq!(work(&mut h), 1, "only the one 24V wire");
+    same_as_built(&mut h);
+    let table = h.cfg(|p| p.outputs().wire_table());
+    assert!(table.rows.iter().any(|r| r[6].text == "RD"), "{table:?}");
+    // Styles: nothing recomputed, the tables follow.
+    h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
+    h.run("projectprops", json!({"reference_style": "page-column"})).unwrap();
+    same_as_built(&mut h);
+    let table = h.cfg(|p| p.outputs().wire_table());
+    assert!(table.rows.iter().any(|r| r[6].text == "RED"), "{table:?}");
+    assert!(table.rows.iter().all(|r| r[9].text.starts_with('/')), "{table:?}");
+    // The sheet: the wires of pages that use it.
+    h.run("projectprops", json!({"sheet": "A2"})).unwrap();
+    assert_eq!(work(&mut h), 4);
+    same_as_built(&mut h);
+}

@@ -21,7 +21,9 @@
 //! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
-//! | `SetProjectSettings` changing wiring defaults | every conductor (rare and explicit) |
+//! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
+//! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
+//! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
 //! | anything else | nothing |
 //!
 //! This module reads the document; it changes nothing.
@@ -118,13 +120,25 @@ fn loc_key(v: Option<&str>) -> LocKey {
 /// One end of a wire as the report shows it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EndCell {
-    /// `-K01:A1`, `junction 105-C-4`, `24V >`; `None` for a loose end.
+    /// `-K01:A1`, `24V >`; `None` for a loose end or a junction.
     pub name: Option<String>,
+    /// A junction end: where it is (shown as `junction 105-C-4` in the reference style).
+    pub junction: Option<Option<ecad_model::derive::Place>>,
     /// The device's location; `None` with `device` set means the device has none.
     pub location: Option<String>,
     pub device: Option<ComponentId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
+}
+
+impl EndCell {
+    /// The end as shown, in reference style `style`.
+    pub fn text(&self, style: ecad_model::ReferenceStyle) -> Option<String> {
+        match &self.junction {
+            Some(p) => Some(format!("junction {}", p.as_ref().map_or_else(|| "?".to_string(), |x| x.text(style)))),
+            None => self.name.clone(),
+        }
+    }
 }
 
 /// One conductor as the wire report shows it.
@@ -135,10 +149,12 @@ pub struct WireRow {
     pub from: EndCell,
     pub to: EndCell,
     pub cross_section: Option<String>,
+    /// The colour as stored (IEC code or free text); the table writes it in the colour style.
     pub colour: Option<String>,
     pub potential: Option<String>,
     pub cable: String,
-    pub page: Option<String>,
+    /// Where its first route's midpoint is; the table writes it in the reference style.
+    pub page: Option<ecad_model::derive::Place>,
     /// Where to go: the midpoint of its first route.
     pub go: Option<(PageId, Pt)>,
 }
@@ -227,25 +243,32 @@ impl Table {
 /// What a transaction could change in the models (see the module's update map).
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
-    all: bool,
     devices: BTreeSet<ComponentId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     conductors: BTreeSet<ConductorId>,
     cables: BTreeSet<CableId>,
     project_location: bool,
+    /// Potentials (lower case; `""`: none) whose table row changed.
+    potentials: BTreeSet<String>,
+    /// The project's sheet changed: pages without their own sheet.
+    sheet: bool,
+    /// Colour or reference style changed (no row work).
+    styles: bool,
 }
 
 impl Scope {
     /// Whether nothing is in scope.
     pub fn is_empty(&self) -> bool {
-        !self.all
-            && !self.project_location
+        !self.project_location
             && self.devices.is_empty()
             && self.pages.is_empty()
             && self.route_pages.is_empty()
             && self.conductors.is_empty()
             && self.cables.is_empty()
+            && self.potentials.is_empty()
+            && !self.sheet
+            && !self.styles
     }
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
@@ -326,9 +349,20 @@ impl Scope {
                     self.conductors.insert(member.conductor);
                 }
                 Op::SetProjectSettings { before, after } => {
-                    if before.wiring != after.wiring || before.reference_style != after.reference_style || before.sheet != after.sheet {
-                        self.all = true;
+                    let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {
+                        w.potentials.iter().map(|p| (p.name.trim().to_lowercase(), p.clone())).collect()
+                    };
+                    let (a, b) = (rows(&before.wiring), rows(&after.wiring));
+                    for k in a.keys().chain(b.keys()) {
+                        if a.get(k) != b.get(k) {
+                            self.potentials.insert(k.clone());
+                            if !(a.contains_key(k) && b.contains_key(k)) {
+                                self.potentials.insert(String::new());
+                            }
+                        }
                     }
+                    self.sheet |= before.sheet != after.sheet;
+                    self.styles |= before.reference_style != after.reference_style || before.wiring.colour_style != after.wiring.colour_style;
                 }
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
                     self.pages.insert(*id);
@@ -380,7 +414,14 @@ pub struct Outputs {
     by_location: BTreeMap<(LocKey, PartKey), BTreeSet<((String, u64, String), ComponentId)>>,
     by_part: BTreeMap<PartKey, BTreeSet<((String, u64, String), ComponentId)>>,
     wires: BTreeMap<ConductorId, WireRow>,
+    /// Conductors by their net's potential (lower case; `""`: none), for wiring-table changes.
+    by_potential: BTreeMap<String, BTreeSet<ConductorId>>,
     cables: BTreeMap<CableId, CableRow>,
+    /// Rows of the BOM-by-location table per location (a heading each), for its sheet count.
+    loc_rows: BTreeMap<LocKey, usize>,
+    /// The styles the tables write codes and places in.
+    style: ecad_model::ReferenceStyle,
+    colour_style: ecad_model::wiring::ColourStyle,
     /// Location box checks by page.
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
@@ -394,7 +435,7 @@ pub struct Outputs {
 impl Outputs {
     /// Every model, from scratch (open, reload, first show).
     pub fn build(doc: &Document) -> Outputs {
-        let mut o = Outputs::default();
+        let mut o = Outputs { style: doc.settings.reference_style, colour_style: doc.settings.wiring.colour_style, ..Outputs::default() };
         let mut cache = BoxCache::default();
         for (_, c) in doc.tagged() {
             o.set_device(doc, c, &mut cache);
@@ -427,14 +468,19 @@ impl Outputs {
     /// committed transaction) name in this state.
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
         scope.collect(doc, ops);
-        if scope.all {
-            *self = Outputs { revision: self.revision + 1, ..Outputs::build(doc) };
-            return;
-        }
         if scope.is_empty() {
             return;
         }
         let mut work = 0;
+        self.style = doc.settings.reference_style;
+        self.colour_style = doc.settings.wiring.colour_style;
+        for k in &scope.potentials {
+            scope.conductors.extend(self.by_potential.get(k).into_iter().flatten().copied());
+        }
+        if scope.sheet {
+            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.properties.contains_key(ecad_model::sheet::SHEET_KEY));
+            scope.route_pages.extend(doc.page_order.iter().filter(|p| !own(p)).copied());
+        }
         if scope.project_location {
             scope.devices.extend(self.from_project.iter().copied());
             scope.devices.extend(self.from_none.iter().copied());
@@ -460,9 +506,10 @@ impl Outputs {
                 }
             }
         }
-        let cx = PageCx::of(doc);
-        for w in &scope.conductors {
-            self.set_wire(doc, *w, &cx);
+        // Page positions and numbers only when a wire is in scope (review of PR #51, finding 3).
+        let cx = if scope.conductors.is_empty() { None } else { Some(PageCx::of(doc)) };
+        for (w, cx) in scope.conductors.iter().zip(std::iter::repeat_with(|| cx.as_ref()).flatten()) {
+            self.set_wire(doc, *w, cx);
             work += 1;
             scope.cables.extend(doc.cables_of(*w));
         }
@@ -495,6 +542,12 @@ impl Outputs {
             set.remove(&tk);
             if set.is_empty() {
                 self.by_location.remove(&lk);
+                if let Some(n) = self.loc_rows.get_mut(&lk.0) {
+                    *n -= 1;
+                    if *n == 0 {
+                        self.loc_rows.remove(&lk.0);
+                    }
+                }
             }
         }
         let pk = old.part_key();
@@ -541,7 +594,11 @@ impl Outputs {
             _ => {}
         }
         let tk = (tag_key(&row.tag), c);
-        self.by_location.entry((row.loc_key(), row.part_key())).or_default().insert(tk.clone());
+        let group = self.by_location.entry((row.loc_key(), row.part_key())).or_default();
+        if group.is_empty() {
+            *self.loc_rows.entry(row.loc_key()).or_default() += 1;
+        }
+        group.insert(tk.clone());
         self.by_part.entry(row.part_key()).or_default().insert(tk);
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
@@ -559,8 +616,7 @@ impl Outputs {
         let c = term.component;
         match crate::wires::kind_of(doc, c) {
             Some(ecad_model::connectivity::JUNCTION) => {
-                let place = at.and_then(|(p, a)| cx.place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
-                EndCell { name: Some(format!("junction {}", place.unwrap_or_else(|| "?".into()))), order, ..EndCell::default() }
+                EndCell { junction: Some(at.and_then(|(p, a)| cx.place(doc, p, a))), order, ..EndCell::default() }
             }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
@@ -574,16 +630,22 @@ impl Outputs {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order }
+                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None }
             }
         }
     }
 
     fn set_wire(&mut self, doc: &Document, w: ConductorId, cx: &PageCx) {
-        let Some(cond) = doc.conductors.get(&w) else {
-            self.wires.remove(&w);
-            return;
-        };
+        if let Some(old) = self.wires.remove(&w) {
+            let k = old.potential.as_deref().unwrap_or("").trim().to_lowercase();
+            if let Some(set) = self.by_potential.get_mut(&k) {
+                set.remove(&w);
+                if set.is_empty() {
+                    self.by_potential.remove(&k);
+                }
+            }
+        }
+        let Some(cond) = doc.conductors.get(&w) else { return };
         // Routes in book order.
         let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
             .representations_of(Subject::Conductor(w))
@@ -613,9 +675,8 @@ impl Outputs {
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::wiring::net_potential(doc, n));
         let stored = |k: &str| clean(cond.properties.get(k));
-        let colour_word = |v: String| doc.settings.wiring.colour(&v);
         let cross_section = stored(ecad_model::wiring::CROSS_SECTION).or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour = stored(ecad_model::wiring::COLOUR).or_else(|| pot.as_ref().and_then(|p| p.colour.clone())).map(colour_word);
+        let colour = stored(ecad_model::wiring::COLOUR).or_else(|| pot.as_ref().and_then(|p| p.colour.clone()));
         let cable = doc
             .cables_of(w)
             .into_iter()
@@ -628,7 +689,9 @@ impl Outputs {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        let page = mid.and_then(|(p, a)| cx.place(doc, p, a)).map(|x| x.text(doc.settings.reference_style));
+        let page = mid.and_then(|(p, a)| cx.place(doc, p, a));
+        let potential = pot.and_then(|p| p.name);
+        self.by_potential.entry(potential.as_deref().unwrap_or("").trim().to_lowercase()).or_default().insert(w);
         self.wires.insert(
             w,
             WireRow {
@@ -638,7 +701,7 @@ impl Outputs {
                 to,
                 cross_section,
                 colour,
-                potential: pot.and_then(|p| p.name),
+                potential,
                 cable,
                 page,
                 go: mid,
@@ -774,6 +837,31 @@ impl Outputs {
         out
     }
 
+    /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
+    /// location only (O(locations)), never the BOM rows themselves.
+    pub fn bom_sheets(&self) -> usize {
+        let per = crate::generated::ROWS_PER_SHEET;
+        let (mut sheets, mut used) = (1, 0);
+        for n in self.loc_rows.values() {
+            if used == per {
+                sheets += 1;
+                used = 0;
+            }
+            used += 1;
+            let mut left = *n;
+            while left > 0 {
+                if used == per {
+                    sheets += 1;
+                    used = 1;
+                }
+                let take = left.min(per - used);
+                used += take;
+                left -= take;
+            }
+        }
+        sheets
+    }
+
     /// One device's row.
     pub fn device(&self, c: ComponentId) -> Option<&DeviceRow> {
         self.devices.get(&c)
@@ -884,22 +972,25 @@ impl Outputs {
             rows: Vec::new(),
         };
         for r in self.wires() {
+            let style = self.style;
             let end_loc = |e: &EndCell| match (&e.device, &e.location) {
-                (Some(_), None) => Cell { text: "?".into(), flag: Some(format!("{} has no location.", e.name.clone().unwrap_or_default())) },
+                (Some(_), None) => Cell { text: "?".into(), flag: Some(format!("{} has no location.", e.text(style).unwrap_or_default())) },
                 (_, Some(l)) => Cell::ok(l.clone()),
                 (None, None) => Cell::default(),
             };
             t.rows.push(vec![
                 Cell::opt(&r.wire_number, || "The wire has no number.".into()),
-                Cell::opt(&r.from.name, || "Loose end.".into()),
+                Cell::opt(&r.from.text(style), || "Loose end.".into()),
                 end_loc(&r.from),
-                Cell::opt(&r.to.name, || "Loose end.".into()),
+                Cell::opt(&r.to.text(style), || "Loose end.".into()),
                 end_loc(&r.to),
                 Cell::opt(&r.cross_section, || "No cross-section, and its potential gives none.".into()),
-                Cell::opt(&r.colour, || "No colour, and its potential gives none.".into()),
+                Cell::opt(&r.colour.as_deref().map(|c| ecad_model::wiring::colour_text(self.colour_style, c)), || {
+                    "No colour, and its potential gives none.".into()
+                }),
                 Cell::ok(r.potential.clone().unwrap_or_default()),
                 Cell::ok(r.cable.clone()),
-                Cell::opt(&r.page, || "The wire has no route.".into()),
+                Cell::opt(&r.page.as_ref().map(|p| p.text(style)), || "The wire has no route.".into()),
             ]);
         }
         t

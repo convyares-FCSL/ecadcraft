@@ -1036,8 +1036,12 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
 pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
+    all_with(doc, tol, &crate::outputs::Outputs::build(doc))
+}
+
+/// [`all`] with the report models already kept (brief 024: the project's, reused by `checks`).
+pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
     let mut rows: Vec<Check> = Checks::build(doc, tol).rows().cloned().collect();
-    // Brief 024: location and BOM rows, from a model built for this call.
-    rows.extend(crate::outputs::Outputs::build(doc).checks());
+    rows.extend(outputs.checks());
     sort(doc, rows)
 }

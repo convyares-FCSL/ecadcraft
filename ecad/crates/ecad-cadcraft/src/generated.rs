@@ -100,16 +100,7 @@ pub fn has_bom_page(doc: &Document) -> bool {
 
 /// How many sheets the BOM-by-location table needs.
 pub fn bom_sheets(o: &Outputs) -> usize {
-    let mut heads: Vec<Option<String>> = Vec::new();
-    let mut last: Option<Option<String>> = None;
-    for r in o.bom(Group::Location) {
-        if last.as_ref() != Some(&r.location) {
-            heads.push(Some(r.location.clone().unwrap_or_else(|| "?".into())));
-            last = Some(r.location.clone());
-        }
-        heads.push(None);
-    }
-    paginate(&heads).len()
+    o.bom_sheets()
 }
 
 /// The sheets of a table whose row `i` is a heading when `heads[i]` is `Some`: (first row, end,
