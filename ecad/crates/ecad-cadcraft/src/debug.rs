@@ -557,6 +557,21 @@ pub struct Check {
     pub lines: Vec<String>,
 }
 
+/// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
+/// of the kept one (the debugger's **Check index**, design 025 §3.3).
+pub fn verify_index(doc: &Document, kept: &crate::xref::RefIndex, head: u64) -> Check {
+    let (members, groups, edges) = kept.sizes();
+    match kept.verify(doc) {
+        Ok(()) => Check {
+            what: "reference index",
+            at_seq: head,
+            ok: true,
+            lines: vec![format!("{members} members in {groups} groups, {edges} edges: the same as a rebuild.")],
+        },
+        Err(e) => Check { what: "reference index", at_seq: head, ok: false, lines: vec![e] },
+    }
+}
+
 /// Replay the history into a fresh document and compare it with the live one (copies of both),
 /// then check the document's invariants.
 ///

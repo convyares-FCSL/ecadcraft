@@ -22,7 +22,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 32] = [
+const COLUMNS: [(&str, &str); 36] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -50,6 +50,10 @@ const COLUMNS: [(&str, &str); 32] = [
     ("tbupd_ms", "tbupd ms"),
     ("gridchange_ms", "gridchange ms"),
     ("revopen_ms", "revopen ms"),
+    ("xbuild_ms", "xbuild ms"),
+    ("xmove_ms", "xmove ms"),
+    ("xrenum_ms", "xrenum ms"),
+    ("xmirror_ms", "xmirror ms"),
     ("convert_ms", "v2 convert ms"),
     ("v2_open_ms", "v2 open ms"),
     ("v2_save_ms", "v2 save ms"),
@@ -57,7 +61,7 @@ const COLUMNS: [(&str, &str); 32] = [
     ("v2_open_x10_ms", "v2 open x10 ms"),
 ];
 
-fn values(r: &Row) -> [Option<f64>; 32] {
+fn values(r: &Row) -> [Option<f64>; 36] {
     let m = &r.measured;
     let v = r.v2.as_ref();
     [
@@ -88,6 +92,10 @@ fn values(r: &Row) -> [Option<f64>; 32] {
         Some(m.tbupd_ms),
         Some(m.gridchange_ms),
         Some(m.revopen_ms),
+        Some(m.xbuild_ms),
+        Some(m.xmove_ms),
+        Some(m.xrenum_ms),
+        Some(m.xmirror_ms),
         v.map(|v| v.convert_ms),
         v.map(|v| v.open_ms),
         v.map(|v| v.save_ms),
@@ -202,6 +210,23 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          read-only. Peak memory is not measured. Since brief 021 the app opens version 2 files: every \
          column from 1st page on is measured on the version 2 file; open, edit and save are version 1.\n"
     ));
+    out.push_str(&format!(
+        "\nCross-references (brief 025):\n{:<8} {:<8} {:>10} {:>10} {:>10} {:>11}\n",
+        "tier", "history", "xbuild ms", "xmove ms", "xrenum ms", "xmirror ms"
+    ));
+    for r in rows {
+        let m = &r.measured;
+        out.push_str(&format!(
+            "{:<8} {:<8} {:>10.2} {:>10.2} {:>10.2} {:>11.2}\n",
+            r.tier, r.variant, m.xbuild_ms, m.xmove_ms, m.xrenum_ms, m.xmirror_ms
+        ));
+    }
+    out.push_str(
+        "On a copy with 1 000 coils added (a power3 on each coil's page, a NO and an NC on the next page, \
+         half with an offer). xbuild: the reference index built from scratch (target < 10 ms on large); xmove: \
+         a coil moved, committed and redrawn (target: < 1 ms beyond draw move); xrenum: a page with 40 contact \
+         targets renumbered; xmirror: a page with 10 tables brought to the front (compare with switch).\n",
+    );
     out.push_str(&format!(
         "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>11} {:>11} {:>14} {:>15} {:>11}\n",
         "tier", "history", "v1 MB", "v2 MB", "convert ms", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
@@ -372,6 +397,10 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "gridchange_ms": m.gridchange_ms,
                 "revopen_ms": m.revopen_ms,
             });
+            // Brief 025 (set apart: one `json!` of every column reaches the macro's recursion limit).
+            for (k, v) in [("xbuild_ms", m.xbuild_ms), ("xmove_ms", m.xmove_ms), ("xrenum_ms", m.xrenum_ms), ("xmirror_ms", m.xmirror_ms)] {
+                row[k] = json!(v);
+            }
             let v2 = json!({
                 "v2_bytes": r.v2.as_ref().map(|v| v.bytes),
                 "convert_ms": r.v2.as_ref().map(|v| v.convert_ms),
