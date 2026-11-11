@@ -562,6 +562,9 @@ pub struct Project {
     /// The general reference index (brief 025): built on open and branch switch, kept per commit
     /// from the ops ([`crate::xref::Watch`]).
     pub xref: crate::xref::RefIndex,
+    /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
+    /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
+    xref_shown: Option<((u64, u128), crate::xref::Shown)>,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
@@ -972,6 +975,7 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
+            xref_shown: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -1051,6 +1055,7 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
+            xref_shown: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -1171,6 +1176,7 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
+            xref_shown: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -1219,6 +1225,7 @@ impl Project {
         let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
         self.ledger = ledger;
         self.xref = crate::xref::RefIndex::build(self.ledger.document());
+        self.xref_shown = None;
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.views.retain(|c| cables.contains(c));
@@ -1750,6 +1757,8 @@ impl Project {
                     amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
                     // Conductor labels follow their routes and nets (brief 022).
                     amended.extend(prev.label_handles().chain(map.label_handles()));
+                    // Contact texts and mirror tables follow their device (brief 025).
+                    amended.extend(prev.xref_handles().chain(map.xref_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -1845,7 +1854,8 @@ impl Project {
         }
         // References are derived for the cables and devices the ops could touch only (briefs 014,
         // 025).
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops);
+        let reuse = self.xref_reuse();
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
         let pages = pages_touched(self.ledger.document(), &ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
@@ -1883,7 +1893,24 @@ impl Project {
     fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        watch.finish(ledger.document(), &mut self.xref, ops)
+        let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
+        self.xref_shown = Some((self.state_key(), std::mem::take(&mut out.shown)));
+        out
+    }
+
+    /// The ledger's state: its head and last transaction ID (unique, so a state reached again
+    /// by another route never matches).
+    fn state_key(&self) -> (u64, u128) {
+        (self.ledger.head(), self.ledger.log().last().map_or(0, |t| t.id.0))
+    }
+
+    /// What the last commit derived, when the state has not moved since (brief 025: a device
+    /// edited twice in a row is derived once per commit, not twice).
+    fn xref_reuse(&mut self) -> crate::xref::Shown {
+        match self.xref_shown.take() {
+            Some((key, shown)) if key == self.state_key() => shown,
+            _ => crate::xref::Shown::new(),
+        }
     }
 
     /// Bring the kept Checks list (if shown once) in line with the last transaction, from its
@@ -2118,7 +2145,8 @@ impl DocumentOwner for Project {
         let label = c.command.to_ascii_uppercase();
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops);
+        let reuse = self.xref_reuse();
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
@@ -2322,7 +2350,8 @@ impl Project {
         }
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops);
+        let reuse = self.xref_reuse();
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
         let pages = pages_touched(self.ledger.document(), &ops);
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);

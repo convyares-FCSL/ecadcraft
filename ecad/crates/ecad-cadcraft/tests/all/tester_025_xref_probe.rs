@@ -507,7 +507,6 @@ fn tester_025_offer_labels() {
 /// Bug: an explicit pole written before a counted one gets the same labels, so the part offers
 /// `13/14` twice and the table shows a spare `13/14` beside the drawn one.
 #[test]
-#[ignore = "tester 025: counted offer entries reuse labels already written explicitly (13/14 NO + 1NO -> 13/14 twice)"]
 fn tester_025_bug_explicit_then_counted_offer_duplicates_labels() {
     let o = xref::parse_offer("13/14 NO + 1NO").unwrap();
     let pairs: BTreeSet<_> = o.iter().map(|p| p.labels.clone()).collect();
@@ -631,7 +630,6 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
 /// reference text, tag and label handles, not `Mapped::Xref` ones), so every moved table or
 /// contact text is reported as the engine's drawing differing from the projection (016 H2).
 #[test]
-#[ignore = "tester 025: moving a coil or contact records FidelityMismatch events (xref handles missing from the amended set)"]
 fn tester_025_bug_moving_a_coil_records_fidelity_mismatches() {
     let mut x = fixture(2505);
     let (_, hs) = item_handles(&mut x.h, x.coil);
@@ -648,7 +646,6 @@ fn tester_025_bug_moving_a_coil_records_fidelity_mismatches() {
 /// with the contact-text message instead of the table's: the refusal looks up the copies'
 /// handles, which are not in the map, so `xref::refusal(doc, None)` falls back to the text line.
 #[test]
-#[ignore = "tester 025: copying a table alone is refused with the contact-text message, not the table's"]
 fn tester_025_bug_copying_a_table_alone_says_text_not_table() {
     let mut x = fixture(2506);
     let p100 = x.pages[0];
@@ -666,7 +663,6 @@ fn tester_025_bug_copying_a_table_alone_says_text_not_table() {
 /// warning when it has an offer, though design 025 §12 Q2 (accepted) says a device without a head
 /// shows no references and no check.
 #[test]
-#[ignore = "tester 025: a device with no coil but an offer gets a too-many-contacts warning"]
 fn tester_025_bug_headless_device_with_an_offer_is_checked() {
     let mut x = fixture(2507);
     x.h.activate(x.pages[1]);

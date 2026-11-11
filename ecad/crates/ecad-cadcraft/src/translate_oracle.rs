@@ -287,7 +287,15 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         } else if labels_only {
             crate::wires::LABEL_DERIVED
         } else if xrefs_only {
-            crate::xref::refusal(cx.doc, skipped.iter().find_map(|h| cx.map.get(*h)))
+            {
+                // A copy's handle is not mapped: its source says whether it is a table (brief 025).
+                let source = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
+                    Some(Source::Entity(s)) => cx.map.get(*s),
+                    Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).and_then(|c| c.map.get(*handle)),
+                    None => None,
+                };
+                crate::xref::refusal(cx.doc, skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
+            }
         } else {
             crate::views::DRAWN_REFUSED
         }

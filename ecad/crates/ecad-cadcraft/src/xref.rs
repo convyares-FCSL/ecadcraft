@@ -167,13 +167,19 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, String> {
                 return Err(format!("A part offers at most {MAX_POLES} contacts."));
             }
             for _ in 0..n {
-                let labels = if power {
-                    power_n += 1;
-                    [(2 * power_n - 1).to_string(), (2 * power_n).to_string()]
-                } else {
-                    seq += 1;
-                    let (a, b) = if kind == PoleKind::No { (3, 4) } else { (1, 2) };
-                    [format!("{seq}{a}"), format!("{seq}{b}")]
+                // A counted pole skips labels already offered (an explicit pair written before it).
+                let labels = loop {
+                    let labels = if power {
+                        power_n += 1;
+                        [(2 * power_n - 1).to_string(), (2 * power_n).to_string()]
+                    } else {
+                        seq += 1;
+                        let (a, b) = if kind == PoleKind::No { (3, 4) } else { (1, 2) };
+                        [format!("{seq}{a}"), format!("{seq}{b}")]
+                    };
+                    if !out.iter().any(|o| o.labels.iter().any(|l| labels.contains(l))) {
+                        break labels;
+                    }
                 };
                 out.push(OfferedPole { labels, kind, power });
             }
@@ -1301,17 +1307,41 @@ pub struct Outcome {
     pub pages: Option<BTreeSet<PageId>>,
     /// Design 010 §4.3's line about references left without another end.
     pub orphaned: Option<String>,
+    /// The texts and tables of the devices it looked at, after the commit: the next commit's
+    /// "before" when nothing has changed in between ([`Watch::take`]).
+    pub shown: Shown,
 }
 
+/// Texts and tables derived for some devices, by page.
+pub type Shown = BTreeMap<ComponentId, BTreeMap<PageId, Vec<Part>>>;
+
 impl Watch {
-    /// Before `ops` are committed on `doc`.
-    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op]) -> Watch {
+    /// Before `ops` are committed on `doc`. `reuse` holds what the last commit derived, for
+    /// the same `doc` (the caller checks the state is unchanged): a device found there is not
+    /// derived again.
+    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], mut reuse: Shown) -> Watch {
         let cable_scope = crate::references::cables_touched(doc, ops);
         let cables = crate::references::Snapshot::take(doc, cable_scope.as_ref());
         let mut scope = Scope::default();
         scope.collect(doc, idx, ops);
         let mut places = Places::new(doc);
-        let before = if scope.wide { BTreeMap::new() } else { scope.devices.iter().map(|c| (*c, shown(doc, &mut places, *c))).collect() };
+        let before = if scope.wide {
+            BTreeMap::new()
+        } else {
+            let verify = ecad_model::ledger::verify_mode();
+            scope
+                .devices
+                .iter()
+                .map(|c| match reuse.remove(c) {
+                    Some(kept) => {
+                        // A stale reuse is a bug: say so loudly in tests.
+                        debug_assert!(!verify || kept == shown(doc, &mut places, *c), "stale xref reuse for {c:?}");
+                        (*c, kept)
+                    }
+                    None => (*c, shown(doc, &mut places, *c)),
+                })
+                .collect()
+        };
         let wide_pages = if scope.wide { idx.device_pages(doc) } else { BTreeSet::new() };
         Watch { cable_scope, cables, scope, before, wide_pages, groups: RefIndex::groups_named(doc, ops) }
     }
@@ -1332,6 +1362,7 @@ impl Watch {
         let orphaned = self.cables.orphaned_line(doc, &after_cables);
         let mut pages = self.cables.pages_changed(&after_cables);
         self.scope.collect(doc, idx, ops);
+        let mut shown_after = Shown::new();
         let device_pages: BTreeSet<PageId> = if self.scope.wide {
             let mut p = std::mem::take(&mut self.wide_pages);
             p.extend(idx.device_pages(doc));
@@ -1347,13 +1378,14 @@ impl Watch {
                         out.insert(*page);
                     }
                 }
+                shown_after.insert(*c, new);
             }
             out
         };
         if let Some(p) = &mut pages {
             p.extend(device_pages);
         }
-        Outcome { pages, orphaned }
+        Outcome { pages, orphaned, shown: shown_after }
     }
 }
 
@@ -1594,7 +1626,8 @@ pub fn row_lines(doc: &Document, c: ComponentId, i: usize) -> Option<Vec<String>
 pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageId>, Option<Pt>)> {
     let Some((text, offer)) = offer_of(doc, c) else { return Vec::new() };
     let dev = device(doc, c);
-    if dev.poles.is_empty() {
+    // A device with no head shows no references and gets no check (design 025 §12 Q2).
+    if dev.head.is_none() || dev.poles.is_empty() {
         return Vec::new();
     }
     let mut places = Places::new(doc);
