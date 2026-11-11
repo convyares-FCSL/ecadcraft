@@ -35,9 +35,31 @@ pub const FIXED_KEY: &str = "tag_fixed";
 pub const PROVISIONAL_SETTING: &str = "numbering.provisional";
 
 /// The project property prefix of a high-water reset (brief 026, FP4): `numbering.high.<P>` =
-/// the highest number of prefix `P` in use after a renumber. [`note_ops`] reads it as "the mark of
-/// `P` is now this", so new tags follow the renumbered set.
+/// [`reset_value`]: the highest number of prefix `P` in use after a renumber, the mark it
+/// replaced and a generation. [`note_ops`] reads a reset as "the mark of `P` is now this", so new
+/// tags follow the renumbered set, and the undo of one as "the mark is back to what it replaced".
 pub const HIGH_RESET_PREFIX: &str = "numbering.high.";
+
+/// The stored value of a high-water reset: `"<n>;<was>;<generation>"`, where `n` is the new mark,
+/// `was` the mark it replaced and `generation` one more than the reset it overwrites (tester 026:
+/// the generation tells a reset, which raises it, from its undo, which lowers it, so an undone
+/// reset never counts as a new one; it also makes every reset a change, even to the same `n`).
+pub fn reset_value(n: u64, was: u64, generation: u64) -> String {
+    format!("{n};{was};{generation}")
+}
+
+/// A stored reset value read back: `(n, was, generation)`. A plain number (written before the
+/// generation existed) reads as `(n, 0, 0)`.
+pub fn parse_reset(v: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = v.trim().split(';');
+    let n = parts.next()?.trim().parse::<u64>().ok()?;
+    let (was, generation) = match (parts.next(), parts.next(), parts.next()) {
+        (None, ..) => (0, 0),
+        (Some(w), Some(g), None) => (w.trim().parse::<u64>().ok()?, g.trim().parse::<u64>().ok()?),
+        _ => return None,
+    };
+    Some((n.min(MAX_TAG_NUMBER), was.min(MAX_TAG_NUMBER), generation))
+}
 
 /// Refusal of a tag that cannot be stored.
 pub const BAD_TAG: &str = "A tag is 1 to 40 printable characters, for example -K01, -SR01 or -TB01.";
@@ -126,9 +148,11 @@ pub fn note(high: &mut HighWater, t: &str) {
 /// # Semantics
 /// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateComponent`,
 /// `DeleteComponent`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
-/// `SetProperty` of project property `numbering.high.<P>` to a number sets the mark of `P` to
-/// it (FP4: overwrite, not max), so new tags follow a renumbered set; a later tag write raises it
-/// again as usual.
+/// `SetProperty` of project property `numbering.high.<P>` to a newer generation (a renumber, or
+/// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
+/// renumbered set; a later tag write raises it again as usual. One back to an older generation or
+/// to nothing (the renumber's undo) is not a reset: the mark becomes at least the one the undone
+/// reset replaced, so every number held before or since it stays used (tester 026, 3-6).
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
@@ -142,13 +166,28 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
                     note(high, t);
                 }
             }
-            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, after: Some(v), .. } if key.starts_with(HIGH_RESET_PREFIX) => {
+            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after } if key.starts_with(HIGH_RESET_PREFIX) => {
                 let prefix = key[HIGH_RESET_PREFIX.len()..].to_ascii_uppercase();
-                if let Ok(n) = v.trim().parse::<u64>()
-                    && !prefix.is_empty()
-                    && prefix.bytes().all(|b| b.is_ascii_alphabetic())
-                {
-                    high.insert(prefix, n.min(MAX_TAG_NUMBER));
+                if prefix.is_empty() || !prefix.bytes().all(|b| b.is_ascii_alphabetic()) {
+                    continue;
+                }
+                let b = before.as_deref().and_then(parse_reset);
+                let a = after.as_deref().and_then(parse_reset);
+                match (b, a) {
+                    // A reset: nothing before, or a newer generation (equal only for plain
+                    // numbers written before the generation existed).
+                    (None, Some((n, _, _))) => {
+                        high.insert(prefix, n);
+                    }
+                    (Some((_, _, gb)), Some((n, _, ga))) if ga >= gb => {
+                        high.insert(prefix, n);
+                    }
+                    // An undone reset: back to at least the mark it replaced.
+                    (Some((_, was, _)), _) => {
+                        let e = high.entry(prefix).or_insert(0);
+                        *e = (*e).max(was);
+                    }
+                    (None, None) => {}
                 }
             }
             crate::Op::SetProperty { key, before, after, .. } if key == TAG_KEY => {
@@ -287,6 +326,33 @@ mod tests {
         assert_eq!(high.get("K"), Some(&40));
         note_ops(&mut high, &[tag("-K41")]);
         assert_eq!(high.get("K"), Some(&41));
+    }
+
+    /// Tester 026, 3-6: a reset's undo restores the mark it replaced and is not a new reset; a
+    /// redo resets again; a reset to the same number is still a change.
+    #[test]
+    fn an_undone_reset_restores_the_mark_it_replaced() {
+        use crate::{ObjectRef, Op};
+        let k = "numbering.high.K".to_string();
+        let op = |b: Option<String>, a: Option<String>| Op::SetProperty { object: ObjectRef::Project, key: k.clone(), before: b, after: a };
+        let mut high = HighWater::new();
+        note(&mut high, "-K09");
+        let first = op(None, Some(reset_value(3, 9, 1)));
+        note_ops(&mut high, std::slice::from_ref(&first));
+        assert_eq!(high.get("K"), Some(&3));
+        note(&mut high, "-K04");
+        let second = op(Some(reset_value(3, 9, 1)), Some(reset_value(3, 4, 2)));
+        note_ops(&mut high, std::slice::from_ref(&second));
+        assert_eq!(high.get("K"), Some(&3), "a reset to the same number still resets");
+        note_ops(&mut high, &[second.inverse()]);
+        assert_eq!(high.get("K"), Some(&4), "undoing the second reset gives back the -K04 mark");
+        note_ops(&mut high, &[first.inverse()]);
+        assert_eq!(high.get("K"), Some(&9), "undoing the first gives back the -K09 mark");
+        note_ops(&mut high, &[first]);
+        assert_eq!(high.get("K"), Some(&3), "a redo resets again");
+        assert_eq!(parse_reset("40"), Some((40, 0, 0)));
+        assert_eq!(parse_reset("1;2"), None);
+        assert_eq!(parse_reset("1;2;3;4"), None);
     }
 
     #[test]

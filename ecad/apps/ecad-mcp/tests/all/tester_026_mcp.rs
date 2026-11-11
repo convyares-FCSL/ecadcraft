@@ -70,7 +70,6 @@ fn provisional_project() -> (Client, String, String) {
 /// The gate takes an issue back with `u`, which an issue refuses (it needs `undoissue`), so the
 /// call is refused but Finalise and the issue stay ("The project is NOT as before").
 #[test]
-#[ignore = "tester 026: the MCP cap's roll-back undoes an issue with `u`, which is refused; a refused issuerevision {provisional: finalise} leaves Finalise and the issue recorded"]
 fn an_edit_before_issue_finalise_in_one_line_is_refused_and_taken_back() {
     let (mut c, a, b) = provisional_project();
     let replies = batch(
@@ -84,6 +83,20 @@ fn an_edit_before_issue_finalise_in_one_line_is_refused_and_taken_back() {
     let doc = c.doc();
     assert_eq!((tag_of(&doc, &a).as_deref(), tag_of(&doc, &b).as_deref()), (Some("-K?1"), Some("-K?2")), "Finalise was taken back");
     assert!(doc.versions.is_empty(), "the issue was taken back: {:?}", doc.versions);
+}
+
+/// A plain `issuerevision` after an edit on the same line goes over the cap of one (019's gap,
+/// reachable before 026): the issue is taken back with `undoissue`, so nothing stays issued.
+#[test]
+fn an_edit_before_a_plain_issue_in_one_line_is_refused_and_taken_back() {
+    let mut c = writer();
+    revision(&mut c, "A");
+    let replies = batch(&mut c, vec![exec_call(1, "wire", json!({"points": [[0, 0], [60, 0]]})), exec_call(2, "issuerevision", json!({}))]);
+    assert!(!is_error(&replies[0]), "{}", replies[0]);
+    assert!(is_error(&replies[1]), "{}", replies[1]);
+    let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
+    assert!(m.contains("taken back") && !m.contains("NOT as before"), "{m}");
+    assert!(c.doc().versions.is_empty(), "the issue was taken back");
 }
 
 /// After `issuerevision {provisional: "finalise"}` (two transactions), any further write on the
@@ -290,7 +303,6 @@ fn provisional_duplicates_in_a_merge_are_renumbered_silently() {
 /// changed one property). Finalise then skips it as fixed, so a provisional tag survives
 /// Finalise, and `issuerevision {provisional: "finalise"}` issues it without saying so.
 #[test]
-#[ignore = "tester 026: a merge can leave a provisional tag marked fixed; Finalise skips it and Issue (finalise) issues it silently"]
 fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     let dir = TempDir::new("t026-merge-fixed-prov");
     let (mut c, x) = merge_project(&dir, "fixedprov.ecad");

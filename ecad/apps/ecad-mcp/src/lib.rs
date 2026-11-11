@@ -197,6 +197,8 @@ impl State {
                 // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
                 TxKind::Merge { .. } => "undomerge",
                 TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
+                // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
+                TxKind::Edit | TxKind::Redo { .. } if ecad_cadcraft::revisions::issue_in(&t.ops).is_some() => "undoissue",
                 TxKind::Edit | TxKind::Redo { .. } => "u",
             };
             if let Err(e) = self.session().execute(step, &json!({})) {

@@ -343,9 +343,10 @@ pub fn provisional_on(doc: &Document) -> bool {
     doc.properties.get(tag::PROVISIONAL_SETTING).is_some_and(|v| v == "yes")
 }
 
-/// Whether a device or cable with these properties is fixed (FP1).
+/// Whether a device or cable with these properties is fixed (FP1). A provisional tag never
+/// counts as fixed (overseer ruling, tester 026 bug 2): Finalise numbers it whatever the flag says.
 pub fn is_fixed(props: &crate::doc::Properties) -> bool {
-    props.get(FIXED_KEY).is_some_and(|v| v == "yes")
+    props.get(FIXED_KEY).is_some_and(|v| v == "yes") && !props.get(TAG_KEY).is_some_and(|t| tag::is_provisional(t))
 }
 
 /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number of that prefix
@@ -370,12 +371,19 @@ pub fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
     doc.tag_keys_starting(&p).filter_map(tag::parse).filter(|(q, _)| *q == p).map(|(_, n)| n).max().unwrap_or(0)
 }
 
+/// The fixed flag stored on a provisional tag, which does not count (see [`is_fixed`]).
+fn stale_flag(props: &crate::doc::Properties) -> Option<String> {
+    props.get(TAG_KEY).filter(|t| tag::is_provisional(t)).and(props.get(FIXED_KEY)).cloned()
+}
+
 /// One tagged item (device or cable).
 struct Tagged {
     object: ObjectRef,
     kind: Kind,
     tag: Option<String>,
     fixed: bool,
+    /// A flag left on a provisional tag (it does not count): dropped when the tag is numbered.
+    stale_flag: Option<String>,
     anchor: Option<(PageId, Pt, Order)>,
     id: u128,
 }
@@ -445,12 +453,28 @@ fn plan_tags(
         if tag.is_none() && !has_reps {
             continue;
         }
-        items.push(Tagged { object: ObjectRef::Component(*id), kind: Kind::Devices, tag, fixed: is_fixed(&c.properties), anchor: None, id: id.0 });
+        items.push(Tagged {
+            object: ObjectRef::Component(*id),
+            kind: Kind::Devices,
+            tag,
+            fixed: is_fixed(&c.properties),
+            stale_flag: stale_flag(&c.properties),
+            anchor: None,
+            id: id.0,
+        });
     }
     for (_, k) in doc.tagged_cables() {
         let Some(c) = doc.cables.get(&k) else { continue };
         let tag = c.properties.get(TAG_KEY).cloned();
-        items.push(Tagged { object: ObjectRef::Cable(k), kind: Kind::Cables, tag, fixed: is_fixed(&c.properties), anchor: None, id: k.0 });
+        items.push(Tagged {
+            object: ObjectRef::Cable(k),
+            kind: Kind::Cables,
+            tag,
+            fixed: is_fixed(&c.properties),
+            stale_flag: stale_flag(&c.properties),
+            anchor: None,
+            id: k.0,
+        });
     }
     let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding.min(tag::MAX_PADDING));
     // Which items are numbered: in a chosen kind, in scope, not fixed, in a numberable form.
@@ -558,6 +582,9 @@ fn plan_tags(
                 changed_prefixes.insert(p.clone());
                 let before = it.tag.clone();
                 ops.push(Op::SetProperty { object: it.object, key: TAG_KEY.into(), before, after: Some(new.clone()) });
+                if let Some(f) = &it.stale_flag {
+                    ops.push(Op::SetProperty { object: it.object, key: FIXED_KEY.into(), before: Some(f.clone()), after: None });
+                }
                 rows.push(row_of(places, it, old, new, Mark::Change));
             }
         }
@@ -568,10 +595,12 @@ fn plan_tags(
         let n = in_use_after.get(&p).copied().unwrap_or(0);
         let key = format!("{HIGH_RESET_PREFIX}{p}");
         let before = doc.properties.get(&key).cloned();
-        let after = Some(n.to_string());
-        if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key, before, after });
-        }
+        // Always written, also when the number is the stored one (tester 026, 6): the reset
+        // carries the mark it replaces and a newer generation (`tag::reset_value`).
+        let generation = before.as_deref().and_then(tag::parse_reset).map_or(0, |r| r.2).saturating_add(1);
+        let was = high.get(&p).copied().unwrap_or(0);
+        let after = Some(tag::reset_value(n, was, generation));
+        ops.push(Op::SetProperty { object: ObjectRef::Project, key, before, after });
     }
 }
 
@@ -805,7 +834,7 @@ mod tests {
         assert_eq!(p.changes(), 3);
         // The high-water reset for K, last.
         assert!(
-            matches!(p.ops.last(), Some(Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }) if key == "numbering.high.K" && v == "4")
+            matches!(p.ops.last(), Some(Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }) if key == "numbering.high.K" && v.starts_with("4;"))
         );
         let mut high = HighWater::new();
         tag::note_ops(&mut high, &[Op::SetProperty { object: ObjectRef::Project, key: TAG_KEY.into(), before: None, after: Some("-K07".into()) }]);

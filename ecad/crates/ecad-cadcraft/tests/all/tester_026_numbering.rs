@@ -110,7 +110,7 @@ fn oracle_random_numbering_sequences_keep_tags_unique_and_fixed_tags_still() {
 /// [`oracle_random_numbering_sequences_keep_tags_unique_and_fixed_tags_still`] with the
 /// high-water check after undone renumbers too (fails at seed 4, step 93: `-K16` given again).
 #[test]
-#[ignore = "tester 026: after an undone renumber an automatic tag reuses a number a deleted device held (oracle, seed 4)"]
+#[ignore = "slow: 24 seeds of 120 random numbering steps, strict high-water check"]
 fn oracle_strict_high_water_after_undone_renumbers() {
     for seed in 1..=24u64 {
         oracle_run(seed, 120, true);
@@ -302,7 +302,6 @@ fn scramble(h: &mut H, a: ComponentId, b: ComponentId) {
 /// back the tags, but the undo's inverse op clears the property, which `note_ops` ignores, so the
 /// mark stays at the reset value: the deleted `-K04` is given again although the reset is undone.
 #[test]
-#[ignore = "tester 026: undoing the first renumber keeps its high-water reset, so a deleted tag (-K04) is given again"]
 fn undo_of_a_renumber_does_not_free_a_deleted_tag() {
     let (mut h, page, a, b, _c) = three_and_a_deleted_fourth(0x0260_0001);
     scramble(&mut h, a, b);
@@ -317,7 +316,6 @@ fn undo_of_a_renumber_does_not_free_a_deleted_tag() {
 /// The same with a reset already stored: the undo's inverse writes the older value back, which
 /// `note_ops` takes as a new reset (overwrite), lowering the mark below the deleted `-K04`.
 #[test]
-#[ignore = "tester 026: undoing a later renumber writes the older numbering.high value back as a reset, so a deleted tag is given again"]
 fn undo_of_a_second_renumber_does_not_free_a_deleted_tag() {
     let mut h = H::new(0x0260_0002);
     let page = h.first_page();
@@ -341,7 +339,6 @@ fn undo_of_a_second_renumber_does_not_free_a_deleted_tag() {
 /// `numbering.high.K` writes no reset op (before == after), so the mark stays at `-K04`, which a
 /// device took and gave up after the first renumber: the next coil is `-K05`, not `-K04`.
 #[test]
-#[ignore = "tester 026: a renumber whose reset value equals the stored numbering.high.K writes no reset, so the mark is not reset"]
 fn a_second_renumber_to_the_same_top_still_resets_the_mark() {
     let mut h = H::new(0x0260_0003);
     let page = h.first_page();

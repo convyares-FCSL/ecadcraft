@@ -1637,6 +1637,22 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
     }
 }
 
+/// A provisional tag never counts as fixed (overseer ruling, tester 026 bug 2): a merge that
+/// combines one side's fixed flag with the other side's provisional tag drops the flag.
+fn clear_provisional_fixed(m: &mut Document, all: &BTreeSet<Obj>) {
+    for o in all {
+        let props = match *o {
+            Obj::Component(i) => m.components.get_mut(&i).map(|c| &mut c.properties),
+            Obj::Cable(i) => m.cables.get_mut(&i).map(|c| &mut c.properties),
+            _ => None,
+        };
+        let Some(props) = props else { continue };
+        if props.get(tag::TAG_KEY).is_some_and(|t| tag::is_provisional(t)) {
+            props.remove(tag::FIXED_KEY);
+        }
+    }
+}
+
 /// Work out the merge of `inp` with `choices` (module docs).
 pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     let mut ctx =
@@ -1668,6 +1684,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     all.extend(needed);
     let renamed = resolve_tags(&mut ctx, &mut m, &all);
     all.extend(renamed);
+    clear_provisional_fixed(&mut m, &all);
     let renumbered = resolve_page_numbers(&mut ctx, &mut m, &all);
     all.extend(renumbered);
     let folders = resolve_folder_names(&mut ctx, &mut m, &all);
