@@ -516,6 +516,14 @@ pub struct Project {
     pub confirm_issue_undo: bool,
     /// The question an undo across an issue is waiting on, for the trial's popup.
     pub issue_undo_question: Option<String>,
+    /// Plain `u` across a merge stops and asks (design 020 §4.3): set by `undomerge`, used by
+    /// the next undo only.
+    pub confirm_merge_undo: bool,
+    /// The question an undo across a merge is waiting on, for the trial's popup.
+    pub merge_undo_question: Option<String>,
+    /// The merge last prepared (its states and scope), kept while nothing it read changes
+    /// (brief 020b).
+    pub merge_cache: Option<Arc<crate::merging::Prepared>>,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
@@ -891,6 +899,9 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            confirm_merge_undo: false,
+            merge_undo_question: None,
+            merge_cache: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -964,6 +975,9 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            confirm_merge_undo: false,
+            merge_undo_question: None,
+            merge_cache: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -1078,6 +1092,9 @@ impl Project {
             revision_view: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
+            confirm_merge_undo: false,
+            merge_undo_question: None,
+            merge_cache: None,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -1725,6 +1742,23 @@ impl Project {
     pub(crate) fn apply_edit_with(
         &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool,
     ) -> Result<ecad_model::TxId, String> {
+        self.apply_tx(pg, command, label, ops, numbering, None)
+    }
+
+    /// Commit a merge (brief 020b): `ops` as one transaction of `kind` (a merge), updated in the
+    /// views as any commit (their update maps; no special path).
+    ///
+    /// # Errors
+    /// As [`Project::apply_edit`].
+    pub(crate) fn apply_merge(
+        &mut self, pg: &mut Pages<'_>, label: &str, kind: ecad_model::TxKind, ops: Vec<Op>,
+    ) -> Result<ecad_model::TxId, String> {
+        self.apply_tx(pg, "merge", label, ops, false, Some(kind))
+    }
+
+    fn apply_tx(
+        &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool, kind: Option<ecad_model::TxKind>,
+    ) -> Result<ecad_model::TxId, String> {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
@@ -1745,7 +1779,11 @@ impl Project {
         self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
-        let tx = self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass).map_err(|e| {
+        let committed = match kind {
+            Some(k) => self.ledger.commit_merge(self.author.clone(), label, k, ops, now_ms()),
+            None => self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass),
+        };
+        let tx = committed.map_err(|e| {
             self.frame_stale = frame_before;
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
@@ -2220,6 +2258,15 @@ impl Project {
             return Err(EngineError::Other(format!("{q} Use Undo Issue (`undoissue`) to confirm.")));
         }
         self.issue_undo_question = None;
+        // Undoing a merge stops and asks first (design 020 §4.3).
+        if undo
+            && !std::mem::take(&mut self.confirm_merge_undo)
+            && let Some(q) = crate::merging::undo_question(self)
+        {
+            self.merge_undo_question = Some(q.clone());
+            return Err(EngineError::Other(format!("{} Use Undo Merge (`undomerge`) to confirm.", q.replace('\n', " "))));
+        }
+        self.merge_undo_question = None;
         self.note_frame_ops(&ops);
         let r = if undo { self.ledger.undo_at(self.author.clone(), now_ms()) } else { self.ledger.redo_at(self.author.clone(), now_ms()) };
         match r {

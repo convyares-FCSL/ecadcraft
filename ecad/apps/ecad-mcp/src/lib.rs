@@ -153,13 +153,15 @@ impl State {
         p.read(self.session(), |p, _| (ecad_cadcraft::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
     }
 
-    /// The transactions recorded since `from`. A call that switched branch (brief 020) recorded
-    /// none: the log shown is another branch's, and switching is not a step.
+    /// The transactions recorded since `from`. A call that switched branch (brief 020) saved the
+    /// branch it left first and switching is not a step, so what it recorded is the new branch's
+    /// unsaved steps (a merge into the parent switches, then records one merge: brief 020b).
     fn log_since(&mut self, from: &(String, usize)) -> Result<Vec<Transaction>, String> {
         let p = self.project.clone();
         p.read(self.session(), |p, _| {
             if ecad_cadcraft::history::current(p).hex() != from.0 {
-                return Vec::new();
+                let saved = p.ledger.persisted();
+                return p.ledger.log().iter().filter(|t| t.seq > saved).cloned().collect();
             }
             p.ledger.log().get(from.1..).map(<[Transaction]>::to_vec).unwrap_or_default()
         })
@@ -192,6 +194,9 @@ impl State {
         for (done, t) in txs.iter().rev().enumerate() {
             let step = match t.kind {
                 TxKind::Undo { .. } => "redo",
+                // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
+                TxKind::Merge { .. } => "undomerge",
+                TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
                 TxKind::Edit | TxKind::Redo { .. } => "u",
             };
             if let Err(e) = self.session().execute(step, &json!({})) {

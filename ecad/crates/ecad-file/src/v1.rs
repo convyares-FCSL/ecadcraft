@@ -500,6 +500,60 @@ pub enum TxKind {
     Edit,
     Undo(TxId),
     Redo(TxId),
+    /// A merge (brief 020b, FQ1): `{"merge": {"source": hex, "source_head": {seq, chain},
+    /// "ancestor": {branch, seq, chain}}}`. An older reader refuses the unknown kind.
+    Merge(MergeKind),
+}
+
+/// Where a merge came from, as recorded (hex IDs and chain values).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MergeKind {
+    pub source: Hex<16>,
+    pub source_head: MergeStep,
+    pub ancestor: MergeAncestor,
+}
+
+/// A step of the source: its `seq` and chain value.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MergeStep {
+    pub seq: u64,
+    pub chain: Hex<32>,
+}
+
+/// The common ancestor: a branch, its step and chain value.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MergeAncestor {
+    pub branch: Hex<16>,
+    pub seq: u64,
+    pub chain: Hex<32>,
+}
+
+/// Bytes written as lower-case hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hex<const N: usize>(pub [u8; N]);
+
+impl<const N: usize> Serialize for Hex<N> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0.iter().map(|b| format!("{b:02x}")).collect::<String>())
+    }
+}
+
+impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let t = String::deserialize(d)?;
+        let bad = || serde::de::Error::custom(format!("{t:?} is not {N} bytes of lower-case hex"));
+        if t.len() != N * 2 || !t.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+            return Err(bad());
+        }
+        let mut out = [0u8; N];
+        for (i, slot) in out.iter_mut().enumerate() {
+            *slot = t.get(i * 2..i * 2 + 2).and_then(|h| u8::from_str_radix(h, 16).ok()).ok_or_else(bad)?;
+        }
+        Ok(Hex(out))
+    }
 }
 
 /// An op, version 1 of every op. In the file each op is written flat:
@@ -892,6 +946,11 @@ impl From<&m::TxKind> for TxKind {
             m::TxKind::Edit => TxKind::Edit,
             m::TxKind::Undo { of } => TxKind::Undo(of),
             m::TxKind::Redo { of } => TxKind::Redo(of),
+            m::TxKind::Merge { source, source_head, ancestor } => TxKind::Merge(MergeKind {
+                source: Hex(source),
+                source_head: MergeStep { seq: source_head.seq, chain: Hex(source_head.chain) },
+                ancestor: MergeAncestor { branch: Hex(ancestor.branch), seq: ancestor.seq, chain: Hex(ancestor.chain) },
+            }),
         }
     }
 }
@@ -1109,6 +1168,11 @@ impl From<TxKind> for m::TxKind {
             TxKind::Edit => m::TxKind::Edit,
             TxKind::Undo(of) => m::TxKind::Undo { of },
             TxKind::Redo(of) => m::TxKind::Redo { of },
+            TxKind::Merge(k) => m::TxKind::Merge {
+                source: k.source.0,
+                source_head: m::StepPoint { seq: k.source_head.seq, chain: k.source_head.chain.0 },
+                ancestor: m::BranchPoint { branch: k.ancestor.branch.0, seq: k.ancestor.seq, chain: k.ancestor.chain.0 },
+            },
         }
     }
 }

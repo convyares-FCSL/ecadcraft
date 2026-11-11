@@ -29,6 +29,7 @@ pub mod id;
 mod index;
 pub mod invariant;
 pub mod ledger;
+pub mod merge;
 pub mod op;
 pub mod sheet;
 pub mod tag;
@@ -47,7 +48,7 @@ pub use id::{
     TerminalId, TxId,
 };
 pub use invariant::Touched;
-pub use ledger::{Author, Base, History, Ledger, Transaction, TxKind};
+pub use ledger::{Author, Base, BranchPoint, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use sheet::{GridLabels, SheetSpec};
 

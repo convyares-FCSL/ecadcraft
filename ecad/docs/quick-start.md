@@ -19,14 +19,35 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
-**Brief 020a (design `ecad/docs/design/020.md`), on `feature/history`, not yet in `dev`:** the
+**Brief 020b (design `ecad/docs/design/020.md` §4–§6), on `feature/history-merge`, not yet in
+`dev`:** a branch is **merged into main** (or into the branch it came from), and a branch is
+**updated from main**, through a dialog that previews the changes and lists each conflict with an
+explicit choice (nothing preselected; **Keep main for all** / **Keep branch for all**; **Edit**
+for text). The merge is one step on main, drawn as a join in the History graph; a plain `u` of a
+merge asks first (**Undo merge**), and undoing it reopens the branch. The branch bar's **Merge
+into main…** and **Update from main…** buttons work now (they were disabled in 020a); so do
+Revisions' **Merge into main…**, the History tab's **⋯** entries and a Now row's right-click.
+A branch's first save writes its first snapshot, so switching to it costs about an open. The
+History graph reads 200 rows and the next 200 when scrolled to the end; a version's details name
+the devices it changed (`-K05 added`); **F2** renames the branch shown. Section 5J steps 3, 5 and
+9–11 describe it.
+- *Automated checks:* `ecad/crates/ecad-file/tests/all/merge_store_contracts.rs` (the merge record,
+  the merge index and the merged status through merge, undo and redo across saves, the first-save
+  snapshot), `ecad/apps/ecad-mcp/tests/all/merge_contracts.rs` (merge, update, a conflict refused
+  without a choice and merged with one, undo merge, writes off), the merge engine's unit tests in
+  `ecad/crates/ecad-model/src/merge.rs`, and `ecad/apps/ecad-trial/tests/all/merge_ui.rs` (the
+  branch bar's Merge into main…, the dialog with one conflict, Merge, the join, Undo merge asked).
+- *Agent-observed:* the worker looked at the headless screenshots `020-merge.png` and
+  `020-undomerge.png`; no agent has clicked through the live window.
+- *Owner-tried:* not yet.
+
+**Brief 020a (design `ecad/docs/design/020.md`), merged into `dev` (PR #48):** the
 project's history is a **History** tab in the PROJECT panel: a graph of the main line with its
 versions and issued revisions, and branches drawn from where they start. Select a row to see it,
 **Show** it read-only, **Restore** it (one new step, undoable), make a **New version**, and work
 on **branches** (create, rename, switch with **Save and switch**, archive, reopen). A project
 reopens on the branch you last used; the window title and a branch bar say which branch is shown
-once there is more than one. Merging a branch back is the next part (020b): its buttons are shown,
-disabled. Section 5J describes it.
+once there is more than one. Section 5J describes it.
 - *Automated checks:* `ecad/crates/ecad-file/tests/all/branches_contracts.rs` (branch rows,
   switching, reopening on the last branch, snapshots on a branch, deep branches, Verify, readers
   ignoring unknown optional fields), `ecad/apps/ecad-mcp/tests/all/history_contracts.rs` (every
@@ -957,7 +978,7 @@ change the whole net); it takes `cross_section` and `colour`, which only that wi
 
 On the demo project, opened from its file (section 7; branches live in the file, so a project
 never saved says `Branches live in the project file. Save it first.` with **Save As…**).
-Design 020 (020a: merge comes next, in 020b).
+Design 020 (020a: history, versions and branches; 020b: merge and update).
 
 1. **The History tab.** In the PROJECT panel, click **History** (after **Checks**). Expected: the
    graph, newest at the top: `Now · main` (a ring on it: the branch shown), any revision issued in
@@ -975,7 +996,7 @@ Design 020 (020a: merge comes next, in 020b).
    keep **Switch to the new branch** ticked, **Create**. Expected: `Branch "Option B" created from
    Before change. Now on branch "Option B".`; the window title ends `demo.ecad · Option B`; the
    header line starts `Branch Option B`; a bar `Branch "Option B" · from Before change` with
-   **Merge into main…** and **Update from main…** (disabled: they come with 020b); in the graph
+   **Merge into main…** and **Update from main…** (steps 9–10); in the graph
    the Option B line starts at `Before change`, drawn in the accent colour down to the root (the
    line you are on). Select `-K01` and change its description in **Properties**.
 4. **Switch back.** In the History tab's **Branch** list, pick `main`. Expected: `Option B has 1
@@ -984,8 +1005,8 @@ Design 020 (020a: merge comes next, in 020b).
    `-K01`'s description is as before; `u` undoes main's own last step, never Option B's.
 5. **Revisions on a branch.** Switch to `Option B` again and open **Revisions**. Expected:
    **Issue Rev …** is disabled with `Revisions are issued on main. Merge "Option B" into main
-   first.`, the pending row's fields are read-only, and **Merge into main…** is shown (disabled
-   until 020b).
+   first.`, the pending row's fields are read-only, and **Merge into main…** opens the merge
+   dialog (step 9).
 6. **Restore.** On main, make two edits (draw two wires), then select `Before change` and click
    **Restore…**. Expected: `Make the project on main as it was at Version "Before change"? 2
    objects change, on page 1. Nothing is deleted from the history: this is one new step, and Undo
@@ -998,7 +1019,40 @@ Design 020 (020a: merge comes next, in 020b).
    and **Reopen branch**.
 8. **Save, close and reopen** (section 7). Expected: the project opens on the branch you were on,
    and the History tab shows the same graph. **⋯ > Show automatic snapshots** adds faint
-   `Auto · <time>` rows (one every 2 000 steps, so few on the demo).
+   `Auto · <time>` rows (one every 2 000 steps, so few on the demo, plus one at a branch's first
+   save).
+9. **Merge into main.** Make a branch `Option B` from Now (step 3), change `-K01`'s description
+   there (`Pump 1`) and draw a wire. Click **Merge into main…** in the branch bar. Expected: a
+   dialog `MERGE "Option B" INTO main`: `This switches to main (saving "Option B" first) and
+   merges into it.`, `Based on …` (the point the branch started from, and `main has since issued
+   Rev …` when a revision was issued on main after it), `2 changes from the branch · page … · 0
+   conflicts`, the changes (`~ -K01 · Description "…" → "Pump 1"`, `+ Wire … added`), `Close
+   branch "Option B" after merging` ticked. Nothing is written yet: **Cancel** leaves everything
+   as it was. **Merge**. Expected: the project shows main, the echo `"Option B" was saved; now on
+   main. Merged "Option B" into main (2 changes). Save to keep it.`, `-K01`'s description is
+   `Pump 1`, and the graph has a row `Merged "Option B"` on main's line with a line from Option B's
+   head into it. **Save**: Option B is closed (it shows only with **Show merged and archived**).
+   Issue Rev B now if you like (section 5H): the merge is in it.
+10. **A conflict.** Make a branch `Option C`, set `-K01`'s description to `Branch pump`; switch to
+    main (**Save and switch**), set it to `Main pump`; switch back to Option C and click **Merge
+    into main…**. Expected: `1 conflict`, the row `▲ -K01 · Description`, `main: Main pump
+    branch: Branch pump`, choices **Keep main**, **Keep branch**, **Edit [Branch pump]**, none chosen,
+    and **Merge** disabled with the hover `Choose for 1 conflict first, or use Keep main for all /
+    Keep branch for all.` Pick **Keep branch** (or type another value in Edit and pick Edit).
+    **Merge**: `-K01` is `Branch pump` on main.
+11. **Undo the merge.** Press `u` right after the merge. Expected: `Undo the merge?` with `The last
+    step merged "Option C" into main (1 change). Undo the merge? "Option C" is reopened.`
+    **Undo merge**: main's `-K01` is back to `Main pump`; after **Save**, Option C is open again.
+    Redo merges again without asking.
+12. **Update from main.** On a branch, after main has changed, click **Update from main…** in the
+    branch bar. Expected: `UPDATE "<branch>" FROM main`, `Brings main's changes since … (… steps)
+    into this branch. Issued revisions are not changed.`, sides named `main` and `this branch`, no
+    Close box. **Update**: one step on the branch, `Updated "<branch>" from main (…). Save to keep
+    it.` A later Merge into main compares against that update, so main's changes are not
+    conflicts again.
+13. **Rename with F2.** On a branch, press **F2** with the History tab shown (or double-click the
+    Branch list's name): the Rename dialog opens. A Now row's right-click offers Switch, Merge
+    into…, Update from… (the branch shown), Rename and Archive.
 
 Typed instead, in the ECAD command field: `version {"name":"Before change"}` (or
 `version {"name":"Before change","description":"before the cable rework"}`),
@@ -1013,6 +1067,13 @@ unsaved), `renamebranch {"branch":"Option B","name":"Option C"}`,
 branch took its name: `reopenbranch {"branch":"Option C","name":"Option C (2)"}`; by clicking, the
 dialog offers that name), `branches {}`. Typed branch commands update the title, the branch bar,
 Revisions and the History tab exactly as clicks do.
+Merging typed: `merge {"from":"Option B","preview":true}` (the dialog's preview as JSON, nothing
+recorded; works with writes off), `merge {"from":"Option B"}` (into its parent: switches there
+first, saving; refused with each conflict's ID when one has no choice),
+`merge {"from":"Option C","choices":{"<id>":"branch"}}` (`main`, `branch`, `loose`, `bringback`,
+`renumber_branch`, `renumber_main` or `{"value":"text"}`; `"close":false` keeps the branch open),
+`merge {"from":"main"}` on a branch (update from main), `undomerge {}` (what **Undo merge** runs;
+a plain `u` of a merge is refused, saying so), `history {"limit":400}` (more rows).
 On a branch, **Revisions** has **Switch to main** (Save and switch applies); archiving the branch
 shown when its parent is archived too shows main, saying so.
 
@@ -1526,11 +1587,14 @@ Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 
-- **History and branches (brief 020a):** merging a branch into main and updating a branch from
-  main are brief 020b: their buttons are shown, disabled. The graph is read whole (no paging
-  past 200 rows yet); the change summary of a version names the pages changed, added and removed
-  and says when devices or wiring changed, but does not yet name them (`-K05 added`). Times are
-  shown in local time (the file keeps UTC). New versions are made at Now only (owner answer 13).
+- **History and branches (briefs 020a, 020b):** a branch merges into, and updates from, its
+  parent only (owner answer 14). The merge dialog has no **Show ▾** preview of an object's page
+  as on main or on the branch yet, and its "After the merge" line points at the Checks tab instead
+  of counting the new Checks entries. A duplicate tag offers renumbering either device (not "make
+  them one device"); two sibling folders with one name offer renaming either (not "combine").
+  A redo of a merge whose undo was saved in an earlier session merges again but leaves the branch
+  open (close it from History). Times are shown in local time (the file keeps UTC). New versions
+  are made at Now only (owner answer 13).
 
 - **Connectivity and wire numbers (brief 022).** Labels are placed on each route's longest
   segment with no collision avoidance and cannot be dragged (owner answer Q11), so a label can

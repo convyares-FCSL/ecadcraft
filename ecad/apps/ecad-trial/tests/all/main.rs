@@ -16,6 +16,8 @@ mod debugger;
 mod devices_ui;
 mod history_ui;
 mod layouts_and_hover;
+mod merge_tester_ui;
+mod merge_ui;
 mod mouse;
 mod mouse_tester;
 mod paths_contracts;

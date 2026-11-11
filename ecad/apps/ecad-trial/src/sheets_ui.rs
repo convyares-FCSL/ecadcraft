@@ -105,6 +105,8 @@ pub enum Out {
     Open(String),
     /// Brief 020a: show main (Save and switch rules apply), from Revisions on another branch.
     SwitchToMain,
+    /// Brief 020b: merge the branch shown into main (the merge dialog).
+    MergeIntoMain,
 }
 
 impl ProjectProps {
@@ -561,7 +563,9 @@ impl Revisions {
                         if ui.button("Switch to main").accessible_name("ecad.revisions.switchmain").clicked() {
                             out = Some(Out::SwitchToMain);
                         }
-                        ui.add_enabled(false, egui::Button::new("Merge into main…")).on_disabled_hover_text(crate::history_panel::MERGE_LATER);
+                        if ui.button("Merge into main…").accessible_name("ecad.revisions.merge").clicked() {
+                            out = Some(Out::MergeIntoMain);
+                        }
                     }
                     if !self.read_only {
                         let rev = self.pending[0].clone();

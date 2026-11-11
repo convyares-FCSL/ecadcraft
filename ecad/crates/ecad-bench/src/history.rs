@@ -11,6 +11,11 @@
 //! - **brswitch**: switching to another branch and back, each saved first (nothing unsaved), as
 //!   opening does; the median of each switch.
 //! - **restore**: a version 500 steps back restored: the plan, one transaction, the page redrawn.
+//! - **mergeprev** and **merge** (brief 020b): a branch with 20 device changes, main 2 000 steps
+//!   ahead of the fork with one of them changed differently (one conflict). `mergeprev` is the
+//!   dialog's first preview (the ancestor's and the branch's states read, both stretches since
+//!   the fork, the comparison); `merge` is Merge with the conflict chosen (one merge
+//!   transaction, the views updated). Each run's merge is undone before the next.
 
 use std::path::Path;
 use std::time::Instant;
@@ -33,6 +38,11 @@ pub struct MeasuredHistory {
     pub pointstep_ms: f64,
     pub brswitch_ms: f64,
     pub restore_ms: f64,
+    pub mergeprev_ms: f64,
+    pub merge_ms: f64,
+    /// Changes and conflicts the merge preview listed.
+    pub merge_changes: usize,
+    pub merge_conflicts: usize,
     /// Graph rows and branches measured on.
     pub nodes: usize,
     pub branches: usize,
@@ -163,8 +173,56 @@ fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
         run(&mut s, "restore", json!({"version": name}))?;
         restore.push(ms(t));
     }
+    // Merge: `runs` branches from Now, each changing 20 devices' descriptions; then main 2 000
+    // steps ahead, one of the 20 changed there too.
+    let devices: Vec<String> = p.read(&mut s, |p, _| p.ledger.document().components.keys().take(21).map(|c| c.hex()).collect())?;
+    if devices.len() < 21 {
+        return Err("the bench project has fewer than 21 devices".into());
+    }
+    run(&mut s, "qsave", json!({}))?;
+    for i in 0..runs {
+        run(&mut s, "branch", json!({"name": format!("Bench merge {i}"), "switch": true}))?;
+        for (j, d) in devices.iter().take(20).enumerate() {
+            run(&mut s, "setprop", json!({"component": d, "key": "description", "value": format!("Branch {i} device {j}")}))?;
+        }
+        run(&mut s, "switchbranch", json!({"branch": "main", "save": true}))?;
+    }
+    for k in 0..2_000u64 {
+        if k == 1_000 {
+            run(&mut s, "setprop", json!({"component": devices[0], "key": "description", "value": "Main's description"}))?;
+        } else {
+            n += 1;
+            toggle(&mut s, n)?;
+        }
+    }
+    run(&mut s, "qsave", json!({}))?;
+    let mut prev = Vec::with_capacity(runs);
+    let mut merged = Vec::with_capacity(runs);
+    let (mut merge_changes, mut merge_conflicts) = (0, 0);
+    for i in 0..runs {
+        let from = format!("Bench merge {i}");
+        let t = Instant::now();
+        let v = run(&mut s, "merge", json!({"from": from, "preview": true}))?;
+        prev.push(ms(t));
+        merge_changes = v["changes"].as_array().map_or(0, Vec::len);
+        merge_conflicts = v["conflicts"].as_array().map_or(0, Vec::len);
+        let mut choices = serde_json::Map::new();
+        for c in v["conflicts"].as_array().cloned().unwrap_or_default() {
+            if let Some(id) = c["id"].as_str() {
+                choices.insert(id.to_string(), json!("branch"));
+            }
+        }
+        let t = Instant::now();
+        run(&mut s, "merge", json!({"from": from, "choices": choices, "close": false}))?;
+        merged.push(ms(t));
+        run(&mut s, "undomerge", json!({}))?;
+    }
     drop(p);
     Ok(MeasuredHistory {
+        mergeprev_ms: median(&mut prev),
+        merge_ms: median(&mut merged),
+        merge_changes,
+        merge_conflicts,
         histshow_ms: median(&mut show),
         histupd_ms: median(&mut upd),
         histsel_ms: median(&mut sel),

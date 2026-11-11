@@ -14,8 +14,10 @@
 //! - Branch actions are written to the file at once (owner answer 4, FQ8), after saving the
 //!   branch shown (owner answer 3, "Save and switch").
 //!
-//! Excluded: merge and update from the parent (brief 020b); the graph's join rows are drawn
-//! from merge nodes, which no build writes yet.
+//! - Merges (brief 020b, [`crate::merging`]) are rows of their own, read from the merge index
+//!   (FQ2), drawn as joins from the source's line.
+//! - The graph reads one page of rows ([`PAGE`]) and the next on request (`limit`); each row
+//!   reads its step's time and author only when it comes into the page.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -105,6 +107,9 @@ pub struct Node {
     pub description: Option<String>,
     /// Branches that start at this node (their lines bend into this row).
     pub forks: Vec<BranchId>,
+    /// A merge row: the source branch and the step of it that was merged (its join is drawn
+    /// from there, brief 020b).
+    pub from: Option<(BranchId, u64)>,
 }
 
 /// The graph: branches and rows, newest first.
@@ -113,6 +118,8 @@ pub struct Graph {
     pub current: Option<BranchId>,
     pub branches: Vec<BranchRow>,
     pub nodes: Vec<Node>,
+    /// More rows than were read (design 020 §2.2: the next page is read on scrolling to the end).
+    pub more: bool,
 }
 
 /// A branch's line as drawn: its lane and the rows it spans (top row to its fork row).
@@ -138,6 +145,20 @@ pub struct Layout {
     /// Each node's lane.
     pub lanes: Vec<usize>,
     pub spans: Vec<Span>,
+    /// Merge joins: from the source's row and lane to the merge row (brief 020b).
+    pub joins: Vec<Join>,
+}
+
+/// A merge drawn as a join (brief scope 1): a line from the source branch's row at the step that
+/// was merged up to the merge row on the target's lane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Join {
+    /// The merge row and its lane.
+    pub row: usize,
+    pub lane: usize,
+    /// The source's row (below) and lane.
+    pub from_row: usize,
+    pub from_lane: usize,
 }
 
 /// A named point on a branch's line: its own versions and revisions, and those it inherits from
@@ -285,7 +306,7 @@ fn tx_at(p: &Project, branch: BranchId, seq: u64) -> Option<Transaction> {
 }
 
 /// Steps `from..=to` of `branch`, oldest first.
-fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, String> {
+pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, String> {
     if from > to {
         return Ok(Vec::new());
     }
@@ -381,6 +402,8 @@ fn civil(ms: u64) -> (i64, u32, u32, u32, u32) {
 pub struct Show {
     pub autos: bool,
     pub archived: bool,
+    /// Rows to read (0: one page, [`PAGE`]); scrolling to the end adds a page.
+    pub limit: usize,
 }
 
 /// The graph of the project (design 020 §2.2): one row per node, newest first.
@@ -395,7 +418,8 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
     let mut g = Graph { current: Some(cur), ..Graph::default() };
     let shown: Vec<(BranchId, BranchRecord)> =
         all.into_iter().filter(|(id, b)| *id == cur || b.status != BranchStatus::Archived || show.archived).collect();
-    let mut per: BTreeMap<BranchId, Vec<Node>> = BTreeMap::new();
+    let mut per: BTreeMap<BranchId, Vec<(Node, Option<u64>)>> = BTreeMap::new();
+    let names: BTreeMap<BranchId, String> = shown.iter().map(|(id, b)| (*id, b.name.clone())).collect();
     for (id, b) in &shown {
         let is_cur = *id == cur;
         let head = if is_cur { p.ledger.head() } else { b.head.seq };
@@ -429,37 +453,69 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             author: head_tx.as_ref().map(|t| author_text(&t.author)).or_else(|| b.created_by.clone()).unwrap_or_default(),
             description: None,
             forks: Vec::new(),
+            from: None,
         });
+        // Rows other than Now read their step's time and author only when they come into the
+        // page (design 020 §8.1: one transaction row per node shown).
+        let mut lazy: Vec<(Node, Option<u64>)> = Vec::new();
         let own = named_points(p, *id)?.into_iter().filter(|n| n.branch == *id);
         for n in own {
-            let naming = tx_at(p, *id, n.seq + 1);
-            nodes.push(Node {
-                branch: *id,
-                seq: n.seq,
-                kind: if n.revision { NodeKind::Revision } else { NodeKind::Version },
-                label: n.name.clone(),
-                name: Some(n.name),
-                time_ms: naming.as_ref().and_then(|t| t.time_ms),
-                author: naming.as_ref().map(|t| author_text(&t.author)).unwrap_or_default(),
-                description: n.description,
-                forks: Vec::new(),
-            });
+            lazy.push((
+                Node {
+                    branch: *id,
+                    seq: n.seq,
+                    kind: if n.revision { NodeKind::Revision } else { NodeKind::Version },
+                    label: n.name.clone(),
+                    name: Some(n.name),
+                    time_ms: None,
+                    author: String::new(),
+                    description: n.description,
+                    forks: Vec::new(),
+                    from: None,
+                },
+                Some(n.seq + 1),
+            ));
         }
         if show.autos {
             for v in rows(p, *id, &[VersionKind::Auto])? {
-                let t = tx_at(p, *id, v.point.seq);
-                let time = t.as_ref().and_then(|t| t.time_ms);
-                nodes.push(Node {
-                    branch: *id,
-                    seq: v.point.seq,
-                    kind: NodeKind::Auto,
-                    name: None,
-                    label: format!("Auto · {}", short_time(time, crate::project::now_ms())),
-                    time_ms: time,
-                    author: t.as_ref().map(|t| author_text(&t.author)).unwrap_or_default(),
-                    description: None,
-                    forks: Vec::new(),
-                });
+                lazy.push((
+                    Node {
+                        branch: *id,
+                        seq: v.point.seq,
+                        kind: NodeKind::Auto,
+                        name: None,
+                        label: "Auto".into(),
+                        time_ms: None,
+                        author: String::new(),
+                        description: None,
+                        forks: Vec::new(),
+                        from: None,
+                    },
+                    Some(v.point.seq),
+                ));
+            }
+        }
+        // Merges into this branch (the merge index, FQ2), its unsaved ones included.
+        if let Some(v) = p.file.v2() {
+            let merges = if is_cur { v.merge_index(&p.ledger)? } else { v.merge_rows(*id)? };
+            for m in merges {
+                let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
+                let update = b.parent.as_deref() == Some(m.source.hex().as_str());
+                lazy.push((
+                    Node {
+                        branch: *id,
+                        seq: m.seq,
+                        kind: NodeKind::Merge,
+                        name: None,
+                        label: if update { format!("Updated from {src}") } else { format!("Merged \"{src}\"") },
+                        time_ms: None,
+                        author: String::new(),
+                        description: None,
+                        forks: Vec::new(),
+                        from: Some((m.source, m.source_head.0)),
+                    },
+                    Some(m.seq),
+                ));
             }
         }
         if *id == main {
@@ -478,59 +534,98 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
                 author: String::new(),
                 description: None,
                 forks: Vec::new(),
+                from: None,
             });
         }
+        let mut nodes: Vec<(Node, Option<u64>)> = nodes.into_iter().map(|n| (n, None)).chain(lazy).collect();
         // Within a branch: newest step first; at one step, Now above a version above an auto.
-        nodes.sort_by(|a, b| b.seq.cmp(&a.seq).then(a.kind.cmp(&b.kind)));
-        nodes.dedup_by(|a, b| a.kind == NodeKind::Now && b.kind == NodeKind::Now);
+        nodes.sort_by(|(a, _), (b, _)| b.seq.cmp(&a.seq).then(a.kind.cmp(&b.kind)));
+        nodes.dedup_by(|(a, _), (b, _)| a.kind == NodeKind::Now && b.kind == NodeKind::Now);
         per.insert(*id, nodes);
     }
     // Fork rows: a branch starts at a node of its parent, or at a row of its own.
     for row in g.branches.clone() {
         let Some((parent, seq)) = row.fork else { continue };
         let Some(list) = per.get_mut(&parent) else { continue };
-        match list.iter_mut().find(|n| n.seq == seq && n.kind != NodeKind::Now) {
-            Some(n) => n.forks.push(row.id),
+        match list.iter_mut().find(|(n, _)| n.seq == seq && n.kind != NodeKind::Now && n.kind != NodeKind::Merge) {
+            Some((n, _)) => n.forks.push(row.id),
             None => {
-                let at = list.iter().position(|n| n.seq < seq || (n.seq == seq && n.kind > NodeKind::Fork)).unwrap_or(list.len());
+                let at = list.iter().position(|(n, _)| n.seq < seq || (n.seq == seq && n.kind > NodeKind::Fork)).unwrap_or(list.len());
                 list.insert(
                     at,
-                    Node {
-                        branch: parent,
-                        seq,
-                        kind: NodeKind::Fork,
-                        name: None,
-                        label: format!("Branch \"{}\" started", row.name),
-                        time_ms: row.created_ms,
-                        author: String::new(),
-                        description: None,
-                        forks: vec![row.id],
-                    },
+                    (
+                        Node {
+                            branch: parent,
+                            seq,
+                            kind: NodeKind::Fork,
+                            name: None,
+                            label: format!("Branch \"{}\" started", row.name),
+                            time_ms: row.created_ms,
+                            author: String::new(),
+                            description: None,
+                            forks: vec![row.id],
+                            from: None,
+                        },
+                        None,
+                    ),
                 );
             }
         }
     }
-    g.nodes = merge_by_time(per, &g.branches);
+    let limit = if show.limit == 0 { PAGE } else { show.limit };
+    let now = crate::project::now_ms();
+    let mut fill = |n: &mut Node, seq: u64| {
+        if let Some(t) = tx_at(p, n.branch, seq) {
+            n.time_ms = t.time_ms;
+            n.author = author_text(&t.author);
+        }
+        if n.kind == NodeKind::Auto {
+            n.label = format!("Auto · {}", short_time(n.time_ms, now));
+        }
+    };
+    let (nodes, more) = merge_by_time_paged(per, &g.branches, limit, &mut fill);
+    g.nodes = nodes;
+    g.more = more;
     Ok(g)
 }
 
-/// Rows of all branches, newest first: each branch's own order is kept, and between branches
-/// the newer row goes first (time is display only: a wrong clock can mis-order rows between
-/// branches, never within one). Then every branch's rows are kept above its fork row.
+/// Rows of all branches, newest first (all of them; see [`merge_by_time_paged`]).
+#[cfg(test)]
 fn merge_by_time(per: BTreeMap<BranchId, Vec<Node>>, branches: &[BranchRow]) -> Vec<Node> {
-    let mut lists: Vec<std::collections::VecDeque<Node>> = per.into_values().map(Into::into).collect();
+    let per = per.into_iter().map(|(k, v)| (k, v.into_iter().map(|n| (n, None)).collect())).collect();
+    merge_by_time_paged(per, branches, usize::MAX, &mut |_, _| {}).0
+}
+
+/// Rows of all branches, newest first, at most `limit` of them (and whether more are left):
+/// each branch's own order is kept, and between branches the newer row goes first (time is
+/// display only: a wrong clock can mis-order rows between branches, never within one). A row's
+/// time is read (`fill`, from its step) only when it reaches the front of its branch's list, so
+/// a page reads about as many steps as it shows. Then every branch's rows are kept above its
+/// fork row.
+fn merge_by_time_paged(
+    per: BTreeMap<BranchId, Vec<(Node, Option<u64>)>>, branches: &[BranchRow], limit: usize, fill: &mut dyn FnMut(&mut Node, u64),
+) -> (Vec<Node>, bool) {
+    let mut lists: Vec<std::collections::VecDeque<(Node, Option<u64>)>> = per.into_values().map(Into::into).collect();
     let mut out = Vec::new();
-    loop {
+    while out.len() < limit {
+        for l in &mut lists {
+            if let Some((n, at)) = l.front_mut()
+                && let Some(q) = at.take()
+            {
+                fill(n, q);
+            }
+        }
         let best = lists
             .iter()
             .enumerate()
-            .filter_map(|(i, l)| l.front().map(|n| (i, n.time_ms.unwrap_or(0), n.kind == NodeKind::Root)))
+            .filter_map(|(i, l)| l.front().map(|(n, _)| (i, n.time_ms.unwrap_or(0), n.kind == NodeKind::Root)))
             .max_by(|a, b| (!a.2, a.1).cmp(&(!b.2, b.1)).then(b.0.cmp(&a.0)));
         let Some((i, _, _)) = best else { break };
-        if let Some(n) = lists.get_mut(i).and_then(std::collections::VecDeque::pop_front) {
+        if let Some((n, _)) = lists.get_mut(i).and_then(std::collections::VecDeque::pop_front) {
             out.push(n);
         }
     }
+    let more = lists.iter().any(|l| !l.is_empty());
     // A fork row above any row of its branch moves down to just below the branch's last row.
     for b in branches {
         let Some(last) = out.iter().rposition(|n| n.branch == b.id) else { continue };
@@ -541,7 +636,7 @@ fn merge_by_time(per: BTreeMap<BranchId, Vec<Node>>, branches: &[BranchRow]) -> 
             out.insert(last, node);
         }
     }
-    out
+    (out, more)
 }
 
 /// Lanes for `g` (design 020 §2.2): `main` in lane 0; other branches by their fork rows, bottom
@@ -593,8 +688,16 @@ pub fn layout(g: &Graph) -> Layout {
         from = s.bottom;
         at = g.branches.iter().find(|b| b.id == id).and_then(|b| b.fork.map(|f| f.0));
     }
-    let lanes = g.nodes.iter().map(|x| lane_of.get(&x.branch).copied().unwrap_or(0)).collect();
-    Layout { lanes, spans }
+    let lanes: Vec<usize> = g.nodes.iter().map(|x| lane_of.get(&x.branch).copied().unwrap_or(0)).collect();
+    // Joins: from the source's newest row at or before the merged step, below the merge row.
+    let mut joins = Vec::new();
+    for (i, nd) in g.nodes.iter().enumerate() {
+        let Some((b, s)) = nd.from else { continue };
+        let Some(j) = g.nodes.iter().enumerate().skip(i + 1).find(|(_, x)| x.branch == b && x.seq <= s).map(|(j, _)| j) else { continue };
+        let (Some(from_lane), Some(lane)) = (lane_of.get(&b).copied(), lanes.get(i).copied()) else { continue };
+        joins.push(Join { row: i, lane, from_row: j, from_lane });
+    }
+    Layout { lanes, spans, joins }
 }
 
 // ---------------------------------------------------------------- points
@@ -890,8 +993,14 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     let changed = pb.iter().filter(|(k, h)| pa.get(*k).is_some_and(|x| x != *h)).count();
     let added = pb.keys().filter(|k| !pa.contains_key(*k)).count();
     let removed = pa.keys().filter(|k| !pb.contains_key(*k)).count();
-    let model = a.chunks.iter().filter(|(k, _)| k.starts_with("model:") && *k != "model:meta").any(|(k, h)| b.chunks.get(k) != Some(h))
-        || b.chunks.keys().any(|k| k.starts_with("model:") && !a.chunks.contains_key(k));
+    let differs = |k: &String| a.chunks.get(k) != b.chunks.get(k);
+    let model: BTreeSet<&String> = a
+        .chunks
+        .keys()
+        .chain(b.chunks.keys())
+        .filter(|k| k.starts_with("model:") && *k != "model:meta" && *k != "model:project")
+        .filter(|k| differs(k))
+        .collect();
     let mut out = Vec::new();
     let plural = |n: usize, w: &str| format!("{n} page{} {w}", if n == 1 { "" } else { "s" });
     if changed > 0 {
@@ -903,10 +1012,59 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     if removed > 0 {
         out.push(plural(removed, "removed"));
     }
-    if model {
-        out.push("devices or wiring changed".into());
+    // Devices by tag, from the differing component chunks only (design 020 §8.3: at most three
+    // named changes).
+    let comp: Vec<&String> = model.iter().copied().filter(|k| k.starts_with("model:component:")).collect();
+    let named = if comp.is_empty() || comp.len() > 8 { None } else { device_changes(&r, &a, &b, &comp) };
+    match named {
+        Some(lines) => out.extend(lines),
+        None if !comp.is_empty() => out.push("devices changed".into()),
+        None => {}
+    }
+    if model.iter().any(|k| !k.starts_with("model:component:")) {
+        out.push("wiring changed".into());
     }
     out
+}
+
+/// The devices added, removed and changed between two snapshots, read from their differing
+/// component chunks only: `-K05 added`, at most three named, then how many more.
+fn device_changes(
+    r: &ecad_file::v2::Reader, a: &ecad_file::v2::schema::VersionRecord, b: &ecad_file::v2::schema::VersionRecord, keys: &[&String],
+) -> Option<Vec<String>> {
+    use ecad_file::v2::chunks::{ChunkSet, components_of};
+    let load = |v: &ecad_file::v2::schema::VersionRecord| -> Option<BTreeMap<ecad_model::ComponentId, ecad_model::Component>> {
+        let set = ChunkSet::from_record(&v.chunks).ok()?;
+        let mut out = BTreeMap::new();
+        for k in keys {
+            let Some(h) = v.chunks.get(*k) else { continue };
+            let hash = ecad_file::chain::parse_hex(h)?;
+            let body = r.chunk_body(&hash).ok()?;
+            out.extend(components_of(&set, k, &body).ok()?);
+        }
+        Some(out)
+    };
+    let (ca, cb) = (load(a)?, load(b)?);
+    let tag = |c: &ecad_model::Component| c.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| "a device".into());
+    let mut lines: Vec<String> = Vec::new();
+    for (id, c) in &cb {
+        match ca.get(id) {
+            None => lines.push(format!("{} added", tag(c))),
+            Some(old) if old != c => lines.push(format!("{} changed", tag(c))),
+            Some(_) => {}
+        }
+    }
+    for (id, c) in &ca {
+        if !cb.contains_key(id) {
+            lines.push(format!("{} removed", tag(c)));
+        }
+    }
+    let more = lines.len().saturating_sub(3);
+    lines.truncate(3);
+    if more > 0 {
+        lines.push(format!("{more} more device{} changed", if more == 1 { "" } else { "s" }));
+    }
+    Some(lines)
 }
 
 // ---------------------------------------------------------------- the commands
@@ -914,7 +1072,9 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
 /// The commands this module adds (design 020 §10). Merge is brief 020b.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("history", "History", run_history).params("{autos?: bool, archived?: bool} (the History graph, read only)").noundo(),
+        CommandSpec::new("history", "History", run_history)
+            .params("{autos?: bool, archived?: bool, limit?: 200} (the History graph, newest first, `limit` rows; read only)")
+            .noundo(),
         CommandSpec::new("steps", "History Steps", run_steps).params("{branch?, before?: seq, limit?: 50} (steps newest first, read only)").noundo(),
         CommandSpec::new("pointinfo", "Point Info", run_pointinfo)
             .params("{branch?, version?|revision?|seq?} (the details of a point, read only)")
@@ -949,6 +1109,7 @@ fn node_json(n: &Node) -> Value {
         "branch": n.branch.hex(), "seq": n.seq, "kind": n.kind.word(), "name": n.name, "label": n.label,
         "time": n.time_ms, "author": n.author, "description": n.description,
         "forks": n.forks.iter().map(BranchId::hex).collect::<Vec<_>>(),
+        "from": n.from.map(|(b, s)| json!({"branch": b.hex(), "seq": s})),
     })
 }
 
@@ -972,6 +1133,7 @@ fn run_history(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     let show = Show {
         autos: params.get("autos").and_then(Value::as_bool).unwrap_or(false),
         archived: params.get("archived").and_then(Value::as_bool).unwrap_or(false),
+        limit: params.get("limit").and_then(Value::as_u64).map_or(0, |l| usize::try_from(l).unwrap_or(usize::MAX).max(1)),
     };
     with_any_page(s, |p, _| {
         let g = graph(p, show)?;
@@ -979,6 +1141,7 @@ fn run_history(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             "current": g.current.map(|c| c.hex()),
             "branches": g.branches.iter().map(branch_json).collect::<Vec<_>>(),
             "nodes": g.nodes.iter().map(node_json).collect::<Vec<_>>(),
+            "more": g.more,
         }))
     })
 }
@@ -1005,6 +1168,7 @@ fn kind_word(k: TxKind) -> &'static str {
         TxKind::Edit => "edit",
         TxKind::Undo { .. } => "undo",
         TxKind::Redo { .. } => "redo",
+        TxKind::Merge { .. } => "merge",
     }
 }
 
@@ -1144,7 +1308,7 @@ fn run_branches(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Val
 }
 
 /// Why branch actions cannot run: no version 2 file yet (design 020 §2.6), or read-only.
-fn branch_file(p: &Project) -> Result<(), String> {
+pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
     match p.file.v2() {
         None => Err("Branches live in the project file. Save it first.".into()),
         Some(v) => match v.read_only() {
@@ -1203,7 +1367,7 @@ fn run_branch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
 }
 
 /// Show branch `id` (saved already), and say so.
-fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
+pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
     let seed = crate::project::session_seed();
     let ledger = p.ledger.clone();
     let v = p.file.v2_mut().ok_or("Branches live in the project file. Save it first.")?;
@@ -1393,6 +1557,7 @@ mod tests {
             author: String::new(),
             description: None,
             forks: Vec::new(),
+            from: None,
         }
     }
 
@@ -1421,7 +1586,7 @@ mod tests {
         let out = merge_by_time(per, &branches);
         let order: Vec<(u8, u64)> = out.iter().map(|n| (n.branch.0[0], n.seq)).collect();
         assert_eq!(order, vec![(0, 9), (1, 2), (1, 1), (0, 3), (0, 0)]);
-        let g = Graph { current: Some(id(1)), branches, nodes: out };
+        let g = Graph { current: Some(id(1)), branches, nodes: out, more: false };
         let l = layout(&g);
         assert_eq!(l.lanes, vec![0, 1, 1, 0, 0]);
         let s1 = l.spans.iter().find(|s| s.branch == id(1)).unwrap();
@@ -1446,7 +1611,7 @@ mod tests {
         nodes.insert(0, nodes.last().cloned().unwrap());
         nodes.pop();
         nodes.push(f);
-        let g = Graph { current: Some(id(0)), branches, nodes };
+        let g = Graph { current: Some(id(0)), branches, nodes, more: false };
         let l = layout(&g);
         assert!(l.spans.iter().all(|s| s.lane < MAX_LANES));
         assert_eq!(l.spans.iter().filter(|s| s.overflow).count(), 3);

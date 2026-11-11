@@ -697,6 +697,23 @@ impl Writer {
         Ok(())
     }
 
+    /// The version rows of `kind` on `branch` as this transaction sees them, in key order.
+    ///
+    /// # Errors
+    /// The engine failed, or a row does not decode.
+    pub fn versions(&self, branch: BranchId, kind: VersionKind) -> Result<Vec<VersionRecord>, StoreError> {
+        let t = self.txn.open_table(VERSIONS).map_err(engine)?;
+        let lo = version_key(branch, kind, "");
+        let mut hi = branch.0.to_vec();
+        hi.push(kind.byte() + 1);
+        let mut out = Vec::new();
+        for row in t.range(lo.as_slice()..hi.as_slice()).map_err(engine)? {
+            let (_, v) = row.map_err(engine)?;
+            out.push(serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("version row: {e}")))?);
+        }
+        Ok(out)
+    }
+
     /// Set the description of a `versions` row this write transaction holds (FQ5).
     ///
     /// # Errors

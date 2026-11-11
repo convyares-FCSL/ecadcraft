@@ -8,3 +8,5 @@ mod demo;
 mod history_contracts;
 mod mcp_contracts;
 mod mcp_tester_contracts;
+mod merge_contracts;
+mod merge_tester_contracts;

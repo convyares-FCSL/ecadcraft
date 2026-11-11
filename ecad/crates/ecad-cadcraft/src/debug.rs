@@ -951,6 +951,9 @@ pub fn tx_kind(tx: &Transaction, log: &[Transaction]) -> String {
         TxKind::Edit => "edit".into(),
         TxKind::Undo { of } => format!("undo of {}", seq_of(of)),
         TxKind::Redo { of } => format!("redo of {}", seq_of(of)),
+        TxKind::Merge { source, source_head, .. } => {
+            format!("merge of {}… at {}", source.iter().take(4).map(|b| format!("{b:02x}")).collect::<String>(), source_head.seq)
+        }
     }
 }
 

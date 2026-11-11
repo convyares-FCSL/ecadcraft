@@ -34,6 +34,38 @@ pub enum TxKind {
     Redo {
         of: TxId,
     },
+    /// A merge of another branch into this one (brief 020b, FQ1): ordinary ops, and where they
+    /// came from. On the undo stack it is an edit; replay applies its ops and reads nothing else.
+    Merge {
+        /// The source branch (the file's 128-bit branch ID).
+        source: [u8; 16],
+        /// The source's head that was merged.
+        source_head: StepPoint,
+        /// The common ancestor the merge compared against.
+        ancestor: BranchPoint,
+    },
+}
+
+impl TxKind {
+    /// Whether the step is a new change on the undo stack (an edit or a merge).
+    pub fn is_edit(self) -> bool {
+        matches!(self, TxKind::Edit | TxKind::Merge { .. })
+    }
+}
+
+/// A step of a branch: its `seq` and chain value (the file's hash chain, brief 021).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepPoint {
+    pub seq: u64,
+    pub chain: [u8; 32],
+}
+
+/// A step of a named branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BranchPoint {
+    pub branch: [u8; 16],
+    pub seq: u64,
+    pub chain: [u8; 32],
 }
 
 /// One atomic, recorded change to the document.
@@ -136,7 +168,7 @@ impl Stacks {
     /// Whether `kind` would pop a stack whose visible part is empty but which has hidden entries.
     fn needs_full(&self, kind: TxKind) -> bool {
         match kind {
-            TxKind::Edit => false,
+            TxKind::Edit | TxKind::Merge { .. } => false,
             TxKind::Undo { .. } => self.undo.is_empty() && self.undo_hidden > 0,
             TxKind::Redo { .. } => self.redo.is_empty() && self.redo_hidden > 0,
         }
@@ -150,7 +182,7 @@ impl Stacks {
     fn admit_kind(&self, kind: TxKind, id: impl std::fmt::Display) -> Result<()> {
         let top = |stack: &Vec<(u64, TxId)>| stack.last().map(|(_, t)| *t);
         match kind {
-            TxKind::Edit => Ok(()),
+            TxKind::Edit | TxKind::Merge { .. } => Ok(()),
             TxKind::Undo { of } if top(&self.undo) != Some(of) => Err(ModelError::CorruptLog(format!("undo {id} does not undo the latest step"))),
             TxKind::Redo { of } if top(&self.redo) != Some(of) => Err(ModelError::CorruptLog(format!("redo {id} does not redo the latest undo"))),
             TxKind::Undo { .. } | TxKind::Redo { .. } => Ok(()),
@@ -165,7 +197,7 @@ impl Stacks {
     /// Account for `tx`, after [`Stacks::admit`] accepted it.
     fn push(&mut self, tx: &Transaction) {
         match tx.kind {
-            TxKind::Edit => {
+            TxKind::Edit | TxKind::Merge { .. } => {
                 self.undo.push((tx.seq, tx.id));
                 self.redo.clear();
                 self.redo_hidden = 0;
@@ -1099,6 +1131,19 @@ impl Ledger {
         Ok(id)
     }
 
+    /// Commit a merge (brief 020b, FQ1): `ops` as one transaction of kind [`TxKind::Merge`],
+    /// checked like any edit. A merge may have no ops (the target's side kept for every
+    /// conflict): it is still recorded, so the next merge compares against it.
+    ///
+    /// # Errors
+    /// As [`Ledger::commit`].
+    pub fn commit_merge(&mut self, author: Author, label: &str, kind: TxKind, ops: Vec<Op>, time_ms: Option<u64>) -> Result<TxId> {
+        if !matches!(kind, TxKind::Merge { .. }) {
+            return Err(ModelError::Precondition("a merge must be recorded as a merge".into()));
+        }
+        self.append(author, label.to_string(), kind, ops, time_ms)
+    }
+
     fn append(&mut self, author: Author, label: String, kind: TxKind, ops: Vec<Op>, time_ms: Option<u64>) -> Result<TxId> {
         if self.health.broken {
             return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
@@ -1132,6 +1177,12 @@ impl Ledger {
     /// The transaction on top of `stack`, if held in memory.
     fn top(&self, stack: &[(u64, TxId)]) -> Option<&Transaction> {
         stack.last().and_then(|(seq, _)| self.tx(*seq))
+    }
+
+    /// The step [`Ledger::undo`] would undo, when held in memory (brief 020b: undoing a merge
+    /// asks first).
+    pub fn undo_top(&self) -> Option<&Transaction> {
+        self.top(&self.stacks.undo)
     }
 
     /// Label of the step [`Ledger::undo`] would undo.

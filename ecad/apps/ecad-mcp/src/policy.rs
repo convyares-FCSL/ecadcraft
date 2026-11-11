@@ -55,9 +55,13 @@ pub const READ_COMMANDS: &[&str] = &[
 /// `projectprops {}`.
 const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[])];
 
-/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`]).
+/// Commands whose form with `preview: true` only reads (brief 020b: the merge preview).
+const READ_WITH_PREVIEW: &[&str] = &["merge"];
+
+/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`]).
 pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
+        || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
 }
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the

@@ -1,7 +1,9 @@
 //! Tester contracts for brief 020a's store work (EEP-0005 rev 8, design 020 §3, §7, §17):
 //!
 //! - **Power loss across branch actions:** a sequence of saves, branch creates, switches
-//!   (`meta.active`), renames and archives is cut at any disk operation and the disk image
+//!   (`meta.active`), renames, a merge saved with Close branch (brief 020b: the merge index row
+//!   and the source's `merged` status in the same write) and archives is cut at any disk
+//!   operation and the disk image
 //!   crashed; the file reopens undamaged on a consistent branch, with every acknowledged step and
 //!   at most the step in flight, and verifies.
 //! - **An older build that only knows `main`** saves main (leaving `meta.active` and the branch
@@ -133,6 +135,23 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
         step!(next, proj.switch_to(&ledger, main, seed ^ 1).map(|(l, _)| ml = Some(l)));
         ledger = ml.take().unwrap();
         current = "main".into();
+        // 6b. Merge C into main (brief 020b): one merge transaction that closes C, saved.
+        let c_rec = proj.store().reader().map_err(|e| e.to_string())?.branch(ids["C"]).map_err(|e| e.to_string())?.ok_or("no C")?;
+        let kind = TxKind::Merge {
+            source: ids["C"].0,
+            source_head: StepPoint { seq: c_rec.head.seq, chain: c_rec.head.hash()? },
+            ancestor: BranchPoint { branch: main.0, seq: 0, chain: proj.chain_of(main, 0)? },
+        };
+        let page = ledger.document().page_order[0];
+        let layer = *ledger.document().layers.keys().next().unwrap();
+        let id = ItemId(u128::from(rng.next_u64()) << 64 | 7);
+        let item = Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(1.0, 1.0), b: Pt::new(2.0, 8.0) }) };
+        let tx = ledger.commit_merge(Author::User, "Merge \"C\"", kind, vec![Op::AddItem { id, item }], None).unwrap();
+        proj.close_on_save(tx, ids["C"]);
+        let mut next = exp.clone();
+        next.branches.insert("main".into(), (BranchStatus::Open, ledger.document().clone()));
+        next.branches.get_mut("C").unwrap().0 = BranchStatus::Merged;
+        step!(next, proj.save(&mut ledger).map_err(|e| e.to_string()));
         // 7. Archive C.
         let mut next = exp.clone();
         next.branches.get_mut("C").unwrap().0 = BranchStatus::Archived;
