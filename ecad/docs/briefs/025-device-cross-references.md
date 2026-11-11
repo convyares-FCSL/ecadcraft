@@ -1,6 +1,7 @@
 # Brief 025: Device cross-references on a general reference index
 
-Status: Draft (designer, 2026-11-11), for the owner's approval with design 025
+Status: Approved (owner, 2026-11-11; design 025 §12 answered as recommended, FP1–FP3 approved by
+the overseer, see design §13)
 Branch: `feature/cross-references` (worktree `C:\dev\ecad-features\connectivity`, folder name
 historical), from `dev` `af2d41eb`.
 Designer: **yes** (`docs/design/025.md`) · Size: M
