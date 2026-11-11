@@ -21,6 +21,7 @@ mod files;
 mod history_tester_contracts;
 mod interactive_contracts;
 mod mouse_tools_contracts;
+mod outputs_contracts;
 mod project_pages;
 mod recovery;
 mod refusals;

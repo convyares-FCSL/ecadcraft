@@ -592,6 +592,19 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
     }
     let gone: BTreeSet<RepresentationId> = erased.iter().map(|(id, _)| *id).collect();
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
+    // A location box (brief 024) goes with its outline.
+    let boxes: BTreeSet<ComponentId> = erased
+        .iter()
+        .filter_map(|(_, r)| if let Subject::Component(c) = r.subject { Some(c) } else { None })
+        .filter(|c| crate::locations::is_box(doc, *c))
+        .collect();
+    for c in boxes {
+        if doc.representations_of(Subject::Component(c)).all(|(id, _)| gone.contains(&id))
+            && let Some(component) = doc.components.get(&c)
+        {
+            ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+        }
+    }
     for (c, reps) in by_component {
         let Some(component) = doc.components.get(&c) else { continue };
         let remaining: Vec<&Representation> =
@@ -740,6 +753,8 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
         }
     }
     let mut out = Vec::new();
+    // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
+    let mut boxes = crate::locations::BoxCache::default();
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -755,7 +770,8 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
             out.extend(texts);
             continue;
         }
-        for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag_of(doc, c), &labels) {
+        let tag = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes));
+        for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag.as_deref(), &labels) {
             out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None });
         }
     }
@@ -897,6 +913,17 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
     for (key, _) in PROPERTIES {
         v[key] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
     }
+    // Brief 024 (design 024 §3.4): the location shown and where it comes from, and each symbol's
+    // context.
+    let mut boxes = crate::locations::BoxCache::default();
+    let loc = crate::locations::resolve_with(doc, c, &mut boxes);
+    v["location_shown"] = loc.value.map_or(Value::Null, Value::String);
+    v["location_from"] = json!(loc.source.word());
+    for (_, rid, x) in &mut reps {
+        if let Some(r) = doc.representations.get(rid) {
+            x["context"] = crate::locations::rep_context(doc, r, &mut boxes).value.map_or(Value::Null, Value::String);
+        }
+    }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
     v
 }
@@ -963,9 +990,18 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         None => format!("Device (no tag)   {}", description(doc, c)),
     };
     let mut lines = vec![head, format!("Maker: {}   Part number: {}", get("maker"), get("part_number"))];
-    if props.contains_key("location") || props.contains_key("function") {
-        lines.push(format!("Location: {}   Function: {}", get("location"), get("function")));
+    // Brief 024 (design 024 §3.3): the location shown, where it comes from, and this symbol's own
+    // context when it differs.
+    let mut boxes = crate::locations::BoxCache::default();
+    let loc = crate::locations::resolve_with(doc, c, &mut boxes);
+    let mut words = loc.shown(doc);
+    if let Some(r) = doc.representations.get(&here) {
+        let ctx = crate::locations::rep_context(doc, r, &mut boxes);
+        if ctx.value.is_some() && ctx.value != loc.value {
+            words.push_str(&format!("; this symbol is inside {}", ctx.text()));
+        }
     }
+    lines.push(format!("Location: {words}   Function: {}", get("function")));
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
