@@ -383,7 +383,6 @@ fn random_edits_keep_locations_and_reports_equal_to_a_rebuild_long() {
 /// Setting the project's location must reach devices that had no location at all (source `none`),
 /// not only those whose location already came from the project.
 #[test]
-#[ignore = "tester 024: setting the project location leaves the kept BOM/wire/cable rows of devices with no location at ? (only `from_project` devices are recomputed)"]
 fn setting_the_project_location_reaches_devices_that_had_none() {
     let mut h = H::new(0x24_7101);
     keep_models(&mut h);
@@ -542,7 +541,6 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
 /// Opening a box outline (PEDIT Open) leaves an open polyline. A location box is a closed
 /// polyline (brief scope 1): an open one must either be refused or stop giving its location.
 #[test]
-#[ignore = "tester 024: a box outline opened with PEDIT Open is drawn open but still gives its location (box_of_rep ignores `closed`)"]
 fn opening_a_box_outline_is_refused_or_ends_the_box() {
     let mut h = H::new(0x24_7204);
     keep_models(&mut h);
@@ -614,7 +612,6 @@ fn csv_quotes_and_neutralises_formula_starts() {
 }
 
 #[test]
-#[ignore = "tester 024: Excel-safe CSV leaves full-width formula starts (＝ ＋ － ＠) unprefixed"]
 fn csv_neutralises_full_width_formula_starts() {
     let row = |v: &[&str]| v.iter().map(|t| Cell { text: (*t).to_string(), flag: None }).collect::<Vec<_>>();
     let t = Table { headers: vec!["A", "B", "C", "D"], rows: vec![row(&["＠SUM(A1)", "＝1+1", "＋CP1", "－K01"])] };
@@ -731,7 +728,6 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
 /// then still takes 44 rows: 45 rows plus the header need 232 mm of the 230 mm drawing area, so
 /// the last row hangs out of it, onto the title block.
 #[test]
-#[ignore = "tester 024: a continued BOM sheet draws 45 rows; the last one overhangs the drawing area by 2 mm into the title block"]
 fn a_continued_bom_sheet_keeps_its_rows_inside_the_drawing_area() {
     let mut h = H::new(0x24_7405);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();

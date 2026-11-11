@@ -18,7 +18,7 @@
 //! | the same of a location box on page P | the devices whose main symbol is on P (before and after); their conductors and cables; P's box checks |
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | the devices whose main symbol is on P; conductors routed on P (their Page cell) |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
-//! | `SetProperty(Project, location)` | devices whose location comes from the project (the one project-wide case) |
+//! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
 //! | `SetProjectSettings` changing wiring defaults | every conductor (rare and explicit) |
@@ -375,6 +375,8 @@ pub struct Outputs {
     devices: BTreeMap<ComponentId, DeviceRow>,
     by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
     from_project: BTreeSet<ComponentId>,
+    /// Devices with no location at all: a project location set reaches them (tester 024, bug 1).
+    from_none: BTreeSet<ComponentId>,
     by_location: BTreeMap<(LocKey, PartKey), BTreeSet<((String, u64, String), ComponentId)>>,
     by_part: BTreeMap<PartKey, BTreeSet<((String, u64, String), ComponentId)>>,
     wires: BTreeMap<ConductorId, WireRow>,
@@ -435,6 +437,7 @@ impl Outputs {
         let mut work = 0;
         if scope.project_location {
             scope.devices.extend(self.from_project.iter().copied());
+            scope.devices.extend(self.from_none.iter().copied());
         }
         let mut cache = BoxCache::default();
         for c in &scope.devices {
@@ -485,6 +488,7 @@ impl Outputs {
             }
         }
         self.from_project.remove(&c);
+        self.from_none.remove(&c);
         let tk = (tag_key(&old.tag), c);
         let lk = (old.loc_key(), old.part_key());
         if let Some(set) = self.by_location.get_mut(&lk) {
@@ -527,8 +531,14 @@ impl Outputs {
         if let Some((_, p, _)) = row.main {
             self.by_page.entry(p).or_default().insert(c);
         }
-        if row.location.source == Source::Project {
-            self.from_project.insert(c);
+        match row.location.source {
+            Source::Project => {
+                self.from_project.insert(c);
+            }
+            Source::None => {
+                self.from_none.insert(c);
+            }
+            _ => {}
         }
         let tk = (tag_key(&row.tag), c);
         self.by_location.entry((row.loc_key(), row.part_key())).or_default().insert(tk.clone());
@@ -932,13 +942,6 @@ impl Outputs {
         }
         t
     }
-
-    /// How many rows the BOM-by-location generated page has (location headings included).
-    pub fn bom_page_rows(&self) -> usize {
-        let rows = self.bom(Group::Location);
-        let locs: BTreeSet<Option<String>> = rows.iter().map(|r| r.location.clone()).collect();
-        rows.len() + locs.len()
-    }
 }
 
 /// A point where two outlines' segments cross, if they do.
@@ -963,10 +966,15 @@ fn crossing(a: &[Pt], b: &[Pt]) -> Option<Pt> {
 // ---------------------------------------------------------------- CSV (design 024 §6.3)
 
 /// A table as CSV: UTF-8 with a byte-order mark, comma separator, CRLF, RFC 4180 quoting. With
-/// `excel_safe`, a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'`.
+/// `excel_safe`, a cell starting with `=`, `+`, `-`, `@`, tab or CR (or the full-width `＝ ＋ － ＠`,
+/// which Excel also reads as formulas) gets a leading `'`.
 pub fn csv(t: &Table, excel_safe: bool) -> String {
     let cell = |s: &str| {
-        let s = if excel_safe && s.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{s}") } else { s.to_string() };
+        let s = if excel_safe && s.starts_with(['=', '+', '-', '@', '\t', '\r', '\u{ff1d}', '\u{ff0b}', '\u{ff0d}', '\u{ff20}']) {
+            format!("'{s}")
+        } else {
+            s.to_string()
+        };
         if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s }
     };
     let mut out = String::from("\u{feff}");

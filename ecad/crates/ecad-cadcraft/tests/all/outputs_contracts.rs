@@ -327,3 +327,20 @@ fn cover_contents_and_revision_list_show_the_project() {
 
 #[allow(dead_code)]
 fn _unused(_: Value) {}
+
+/// Tester 024, bug 2 (owner ruling): PEDIT Open of a box outline is refused with the way out, and
+/// the box keeps giving its location.
+#[test]
+fn opening_a_box_outline_is_refused_with_the_way_out() {
+    let mut h = H::new(0x24_08);
+    let page = h.first_page();
+    let k = place(&mut h, "coil", (100.0, 100.0));
+    let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
+    let item: ecad_model::ItemId = id(&r, "item");
+    let hd = h.handle_of(page, item);
+    let head = h.head();
+    let e = h.run("pedit", json!({"handle": hd.hex(), "option": "open"})).unwrap_err();
+    assert!(e.contains("cannot be opened") && e.contains("erase the box"), "{e}");
+    assert_eq!(h.head(), head, "nothing recorded");
+    assert_eq!(loc(&h.doc(), k).0, s("+JB1"));
+}

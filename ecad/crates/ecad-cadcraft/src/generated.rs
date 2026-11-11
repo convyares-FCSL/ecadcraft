@@ -100,7 +100,58 @@ pub fn has_bom_page(doc: &Document) -> bool {
 
 /// How many sheets the BOM-by-location table needs.
 pub fn bom_sheets(o: &Outputs) -> usize {
-    o.bom_page_rows().div_ceil(ROWS_PER_SHEET).max(1)
+    let mut heads: Vec<Option<String>> = Vec::new();
+    let mut last: Option<Option<String>> = None;
+    for r in o.bom(Group::Location) {
+        if last.as_ref() != Some(&r.location) {
+            heads.push(Some(r.location.clone().unwrap_or_else(|| "?".into())));
+            last = Some(r.location.clone());
+        }
+        heads.push(None);
+    }
+    paginate(&heads).len()
+}
+
+/// The sheets of a table whose row `i` is a heading when `heads[i]` is `Some`: (first row, end,
+/// the heading repeated as `(continued)` at the top). A continued heading takes a row of the
+/// sheet, so every sheet holds at most [`ROWS_PER_SHEET`] lines (tester 024, bug 4).
+pub fn paginate(heads: &[Option<String>]) -> Vec<(usize, usize, Option<String>)> {
+    let n = heads.len();
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut current: Option<String> = None;
+    loop {
+        let cont = if start > 0 && start < n && heads.get(start).is_some_and(Option::is_none) { current.clone() } else { None };
+        let cap = ROWS_PER_SHEET - usize::from(cont.is_some());
+        let end = (start + cap).min(n);
+        for h in heads.get(start..end).unwrap_or_default().iter().flatten() {
+            current = Some(h.clone());
+        }
+        out.push((start, end, cont));
+        if end >= n {
+            break;
+        }
+        start = end;
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_continued_heading_takes_a_row_of_its_sheet() {
+        let mut heads = vec![Some("+CP1".to_string())];
+        heads.extend(std::iter::repeat_n(None, 88));
+        let sheets = paginate(&heads);
+        assert_eq!(sheets.len(), 3);
+        for (start, end, cont) in &sheets {
+            assert!(end - start + usize::from(cont.is_some()) <= ROWS_PER_SHEET);
+        }
+        assert_eq!(sheets[1].2.as_deref(), Some("+CP1"));
+        assert_eq!(paginate(&[]).len(), 1);
+    }
 }
 
 /// How many sheets `page` prints on.
@@ -320,16 +371,12 @@ fn content(doc: &Document, kind: GenKind, input: &FrameInput, i: usize, x0: f64,
     }
     y -= HEADER_MM;
     d.line((l, y), (r, y));
-    let start = i * ROWS_PER_SHEET;
-    let mut prev_heading: Option<String> = None;
-    // The location block a sheet starts in, repeated as `(continued)`.
-    if kind == GenKind::BomLocation && start > 0 {
-        prev_heading = rows.iter().take(start).filter(|r| r.heading).filter_map(|r| r.cells.first().cloned()).next_back();
-    }
-    let page_rows: Vec<&TRow> = rows.iter().skip(start).take(ROWS_PER_SHEET).collect();
-    if let (Some(h), Some(first)) = (prev_heading, page_rows.first())
-        && !first.heading
-    {
+    // The sheets as the sheet count makes them; a sheet starting inside a location block repeats it
+    // as `(continued)`, which takes one of its rows.
+    let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
+    let (start, end, prev_heading) = paginate(&heads).get(i).cloned().unwrap_or((0, 0, None));
+    let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
+    if let Some(h) = prev_heading {
         d.text((l + 1.0, y - ROW_MM / 2.0), 3.5, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
         y -= ROW_MM;
         d.line((l, y), (r, y));

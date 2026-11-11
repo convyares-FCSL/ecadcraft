@@ -90,7 +90,7 @@ pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> 
     let comp = doc.components.get(&c).filter(|x| is_box_component(x))?;
     let item = *r.items.first()?;
     let vertices = match &doc.items.get(&item)?.kind {
-        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => vertices.clone(),
+        ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) => vertices.clone(),
         _ => return None,
     };
     if vertices.len() < 3 || vertices.iter().any(|v| !v.is_finite()) {
@@ -529,6 +529,25 @@ pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, locat
         },
     });
     Ok(Planned { component, rep, item, ops })
+}
+
+/// Why changing item `id` of `doc` to `after` is refused (tester 024, owner ruling): a location
+/// box's outline cannot be opened or cut below three points. The words give the way out.
+pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {
+    let (_, r) = doc.representation_of_item(id)?;
+    let Subject::Component(c) = r.subject else { return None };
+    if r.role != ROLE || !is_box(doc, c) {
+        return None;
+    }
+    let ok = matches!(&after.kind, ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) if vertices.len() >= 3);
+    if ok {
+        return None;
+    }
+    let loc = doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).cloned().unwrap_or_else(|| "+?".into());
+    Some(format!(
+        "Location box {loc} is a closed outline of at least three points, so it cannot be opened or cut down to a line. \
+         To use a plain polyline instead, erase the box (its outline or its {loc} label; U brings it back) and draw the polyline."
+    ))
 }
 
 /// How many device symbols on `b`'s page are inside it, and how many of those keep an own
