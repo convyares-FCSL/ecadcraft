@@ -21,6 +21,8 @@ pub struct Row {
     pub history: Option<crate::history::MeasuredHistory>,
     /// Locations, reports and printing on that file (brief 024).
     pub outputs: Option<crate::outputs::MeasuredOutputs>,
+    /// The pre-release check and the release on that file (brief 027).
+    pub release: Option<crate::release::MeasuredRelease>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -305,6 +307,14 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         ));
     }
     for r in rows {
+        let Some(o) = &r.release else { continue };
+        out.push_str(&format!(
+            "\nRelease on {} {} ({} check rows): prerelease {:.2} ms, orphanupd {:.2} ms (orphan work {:.3} ms), \
+             release {:.1} s ({} sheets, {} files), rerelease {:.1} s\n",
+            r.tier, r.variant, o.rows, o.prerelease_ms, o.orphanupd_ms, o.orphanwork_ms, o.release_s, o.sheets, o.files, o.rerelease_s
+        ));
+    }
+    for r in rows {
         let Some(c) = &r.compression else { continue };
         out.push_str(&format!(
             "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of chunks uncompressed\n",
@@ -443,6 +453,10 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
                     "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms, "print_ms": o.print_ms,
                     "print_sheets": o.print_sheets, "work": o.work, "devices": o.devices, "inside": o.inside,
+                })),
+                "release": r.release.as_ref().map(|o| json!({
+                    "prerelease_ms": o.prerelease_ms, "orphanupd_ms": o.orphanupd_ms, "orphanwork_ms": o.orphanwork_ms,
+                    "release_s": o.release_s, "rerelease_s": o.rerelease_s, "sheets": o.sheets, "files": o.files, "rows": o.rows,
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
