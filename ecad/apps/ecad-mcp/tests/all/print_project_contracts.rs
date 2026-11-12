@@ -139,3 +139,48 @@ fn with_writes_off_newpage_and_pageprops_are_refused() {
     }
     assert_eq!(c.log(), before);
 }
+
+/// The kept Checks rows of `kind` (the list the Checks tab shows, updated per commit).
+fn kept(c: &mut Client, kind: ecad_cadcraft::checks::Kind) -> usize {
+    c.s.with_session(|s, h| h.configure(s, |p| p.checks().rows().filter(|r| r.kind == kind).count()).unwrap()).unwrap()
+}
+
+#[test]
+fn the_title_block_row_follows_a_sheet_change() {
+    let mut c = writer();
+    let page = c.doc().page_order[0].hex();
+    c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
+    let k = coil_with_contacts(&mut c, [440.0, 100.0]);
+    c.exec("mirrormove", json!({"component": k, "at": [450.0, 40.0]}));
+    let over = ecad_cadcraft::checks::Kind::TableOverTitle;
+    assert_eq!(kept(&mut c, over), 1, "inside the A2 frame, over its title block");
+    // The page becomes A3: the frame ends at 410 mm, the table is outside it.
+    c.exec("pageprops", json!({"page": page, "sheet": "A3"}));
+    assert_eq!(kept(&mut c, over), 0, "page sheet A2 -> A3");
+    c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
+    assert_eq!(kept(&mut c, over), 1, "page sheet A3 -> A2");
+    // The same through the project's sheet (the page inherits it).
+    c.exec("pageprops", json!({"page": page, "sheet": "project"}));
+    c.exec("projectprops", json!({"sheet": "A2"}));
+    assert_eq!(kept(&mut c, over), 1, "project sheet A2");
+    c.exec("projectprops", json!({"sheet": "A3"}));
+    assert_eq!(kept(&mut c, over), 0, "project sheet A2 -> A3");
+    c.exec("projectprops", json!({"sheet": "A2"}));
+    assert_eq!(kept(&mut c, over), 1, "project sheet A3 -> A2");
+}
+
+#[test]
+fn continuation_rows_are_kept_and_an_unrelated_edit_leaves_them_alone() {
+    let mut c = writer();
+    c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
+    let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.outputs().continuation_builds).unwrap()).unwrap();
+    let start = builds(&mut c);
+    // A wire on a drawing page changes no page number or sheet count.
+    let first = c.doc().page_order[0].hex();
+    c.exec("openpage", json!({"page": first}));
+    c.exec("wire", json!({"points": [[20, 100], [80, 100]]}));
+    assert_eq!(builds(&mut c), start, "an unrelated edit works nothing out");
+    // A new page can move the contents' sheet count: worked out once.
+    c.exec("newpage", json!({}));
+    assert_eq!(builds(&mut c), start + 1);
+}

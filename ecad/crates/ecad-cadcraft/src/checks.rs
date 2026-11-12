@@ -1223,6 +1223,11 @@ impl Scope {
                 // numbering and reference style change where rows say they are; label looks
                 // (colour style, height), tag settings and units change nothing here.
                 Op::SetProjectSettings { before, after } => {
+                    // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
+                    // title block when the project's sheet changes.
+                    if before.sheet != after.sheet {
+                        self.components.extend(crate::xref::placed_tables(doc));
+                    }
                     let (b, a) = (&before.wiring, &after.wiring);
                     if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
                     {
@@ -1232,6 +1237,16 @@ impl Scope {
                         || before.reference_style != after.reference_style
                     {
                         self.relocate = true;
+                    }
+                }
+                // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
+                // are checked again for a table over the title block.
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
+                    self.relocate = true;
+                    for (_, r) in doc.representations_on(*p) {
+                        if let Subject::Component(c) = r.subject {
+                            self.components.insert(c);
+                        }
                     }
                 }
                 // Page numbers, folders and the page order change where rows say they are (brief
@@ -1355,6 +1370,5 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
     let mut rows: Vec<Check> = Checks::build(doc, tol).rows().cloned().collect();
     rows.extend(outputs.checks());
-    rows.extend(crate::generated::continuation_checks(doc, Some(outputs)));
     sort(doc, rows)
 }

@@ -231,7 +231,9 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     h.activate(bom);
     let shown = h.pv(|p, pg| pg.entities_of(p, bom));
     assert!(
-        shown.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "?") && e.common.color == cadcraft_engine::doc::color::Color::Index(2)),
+        shown
+            .iter()
+            .any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "?") && e.common.color == cadcraft_engine::doc::color::Color::Index(2)),
         "on screen the mark stays ACI 2"
     );
     // Print Book's words unchanged.
@@ -298,7 +300,8 @@ fn ac5_an_automatic_table_clears_the_title_block() {
     let v = h.run("contacts", json!({"component": k1.hex()})).unwrap();
     let shown = v["table"]["shown"].as_str().unwrap_or_default().to_string();
     assert!(shown != "right" && shown != "lifted", "{v}");
-    let top = h.p(|p| xref::table(p.ledger.document(), &mut xref::Places::new(p.ledger.document()), &xref::device(p.ledger.document(), k1)).map(|t| t.top));
+    let top =
+        h.p(|p| xref::table(p.ledger.document(), &mut xref::Places::new(p.ledger.document()), &xref::device(p.ledger.document(), k1)).map(|t| t.top));
     assert_eq!(top.map(|t| t.x), Some(100.0), "under the coil as today");
     let _ = table_box(&mut h, p1, k1);
     // Moving the low coil's head up: the table follows and goes back under it.
@@ -347,7 +350,12 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
 
 fn sheet_numbers(h: &mut H, page: PageId) -> Vec<String> {
     let v = h.run("pageprops", json!({"page": page.hex()})).unwrap();
-    v["sheet_numbers"].as_array().unwrap_or_else(|| panic!("pageprops gives sheet_numbers: {v}")).iter().map(|x| x.as_str().unwrap().to_string()).collect()
+    v["sheet_numbers"]
+        .as_array()
+        .unwrap_or_else(|| panic!("pageprops gives sheet_numbers: {v}"))
+        .iter()
+        .map(|x| x.as_str().unwrap().to_string())
+        .collect()
 }
 
 /// AC7 (design §5.1, §5.2): continuation sheets are numbered in sequence on every place they show.
@@ -406,7 +414,7 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     // A page right after the last sheet, then the plan grows onto it.
     let next = (400 + n).to_string();
     h.run("pageprops", json!({"page": other.hex(), "number": next})).unwrap();
-    let strip = h.doc().components.iter().find(|(_, c)| c.properties.get("terminals").is_some()).map(|(k, _)| *k).unwrap();
+    let strip = h.doc().components.iter().find(|(_, c)| c.properties.contains_key("terminals")).map(|(k, _)| *k).unwrap();
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
@@ -543,7 +551,7 @@ fn ac10_revision_columns_and_custom_fields() {
 /// transaction that one undo takes back; identity ignores case and the dash.
 #[test]
 fn ac11_tag_style_rewrites_in_one_undoable_step() {
-    let mut h = H::new(0x33_11_1);
+    let mut h = H::new(0x0003_3111);
     let k1: ComponentId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
     let k2: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component");
     let q1: ComponentId = id(&place(&mut h, "mcb1", (200.0, 150.0)), "component");
@@ -571,7 +579,12 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert_eq!(tag(&mut h, k2), "M02a");
     // Identity unchanged: -k1 is K01's tag.
     let e = h.run("setprop", json!({"component": q1.hex(), "key": "tag", "value": "-k1"}));
-    assert!(e.is_err() || tag(&mut h, k1) != "K01" || h.doc().components.values().filter(|c| c.properties.get("tag").is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1, "conflict rules unchanged");
+    assert!(
+        e.is_err()
+            || tag(&mut h, k1) != "K01"
+            || h.doc().components.values().filter(|c| c.properties.get("tag").is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
+        "conflict rules unchanged"
+    );
     // Dash yes with typed case.
     h.run("projectprops", json!({"tag_dash": true})).unwrap();
     assert_eq!(tag(&mut h, k2), "-M02a");
@@ -615,9 +628,7 @@ fn ac13_table_and_hatch_are_refused_in_clean_words() {
     );
     let e = refused(&mut h, "hatch", json!({"points": [[0, 40], [10, 40], [10, 50]]}));
     assert!(e.contains("Hatches can't be placed on ECAD pages yet."), "{e}");
-    for e in [&e] {
-        assert!(!e.contains("kinds are") && !e.contains("hatchs"), "{e}");
-    }
+    assert!(!e.contains("kinds are") && !e.contains("hatchs"), "{e}");
     h.check();
 }
 
@@ -651,7 +662,7 @@ fn ac14_a_project_without_033_settings_looks_as_before() {
 /// (an edit after the issue), and its new keys stay absent until set.
 #[test]
 fn ac14_an_old_project_shows_the_marker_only_by_the_pending_rule() {
-    let mut h = H::new(0x33_14_1);
+    let mut h = H::new(0x0003_3141);
     let page = h.first_page();
     issue(&mut h, "First issue", "2026-11-10");
     assert!(!frame_texts(&mut h, page).iter().any(|t| t == "A*"));
@@ -666,7 +677,7 @@ fn ac14_an_old_project_shows_the_marker_only_by_the_pending_rule() {
 /// still draws.
 #[test]
 fn ac15_hostile_settings_never_panic() {
-    let mut h = H::new(0x33_15_1);
+    let mut h = H::new(0x0003_3151);
     let page = h.first_page();
     issue(&mut h, "First issue", "2026-11-10");
     let thousand = (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(", ");

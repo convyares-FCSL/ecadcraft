@@ -1345,9 +1345,7 @@ impl Scope {
                     self.devices.extend(doc.components_using(*id));
                 }
                 // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
-                Op::SetProperty { object: ObjectRef::Project, key, .. }
-                    if key == crate::defaults::text::TABLE_HEIGHT.key || key == crate::defaults::text::FONT.key =>
-                {
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if table_text_key(key) => {
                     self.wide = true;
                 }
                 Op::SetProjectSettings { before, after }
@@ -1757,6 +1755,23 @@ pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageI
         .collect()
 }
 
+/// Whether a project key sizes every contact table's text, so every table is placed again (the
+/// xref map's wide case, design 033 §9.3): the table text's height and weight, and the font.
+pub fn table_text_key(key: &str) -> bool {
+    use crate::defaults::text::{FONT, TABLE_HEIGHT, TABLE_WEIGHT};
+    [TABLE_HEIGHT.key, TABLE_WEIGHT.key, FONT.key].contains(&key)
+}
+
+/// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
+/// or off the title block. O(components), on a project sheet change only.
+pub fn placed_tables(doc: &Document) -> Vec<ComponentId> {
+    doc.components
+        .iter()
+        .filter(|(_, c)| c.properties.get(MIRROR_KEY).is_some_and(|v| matches!(parse_mirror(v), Ok(Placement::At(_)))))
+        .map(|(id, _)| *id)
+        .collect()
+}
+
 /// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
 /// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
 pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt)> {
@@ -1781,6 +1796,14 @@ pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_table_text_keys_are_the_wide_case() {
+        for k in ["text.table.height", "text.table.weight", "text.font"] {
+            assert!(table_text_key(k), "{k}");
+        }
+        assert!(!table_text_key("text.tag.height"));
+    }
 
     #[test]
     fn the_offer_grammar() {
