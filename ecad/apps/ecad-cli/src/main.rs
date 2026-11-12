@@ -1,4 +1,4 @@
-//! `ecad`: `ecad upgrade <file>` and `ecad inspect <file> <view>` (see [`ecad_cli::USAGE`]).
+//! `ecad`: `ecad upgrade <file>` (see [`ecad_cli::USAGE`]).
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

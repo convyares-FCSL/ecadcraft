@@ -171,6 +171,7 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
             source_head: StepPoint { seq: 1, chain: [1; 32] },
             ancestor: BranchPoint { branch: main.0, seq: 0, chain: [2; 32] },
         }),
+        tag_rule: None,
         extra: Default::default(),
     };
     let mut w = proj.store().writer().unwrap();

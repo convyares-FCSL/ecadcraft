@@ -143,6 +143,11 @@ pub fn note(high: &mut HighWater, t: &str) {
     }
 }
 
+/// The version of the rule [`note_ops`] counts by (brief 029, FP1): 1 counted device tags only
+/// (before brief 026); 2 also counts cable tags and `numbering.high.<P>` resets. A file records the
+/// rule its cached marks were computed with, and marks of an older rule are recomputed on open.
+pub const TAG_RULE: u32 = 2;
+
 /// Count every tag `ops` write or remove (undone ones included), in order.
 ///
 /// # Semantics

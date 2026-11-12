@@ -1,21 +1,29 @@
 //! ECAD workspace checks.
 //!
 //! - `layers`: document crates must not depend on CADCraft; only the adapter may use the engine;
-//!   only UI crates and apps may use UI toolkits (principle P10, proposal §8).
+//!   only UI crates and apps may use UI toolkits (principle P10, proposal §8). Developer tools
+//!   (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product crate depends
+//!   on one except through its own `dev` feature, dev features are read only in a crate's `dev`
+//!   module, and no product source reads a file under `dev/`.
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`.
 //! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches, wasm.
 //! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
-//! - `test-changed`: the fast tests of the crates changed since `dev` and of every crate that
-//!   depends on them (brief 017). The worker's default check.
+//! - `test-changed`: the fast tests of the crates changed since the last push (the upstream
+//!   branch; `--base` for another ref), and with `--with-dependents` of every crate that depends
+//!   on them (brief 017; process clean-up, 2026-11-12). The worker's default check.
+//! - `clean-builds`: delete the build folders of every checkout under a folder, skipping those in
+//!   use, and remove worktrees whose branch is merged into `origin/dev` (see [`clean`]).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use serde_json::Value;
+
+mod clean;
 
 /// How an ECAD crate may depend on others.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -26,6 +34,9 @@ enum Class {
     Adapter,
     /// May use anything.
     Ui,
+    /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
+    /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
+    Dev,
     Exempt,
 }
 
@@ -40,7 +51,26 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-trial", Class::Ui),
     // Headless by construction: CADCraft crates below the UI only.
     ("ecad-mcp", Class::Adapter),
+    ("ecad-inspector", Class::Dev),
     ("ecad-xtask", Class::Exempt),
+];
+
+/// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
+/// trial app's debugger, while the trial is the only app).
+const DEV_BY_DEFAULT: &[&str] = &["ecad-trial"];
+
+/// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
+const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "translate-oracle", "fault-injection", "test-ops"];
+
+/// Files that still read a dev feature outside their crate's `dev` module, with the brief that
+/// will move the code (design 029 §12.4). This list only shrinks: an entry whose file no longer
+/// needs it fails `layers`, and a new place is a violation.
+const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
+    ("crates/ecad-cadcraft/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/project.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/translate.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
 const UI_CRATES: &[&str] = &["cadcraft-ui-egui", "craft-ui", "egui", "eframe", "egui-wgpu", "wgpu", "winit", "rfd"];
@@ -57,15 +87,60 @@ fn run(cmd: &mut Command) -> Result<(), String> {
     if status.success() { Ok(()) } else { Err(format!("{cmd:?} failed ({status})")) }
 }
 
+fn class_of(name: &str) -> Option<Class> {
+    TABLE.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
+}
+
+/// Whether `manifest` (a `Cargo.toml` path) is under the workspace's `dev/` folder, `root` being
+/// the workspace folder.
+fn under_dev(root: &str, manifest: &str) -> bool {
+    let norm = |s: &str| s.replace('\\', "/").to_lowercase();
+    let (root, manifest) = (norm(root), norm(manifest));
+    manifest.strip_prefix(root.trim_end_matches('/')).is_some_and(|rest| rest.starts_with("/dev/"))
+}
+
+/// Why a product crate's dependency on the `Dev` crate `dep` (the entry `d` of package `p`) is not
+/// allowed, if it is not: it must be optional, enabled only by the crate's own `dev` feature
+/// (through `dep:`, so no feature named after it), and `dev` must not be on by default.
+fn dev_dependency_problem(p: &Value, d: &Value, dep: &str) -> Option<String> {
+    let name = p["name"].as_str().unwrap_or_default();
+    if d["kind"].as_str() == Some("dev") || d["optional"].as_bool() != Some(true) {
+        return Some(format!("{name} must not depend on the developer tool {dep} (only optionally, through its `dev` feature)"));
+    }
+    let features = p["features"].as_object();
+    let enables = |list: &Value| {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .any(|f| f == dep || f == format!("dep:{dep}") || f.starts_with(&format!("{dep}/")) || f.starts_with(&format!("{dep}?/")))
+    };
+    let enablers: Vec<&String> = features.into_iter().flatten().filter(|(k, v)| enables(v) || k.as_str() == dep).map(|(k, _)| k).collect();
+    if enablers.iter().any(|k| k.as_str() != "dev") {
+        return Some(format!("{name}: only its `dev` feature may enable {dep} (enabled by {enablers:?}; use `dev = [\"dep:{dep}\"]`)"));
+    }
+    let on_by_default =
+        features.and_then(|f| f.get("default")).and_then(Value::as_array).is_some_and(|d| d.iter().any(|x| x.as_str() == Some("dev")));
+    if on_by_default && !DEV_BY_DEFAULT.contains(&name) {
+        return Some(format!("{name}: its `dev` feature (which enables {dep}) must not be on by default"));
+    }
+    None
+}
+
 fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
     let pkgs = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
+    let root = meta["workspace_root"].as_str().unwrap_or_default();
     let mut out = Vec::new();
     for p in pkgs {
         let name = p["name"].as_str().unwrap_or_default();
-        let Some(class) = TABLE.iter().find(|(n, _)| *n == name).map(|(_, c)| *c) else {
+        let Some(class) = class_of(name) else {
             out.push(format!("{name}: not registered in ecad/xtask layering table"));
             continue;
         };
+        let in_dev = under_dev(root, p["manifest_path"].as_str().unwrap_or_default());
+        if in_dev != (class == Class::Dev) {
+            out.push(format!("{name}: a crate is under ecad/dev/ exactly when its class is Dev (it is {class:?})"));
+        }
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             let dev = d["kind"].as_str() == Some("dev");
@@ -74,11 +149,211 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let bad = match class {
                 Class::Core => (cadcraft || ui) && !dev,
                 Class::Adapter => ui && !dev,
-                Class::Ui | Class::Exempt => false,
+                Class::Ui | Class::Dev | Class::Exempt => false,
             };
             if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
+            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui);
+            if product
+                && class_of(dep) == Some(Class::Dev)
+                && let Some(why) = dev_dependency_problem(p, d, dep)
+            {
+                out.push(why);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The places in one product source file (`rel`: its path from the workspace folder, `/`
+/// separated) that read a dev feature outside the crate's `dev` module (design 029 §12.3 rule 2),
+/// as `rel:line: text`.
+///
+/// # Semantics
+/// A dev feature is one of [`DEV_FEATURES`], written `feature = "<f>"`. It may appear in
+/// `src/dev.rs` or `src/dev/**`, or on an attribute line directly before a single line that uses
+/// `dev::` (a one-line hook, ending in `;` or `,`) or declares `mod dev;`. Comment lines are
+/// skipped.
+fn dev_feature_places(rel: &str, text: &str) -> Vec<String> {
+    let rel = rel.replace('\\', "/");
+    if rel.contains("/src/dev/") || rel.ends_with("/src/dev.rs") {
+        return Vec::new();
+    }
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let code = line.trim();
+        if code.starts_with("//") {
+            continue;
+        }
+        let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        let reads = DEV_FEATURES.iter().any(|f| compact.contains(&format!("feature=\"{f}\"")));
+        if !reads {
+            continue;
+        }
+        let attribute = code.starts_with("#[") && code.ends_with(']');
+        let next = lines.iter().skip(i + 1).map(|l| l.trim()).find(|l| !l.is_empty() && !l.starts_with("#["));
+        let hook = next.is_some_and(|n| {
+            let one_line_use = n.contains("dev::") && (n.ends_with(';') || n.ends_with(','));
+            let module = matches!(n, "mod dev;" | "pub mod dev;" | "pub(crate) mod dev;");
+            one_line_use || module
+        });
+        if !(attribute && hook) {
+            out.push(format!("{rel}:{}: {code}", i + 1));
+        }
+    }
+    out
+}
+
+/// A path as components, `.` and `..` resolved (never above the start).
+fn normalise(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// `text` without `//` comments (a `//` inside a string literal is kept).
+fn strip_line_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let mut in_str = false;
+        let mut prev = '\0';
+        let mut cut = line.len();
+        for (i, c) in line.char_indices() {
+            if c == '"' && prev != '\\' {
+                in_str = !in_str;
+            } else if !in_str && c == '/' && prev == '/' {
+                cut = i - 1;
+                break;
+            }
+            prev = c;
+        }
+        out.push_str(line.get(..cut).unwrap_or(line));
+        out.push('\n');
+    }
+    out
+}
+
+/// The string literals in `span`, in order.
+fn literals(span: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur: Option<String> = None;
+    let mut prev = '\0';
+    for c in span.chars() {
+        match (&mut cur, c) {
+            (None, '"') => cur = Some(String::new()),
+            (Some(s), '"') if prev != '\\' => {
+                out.push(std::mem::take(s));
+                cur = None;
+            }
+            (Some(s), c) => s.push(c),
+            (None, _) => {}
+        }
+        prev = c;
+    }
+    out
+}
+
+/// The places in one product source file (`file`, in the crate folder `krate`, under `root`, the
+/// workspace folder) that read a file under `root/dev/` (design 029 §12.3 rule 3): an
+/// `include_str!`, `include_bytes!` or `include!` invocation, or a `#[path]` attribute, read whole
+/// (it may span lines), with its string literals joined; a path built on `CARGO_MANIFEST_DIR` is
+/// resolved from the crate folder, any other from the file's folder. Comments are skipped.
+fn dev_file_reads(root: &Path, krate: &Path, file: &Path, text: &str) -> Vec<String> {
+    let dev = normalise(&root.join("dev"));
+    let dir = file.parent().unwrap_or(root);
+    let code = strip_line_comments(text);
+    let mut out = Vec::new();
+    for marker in ["include_str!", "include_bytes!", "include!", "#[path"] {
+        let mut from = 0;
+        while let Some(found) = code.get(from..).and_then(|c| c.find(marker)) {
+            let at = from + found;
+            from = at + marker.len();
+            // The invocation runs to the matching close of its first bracket.
+            let rest = code.get(from..).unwrap_or_default();
+            let mut depth = 0i32;
+            let mut end = rest.len();
+            for (i, c) in rest.char_indices() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => {
+                        depth -= 1;
+                        if depth <= 0 {
+                            end = i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let span = rest.get(..end).unwrap_or(rest);
+            let joined: String = literals(span).into_iter().filter(|l| l != "CARGO_MANIFEST_DIR").collect();
+            if joined.is_empty() {
+                continue;
+            }
+            let target = if span.contains("CARGO_MANIFEST_DIR") { krate.join(joined.trim_start_matches(['/', '\\'])) } else { dir.join(&joined) };
+            if normalise(&target).starts_with(&dev) {
+                let line = code.get(..at).map_or(0, |c| c.matches('\n').count()) + 1;
+                let shown = text.lines().nth(line - 1).unwrap_or_default().trim();
+                out.push(format!("{}:{line}: {shown}", file.display()));
+            }
+        }
+    }
+    out
+}
+
+/// Every `.rs` file under `dir`.
+fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            rust_files(&p, out);
+        } else if p.extension().is_some_and(|x| x == "rs") {
+            out.push(p);
+        }
+    }
+}
+
+/// Rules 2 and 3 of design 029 §12.3 over the product crates' `src/` folders in `meta`: the
+/// violations, and the allowlist entries no longer needed.
+fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        if !matches!(class_of(name), Some(Class::Core | Class::Adapter | Class::Ui)) {
+            continue;
+        }
+        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            let places = dev_feature_places(&rel, &text);
+            match DEV_FEATURE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                Some((path, _)) if !places.is_empty() => {
+                    allowed_used.insert(path);
+                }
+                _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
+            }
+            out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
+        }
+    }
+    for (path, brief) in DEV_FEATURE_ALLOWLIST {
+        if !allowed_used.contains(path) {
+            out.push(format!("{path}: in the dev-feature allowlist ({brief}) but no longer needs it; remove the entry"));
         }
     }
     Ok(out)
@@ -91,7 +366,8 @@ fn layers() -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
-    let v = layer_violations(&meta)?;
+    let mut v = layer_violations(&meta)?;
+    v.extend(source_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -170,10 +446,17 @@ fn ci() -> Result<(), String> {
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed>
-  test-changed [--base <ref>] [--dry-run] [-- <test arguments>]
-        fast tests of the crates changed since <ref> (default dev, committed or not) and of
-        every crate that depends on them; --dry-run only names the crates
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed|clean-builds>
+  test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
+        fast tests of the crates changed since <ref> (default: the branch's upstream, so what
+        was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
+        committed or not); --with-dependents also tests every crate that depends on them (they
+        run at the QA gate until CI runs them on pull requests into dev);
+        --dry-run only names the crates
+  clean-builds --root <folder> [--dry-run]
+        delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
+        skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
+        into origin/dev (never with uncommitted changes); print the space freed
   demo [<path.ecad>] [--force]
         write the demo project (default C:\\dev\\ecad-projects\\demo.ecad, ~/ecad-projects/demo.ecad
         elsewhere) from ecad/examples/demo/commands.jsonl; an existing file needs --force
@@ -217,9 +500,9 @@ const READ_BY: &[(&str, &str)] = &[
 ///
 /// # Semantics
 ///
-/// A changed file selects the innermost local package whose folder holds it; then every workspace
-/// member that depends on a selected package, directly or not, through any kind of dependency (dev
-/// included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
+/// A changed file selects the innermost local package whose folder holds it; then, with
+/// `with_dependents`, every workspace member that depends on a selected package, directly or not,
+/// through any kind of dependency (dev included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
 /// upstream change selects the ECAD crates that use it. The files [`affects_everything`] names
 /// (the workspace manifest and lock file, the repository root manifest, cargo configuration and
 /// toolchain files) select every member. Markdown files and files in no package
@@ -230,7 +513,7 @@ const READ_BY: &[(&str, &str)] = &[
 /// # Errors
 ///
 /// `meta` has no package list or no resolve graph.
-fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<String>, String> {
+fn crates_to_test(meta: &Value, repo: &str, changed: &[String], with_dependents: bool) -> Result<Vec<String>, String> {
     let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
     let repo = norm(repo);
     let relative = |dir: &str| dir.strip_prefix(&repo).map(|r| format!("{}/", r.trim_start_matches('/')));
@@ -273,20 +556,22 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             }
         }
     }
-    // Everything that depends on a selected package, to a fixed point (the graph is finite and
-    // each pass adds at least one package, so this ends).
+    // With dependents: everything that depends on a selected package, to a fixed point (the
+    // graph is finite and each pass adds at least one package, so this ends).
     let nodes = meta["resolve"]["nodes"].as_array().ok_or("cargo metadata: no resolve graph")?;
-    loop {
-        let before = hit.len();
-        for n in nodes {
-            let Some(id) = n["id"].as_str() else { continue };
-            let deps = n["deps"].as_array().into_iter().flatten().filter_map(|d| d["pkg"].as_str());
-            if !hit.contains(id) && deps.clone().any(|d| hit.contains(d)) {
-                hit.insert(id);
+    if with_dependents {
+        loop {
+            let before = hit.len();
+            for n in nodes {
+                let Some(id) = n["id"].as_str() else { continue };
+                let deps = n["deps"].as_array().into_iter().flatten().filter_map(|d| d["pkg"].as_str());
+                if !hit.contains(id) && deps.clone().any(|d| hit.contains(d)) {
+                    hit.insert(id);
+                }
             }
-        }
-        if hit.len() == before {
-            break;
+            if hit.len() == before {
+                break;
+            }
         }
     }
     let mut out: Vec<String> =
@@ -307,9 +592,11 @@ fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
     Ok(String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
 }
 
-/// `cargo xtask test-changed [--base <ref>] [--dry-run] [-- <test arguments>]`: runs
-/// `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge base
-/// with `<ref>` (default `dev`, else `origin/dev`), committed, staged, unstaged or untracked.
+/// `cargo xtask test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]`:
+/// runs `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge
+/// base with `<ref>` (default: the branch's upstream, `@{upstream}`, so what was not pushed yet;
+/// without one, `origin/dev`, so everything since the branch left it), committed, staged,
+/// unstaged or untracked. Dependents only with `--with-dependents`.
 fn test_changed(args: &[String]) -> Result<(), String> {
     let (ours, passed) = match args.iter().position(|a| a == "--") {
         Some(i) => (args.get(..i).unwrap_or_default(), args.get(i + 1..).unwrap_or_default()),
@@ -317,11 +604,13 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     };
     let mut base: Option<&str> = None;
     let mut dry_run = false;
+    let mut with_dependents = false;
     let mut it = ours.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--base" => base = Some(it.next().ok_or("--base needs a git ref")?),
             "--dry-run" => dry_run = true,
+            "--with-dependents" => with_dependents = true,
             other => return Err(format!("test-changed: unknown argument {other:?}\n{USAGE}")),
         }
     }
@@ -329,10 +618,12 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     let repo = root.parent().ok_or("no repository root")?;
     let base = match base {
         Some(b) => b.to_string(),
-        None => ["dev", "origin/dev"]
+        // The upstream (what was not pushed yet); a branch never pushed: since it left `origin/dev`
+        // (the diff below is from the merge base).
+        None => ["@{upstream}", "origin/dev", "HEAD"]
             .into_iter()
             .find(|b| git_lines(repo, &["rev-parse", "--verify", "--quiet", b]).is_ok())
-            .ok_or("test-changed: no `dev` or `origin/dev` branch; pass --base <ref>")?
+            .ok_or("test-changed: no upstream, no origin/dev and no HEAD; pass --base <ref>")?
             .to_string(),
     };
     let mut changed: BTreeSet<String> = BTreeSet::new();
@@ -345,8 +636,9 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     }
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let changed: Vec<String> = changed.into_iter().collect();
-    let crates = crates_to_test(&meta, &repo.to_string_lossy(), &changed)?;
-    println!("test-changed: {} files changed since {base}; crates: {}", changed.len(), crates.join(" "));
+    let crates = crates_to_test(&meta, &repo.to_string_lossy(), &changed, with_dependents)?;
+    let scope = if with_dependents { "crates and their dependents" } else { "crates" };
+    println!("test-changed: {} files changed since {base}; {scope}: {}", changed.len(), crates.join(" "));
     if crates.is_empty() {
         println!("test-changed: nothing to test");
         return Ok(());
@@ -376,6 +668,7 @@ fn main() -> ExitCode {
         "bench" => bench(rest),
         "demo" => demo(rest),
         "test-changed" => test_changed(rest),
+        "clean-builds" => clean::clean_builds(rest, &ecad_root()),
         _ => Err(USAGE.into()),
     };
     match r {
@@ -398,9 +691,121 @@ mod tests {
             {"name": "ecad-cadcraft", "dependencies": [{"name": "cadcraft-engine", "kind": null}, {"name": "egui", "kind": null}]},
             {"name": "ecad-store", "dependencies": [{"name": "cadcraft-engine", "kind": "dev"}]},
             {"name": "mystery", "dependencies": []}
-        ]});
+        ], "workspace_root": ""});
         let v = layer_violations(&meta).unwrap();
         assert_eq!(v.len(), 3, "{v:?}");
+    }
+
+    /// Design 029 §12.3 rule 1 (and 4): a product crate may depend on a `dev/` crate only
+    /// optionally, through its own `dev` feature, never on by default (except the trial, Q1); a
+    /// crate is under `dev/` exactly when its class is Dev.
+    #[test]
+    fn product_crates_reach_developer_tools_only_through_their_dev_feature() {
+        let pkg = |name: &str, dir: &str, deps: Value, features: Value| serde_json::json!({"name": name, "manifest_path": format!("C:\\w\\{dir}\\Cargo.toml"), "dependencies": deps, "features": features});
+        let insp = |optional: bool, kind: Option<&str>| serde_json::json!([{"name": "ecad-inspector", "kind": kind, "optional": optional}]);
+        let rows: &[(Value, usize, &str)] = &[
+            (pkg("ecad-file", "crates\\ecad-file", insp(false, None), serde_json::json!({})), 1, "a plain dependency"),
+            (pkg("ecad-file", "crates\\ecad-file", insp(false, Some("dev")), serde_json::json!({})), 1, "a dev-dependency"),
+            (pkg("ecad-file", "crates\\ecad-file", insp(true, None), serde_json::json!({"dev": ["dep:ecad-inspector"]})), 0, "optional, by `dev`"),
+            (
+                pkg(
+                    "ecad-file",
+                    "crates\\ecad-file",
+                    insp(true, None),
+                    serde_json::json!({"dev": ["dep:ecad-inspector"], "extra": ["ecad-inspector/x"]}),
+                ),
+                1,
+                "also enabled by another feature",
+            ),
+            (
+                pkg(
+                    "ecad-file",
+                    "crates\\ecad-file",
+                    insp(true, None),
+                    serde_json::json!({"ecad-inspector": ["dep:ecad-inspector"], "dev": ["ecad-inspector"]}),
+                ),
+                1,
+                "an implicit feature named after it",
+            ),
+            (
+                pkg("ecad-file", "crates\\ecad-file", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
+                1,
+                "dev on by default",
+            ),
+            (
+                pkg("ecad-trial", "apps\\ecad-trial", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
+                0,
+                "the trial's dev on by default (Q1)",
+            ),
+            (pkg("ecad-inspector", "crates\\ecad-inspector", serde_json::json!([]), serde_json::json!({})), 1, "a Dev crate outside dev/"),
+            (pkg("ecad-file", "dev\\ecad-file", serde_json::json!([]), serde_json::json!({})), 1, "a product crate inside dev/"),
+            (
+                pkg("ecad-inspector", "dev\\ecad-inspector", serde_json::json!([{"name": "egui", "kind": null}]), serde_json::json!({})),
+                0,
+                "a Dev crate may use anything",
+            ),
+        ];
+        for (p, want, what) in rows {
+            let meta = serde_json::json!({"workspace_root": "C:\\w", "packages": [p]});
+            let v = layer_violations(&meta).unwrap();
+            assert_eq!(v.len(), *want, "{what}: {v:?}");
+        }
+    }
+
+    /// Rule 2 (and 4): dev features are read only in the crate's `dev` module, or on the attribute
+    /// line before a one-line hook into it.
+    #[test]
+    fn dev_features_are_read_only_in_the_dev_module() {
+        let rows: &[(&str, &str, usize)] = &[
+            ("crates/c/src/dev.rs", "fn f() -> bool { cfg!(feature = \"verify-invariants\") }", 0),
+            ("crates/c/src/dev/oracle.rs", "#[cfg(feature = \"translate-oracle\")]\nfn big() {\n}\n", 0),
+            ("crates/c/src/lib.rs", "#[cfg(feature = \"test-ops\")]\nmod dev;\n", 0),
+            ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    crate::dev::maybe_panic(at);\n", 0),
+            ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    if crate::dev::fail() {\n        return;\n    }\n", 1),
+            ("crates/c/src/ledger.rs", "fn f() -> bool { cfg!(feature = \"verify-invariants\") }", 1),
+            ("crates/c/src/ledger.rs", "#[cfg(any(test, feature=\"dev\"))]\nfn helper() {}\n", 1),
+            ("crates/c/src/ledger.rs", "// #[cfg(feature = \"dev\")] in a comment\n#[cfg(feature = \"serde\")]\nfn f() {}\n", 0),
+        ];
+        for (rel, text, want) in rows {
+            let v = dev_feature_places(rel, text);
+            assert_eq!(v.len(), *want, "{rel}: {text:?}: {v:?}");
+        }
+    }
+
+    /// Rule 3 (and 4): no product source reads a file under `dev/`.
+    #[test]
+    fn product_sources_do_not_read_files_under_dev() {
+        let root = Path::new("C:/w");
+        let krate = Path::new("C:/w/apps/ecad-mcp");
+        let file = Path::new("C:/w/apps/ecad-mcp/src/demo.rs");
+        let rows: &[(&str, usize)] = &[
+            // Tester 029 F1: the path on the next line, `include!`, and a path built on the crate
+            // folder.
+            ("pub const T: &str = include_str!(\n    \"../../../dev/ecad-inspector/page/index.html\"\n);", 1),
+            ("include!(\"../../../dev/ecad-inspector/src/text.rs\");", 1),
+            ("const P: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../dev/ecad-inspector/page/index.html\"));", 1),
+            ("const Q: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../examples/demo/commands.jsonl\"));", 0),
+            ("let url = \"http://x\"; // include_str!(\"../../../dev/x\")", 0),
+            ("pub const C: &str = include_str!(\"../../../examples/demo/commands.jsonl\");", 0),
+            ("pub const P: &str = include_str!(\"../../../dev/ecad-inspector/page/index.html\");", 1),
+            ("static B: &[u8] = include_bytes!(\"../../../dev/x.bin\");", 1),
+            ("#[path = \"../../../dev/ecad-inspector/src/text.rs\"]", 1),
+            ("// include_str!(\"../../../dev/x\") in a comment", 0),
+        ];
+        for (text, want) in rows {
+            assert_eq!(dev_file_reads(root, krate, file, text).len(), *want, "{text}");
+        }
+    }
+
+    /// Rules 1–3 on this workspace: no violation, and every allowlist entry is still needed.
+    #[test]
+    fn this_workspace_keeps_developer_tools_apart() {
+        let root = ecad_root();
+        let out = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1", "--no-deps"]).current_dir(&root).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(layer_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(source_violations(&meta).unwrap(), Vec::<String>::new());
     }
 
     /// A small graph: `core` ← `mid` ← `app`, `mid` ← `bench` (dev only), `lone`, and an upstream
@@ -445,7 +850,22 @@ mod tests {
         ];
         for (changed, want) in rows {
             let changed: Vec<String> = changed.iter().map(|s| s.to_string()).collect();
-            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed).unwrap(), *want, "{changed:?}");
+            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed, true).unwrap(), *want, "{changed:?}");
+        }
+    }
+
+    /// Without `--with-dependents` (the worker's default), only the changed crates themselves.
+    #[test]
+    fn test_changed_without_dependents_picks_only_the_changed_crates() {
+        let rows: &[(&[&str], &[&str])] = &[
+            (&["ws/crates/core/src/lib.rs"], &["core"]),
+            (&["crates/up/src/lib.rs"], &[]),
+            (&["ws/apps/app/tests/all/x.rs", "ws/crates/mid/src/m.rs"], &["app", "mid"]),
+            (&["ws/Cargo.lock"], &["app", "bench", "core", "lone", "mid"]),
+        ];
+        for (changed, want) in rows {
+            let changed: Vec<String> = changed.iter().map(|s| s.to_string()).collect();
+            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed, false).unwrap(), *want, "{changed:?}");
         }
     }
 
@@ -457,15 +877,15 @@ mod tests {
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
         let repo = root.parent().unwrap().to_string_lossy().to_string();
-        let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
+        let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()], true).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-inspector", "ecad-mcp", "ecad-model", "ecad-trial"]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store", "ecad-trial"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());

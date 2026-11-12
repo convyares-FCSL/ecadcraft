@@ -1,0 +1,30 @@
+[package]
+name = "ecad-inspector"
+description = "ECAD's developer inspector (never shipped): the inspector protocol, `ecadinspect` (text views and `serve`) and its page"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ecadinspect"
+path = "src/bin/ecadinspect.rs"
+
+[dependencies]
+ecad-file = { workspace = true }
+ecad-model = { workspace = true }
+serde_json = { workspace = true }
+# The token's hash (RustCrypto, MIT OR Apache-2.0; already used by ecad-file).
+sha2 = { version = "0.10", default-features = false }
+# DN1 (design 029, approved 2026-11-12): the WebSocket transport of `ecadinspect serve`. Sync, no
+# TLS, pinned exactly; a change is a deliberate change with its own review. MIT OR Apache-2.0.
+tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
+
+[dev-dependencies]
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+ecad-store = { workspace = true }
+redb = { workspace = true }
