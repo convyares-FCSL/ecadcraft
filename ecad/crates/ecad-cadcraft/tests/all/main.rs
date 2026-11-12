@@ -42,6 +42,8 @@ mod tester_027_release;
 mod tester_028_strips;
 mod tester_029_tag_rule;
 mod tester_030_accessories;
+mod tester_034_api;
+mod tester_034_library;
 mod text_show_contracts;
 mod text_style_contracts;
 mod upstream_sync_019_contracts;
