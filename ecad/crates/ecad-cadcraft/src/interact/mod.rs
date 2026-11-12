@@ -475,6 +475,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A conductor label (brief 022): its wire's lens.
         Mapped::Label(w) => wire_lines(doc, w, page),
+        // A link line (brief 030, design 030 §5.3).
+        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.outputs.as_ref().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
@@ -740,6 +742,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
         Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::Xref(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
+        Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

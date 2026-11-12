@@ -357,3 +357,32 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     refused(&mut f, "accessory", json!({"strip": k1.hex(), "at": "start", "items": ["end_stop"]}));
     f.same_as_built();
 }
+
+/// M: the link line is drawn from the link on the page: through the terminals shown, with a
+/// stub where the link goes on to positions not shown here; a link edit redraws it.
+#[test]
+fn link_lines_are_drawn_from_the_link() {
+    let mut f = fixture(0x30_07);
+    let page = f.h.first_page();
+    f.jumper(json!({"strip": f.strip.hex(), "positions": "1-4"}));
+    let parts = |f: &mut F| f.h.p(|p| ecad_cadcraft::link_lines::parts_on_page(p.ledger.document(), page));
+    let v = parts(&mut f);
+    assert_eq!(v.len(), 3, "1-2, 2-3, 3-4 and no stub: {v:?}");
+    assert!(v.iter().all(|s| (s.a.y - s.b.y).abs() < 1e-9), "a horizontal row");
+    // 5-8: 5 and 6 are drawn here, 7 and 8 are spare: a stub past 6, in lane 0 (no overlap).
+    f.jumper(json!({"strip": f.strip.hex(), "positions": "5-8"}));
+    let v = parts(&mut f);
+    let two: Vec<_> = v.iter().filter(|s| s.n == 2).collect();
+    assert_eq!(two.len(), 2, "5-6 and the stub: {two:?}");
+    let x6 = f.h.terminal_pos(page, f.terms[5]).x;
+    assert!(two.iter().any(|s| (s.b.x - (x6 + ecad_cadcraft::link_lines::STUB_MM)).abs() < 1e-6), "{two:?}");
+    // A skip link over 1-4 runs in lane 1, offset up.
+    f.jumper(json!({"strip": f.strip.hex(), "positions": "2, 4", "skip": true}));
+    let v = parts(&mut f);
+    let y = f.h.terminal_pos(page, f.terms[1]).y;
+    assert!(v.iter().filter(|s| s.n == 3).all(|s| (s.a.y - (y + ecad_cadcraft::link_lines::LANE_MM)).abs() < 1e-6), "{v:?}");
+    // The page as projected shows them, and verify mode agrees.
+    f.h.check();
+    let lines = f.h.p(|p| p.pages.get(&page).map(|v| v.map.clone()));
+    assert!(lines.is_some());
+}

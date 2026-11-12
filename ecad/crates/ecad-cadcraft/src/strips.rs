@@ -110,6 +110,11 @@ fn drawn_at(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId
     out
 }
 
+/// A strip's drawn terminals with the page and point each is drawn at (brief 030: link lines).
+pub fn drawn_points(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId, PageId, Pt)> {
+    drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
+}
+
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<ComponentId> {
     let c = doc.terminals.get(&t)?.component;

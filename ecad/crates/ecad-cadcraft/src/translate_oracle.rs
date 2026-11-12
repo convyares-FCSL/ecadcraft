@@ -260,6 +260,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         .chain(changed_handles.iter().copied())
         .filter(|h| drawn(cx.map, *h))
         .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
+        // Brief 030: a link line moved or copied with other objects is drawn again from its link.
+        .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::Link(..)))))
+        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::Link(..))))))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
         .collect();
     // The sheet frame (brief 019), as in the current translation.
@@ -282,6 +285,10 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
         let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Xref(_)));
         let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
+        let link = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Link(..)));
+        if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
+            return Err(crate::link_lines::LINK_DERIVED.into());
+        }
         return Err(if tags_only {
             crate::devices::TAG_DERIVED
         } else if labels_only {
@@ -303,6 +310,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
     let mut erased_refs: Vec<RepresentationId> = Vec::new();
+    let mut erased_links: BTreeSet<(ecad_model::ComponentId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -324,6 +332,10 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
+            // Brief 030: erasing a link line deletes its link (and its own part keys).
+            Some(Mapped::Link(c, n)) => {
+                erased_links.insert((c, n));
+            }
             Some(Mapped::Frame(_)) => {}
             // Erasing a device's tag text or terminal label erases that symbol (design 018 §2.4).
             Some(Mapped::Tag(rid)) => erased_refs.push(rid),
@@ -339,6 +351,15 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     }
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
+    for (c, n) in erased_links {
+        let props = cx.doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+        let key = ecad_model::links::key(n);
+        for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
+            if let Some(before) = props.get(&k).cloned() {
+                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key: k, before: Some(before), after: None });
+            }
+        }
+    }
     for rid in erased_refs {
         linked_removed = true;
         rep(&mut reps, rid, cx.doc)?;
@@ -382,6 +403,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}
+            Some(Mapped::Link(..)) if skipped.contains(h) => {}
+            Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
             Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {

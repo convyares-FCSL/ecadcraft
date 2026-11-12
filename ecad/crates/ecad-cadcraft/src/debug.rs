@@ -1147,10 +1147,13 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Frame(_) => {}
         // A device cross-reference (brief 025) stands for its contact or head representation.
         Mapped::Xref(rep) => r.representation = Some(rep),
+        // A link line (brief 030) stands for its strip.
+        Mapped::Link(..) => {}
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
         Mapped::Label(c) => Some(Subject::Conductor(c)),
+        Mapped::Link(c, _) => Some(Subject::Component(c)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {

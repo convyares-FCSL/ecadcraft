@@ -45,6 +45,7 @@ pub mod frame;
 pub mod generated;
 pub mod history;
 pub mod interact;
+pub mod link_lines;
 pub mod locations;
 pub mod look;
 pub mod merging;
