@@ -552,8 +552,9 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
         }
     }
     let mut infos: Vec<LinkInfo> = Vec::new();
+    let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| links::natural_key(l)).collect() };
     for (n, p, text) in found {
-        let labels: Vec<String> = p.select(&order).into_iter().cloned().collect();
+        let labels: Vec<String> = p.select_keyed(&order, &keys).into_iter().cloned().collect();
         let missing = p.missing(&order);
         let idx: Vec<usize> = labels.iter().filter_map(|l| index.get(l.as_str()).copied()).collect();
         let (first, last) = (idx.first().copied().unwrap_or(0), idx.last().copied().unwrap_or(0));

@@ -661,6 +661,7 @@ impl Outputs {
                 project_keys: &scope.strip_keys,
             },
         );
+        let acc_only = strips.touched_acc(&scope.strip_keys, &which);
         if which.is_empty() {
             strips.last_work = 0;
             strips.last_changed.clear();
@@ -669,6 +670,10 @@ impl Outputs {
             // in the strips' own `last_work`, not in the rows'.
             let cx = cx.get_or_insert_with(|| PageCx::of(doc));
             strips.recompute(doc, &which, self, cx);
+        }
+        // Brief 030: a project default reaches only its inheriting strips' accessories.
+        if !acc_only.is_empty() {
+            strips.recompute_acc(doc, &acc_only);
         }
         // Brief 028's strip Checks rows read from the strips just recomputed (brief 027's key).
         if !strips.last_changed.is_empty() {

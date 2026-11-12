@@ -799,10 +799,41 @@ impl Strips {
         for p in scope.pages {
             out.extend(self.by_page.get(p).into_iter().flatten().copied());
         }
-        for k in scope.project_keys {
-            out.extend(self.inherits.get(k).into_iter().flatten().copied());
-        }
         out
+    }
+
+    /// Brief 030: the strips reading a changed project `strip_*` key (no value of their own), not
+    /// already in `full`: only their accessories need recomputing.
+    pub fn touched_acc(&self, project_keys: &BTreeSet<String>, full: &BTreeSet<ComponentId>) -> BTreeSet<ComponentId> {
+        project_keys.iter().flat_map(|k| self.inherits.get(k).into_iter().flatten().copied()).filter(|c| !full.contains(c)).collect()
+    }
+
+    /// Recompute only the accessories of `which` (design 030 §11.1: a project default changes
+    /// part data, never terminal rows). Adds to [`Strips::last_changed`] and `last_work`.
+    pub fn recompute_acc(&mut self, doc: &Document, which: &BTreeSet<ComponentId>) {
+        let mut changed = false;
+        for c in which {
+            let Some(old) = self.strips.get(c) else { continue };
+            let Some(props) = doc.components.get(c).map(|x| &x.properties) else { continue };
+            let acc = crate::accessories::strip_acc(doc, props, &old.rows);
+            if acc == old.acc {
+                continue;
+            }
+            let mut d = old.clone();
+            d.acc = acc;
+            d.finish();
+            self.remove(*c);
+            self.insert(*c, d);
+            self.last_changed.insert(*c);
+            changed = true;
+        }
+        if changed {
+            self.revision += 1;
+            for c in which.iter().filter(|c| self.last_changed.contains(c)) {
+                self.changed_at.insert(*c, self.revision);
+            }
+        }
+        self.last_work += which.len();
     }
 
     /// Recompute `which` on `doc`.
@@ -850,6 +881,10 @@ impl Strips {
             return;
         }
         let d = strip_data(doc, c, o, cx);
+        self.insert(c, d);
+    }
+
+    fn insert(&mut self, c: ComponentId, d: StripData) {
         add_to(&mut self.by_conductor, &d.conductors, c);
         add_to(&mut self.by_far, &d.far, c);
         add_to(&mut self.by_page, &d.pages, c);
@@ -1131,10 +1166,17 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
     }
     d.rows = rows;
     d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
-    d.sheets = (plan_lines(&d) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
-    let (ft, pe) = d.quantities();
-    d.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + d.acc.bom.len();
+    d.finish();
     d
+}
+
+impl StripData {
+    /// Its kept sheet and BOM row counts, from its rows and accessories.
+    fn finish(&mut self) {
+        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
+        let (ft, pe) = self.quantities();
+        self.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + self.acc.bom.len();
+    }
 }
 
 // ---------------------------------------------------------------- hover (§7.1)

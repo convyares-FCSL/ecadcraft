@@ -160,7 +160,26 @@ impl Positions {
 
     /// Every label the link names out of `order` (labels in plan order), in that order.
     pub fn select<'a>(&self, order: &'a [String]) -> Vec<&'a String> {
-        order.iter().filter(|l| self.contains(l)).collect()
+        let keys: Vec<Vec<(u8, u128, String)>> = order.iter().map(|l| natural_key(l)).collect();
+        self.select_keyed(order, &keys)
+    }
+
+    /// [`Positions::select`] with the natural keys of `order` given (`keys[i]` is `order[i]`'s).
+    pub fn select_keyed<'a>(&self, order: &'a [String], keys: &[Vec<(u8, u128, String)>]) -> Vec<&'a String> {
+        let ranges: Vec<(Vec<(u8, u128, String)>, Vec<(u8, u128, String)>)> = self
+            .0
+            .iter()
+            .filter_map(|i| match i {
+                Item::Range(a, b) => Some((natural_key(a), natural_key(b))),
+                Item::One(_) => None,
+            })
+            .collect();
+        order
+            .iter()
+            .zip(keys)
+            .filter(|(l, k)| self.0.iter().any(|i| matches!(i, Item::One(x) if x == *l)) || ranges.iter().any(|(a, b)| a <= *k && *k <= b))
+            .map(|(l, _)| l)
+            .collect()
     }
 
     /// The labels the items name that are not in `order` (a single label missing, or a range end
