@@ -163,7 +163,9 @@ term that is not generic electrical practice.
    - **connectors**;
    - **more symbols**.
 
-   M1 below follows that order within each lane.
+   M1 below follows that order within each lane. Before it, **v0.15 makes what ECAD already draws
+   look right** (font, text size and position, hidden repeats, print quality) and fixes the bugs
+   the redraw found: a recognisable but ugly page is not a usable one.
 2. **Data entry before data output.** ECAD already produces good outputs. It needs to take data
    in (symbols, parts, lists) and to edit it in tables.
 3. **The UI shell goes early.** The look-and-feel pass touches every panel, so its foundation
@@ -174,17 +176,53 @@ term that is not generic electrical practice.
 
 ### 3.2 Milestones to v1
 
-**M0: close v0.1 (now).** 030 has landed, the drawing-pack findings are triaged, the bugs the
-stage 2 redraw found are fixed, and the v0.1 QA gate runs (with the three stale slow tests from the
-2026-11-11 QA pass fixed first).
+**M0: close v0.1 (now).** 030 has landed, the three stale slow tests from the 2026-11-11 QA pass
+are fixed, and the v0.1 QA gate runs. Everything the drawing-pack test found moves to v0.15.
 
 | # | Feature | Purpose (one line) | Depends on | Size | Format change |
 |---|---|---|---|---|---|
 | 0.1 | 030 accessories and jumpers | Strips as built, links that join nets | 028 | Done (merged to `dev`) | No (properties) |
-| 0.2 | Drawing-pack quick fixes | Small gaps from §6. **Revision table columns** the project chooses (for example change request, validated, verified), stored as `rev.<n>.<field>` properties as today. **Tag display style**, as a project choice: no forced leading `-`, and the case kept as typed. Input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. If the owner accepts question 23, the **pending-revision marker** in the title block goes here too. Every bigger gap is an M1 item | 030 | S each | Additive: optional project settings for the tag style and the pending marker |
-| 0.3 | Stale slow tests | Make `cargo xtask ci` pass for the QA gate | none | S | No |
-| 0.4 | **Bug sweep** (stage 2 of the drawing-pack test) | Fix the seven defects in §6.2, each with a test that fails before the fix. The first, wires drawn end to end that do not join, is a correctness bug and goes first. Items 2 and 5 overlap 1.13: the sweep removes the refusal and the worst overlaps, 1.13 sets the rules | none | S–M | No |
-| 0.5 | v0.1 QA gate | `dev` → `main`, owner trial | 0.1–0.4 | S | No |
+| 0.2 | Stale slow tests | Make `cargo xtask ci` pass for the QA gate | none | S | No |
+| 0.3 | v0.1 QA gate | `dev` → `main`, owner trial | 0.1, 0.2 | S | No |
+
+**v0.15: drawing quality (between M0 and M1).** The owner's direction after the pack test: the
+recognisable pages are recognisable but ugly, and font, text size and position matter most. The
+owner also wants to hide text that should not repeat, such as a strip's tag printed on every
+terminal. v0.15 takes every finding about how a drawing looks, and every bug the redraw found,
+before M1 adds features. Its items are numbered Q1–Q8.
+
+| # | Feature | Purpose | Depends on | Size | Format change |
+|---|---|---|---|---|---|
+| Q1 | **Text styles** | **A sans print font with bold** in place of the thin single-stroke drafting font. It comes from `storytold/craft-fonts` like every Craft font, and the stroke font stays as the fallback when that font is absent. **A size and weight for each kind of text** (tag, terminal label, wire label, references, location label, continuation, title block), set per project. Defaults suit dense schematics: about 2.5 mm tags, 1.6 mm labels and 1.5 mm terminals. Today most sizes are fixed in code at 3.5 mm (for example `TAG_HEIGHT` in `devices.rs`, `LABEL_HEIGHT` in `locations.rs`, and text in `frame.rs` and `generated.rs`) | 0.3 | M | Additive: project text-style settings |
+| Q2 | **Text placement** | Tags placed by the symbol's rotation, avoiding wires and other text. Generated texts can be moved, and a move survives regeneration as a stored offset. Justified and centred text works, which fixes the `text` `justify` refusal | Q1 | L | Additive: a moved text's offset as a property |
+| Q3 | **Show and hide per text** | Each text (tag, terminal label, description, part number, wire number, continuation name) can be switched on or off for a symbol, a page or the project. Defaults: a strip's tag once per run of adjacent terminals, a card's tag once per card, and continuation names hidden so only the target reference shows. Hidden text is still data: searchable and in reports | Q1 | M | Additive: visibility properties and project defaults |
+| Q4 | **Wire labels** | One label per net per page, or only on segments longer than a set length; no piles at junctions | Q1 for sizes; it can start on the defaults | M | Additive: a project setting for the rule |
+| Q5 | **Print quality** | The PDF about ten times smaller (shared font resources and vectors, not repeated outlines). Missing data visible in print rather than a yellow `?`. Automatic contact tables never overlap the title block | 0.3 | M | No |
+| Q6 | **Bug sweep** | **Wires drawn end to end join** (high: today the second wire floats on a new net with nothing on screen to show it). The `table` refusal and its broken message. Each fix lands with a test that fails before it | 0.3 | S–M | No |
+| Q7 | **Pack quick fixes** | **Tag display style**: the leading `-` optional and the case kept as typed; input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. **Revision table columns** chosen per project, stored as `rev.<n>.<field>` properties as today. **A pending-revision marker** after an issue (question 23). **Continuation sheets of generated pages numbered in sequence** (400, 401, …), for the BOM and every other generated report | 0.3 | S each, M in all | Additive: project settings for the tag style, the revision columns and the pending marker |
+| Q8 | **A cable across pages through continuations** | A cable continued onto another page through continuations can be drawn there. Today a second slash and `cablecontinue` are both refused, and the cable stops at the page edge | 0.3 | M | No, if the continued cable is one more reference of the kind that exists (`references.rs` limits a cable to two today); confirm in design |
+
+**v0.15 lanes.** Three lanes that do not touch the same files:
+
+| Lane | Owns | Order |
+|---|---|---|
+| **T: text** | `look.rs`, a new text-style module, the font loading, tag and label placement in `devices.rs`, `strips.rs` and `locations.rs`, the visibility properties | Q1 → Q3 → Q2 |
+| **W: wires and nets** | `wires.rs`, `wire_cmds.rs`, `references.rs` | Q6 wire join (first) → Q8 → Q4 |
+| **P: print and project** | `printbook.rs`, `frame.rs`, `generated.rs`, `xref.rs` (contact tables), `revisions.rs`, the tag display in `ecad-model`, the `table` command | Q5 → Q7 → Q6 `table` |
+
+- **Q3 before Q2** in lane T: once repeated tags are hidden there is far less to place, and the
+  placement rules are written against the drawing as it will look.
+- **Lane W reads lane T's sizes** for wire labels through one getter in the text-style module,
+  which Q1 adds first. Q4 starts on the default sizes, so it does not wait for Q1 to finish.
+- **Lane P's frame and generated pages** read the same getter for title-block and table text. That
+  getter is the only shared point.
+- **Q6 is split by file**: the wire join is lane W's first job, the `table` refusal is lane P's.
+
+**Acceptance for v0.15:** re-run the drawing-pack recreation script, with these targets:
+
+- the schematic pages that are recognisable today become faithful in look;
+- no silently disconnected wires;
+- the PDF under about 5 MB for the pack.
 
 **M1: real drawings (v0.2).** Draw a real panel's schematics without workarounds.
 
@@ -199,25 +237,20 @@ stage 2 redraw found are fixed, and the v0.1 QA gate runs (with the three stale 
 | 1.6 | **Radial wheel** | Right-click quick-use wheel: the eight most likely actions for what is under the cursor | 1.5 | M | No |
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
 | 1.8 | **Graphical terminal-strip pages** | A generated page per strip, drawn as the strip is built. Each terminal shows its inside target above and outside target below, with wire numbers, page references, cable boxes with core colours, levels, links and accessories (end plates). It is the same derived data as 028's tabular plan, in a second page style; it is not a second model | 1.2, 030 | L | No (derived) |
-| 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. **A cable that crosses pages through continuations** can be drawn on the second page as well: today neither a second cable slash nor `cablecontinue` does it, so the cable stops at the page edge | 022, 025 | M | No: derived; a caption is a continuation property. The cable case reuses the existing cable references |
+| 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. | 022, 025 | M | No: derived; a caption is a continuation property |
 | 1.10 | **Symbol pack** | More built-in starters, available before the builder: change-over contacts (11/12/14), 4-pole contactor, RCBO, residual-current device, SSR, proximity and float sensors, valve, thermocouple, heater, interlock, fuse terminal with a rating, and a **fuse bank**: one device holding several fuses, with connection points per fuse. All are our own definitions | 018 | M | No (built-in definitions, embedded on use as today) |
 | 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages | 1.1 | M | Probably no (properties); FP to confirm in design |
-| 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. **Continuation sheets numbered in sequence** (400, 401, …) rather than all printing the first sheet's number; the rule applies to every generated report, not only the BOM | 024, 030 | M | No (properties) |
-| 1.13 | **Drawing presentation and text styles** (the owner's top gap from the pack test) | Pages that read like a professional drawing. **A sans print font with bold** in place of the thin single-stroke drafting font (from `storytold/craft-fonts`, as for every Craft font; the stroke font stays as the fallback when it is absent). **Per-project text styles**: a size for each kind of text (tag, label, terminal, references, title block), with defaults for dense schematics (about 2.5 mm tags, 1.6 mm labels, 1.5 mm terminals); today most sizes are fixed in code at 3.5 mm. **Tag placement** that follows the symbol's rotation, avoids collisions and keeps a position the user moved across regeneration. **Wire labels** once per net per page, or only on segments longer than a set length. **No repeated tags**: a strip's tag once per group of adjacent terminals, and PLC channels without the card's tag. **Continuations** may show only the target reference. **Text** centred and right-aligned. Overlaps bug-sweep items 2 and 5 (§6.2): the sweep fixes the refusal and the worst overlaps, this item makes the rules | 1.0 | M–L | Additive: project text-style settings; a moved tag's offset as a property |
+| 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. | 024, 030 | M | No (properties) |
 
 **Order within M1, by lane.** Each lane's order follows the ranking in §6.
 
 - **Lane S:** 1.10 symbol pack, then 1.1 symbol builder, then 1.11 connectors.
 - **Lane D:** 1.2 multi-level terminals, then 1.3 PLC racks and cards, then 1.9 continuation
   cross-references, then 1.4 wire types.
-- **Lane U:** 1.0 live bridge, then 1.13 drawing presentation, then 1.8 graphical strip pages, then
-  1.12 BOM completeness, then 1.5 UI shell, then 1.6 wheel, then 1.7 table.
+- **Lane U:** 1.0 live bridge, then 1.8 graphical strip pages, then 1.12 BOM completeness, then
+  1.5 UI shell, then 1.6 wheel, then 1.7 table.
 
-1.13 comes straight after the bridge because every page the pack test drew is judged on it, and
-1.8's strip pages should be drawn with its text styles rather than restyled later. Its settings and
-font live in lane U (`look.rs`, the text-style module); tag and wire-label placement read those
-settings from lane S's and lane D's files through one small, append-only hook each, agreed in the
-brief.
+1.8's strip pages use v0.15's text styles and visibility rules from the start.
 
 Lane U is the longest. 1.6 and 1.7 may slip to the start of M2, but the managers wait for them
 (principle 3). 1.8 starts only after 1.2 lands, because it reads lane D's strip data; it writes
@@ -420,7 +453,8 @@ Each has a recommendation. Answer "as recommended" to accept them all.
 23. **A pending revision in the title block.** After a revision is issued and the design is edited
     again, the title block still shows the issued revision, and nothing marks that changes are
     pending. **Recommend showing it as pending** (for example `D*` or `E (draft)`), derived from
-    history (edits after the last issue), with the style a project setting. It is S and fits 0.2.
+    history (edits after the last issue), with the style a project setting. It is S and is part
+    of v0.15's Q7.
 
 ---
 
@@ -454,9 +488,9 @@ Smaller gaps:
 | Panel layout | **3.1**, unchanged (M3) |
 | Cable-type summary (used length and count per type) | **2.7** |
 | Fuse list (each fuse and the circuit it supplies) | **2.9**, as a built-in report definition |
-| Revision table columns (change request, validated, verified) | **0.2** quick fix |
+| Revision table columns (change request, validated, verified) | **Q7** quick fix (v0.15) |
 | Fuse terminals with ratings | **1.10** symbol pack and **1.2** multi-level terminals |
-| Tags without the leading `-` | **0.2** quick fix (display only; input already accepts both) |
+| Tags without the leading `-` | **Q7** quick fix (v0.15; display only, input already accepts both) |
 
 **What changed in the roadmap because of these findings:**
 
@@ -464,7 +498,7 @@ Smaller gaps:
   pack, 1.11 connectors and 1.12 BOM completeness.
 - **PLC (1.3) widened** to racks, slots and card types, and resized to XL.
 - **The cable manager (2.7) widened** to pairs, shields and more than two references.
-- **0.2 made concrete:** two small quick fixes.
+- **Quick fixes made concrete** (now Q7 in v0.15).
 - **Lane order re-ranked** (§3.2, "Order within M1").
 - **The UI shell moves later in lane U.** It now comes after the gaps that block drawings, and still
   before the managers.
@@ -485,37 +519,35 @@ The redraw confirms the stage 1 ranking. It adds these gaps:
 | Gap | Where it goes |
 |---|---|
 | Relabelling a strip terminal (labels such as `1.L`) | **1.2**, with multi-level terminals |
-| A cable that crosses pages through continuations cannot be drawn on the second page (neither a second slash nor `cablecontinue` works) | **1.9**, with continuation cross-references (M1) |
+| A cable that crosses pages through continuations cannot be drawn on the second page (neither a second slash nor `cablecontinue` works) | **Q8** (v0.15) |
 | A fuse bank: one device holding several fuses | **1.10** symbol pack |
 | Fuse terminals that break the net | **1.2** |
-| BOM continuation sheets numbered in sequence, not all with the first sheet's number | **1.12**, as a rule for every generated report |
-| Tag display style: no forced leading `-`, case kept | **0.2** (already there) |
+| BOM continuation sheets numbered in sequence, not all with the first sheet's number | **Q7** (v0.15), as a rule for every generated report |
+| Tag display style: no forced leading `-`, case kept | **Q7** (v0.15) |
 
-It also found seven defects, which become **0.4 bug sweep** before the QA gate:
+It also found seven defects. All of them are in v0.15: the wire join and `table` in Q6, `justify`
+in Q2, contact tables, missing data and PDF size in Q5, and repeated tags in Q3:
 
 1. **High: wires drawn end to end do not join.** The second wire's start floats (no `from`), it gets
    a new net, and nothing on screen shows it. Starting on the middle of a wire adds a junction, and
    `junction` repairs it afterwards. A silent disconnection is a correctness bug, so it goes first:
    an end that lands on another wire's end joins it, or the page shows that it is open.
-2. `text` with `justify` is refused, although the command's documentation lists it. (1.13 then
-   makes centred and right-aligned text part of the text styles.)
+2. `text` with `justify` is refused, although the command's documentation lists it. (Q2.)
 3. `table` is refused, with a message whose grammar is broken.
 4. Automatic contact tables under a coil low on the page overlap the title block.
 5. Repeated tags overlap: strip terminals repeat the strip's tag, PLC channels repeat the card's
-   tag, and continuation names overlap one another. (1.13 then removes the repetition by
-   rule: once per group of terminals, no card tag on channels.)
+   tag, and continuation names overlap one another. (Q3 hides the repeats by
+   default.)
 6. Missing data prints as a yellow `?`, which cannot be seen on white paper.
 7. The PDF is about ten times too large (32 MB for 30 sheets).
 
-**What stage 2 changed in the roadmap:** M0 gains 0.4 bug sweep (the QA gate becomes 0.5); 1.2
-gains relabelling and net-breaking fuse terminals; 1.9 gains cables across continuations; 1.10
-gains the fuse bank; 1.12 gains sequential sheet numbers; and question 23 asks about a pending
+**What stage 2 changed in the roadmap:** a new milestone, **v0.15 drawing quality**, between M0
+and M1. Presentation became the owner's top gap: the pages are hard to read because of the thin
+font, sizes fixed at 3.5 mm, repeated and colliding tags, and labels on every wire segment. v0.15
+holds that work (Q1–Q4), print quality (Q5), every defect above (Q6 and the others named there), the
+quick fixes (Q7) and the cable across continuations (Q8). M1 also changes: 1.2 gains relabelling
+and net-breaking fuse terminals, 1.10 gains the fuse bank, and question 23 asks about a pending
 revision in the title block.
-
-**Presentation then became the owner's top gap** from the pack test: the pages are hard to read
-because of the thin font, sizes fixed at 3.5 mm, repeated and colliding tags, and labels on every
-wire segment. It is the new M1 item **1.13**, second in lane U after the bridge, before the strip
-pages and the UI shell.
 
 ---
 
