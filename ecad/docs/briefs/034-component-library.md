@@ -1,7 +1,7 @@
 # Brief 034: Component library build-up
 
-Status: Draft (designer, 2026-11-12; design `docs/design/034.md` revision 1; owner questions in
-design §14 are open)
+Status: Approved (owner, 2026-11-12: all eight questions in design §14 answered "as recommended";
+design `docs/design/034.md` revision 2; no format change, confirmed by the overseer)
 Branch: `feature/component-library`, from `origin/dev` `6729c8f1`.
 Designer: **yes** (`docs/design/034.md`) · Size: L, in four stages
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` §3.2 v0.15 **Q9**, lane **S**. Owner decision
@@ -46,7 +46,9 @@ Built-in definitions, in four stages in the order of the pack's ranking (design 
 
 Each family has its IEC 60617 basis (the default, never the law), its connection-point names, text
 anchors only (lane T, brief 031, decides text sizes and placement), and its BOM row (design §9).
-A `rating` property (and `rating.<n>` per fuse of a bank) holds ratings.
+A `rating` property (and `rating.<n>` per fuse of a bank) holds ratings. The defaults this lane
+adds (prefixes, labels, quiet points, ratings) are registered in lane T's defaults registry (031
+§3), not hard-coded (design §2.7).
 
 ## Out of scope
 
@@ -92,6 +94,9 @@ A `rating` property (and `rating.<n>` per fuse of a bank) holds ratings.
   one small and append-only; the overseer tells lanes T and P before the worker makes them.
 - Tests: the scoped tests of `ecad-cadcraft` and `ecad-mcp` only; no slow set.
 
+11. Every default in design §2.7 is read through lane T's defaults registry; a test changes one
+    registered default (a prefix) and a newly placed device follows it.
+
 ## Owner questions
 
-Design §14 (eight questions, each with a recommendation).
+Design §14: all eight answered "as recommended" (owner, 2026-11-12).
