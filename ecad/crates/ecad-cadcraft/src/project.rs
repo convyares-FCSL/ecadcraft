@@ -366,6 +366,9 @@ pub struct Faults {
     pub fail_projections: u32,
     /// The next `n` cable view switches (`cableview` with a cable) fail before changing anything.
     pub fail_view_switches: u32,
+    /// The next release fails at this step (brief 027's failure-injection tests): the step's own
+    /// failure path runs, as when the disk or the save fails there.
+    pub fail_release_at: Option<crate::release::Step>,
     /// The next commit callback panics (`fault-injection` feature only).
     #[cfg(feature = "fault-injection")]
     pub panic_in_commit: bool,
@@ -1219,6 +1222,28 @@ impl Project {
     /// Where the project's file stands (`Persistence::File`).
     pub fn file_status(&self) -> crate::file::FileStatus {
         self.file.status()
+    }
+
+    /// Save now, as Ctrl+S does (brief 027's release, step 5), whatever the persistence: the file,
+    /// the test store, or the refusal when there is none.
+    ///
+    /// # Errors
+    /// The save failed, in words; the project stays as it is in memory.
+    pub(crate) fn save_now(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
+        match self.persistence {
+            Persistence::File => self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string()),
+            Persistence::Unavailable => Err(SAVE_UNAVAILABLE.into()),
+            Persistence::TestStore => {
+                let head = self.ledger.head();
+                let r = self.store.save(self.id, &mut self.ledger, &writer());
+                match &r {
+                    Ok(n) => self.events.record(EventKind::Saved, Some("qsave"), head, None, format!("persisted through seq {n}")),
+                    Err(e) => self.events.record(EventKind::SaveFailed, Some("qsave"), head, None, e.clone()),
+                }
+                self.sync_saved(pg);
+                r.map(|_| ()).map_err(|e| format!("{} was not saved: {e}", self.name))
+            }
+        }
     }
 
     /// Save the pending transactions to the bound file (Save, as the branch actions of brief 020

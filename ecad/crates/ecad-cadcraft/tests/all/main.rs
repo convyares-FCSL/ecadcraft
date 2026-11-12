@@ -25,6 +25,7 @@ mod outputs_contracts;
 mod project_pages;
 mod recovery;
 mod refusals;
+mod release_contracts;
 mod sheets_contracts;
 mod terminal_name_contracts;
 mod tester_014_r3_scope_probe;
