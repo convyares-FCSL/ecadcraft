@@ -7,13 +7,14 @@
 //!   module, and no product source reads a file under `dev/`.
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
-//! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`.
+//! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
 //! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches, wasm.
 //! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
 //! - `test-changed`: the fast tests of the crates changed since the last push (the upstream
 //!   branch; `--base` for another ref), and with `--with-dependents` of every crate that depends
-//!   on them (brief 017; process clean-up, 2026-11-12). The worker's default check.
+//!   on them (brief 017; process clean-up, 2026-11-12). The worker's default check; CI's quick
+//!   check runs it with `--base origin/dev --with-dependents` on pull requests into dev.
 //! - `clean-builds`: delete the build folders of every checkout under a folder, skipping those in
 //!   use, and remove worktrees whose branch is merged into `origin/dev` (see [`clean`]).
 
@@ -424,12 +425,38 @@ fn wasm() -> Result<(), String> {
     let present: Vec<&str> = meta["packages"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
     let mut cmd = Command::new(env!("CARGO"));
     cmd.args(["build", "--target", "wasm32-unknown-unknown"]).current_dir(&root);
+    // Warnings are errors, as in CI (`RUSTFLAGS: -D warnings`): code used only off wasm left
+    // dead code on wasm that passed here and failed the QA gate (PR #66). With `--target`,
+    // RUSTFLAGS reaches only the wasm crates, not build scripts or proc macros.
+    let (var, flags) = deny_warnings(std::env::var("CARGO_ENCODED_RUSTFLAGS").ok().as_deref(), std::env::var("RUSTFLAGS").ok().as_deref());
+    cmd.env(var, flags);
     for c in WASM_CRATES.iter().filter(|c| present.contains(c)) {
         cmd.args(["-p", c]);
     }
     run(&mut cmd)?;
     println!("wasm: OK");
     Ok(())
+}
+
+/// The rustflags variable to set and its value: the caller's flags with `-D warnings` added.
+/// Cargo reads `CARGO_ENCODED_RUSTFLAGS` (flags split by `\x1f`) before `RUSTFLAGS`, so a
+/// non-empty one is extended; otherwise `RUSTFLAGS` is. Flags already denying warnings are kept
+/// as they are.
+fn deny_warnings(encoded: Option<&str>, plain: Option<&str>) -> (&'static str, String) {
+    const SEP: char = '\x1f';
+    if let Some(e) = encoded.filter(|e| !e.is_empty()) {
+        let flags: Vec<&str> = e.split(SEP).collect();
+        if flags.windows(2).any(|w| w == ["-D", "warnings"]) {
+            return ("CARGO_ENCODED_RUSTFLAGS", e.to_string());
+        }
+        return ("CARGO_ENCODED_RUSTFLAGS", format!("{e}{SEP}-D{SEP}warnings"));
+    }
+    let p = plain.unwrap_or_default().trim();
+    let flags: Vec<&str> = p.split_whitespace().collect();
+    if flags.windows(2).any(|w| w == ["-D", "warnings"]) {
+        return ("RUSTFLAGS", p.to_string());
+    }
+    ("RUSTFLAGS", if p.is_empty() { "-D warnings".to_string() } else { format!("{p} -D warnings") })
 }
 
 fn ci() -> Result<(), String> {
@@ -450,9 +477,11 @@ const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-
   test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default: the branch's upstream, so what
         was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
-        committed or not); --with-dependents also tests every crate that depends on them (they
-        run at the QA gate until CI runs them on pull requests into dev);
-        --dry-run only names the crates
+        committed or not); never the slow set (#[ignore = \"slow: …\"]), which runs at the QA
+        gate; --with-dependents also tests every crate that depends on them (CI runs that on
+        pull requests into dev, so workers leave it off); --dry-run only names the crates
+  wasm
+        build the ECAD library crates for wasm32-unknown-unknown, warnings as errors (as CI)
   clean-builds --root <folder> [--dry-run]
         delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
         skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
@@ -683,6 +712,17 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `cargo xtask wasm` denies warnings like CI does, keeping any flags the caller set.
+    #[test]
+    fn wasm_build_denies_warnings() {
+        assert_eq!(deny_warnings(None, None), ("RUSTFLAGS", "-D warnings".to_string()));
+        assert_eq!(deny_warnings(Some(""), Some("  ")), ("RUSTFLAGS", "-D warnings".to_string()));
+        assert_eq!(deny_warnings(None, Some("-C debuginfo=0")), ("RUSTFLAGS", "-C debuginfo=0 -D warnings".to_string()));
+        assert_eq!(deny_warnings(None, Some("-D warnings")), ("RUSTFLAGS", "-D warnings".to_string()));
+        assert_eq!(deny_warnings(Some("-Cdebuginfo=0"), Some("ignored")), ("CARGO_ENCODED_RUSTFLAGS", "-Cdebuginfo=0\x1f-D\x1fwarnings".to_string()));
+        assert_eq!(deny_warnings(Some("-D\x1fwarnings"), None), ("CARGO_ENCODED_RUSTFLAGS", "-D\x1fwarnings".to_string()));
+    }
 
     #[test]
     fn core_crates_may_not_use_cadcraft() {

@@ -23,8 +23,11 @@ Do:
 2. Run your own acceptance tests and the fast tests of the crates the change touched
    (`cargo test -p <crate>`, with and without `--all-features` where features matter; see "Checks
    are scoped to the change" in `ecad/CLAUDE.md`). Never the slow set (`--include-ignored`), and
-   never the whole workspace, also when shared crates changed: those run at the QA gate (the PR
-   from `dev` into `main`). A re-test after a fix round runs only what failed. Build in your own
+   never the whole workspace, also when shared crates changed: the fast tests of the changed
+   crates' dependents run in CI on the pull request into `dev`, and the slow set and the full
+   suite only at the QA gate (the PR from `dev` into `main`) or when the owner calls for them. A
+   test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`. A re-test after a
+   fix round runs only what failed. Build in your own
    worktree's `target` (leave `CARGO_TARGET_DIR` unset, `CARGO_PROFILE_DEV_DEBUG=0
    CARGO_PROFILE_TEST_DEBUG=0`; see "Builds" in `ecad/CLAUDE.md`).
 3. Add tests that check the acceptance criteria from the outside: contract tests in
