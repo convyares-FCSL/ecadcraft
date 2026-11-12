@@ -1230,7 +1230,7 @@ project must have been saved once, since the folder goes beside it (`…\release
    come with terminal strips (028)`, then the check by group: **Open ends**, **Orphans**, **?
    parts** (`-S01` has no part number) and **Other** (folded). Click a row: its page comes up with
    the place ringed; the window stays open. To see an orphan, place a **Cable Reference** on `-W01`
-   (section 5C) without continuing it: at once **Orphans** lists `▲ Cable reference with no other
+   (section 5D) without continuing it: at once **Orphans** lists `▲ Cable reference with no other
    end … -W01 /?`; type `u` and it goes.
 2. **Release.** Fill **Description** (`First issue`) and **Drawn** (your initials) in the window;
    **Release Rev A** is greyed until both are there (hover: `Fill in Rev, Description and Drawn
