@@ -295,7 +295,7 @@ fn circle(c: (f64, f64), radius: f64) -> Primitive {
 }
 
 fn text(at: (f64, f64), height: f64, value: &str) -> Primitive {
-    Primitive::Text { at: p(at.0, at.1), height, rotation: 0.0, value: value.into() }
+    Primitive::Text { at: p(at.0, at.1), height, rotation: 0.0, value: value.into(), halign: Default::default(), valign: Default::default() }
 }
 
 fn shifted(prims: Vec<Primitive>, dx: f64) -> Vec<Primitive> {

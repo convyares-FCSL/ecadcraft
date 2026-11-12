@@ -41,9 +41,11 @@ mod tester_027_release;
 mod tester_028_strips;
 mod tester_029_tag_rule;
 mod tester_030_accessories;
-// Tester 031 phase 2: enabled once the build has `text_style` and `defaults`.
-// mod tester_031_api;
+mod tester_031_api;
 mod tester_031_text;
+mod text_place_contracts;
+mod text_show_contracts;
+mod text_style_contracts;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
 mod wiring_contracts;

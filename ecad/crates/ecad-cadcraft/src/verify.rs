@@ -94,20 +94,36 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64) -> Verification {
+    verify_page_shown(doc, page, drawing, map, fan, tol, false)
+}
+
+/// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
+/// with it on, the hidden derived texts are expected too, dimmed.
+pub fn verify_page_shown(
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    let look = crate::text_style::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
-            let e = part_entity(part, Handle(0));
+            let e = part_entity(&look, part, Handle(0));
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
     // Device tags and terminal labels (brief 018), derived like the cable parts.
-    for t in crate::devices::texts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
+    for t in crate::devices::all_texts_on_page(doc, page) {
+        if !t.shown && !hidden_text {
+            continue;
+        }
+        let mut e = crate::devices::text_entity(&look, &t.text, Handle(0));
+        if !t.shown {
+            crate::text_style::dim_hidden(&mut e);
+        }
+        *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::xref::parts_on_page(doc, page) {
@@ -119,7 +135,7 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     }
     // Location box labels (brief 024), derived the same way.
     for (_, value, at) in crate::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::locations::label_entity(&look, &value, at, Handle(0)))).or_default() += 1;
     }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
