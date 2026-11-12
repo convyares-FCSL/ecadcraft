@@ -113,7 +113,7 @@ fn ssr_input_and_outputs_are_one_device() {
     assert_eq!(join(&mut h, "ssrout", k, [60.0, 0.0]).unwrap_err(), "-K01 already has connection point 1.");
     // A second head is refused with its name.
     let q: ComponentId = id(&place(&mut h, "rcbo2", [0.0, -60.0]), "component");
-    assert_eq!(join(&mut h, "rcd2", q, [40.0, -60.0]).unwrap_err(), "-Q01 already has a RCBO, 1P+N.");
+    assert_eq!(join(&mut h, "rcd2", q, [40.0, -60.0]).unwrap_err(), "-Q01 already has a main symbol.");
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn a_limit_switch_is_two_symbols_of_one_device_and_sensors_take_their_prefixes()
     assert_eq!(prop(&mut h, tc, "rating").as_deref(), Some("K"));
     // A second head on a sensor is refused with its name.
     let p: ComponentId = id(&place(&mut h, "prox3", [0.0, -120.0]), "component");
-    assert_eq!(join(&mut h, "tc", p, [40.0, -120.0]).unwrap_err(), "-B03 already has a Proximity switch, 3-wire PNP.");
+    assert_eq!(join(&mut h, "tc", p, [40.0, -120.0]).unwrap_err(), "-B03 already has a main symbol.");
 }
 
 #[test]

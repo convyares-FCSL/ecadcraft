@@ -454,10 +454,16 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
     }
     if let Some(n) = key.strip_prefix(RATING_OF_PREFIX) {
         let who = crate::devices::tag_words(doc, c);
+        // Capped before any lookup: only the first 12 characters are ever read.
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
-        let long = n.chars().count() > MAX_FUSE_LABEL;
+        let long = n.chars().nth(MAX_FUSE_LABEL).is_some();
         let more = if long { "…" } else { "" };
-        let bank = doc.representations_of(Subject::Component(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).find(|s| is_fuse_bank(s));
+        // The device's head (its one exclusive symbol), and only when that is a fuse bank.
+        let bank = doc
+            .representations_of(Subject::Component(c))
+            .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
+            .find(|s| s.kind == Kind::Fixed { exclusive: true })
+            .filter(|s| is_fuse_bank(s));
         let Some(bank) = bank else {
             return Err(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank."));
         };
@@ -1291,12 +1297,81 @@ mod tests {
         assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());
     }
 
+    /// Overseer ruling 4: the 21 starters of briefs 018, 022 and 028 keep their content hashes
+    /// (a changed hash would make every old project's embedded copy a different symbol).
+    #[test]
+    fn the_basic_starters_keep_their_content_hashes() {
+        let want: &[(&str, &str)] = &[
+            ("coil", "a38469fe64864a4a602f678c8bb2fae900c64b75c555a3b58b65b98029437db3"),
+            ("no", "82317c626ba389fa1deb1ecbefc1457e0b958da637780813198b4969e6d4cc31"),
+            ("nc", "8861d1f37368786878b2c860ce0bec1e98f4b8fb4b264fdf6b897cd01a38717c"),
+            ("power3", "7554cf8d849ccf964912b5ceef2248e342c00351cd386f88bd00f27aff9c599b"),
+            ("mcb1", "60a708b75ab297e22e8ee0e3e5b99163660dbf7f941ca0eba4d7009095042ecb"),
+            ("mcb2", "907da0b24254cc9520f359285988b9706420730a46e626c73abf20a3434ddd73"),
+            ("fuse", "92a1eb42f8036488fa6e127903f9381488777bb1314c272c97c7fb6c565f0f93"),
+            ("psu", "7ab24232dfdaa94a6b28556544b3be0b128146f6cd314f7a2e4fef86df03bc6c"),
+            ("pbno", "6fcb99af92cd7290c81fb4e05291bef164c4354e358a959490d4b1dece901148"),
+            ("pbnc", "eb97ba69342ae1de571c128a9086531e499581436fb5cc8c0f223c98d881479f"),
+            ("sel", "ee747f4614ce340e0500223ec3f23a1463c80ef9ec42f5e425be6449dedf3023"),
+            ("lamp", "654a895a70d7a93b61a1dfd279243afcd45628a7835bc7ca7baf3419e6af3e5a"),
+            ("motor3", "74fba3648ea65faed6d0f2d6122333c8ddbe82593551300b8b39b84e2783db94"),
+            ("motor1", "97d78f1600e761449dda417ba7a0d8818d1fc0a7576bd56f5a68bd2665714dcb"),
+            ("trafo", "7546ea16e7c4b9d68527ee6e022ad642a825844ab7441c699c2200015d736016"),
+            ("terminal", "140b3e17fdb18a4889a5816b1f3aa34f9c9714643d25f518470cd800310290a7"),
+            ("terminalpe", "950f2596fe76913d2ac50cc894697b3ca80e10cfb3bcbe136dccbc61af844a3c"),
+            ("di", "691b84067c9c64dd0ab9de2a9a6bef23fb05c71a485264cf463f245ef39fc1eb"),
+            ("do", "736535bf22162769b6420f790efd350383060df36447dcee6d29cf1f86f1ff92"),
+            ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
+            ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
+        ];
+        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic).collect();
+        assert_eq!(basic.len(), want.len());
+        for (key, hash) in want {
+            let o = by_key(key).unwrap().definition().unwrap().origin.clone().unwrap();
+            assert_eq!(o.content_hash.hex(), *hash, "{key}'s content hash changed");
+        }
+    }
+
+    /// Overseer ruling 4: `dashed` draws what it drew before brief 034, and `dashed_v` is the same
+    /// pattern along y.
+    #[test]
+    fn dashed_links_are_unchanged_and_the_vertical_one_matches() {
+        let ends = |g: &[Primitive]| {
+            g.iter()
+                .map(|x| match x {
+                    Primitive::Line { a, b } => (a.x, a.y, b.x, b.y),
+                    _ => panic!("a dash is a line"),
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ends(&dashed(-2.0, 8.0, 0.5)), [(-2.0, 0.5, -0.5, 0.5), (0.5, 0.5, 2.0, 0.5), (3.0, 0.5, 4.5, 0.5), (5.5, 0.5, 7.0, 0.5)]);
+        assert_eq!(ends(&dashed(-6.0, 1.9, 0.5)).last(), Some(&(1.5, 0.5, 1.9, 0.5)));
+        for (a, b, at) in [(-5.5, 0.5, 17.5), (-6.0, 1.9, 0.0), (0.0, 10.0, 3.0)] {
+            let h: Vec<_> = ends(&dashed(a, b, at)).into_iter().map(|(x0, _, x1, _)| (at, x0, at, x1)).collect();
+            assert_eq!(ends(&dashed_v(at, a, b)), h);
+        }
+    }
+
+    /// Definition IDs are unique within each block (and overall: `every_starter_is_valid…`).
+    #[test]
+    fn ids_are_unique_within_their_blocks() {
+        let mut by_block: BTreeMap<u128, BTreeSet<u128>> = BTreeMap::new();
+        for s in STARTERS {
+            let n = s.id.0 - def_id(0).0;
+            assert!(by_block.entry(n & !0xff).or_default().insert(n & 0xff), "{} repeats an ID in its block", s.key);
+        }
+    }
+
     #[test]
     fn changeover_labels_follow_the_sequence_digit() {
         let set = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<BTreeSet<_>>();
         assert_eq!(changeover_labels(&set(&["A1", "A2"]), "-K01").unwrap(), ["11", "12", "14"]);
         assert_eq!(changeover_labels(&set(&["A1", "11", "12", "14", "23", "24"]), "-K01").unwrap(), ["31", "32", "34"]);
         assert_eq!(changeover_labels(&set(&["91", "92"]), "-K01").unwrap_err(), "-K01 already has 9 contacts.");
+        // Interplay with 018's NO/NC digits, both ways: a change-over after NO and NC takes the
+        // next digit, and its `s1`/`s2`/`s4` count as that digit for later contacts.
+        assert_eq!(changeover_labels(&set(&["13", "14", "21", "22"]), "-K01").unwrap(), ["31", "32", "34"]);
+        assert_eq!(changeover_labels(&set(&["11", "12", "14", "23", "24"]), "-K01").unwrap(), ["31", "32", "34"]);
         // Labels that are not sequence labels do not count.
         assert_eq!(changeover_labels(&set(&["15", "x1", "1"]), "-K01").unwrap(), ["11", "12", "14"]);
     }

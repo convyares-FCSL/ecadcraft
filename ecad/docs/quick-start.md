@@ -29,7 +29,7 @@ and a heater; plugs, sockets, D-sub and M12 halves, RJ45 and USB bulkheads; PLC 
 `sensors`, `connectors`, `plc`…). Any device takes a `rating`; a fuse bank takes `rating.<n>` per
 fuse. Spare connector pins, a fuse bank's `M` and outputs and an I/O card's supply points are not
 flagged as unconnected. Ratings are stored and listed but not drawn yet (lane T draws text);
-contact tables do not count change-over contacts yet (stage 4, after brief 033). Section 5F step 9.
+contact tables do not count change-over contacts yet (stage 4, after brief 033). Section 5-034.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/src/symbols.rs` (every symbol on the grid, its
   hash, box and labels, the change-over rule, quiet points, anchors, search),
   `ecad/crates/ecad-cadcraft/tests/all/library_contracts.rs` (placing, joining, ratings, nets,
@@ -925,13 +925,6 @@ Open the **ECAD** tab first.
    [Yes/No] <No>:`.
 8. **Save, close and reopen** (section 7): tags, properties and the device's symbols are all
    still there.
-9. **The component library** (brief 034). Place a new coil. In Find Symbol type `change`, click
-   **Change-over contact**, then that coil's device line, and click beside the coil: it joins as
-   `11/12/14`; a second one joins as `21/22/24`. Type `protection`: the RCBO, RCDs, fuse terminal
-   and fuse banks are listed. Place a **Fuse bank, 8-way** as a new device. Expected: `-F01` with
-   connection points `L+`, `M`, `1`…`8`. Typed: `setprop {"component":"<its id>","key":"rating.3","value":"2A"}`
-   stores fuse 3's rating; `rating.13` is refused with `-F01 has no fuse 13.` Checks does not list
-   its unwired `M` and outputs, only `L+`.
 
 Typed instead, in the ECAD command field: `place {"symbol":"coil","at":[0,0]}`,
 `place {"symbol":"no","at":[40,0],"device":"<the coil's component id>"}`,
@@ -1440,6 +1433,20 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
+
+## 5-034. Component library (by clicking)
+
+Brief 034, design `ecad/docs/design/034.md`. Any project; open the **ECAD** tab first.
+
+1. **Change-over contacts.** Place a new coil. In Find Symbol type `change`, click
+   **Change-over contact**, then that coil's device line, and click beside the coil. Expected: it
+   joins as `11/12/14`; a second one joins as `21/22/24`, and a NO contact after that as `33/34`.
+2. **Families.** In Find Symbol type `protection`. Expected: the RCBO, the RCDs, the fuse terminal
+   and the five fuse banks. `sensors`, `connectors` and `plc` list theirs.
+3. **A fuse bank.** Place a **Fuse bank, 8-way** as a new device. Expected: `-F01` with connection
+   points `L+`, `M`, `1`…`8`. Typed: `setprop {"component":"<its id>","key":"rating.3","value":"2A"}`
+   stores fuse 3's rating; `rating.13` is refused with `-F01 has no fuse 13.` Checks does not list
+   its unwired `M` and outputs, only `L+`.
 
 ## 6. Check connected movement, undo/redo and pages
 

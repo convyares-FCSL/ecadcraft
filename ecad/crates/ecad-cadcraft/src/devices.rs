@@ -366,8 +366,6 @@ fn noun(s: &Starter) -> &'static str {
         "lamp" => "lamp",
         "motor3" | "motor1" => "motor",
         "trafo" => "transformer",
-        // Brief 034 (design 034 §7.1): the newer heads by their name (`a RCBO, 1P+N`).
-        _ if s.family != symbols::Family::Basic => s.name,
         _ => "main symbol",
     }
 }
