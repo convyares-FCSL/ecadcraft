@@ -22,4 +22,5 @@ mod tester_026_mcp;
 mod tester_027_mcp;
 mod tester_028_mcp;
 mod tester_030_mcp;
+mod text_contracts;
 mod xref_contracts;

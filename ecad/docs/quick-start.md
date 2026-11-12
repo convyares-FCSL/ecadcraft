@@ -36,6 +36,24 @@ text, or add a generated page for lists (New Page ▸ Generated).`
 - *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
 - *Owner-tried:* not yet.
 
+**Brief 031 (design `ecad/docs/design/031.md`), on `feature/text-styles`, not yet in `dev`,
+step Q1 (text styles):** every derived text takes its size and weight from one style table per
+project: tags 2.5 mm bold, connection point labels 1.5 mm, location labels 1.6 mm, continuation
+names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BIZ UDPGothic` by
+default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
+font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
+height, bold and shown state in one transaction; `textstyle` does the same typed, and the
+read-only `defaults` lists every registered default and where its value comes from. Section 5Q.
+The cable look's texts (core labels, label box) keep their 2.5 mm in this step.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
+  registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
+  (drawn sizes and styles, redraw, a font change then an edit),
+  `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
+  refusals, writes off) and `ecad/apps/ecad-trial/tests/all/text_ui.rs` (the Text section).
+- *Agent-observed:* the worker looked at the headless screenshot `031-text-section.png`; no agent
+  has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
 numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
 group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
@@ -1010,7 +1028,7 @@ shows the same facts.
    `0V-01 0.5 BU` on both; the cable cores below the contactor show their number only
    (`L1-02`). Page 1 shows `L-01 2.5 BN`, `N-01 2.5 BU`, `PE 2.5 GNYE`,
    `24V-01 0.5 BU`, `0V-01 0.5 BU`. Colours are IEC 60757 codes (`BN`, `BU`, `BK`, `GY`,
-   `GNYE`…); labels are small (1.8 mm) and no two touch. Switch cable `-W01` to fan view
+   `GNYE`…); labels are small (1.6 mm, brief 031) and no two touch. Switch cable `-W01` to fan view
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
@@ -1055,7 +1073,7 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.6 mm since brief 031). By clicking, both are in
 **Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
 GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
@@ -1431,6 +1449,31 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
+
+## 5Q. Text styles (by clicking)
+
+Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
+
+**The font.** The default font, BIZ UDPGothic, comes from the craft-fonts repository and is built
+in only when the build is told where it is. To see it, clone `storytold/craft-fonts` next to this
+checkout and build with `CRAFT_FONTS_DIR` set to that folder (PowerShell:
+`$env:CRAFT_FONTS_DIR = "C:\dev\craft-fonts"`; bash: `export CRAFT_FONTS_DIR=~/craft-fonts`).
+Without it, texts are drawn in CADCraft's stroke font and bold tags are drawn with a heavier line;
+nothing else changes, and the project's stored font is kept.
+
+1. Place a `coil` (5F). Expected: its tag `-K01` is small and bold (2.5 mm) and its `A1`/`A2`
+   are smaller still (1.5 mm).
+2. **Project panel ▸ Project settings**, scroll to **Text**. The line under **Font** says `drawn
+   with BIZ UDPGothic`, or, in yellow, why another font draws.
+3. Set **Tag** to `3`, untick its **Bold**, OK. Expected: the tag redraws at once, larger and
+   regular; one `u` puts both back. A height of `11` shows `A text height is 0.5 to 10 mm.` and
+   OK is disabled. **Defaults** puts every row back (written only on OK).
+
+Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
+`textstyle {"kind":"tag","height":3,"weight":"regular"}`, `textstyle {"font":"Arial"}`,
+`textstyle {"kind":"wire_label","height":2}` (the same value as **Wires ▸ Label height**),
+`defaults {"group":"Text"}` (every registered default, its value and where it comes from).
+`projectprops`, `pageprops` and `setprop` refuse `text.` keys.
 
 ## 6. Check connected movement, undo/redo and pages
 

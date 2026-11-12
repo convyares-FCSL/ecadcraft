@@ -899,10 +899,13 @@ pub fn project_page_framed(
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
-    // Device tags and terminal labels (brief 018): derived on every draw, never stored.
+    // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
+    // project's text styles (brief 031).
+    let look = crate::text_style::Look::new(doc);
+    crate::text_style::install_fonts(&mut d, &look.fonts);
     for t in crate::devices::texts_on_page(doc, page) {
         let h = prev.tag_text(t.rep, t.of).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::devices::text_entity(&t, h));
+        ents.push(crate::devices::text_entity(&look, &t, h));
         map.insert_tag_text(t.rep, t.of, h);
     }
     // Device cross-references (brief 025): texts under contacts and tables under heads, derived
@@ -924,7 +927,7 @@ pub fn project_page_framed(
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::locations::label_entity(&value, at, h));
+        ents.push(crate::locations::label_entity(&look, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
