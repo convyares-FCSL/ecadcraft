@@ -1,6 +1,6 @@
 # Brief 027: Release (basic): pre-release check, named revision, stamped folder
 
-Status: Draft (designer, 2026-11-12; owner questions in design §15, FP1–FP2 for the overseer)
+Status: Approved (owner, 2026-11-12: Q1–Q11 as recommended; overseer approved FP1–FP2; design §17)
 Branch: `feature/release` (worktree `C:\dev\ecad-features\sheets`, historical name), from `dev`
 `dc2472c6`.
 Designer: **yes** (`docs/design/027.md`) · Size: S–M
