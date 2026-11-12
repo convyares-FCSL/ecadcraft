@@ -1,8 +1,8 @@
 # Brief 030: Terminal strip accessories
 
-Status: Draft, revision 3 (designer, 2026-11-12; decisions in design §17: every accessory is
-placed by the user; jumpers are strip-owned links (model D); FP1–FP4 approved. The hybrid Jumper
-tool is confirmed. FP5–FP7 approved. Open: design §15 Q2–Q3 (owner))
+Status: Approved (owner, 2026-11-12; design 030 revision 3, decisions in design §17: every
+accessory is placed by the user; jumpers are strip-owned links made with the hybrid Jumper tool;
+FP1–FP7 approved by the overseer; §15 Q1–Q3 answered by the owner)
 Branch: `feature/terminal-accessories`, from `origin/feature/terminal-strips` `81139aaf` (028, in
 review as PR #55). The worker starts after 028 merges into `dev`, then merges `dev` into this
 branch first.
@@ -103,6 +103,5 @@ numbering pass's wire-number ops in its transaction, and renumber rewrites `link
 
 ## Needs owner check
 
-- Answer design §15 Q2–Q3.
-- Approve the rest of the design.
 - A click-only trial: quick start 5O.
+- Reference screenshots (design §12).
