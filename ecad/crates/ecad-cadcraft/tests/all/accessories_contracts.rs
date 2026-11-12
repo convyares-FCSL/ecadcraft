@@ -386,3 +386,64 @@ fn link_lines_are_drawn_from_the_link() {
     let lines = f.h.p(|p| p.pages.get(&page).map(|v| v.map.clone()));
     assert!(lines.is_some());
 }
+
+/// Review of PR #57, 1: drawn 1, 2 and 5, offer 6, `link.1 = 2-3`; renumbering 5 to 3 must not
+/// let the moved terminal join link 1 silently, and colliding places merge.
+#[test]
+fn renumbering_onto_a_spare_position_in_a_link() {
+    let mut h = H::new(0x30_08);
+    h.first_page();
+    for x in [50.0, 90.0, 130.0] {
+        h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
+    }
+    let v = h.run("terminals", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
+    let strip: ComponentId = id(&v, "strip");
+    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let before = h.doc().terminals[&terms[2]].clone();
+    let mut after = before.clone();
+    after.label = Some("5".into());
+    h.cfg(|p| {
+        p.ledger.commit(
+            ecad_model::Author::User,
+            "label 5",
+            vec![ecad_model::Op::RemoveTerminal { id: terms[2], terminal: before }, ecad_model::Op::AddTerminal { id: terms[2], terminal: after }],
+        )
+    })
+    .unwrap();
+    let mut f = F { h, strip, terms, wires: Vec::new() };
+    f.h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "6"})).unwrap();
+    f.h.run("setprop", json!({"component": strip.hex(), "key": "link.1", "value": "2-3"})).unwrap();
+    f.acc(json!({"at": "3", "items": ["end_plate"]}));
+    f.acc(json!({"at": "5", "items": ["partition"]}));
+    let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "preview": true})).unwrap();
+    let lines = pv["accessories"].to_string();
+    assert!(lines.contains("link 2-3 removed (3 now drawn by a renumbered terminal)"), "{pv}");
+    assert!(lines.contains("joined into end_plate,partition"), "{pv}");
+    let head = f.h.head();
+    f.h.run("renumber", json!({"kind": "terminals", "scope": "all"})).unwrap();
+    assert_eq!(f.h.head(), head + 1, "one transaction");
+    assert_eq!(f.h.doc().terminals[&f.terms[2]].label.as_deref(), Some("3"));
+    assert_eq!(f.prop("link.1"), None, "the link is not silently extended to the moved terminal");
+    assert!(!f.same_net(1, 2));
+    assert_eq!(f.prop("acc.after.3").as_deref(), Some("end_plate,partition"), "merged, nothing lost");
+    f.same_as_built();
+}
+
+/// Review of PR #57, 3: both halves keep the link's own part; a side of one position is refused
+/// in words.
+#[test]
+fn split_keeps_the_part_and_never_drops_a_side() {
+    let mut f = fixture(0x30_09);
+    let s = f.strip.hex();
+    f.jumper(json!({"strip": s, "positions": "1-4"}));
+    f.h.run("setprop", json!({"component": s, "key": "link.1.part_number", "value": "JB-RD"})).unwrap();
+    let head = f.h.head();
+    let e = f.h.run("jumper", json!({"link": {"strip": s, "n": 1}, "split_at": "3"})).unwrap_err();
+    assert!(e.contains("would leave 4 alone") && e.contains("Shorten"), "{e}");
+    assert_eq!(f.h.head(), head);
+    f.jumper(json!({"link": {"strip": s, "n": 1}, "split_at": "2"}));
+    assert_eq!(f.prop("link.1").as_deref(), Some("1-2"));
+    assert_eq!(f.prop("link.2").as_deref(), Some("3-4"));
+    assert_eq!(f.prop("link.2.part_number").as_deref(), Some("JB-RD"));
+    f.same_as_built();
+}

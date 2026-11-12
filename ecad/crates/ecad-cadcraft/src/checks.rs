@@ -125,10 +125,12 @@ pub enum Kind {
     LinkAcrossPartition,
     /// A link naming positions the strip does not have.
     LinkOrphan,
+    /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
+    LinkOnNonStrip,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 33] = [
+    pub const ALL: [Kind; 34] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -162,6 +164,7 @@ impl Kind {
         Kind::NoAccessoryPart,
         Kind::LinkAcrossPartition,
         Kind::LinkOrphan,
+        Kind::LinkOnNonStrip,
     ];
 
     /// The JSON name.
@@ -200,6 +203,7 @@ impl Kind {
             Kind::NoAccessoryPart => "no-accessory-part",
             Kind::LinkAcrossPartition => "link-across-partition",
             Kind::LinkOrphan => "link-orphan",
+            Kind::LinkOnNonStrip => "link-on-non-strip",
         }
     }
 
@@ -244,6 +248,7 @@ impl Kind {
             Kind::NoAccessoryPart => "Strip accessories without a part number",
             Kind::LinkAcrossPartition => "Link crosses a partition",
             Kind::LinkOrphan => "Link names positions the strip lacks",
+            Kind::LinkOnNonStrip => "Link on a device that is not a strip",
         }
     }
 
@@ -267,7 +272,8 @@ impl Kind {
             | Kind::OrphanReference
             | Kind::AccessoryOrphan
             | Kind::LinkAcrossPartition
-            | Kind::LinkOrphan => Severity::Warning,
+            | Kind::LinkOrphan
+            | Kind::LinkOnNonStrip => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -316,6 +322,8 @@ pub enum Fix {
     LinkAcrossPartition(ComponentId, u16, u16),
     /// Brief 030: link `n` names missing positions: **Drop missing positions** or **Delete link**.
     LinkOrphan(ComponentId, u16),
+    /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
+    LinkOnNonStrip(ComponentId),
 }
 
 /// One row of the Checks list.

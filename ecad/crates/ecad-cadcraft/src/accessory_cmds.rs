@@ -363,6 +363,15 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                 if first.is_empty() || rest.is_empty() {
                     return Err(format!("Link {cur_text} has no positions on both sides of {at}; pick a position inside it."));
                 }
+                // Review of PR #57, 3: a side of one position would be no link; never dropped.
+                if first.len() < 2 || rest.len() < 2 {
+                    let one = if first.len() < 2 { &first } else { &rest };
+                    return Err(format!(
+                        "Splitting link {cur_text} after {at} would leave {} alone. Shorten the link instead (remove {}), or split it at another position.",
+                        one.join(", "),
+                        one.join(", ")
+                    ));
+                }
                 let m = next_link(doc, c).ok_or("This strip has 999 links; delete one first.")?;
                 next = first;
                 extra = Some((m, rest));
@@ -442,6 +451,13 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
         {
             let t = canonical_of(rest, &order);
             ops.extend(set_op(doc, c, links::key(*m), Some(t.clone())));
+            // Both halves keep the link's own part (review of PR #57, 3).
+            for f in acc::FIELDS {
+                let own = doc.components.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", links::key(n)))).cloned();
+                if own.is_some() {
+                    ops.extend(set_op(doc, c, format!("{}.{f}", links::key(*m)), own));
+                }
+            }
             extra_text = Some((*m, t));
         }
         let shown = text.clone().unwrap_or_else(|| "(removed)".into());

@@ -1979,6 +1979,9 @@ Your table of three clean runs goes here once you have run it.
   a partition or a single marker with **Strip Accessory**); a link is extended, shortened or split
   through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
   generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).
+  Merging two branches that each added a link with the same number on one strip shows one conflict
+  on that `link.<n>` key: keep one side, then add the other link again with **Jumper** (design
+  030 §9.4 "Keep both" is later work).
 - **Terminal strips (brief 028):** no multi-level, disconnect or fuse terminals; no bridge parts
   (end plates, markers) on the BOM; no reference texts under terminals; cable lengths are typed,
   not measured. A terminal on a wire drawn on several pages is refused (place it where the wire

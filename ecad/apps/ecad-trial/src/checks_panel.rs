@@ -283,7 +283,7 @@ impl ChecksPanel {
                         Fix::RenumberStrip(_) => RENUMBER_STRIP,
                         Fix::SetCores(_) => SET_CORES,
                         Fix::NextFreeCore(_) => NEXT_FREE_CORE,
-                        Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) => REMOVE,
+                        Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
@@ -297,6 +297,7 @@ impl ChecksPanel {
                             (Fix::SetCores(k), _) => out.push(Action::SetCores(k)),
                             (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
                             (Fix::ShowCables, _) => out.push(Action::ShowCables),
+                            (Fix::LinkOnNonStrip(_), _) => out.push(Action::AccessoryFix(f, 0)),
                             _ => {}
                         }
                         continue;

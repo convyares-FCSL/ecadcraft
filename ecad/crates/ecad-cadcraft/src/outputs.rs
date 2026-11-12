@@ -499,6 +499,9 @@ pub struct Outputs {
     /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
     /// cables with no core count (one info row when any).
     cable_checks: [usize; 3],
+    /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
+    links_off_strip: BTreeSet<ComponentId>,
+    link_keys: BTreeMap<ComponentId, Vec<String>>,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -740,6 +743,24 @@ impl Outputs {
 
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
         self.remove_device(c);
+        // Review of PR #57, 4: a link key on a device that is not a strip.
+        let misplaced = !crate::strips::is_strip(doc, c)
+            && doc.components.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
+        if misplaced {
+            let keys = doc
+                .components
+                .get(&c)
+                .map(|x| x.properties.keys().filter(|k| ecad_model::links::link_number(k).is_some()).cloned().collect())
+                .unwrap_or_default();
+            self.link_keys.insert(c, keys);
+            self.links_off_strip.insert(c);
+        } else if self.links_off_strip.remove(&c) {
+            self.link_keys.remove(&c);
+            self.checks_changed += 1;
+        }
+        if misplaced {
+            self.checks_changed += 1;
+        }
         if !locations::is_device(doc, c) {
             return;
         }
@@ -1117,6 +1138,17 @@ impl Outputs {
             }
             out.extend(accessory_checks(s));
         }
+        for c in &self.links_off_strip {
+            let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
+            out.push(Check {
+                kind: Kind::LinkOnNonStrip,
+                page: None,
+                at: None,
+                object: Object::Component(*c),
+                which: format!("{tag} has link keys but is not a terminal strip"),
+                fix: Some(Fix::LinkOnNonStrip(*c)),
+            });
+        }
         if self.strips.acc_no_part > 0 {
             let n = self.strips.acc_no_part;
             let which =
@@ -1184,7 +1216,8 @@ impl Outputs {
             + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
             + usize::from(self.cable_checks[2] > 0);
         // Brief 028: the strips' and cables' rows, kept with them.
-        let warnings = self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1];
+        let warnings =
+            self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1] + self.links_off_strip.len();
         (self.strips.check_errors, warnings, info)
     }
 
@@ -1221,6 +1254,14 @@ impl Outputs {
             }
         }
         sheets
+    }
+
+    /// The `link.<n>` keys a device that is not a strip carries (kept per device, read on demand).
+    pub fn link_keys_off_strip(&self, c: ComponentId) -> Vec<String> {
+        if !self.links_off_strip.contains(&c) {
+            return Vec::new();
+        }
+        self.link_keys.get(&c).cloned().unwrap_or_default()
     }
 
     /// One device's row.
@@ -1840,6 +1881,12 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
                 ("Remove partition".to_string(), "accessory", json!({"strip": c.hex(), "at": label, "remove": ["partition"]})),
             ]
         }
+        Fix::LinkOnNonStrip(c) => o
+            .link_keys_off_strip(c)
+            .into_iter()
+            .take(1)
+            .map(|k| (format!("Remove {k}"), "setprop", json!({"component": c.hex(), "key": k, "value": null})))
+            .collect(),
         Fix::LinkOrphan(c, n) => vec![
             ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),

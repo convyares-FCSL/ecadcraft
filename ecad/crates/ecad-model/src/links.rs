@@ -245,29 +245,78 @@ pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
         .collect()
 }
 
-/// The terminals of `component` joined to `t` by its links (not `t` itself).
+/// A link's positions ready for many lookups: single labels hashed, range ends keyed once
+/// (review of PR #57, 2: a lookup costs the link's ranges, never its whole text).
+pub struct Matcher {
+    ones: std::collections::HashSet<String>,
+    ranges: Vec<(NaturalKey, NaturalKey)>,
+}
+
+/// A label's natural sort key ([`natural_key`]).
+pub type NaturalKey = Vec<(u8, u128, String)>;
+
+impl Matcher {
+    pub fn of(p: &Positions) -> Matcher {
+        let mut m = Matcher { ones: Default::default(), ranges: Vec::new() };
+        for i in &p.0 {
+            match i {
+                Item::One(x) => {
+                    m.ones.insert(x.clone());
+                }
+                Item::Range(a, b) => m.ranges.push((natural_key(a), natural_key(b))),
+            }
+        }
+        m
+    }
+
+    /// Whether the link names the position labelled `l`.
+    pub fn matches(&self, l: &str) -> bool {
+        if self.ones.contains(l) {
+            return true;
+        }
+        if self.ranges.is_empty() {
+            return false;
+        }
+        let k = natural_key(l);
+        self.ranges.iter().any(|(a, b)| *a <= k && k <= *b)
+    }
+}
+
+/// Labels in plan order: natural order ([`natural_key`]), each once. The one ordering of a strip's
+/// positions, used by ECAD's strips, accessories and links.
+pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut v: Vec<(NaturalKey, String)> = labels.into_iter().map(|l| (natural_key(&l), l)).collect();
+    v.sort();
+    v.dedup_by(|a, b| a.1 == b.1);
+    v.into_iter().map(|(_, l)| l).collect()
+}
+
+/// The terminals of `component` joined to `t` by its links (not `t` itself). One pass over the
+/// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let Some(l) = term.label.as_deref() else { return Vec::new() };
     let Some(comp) = doc.components.get(&term.component) else { return Vec::new() };
-    let mut out = Vec::new();
+    let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
-        if !p.contains(l) {
+        let m = Matcher::of(&p);
+        if !m.matches(l) {
             continue;
         }
         for (id, x) in doc.terminals_of(term.component) {
-            if id != t && x.label.as_deref().is_some_and(|m| p.contains(m)) && !out.contains(&id) {
-                out.push(id);
+            if id != t && x.label.as_deref().is_some_and(|y| m.matches(y)) {
+                out.insert(id);
             }
         }
     }
-    out
+    out.into_iter().collect()
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
 pub fn terminals_named(doc: &Document, component: ComponentId, value: Option<&str>) -> Vec<TerminalId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
-    doc.terminals_of(component).filter(|(_, x)| x.label.as_deref().is_some_and(|l| p.contains(l))).map(|(id, _)| id).collect()
+    let m = Matcher::of(&p);
+    doc.terminals_of(component).filter(|(_, x)| x.label.as_deref().is_some_and(|l| m.matches(l))).map(|(id, _)| id).collect()
 }
 
 #[cfg(test)]

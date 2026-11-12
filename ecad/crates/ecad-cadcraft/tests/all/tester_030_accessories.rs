@@ -957,7 +957,6 @@ fn k_hostile_input_refused_without_panic() {
 /// Design §7.4: "Erase on a selected link deletes the link, saying so (`Deleted link -X01 1-4.`)".
 /// Defect: the erase deletes the link's keys (translate.rs) but echoes no note.
 #[test]
-#[ignore = "tester 030: defect, erase on a link line deletes the link silently"]
 fn n_erase_on_a_link_line_says_deleted_link() {
     let mut a = fixture(0x7030_000b, true);
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": "1-2"})).unwrap();

@@ -553,6 +553,7 @@ fn gap_json(s: &StripData, gap: &str, a: crate::accessories::Acc) -> Value {
     o.insert("accessory".into(), json!(a.key()));
     o.insert("gap".into(), json!(gap));
     put(&mut o, "part_number", s.acc.gap_part(a, crate::outputs::gap_pe(s, gap)));
+    put(&mut o, "maker", s.acc.makers.get(a.key()));
     o.insert("terminal".into(), Value::Null);
     o.insert("label".into(), Value::Null);
     Value::Object(o)

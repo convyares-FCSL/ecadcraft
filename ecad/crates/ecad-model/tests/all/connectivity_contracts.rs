@@ -509,3 +509,28 @@ fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     assert!(!p.same_net(w[4], w[5]));
     p.check();
 }
+
+/// Review of PR #57, 2: a 999-position strip with a long skip link and a full range builds its
+/// nets in normal time, and the kept nets match a rebuild after an edit.
+#[test]
+#[ignore = "slow: 999 terminals, two incremental link commits (the build itself is timed below 5 s)"]
+fn a_999_terminal_strip_with_long_links_builds_quickly() {
+    let mut p = P::new();
+    let (strip, t) = p.device(999);
+    let skip: Vec<String> = (1..=999).step_by(2).map(|n| n.to_string()).collect();
+    let set = |p: &mut P, key: &str, value: &str| {
+        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: Some(value.into()) }]);
+    };
+    set(&mut p, "link.1", &skip.join(", "));
+    set(&mut p, "link.2", "2-998");
+    let start = std::time::Instant::now();
+    let built = Connectivity::build(p.doc());
+    let took = start.elapsed();
+    assert!(took.as_secs_f64() < 5.0, "build took {took:?}");
+    let c = p.doc().connectivity();
+    assert_eq!(c.net_of(&ecad_model::Node::Terminal(t[0])), c.net_of(&ecad_model::Node::Terminal(t[998])));
+    assert_eq!(c.net_of(&ecad_model::Node::Terminal(t[0])), c.net_of(&ecad_model::Node::Terminal(t[1])), "joined through 3");
+    eprintln!("999-terminal build: {took:?}");
+    assert_eq!(p.doc().connectivity().differs_from(&built), None);
+}

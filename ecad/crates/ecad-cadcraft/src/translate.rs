@@ -401,6 +401,9 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     for (c, n) in erased_links {
         let props = cx.ledger.document().components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::links::key(n);
+        if let Some(v) = props.get(&key) {
+            t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.ledger.document(), c)));
+        }
         for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
                 t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key: k, before: Some(before), after: None });

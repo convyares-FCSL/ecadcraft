@@ -292,9 +292,7 @@ pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
     if let Some(o) = crate::strips::offer_of(doc, c) {
         labels.extend((1..=o.positions).map(|n| n.to_string()));
     }
-    let mut v: Vec<String> = labels.into_iter().collect();
-    v.sort_by_key(|l| links::natural_key(l));
-    v
+    links::plan_order(labels)
 }
 
 /// A link value as stored: canonical (`1, 2, 3, 4` → `1-4`) when every label it names is a
@@ -420,6 +418,8 @@ pub struct StripAcc {
     /// The part number each placed gap item shows (`end_plate_pe` when an end plate follows a PE
     /// position and that part is known).
     pub parts: BTreeMap<&'static str, String>,
+    /// The maker each placed gap item shows (review of PR #57, 5).
+    pub makers: BTreeMap<&'static str, String>,
 }
 
 impl StripAcc {
@@ -530,6 +530,9 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
         if a.count(g) > 0 {
             if let Some(pn) = parts.get(&format!("{}.part_number", g.key())) {
                 a.parts.insert(g.key(), pn);
+            }
+            if let Some(m) = parts.get(&format!("{}.maker", g.key())) {
+                a.makers.insert(g.key(), m);
             }
             if g == Acc::EndPlate
                 && let Some(pn) = parts.get("end_plate_pe.part_number")
@@ -752,7 +755,26 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
                     b.unwrap_or_default()
                 ));
             }
-            now.insert(nk, v.clone());
+            // Two places landing on one key (a terminal moved onto a spare position that already
+            // had items) merge, never lose items (review of PR #57, 1).
+            match now.get(&nk).cloned() {
+                Some(prev) => {
+                    let on = nk.starts_with(ON_PREFIX);
+                    let mut items = parse_items(&prev, on).unwrap_or_default();
+                    for a in parse_items(v, on).unwrap_or_default() {
+                        if !(on && items.contains(&a)) {
+                            items.push(a);
+                        }
+                    }
+                    items.truncate(MAX_ITEMS);
+                    let merged = items_text(&items);
+                    lines.push(format!("{tag}: {} joined into {merged}", nk.replace("acc.", "")));
+                    now.insert(nk, merged);
+                }
+                None => {
+                    now.insert(nk, v.clone());
+                }
+            }
         }
         for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
             let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
@@ -765,11 +787,32 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
         let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
         new_order.sort_by_key(|l| links::natural_key(l));
         new_order.dedup();
+        // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
+        // one would silently join that terminal's net, so the position leaves the link.
+        let drawn_before: BTreeSet<String> =
+            crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::terminal_name(doc, t)).collect();
+        let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
         for (n, p) in links::of(props) {
             let key = links::key(n);
             let Some(before) = props.get(&key).cloned() else { continue };
-            let mut labels: Vec<String> = p.select(&old_order).iter().map(|l| moved(l)).collect();
+            let selected: Vec<&String> = p.select(&old_order);
+            let dropped: Vec<&String> = selected.iter().copied().filter(|l| taken.contains(l)).collect();
+            let mut labels: Vec<String> = selected.iter().filter(|l| !taken.contains(*l)).map(|l| moved(l)).collect();
             labels.extend(p.missing(&old_order));
+            if !dropped.is_empty() {
+                let names: Vec<&str> = dropped.iter().map(|l| l.as_str()).collect();
+                let why = format!("{} now drawn by a renumbered terminal", names.join(", "));
+                if labels.len() < 2 {
+                    lines.push(format!("{tag}: link {before} removed ({why})"));
+                    for k in std::iter::once(key.clone()).chain(FIELDS.iter().map(|f| format!("{key}.{f}"))) {
+                        if let Some(b) = props.get(&k).cloned() {
+                            out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k, before: Some(b), after: None });
+                        }
+                    }
+                    continue;
+                }
+                lines.push(format!("{tag}: link {before} leaves {why}"));
+            }
             let mut refs: Vec<&String> = labels.iter().collect();
             refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
             refs.dedup();

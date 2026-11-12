@@ -236,6 +236,16 @@ fn degree(doc: &Document, node: &Node) -> usize {
 
 /// The present nodes joined to `node` by one edge.
 fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
+    let mut out = neighbors_base(doc, node);
+    if let Node::Terminal(t) = node {
+        out.extend(crate::links::linked(doc, *t).into_iter().map(Node::Terminal));
+    }
+    out
+}
+
+/// [`neighbors`] without the links (brief 030): what [`Connectivity::build`] adds link edges to
+/// from one pass per component (review of PR #57, 2).
+fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = Vec::new();
     match node {
         Node::Terminal(t) => {
@@ -248,7 +258,6 @@ fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
                 out.push(Node::Name(k));
             }
             out.extend(bridged(doc, *t).into_iter().map(Node::Terminal));
-            out.extend(crate::links::linked(doc, *t).into_iter().map(Node::Terminal));
         }
         Node::Conductor(c) => {
             if let Some(cond) = doc.conductors.get(c) {
@@ -278,6 +287,21 @@ impl Connectivity {
             .map(|t| Node::Terminal(*t))
             .chain(doc.conductors.keys().map(|k| Node::Conductor(*k)))
             .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())));
+        // Link edges, worked out once per component with links (a chain per link).
+        let mut link_edges: HashMap<TerminalId, Vec<TerminalId>> = HashMap::new();
+        for (id, comp) in &doc.components {
+            for (_, p) in crate::links::of(&comp.properties) {
+                let m = crate::links::Matcher::of(&p);
+                let members: Vec<TerminalId> =
+                    doc.terminals_of(*id).filter(|(_, x)| x.label.as_deref().is_some_and(|l| m.matches(l))).map(|(t, _)| t).collect();
+                for w in members.windows(2) {
+                    if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
+                        link_edges.entry(*a).or_default().push(*b);
+                        link_edges.entry(*b).or_default().push(*a);
+                    }
+                }
+            }
+        }
         for node in all {
             if c.node_net.contains_key(&node) {
                 continue;
@@ -289,7 +313,11 @@ impl Connectivity {
                 if c.node_net.contains_key(&n) {
                     continue;
                 }
-                stack.extend(neighbors(doc, &n).into_iter().filter(|m| !c.node_net.contains_key(m)));
+                let mut next = neighbors_base(doc, &n);
+                if let Node::Terminal(t) = &n {
+                    next.extend(link_edges.get(t).into_iter().flatten().map(|x| Node::Terminal(*x)));
+                }
+                stack.extend(next.into_iter().filter(|m| !c.node_net.contains_key(m)));
                 c.attach(doc, n, id);
             }
         }
