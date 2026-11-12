@@ -1,5 +1,8 @@
 # Road to ECAD v0.1
 
+> [!update] 2026-11-11
+> Re-plan after 020 and the QA pass on `dev`: see "Where we are (2026-11-11)" and the three lanes.
+
 Status: **Agreed direction** (owner, 2026-11-08: scope yes, IEC, A3, start both lanes). Sizes are
 estimates and are revised after F1 and F2.
 
@@ -32,7 +35,7 @@ output, done better:
   terminal strip (links, cables and cores), a cable-type list and a cable list (from and to
   location, maker, reference, length).
 
-## Where we are (2026-11-08)
+## Where we were (2026-11-08)
 
 Done, in `main`:
 - one-file projects with pages, undo and redo, and safe saving on Windows and Linux;
@@ -42,6 +45,27 @@ Done, in `main`:
 - MCP agent access;
 - fast edits (about 1 ms on 500 pages);
 - a cheap test setup (brief 017, merging now).
+
+## Where we are (2026-11-11)
+
+Done, in `dev` (QA pass on `dev` 2026-11-11: product passes; `main` stays at the 2026-11-08 gate
+by owner decision):
+- **F1** project manager (016), **F2** components, tags and starter symbols (018) and **F4**
+  connectivity and wire numbers (022);
+- part of **F6**: A3 frame, title block, `page-column-row` references, project and page
+  properties, folders and Issue Revision (019);
+- container v2 on redb (021), History and Branches with merge (020), fast tests (017), and the
+  upstream sync to CADCraft 0.19.0 (023).
+
+### Lanes from 2026-11-11 (owner: yes, three lanes)
+
+| Lane | Now | Then |
+|---|---|---|
+| A outputs | **024** outputs: device location `+` as a device property (not the page it is on), location boxes, PDF book (on CADCraft's PDF path), generated cover, contents, revision list and BOM by location, and **three separate reports**: BOM, wire report and cable report (wires never on the BOM) | **027** release: stamped folder, pre-release check, cable and terminal CSVs (after 028) |
+| B model | **025** device cross-references (F3) on the general reference index, contact mirror tables | **028** terminal strips and cable schedule (F5) |
+| C numbering | **026** renumber, fixed flag, swap, provisional tags for devices, wires and cables; "Make them one device" | HTML inspector on `.ecad` v2 via wasm (small), then the look-and-feel pass with History polish |
+
+Wire types come after v0.1 (the wire report uses 022's cross-section and colour).
 
 ## Features to v0.1
 
@@ -86,6 +110,15 @@ F4. It is about M in size, and 473 commits have built up so far.
 - AI changes as proposals, and AI-assisted drafting beyond today's MCP.
 - Named versions beyond one revision, and compaction and checkpoints (stage 4).
 - The 010 look pass and the owner's QA notes from 2026-11-08 (fitted into F1 or F6 where they touch).
+- **Wire types (owner, 2026-11-09):** named conductor types (cross-section, colour, insulation,
+  rating, part number, ferrule) per potential, overridable per wire; library with project copies.
+- **Look-and-feel pass (owner, 2026-11-09; details TBC):** a calm, modern feel (menus,
+  preferences, type), never copying another product; no history bar at the bottom; the 019
+  trial's UI tweaks; History polish deferred from 020b (folder "Combine" and the "Show ▾" conflict
+  detail in merge, redo of a merge in a later session re-closing the branch).
+- **Debugger as a popup** (Developer section height snaps).
+- **Text convention:** electrical shorthand: IEC 60757 colour codes (BN, BU, GNYE) by default,
+  3-letter option; labels small and spaced.
 
 ## Owner decisions (2026-11-08)
 

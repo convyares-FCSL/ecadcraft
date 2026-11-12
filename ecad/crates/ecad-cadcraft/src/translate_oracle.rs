@@ -350,6 +350,10 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
                 if item != old {
+                    // Brief 024 (tester 024): the same refusal as the current translation.
+                    if let Some(m) = crate::locations::reshape_refusal(cx.doc, id, &item) {
+                        return Err(m);
+                    }
                     linked_changed |= cx.doc.representation_of_item(id).is_some();
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     counts[1] += 1;

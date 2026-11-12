@@ -21,6 +21,7 @@
 
 mod devices;
 mod forms;
+mod location_form;
 mod refs;
 mod wiring_forms;
 
@@ -41,6 +42,7 @@ use crate::views::{FanOnPage, View, fan_on_page};
 
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
+pub(crate) use location_form::locationbox;
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
 

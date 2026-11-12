@@ -19,6 +19,8 @@ pub struct Row {
     pub compression: Option<crate::v2::Compression>,
     /// History and branches on that file (brief 020a).
     pub history: Option<crate::history::MeasuredHistory>,
+    /// Locations, reports and printing on that file (brief 024).
+    pub outputs: Option<crate::outputs::MeasuredOutputs>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -255,6 +257,29 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         ));
     }
     for r in rows {
+        let Some(o) = &r.outputs else { continue };
+        out.push_str(&format!(
+            "\nOutputs on {} {} ({} devices; box holds {}): reportfirst {:.1} ms, locset {:.2} ms, boxmove {:.2} ms \
+             (plain move {:.2} ms), symin {:.2} ms, projloc {:.2} ms, bomupd {:.2} ms, wireupd {:.2} ms, print {:.0} ms \
+             ({} sheets); most rows one edit recomputed: {}\n",
+            r.tier,
+            r.variant,
+            o.devices,
+            o.inside,
+            o.reportfirst_ms,
+            o.locset_ms,
+            o.boxmove_ms,
+            o.plainmove_ms,
+            o.symin_ms,
+            o.projloc_ms,
+            o.bomupd_ms,
+            o.wireupd_ms,
+            o.print_ms,
+            o.print_sheets,
+            o.work
+        ));
+    }
+    for r in rows {
         let Some(c) = &r.compression else { continue };
         out.push_str(&format!(
             "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of chunks uncompressed\n",
@@ -384,6 +409,12 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "v2_compacted_x10": r.v2.as_ref().map(|v| v.compacted_x10),
                 "v2_undo_ms": r.v2.as_ref().map(|v| v.undo_ms),
                 "v2_undo_past_cap_ms": r.v2.as_ref().map(|v| v.undo_past_cap_ms),
+                "outputs": r.outputs.as_ref().map(|o| json!({
+                    "reportfirst_ms": o.reportfirst_ms, "locset_ms": o.locset_ms, "boxmove_ms": o.boxmove_ms,
+                    "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
+                    "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms, "print_ms": o.print_ms,
+                    "print_sheets": o.print_sheets, "work": o.work, "devices": o.devices, "inside": o.inside,
+                })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
                     "pointshow_ms": h.pointshow_ms, "pointstep_ms": h.pointstep_ms, "brswitch_ms": h.brswitch_ms,

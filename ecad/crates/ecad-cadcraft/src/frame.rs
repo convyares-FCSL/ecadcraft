@@ -165,6 +165,8 @@ pub struct Part {
     pub weight: Option<u16>,
     /// `None`: ByLayer (ACI 7).
     pub aci: Option<u8>,
+    /// Its layer: [`LAYER`], or a generated page's content layer (brief 024).
+    pub layer: &'static str,
 }
 
 /// The entity of `part` with `handle`.
@@ -172,7 +174,7 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
     Entity {
         handle,
         common: Common {
-            layer: LAYER.into(),
+            layer: part.layer.into(),
             lineweight: part.weight.map_or(Lineweight::ByLayer, Lineweight::Mm100),
             color: part.aci.map_or(Color::ByLayer, Color::Index),
             ..Common::default()
@@ -197,12 +199,12 @@ impl Draw {
     }
     fn line(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
-        self.out.push(Part { kind, weight: Some(weight), aci });
+        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
     fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
         let v = vec![self.p(a.0, a.1), self.p(b.0, a.1), self.p(b.0, b.1), self.p(a.0, b.1)];
         let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
-        self.out.push(Part { kind, weight: Some(weight), aci });
+        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
     /// Text at `at` (millimetres), `height` mm, aligned; fitted into `room` mm when given.
     fn text(&mut self, at: (f64, f64), height: f64, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) {
@@ -225,7 +227,7 @@ impl Draw {
             halign: align.0,
             valign: align.1,
         });
-        self.out.push(Part { kind, weight: None, aci });
+        self.out.push(Part { kind, weight: None, aci, layer: LAYER });
     }
 }
 
@@ -236,7 +238,7 @@ const MIN_WIDTH_FACTOR: f64 = 0.6;
 
 /// `value` fitted in `room` mm at `height` (design 019 §4): narrowed down to
 /// [`MIN_WIDTH_FACTOR`], then cut with `…`.
-fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
+pub(crate) fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     let Some(room) = room.filter(|r| *r > 0.0) else { return (value.to_string(), 1.0) };
     let n = value.chars().count() as f64;
     let wide = n * height * CHAR_WIDTH;

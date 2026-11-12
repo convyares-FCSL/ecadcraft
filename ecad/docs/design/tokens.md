@@ -131,3 +131,13 @@ colours) and this is a known limitation.
 | `ecad.history-auto` | `cad.text_faint`, filled dot 3 px | Automatic snapshots, when shown |
 | `ecad.branch-bar` | `cad.chrome_dark` fill, 3 px `cad.accent` left bar | Branch bar in the Project panel |
 | `ecad.point-bar` | same as `ecad.revision-bar` | Read-only point bar (019's revision bar, generalised) |
+
+## Outputs (024, `design/024.md` §12)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.location-box` | ACI 7, ByLayer on `ECAD-LOCATIONS`, linetype `DASHED`, lineweight `ecad.wire-weight` | Location boxes |
+| `ecad.location-label-height` | 3.5 mm | `+…` label of a box |
+| `ecad.generated` | ACI 7, layer `ECAD-GENERATED` (locked) | Tables and text of generated pages |
+| `ecad.table-row` / `ecad.table-header` | 5 mm / 7 mm | Generated table rows |
+| `ecad.flagged` | `ecad.check-warning` | `?` values on screen and in Reports |

@@ -19,6 +19,27 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 024 (design `ecad/docs/design/024.md`), on `feature/outputs`, not yet in `dev`:** a
+device's **location** (`+CP1`) is its own value, else the **location box** its main symbol sits
+in, else its page's, else the project's; Properties says where it comes from (`+JB1 (from box on
+3)`). Location boxes are dashed rectangles or closed polylines labelled `+…`, drawn with
+**Location Box** (ECAD tab) or made from an existing closed polyline; what they hold updates live,
+and nothing is written on the devices. A symbol drawn away from its device's location shows the
+prefix (`+CP1-K01`). **Reports** (BOM, wires, cables, each exported as Excel-safe CSV) and
+**Print Book** (one PDF of every page, a folder or a page list) are buttons in the PROJECT panel's
+header; its **v** beside **+** adds generated pages: Cover, Contents, Revision list, BOM by
+location. Section 5K describes it.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/outputs_contracts.rs` (precedence, live
+  boxes, innermost wins, own value kept and flagged with its fix, the prefix, reports and CSV,
+  generated pages and overflow, Print Book; every edit's kept models equal a fresh build),
+  `ecad/apps/ecad-mcp/tests/all/outputs_contracts.rs` (MCP writes as the agent, refused with writes
+  off; reports and printing read), `ecad/apps/ecad-mcp/tests/all/demo.rs`
+  (`the_demo_locations_reports_and_generated_pages`), and `ecad/apps/ecad-trial/tests/all/outputs_ui.rs`
+  (the windows, headless, with screenshots).
+- *Agent-observed:* the worker looked at the headless screenshots `024-*.png`; no agent has
+  clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 020b (design `ecad/docs/design/020.md` §4–§6), on `feature/history-merge`, not yet in
 `dev`:** a branch is **merged into main** (or into the branch it came from), and a branch is
 **updated from main**, through a dialog that previews the changes and lists each conflict with an
@@ -1077,6 +1098,54 @@ a plain `u` of a merge is refused, saying so), `history {"limit":400}` (more row
 On a branch, **Revisions** has **Switch to main** (Save and switch applies); archiving the branch
 shown when its parent is archived too shows main, saying so.
 
+## 5K. Outputs (by clicking)
+
+On the demo project (`cargo xtask demo`, then open it, section 7). Design 024. The demo's project
+location is `+CP1`, page 3 (**Field**) is `+FIELD`, the motor terminals `-X02` sit in location box
+`+JB1`, cable `-W01` is a `4G1.5`, and the book ends with a generated **Revision list** and **BOM
+by location**. The trial has no file dialogs: where a file is asked for, type its path.
+
+1. **Where things are.** Show page 2 and click `-K01`'s coil. Expected: **Properties**
+   (`ECAD · DEVICE -K01`) shows **Location** faint, `+CP1 (project)`. Type `+CP2`, Enter: it shows
+   `+CP2` (one step); `u` returns it to `+CP1 (project)`. Hover the coil: a line
+   `Location: +CP1 (project)`. Show page 3: `-K01`'s NC contact reads `+CP1-K01` (it is drawn in
+   the field; the device stays in `+CP1`, from its coil), and `-X02` shows `+JB1 (from box on 3)`.
+2. **A location box.** On page 3 click **Location Box** (ECAD tab, Components), type `+JB2`,
+   Enter, and click two corners round the motor `-M01` (below the terminals). While you drag, the
+   motor gets a green ring. Expected: `Location box +JB2: 1 device inside, now in +JB2.`; click the
+   motor: **Location** `+JB2 (from box on 3)`. Select the box's dashed outline and drag a corner
+   grip so the motor is outside: at once `+FIELD (from page 3)`. Type `u` twice. Again with
+   **Location Box**, `+JB3`, then `P` at the first prompt: click five points round the motor, then
+   `C`. A box drawn smaller than 10 x 10 mm is refused and the prompt stays open.
+3. **An own location in a box.** Click `-X02`, type `+CP9` in **Location**, Enter. Open the
+   **Checks** tab: `▲ Own location differs from its box  -X02 is +CP9 but sits in box +JB1`, with
+   **Use the box's location**. Click it: `-X02` is `+JB1 (from box on 3)` again (one step).
+4. **Reports.** Click **Reports** (the table button in the PROJECT panel's header). Expected: tabs
+   `BOM (n)`, `Wires (n)`, `Cables (1)`. The BOM lists devices only, grouped by location
+   (`+CP1`, `+FIELD`, `+JB1`); `-S01`'s Maker and Part number are yellow `?`, and `n ?` counts
+   them. Click the `-S01` row: page 2 is shown with the stop button selected; set its **Maker** in
+   Properties: the `?` goes at once. **Group v By part** groups the whole project. **Wires** shows
+   each conductor with both ends (`-Q02:2`), their locations, cross-section and colour, the cable
+   cores with their cable (`-W01 core 1`). **Cables**: `-W01  4G1.5  3  +CP1  +JB1  —  —`.
+5. **Export.** On the BOM tab click **Export CSV…**, check the path (`…\demo-bom.csv`), **Save**.
+   Expected: `Wrote n rows to … (m cells marked ?).` Open it in a spreadsheet: tags read `-K01`
+   (written `'-K01`, so the spreadsheet does not take them for formulas).
+6. **Generated pages.** In the PROJECT panel click **v** beside **+** and choose **Cover**, then
+   **Contents**; with each new page selected, click the up arrow until it is first (cover) and
+   second (contents). Show **BOM by location** (the last page): the table of step 4, one block
+   per location. Try to draw a line on it: `Page 5 is generated (BOM by location). Draw on
+   another page, or add one after it with +.`
+7. **The book.** Click **Print Book** (the plot button), keep **All pages**, check **File**, then
+   **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
+   cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
+   its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
+   number is listed under the field and left out.
+
+Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
+`setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
+`bom {}`, `bom {"group":"part"}`, `wirelist {}`, `cablelist {}`, `bom {"path":"C:/tmp/bom.csv"}`,
+`newpage {"generated":"contents"}`, `printbook {"path":"C:/tmp/demo.pdf","scope":{"pages":"1, 3"}}`.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1586,6 +1655,12 @@ launch and about 0.15 s on the next two (measured from Git Bash's clock, so appr
 Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
+
+- **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
+  custom sheets print fitted on the smallest ISO A paper; no XLSX; the cable report's Used and
+  Spare stay `—` until terminal strips (brief 028) count cores. The trial has no file dialogs, so
+  Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
+  yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
 
 - **History and branches (briefs 020a, 020b):** a branch merges into, and updates from, its
   parent only (owner answer 14). The merge dialog has no **Show ▾** preview of an object's page

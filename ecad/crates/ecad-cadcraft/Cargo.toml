@@ -29,6 +29,9 @@ ecad-store = { workspace = true }
 ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
+# Brief 024: Print Book installs CADCraft's PDF plotter as the engine's plot hook (no PDF code in
+# ECAD); already in the graph through `cadcraft-mcp`.
+cadcraft-io = { path = "../../../crates/io" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # Brief 020a: dates of the History tab (calendar only on every target; the zone below).

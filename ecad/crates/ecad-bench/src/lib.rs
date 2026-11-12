@@ -18,6 +18,7 @@
 pub mod generate;
 pub mod history;
 pub mod measure;
+pub mod outputs;
 pub mod report;
 pub mod v2;
 
@@ -133,6 +134,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         eprintln!("{} {}: measuring history and branches…", tier.name, variant.name());
         let hist = history::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring locations, reports and printing…", tier.name, variant.name());
+        let outs = outputs::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
             variant: variant.name().into(),
@@ -140,6 +144,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             v2: Some(v2m?),
             compression: Some(compression),
             history: Some(hist?),
+            outputs: Some(outs?),
         });
     }
     Ok(rows)
