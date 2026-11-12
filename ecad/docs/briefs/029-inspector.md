@@ -1,7 +1,7 @@
 # Brief 029: The inspector protocol and `ecadinspect serve`
 
-Status: Draft (designer, 2026-11-12, revised twice the same day after owner decisions; design
-`docs/design/029.md`, owner questions §11)
+Status: Draft (designer, 2026-11-12, revised three times the same day after owner decisions;
+design `docs/design/029.md`, owner questions §11, dependency note DN1)
 Branch: `feature/inspector` (worktree `C:\dev\ecad-features\container-v2`, folder name
 historical), from `dev` `dc2472c6`.
 Designer: **yes** (`docs/design/029.md`) · Size: M (Verify in `ecad-file` is a store change:
@@ -16,9 +16,14 @@ and sees what is in the file: the project and pages, devices, wires and nets, hi
 branches, the stored tables, and whether the file checks out. The inspector is a **developer
 and test tool** (owner, 2026-11-12). It never ships, and end users never see inside a `.ecad`.
 
-The page talks to the file through a **versioned JSON request/response protocol** defined in
-`ecad-inspect`, in the manner of rosbridge. A later transport can attach the same protocol to a
-running app session for live inspection. That transport is not built here.
+The page talks to the file through a **versioned JSON protocol over a WebSocket**, in the
+manner of rosbridge. It is defined in a new developer crate, `dev/ecad-inspector`. Requests carry
+ids, so push messages can be added later without breaking it. A later transport can attach the
+same protocol to a running app session for live inspection. That transport is not built here.
+
+Developer tools move out of product code into their own tree, `ecad/dev/` (design §12). 029
+creates the tree and moves what no other open branch touches. The rest follows in a small brief
+once 026, 027 and 028 have merged.
 
 The brief also makes **full Verify correct and fast** in `ecad-file`. Today it checks every
 invariant after every transaction and does not finish on the large tier. The new Verify checks
@@ -30,9 +35,13 @@ the check before a revision is issued all use it.
 
 - No wasm route. No cdylib, exports, `no_mangle`, gzip or size budget. The workspace keeps
   `unsafe_code = "forbid"` untouched.
-- The protocol lives in `ecad-inspect` and is tested natively. The transport is
-  `ecadinspect serve [file]` on `127.0.0.1` only. `tools/inspector/index.html` becomes a thin,
-  read-only client and still opens `ecad-inspect/1` and `/2` snapshots.
+- The protocol is tested natively. The transport is a **WebSocket** (`tungstenite`, sync,
+  pinned), served by `ecadinspect serve [file]` on `127.0.0.1` only, together with the page. The
+  page is a thin, read-only client, still opens `ecad-inspect/1` and `/2` snapshots from
+  `file://`, and sends no CORS headers.
+- The debugger's Verify replay stays. **Developer tools are not interlaced with product code:**
+  they live in one tree, product crates do not depend on them (`xtask layers` enforces it), and
+  hooks inside a product crate sit in one `dev` module per crate.
 - **Verify is fixed here, not worked around** (correction, same day). It has three parts:
   (a) **chain**: decode every row, check the hash chain, the heads and the chunk hashes
   (`verify_chain`, split out, linear); (b) **replay** every branch from the root with only the
@@ -61,27 +70,36 @@ the check before a revision is issued all use it.
    verify mode (design §3.3), so Verify behaves and costs the same in tests and in release. The
    bench gains `verify_chain` and `verify` rows on the large tier.
 
-2. **Protocol** (`ecad_inspect::protocol`, design §2–§4): `{"v":1,"id":…,"op":…}` in and
-   `{"v":1,"id":…,"ok":…}` or `{"v":1,"id":…,"error":{"what","why","way_out"}}` out. It covers
-   `hello`, the six views, raw rows with a raw/readable toggle, the Verify result and
-   `export_jsonl`. Large lists are paged. It is served from a **source**:
-   today a file, opened read-only. Designed so that a live session can be a source later.
-   `ecad-inspect` gains `ecad-file` as a dependency. It stays Core and still builds for wasm.
+2. **Protocol** (`ecad_inspector::protocol` in the new `dev/ecad-inspector`, design §2–§4):
+   `{"v":1,"id":…,"op":…}` in and `{"v":1,"id":…,"ok":…}` or
+   `{"v":1,"id":…,"error":{"what","why","way_out"}}` out. The `event` key and the `subscribe` op
+   name are reserved for push. It covers `hello`, the six views, raw rows with a raw/readable
+   toggle, the Verify result and `export_jsonl`. Large lists are paged. It is served from a
+   **source**: today a file, opened read-only. Designed so that a live session can be a source
+   later.
 3. **Verify on load** (design §3.4): the page shows the chain result at once and the full
    Verify result when it lands, a few seconds later on the large tier. Verify runs on a
    background thread, and the views stay usable meanwhile.
-4. **Transport**: `ecadinspect serve [file] [--port N]` in `ecad-cli`. It speaks plain HTTP/1.1
-   on std `TcpListener`, bound to `127.0.0.1` only, with a per-run token. It serves the page,
-   `POST /api` and `POST /open` (a dropped file's bytes, held in memory, replacing the one open
-   before). **No new crate:** `ecad-cli` takes `ecad-inspect`, `serde_json` and `sha2` (all already in
-   the lock) as direct dependencies (design §5).
-5. **The page**: `tools/inspector/index.html` gets a **Server** mode (the views as protocol
-   calls) next to the unchanged **Snapshots** mode. It stays read-only, and every value is
+4. **Transport**: `ecadinspect serve [file] [--port N]`. It serves the page with `GET /` and the
+   protocol over a WebSocket at `/ws`, using `tungstenite` (sync, pinned exactly, no TLS:
+   dependency note DN1). It is bound to `127.0.0.1` only and accepts one client. Requests need a
+   per-run token, and `Host` and `Origin` are checked. A dropped file is sent as a binary frame and
+   replaces the open one (design §5).
+5. **The page** moves from `tools/inspector/index.html` to `dev/ecad-inspector/page/index.html`
+   and gets a **Server** mode (the views as protocol calls) next to the unchanged **Snapshots**
+   mode. It stays read-only, and every value is
    escaped.
 6. **Mismatches** (design §6): every file or protocol version the tool cannot fully read gets
    a message and a way forward, and the tool shows what it can.
 7. **Quick start**: "Inspector snapshots" becomes "The inspector", covering both modes.
-8. The worker also fixes the wasm-only dead-code warning on `Db::ReadOnly`
+8. **Developer tree, part 1** (design §12): create `ecad/dev/`. Move `ecadinspect` out of
+   `ecad-cli` (`ecad inspect` gets a pointer) and `ecad_file::v2::inspect` into
+   `dev/ecad-inspector`. Remove `tools/`. Move `ecad-model`'s verify-mode code into
+   `ecad-model/src/dev.rs`, after #52 merges. `xtask layers` gains the rules of design §12.3,
+   with an allowlist that only shrinks. The rest of the tree (`ecad-inspect` split, debugger,
+   bench, demo, the `ecad-cadcraft` test features) waits for 026, 027 and 028 to merge, in a
+   small brief of its own.
+9. The worker also fixes the wasm-only dead-code warning on `Db::ReadOnly`
    (`ecad-file/src/v2/store.rs`) with a `cfg`, since it is in `ecad-file`'s v2 code for
    Verify anyway.
 
@@ -93,6 +111,13 @@ design Q2); anything that writes.
 ## Format and ops
 
 None. No FP items. No new command, so no MCP contract test (the 011 rule covers commands).
+
+**DN1, new dependency (for the overseer, owner decision 2026-11-12):** `tungstenite`, sync, pinned
+exactly (`=` the current release when the worker starts), `default-features = false` with only
+`handshake`. It goes in `dev/ecad-inspector` only and is never in a product crate, which
+`xtask layers` enforces. It is MIT OR Apache-2.0. The crates it adds to `Cargo.lock` (expected:
+`sha1`, `rand` and its `rand_core`/`rand_chacha`, `data-encoding`, `utf-8`; `http`, `httparse`,
+`bytes` and `log` are already there) are listed in the PR, with their licences.
 
 ## Acceptance criteria
 
@@ -121,9 +146,9 @@ None. No FP items. No new command, so no MCP contract test (the 011 rule covers 
    go through the new `verify`, and their existing tests pass unchanged.
 7. `ecadinspect serve demo.v2.ecad` prints a `http://127.0.0.1:<port>/?t=<token>` address. Opened,
    it shows all six views in under 1 s. On the large bench file, Project shows in under 3 s.
-8. The server refuses any request without the token, with a `Host` other than `127.0.0.1:<port>`
-   or `localhost:<port>`, or with a foreign `Origin` (design §5.2). It never listens on another
-   interface. There are tests for each case.
+8. The server refuses `GET /` or a WebSocket upgrade without the token, with a `Host` other than
+   `127.0.0.1:<port>` or `localhost:<port>`, or with a foreign `Origin`, and refuses a second
+   client (design §5.2). It never listens on another interface. There are tests for each case.
 9. On load the chain result shows with the first view, and the Verify result follows without
    blocking the views (**verifying…**, then **verified** or the failure lines).
 10. Opening and serving never write the file: the bytes are the same before and after, and the
@@ -131,7 +156,9 @@ None. No FP items. No new command, so no MCP contract test (the 011 rule covers 
 11. A fixture whose tag and page title hold `<img src=x onerror=alert(1)>` shows the text and runs
    nothing (the tester checks this in a browser).
 12. Snapshots `ecad-inspect/1` and `/2` open in the page as before.
-13. Quick start "The inspector" is updated, with agent-observed and owner-tried steps kept
+13. `cargo xtask layers` passes with the rules of design §12.3, and fails on a deliberate
+    violation of each rule (an `xtask` test). The allowlist holds only the moves listed for later.
+14. Quick start "The inspector" is updated, with agent-observed and owner-tried steps kept
     apart.
 
 ## Needs owner check
