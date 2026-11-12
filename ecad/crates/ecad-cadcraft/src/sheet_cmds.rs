@@ -491,6 +491,14 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     if params.get(crate::generated::KEY).is_some() {
         return Err(err(crate::generated::KIND_FIXED));
     }
+    // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked for
+    // as `props` or as a field of their own.
+    let text_key = |k: &String| crate::text_style::is_reserved_key(k);
+    if params.as_object().is_some_and(|o| o.keys().any(text_key))
+        || params.get("props").and_then(Value::as_object).is_some_and(|o| o.keys().any(text_key))
+    {
+        return Err(err(crate::text_style::RESERVED_KEY));
+    }
     let page = opt_id::<PageId>(params, "page").map_err(err)?;
     let number = text_field(params, "number").map_err(err)?;
     let title = match params.get("title") {
@@ -583,6 +591,10 @@ pub const MAX_STEP: u32 = 1000;
 
 /// Whether `key` is a free property (not one of [`PROJECT_KEYS`], a revision or a folder key).
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
+    // Brief 031 (§10.6): `text.` keys are written by the text commands only.
+    if crate::text_style::is_reserved_key(key) {
+        return Err(crate::text_style::RESERVED_KEY.into());
+    }
     if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
         let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());
         if let Some(r) = n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued.is_some()) {

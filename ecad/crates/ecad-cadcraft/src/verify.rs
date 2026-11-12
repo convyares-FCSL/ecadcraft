@@ -106,8 +106,9 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
         }
     }
     // Device tags and terminal labels (brief 018), derived like the cable parts.
+    let look = crate::text_style::Look::new(doc);
     for t in crate::devices::texts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::devices::text_entity(&look, &t, Handle(0)))).or_default() += 1;
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::xref::parts_on_page(doc, page) {
@@ -119,7 +120,7 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     }
     // Location box labels (brief 024), derived the same way.
     for (_, value, at) in crate::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::locations::label_entity(&look, &value, at, Handle(0)))).or_default() += 1;
     }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {

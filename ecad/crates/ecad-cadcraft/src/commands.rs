@@ -41,6 +41,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::terminal_cmds::specs());
     v.extend(crate::accessory_cmds::specs());
     v.extend(crate::release::specs());
+    v.extend(crate::text_cmds::specs());
     v
 }
 
@@ -507,6 +508,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
         None => return Err(err("`value` is required (a string, or null to clear the property)")),
     };
+    // Brief 031 (§10.6): `text.` keys are written by the text commands only.
+    if crate::text_style::is_reserved_key(&key) {
+        return Err(err(crate::text_style::RESERVED_KEY));
+    }
     // Several devices at once (brief 019, the Properties panel): one transaction for all.
     if params.get("components").is_some() {
         let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;
