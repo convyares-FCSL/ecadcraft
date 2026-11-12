@@ -66,7 +66,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
         }
     }
     for s in symbols::search(&q) {
-        let prefix = doc.map_or_else(|| s.prefix.to_string(), |d| devices::prefix_for(d, s));
+        let prefix = doc.map_or_else(|| s.prefix().to_string(), |d| devices::prefix_for(d, s));
         out.push(Row { text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")), pick: Pick::Symbol(s.key) });
     }
     let more = out.len().saturating_sub(MAX_ROWS);
@@ -334,7 +334,10 @@ mod tests {
         assert_eq!(more, symbols::STARTERS.len() - MAX_ROWS);
         assert!(nothing.is_none());
         let (r, _, _) = rows(None, "-Q");
-        assert_eq!(r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(), [Pick::Symbol("mcb1"), Pick::Symbol("mcb2")]);
+        assert_eq!(
+            r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(),
+            [Pick::Symbol("mcb1"), Pick::Symbol("mcb2"), Pick::Symbol("rcbo2"), Pick::Symbol("rcd2"), Pick::Symbol("rcd4")]
+        );
         let (r, _, nothing) = rows(None, "xyz");
         assert!(r.is_empty());
         assert_eq!(nothing.as_deref(), Some("Nothing matches \"xyz\"."));

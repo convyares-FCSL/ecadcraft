@@ -19,6 +19,48 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 034 (design `ecad/docs/design/034.md`), on `feature/component-library`, not yet in
+`dev`:** the built-in symbols grow from 21 to 81 so a control-panel pack needs no hand-drawn boxes:
+change-over contacts (`co`, `swco`: `11`/`12`/`14`, then `21`/`22`/`24`… when joined), 4-pole power
+contacts, RCBO and RCDs, SSR input and output, a fuse terminal and fuse banks of 4 to 12 ways;
+proximity, float, roller and interlock switches, single and dual solenoid valves, a thermocouple
+and a heater; plugs, sockets, D-sub and M12 halves, RJ45 and USB bulkheads; PLC card bodies
+(CPU, PS, DI, DQ, AI, AO, RTD, IO-Link). Find Symbol also finds a family word (`protection`,
+`sensors`, `connectors`, `plc`…). Any device takes a `rating`; a fuse bank takes `rating.<n>` per
+fuse. Spare connector pins, a fuse bank's `M` and outputs and an I/O card's supply points are not
+flagged as unconnected. Ratings are stored and listed but not drawn yet (lane T draws text);
+contact tables do not count change-over contacts yet (stage 4, after brief 033). Section 5-034.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/symbols.rs` (every symbol on the grid, its
+  hash, box and labels, the change-over rule, quiet points, anchors, search),
+  `ecad/crates/ecad-cadcraft/tests/all/library_contracts.rs` (placing, joining, ratings, nets,
+  quiet points, BOM rows) and `ecad/apps/ecad-mcp/tests/all/library_contracts.rs` (every new symbol,
+  a change-over join and ratings through `execute` as the agent; writes off; hostile input).
+- *Agent-observed:* the worker looked at a drawing of every new definition; no agent has clicked
+  through the live window.
+
+**Brief 031 (design `ecad/docs/design/031.md`), on `feature/text-styles`, not yet in `dev`,
+steps Q1 (text styles) and Q3 (show and hide):** every derived text takes its size and weight from one style table per
+project: tags 2.5 mm bold, connection point labels 1.5 mm, location labels 1.6 mm, continuation
+names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BIZ UDPGothic` by
+default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
+font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
+height, bold and shown state in one transaction; `textstyle` does the same typed, and the
+read-only `defaults` lists every registered default and where its value comes from. Section 5Q.
+Tags, connection point labels, descriptions and part numbers (new, hidden by default) can be
+hidden or shown per symbol, device, page or project (**Show/Hide Text**, Properties ▸ Texts,
+`showtext`); a strip's tag prints once per run of adjacent terminals and a PLC device's once per
+run of its channels; continuation names are hidden by default. **Show Hidden Text** draws hidden
+texts dimmed, never printed. The cable look's texts (core labels, label box) keep their 2.5 mm in
+this step.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
+  registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
+  (drawn sizes and styles, redraw, a font change then an edit),
+  `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
+  refusals, writes off) and `ecad/apps/ecad-trial/tests/all/text_ui.rs` (the Text section).
+- *Agent-observed:* the worker looked at the headless screenshot `031-text-section.png`; no agent
+  has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
 numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
 group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
@@ -993,7 +1035,7 @@ shows the same facts.
    `0V-01 0.5 BU` on both; the cable cores below the contactor show their number only
    (`L1-02`). Page 1 shows `L-01 2.5 BN`, `N-01 2.5 BU`, `PE 2.5 GNYE`,
    `24V-01 0.5 BU`, `0V-01 0.5 BU`. Colours are IEC 60757 codes (`BN`, `BU`, `BK`, `GY`,
-   `GNYE`…); labels are small (1.8 mm) and no two touch. Switch cable `-W01` to fan view
+   `GNYE`…); labels are small (1.6 mm, brief 031) and no two touch. Switch cable `-W01` to fan view
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
@@ -1038,7 +1080,7 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.6 mm since brief 031). By clicking, both are in
 **Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
 GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
@@ -1413,6 +1455,63 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
+
+## 5-034. Component library (by clicking)
+
+Brief 034, design `ecad/docs/design/034.md`. Any project; open the **ECAD** tab first.
+
+1. **Change-over contacts.** Place a new coil. In Find Symbol type `change`, click
+   **Change-over contact**, then that coil's device line, and click beside the coil. Expected: it
+   joins as `11/12/14`; a second one joins as `21/22/24`, and a NO contact after that as `33/34`.
+2. **Families.** In Find Symbol type `protection`. Expected: the RCBO, the RCDs, the fuse terminal
+   and the five fuse banks. `sensors`, `connectors` and `plc` list theirs.
+3. **A fuse bank.** Place a **Fuse bank, 8-way** as a new device. Expected: `-F01` with connection
+   points `L+`, `M`, `1`…`8`. Typed: `setprop {"component":"<its id>","key":"rating.3","value":"2A"}`
+   stores fuse 3's rating; `rating.13` is refused with `-F01 has no fuse 13.` Checks does not list
+   its unwired `M` and outputs, only `L+`.
+4. **Prefixes are registered defaults.** Typed: `defaults {"group":"Tag prefixes"}` lists every
+   symbol's built-in prefix (`symbol.fusebank8.prefix` = `F`, from `builtin`). Set the fuse bank's
+   prefix to `FB` in **Project settings ▸ Tags** (or `tagsettings {"prefixes":{"fusebank8":"FB"}}`).
+   Expected: `defaults` now says `FB`, from `project`, and the next fuse bank placed is `-FB01`.
+
+## 5Q. Text styles (by clicking)
+
+Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
+
+**The font.** The default font, BIZ UDPGothic, comes from the craft-fonts repository and is built
+in only when the build is told where it is. To see it, clone `storytold/craft-fonts` next to this
+checkout and build with `CRAFT_FONTS_DIR` set to that folder (PowerShell:
+`$env:CRAFT_FONTS_DIR = "C:\dev\craft-fonts"`; bash: `export CRAFT_FONTS_DIR=~/craft-fonts`).
+Without it, texts are drawn in CADCraft's stroke font and bold tags are drawn with a heavier line;
+nothing else changes, and the project's stored font is kept.
+
+1. Place a `coil` (5F). Expected: its tag `-K01` is small and bold (2.5 mm) and its `A1`/`A2`
+   are smaller still (1.5 mm).
+2. **Project panel ▸ Project settings**, scroll to **Text**. The line under **Font** says `drawn
+   with BIZ UDPGothic`, or, in yellow, why another font draws.
+3. Set **Tag** to `3`, untick its **Bold**, OK. Expected: the tag redraws at once, larger and
+   regular; one `u` puts both back. A height of `11` shows `A text height is 0.5 to 10 mm.` and
+   OK is disabled. **Defaults** puts every row back (written only on OK).
+4. **Once per run.** Place a `terminal`, then nine more of the same strip in a row 10 mm apart
+   (**Place**, answer the device prompt with the strip). Expected: `-X01` is drawn once, over the
+   leftmost terminal. A group of the same strip further along the line (more than 15 mm between
+   boxes) prints it once more.
+5. **Show/Hide Text** (ECAD tab ▸ **Text**): click a coil's tag. Expected: it disappears and the
+   command line says `Tag -K01 hidden on this symbol.`; type `D` (Device), `P` (Page) or `PR`
+   (Project) first to hide it wider. Click the symbol to show its hidden tag again. Hover the
+   symbol: the lens lists `Tag -K01 (hidden here)`. Esc or Enter ends the tool.
+6. **Show Hidden Text** (ECAD tab ▸ **Text**): hidden tags and labels are drawn dimmed (grey);
+   click it again to stop. It records nothing and is never printed. Properties of a device, a
+   symbol or a page has a **Texts** group (`Default (shown)`, Shown, Hidden, Once per run).
+
+Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
+`textstyle {"kind":"tag","height":3,"weight":"regular"}`, `textstyle {"font":"Arial"}`,
+`textstyle {"kind":"wire_label","height":2}` (the same value as **Wires ▸ Label height**),
+`defaults {"group":"Text"}` (every registered default, its value and where it comes from).
+`showtext {"kind":"tag","show":"off"}` (the project; add `"page"`, `"component"` or
+`"representation"` for narrower), `showtext {"kind":"description","show":"on","component":"<id>"}`,
+`hiddentext {}` (toggles), `pagetexts {}` (every derived text on the page, hidden ones too).
+`projectprops`, `pageprops` and `setprop` refuse `text.` keys.
 
 ## 6. Check connected movement, undo/redo and pages
 
@@ -2060,7 +2159,8 @@ Your table of three clean runs goes here once you have run it.
   - Set Property, Add to Cable and Delete still open the ECAD command field with a template.
 - **Devices and tags** (brief 018):
   - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
-    boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
+    boxes (F6), no `.ecadlib` symbol libraries: 81 symbols are built in (21 since brief 018, 60
+    more since brief 034).
   - Tag texts and connection point labels are placed automatically (left of a symbol, or above it when
     rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
   - Tag padding and each symbol's prefix are project settings, changed by typing

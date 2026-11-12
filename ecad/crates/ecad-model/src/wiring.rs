@@ -165,8 +165,10 @@ pub struct WiringSettings {
     pub label_height: f64,
 }
 
-/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags).
-pub const DEFAULT_LABEL_HEIGHT: f64 = 1.8;
+/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags; 1.8
+/// until brief 031, FP6: 1.6, the dense-schematic size). Lane T's registry entry
+/// `text.wire_label.height` names it as its built-in.
+pub const DEFAULT_LABEL_HEIGHT: f64 = 1.6;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 

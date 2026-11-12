@@ -389,6 +389,8 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     );
     sheet.choices = sheet_choices(doc);
     rows.push(sheet);
+    // Brief 031 (design §5.6): the page's Texts group.
+    text_rows(doc, TextsAt::Page(page), &mut rows);
     Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
 }
 
@@ -481,6 +483,13 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
     } else {
         format!("ECAD · {} DEVICES", devices.len())
     };
+    // Brief 031 (design §5.6): the Texts group of one device, and of one symbol when one is picked.
+    if let (true, Some(c)) = (one, devices.iter().next().copied()) {
+        text_rows(doc, TextsAt::Device(c), &mut rows);
+        if let Some(r) = symbol.filter(|r| doc.representations.get(r).is_some_and(|x| x.form == ecad_model::Form::Symbol)) {
+            text_rows(doc, TextsAt::Symbol(r, c), &mut rows);
+        }
+    }
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
@@ -845,9 +854,102 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
     Section { title: "ECAD · CABLE REFERENCE".into(), kind: "reference", target: None, rows, note: None, buttons: vec![format!("goto:{}", r.hex())] }
 }
 
+// ---------------------------------------------------------------- Texts (brief 031, design §5.6)
+
+/// Where a Texts group writes.
+#[derive(Debug, Clone, Copy)]
+enum TextsAt {
+    Device(ComponentId),
+    Symbol(ecad_model::RepresentationId, ComponentId),
+    Page(PageId),
+}
+
+/// The words a Texts row shows for a stored visibility.
+fn shown_words(w: &str) -> &'static str {
+    match w {
+        "off" => "Hidden",
+        "first" => "Once per run",
+        _ => "Shown",
+    }
+}
+
+/// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
+/// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
+/// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
+fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
+    use crate::text_style::TextKind;
+    let kinds: &[TextKind] = match at {
+        TextsAt::Page(_) => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber, TextKind::ContinuationName],
+        _ => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber],
+    };
+    let group = match at {
+        TextsAt::Symbol(..) => "Texts on this symbol",
+        _ => "Texts",
+    };
+    for kind in kinds {
+        let Some(entry) = kind.show_entry() else { continue };
+        let (key, own, inherited) = match at {
+            TextsAt::Device(c) => {
+                let own = doc.components.get(&c).and_then(|x| x.properties.get(entry.key)).cloned();
+                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+            }
+            TextsAt::Symbol(r, c) => {
+                let key = crate::defaults::symbol_key(entry.key, r);
+                let own = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+                let page = doc.representations.get(&r).map(|x| x.page);
+                let scope = crate::defaults::Scope { page, component: Some(c), ..crate::defaults::Scope::project() };
+                (key, own, crate::defaults::resolve(doc, entry, scope).word())
+            }
+            TextsAt::Page(p) => {
+                let own = doc.pages.get(&p).and_then(|x| x.properties.get(entry.key)).cloned();
+                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+            }
+        };
+        let own = own.filter(|v| entry.parse(v).is_some());
+        let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
+        let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
+        let label = format!("{group}: {}", crate::text_cmds::kind_words(*kind));
+        let mut r = Row::rw(&key, &label, value);
+        r.inherited = own.is_none();
+        r.choices = vec![default, "Shown".into(), "Hidden".into()];
+        if *kind == TextKind::Tag {
+            r.choices.push("Once per run".into());
+        }
+        rows.push(r);
+    }
+}
+
+/// The `showtext` line of a Texts row edit, when `key` is a Texts row's key.
+fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<String> {
+    let rest = key.strip_prefix("text.")?.strip_suffix(".show")?;
+    let (rep, kind) = match rest.split_once('.') {
+        Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
+        _ => (None, rest),
+    };
+    crate::text_style::TextKind::from_word(kind)?;
+    let show = match value.map(|v| v.trim().to_ascii_lowercase()) {
+        Some(v) if v == "shown" || v == "on" => serde_json::json!("on"),
+        Some(v) if v == "hidden" || v == "off" => serde_json::json!("off"),
+        Some(v) if v == "once per run" || v == "first" => serde_json::json!("first"),
+        _ => serde_json::Value::Null,
+    };
+    let mut j = serde_json::json!({"kind": kind, "show": show});
+    match (rep, target) {
+        (Some(r), _) => j["representation"] = r.hex().into(),
+        (None, Target::Devices(cs)) => j["component"] = cs.first().map(|c| c.hex()).into(),
+        (None, Target::Page(p)) => j["page"] = p.hex().into(),
+        (None, _) => {}
+    }
+    Some(format!("showtext {j}"))
+}
+
 /// The command line (JSON form) that writes `value` to row `key` of `target`; `None` for `null`
 /// (clear). Several devices are written in one `setprop` with `components`.
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
+    // Brief 031: a Texts row writes its visibility with `showtext`.
+    if let Some(line) = showtext_line(target, key, value) {
+        return line;
+    }
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));
     // Brief 026: a clash box's choice (`tag#swap`…), and Fixed `no` releasing the flag.
     if let Some(way) = key.strip_prefix("tag#") {

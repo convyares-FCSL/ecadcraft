@@ -21,6 +21,8 @@ use serde_json::{Map, Value, json};
 
 /// `ecad.orphan` red.
 const RED: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
+/// `ecad.check-warning`.
+const WARNING: Color32 = Color32::from_rgb(0xFF, 0xFF, 0x00);
 
 /// Element names (design 019 §10).
 pub const PROJECT_PROPS_ID: &str = "ecad.projectprops";
@@ -95,6 +97,8 @@ pub struct ProjectProps {
     provisional_orig: bool,
     /// Brief 026: Provisional tags until Finalise.
     pub provisional: bool,
+    /// Brief 031: the Text section (Project settings only), filled from `textstyle {}`.
+    pub text: Option<crate::text_ui::TextSection>,
     pub read_only: bool,
     /// The command's refusal of the last OK.
     pub error: Option<String>,
@@ -146,7 +150,8 @@ impl ProjectProps {
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
-        let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(|| "1.8".to_string(), |h| h.to_string());
+        let label_height =
+            v.get("label_height").and_then(Value::as_f64).map_or_else(|| ecad_model::wiring::DEFAULT_LABEL_HEIGHT.to_string(), |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
             .get("tag_prefixes")
             .and_then(Value::as_object)
@@ -183,6 +188,7 @@ impl ProjectProps {
             others_orig: others.clone(),
             others,
             revision,
+            text: None,
             read_only,
             error: None,
         }
@@ -196,7 +202,8 @@ impl ProjectProps {
             .map_err(|e| if e.starts_with("Sheet") { "Width 420 to 2400 mm, height 250 to 2400 mm, 1 to 26 columns and rows.".into() } else { e })
     }
 
-    /// The `projectprops` line writing what changed in this popout; `None` when nothing did.
+    /// The command lines writing what changed in this popout, one per line (`projectprops`, then
+    /// brief 031's `textstyle` for the Text section); `None` when nothing did.
     pub fn line(&self) -> Result<Option<String>, String> {
         let mut m = Map::new();
         if self.popout == Popout::Info {
@@ -204,7 +211,22 @@ impl ProjectProps {
         } else {
             self.settings_fields(&mut m)?;
         }
-        Ok((!m.is_empty()).then(|| format!("projectprops {}", Value::Object(m))))
+        let mut lines: Vec<String> = Vec::new();
+        if !m.is_empty() {
+            lines.push(format!("projectprops {}", Value::Object(m)));
+        }
+        if self.popout == Popout::Settings
+            && let Some(t) = &self.text
+            && let Some(l) = t.line()?
+        {
+            lines.push(l);
+        }
+        Ok((!lines.is_empty()).then(|| {
+            lines.join(
+                "
+",
+            )
+        }))
     }
 
     fn settings_fields(&self, m: &mut Map<String, Value>) -> Result<(), String> {
@@ -286,166 +308,177 @@ impl ProjectProps {
             Popout::Settings => ("PROJECT SETTINGS", PROJECT_SETTINGS_ID),
         };
         let info = self.popout == Popout::Info;
+        let max_body = (ctx.content_rect().height() * 0.55).max(200.0);
         egui::Window::new(title).id(egui::Id::unique(id)).collapsible(false).resizable(false).default_width(420.0).open(&mut open).show(ctx, |ui| {
-            if info {
-                egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
-                    for (k, label) in FIELDS {
-                        ui.label(label);
-                        let v = self.fields.entry(k.to_string()).or_default();
-                        if k == "status" {
-                            ui.horizontal(|ui| {
-                                ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(220.0))
-                                    .on_hover_text("Any text; or pick one")
-                                    .accessible_name("ecad.projectprops.status");
-                                ui.add_enabled_ui(!ro, |ui| {
-                                    ui.menu_button("v", |ui| {
-                                        for s in ecad_cadcraft::sheet_cmds::STATUS_SUGGESTIONS {
-                                            if ui.button(s).clicked() {
-                                                *v = s.to_string();
-                                                ui.close();
+            // Brief 031: the Text section makes the settings taller than a small window; the
+            // fields scroll, OK and Cancel stay in view.
+            egui::ScrollArea::vertical().max_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
+                if info {
+                    egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
+                        for (k, label) in FIELDS {
+                            ui.label(label);
+                            let v = self.fields.entry(k.to_string()).or_default();
+                            if k == "status" {
+                                ui.horizontal(|ui| {
+                                    ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(220.0))
+                                        .on_hover_text("Any text; or pick one")
+                                        .accessible_name("ecad.projectprops.status");
+                                    ui.add_enabled_ui(!ro, |ui| {
+                                        ui.menu_button("v", |ui| {
+                                            for s in ecad_cadcraft::sheet_cmds::STATUS_SUGGESTIONS {
+                                                if ui.button(s).clicked() {
+                                                    *v = s.to_string();
+                                                    ui.close();
+                                                }
                                             }
-                                        }
+                                        });
                                     });
                                 });
-                            });
-                        } else {
-                            ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(260.0)).accessible_name(format!("ecad.projectprops.{k}"));
-                        }
-                        ui.end_row();
-                    }
-                });
-                ui.separator();
-                ui.label(RichText::new("Other properties").small().strong());
-                let mut remove = None;
-                for (i, (k, v)) in self.others.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.add_enabled(!ro, egui::TextEdit::singleline(k).desired_width(120.0));
-                        ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(200.0));
-                        if !ro && ui.small_button("x").clicked() {
-                            remove = Some(i);
+                            } else {
+                                ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(260.0))
+                                    .accessible_name(format!("ecad.projectprops.{k}"));
+                            }
+                            ui.end_row();
                         }
                     });
-                }
-                if let Some(i) = remove {
-                    self.others.remove(i);
-                }
-                if !ro && ui.button("Add property").clicked() {
-                    self.others.push((String::new(), String::new()));
-                }
-                ui.label(RichText::new(&self.revision).small());
-            } else {
-                ui.label(RichText::new("Sheet").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Size");
-                        egui::ComboBox::from_id_salt("ecad.projectprops.size").selected_text(&self.size).show_ui(ui, |ui| {
-                            for s in SIZES {
-                                if ui.selectable_label(self.size == s, s).clicked() {
-                                    self.size = s.to_string();
-                                    if let Some(p) = SheetSpec::preset(s) {
-                                        self.columns = p.columns.to_string();
-                                        self.rows = p.rows.to_string();
-                                        self.width = p.width.to_string();
-                                        self.height = p.height.to_string();
+                    ui.separator();
+                    ui.label(RichText::new("Other properties").small().strong());
+                    let mut remove = None;
+                    for (i, (k, v)) in self.others.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.add_enabled(!ro, egui::TextEdit::singleline(k).desired_width(120.0));
+                            ui.add_enabled(!ro, egui::TextEdit::singleline(v).desired_width(200.0));
+                            if !ro && ui.small_button("x").clicked() {
+                                remove = Some(i);
+                            }
+                        });
+                    }
+                    if let Some(i) = remove {
+                        self.others.remove(i);
+                    }
+                    if !ro && ui.button("Add property").clicked() {
+                        self.others.push((String::new(), String::new()));
+                    }
+                    ui.label(RichText::new(&self.revision).small());
+                } else {
+                    ui.label(RichText::new("Sheet").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Size");
+                            egui::ComboBox::from_id_salt("ecad.projectprops.size").selected_text(&self.size).show_ui(ui, |ui| {
+                                for s in SIZES {
+                                    if ui.selectable_label(self.size == s, s).clicked() {
+                                        self.size = s.to_string();
+                                        if let Some(p) = SheetSpec::preset(s) {
+                                            self.columns = p.columns.to_string();
+                                            self.rows = p.rows.to_string();
+                                            self.width = p.width.to_string();
+                                            self.height = p.height.to_string();
+                                        }
                                     }
                                 }
+                            });
+                            if self.size.starts_with("Custom") {
+                                ui.add(egui::TextEdit::singleline(&mut self.width).desired_width(44.0)).accessible_name("ecad.projectprops.width");
+                                ui.label("×");
+                                ui.add(egui::TextEdit::singleline(&mut self.height).desired_width(44.0)).accessible_name("ecad.projectprops.height");
                             }
                         });
-                        if self.size.starts_with("Custom") {
-                            ui.add(egui::TextEdit::singleline(&mut self.width).desired_width(44.0)).accessible_name("ecad.projectprops.width");
-                            ui.label("×");
-                            ui.add(egui::TextEdit::singleline(&mut self.height).desired_width(44.0)).accessible_name("ecad.projectprops.height");
-                        }
+                        ui.horizontal(|ui| {
+                            ui.label("Columns");
+                            ui.add(egui::TextEdit::singleline(&mut self.columns).desired_width(30.0)).accessible_name("ecad.projectprops.columns");
+                            ui.checkbox(&mut self.column_letters, "Letters");
+                            ui.label("Rows");
+                            ui.add(egui::TextEdit::singleline(&mut self.rows).desired_width(30.0)).accessible_name("ecad.projectprops.rows");
+                            ui.checkbox(&mut self.row_letters, "Letters");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Page number step");
+                            ui.add(egui::TextEdit::singleline(&mut self.step).desired_width(40.0)).accessible_name("ecad.projectprops.step");
+                        });
                     });
-                    ui.horizontal(|ui| {
-                        ui.label("Columns");
-                        ui.add(egui::TextEdit::singleline(&mut self.columns).desired_width(30.0)).accessible_name("ecad.projectprops.columns");
-                        ui.checkbox(&mut self.column_letters, "Letters");
-                        ui.label("Rows");
-                        ui.add(egui::TextEdit::singleline(&mut self.rows).desired_width(30.0)).accessible_name("ecad.projectprops.rows");
-                        ui.checkbox(&mut self.row_letters, "Letters");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Page number step");
-                        ui.add(egui::TextEdit::singleline(&mut self.step).desired_width(40.0)).accessible_name("ecad.projectprops.step");
-                    });
-                });
-                let sheet = self.sheet();
-                if let Err(e) = &sheet {
-                    ui.label(RichText::new(e).small().color(RED));
-                } else if sheet.as_ref().ok() != Some(&self.sheet_orig) {
-                    ui.label(RichText::new("Changing the grid changes reference texts on every page.").small());
-                }
-                ui.separator();
-                ui.label(RichText::new("References").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.horizontal(|ui| {
-                        for (word, shown) in [("page-column-row", "105-C-4"), ("page-column", "/105.C")] {
-                            if ui.radio(self.style == word, shown).clicked() {
-                                self.style = word.to_string();
+                    let sheet = self.sheet();
+                    if let Err(e) = &sheet {
+                        ui.label(RichText::new(e).small().color(RED));
+                    } else if sheet.as_ref().ok() != Some(&self.sheet_orig) {
+                        ui.label(RichText::new("Changing the grid changes reference texts on every page.").small());
+                    }
+                    ui.separator();
+                    ui.label(RichText::new("References").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            for (word, shown) in [("page-column-row", "105-C-4"), ("page-column", "/105.C")] {
+                                if ui.radio(self.style == word, shown).clicked() {
+                                    self.style = word.to_string();
+                                }
                             }
-                        }
+                        });
+                        // Brief 025 (FP3): where a coil's contact table goes unless the device says.
+                        ui.horizontal(|ui| {
+                            ui.label("Contact tables");
+                            egui::ComboBox::from_id_salt("ecad.projectprops.contact_mirror").selected_text(&self.mirror).show_ui(ui, |ui| {
+                                for w in ["auto", "below", "right", "off"] {
+                                    if ui.selectable_label(self.mirror == w, w).clicked() {
+                                        self.mirror = w.to_string();
+                                    }
+                                }
+                            });
+                        });
                     });
-                    // Brief 025 (FP3): where a coil's contact table goes unless the device says.
-                    ui.horizontal(|ui| {
-                        ui.label("Contact tables");
-                        egui::ComboBox::from_id_salt("ecad.projectprops.contact_mirror").selected_text(&self.mirror).show_ui(ui, |ui| {
-                            for w in ["auto", "below", "right", "off"] {
-                                if ui.selectable_label(self.mirror == w, w).clicked() {
-                                    self.mirror = w.to_string();
+                    ui.separator();
+                    ui.label(RichText::new("Tags").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Digits");
+                            ui.add(egui::TextEdit::singleline(&mut self.padding).desired_width(30.0)).accessible_name("ecad.projectsettings.padding");
+                        });
+                        egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
+                            for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
+                                ui.label(RichText::new(k.as_str()).small());
+                                ui.add(egui::TextEdit::singleline(v).desired_width(40.0)).accessible_name(format!("ecad.projectsettings.prefix.{k}"));
+                                if i % 2 == 1 {
+                                    ui.end_row();
                                 }
                             }
                         });
                     });
-                });
-                ui.separator();
-                ui.label(RichText::new("Tags").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Digits");
-                        ui.add(egui::TextEdit::singleline(&mut self.padding).desired_width(30.0)).accessible_name("ecad.projectsettings.padding");
+                    // Brief 026 (design §5.1): numbering.
+                    ui.separator();
+                    ui.label(RichText::new("Numbering").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.checkbox(&mut self.provisional, "Provisional tags until Finalise")
+                            .accessible_name("ecad.settings.provisional")
+                            .on_hover_text("New devices get -K?1, cables -W?1, new nets 24V-?; Finalise numbering numbers them in drawing order");
                     });
-                    egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
-                        for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
-                            ui.label(RichText::new(k.as_str()).small());
-                            ui.add(egui::TextEdit::singleline(v).desired_width(40.0)).accessible_name(format!("ecad.projectsettings.prefix.{k}"));
-                            if i % 2 == 1 {
-                                ui.end_row();
+                    // Brief 031 (design §4.1): text styles, after Numbering.
+                    if let Some(t) = &mut self.text {
+                        ui.separator();
+                        t.show(ui, ro, WARNING, RED);
+                    }
+                    // Brief 022 (owner, 2026-11-09): wire label colours and size.
+                    ui.separator();
+                    ui.label(RichText::new("Wires").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Colours");
+                            for (word, shown, name) in [
+                                ("iec", "IEC  BN BU GNYE", "ecad.projectsettings.colours.iec"),
+                                ("three-letter", "BRN BLU GRN/YEL", "ecad.projectsettings.colours.three"),
+                            ] {
+                                if ui.radio(self.colour_style == word, shown).accessible_name(name).clicked() {
+                                    self.colour_style = word.to_string();
+                                }
                             }
-                        }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Label height");
+                            ui.add(egui::TextEdit::singleline(&mut self.label_height).desired_width(40.0))
+                                .accessible_name("ecad.projectsettings.label_height");
+                            ui.label(RichText::new("mm").small());
+                        });
                     });
-                });
-                // Brief 026 (design §5.1): numbering.
-                ui.separator();
-                ui.label(RichText::new("Numbering").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.checkbox(&mut self.provisional, "Provisional tags until Finalise")
-                        .accessible_name("ecad.settings.provisional")
-                        .on_hover_text("New devices get -K?1, cables -W?1, new nets 24V-?; Finalise numbering numbers them in drawing order");
-                });
-                // Brief 022 (owner, 2026-11-09): wire label colours and size.
-                ui.separator();
-                ui.label(RichText::new("Wires").small().strong());
-                ui.add_enabled_ui(!ro, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Colours");
-                        for (word, shown, name) in [
-                            ("iec", "IEC  BN BU GNYE", "ecad.projectsettings.colours.iec"),
-                            ("three-letter", "BRN BLU GRN/YEL", "ecad.projectsettings.colours.three"),
-                        ] {
-                            if ui.radio(self.colour_style == word, shown).accessible_name(name).clicked() {
-                                self.colour_style = word.to_string();
-                            }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Label height");
-                        ui.add(egui::TextEdit::singleline(&mut self.label_height).desired_width(40.0))
-                            .accessible_name("ecad.projectsettings.label_height");
-                        ui.label(RichText::new("mm").small());
-                    });
-                });
-            }
+                }
+            });
             if let Some(e) = &self.error {
                 ui.label(RichText::new(e).small().color(RED));
             }

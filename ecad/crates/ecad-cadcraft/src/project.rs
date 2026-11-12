@@ -24,7 +24,6 @@ use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
 use crate::translate;
-use crate::verify::verify_page_with;
 pub use crate::views::View;
 
 /// What a projected handle stands for.
@@ -162,6 +161,10 @@ impl HandleMap {
     pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
         self.tags.insert((rep, of), h);
         self.by_handle.insert(h, Mapped::Tag(rep));
+    }
+    /// The derived text a handle draws (brief 031: Show/Hide Text and Move Text pick by it).
+    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, crate::devices::TextOf)> {
+        self.tags.iter().find(|(_, x)| **x == h).map(|(k, _)| *k)
     }
     /// Every handle of a tag text or terminal label.
     pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
@@ -517,6 +520,10 @@ pub struct Project {
     /// Cables shown in fan view (brief 005); every other cable is traditional. Presentation only:
     /// never in the ledger, never a transaction, never the unsaved state (P5, SAVE-03).
     pub views: BTreeSet<CableId>,
+    /// Show Hidden Text (brief 031, design §5.7): pages also draw their hidden derived texts,
+    /// dimmed. A session display state like `views`: never in the ledger or the file, not
+    /// undoable, never printed. Off when a project is opened.
+    pub show_hidden_text: bool,
     /// Where this user's cable views are remembered ([`crate::views::Settings`]).
     pub settings: crate::views::Settings,
     /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
@@ -791,6 +798,30 @@ pub fn project_page_with(
 pub fn project_page_framed(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
 ) -> Result<(Drawing, HandleMap), String> {
+    project_page_shown(doc, page, base, prev, fan, tol, frame, false)
+}
+
+/// [`project_page_with`] with Show Hidden Text (brief 031, design §5.7): `hidden_text` also draws
+/// every hidden derived text, dimmed, on [`crate::text_style::HIDDEN_LAYER`] (not plotted). A
+/// session display state: print and PDF project with it off.
+///
+/// # Errors
+/// As [`project_page`].
+pub fn project_page_with_hidden(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_shown(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, None), hidden_text)
+}
+
+/// [`project_page_framed`] with Show Hidden Text (see [`project_page_with_hidden`]).
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_shown(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    hidden_text: bool,
+) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
         if d.layer(&l.name).is_none() {
@@ -899,11 +930,24 @@ pub fn project_page_framed(
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
-    // Device tags and terminal labels (brief 018): derived on every draw, never stored.
-    for t in crate::devices::texts_on_page(doc, page) {
-        let h = prev.tag_text(t.rep, t.of).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::devices::text_entity(&t, h));
-        map.insert_tag_text(t.rep, t.of, h);
+    // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
+    // project's text styles (brief 031).
+    let look = crate::text_style::Look::new(doc);
+    crate::text_style::install_fonts(&mut d, &look.fonts);
+    if hidden_text {
+        crate::text_style::add_hidden_layer(&mut d);
+    }
+    for t in crate::devices::all_texts_on_page(doc, page) {
+        if !t.shown && !hidden_text {
+            continue;
+        }
+        let h = prev.tag_text(t.text.rep, t.text.of).unwrap_or_else(|| d.new_handle());
+        let mut e = crate::devices::text_entity(&look, &t.text, h);
+        if !t.shown {
+            crate::text_style::dim_hidden(&mut e);
+        }
+        ents.push(e);
+        map.insert_tag_text(t.text.rep, t.text.of, h);
     }
     // Device cross-references (brief 025): texts under contacts and tables under heads, derived
     // on every draw of the page, never stored.
@@ -924,7 +968,7 @@ pub fn project_page_framed(
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::locations::label_entity(&value, at, h));
+        ents.push(crate::locations::label_entity(&look, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
@@ -1015,6 +1059,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1098,6 +1143,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1222,6 +1268,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1459,7 +1506,7 @@ impl Project {
     /// the frame's update map says it may differ, or for another page).
     fn project(&mut self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
         let parts = self.frame_parts(page);
-        project_page_framed(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts)
+        project_page_shown(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text)
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
@@ -1533,6 +1580,19 @@ impl Project {
         self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
         self.redraw_window(pg, Some("cableview"));
         (true, self.settings.store(self.id, &self.views))
+    }
+
+    /// Turn Show Hidden Text on or off (brief 031, design §5.7): display only, like a cable view:
+    /// no transaction, no head move, no unsaved change. The open page is redrawn now, the others
+    /// when they become active. Returns whether it changed.
+    pub(crate) fn set_hidden_text(&mut self, pg: &mut Pages<'_>, on: bool) -> bool {
+        if self.show_hidden_text == on {
+            return false;
+        }
+        self.show_hidden_text = on;
+        self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
+        self.redraw_window(pg, Some("hiddentext"));
+        true
     }
 
     fn owner_ref(&self) -> Option<OwnerRef> {
@@ -1840,7 +1900,7 @@ impl Project {
         // Recovery path: fresh handles, so the check is by content against the document.
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
-                let v = verify_page_with(self.ledger.document(), page, &d, &map, &self.views, self.tolerance);
+                let v = crate::verify::verify_page_shown(self.ledger.document(), page, &d, &map, &self.views, self.tolerance, self.show_hidden_text);
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
                     Ok((d, map))
@@ -2145,7 +2205,7 @@ impl Project {
                 let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
-                        project_page_with(doc, *p, &st.doc, &v.map, &self.views, self.tolerance)
+                        project_page_with_hidden(doc, *p, &st.doc, &v.map, &self.views, self.tolerance, self.show_hidden_text)
                             .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
                             .unwrap_or(false),
                     ),
