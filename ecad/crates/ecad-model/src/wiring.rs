@@ -489,6 +489,15 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     }
                 }
             }
+            // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
+            // numbering pass merges or splits their numbers in the same transaction.
+            Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if crate::links::link_number(key).is_some() => {
+                for v in [before, after] {
+                    for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
+                        add(Node::Terminal(t), &mut nets);
+                    }
+                }
+            }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 for comp in doc.components_using(*id) {
                     for (t, _) in doc.terminals_of(comp) {

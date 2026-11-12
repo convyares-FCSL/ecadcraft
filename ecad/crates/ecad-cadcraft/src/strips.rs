@@ -5,9 +5,9 @@
 //! - A **strip** is a device whose definition is a terminal starter (`terminal`, `terminalpe`);
 //!   each terminal is one symbol with one connection point (018's model, owner answer Q1). Its
 //!   **type** is its symbol's: `terminalpe` is PE, anything else feed-through.
-//! - The strip's **offer** is its `terminals` property, `12` or `12+2PE`: the number of positions,
-//!   and how many of them are PE (design 028 FP1; read so that acceptance G's `12+2PE` gives a
-//!   BOM of 10 feed-through and 2 PE). Positions with no drawn terminal are **spare**.
+//! - The strip's **offer** is its `terminals` property, `12` or `12+2PE`: feed-through positions,
+//!   then PE positions (design 028 §3.3, owner decision 2026-11-12: `12+2PE` is 14 positions; a
+//!   BOM of 12 feed-through and 2 PE). Positions with no drawn terminal are **spare**.
 //! - A conductor whose two ends are on two terminals of one strip is a **bridge** (Q5). Every other
 //!   conductor on a terminal is **inside** or **outside** by §5.2's rule: a cable core is outside;
 //!   else the far device's location against the strip's; else the route's direction at the
@@ -110,6 +110,11 @@ fn drawn_at(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId
     out
 }
 
+/// A strip's drawn terminals with the page and point each is drawn at (brief 030: link lines).
+pub fn drawn_points(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId, PageId, Pt)> {
+    drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
+}
+
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<ComponentId> {
     let c = doc.terminals.get(&t)?.component;
@@ -130,14 +135,16 @@ pub fn bridge_of(doc: &Document, w: ConductorId) -> Option<ComponentId> {
 /// A strip's offer (FP1): positions and how many of them are PE.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Offer {
+    /// Every position, feed-through and PE (`12+2PE`: 14).
     pub positions: u32,
+    /// How many of them are PE.
     pub pe: u32,
 }
 
 impl Offer {
-    /// As stored: `12` or `12+2PE`.
+    /// As stored: `12` or `12+2PE` (feed-through, then PE).
     pub fn text(self) -> String {
-        if self.pe == 0 { self.positions.to_string() } else { format!("{}+{}PE", self.positions, self.pe) }
+        if self.pe == 0 { self.positions.to_string() } else { format!("{}+{}PE", self.positions.saturating_sub(self.pe), self.pe) }
     }
 }
 
@@ -150,8 +157,8 @@ fn offer_refusal(text: &str) -> String {
 /// Read an offer: `12` or `12+2PE`, spaces ignored, case-insensitive.
 ///
 /// # Errors
-/// Unreadable text, no positions, more than [`MAX_POSITIONS`], or more PE than positions, in
-/// words with the way forward.
+/// Unreadable text, no positions, or more than [`MAX_POSITIONS`] in all, in words with the way
+/// forward.
 pub fn parse_offer(text: &str) -> Result<Offer, String> {
     let t: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_uppercase();
     if t.len() > 16 {
@@ -166,16 +173,14 @@ pub fn parse_offer(text: &str) -> Result<Offer, String> {
             (n, pe)
         }
     };
-    if n == 0 {
+    let total = n.saturating_add(pe);
+    if total == 0 {
         return Err("A strip offers at least 1 position. Write 12, or 12+2PE; empty clears it.".into());
     }
-    if n > MAX_POSITIONS {
-        return Err(format!("A strip offers at most {MAX_POSITIONS} positions."));
+    if total > MAX_POSITIONS {
+        return Err(format!("A strip offers at most {MAX_POSITIONS} positions, feed-through and PE together."));
     }
-    if pe > n {
-        return Err(format!("{pe} PE is more than the {n} positions offered. Write the positions first: {}+{pe}PE.", pe.max(n)));
-    }
-    Ok(Offer { positions: n, pe })
+    Ok(Offer { positions: total, pe })
 }
 
 /// The `terminals` value as stored (canonical `12+2PE`); empty clears it.
@@ -199,18 +204,141 @@ pub fn offer_of(doc: &Document, c: ComponentId) -> Option<Offer> {
 fn cores_refusal(text: &str) -> String {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    format!("\"{shown}{more}\" is not a core list. Write 7, 7G, 5X, or BN,BK,GY,BU,GNYE.")
+    format!("\"{shown}{more}\" is not a core list. Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE.")
 }
 
-/// The cores a count names: `7` → 1…7, `7G` → 1…6 and GNYE, `5X` → 1…5.
-fn counted(n: usize, letter: Option<char>) -> Vec<String> {
-    match letter {
-        Some('G') => (1..n).map(|i| i.to_string()).chain(std::iter::once(GNYE.to_string())).collect(),
-        _ => (1..=n).map(|i| i.to_string()).collect(),
+/// A core count as a cable type writes it (design 028 §6.1, owner decisions 2026-11-12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Notation {
+    /// Cores, or pairs or triples when `group` is 2 or 3.
+    pub n: usize,
+    /// `G` (one of the n is green-yellow): `Some(true)`; `X` (none): `Some(false)`; not stated:
+    /// `None` (no green-yellow expected).
+    pub pe: Option<bool>,
+    /// 1, or 2 for pairs and 3 for triples.
+    pub group: usize,
+}
+
+impl Notation {
+    /// How many cores.
+    pub fn cores(self) -> usize {
+        self.n.saturating_mul(self.group)
+    }
+
+    /// The cores' labels: `1`…`n` (`G`: the last is GNYE), or `1a`, `1b`, `2a`… in pairs.
+    pub fn labels(self) -> Vec<String> {
+        if self.group > 1 {
+            let letters = ['a', 'b', 'c'];
+            return (1..=self.n).flat_map(|i| letters.iter().take(self.group).map(move |l| format!("{i}{l}"))).collect();
+        }
+        match self.pe {
+            Some(true) => (1..self.n).map(|i| i.to_string()).chain(std::iter::once(GNYE.to_string())).collect(),
+            _ => (1..=self.n).map(|i| i.to_string()).collect(),
+        }
+    }
+
+    /// As shown: `7G`, `7X`, `3`, `4x2`.
+    pub fn text(self) -> String {
+        match (self.group, self.pe) {
+            (g, _) if g > 1 => format!("{}x{g}", self.n),
+            (_, Some(true)) => format!("{}G", self.n),
+            (_, Some(false)) => format!("{}X", self.n),
+            (_, None) => self.n.to_string(),
+        }
     }
 }
 
-/// Read a core offer (§6.1): `7`, `7G`, `5X`, or a list `BN,BK,GY,BU,GNYE`.
+/// Most characters of a type the notation scan reads.
+const MAX_TYPE_CHARS: usize = 256;
+
+fn is_times(c: char) -> bool {
+    matches!(c, 'x' | 'X' | '\u{d7}')
+}
+
+/// The digits at `i` as a number (capped) and the index after them.
+fn digits_at(c: &[char], i: usize) -> Option<(usize, usize)> {
+    let mut j = i;
+    let mut n: usize = 0;
+    while let Some(d) = c.get(j).and_then(|ch| ch.to_digit(10)) {
+        n = n.saturating_mul(10).saturating_add(d as usize).min(1_000_000);
+        j += 1;
+    }
+    (j > i).then_some((n, j))
+}
+
+fn skip_spaces(c: &[char], mut i: usize) -> usize {
+    while c.get(i).is_some_and(|ch| *ch == ' ') {
+        i += 1;
+    }
+    i
+}
+
+/// The first core count `text` writes (design 028 §6.1): `nGs` / `nXs` (G: green-yellow among
+/// the n; X: none); `n x s` with a lower-case multiplier (n cores, green-yellow not stated); pairs
+/// and triples `n(2xs)`, `nx2xs`, `n x 2 x s` (`3` for triples). Words such as `C`, `CY` and
+/// `(TP)` hold no count and are passed over; `4(2x0.25)` is 4 pairs, never 2 cores.
+pub fn notation(text: &str) -> Option<Notation> {
+    let c: Vec<char> = text.chars().take(MAX_TYPE_CHARS).collect();
+    let digit = |i: usize| c.get(i).is_some_and(char::is_ascii_digit);
+    let mut i = 0;
+    while i < c.len() {
+        let starts = digit(i) && (i == 0 || !c.get(i - 1).is_some_and(|p| p.is_ascii_digit() || *p == '.' || *p == ','));
+        if !starts {
+            i += 1;
+            continue;
+        }
+        let Some((n, j)) = digits_at(&c, i) else { break };
+        let ok_n = (1..=MAX_CORES).contains(&n);
+        let k = skip_spaces(&c, j);
+        match c.get(k) {
+            // n(2xs): pairs or triples.
+            Some('(') if ok_n => {
+                let k2 = skip_spaces(&c, k + 1);
+                if let Some((g, k3)) = digits_at(&c, k2) {
+                    let k4 = skip_spaces(&c, k3);
+                    if (2..=3).contains(&g) && c.get(k4).is_some_and(|x| is_times(*x)) && digit(skip_spaces(&c, k4 + 1)) {
+                        return Some(Notation { n, pe: None, group: g });
+                    }
+                }
+            }
+            Some(x) if ok_n && is_times(*x) => {
+                let k2 = skip_spaces(&c, k + 1);
+                if let Some((m, k3)) = digits_at(&c, k2) {
+                    // n x 2 x s: pairs or triples.
+                    let k4 = skip_spaces(&c, k3);
+                    if (2..=3).contains(&m) && c.get(k4).is_some_and(|y| is_times(*y)) && digit(skip_spaces(&c, k4 + 1)) {
+                        return Some(Notation { n, pe: None, group: m });
+                    }
+                    // nXs (an upper-case X straight after the count): no green-yellow; n x s: not stated.
+                    let pe = (*x == 'X' && k == j).then_some(false);
+                    return Some(Notation { n, pe, group: 1 });
+                }
+            }
+            Some('G' | 'g') if ok_n && k == j && digit(k + 1) => return Some(Notation { n, pe: Some(true), group: 1 }),
+            _ => {}
+        }
+        i = j;
+    }
+    None
+}
+
+/// The core count a cable type names (`YSLY-JZ 7G1.5` → 7 with green-yellow): [`notation`],
+/// with `-JZ` meaning G and `-OZ` meaning X when the count itself does not say.
+pub fn type_notation(kind: &str) -> Option<Notation> {
+    let mut n = notation(kind)?;
+    if n.group == 1 && n.pe.is_none() {
+        let upper = kind.to_ascii_uppercase();
+        if upper.contains("-JZ") {
+            n.pe = Some(true);
+        } else if upper.contains("-OZ") {
+            n.pe = Some(false);
+        }
+    }
+    (n.cores() <= MAX_CORES).then_some(n)
+}
+
+/// Read a core offer (§6.1): `7`, `7G`, `5X`, a type's notation (`4x2x0.25`, `4(2x0.25)`,
+/// `3x1.5`, `12G0.5`), or a list `BN,BK,GY,BU,GNYE`.
 ///
 /// # Errors
 /// Unreadable text, no cores, more than [`MAX_CORES`], an empty or repeated list entry.
@@ -232,10 +360,16 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
         if n > MAX_CORES {
             return Err(format!("A cable offers at most {MAX_CORES} cores."));
         }
-        return Ok(counted(n, letter));
+        let pe = match letter {
+            Some('G') => Some(true),
+            Some('X') => Some(false),
+            _ => None,
+        };
+        return Ok(Notation { n, pe, group: 1 }.labels());
     }
     if !t.contains(',') && t.chars().any(|c| c.is_ascii_digit()) {
-        return Err(cores_refusal(text));
+        let n = type_notation(t).ok_or_else(|| cores_refusal(text))?;
+        return Ok(n.labels());
     }
     let mut out: Vec<String> = Vec::new();
     for part in t.split(',') {
@@ -252,7 +386,8 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// The `cores` value as stored (counts upper-case, lists trimmed); empty clears it.
+/// The `cores` value as stored (counts upper-case, lists trimmed, notations as written); empty
+/// clears it.
 ///
 /// # Errors
 /// [`parse_cores`]'s.
@@ -263,30 +398,15 @@ pub fn cores_value(value: Option<&str>) -> Result<Option<String>, String> {
     if upper.bytes().all(|b| b.is_ascii_digit() || b == b'G' || b == b'X') {
         return Ok(Some(upper));
     }
+    if !v.contains(',') && v.chars().any(|c| c.is_ascii_digit()) {
+        return Ok(Some(v.to_string()));
+    }
     Ok(Some(cores.join(",")))
 }
 
-/// The core count a cable type names: the first `<n><G|X>` followed by a digit (`YSLY-JZ 7G1.5`
-/// → `7G`).
+/// The core count a cable type names, as shown (`YSLY-JZ 7G1.5` → `7G`, `4x2x0.25` → `4x2`).
 pub fn offer_from_type(kind: &str) -> Option<String> {
-    let b = kind.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        if b.get(i).is_some_and(u8::is_ascii_digit) && (i == 0 || !b.get(i - 1).is_some_and(u8::is_ascii_digit)) {
-            let start = i;
-            while b.get(i).is_some_and(u8::is_ascii_digit) {
-                i += 1;
-            }
-            let letter = b.get(i).map(u8::to_ascii_uppercase);
-            if matches!(letter, Some(b'G' | b'X')) && b.get(i + 1).is_some_and(u8::is_ascii_digit) {
-                let n = kind.get(start..i)?;
-                return Some(format!("{n}{}", char::from(letter?)));
-            }
-        } else {
-            i += 1;
-        }
-    }
-    None
+    type_notation(kind).map(Notation::text)
 }
 
 /// Where a cable's offer comes from.
@@ -312,9 +432,8 @@ pub fn cable_offer(props: &ecad_model::Properties) -> Option<(Vec<String>, Offer
     {
         return Some((c, OfferSource::Cores, v.to_string()));
     }
-    let t = props.get("type")?;
-    let n = offer_from_type(t)?;
-    parse_cores(&n).ok().map(|c| (c, OfferSource::Type, n))
+    let n = type_notation(props.get("type")?)?;
+    Some((n.labels(), OfferSource::Type, n.text()))
 }
 
 /// How a cable's members meet its offer (§6.2).
@@ -479,6 +598,12 @@ pub struct StripData {
     pub description: Option<String>,
     /// Terminals drawn with a label an earlier one has: (label, the second terminal).
     pub twice: Vec<(String, TerminalId)>,
+    /// Sheets of its terminal plan section and rows of its BOM (review of PR #55, finding 1):
+    /// kept with the strip, so sheet counts never walk the rows.
+    pub sheets: usize,
+    pub bom_rows: usize,
+    /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
+    pub acc: crate::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     conductors: BTreeSet<ConductorId>,
     far: BTreeSet<ComponentId>,
@@ -500,6 +625,12 @@ impl StripData {
         (self.drawn - self.drawn_pe + self.spare - self.spare_pe, self.drawn_pe + self.spare_pe)
     }
 
+    /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` warnings).
+    pub fn check_rows(&self) -> (usize, usize) {
+        let over = self.offer.is_some_and(|o| self.drawn > o.positions as usize);
+        (self.twice.len(), usize::from(over) + self.acc.warnings())
+    }
+
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
     pub fn highest(&self) -> Option<&TermRow> {
         self.rows.iter().rev().find(|r| !r.spare())
@@ -509,6 +640,68 @@ impl StripData {
     pub fn row_of(&self, t: TerminalId) -> Option<&TermRow> {
         self.rows.iter().find(|r| r.terminal == Some(t))
     }
+
+    /// The plan in physical order (design 030 §7.1): `acc.start`'s items, each position followed
+    /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, 028's rows only.
+    pub fn plan(&self, accessories: bool) -> Vec<PlanItem<'_>> {
+        let mut out = Vec::with_capacity(self.rows.len() + self.acc.gap_rows());
+        fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::accessories::Acc]) {
+            if on {
+                out.extend(items.iter().map(|a| PlanItem::Gap { gap: g, acc: *a }));
+            }
+        }
+        gap(&mut out, accessories, "start", &self.acc.start);
+        for (i, r) in self.rows.iter().enumerate() {
+            out.push(PlanItem::Term(i, r));
+            let last_of_label = self.rows.get(i + 1).is_none_or(|n| n.label != r.label);
+            if last_of_label && let Some(items) = self.acc.after.get(&r.label) {
+                gap(&mut out, accessories, &r.label, items);
+            }
+        }
+        gap(&mut out, accessories, "end", &self.acc.end);
+        out
+    }
+
+    /// The links through plan position `i`: (link, whether `i` is one of its positions).
+    pub fn links_at(&self, i: usize) -> Vec<(&crate::accessories::LinkInfo, bool)> {
+        let label = self.rows.get(i).map(|r| r.label.as_str());
+        self.acc
+            .links
+            .iter()
+            .filter(|l| l.span > 0 && l.first <= i && i <= l.last)
+            .map(|l| (l, label.is_some_and(|x| l.labels.iter().any(|y| y == x))))
+            .collect()
+    }
+
+    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per link
+    /// lane: `●` on a linked position, `┆` past a skipped one.
+    pub fn bridge_cell(&self, i: usize) -> String {
+        let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
+        let at = self.links_at(i);
+        let lanes = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
+        if lanes > 0 {
+            let mut marks = vec![' '; lanes];
+            for (l, on) in &at {
+                if let Some(m) = marks.get_mut(l.lane) {
+                    *m = if *on { '\u{25cf}' } else { '\u{2506}' };
+                }
+            }
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.extend(marks);
+        }
+        text
+    }
+}
+
+/// One row of a strip's plan in physical order.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PlanItem<'a> {
+    /// An accessory in a gap: `start`, `end` or the label it follows.
+    Gap { gap: &'a str, acc: crate::accessories::Acc },
+    /// A position (its index in [`StripData::rows`]).
+    Term(usize, &'a TermRow),
 }
 
 /// The strips of a project (see the module's update map).
@@ -519,20 +712,36 @@ pub struct Strips {
     by_far: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
     by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
     by_cable: BTreeMap<CableId, BTreeSet<ComponentId>>,
+    /// Brief 030: the strips reading each project `strip_*` key (no value of their own).
+    inherits: BTreeMap<String, BTreeSet<ComponentId>>,
+    /// Brief 030: placed accessories with no part number, over every strip (one info row).
+    pub acc_no_part: usize,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
+    /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
+    /// location.
+    pub sheets_total: usize,
+    pub bom_rows: BTreeMap<Option<String>, usize>,
+    /// Kept Checks rows of the strips (brief 027's badge): `terminal-twice` errors and
+    /// `too-many-terminals` warnings.
+    pub check_errors: usize,
+    pub check_warnings: usize,
+    /// Bumped by an update that changed a strip, and the value at each strip's last change: what
+    /// a copy of the plan (Reports ▸ Terminals) is keyed on (review of PR #55, finding 2).
+    pub revision: u64,
+    changed_at: BTreeMap<ComponentId, u64>,
     /// The strips whose data the last update changed (added, removed or different): what a shown
     /// terminal plan page depends on (tester 028, defect 2).
     pub last_changed: BTreeSet<ComponentId>,
 }
 
-fn add_to<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn add_to<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
-        map.entry(*k).or_default().insert(c);
+        map.entry(k.clone()).or_default().insert(c);
     }
 }
 
-fn remove_from<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn remove_from<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
         if let Some(set) = map.get_mut(k) {
             set.remove(&c);
@@ -549,6 +758,8 @@ pub struct StripScope<'a> {
     pub conductors: &'a BTreeSet<ConductorId>,
     pub cables: &'a BTreeSet<CableId>,
     pub pages: &'a BTreeSet<PageId>,
+    /// Brief 030: project `strip_*` keys that changed.
+    pub project_keys: &'a BTreeSet<String>,
 }
 
 impl Strips {
@@ -591,6 +802,40 @@ impl Strips {
         out
     }
 
+    /// Brief 030: the strips reading a changed project `strip_*` key (no value of their own), not
+    /// already in `full`: only their accessories need recomputing.
+    pub fn touched_acc(&self, project_keys: &BTreeSet<String>, full: &BTreeSet<ComponentId>) -> BTreeSet<ComponentId> {
+        project_keys.iter().flat_map(|k| self.inherits.get(k).into_iter().flatten().copied()).filter(|c| !full.contains(c)).collect()
+    }
+
+    /// Recompute only the accessories of `which` (design 030 §11.1: a project default changes
+    /// part data, never terminal rows). Adds to [`Strips::last_changed`] and `last_work`.
+    pub fn recompute_acc(&mut self, doc: &Document, which: &BTreeSet<ComponentId>) {
+        let mut changed = false;
+        for c in which {
+            let Some(old) = self.strips.get(c) else { continue };
+            let Some(props) = doc.components.get(c).map(|x| &x.properties) else { continue };
+            let acc = crate::accessories::strip_acc(doc, props, &old.rows);
+            if acc == old.acc {
+                continue;
+            }
+            let mut d = old.clone();
+            d.acc = acc;
+            d.finish();
+            self.remove(*c);
+            self.insert(*c, d);
+            self.last_changed.insert(*c);
+            changed = true;
+        }
+        if changed {
+            self.revision += 1;
+            for c in which.iter().filter(|c| self.last_changed.contains(c)) {
+                self.changed_at.insert(*c, self.revision);
+            }
+        }
+        self.last_work += which.len();
+    }
+
     /// Recompute `which` on `doc`.
     pub fn recompute(&mut self, doc: &Document, which: &BTreeSet<ComponentId>, o: &Outputs, cx: &PageCx) {
         self.last_changed.clear();
@@ -601,15 +846,33 @@ impl Strips {
                 self.last_changed.insert(*c);
             }
         }
+        if !self.last_changed.is_empty() {
+            self.revision += 1;
+            for c in &self.last_changed {
+                self.changed_at.insert(*c, self.revision);
+            }
+        }
         self.last_work = which.len();
     }
 
     fn remove(&mut self, c: ComponentId) {
         let Some(old) = self.strips.remove(&c) else { return };
+        self.sheets_total = self.sheets_total.saturating_sub(old.sheets);
+        let (er, wa) = old.check_rows();
+        self.check_errors = self.check_errors.saturating_sub(er);
+        self.check_warnings = self.check_warnings.saturating_sub(wa);
+        if let Some(n) = self.bom_rows.get_mut(&old.location) {
+            *n = n.saturating_sub(old.bom_rows);
+            if *n == 0 {
+                self.bom_rows.remove(&old.location);
+            }
+        }
         remove_from(&mut self.by_conductor, &old.conductors, c);
         remove_from(&mut self.by_far, &old.far, c);
         remove_from(&mut self.by_page, &old.pages, c);
         remove_from(&mut self.by_cable, &old.cables, c);
+        remove_from(&mut self.inherits, &old.acc.inherits, c);
+        self.acc_no_part = self.acc_no_part.saturating_sub(old.acc.no_part);
     }
 
     fn set(&mut self, doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) {
@@ -618,10 +881,23 @@ impl Strips {
             return;
         }
         let d = strip_data(doc, c, o, cx);
+        self.insert(c, d);
+    }
+
+    fn insert(&mut self, c: ComponentId, d: StripData) {
         add_to(&mut self.by_conductor, &d.conductors, c);
         add_to(&mut self.by_far, &d.far, c);
         add_to(&mut self.by_page, &d.pages, c);
         add_to(&mut self.by_cable, &d.cables, c);
+        add_to(&mut self.inherits, &d.acc.inherits, c);
+        self.acc_no_part += d.acc.no_part;
+        self.sheets_total += d.sheets;
+        let (er, wa) = d.check_rows();
+        self.check_errors += er;
+        self.check_warnings += wa;
+        if d.bom_rows > 0 {
+            *self.bom_rows.entry(d.location.clone()).or_default() += d.bom_rows;
+        }
         self.strips.insert(c, d);
     }
 
@@ -640,6 +916,21 @@ impl Strips {
             && self.by_far == other.by_far
             && self.by_page == other.by_page
             && self.by_cable == other.by_cable
+            && self.inherits == other.inherits
+            && self.acc_no_part == other.acc_no_part
+            && self.sheets_total == other.sheets_total
+            && self.check_errors == other.check_errors
+            && self.check_warnings == other.check_warnings
+            && self.bom_rows == other.bom_rows
+    }
+
+    /// The revision at which strip `c` last changed (0: not since the build); with `None`, the
+    /// revision of any strip's change.
+    pub fn changed_at(&self, c: Option<ComponentId>) -> u64 {
+        match c {
+            Some(c) => self.changed_at.get(&c).copied().unwrap_or(0),
+            None => self.revision,
+        }
     }
 
     pub fn get(&self, c: ComponentId) -> Option<&StripData> {
@@ -721,6 +1012,9 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         spare_pe: 0,
         rows: Vec::new(),
         twice: Vec::new(),
+        sheets: 1,
+        bom_rows: 0,
+        acc: crate::accessories::StripAcc::default(),
         conductors: BTreeSet::new(),
         far: BTreeSet::new(),
         pages: BTreeSet::new(),
@@ -871,7 +1165,18 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         rows.sort_by_key(label_key);
     }
     d.rows = rows;
+    d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
+    d.finish();
     d
+}
+
+impl StripData {
+    /// Its kept sheet and BOM row counts, from its rows and accessories.
+    fn finish(&mut self) {
+        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
+        let (ft, pe) = self.quantities();
+        self.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + self.acc.bom.len();
+    }
 }
 
 // ---------------------------------------------------------------- hover (§7.1)
@@ -977,7 +1282,7 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
 /// The rows a generated `terminals` sheet needs for `strip` (`None`: every strip): one heading per
 /// strip and one per position's conductor line (at least one).
 pub fn plan_lines(s: &StripData) -> usize {
-    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>()
+    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
 }
 
 #[cfg(test)]
@@ -987,13 +1292,15 @@ mod tests {
     #[test]
     fn offers_read_and_refuse_with_a_way_forward() {
         assert_eq!(parse_offer("12"), Ok(Offer { positions: 12, pe: 0 }));
-        assert_eq!(parse_offer(" 12 + 2pe "), Ok(Offer { positions: 12, pe: 2 }));
+        assert_eq!(parse_offer(" 12 + 2pe "), Ok(Offer { positions: 14, pe: 2 }), "12 feed-through and 2 PE");
+        assert_eq!(parse_offer("0+2PE"), Ok(Offer { positions: 2, pe: 2 }));
+        assert!(parse_offer("990+10PE").is_err(), "999 in all");
         assert_eq!(offer_value(Some("12 + 2 PE")), Ok(Some("12+2PE".into())));
         assert_eq!(offer_value(Some("  ")), Ok(None));
         assert!(parse_offer("12X").unwrap_err().contains("Write 12, or 12+2PE"));
         assert!(parse_offer("1000").is_err());
         assert!(parse_offer("0").is_err());
-        assert!(parse_offer("2+3PE").unwrap_err().contains("3+3PE"));
+        assert_eq!(parse_offer("2+3PE").map(Offer::text), Ok("2+3PE".into()));
         assert!(parse_offer(&"9".repeat(10_000)).is_err());
     }
 
@@ -1003,15 +1310,43 @@ mod tests {
         assert_eq!(parse_cores("3g").unwrap(), ["1", "2", GNYE]);
         assert_eq!(parse_cores("3X").unwrap(), ["1", "2", "3"]);
         assert_eq!(parse_cores("BN, BK ,GNYE").unwrap(), ["BN", "BK", "GNYE"]);
-        assert!(parse_cores("7Q").unwrap_err().contains("Write 7, 7G, 5X"));
+        assert!(parse_cores("7Q").unwrap_err().contains("Write 7, 7G, 5X, 4x2x0.25 (pairs)"));
         assert!(parse_cores("1000").is_err());
         assert!(parse_cores("BN,BN").is_err());
         assert!(parse_cores("BN,,BK").is_err());
         assert_eq!(cores_value(Some("7g")), Ok(Some("7G".into())));
         assert_eq!(offer_from_type("YSLY-JZ 7G1.5").as_deref(), Some("7G"));
-        assert_eq!(offer_from_type("4x0.75").as_deref(), Some("4X"));
         assert_eq!(offer_from_type("H07RN-F"), None);
         assert_eq!(offer_from_type("12G"), None);
+    }
+
+    /// Owner decisions 2026-11-12: the core notations of a cable type.
+    #[test]
+    fn cable_type_notations() {
+        let cores = |t: &str| {
+            let n = type_notation(t).unwrap_or_else(|| panic!("no count in {t}"));
+            (n.cores(), n.labels().iter().filter(|l| *l == GNYE).count(), n.group)
+        };
+        assert_eq!(cores("12G0.5"), (12, 1, 1));
+        assert_eq!(cores("12X0.5"), (12, 0, 1));
+        assert_eq!(cores("4(2x0.25)"), (8, 0, 2), "4 pairs, never 2 cores");
+        assert_eq!(cores("4x2x0.25"), (8, 0, 2));
+        assert_eq!(cores("4 x 2 x 0.25"), (8, 0, 2));
+        assert_eq!(cores("3x1.5"), (3, 0, 1));
+        assert_eq!(cores("3x2.5"), (3, 0, 1), "2.5 mm² is no pair");
+        assert_eq!(cores("LiYCY (TP) 4x2x0.25"), (8, 0, 2));
+        assert_eq!(cores("YSLY-JZ 7G1.5"), (7, 1, 1));
+        assert_eq!(cores("YSLY-OZ 7X1.5"), (7, 0, 1));
+        assert_eq!(cores("YSLY-JZ 7x1.5"), (7, 1, 1), "-JZ means G");
+        assert_eq!(cores("YSLY-OZ 7x1.5"), (7, 0, 1), "-OZ means X");
+        assert_eq!(cores("LiYY 3(3x0.5)"), (9, 0, 3));
+        let pairs = type_notation("4(2x0.25)").map(Notation::labels).unwrap_or_default();
+        assert_eq!(pairs.get(..3), Some(&["1a".to_string(), "1b".to_string(), "2a".to_string()][..]));
+        assert_eq!(offer_from_type("4x2x0.25").as_deref(), Some("4x2"));
+        assert_eq!(parse_cores("4(2x0.25)").map(|v| v.len()), Ok(8));
+        assert_eq!(cores_value(Some(" 4(2x0.25) ")), Ok(Some("4(2x0.25)".into())));
+        assert!(type_notation(&"9".repeat(10_000)).is_none());
+        assert!(type_notation("60x2x0.5").is_none(), "120 cores is past the cap");
     }
 
     #[test]

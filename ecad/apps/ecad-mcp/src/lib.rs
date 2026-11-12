@@ -208,6 +208,12 @@ impl State {
         Ok(txs.len())
     }
 
+    /// Tell the project how many transactions the call about to run may record (`None` after it).
+    fn set_budget(&mut self, budget: Option<usize>) -> Result<(), String> {
+        let p = self.project.clone();
+        p.configure(self.session(), |p| p.tx_budget = budget)
+    }
+
     /// `engine.execute` through the gate, with the caps and the transactions it recorded.
     fn execute(&mut self, p: &Value) -> Result<Value, String> {
         let given = p.get("command").and_then(Value::as_str).ok_or("missing `command`")?.to_string();
@@ -217,7 +223,14 @@ impl State {
         policy::check(&id, &params, self.write, read_only.as_deref())?;
         // Fail closed: a call whose transactions cannot be counted does not run.
         let before = self.log_len()?;
+        // What this call may still record, told to the project before it runs: a command that
+        // writes files (brief 027's release) refuses up front rather than write what the cap
+        // below would take back (tester 027, 3).
+        let line_used = self.line_transactions;
+        let cap = if line_used == 0 { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
+        self.set_budget(Some(cap.saturating_sub(line_used)))?;
         let r = self.headless.call("engine.execute", json!({ "command": given, "params": params }));
+        self.set_budget(None)?;
         let name = id.to_ascii_uppercase();
         let new =
             self.log_since(&before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;

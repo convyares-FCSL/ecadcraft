@@ -148,7 +148,19 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_any_page(s, |p, _| {
         let o = p.outputs();
         let t = o.bom_table(group);
-        let ids: Vec<Value> = o.bom(group).iter().map(|r| json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()})).collect();
+        let ids: Vec<Value> = o
+            .bom(group)
+            .iter()
+            .map(|r| {
+                let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
+                // Brief 030 (design 030 §10): an accessory row names its item and its strip.
+                if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
+                    v["accessory"] = json!(a);
+                    v["strip"] = json!(c.hex());
+                }
+                v
+            })
+            .collect();
         report_result(&t, &["location", "qty", "tags", "description", "maker", "part_number"], &ids, &pg, "BOM")
     })
 }
@@ -180,12 +192,15 @@ fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             .cables()
             .iter()
             .map(|r| {
-                json!({
-                    "cable": r.cable.hex(), "used": r.count.used(),
-                    "spare": r.count.offer.as_ref().map(|_| r.count.spare.clone()),
-                    "over": r.count.over.len(),
+                let mut v = json!({
+                    "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
                     "from_devices": r.from_devices, "to_devices": r.to_devices,
-                })
+                });
+                // `spare` only when the offer is known (absent keys are left out, not null).
+                if r.count.offer.is_some() {
+                    v["spare"] = json!(r.count.spare);
+                }
+                v
             })
             .collect();
         let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];

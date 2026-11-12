@@ -634,6 +634,10 @@ pub fn project_json(doc: &Document) -> Value {
                 m.insert((*f).into(), Value::String(v.clone()));
             }
             m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
+            // Brief 027 (FP1): where it was released, when it was.
+            if let Some(f) = &r.released {
+                m.insert("released".into(), Value::String(f.clone()));
+            }
             Value::Object(m)
         })
         .collect();
@@ -676,7 +680,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 check_free_key(doc, k)?;
                 let v = match v {
                     Value::Null => None,
-                    Value::String(t) => value(doc, k, Some(t))?,
+                    // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
+                    Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {
+                        Some(r) => r?,
+                        None => value(doc, k, Some(t))?,
+                    },
                     _ => return Err(format!("`props.{k}` must be a string, or null to clear it")),
                 };
                 ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
@@ -797,48 +805,66 @@ fn run_revision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
     })
 }
 
+/// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
+/// `rev.<n>.issued` and `NameVersion { "Rev <rev>", head }`, worked out before anything is written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IssuePlan {
+    pub ops: Vec<Op>,
+    pub rev: String,
+    /// The pending row's number.
+    pub n: u32,
+    pub date: String,
+    /// The transaction the version names: the one before the issue.
+    pub head: u64,
+}
+
+/// Plan issuing the pending revision with the field writes in `params` (as `issuerevision`).
+///
+/// # Errors
+/// Off a release line, nothing done yet, Rev, Description or Drawn empty, or a rev used before:
+/// in words, each with its way forward.
+pub fn plan_issue(p: &Project, params: &Value) -> Result<IssuePlan, String> {
+    if let Some(r) = release_line_refusal(p, true) {
+        return Err(r);
+    }
+    let head = p.ledger.head();
+    if head == 0 {
+        return Err("Nothing to issue yet.".into());
+    }
+    let mut ops = revision_ops(p.ledger.document(), params)?;
+    // The pending row as it will be after those writes.
+    let doc = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
+    let n = revisions::pending_n(&doc);
+    let row = revisions::pending(&doc).unwrap_or_default();
+    if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
+        return Err(revisions::FILL_FIRST.into());
+    }
+    let rev = row.rev().to_string();
+    let name = revisions::version_name(&rev);
+    if doc.versions.contains_key(&name) {
+        return Err(format!("Rev {rev} was issued before; choose another."));
+    }
+    let mut date = row.get("date").to_string();
+    if date.is_empty() {
+        date = revisions::today().unwrap_or_default();
+        if !date.is_empty() {
+            ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
+        }
+    }
+    ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
+    ops.push(Op::NameVersion { name, at: head, description: None });
+    Ok(IssuePlan { ops, rev, n, date, head })
+}
+
 fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_project(s, |p, pg, _| {
-        if let Some(r) = release_line_refusal(p, true) {
-            return Err(r);
-        }
-        if p.ledger.head() == 0 {
-            return Err("Nothing to issue yet.".into());
-        }
-        // The pending row as it will be after those writes, checked before anything is written.
-        let check = |p: &Project| -> Result<(Vec<Op>, Document), String> {
-            let ops = revision_ops(p.ledger.document(), params)?;
-            let doc = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
-            let row = revisions::pending(&doc).unwrap_or_default();
-            if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
-                return Err(revisions::FILL_FIRST.into());
-            }
-            let rev = row.rev().to_string();
-            if doc.versions.contains_key(&revisions::version_name(&rev)) {
-                return Err(format!("Rev {rev} was issued before; choose another."));
-            }
-            Ok((ops, doc))
-        };
-        check(p)?;
+        // Checked before anything is written.
+        plan_issue(p, params)?;
         // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their own
         // transaction), or issued as they are, as asked; without an answer the ways forward are
         // named.
         let note = crate::numbering_cmds::before_issue(p, pg, params)?;
-        let head = p.ledger.head();
-        let (mut ops, doc) = check(p)?;
-        let n = revisions::pending_n(&doc);
-        let row = revisions::pending(&doc).unwrap_or_default();
-        let rev = row.rev().to_string();
-        let name = revisions::version_name(&rev);
-        let mut date = row.get("date").to_string();
-        if date.is_empty() {
-            date = revisions::today().unwrap_or_default();
-            if !date.is_empty() {
-                ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
-            }
-        }
-        ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
-        ops.push(Op::NameVersion { name: name.clone(), at: head, description: None });
+        let IssuePlan { ops, rev, date, head, .. } = plan_issue(p, params)?;
         p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
         let tx = p.ledger.head();
         let line = match &note {
@@ -858,27 +884,10 @@ fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             .into_iter()
             .find(|r| r.rev().eq_ignore_ascii_case(&rev))
             .ok_or_else(|| format!("Rev {rev} has not been issued."))?;
-        let name = row.issued.clone().unwrap_or_else(|| revisions::version_name(&rev));
-        let at = *doc.versions.get(&name).ok_or_else(|| format!("Rev {rev}'s log point is missing."))?;
-        // On a branch, a revision issued before the fork names a step of the parent (brief 020).
-        let cur = crate::history::current(p);
-        let point = crate::history::named_points(p, cur)?.into_iter().find(|n| n.name == name);
-        let (branch, at) = point.map_or((cur, at), |n| (n.branch, n.seq));
-        let pt = crate::history::Point { branch, seq: at, title: name.clone(), kind: crate::history::NodeKind::Revision };
-        let mut then = crate::history::state_at(p, &pt)?;
-        // The revision table as at that revision (design 019 §7.3): `at` precedes the issue, so
-        // the live project's issued rows up to and including this one are copied in (issued rows
-        // never change, so this is exact).
-        for r in revisions::list(doc).into_iter().filter(|r| r.n <= row.n && r.issued.is_some()) {
-            for (f, v) in FIELDS.iter().zip(r.fields.iter()) {
-                if !v.is_empty() {
-                    then.properties.insert(r.key(f), v.clone());
-                }
-            }
-            if let Some(i) = &r.issued {
-                then.properties.insert(r.key(revisions::ISSUED), i.clone());
-            }
-        }
+        // The project as issued (brief 027 §16): the state after the issue transaction, so the
+        // title block, the revision table and the generated Revision list read this revision.
+        let (named, _, then) = crate::history::issued_state(p, row.rev())?;
+        let at = named.seq;
         let book = Book::of(&then);
         let pages: Vec<Value> = book
             .order

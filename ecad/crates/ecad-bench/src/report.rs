@@ -23,6 +23,8 @@ pub struct Row {
     pub outputs: Option<crate::outputs::MeasuredOutputs>,
     /// Terminal strips and cable cores on that file (brief 028).
     pub strips: Option<crate::strips::MeasuredStrips>,
+    /// The pre-release check and the release on that file (brief 027).
+    pub release: Option<crate::release::MeasuredRelease>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -133,7 +135,7 @@ fn mb(bytes: u64) -> f64 {
 }
 
 /// The plain table.
-pub fn table(rows: &[Row], runs: usize) -> String {
+pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredPrint>) -> String {
     let mut out = format!(
         "{:<8} {:<8} {:>9} {:>8} {:>10} {:>10} {:>9} {:>12} {:>9} {:>9} {:>13} {:>14} {:>13} {:>10} {:>11} {:>9} {:>11} {:>8} {:>10} {:>9} {:>8} {:>7} {:>8} {:>10} {:>10} {:>8} {:>8} {:>9} {:>9} {:>14} {:>11}
 ",
@@ -272,6 +274,19 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          saved, durable. crash open: after a child saved and exited without closing the file (redb quick \
          repair). open x10: after the history grew tenfold.\n",
     );
+    out.push_str(&format!(
+        "\nVerify (brief 029):\n{:<8} {:<8} {:>16} {:>11} {:>12}\n",
+        "tier", "history", "verify_chain ms", "verify ms", "full checks"
+    ));
+    for r in rows {
+        let Some(v) = &r.v2 else { continue };
+        out.push_str(&format!("{:<8} {:<8} {:>16.0} {:>11.0} {:>12}\n", r.tier, r.variant, v.verify_chain_ms, v.verify_ms, v.verify_full_checks));
+    }
+    out.push_str(
+        "verify_chain: every row decoded and chain-checked, heads, version and merge rows, chunks (target on large \
+         lean: 3 s). verify: that, then the replay with the commit-time check and the full check at each snapshot \
+         and branch end (target on large lean: 10 s, goal 5 s).\n",
+    );
     for r in rows {
         let Some(h) = &r.history else { continue };
         out.push_str(&format!(
@@ -299,8 +314,8 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         let Some(o) = &r.outputs else { continue };
         out.push_str(&format!(
             "\nOutputs on {} {} ({} devices; box holds {}): reportfirst {:.1} ms, locset {:.2} ms, boxmove {:.2} ms \
-             (plain move {:.2} ms), symin {:.2} ms, projloc {:.2} ms, bomupd {:.2} ms, wireupd {:.2} ms, print {:.0} ms \
-             ({} sheets); most rows one edit recomputed: {}\n",
+             (plain move {:.2} ms), symin {:.2} ms, projloc {:.2} ms, bomupd {:.2} ms, wireupd {:.2} ms; most rows one edit \
+             recomputed: {}\n",
             r.tier,
             r.variant,
             o.devices,
@@ -313,8 +328,6 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             o.projloc_ms,
             o.bomupd_ms,
             o.wireupd_ms,
-            o.print_ms,
-            o.print_sheets,
             o.work
         ));
     }
@@ -338,6 +351,32 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             t.tplan_ms,
             t.trenum_ms,
             t.work
+        ));
+        // Brief 030 (design 030 §11.3).
+        out.push_str(&format!(
+            "Strip accessories: accset {:.2} ms (< 2 beyond edit), accmany {:.2} ms (< 16), accproj {:.2} ms (< 16; {} strips recomputed), \
+             linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
+            t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
+        ));
+    }
+    for r in rows {
+        let Some(o) = &r.release else { continue };
+        out.push_str(&format!(
+            "\nRelease check on {} {} ({} check rows): prerelease {:.2} ms, orphanupd {:.2} ms (orphan work {:.3} ms)\n",
+            r.tier, r.variant, o.rows, o.prerelease_ms, o.orphanupd_ms, o.orphanwork_ms
+        ));
+    }
+    if let Some(p) = print {
+        out.push_str(&format!(
+            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets), release {:.2} s ({} sheets, {} files; \
+             target 5 s), rerelease {:.2} s\n",
+            p.pages,
+            p.print_ms / 1000.0,
+            p.print_sheets,
+            p.release_s,
+            p.sheets,
+            p.files,
+            p.rerelease_s
         ));
     }
     for r in rows {
@@ -411,10 +450,16 @@ fn machine_name() -> String {
 }
 
 /// The JSON written to `target/bench/`.
-pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
+pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&crate::release::MeasuredPrint>) -> Value {
     let machine = machine_name();
     let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
-    json!({
+    let print_v = print.map(|p| {
+        json!({
+            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "release_s": p.release_s,
+            "rerelease_s": p.rerelease_s, "sheets": p.sheets, "files": p.files,
+        })
+    });
+    let mut out = json!({
         "benchmark": "ecad project load (brief 012)",
         "when": when,
         "commit": commit,
@@ -487,17 +532,26 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "v2_compacted_x10": r.v2.as_ref().map(|v| v.compacted_x10),
                 "v2_undo_ms": r.v2.as_ref().map(|v| v.undo_ms),
                 "v2_undo_past_cap_ms": r.v2.as_ref().map(|v| v.undo_past_cap_ms),
+                "verify_chain_ms": r.v2.as_ref().map(|v| v.verify_chain_ms),
+                "verify_ms": r.v2.as_ref().map(|v| v.verify_ms),
+                "verify_full_checks": r.v2.as_ref().map(|v| v.verify_full_checks),
                 "outputs": r.outputs.as_ref().map(|o| json!({
                     "reportfirst_ms": o.reportfirst_ms, "locset_ms": o.locset_ms, "boxmove_ms": o.boxmove_ms,
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
-                    "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms, "print_ms": o.print_ms,
-                    "print_sheets": o.print_sheets, "work": o.work, "devices": o.devices, "inside": o.inside,
+                    "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms,
+                    "work": o.work, "devices": o.devices, "inside": o.inside,
+                })),
+                "release": r.release.as_ref().map(|o| json!({
+                    "prerelease_ms": o.prerelease_ms, "orphanupd_ms": o.orphanupd_ms, "orphanwork_ms": o.orphanwork_ms,
+                    "rows": o.rows,
                 })),
                 "strips": r.strips.as_ref().map(|t| json!({
                     "stripbuild_ms": t.stripbuild_ms, "tplace_ms": t.tplace_ms, "tfence_ms": t.tfence_ms,
                     "stripupd_ms": t.stripupd_ms, "attach_ms": t.attach_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
                     "trenum_ms": t.trenum_ms, "strips": t.strips, "terminals": t.terminals, "cables": t.cables,
                     "work": t.work,
+                    // Brief 030.
+                    "acc": acc_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
@@ -520,7 +574,10 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
             }
             row
         }).collect::<Vec<_>>(),
-    })
+    });
+    // Print Book and release on the 25-page project (brief 027), once per run.
+    out["print"] = print_v.unwrap_or(Value::Null);
+    out
 }
 
 /// The change of each row against an earlier JSON file's matching row (same tier and history).
@@ -561,4 +618,13 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
         out.push('\n');
     }
     Ok(out)
+}
+
+/// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
+/// limit.
+fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
+    serde_json::json!({
+        "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
+        "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+    })
 }

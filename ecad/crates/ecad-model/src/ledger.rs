@@ -5,7 +5,7 @@
 //! commit, undo and redo, and per transaction when a file is replayed on open.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -97,7 +97,7 @@ pub struct Transaction {
 /// - The project is unsaved exactly when [`Ledger::head`] differs from
 ///   [`Ledger::persisted`] (SAVE-01).
 /// - **Verify mode** (the `verify-invariants` cargo feature, which every `cargo test`
-///   turns on; `ECAD_VERIFY_INVARIANTS=1`; or [`Ledger::replay_verified`]) also runs the full
+///   turns on; `ECAD_VERIFY_INVARIANTS=1`; [`Ledger::replay_verified`]; or [`Check::Full`]) also runs the full
 ///   [`Document::check`] and the index check after every transaction and treats any
 ///   disagreement with the scoped check as a bug: a debug assertion once the transaction is
 ///   settled, and the full check's verdict wins.
@@ -312,27 +312,26 @@ pub struct Base {
     pub history: Arc<dyn History>,
 }
 
-/// Whether `ECAD_VERIFY_INVARIANTS=1` is set (read once per process).
-fn verify_env() -> bool {
-    static FLAG: OnceLock<bool> = OnceLock::new();
-    *FLAG.get_or_init(|| switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()))
+pub use crate::dev::verify_mode;
+
+/// How much a replay checks after each transaction ([`Ledger::replay_checked_from`]), whatever
+/// the build's verify mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Check {
+    /// Exactly what [`Ledger::commit`] checks outside verify mode: the objects the transaction
+    /// touched. The cost follows the size of each transaction. The file's **Verify** uses this.
+    Commit,
+    /// The full [`Document::check`] and the index check as well, after every transaction (brief
+    /// 013's verify mode): the cost follows the size of the document, per transaction.
+    Full,
 }
 
-/// Only the value `1` turns verify mode on.
-fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
-    value.is_some_and(|v| v == "1")
-}
-
-/// Whether verify mode is on for this build or process (the `verify-invariants` feature, which
-/// every `cargo test` turns on, or `ECAD_VERIFY_INVARIANTS=1`): derived indexes kept outside the
-/// model (brief 025's reference index) compare themselves with a rebuild after every change.
-pub fn verify_mode() -> bool {
-    verifying(false)
-}
-
-/// Whether to run the full check alongside the scoped one.
-fn verifying(local: bool) -> bool {
-    local || cfg!(feature = "verify-invariants") || verify_env()
+/// What [`validate`] checks: the build's choice (the scoped check, plus the full one in verify
+/// mode or when `true`), or exactly one [`Check`].
+#[derive(Debug, Clone, Copy)]
+enum Level {
+    Build(bool),
+    Exactly(Check),
 }
 
 /// What went wrong with rollbacks. Empty in any correct build.
@@ -515,8 +514,18 @@ impl Drop for Journal<'_> {
 /// between the scoped and the full check, found in verify mode, for the caller to assert on once
 /// the transaction is settled.
 fn validate(doc: &Document, touched: &Touched, verify: bool) -> (Result<()>, Option<String>) {
+    validate_at(doc, touched, Level::Build(verify))
+}
+
+/// [`validate`] at an explicit [`Level`].
+fn validate_at(doc: &Document, touched: &Touched, level: Level) -> (Result<()>, Option<String>) {
     let scoped = doc.check_touched(touched);
-    if verifying(verify) {
+    let full = match level {
+        Level::Build(verify) => crate::dev::verifying(verify),
+        Level::Exactly(Check::Full) => true,
+        Level::Exactly(Check::Commit) => false,
+    };
+    if full {
         let full = doc.check().and_then(|()| doc.check_index());
         let disagreement = (scoped.is_ok() != full.is_ok()).then(|| format!("scoped check {scoped:?} disagrees with the full check {full:?}"));
         return (full.and(scoped), disagreement);
@@ -534,9 +543,16 @@ fn validate(doc: &Document, touched: &Touched, verify: bool) -> (Result<()>, Opt
 fn apply_tx(
     doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, then: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
+    apply_tx_at(doc, ops, Level::Build(verify), history, health, then)
+}
+
+/// [`apply_tx`] at an explicit [`Level`].
+fn apply_tx_at(
+    doc: &mut Document, ops: &[Op], level: Level, history: Option<Committed<'_>>, health: &mut Health, then: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     let mut journal = Journal::new(doc, ops, history, health);
     let (result, disagreement) = match journal.apply() {
-        Ok(touched) => validate(journal.doc, &touched, verify),
+        Ok(touched) => validate_at(journal.doc, &touched, level),
         Err(e) => (Err(e), None),
     };
     let result = result.and_then(|()| then());
@@ -691,22 +707,28 @@ impl Ledger {
         Self::from_checkpoint(Document::default(), 0, log, seed)
     }
 
-    /// [`Ledger::replay`] in verify mode: every transaction is also checked in full, and the
-    /// resulting ledger stays in verify mode. Used by the debugger's **Verify replay**.
+    /// Replay `log` on `doc` (the empty project, or a branch's parent state at its fork point)
+    /// checking each transaction at exactly `check`, whatever the build's verify mode, so the
+    /// cost and the verdict are the same in tests and in release. The resulting ledger is not in
+    /// verify mode.
     ///
     /// # Errors
     /// As [`Ledger::replay`].
-    pub fn replay_verified(log: Vec<Transaction>, seed: u64) -> Result<Self> {
-        Self::rebuild(Document::default(), 0, log, seed, true)
+    pub fn replay_checked_from(doc: Document, log: Vec<Transaction>, seed: u64, check: Check) -> Result<Self> {
+        Self::replay_checked_visit(doc, log, seed, check, |_, _| {})
     }
 
-    /// [`Ledger::replay_verified`] from `doc` instead of the empty project: a branch's history
-    /// replayed on its parent's state at the fork point (brief 020; Verify).
+    /// [`Ledger::replay_checked_from`], calling `visit` with each transaction and the document
+    /// just after it (checked), in order. The file's Verify compares snapshots and keeps fork
+    /// states this way, in the same pass.
     ///
     /// # Errors
-    /// As [`Ledger::replay`].
-    pub fn replay_verified_from(doc: Document, log: Vec<Transaction>, seed: u64) -> Result<Self> {
-        Self::rebuild(doc, 0, log, seed, true)
+    /// As [`Ledger::replay`]. `visit` has then been called for every transaction before the
+    /// failing one.
+    pub fn replay_checked_visit(
+        doc: Document, log: Vec<Transaction>, seed: u64, check: Check, visit: impl FnMut(&Transaction, &Document),
+    ) -> Result<Self> {
+        Self::rebuild_at(doc, 0, log, seed, Level::Exactly(check), visit)
     }
 
     /// Replay as much of `log` as is valid: the ledger of the longest valid prefix and, when a
@@ -914,7 +936,14 @@ impl Ledger {
         Self::rebuild(doc, at, log, seed, false)
     }
 
-    fn rebuild(doc: Document, at: u64, log: Vec<Transaction>, seed: u64, verify: bool) -> Result<Self> {
+    pub(crate) fn rebuild(doc: Document, at: u64, log: Vec<Transaction>, seed: u64, verify: bool) -> Result<Self> {
+        Self::rebuild_at(doc, at, log, seed, Level::Build(verify), |_, _| {})
+    }
+
+    fn rebuild_at(
+        doc: Document, at: u64, log: Vec<Transaction>, seed: u64, level: Level, mut visit: impl FnMut(&Transaction, &Document),
+    ) -> Result<Self> {
+        let verify = matches!(level, Level::Build(true));
         let mut doc = doc;
         let mut health = Health::default();
         // The checkpoint may have been built without ops; make its index match its objects.
@@ -926,8 +955,9 @@ impl Ledger {
             if tx.seq > at {
                 let history = log.get(..i).map(Committed::root);
                 check_bookmarks(&tx.ops, tx.seq)
-                    .and_then(|()| apply_tx(&mut doc, &tx.ops, verify, history, &mut health, || Ok(())))
+                    .and_then(|()| apply_tx_at(&mut doc, &tx.ops, level, history, &mut health, || Ok(())))
                     .map_err(|e| ModelError::CorruptLog(format!("transaction {}: {e}", tx.seq)))?;
+                visit(tx, &doc);
             }
         }
         let stacks = stacks(&log)?;
@@ -1465,16 +1495,16 @@ mod tests {
     #[test]
     fn only_the_value_1_turns_the_switch_on() {
         use std::ffi::OsStr;
-        assert!(switch_on(Some(OsStr::new("1"))));
+        assert!(crate::dev::switch_on(Some(OsStr::new("1"))));
         for v in ["0", "", "true", "yes", " 1"] {
-            assert!(!switch_on(Some(OsStr::new(v))), "{v:?}");
+            assert!(!crate::dev::switch_on(Some(OsStr::new(v))), "{v:?}");
         }
-        assert!(!switch_on(None));
+        assert!(!crate::dev::switch_on(None));
     }
 
     #[test]
     fn the_test_build_verifies() {
-        assert!(verifying(false), "every cargo test runs in verify mode");
+        assert!(crate::dev::verifying(false), "every cargo test runs in verify mode");
     }
 
     #[test]

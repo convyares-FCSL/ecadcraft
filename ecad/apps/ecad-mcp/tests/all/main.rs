@@ -3,6 +3,7 @@
 //! `cargo test -p ecad-mcp <name>` still runs one file's tests. One executable links the
 //! dependencies once instead of once per file.
 
+mod accessories_contracts;
 mod cable_command_contracts;
 mod demo;
 mod history_contracts;
@@ -12,10 +13,12 @@ mod merge_contracts;
 mod merge_tester_contracts;
 mod numbering_contracts;
 mod outputs_contracts;
+mod release_contracts;
 mod review_026_merge;
 mod strips_contracts;
 mod tester_024_mcp;
 mod tester_026_mcp;
+mod tester_027_mcp;
 mod tester_028_mcp;
 mod tester_030_mcp;
 mod xref_contracts;

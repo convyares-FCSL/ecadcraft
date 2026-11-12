@@ -45,7 +45,7 @@ terminal on every wire a line crosses; **Draw Bridge** links two terminals of a 
 **Terminals offered** (`12+2PE`) gives spare positions; a cable's **Cores** (or its type, `7G1.5`)
 gives used, spare and over cores, and a new member takes the next free core. The terminal plan
 and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
-type; five Checks rows have fixes. Section 5N describes it.
+type; five Checks rows have fixes. Section 5O describes it.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
   A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
   and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
@@ -139,7 +139,8 @@ history as version 1 JSON Lines. The debugger gains **Storage** and **Branches**
   `ecad/crates/ecad-file/tests/all/container_crash.rs` (power loss, torn writes and process kills,
   in the slow set), `ecad/crates/ecad-model/tests/all/ledger_base.rs` (a project opened from a
   snapshot undoes and rebuilds exactly as a replayed one), `ecad/apps/ecad-cli/tests/all/cli_contracts.rs`
-  (`ecad upgrade`, every `ecadinspect` view, `export-jsonl` read back by version 1), and the
+  (`ecad upgrade`), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
+  view, `export-jsonl` read back by version 1; moved there by brief 029), and the
   debugger checks in `ecad/crates/ecad-cadcraft/tests/all/debugger.rs` and
   `ecad/apps/ecad-trial/tests/all/debugger.rs`.
 - *Agent-observed:* the worker ran the crash suite and the benchmark; no agent has clicked through
@@ -1282,11 +1283,54 @@ Typed instead, in the ECAD command field: `renumber {"kind":"devices","scope":"a
 (`"merge"`, `"next"`), `setprop {"component":"<id>","key":"tag_fixed","value":null}`,
 `issuerevision {"provisional":"finalise"}` (or `"issue"`), and in a merge `choices: {"<id>": "one"}`.
 
-## 5N. Terminal strips and cables (by clicking)
+## 5N. Release (by clicking)
+
+One action checks the project, issues the pending revision and writes a folder that can be sent:
+the PDF book and every list, stamped with that revision. Brief 027, design
+`ecad/docs/design/027.md`. On the demo project (`cargo xtask demo`, then open it, section 7); the
+project must have been saved once, since the folder goes beside it (`…\release\Rev A\`). (Section
+5M is brief 026's numbering; the design calls this section 5L.)
+
+1. **The check.** Click **Release** in the PROJECT panel (beside **Revisions**; once the Checks
+   tab has been shown it carries a badge: red `●n` for errors, else yellow `▲n` for warnings).
+   Expected: a window `RELEASE REV A` with the pending revision's fields, the folder, a **Writes**
+   line (`demo Rev A.pdf · bom · wires · cables · terminal-plan · cable-schedule · checks`; a
+   project with no strips adds `terminal-plan: No terminal strips in this project.`), then the
+   check by group: **Open ends**, **Orphans**, **?
+   parts** (`-S01` has no part number) and **Other** (folded). Click a row: its page comes up with
+   the place ringed; the window stays open. To see an orphan, place a **Cable Reference** on `-W01`
+   (section 5D) without continuing it: at once **Orphans** lists `▲ Cable reference with no other
+   end … -W01 /?`; type `u` and it goes.
+2. **Release.** Fill **Description** (`First issue`) and **Drawn** (your initials) in the window;
+   **Release Rev A** is greyed until both are there (hover: `Fill in Rev, Description and Drawn
+   first.`). Click **Release Rev A**. Expected: the window closes and the command line says
+   `Rev A released to …\release\Rev A: n sheets, 5 lists, … listed.` The project is saved. Open the
+   folder: `demo Rev A.pdf` (the title blocks' Rev box reads `A`, and the Revision list page lists
+   Rev A), `demo Rev A BOM.csv`, `… wires.csv`, `… cables.csv`, `… terminal plan.csv` and `… cable
+   schedule.csv` (brief 028), `… checks.csv` (every row of the
+   check, with its group) and `release.json` (the revision, the log point, the app and each file's
+   SHA-256).
+3. **Revisions.** Open **Revisions**: Rev A's new **Folder** cell reads **Open** (opens the folder in
+   the file manager). Beside **Issue Rev B…** there is **Release Rev B…**.
+4. **Again.** In Revisions click Rev A's **Folder** cell after renaming its folder away, or click
+   **Write…** on a revision issued without a folder: `WRITE REV A'S FOLDER` writes it from Rev A as
+   issued and records nothing. Doing it while the folder exists asks first: **Add missing files**
+   (only when the rest is the same), **Replace** (the old folder is moved to
+   `release\replaced\Rev A <date time>`, never deleted), **Keep both** (`Rev A (2)`), **Cancel**.
+5. **An error.** Join a `24V` and a `0V` continuation with one wire: the check shows **Errors (1)**
+   and Release is greyed; tick `Release with 1 error (it is listed in the folder's checks.csv)` to
+   go on. `u` after a release undoes the issue (it asks first); the folder stays on disk.
+
+Typed instead, in the ECAD command field: `prerelease {}` (the check as JSON, with what `release`
+would write or refuse), `release {}`, `release {"accept":"errors"}`, `release {"rev":"A"}` (write an
+issued revision's folder again; records nothing), `release {"rev":"A","existing":"keep-both"}`
+(`add-missing`, `replace`), `release {"folder":"C:/tmp/out/Rev B"}`.
+
+## 5O. Terminal strips and cables (by clicking)
 
 A terminal strip `-X01` is one device whose terminals `-X01:1…n` are placed on wires; a cable
 knows its cores. The terminal plan and the cable schedule are read off the drawing, live, and
-never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5M, or
+never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5N, or
 a new one); the steps make their own page so its numbers do not matter.
 
 1. **Some wires.** Add a page with **+**. Place two `coil`s (`-K..`) near the top and a `motor3`
@@ -1307,7 +1351,7 @@ a new one); the steps make their own page so its numbers do not matter.
 4. **A bridge.** Click **Draw Bridge**, click terminal 2, then terminal 3: a staple 4 mm above
    them (`Bridged -X01:2–3.`). The next click would continue from 3; press Enter to end.
 5. **Spares.** Click a terminal; in Properties set **Terminals offered** to `8+1PE`. Expected:
-   **Terminals** reads `3 drawn, 5 spare`. Typing `8X` is refused under the field:
+   **Terminals** reads `3 drawn, 6 spare` (8 feed-through and 1 PE: 9 positions). Typing `8X` is refused under the field:
    `"8X" is not a terminal count. Write 12, or 12+2PE.`
 6. **Cores.** Click the cable slash; set its **type** to `7G1.5`. Expected: **Cores** shows
    `from type: 7G`, **Used / Spare** `3 / 4 (4, 5, 6, GNYE)`. Hover the slash:
@@ -1334,6 +1378,41 @@ is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":tr
 `setprop {"cable":"<id>","key":"cores","value":"7G"}`, `stripplan {}`, `cablecores {"cable":"<id>"}`,
 `newpage {"generated":"terminals","strip":"<strip id>"}`, `newpage {"generated":"cables"}`,
 `renumber {"kind":"terminals","preview":true}`, `renumber {"kind":"terminals","scope":"selection","strips":["<strip id>"]}`.
+
+## 5P. Strip accessories and jumpers (by clicking)
+
+End stops, end plates, partitions, strip labels and markers are placed by you, where you want
+them; jumpers are links owned by the strip, never wires. They appear in the terminal plan in
+position order and on the BOM. Brief 030, design `ecad/docs/design/030.md`. Continue from 5O
+(strip `-X01`, terminals 1–3, offer `8+1PE`).
+
+1. **Parts.** Open **Project info** and add the properties `strip_end_stop_part_number` `ES-1`
+   and `strip_end_plate_part_number` `EP-1` (Properties of a strip also shows them, faint, under
+   **End stop part number** and **End plate part number**).
+2. **Ends.** Open **Reports ▸ Terminals**, pick `-X01`, **Accessory v ▸ At start: end stop**, then
+   **At end: end plate** and **At end: end stop**. Expected: an `end stop` row before position 1
+   and `end plate`, `end stop` rows after the last position; their Place column shows `ES-1`/`EP-1`.
+   Untick **Accessories** to hide those rows (view only).
+3. **A partition.** Click **Strip Accessory** (ECAD tab, Components), click terminal 2, press Enter
+   (Partition). Expected: `Partition after -X01:2.`; a `partition` row after 2.
+4. **Markers.** **Accessory v ▸ Marker on every position**: each position shows `▭`. Without a
+   marker part number the BOM lists none, and Checks counts them (`… strip accessories have no part
+   number`).
+5. **Jumpers.** Click **Jumper**, click terminal 1, then terminal 3, press Enter: a dashed line
+   through 1–3 (`Linked -X01 1-3.`), and 1–3 share one wire number. Hover the line:
+   `-X01 link 1-3 (3 positions, 1 bar …)`. Click it: Properties shows **Link** with its
+   **Positions**; type `1-5` to extend it (positions 4 and 5 are spare: a short stub past 3 says
+   the link goes on). Erase the line to delete the link; `u` brings it back.
+6. **BOM.** **Reports ▸ BOM**: end stops `ES-1 ×2`, end plate `EP-1 ×1`, partition (`?`), and
+   `Jumper bar ×10` rows per strip.
+
+Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
+`accessory {"strip":"<id>","at":["1","2","3"],"on":true,"items":["marker"]}`,
+`accessory {"strip":"<id>","at":"2","remove":["partition"]}`,
+`jumper {"terminals":["<terminal id>","<terminal id>"]}` (`"skip":true` for only those),
+`jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
+`jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
+`setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
 
 ## 6. Check connected movement, undo/redo and pages
 
@@ -1436,20 +1515,23 @@ cargo run --release -p ecad-cli --bin ecad -- upgrade ~/ecad-projects/demo.ecad
 `--out <file>` chooses another name. It refuses a damaged version 1 file (rescue it first with
 Save As in a build before brief 021) and an output that exists.
 
-## 7C. Look inside a version 2 file: `ecadinspect` (brief 021)
+## 7C. Look inside a version 2 file: `ecadinspect` (brief 021, moved by brief 029)
 
-Read-only; run it on a saved file (the app may have it open).
+A developer tool: it is in `ecad/dev/ecad-inspector` and never ships (`ecad inspect` now only
+says where it went). Read-only; run it on a saved file (the app may have it open). The page that
+shows the same file in a browser is under "The inspector" below.
 
 ```sh
-cargo run --release -p ecad-cli --bin ecadinspect -- ~/ecad-projects/demo.v2.ecad tables
+cargo run --release -p ecad-inspector --bin ecadinspect -- ~/ecad-projects/demo.v2.ecad tables
 ```
 
 Views: `tables` (rows and bytes per table, and `meta`), `branches` (each branch, its head and
 fork point; only `main` exists for now), `log main --last 20` (the newest transactions,
 decompressed, one JSON record each with its stored size), `versions` (named versions, issued
 revisions and the automatic snapshots taken every 2 000 transactions), `chunk <hash>` (one
-snapshot chunk, decompressed), `verify` (replays the whole history and checks every snapshot;
-reads everything), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
+snapshot chunk, decompressed), `verify` (the chain, then the replay with the commit-time check,
+then the full check at every snapshot and branch end; reads everything, about 2 s on the large
+bench file), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
 Lines file: the HTML inspector and any version 1 reader open it). `export-jsonl --with-raw
 --out <file>` writes every stored row instead, with its raw bytes (hex) beside the readable form;
 that file is not a version 1 project.
@@ -1643,16 +1725,58 @@ Developer). Type commands in the ECAD command field at the top of the Developer 
    In **Checks**, press **Verify replay**, **Verify projection** and **Verify file**: each shows
    `PASS … at seq 5` and the time.
 
-### Inspector snapshots
+### The inspector (brief 029)
+
+A developer and test tool in `ecad/dev/ecad-inspector`; it never ships. One page, two modes.
+
+**Server mode: look inside a `.ecad` file.** From `ecad/`:
+
+```sh
+cargo run -p ecad-inspector --bin ecadinspect -- serve C:\dev\ecad-projects\demo.v2.ecad
+```
+
+1. Expected: `ecadinspect: serving demo.v2.ecad (324 KB) read-only` and
+   `open http://127.0.0.1:<port>/?t=<token>`. The server listens on 127.0.0.1 only, and the
+   address carries a token: the page and its WebSocket refuse requests without it. Ctrl+C stops
+   it. `--port N` picks the port; without a file, drop one on the page.
+2. Open the printed address. Expected: the file name, size, `container 2 · schema 1 · json/1`
+   and the writer; pills `local only`, **chain PASS** and **verifying…**, then **verified** (or
+   **Verify FAIL**); the Project tab with the pages.
+3. Visit Devices, Wires and nets, History (branches, log with **Export JSONL**, versions) and
+   Tables (pick a table, expand a row, then **Raw**, then **Readable**). Lists show 200 rows at a
+   time with a search box. Times are UTC.
+4. **Checks**: the open report, the chain, the invariants of the opened state, and Verify's
+   result with its time.
+5. Drop `demo.v2.ecad.lock` (it says it is the lock file), then `demo-old.ecad` (version 1: it
+   offers `ecad upgrade`). Drop `demo.v2.ecad` again to go back. A dropped file is held in memory
+   only; **Reload** re-opens the file named on the command line (also after the app saved it:
+   the page then says the file changed).
+6. If the server stops, the page says so and offers **Reconnect**.
+
+The page talks to the server through a versioned JSON protocol (design 029 §2); the same views
+are available to tests and scripts. Nothing on the page writes, and the protocol has no op that
+writes.
+
+- *Automated checks:* `ecad/dev/ecad-inspector/tests/all/protocol_contracts.rs` (every op, every
+  mismatch message, hostile files, never writes) and `serve_contracts.rs` (token, `Host`,
+  `Origin`, one page at a time, dropped files, limits).
+- *Agent-observed (worker, 2026-11-12, `feature/inspector`):* `serve` on a copy of
+  `demo.v2.ecad`; every tab answered, Readable/Raw on a transaction row, no console errors. On
+  that file (written 2026-11-10, before brief 026), Verify reports that the tag numbers of its
+  three snapshots differ from the history's: brief 026 made cable tags count towards the tag
+  numbers, so snapshots written before it carry the older numbers.
+- *Owner-tried:* not yet.
+
+**Snapshots mode: exported snapshots.**
 
 - **Exporting.** Start with `--snapshots <folder>`, then click **Export Inspector Snapshot** in
   the PROJECT panel's Developer section (shown only with `--snapshots`). Snapshots are also written before a project is discarded, and at exit. They are
   diagnostic files, not saved projects, and cannot be reopened. Their format is
   `ecad-inspect/2`: the design, its history and, new in stage 2b, the file's persistence facts
   (path, header, record offsets, lock).
-- **Viewing them.** Open `ecad/tools/inspector/index.html` in a browser (on native Windows,
-  double-click `C:\dev\ecadcraft\ecad\tools\inspector\index.html`, or type that path in the
-  address bar) and load the files from the folder given to `--snapshots`, for example
+- **Viewing them.** Open `ecad/dev/ecad-inspector/page/index.html` in a browser (on native
+  Windows, double-click `C:\dev\ecadcraft\ecad\dev\ecad-inspector\page\index.html`, or type
+  that path in the address bar; it was `ecad/tools/inspector/index.html`) and load the files from the folder given to `--snapshots`, for example
   `C:\dev\ecad-trial-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
   whether each transaction was saved, and where.
 
@@ -1849,6 +1973,12 @@ Your table of three clean runs goes here once you have run it.
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Strip accessories (brief 030):** accessories are placed by hand (no automatic rule yet); no
+  level jumpers, test plugs or rail parts; marker text is not printed; links join whole positions
+  (no levels). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
+  a partition or a single marker with **Strip Accessory**); a link is extended, shortened or split
+  through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
+  generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).
 - **Terminal strips (brief 028):** no multi-level, disconnect or fuse terminals; no bridge parts
   (end plates, markers) on the BOM; no reference texts under terminals; cable lengths are typed,
   not measured. A terminal on a wire drawn on several pages is refused (place it where the wire
@@ -1857,6 +1987,11 @@ Your table of three clean runs goes here once you have run it.
   than putting the cursor in the Cores field. A new cable member takes the next free core when
   added with `cableadd` to a cable with an offer; a new slash always makes a new cable.
   New Page ▸ **Terminal plan** shows every strip (one strip: `newpage` with `strip`).
+
+- **Release (brief 027).** No transmittal, zip or upload, and one folder layout. The folder is a typed path (no folder
+  dialog in the trial). The PDF is written in one go: Esc does not stop a release while it writes.
+  The History tab has no Release button yet (Revisions and the PROJECT panel have). Provisional
+  tags (brief 026) are released as they are until 026's Finalise is wired in.
 - **Cross-references (brief 025).** No PLC card symbol yet (a card with channels is a later step);
   no change-over (`CO`) contacts; a contact's text sits at a fixed place under it and only a
   device's whole table can be moved (Move Mirror Table); continuations are not on the reference

@@ -58,6 +58,10 @@ are.
 | **title block** | The box along the bottom of the frame showing the project's and the page's facts and the revisions. Derived from the properties, never drawn by hand. |
 | **revision** | One step in the project's release history (`Rev A`, `B`…), with its date, description and who drew, checked and approved it. Users only ever see "revision", never "version". |
 | **issue** | Releasing a revision: its fields are fixed and the project as it is then can be reopened read-only (**Reopen**). Undoing an issue asks first. |
+| **release** | Issuing a revision and writing its outputs to one folder (brief 027). Also the folder itself. |
+| **release folder** | `release/Rev B/` beside the project file (by default): the PDF book, the CSV lists, the check rows accepted at release and `release.json`, all stamped `Rev B`. Outside the project file. |
+| **pre-release check** | The Checks of the state about to be issued, grouped for a release and shown before anything is written. |
+| **release gap** | A warning a release lists but does not stop for: open ends, orphan reference ends, provisional tags and wire numbers, `?` parts. |
 | **preview** | A read-only view of another page, for checking a reference's other end. |
 | **generated page** | A page whose content ECAD draws from the project (cover, contents, revision list, BOM by location). It has a number, title and folder like any page; nothing on it is stored (brief 024). |
 | **sheet** (of a page) | One printed A3 (or other) sheet. A generated page whose table does not fit continues on more sheets of the same page; Total counts sheets. |
@@ -82,3 +86,18 @@ are.
 | **used / spare / over core** | A core a wire of the cable takes / offered and not taken / a wire beyond the offer. A new wire added to a cable takes the next spare core. |
 | **terminal plan** | Per strip, one row per position (drawn and spare): inside and outside target, wire numbers, cable and core, bridges and place. Derived, shown in Reports ▸ Terminals and on a generated **Terminal plan** page. |
 | **cable schedule** | The cable report completed with Used, Spare and the devices at each end, and per cable its core list. Also a generated **Cable schedule** page. |
+
+## Terminal accessories (brief 030)
+
+| Word | Means |
+| --- | --- |
+| **accessory** | A part on the rail that is not a terminal: end stop, end plate, partition plate, marker, strip label, jumper. Placed by you; nothing is added by a rule. |
+| **end stop** | The clamp that holds a strip on the rail (an "end clamp"). |
+| **end plate** | The cover on a terminal's open side. |
+| **partition** | A partition plate between two positions: separates groups and stops a jumper. |
+| **marker** | The label clipped onto one terminal, bought as cards of several. |
+| **strip label** | The marker that carries the strip's tag, usually on an end stop. |
+| **gap** | Where a plate or stop sits: start, after a position, or end. |
+| **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
+| **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
+| **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |

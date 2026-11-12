@@ -26,6 +26,36 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 029: write one tier's lean version 2 file (for timing Verify on it alone).
+    if let [flag, name, file] = args.as_slice()
+        && flag == "--write-v2"
+    {
+        let r = ecad_bench::tier(name)
+            .ok_or_else(|| format!("unknown tier {name}"))
+            .and_then(|t| ecad_bench::v2::write_lean(t, std::path::Path::new(file)));
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // Brief 029: time Verify on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--verify"
+    {
+        return match ecad_bench::v2::verify_timed(std::path::Path::new(file)) {
+            Ok((chain, all, checks)) => {
+                println!("verify_chain {chain:.0} ms, verify {all:.0} ms, {checks} full checks");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if let [flag, file] = args.as_slice()
         && flag == "--probe"
     {

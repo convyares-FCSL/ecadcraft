@@ -155,6 +155,8 @@ pub enum Action {
     Reports,
     /// Brief 024: open Print Book, scoped to this folder when given.
     PrintBook(Option<FolderId>),
+    /// Brief 027: the Release dialog for the pending revision.
+    Release,
     /// Brief 024: `newpage {generated}`.
     NewGenerated(ecad_cadcraft::generated::GenKind),
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
@@ -164,6 +166,9 @@ pub enum Action {
     SetCores(ecad_model::CableId),
     NextFreeCore(ecad_model::ConductorId),
     ShowCables,
+    /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
+    /// Split link / Remove partition, Drop missing positions / Delete link).
+    AccessoryFix(ecad_cadcraft::checks::Fix, usize),
 }
 
 /// A field typed in place over a row: a page number or a folder name.
@@ -247,6 +252,9 @@ pub struct Header {
     pub branch_bar: Option<String>,
     /// The parent's name, for Merge into… and Update from… (brief 020b).
     pub parent: Option<String>,
+    /// Brief 027: the pending rev, and the kept Checks' errors and warnings (`None` until the
+    /// Checks are kept: the badge never builds them).
+    pub release: Option<(String, Option<(usize, usize)>)>,
 }
 
 /// The panel's state.
@@ -554,6 +562,23 @@ impl ProjectPanel {
                 }
                 if ui.small_button(REVISIONS).on_hover_text("Issue a revision, reopen an issued one").clicked() {
                     out.push(Action::Revisions);
+                }
+                // Brief 027 (design 027 §3): Release, with a badge counting errors, else warnings.
+                if let Some((rev, counts)) = &header.release {
+                    let (text, hover) = match counts {
+                        Some((e, _)) if *e > 0 => (
+                            RichText::new(format!("Release \u{25cf}{e}")).small().color(Color32::from_rgb(0xFF, 0x00, 0x00)),
+                            format!("Release Rev {rev}: {e} error{} open.", if *e == 1 { "" } else { "s" }),
+                        ),
+                        Some((_, w)) if *w > 0 => (
+                            RichText::new(format!("Release \u{25b2}{w}")).small().color(Color32::from_rgb(0xFF, 0xFF, 0x00)),
+                            format!("Release Rev {rev}: {w} warning{} listed.", if *w == 1 { "" } else { "s" }),
+                        ),
+                        _ => (RichText::new("Release").small(), format!("Release Rev {rev}: check, issue and write its folder.")),
+                    };
+                    if ui.add(egui::Button::new(text).small()).on_hover_text(hover).accessible_name("ecad.project.release").clicked() {
+                        out.push(Action::Release);
+                    }
                 }
             });
         }

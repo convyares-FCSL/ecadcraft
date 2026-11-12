@@ -1,5 +1,5 @@
 //! Write ecad-inspect snapshots of a short experiment run, for the static inspector
-//! (`ecad/tools/inspector/index.html`).
+//! (`ecad/dev/ecad-inspector/page/index.html`).
 //!
 //! Usage: `cargo run -p ecad-cadcraft --example experiment_snapshots -- <output dir>`
 //!

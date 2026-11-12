@@ -264,14 +264,15 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_type() {
     let bom = t.h.run("bom", json!({})).unwrap();
     let x_rows: Vec<&Value> = bom["rows"].as_array().unwrap().iter().filter(|r| r["tags"] == "-X01").collect();
     assert_eq!(x_rows.len(), 2, "{bom}");
-    assert_eq!(x_rows[0]["qty"], 10);
+    // Owner decision 2026-11-12: 12+2PE is 12 feed-through and 2 PE, 14 positions.
+    assert_eq!(x_rows[0]["qty"], 12);
     assert_eq!(x_rows[1]["qty"], 2);
     assert_eq!(x_rows[1]["description"], "PE terminal");
     assert!(x_rows[1]["flags"].as_array().unwrap().contains(&json!("part_number")), "{bom}");
     let plan = strip_plan(&mut t.h);
     let s = &plan["strips"][0];
     assert_eq!(s["offered"], "12+2PE");
-    assert_eq!((s["drawn"].as_u64(), s["spare"].as_u64()), (Some(5), Some(7)));
+    assert_eq!((s["drawn"].as_u64(), s["spare"].as_u64()), (Some(5), Some(9)));
     let spare: Vec<(&str, &str)> = s["rows"]
         .as_array()
         .unwrap()
@@ -279,10 +280,10 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_type() {
         .filter(|r| r["state"] == "spare")
         .map(|r| (r["label"].as_str().unwrap(), r["type"].as_str().unwrap()))
         .collect();
-    assert_eq!(spare.len(), 7);
+    assert_eq!(spare.len(), 9);
     assert_eq!(spare.iter().filter(|(_, t)| *t == "pe").count(), 1, "{spare:?}");
     // More drawn than offered: a Checks row with Offer n.
-    t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "3+1PE"})).unwrap();
+    t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "2+1PE"})).unwrap();
     let rows = ecad_cadcraft::checks::all(&t.h.doc(), 1e-6);
     let over: Vec<_> = rows.iter().filter(|c| c.kind == Kind::TooManyTerminals).collect();
     assert_eq!(over.len(), 1);
@@ -315,7 +316,7 @@ fn core_rows_of_the_checks_list() {
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4X"})).unwrap();
     assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("2"), "none spare: the next number");
     let e = t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "7Q"})).unwrap_err();
-    assert!(e.contains("Write 7, 7G, 5X, or BN,BK,GY,BU,GNYE."), "{e}");
+    assert!(e.contains("Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE."), "{e}");
 }
 
 /// The generated pages: a terminal plan (all strips, or one) and the cable schedule.
@@ -516,4 +517,74 @@ fn renumbering_terminals_follows_drawing_order() {
     assert_eq!(r["terminals"], 4, "{r}");
     let e = t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [t.m1.hex()]})).unwrap_err();
     assert!(e.contains("not a terminal strip"), "{e}");
+}
+
+/// Review of PR #55, finding 1: with a cable schedule page and an all-strips terminal plan page in
+/// the project (shown or not), an edit that touches neither makes no sorted list and rebuilds no
+/// frame; the kept sheet counts equal a build.
+#[test]
+fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
+    let mut t = fixture(0x28_0c);
+    t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
+    let far: ComponentId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
+    let cables_page: PageId = id(&t.h.run("newpage", json!({"generated": "cables"})).unwrap(), "page");
+    let plan_page: PageId = id(&t.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    t.h.cfg(|p| {
+        p.outputs();
+    });
+    for shown in [plan_page, cables_page, t.page] {
+        t.h.activate(shown);
+        let sorts = t.h.p(|p| p.outputs.as_ref().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
+        let builds = t.h.p(|p| p.frame_builds);
+        t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": format!("K-{}", shown.hex())})).unwrap();
+        t.h.activate(shown);
+        assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
+        assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
+    }
+    let (kept, doc) = t.h.cfg(|p| (p.outputs().clone(), p.ledger.document().clone()));
+    let built = Outputs::build(&doc);
+    for page in [plan_page, cables_page] {
+        let s = |o: &Outputs| ecad_cadcraft::generated::sheets(&doc, page, Some(o));
+        assert_eq!(s(&kept), s(&built));
+    }
+    assert_eq!(kept.generated_pages(), built.generated_pages());
+    same_as_built(&mut t.h);
+}
+
+/// Review of PR #55, findings 3–5: `stripplan` pages by rows inside one strip and leaves absent
+/// keys out; a spare core has no `from`; `terminals` on a device that is not a strip is free text.
+#[test]
+fn json_forms_leave_absent_keys_out_and_page_inside_a_strip() {
+    let mut t = fixture(0x28_0d);
+    let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
+    let x1: ComponentId = id(&v, "strip");
+    t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "10"})).unwrap();
+    let a = t.h.run("stripplan", json!({"limit": 4})).unwrap();
+    assert_eq!(a["total"], 10, "{a}");
+    assert_eq!(a["next"], 4);
+    assert_eq!(a["strips"][0]["rows"].as_array().unwrap().len(), 4);
+    let b = t.h.run("stripplan", json!({"limit": 4, "after": 4})).unwrap();
+    assert_eq!(b["strips"][0]["first_row"], 4, "{b}");
+    assert_eq!(b["strips"][0]["rows"][0]["label"], "5");
+    assert!(b["strips"][0]["rows"][0].get("terminal").is_none(), "a spare row has no terminal key");
+    assert!(b["strips"][0]["rows"][0].get("place").is_none());
+    let c = t.h.run("stripplan", json!({"strip": x1.hex(), "limit": 5000, "after": 8})).unwrap();
+    assert_eq!(c["strips"][0]["rows"].as_array().unwrap().len(), 2);
+    assert!(c.get("next").is_none(), "{c}");
+    let row0 = &a["strips"][0]["rows"][0];
+    assert!(row0.get("bridge_group").is_none(), "{row0}");
+    assert!(row0["inside"][0].get("cable").is_none(), "inside cells have no cable key");
+    let cores = t.h.run("cablecores", json!({"cable": t.cable.hex()})).unwrap();
+    let spare = cores["cores"].as_array().unwrap().iter().find(|c| c["state"] == "spare").unwrap().clone();
+    assert!(spare.get("from").is_none() && spare.get("conductor").is_none(), "{spare}");
+    t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "type", "value": null})).unwrap();
+    let cl = t.h.run("cablelist", json!({})).unwrap();
+    assert!(cl["rows"][0].get("spare").is_none(), "unknown offer: no spare key: {cl}");
+    let cores = t.h.run("cablecores", json!({"cable": t.cable.hex()})).unwrap();
+    assert!(cores.get("offer").is_none() && cores.get("spare").is_none(), "{cores}");
+    // On a coil, `terminals` is ordinary free text.
+    t.h.run("setprop", json!({"component": t.k1.hex(), "key": "terminals", "value": "see sheet 4"})).unwrap();
+    assert_eq!(t.h.doc().components[&t.k1].properties["terminals"], "see sheet 4");
+    let e = t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "see sheet 4"})).unwrap_err();
+    assert!(e.contains("is not a terminal count"), "{e}");
 }

@@ -55,6 +55,7 @@ pub mod merge_dialog;
 pub mod outputs_ui;
 pub mod preview;
 pub mod project_panel;
+pub mod release_ui;
 pub mod renumber_dialog;
 pub mod search;
 pub mod sheets_ui;
@@ -352,6 +353,9 @@ pub struct Trial {
     /// Brief 024: the Reports window and the Print Book dialog, while open.
     pub reports: Option<outputs_ui::Reports>,
     pub print_book: Option<outputs_ui::PrintBook>,
+    /// Brief 027: the Release dialog.
+    pub release: Option<release_ui::ReleaseDialog>,
+
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: sheets_ui::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
@@ -502,6 +506,8 @@ impl Trial {
             search: search::SymbolSearch::default(),
             reports: None,
             print_book: None,
+            release: None,
+
             props,
             props_seen: None,
             props_rebuilds: 0,
@@ -1634,6 +1640,7 @@ impl Trial {
                     branch,
                     branch_bar: info.as_ref().and_then(|b| b.bar.clone()),
                     parent: info.as_ref().and_then(|b| b.parent.clone()),
+                    release: self.release_badge(),
                 }
             }
             None => Header { note: NOTE, snapshots: self.snapshots.is_some(), ..Header::default() },
@@ -1796,6 +1803,19 @@ impl Trial {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
+            A::AccessoryFix(fix, i) => {
+                let cmd: Option<String> = self.project.clone().and_then(|p| {
+                    p.configure(&mut self.cad.session, |p| {
+                        let o = p.outputs();
+                        ecad_cadcraft::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
+                    })
+                    .ok()
+                    .flatten()
+                });
+                if let Some(line) = cmd {
+                    let _ = self.run_line(&line);
+                }
+            }
             A::ShowCables => {
                 self.open_reports();
                 if let Some(r) = &mut self.reports {
@@ -1807,6 +1827,7 @@ impl Trial {
             }
             A::Reports => self.open_reports(),
             A::PrintBook(folder) => self.open_print_book(folder),
+            A::Release => self.open_release(None),
             A::NewGenerated(kind) => {
                 let mut v = json!({"generated": kind.value()});
                 if let Some(f) = self.panel.target_folder() {
@@ -2409,6 +2430,7 @@ impl Trial {
             Ok(v) => {
                 let mut r = sheets_ui::Revisions::from_json(&v, read_only || off_main.is_some());
                 r.off_main = off_main;
+                self.fill_folders(&mut r);
                 self.revisions = Some(r);
                 self.revisions_seen = self.change_count();
             }
@@ -2443,10 +2465,12 @@ impl Trial {
             return;
         }
         let read_only = self.header().read_only;
-        if let Ok(v) = self.run_value("projectprops", json!({}))
-            && let Some(d) = &mut self.revisions
-        {
-            d.refresh(sheets_ui::Revisions::from_json(&v, read_only));
+        if let Ok(v) = self.run_value("projectprops", json!({})) {
+            let mut fresh = sheets_ui::Revisions::from_json(&v, read_only);
+            self.fill_folders(&mut fresh);
+            if let Some(d) = &mut self.revisions {
+                d.refresh(fresh);
+            }
         }
     }
 
@@ -2635,6 +2659,9 @@ impl Trial {
         match out {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
+            Some(outputs_ui::Out::Run(line)) => {
+                let _ = self.run_line(&line);
+            }
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)
@@ -2643,6 +2670,7 @@ impl Trial {
             None => {}
         }
         self.print_window(ctx);
+        self.release_window(ctx);
     }
 
     /// Write the Reports tab as shown to `path` as CSV (design 024 §6.3).
@@ -2777,6 +2805,121 @@ impl Trial {
         }
     }
 
+    /// Brief 027: the issued rows' release folders, read from disk now.
+    fn fill_folders(&mut self, r: &mut sheets_ui::Revisions) {
+        if let Some(p) = self.project.clone() {
+            let _ = p.read(&mut self.cad.session, |p, _| release_ui::fill_folders(&mut r.issued, p));
+        }
+    }
+
+    /// The Release badge: counted again only when the kept Checks or report models change.
+    fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
+        let p = self.project.clone()?;
+        p.read(&mut self.cad.session, |p, _| (ecad_cadcraft::revisions::pending_rev(p.ledger.document()), release_ui::badge(p))).ok()
+    }
+
+    /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.
+    pub fn open_release(&mut self, rev: Option<String>) {
+        let read_only = self.header().read_only;
+        self.release = Some(release_ui::ReleaseDialog::new(rev, read_only));
+        self.refresh_release();
+    }
+
+    /// Take the dialog's view again when the project, its kept Checks or the tick changed.
+    pub fn refresh_release(&mut self) {
+        let Some(p) = self.project.clone() else { return };
+        let Some(d) = &self.release else { return };
+        let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
+        let r = p.configure(&mut self.cad.session, |p| {
+            // An issued revision's view is built once (its state never changes); the pending one
+            // again only when what it shows can differ (`release::dialog_key`).
+            if key.is_some() && (rev.is_some() || key == ecad_cadcraft::release::dialog_key(p, accept)) {
+                return Ok(None);
+            }
+            let v = ecad_cadcraft::release::view(p, rev.as_deref(), accept, ecad_cadcraft::release::MAX_ROWS)?;
+            // The kept lists exist now: the key is read after the view built them.
+            let k = if rev.is_some() { 0 } else { ecad_cadcraft::release::dialog_key(p, accept).unwrap_or(0) };
+            Ok::<_, String>(Some((v, k)))
+        });
+        match r {
+            Ok(Ok(Some((v, k)))) => {
+                if let Some(d) = &mut self.release {
+                    d.set_view(v, k);
+                }
+            }
+            Ok(Ok(None)) => {}
+            Ok(Err(e)) | Err(e) => {
+                if let Some(d) = &mut self.release {
+                    d.error = Some(e);
+                }
+            }
+        }
+    }
+
+    /// Release with the dialog's choices: `release` through the command path. A folder that
+    /// exists asks §9's question; anything else refused stays in the dialog with its way out.
+    pub fn release_from_dialog(&mut self, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        let r = self.run_value("release", params);
+        match &r {
+            Ok(_) => {
+                // The command echoed what it wrote (design 027 §5.1).
+                self.release = None;
+                if self.revisions.is_some() {
+                    self.open_revisions();
+                }
+            }
+            Err(e) => {
+                if let Some(d) = &mut self.release {
+                    if e.contains(" exists (") && e.contains("Give existing:") {
+                        d.exists = Some(e.clone());
+                        d.error = None;
+                    } else {
+                        d.exists = None;
+                        d.error = Some(e.clone());
+                    }
+                }
+            }
+        }
+        r
+    }
+
+    /// The Release dialog, live while open.
+    fn release_window(&mut self, ctx: &egui::Context) {
+        if self.release.is_none() {
+            return;
+        }
+        self.refresh_release();
+        let answer = self.release.as_mut().and_then(|d| d.show(ctx));
+        match answer {
+            Some(release_ui::Out::Run(line)) => {
+                let e = self.run_line(&line);
+                if let Some(d) = &mut self.release {
+                    d.error = e;
+                }
+            }
+            Some(release_ui::Out::Release(params)) => {
+                let _ = self.release_from_dialog(params);
+            }
+            Some(release_ui::Out::GoTo(c)) => {
+                let _ = self.goto_check(&c);
+            }
+            Some(release_ui::Out::ShowReports) => {
+                self.open_reports();
+                if let Some(r) = &mut self.reports {
+                    r.tab = outputs_ui::Tab::Bom;
+                    r.only_flagged = true;
+                    r.invalidate();
+                }
+            }
+            Some(release_ui::Out::Finalise) => self.open_renumber(true, false, None),
+            Some(release_ui::Out::ShowChecks) => self.panel.tab = project_panel::Tab::Checks,
+            Some(release_ui::Out::SaveAs) => self.request_save_as(),
+            Some(release_ui::Out::WriteIssued(rev)) => self.open_release(Some(rev)),
+            Some(release_ui::Out::Close) => self.release = None,
+            None => {}
+        }
+    }
+
     /// Print with the dialog's choices (Print): `printbook` through the command path.
     pub fn print_from_dialog(&mut self) -> Result<serde_json::Value, String> {
         let Some(d) = self.print_book.clone() else { return Err("Print Book is not open".into()) };
@@ -2838,7 +2981,14 @@ impl Trial {
                 },
                 Some(sheets_ui::Out::Close) => self.project_props = None,
                 Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(sheets_ui::Out::Open(_) | sheets_ui::Out::SwitchToMain | sheets_ui::Out::MergeIntoMain) | None => {}
+                Some(
+                    sheets_ui::Out::Open(_)
+                    | sheets_ui::Out::SwitchToMain
+                    | sheets_ui::Out::MergeIntoMain
+                    | sheets_ui::Out::Release(_)
+                    | sheets_ui::Out::OpenFolder(_),
+                )
+                | None => {}
             }
         }
         self.refresh_revisions();
@@ -2874,6 +3024,14 @@ impl Trial {
                     self.revisions = None;
                     let shown = self.branch_info().map(|b| b.name).unwrap_or_default();
                     self.ask_merge(json!({"from": shown, "into": "main"}));
+                }
+                Some(sheets_ui::Out::Release(rev)) => self.open_release(rev),
+                Some(sheets_ui::Out::OpenFolder(f)) => {
+                    if let Err(e) = release_ui::open_folder(&f)
+                        && let Some(d) = &mut self.revisions
+                    {
+                        d.error = Some(e);
+                    }
                 }
                 Some(sheets_ui::Out::OpenRevisions) | None => {}
             }

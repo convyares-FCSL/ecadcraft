@@ -1,23 +1,25 @@
-//! Seeing a version 2 file (brief 021 scope 7): readable views of its tables, branches, log,
-//! versions and chunks, and `export-jsonl`, the full history as a version 1 style JSON Lines file
-//! that a version 1 reader opens. Reads only; never changes the file.
+//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::v2::inspect`
+//! by brief 029): its tables, branches, log, versions and chunks, and `export-jsonl`, the full
+//! history as a version 1 style JSON Lines file that a version 1 reader opens. Reads only; never
+//! changes the file.
 
 use std::io::Write;
 
+use ecad_file::chain;
+use ecad_file::codec::{Codec, JsonLines};
+use ecad_file::record::Header;
+use ecad_file::v2::pack;
+use ecad_file::v2::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
+use ecad_file::v2::{Reader, Store, StoreError};
 use serde_json::{Value, json};
 
-use super::pack;
-use super::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
-use super::store::{Reader, Store, StoreError};
-use crate::chain;
-use crate::codec::{Codec, JsonLines};
-use crate::record::Header;
-
-fn hex(b: &[u8]) -> String {
+/// Lower-case hex of `b`.
+pub fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn flag_name(f: u8) -> &'static str {
+/// The name of a stored compression flag.
+pub fn flag_name(f: u8) -> &'static str {
     match f {
         pack::RAW => "raw",
         pack::ZSTD => "zstd",
@@ -69,7 +71,6 @@ pub fn branches(store: &Store) -> Result<String, StoreError> {
     Ok(s)
 }
 
-/// The branch named `name`.
 /// The branch `text` names: its ID (32 hex digits), or its name. A name that more than one
 /// branch has (an archived one and an open one may share it) is refused, listing their IDs:
 /// never a guess.
@@ -80,7 +81,7 @@ pub fn branch_named(r: &Reader, text: &str) -> Result<BranchId, StoreError> {
     {
         return Ok(id);
     }
-    let named: Vec<&(BranchId, super::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
+    let named: Vec<&(BranchId, ecad_file::v2::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
     match named.as_slice() {
         [(id, _)] => Ok(*id),
         [] => Err(StoreError::Damaged(format!("there is no branch named {text:?}"))),
@@ -202,7 +203,7 @@ pub fn export_branch_jsonl(store: &Store, with_raw: bool, branch: &str, out: &mu
     let id = branch_named(&r, branch).map_err(|e| e.to_string())?;
     let left_out: Vec<String> =
         r.branches().map_err(|e| e.to_string())?.into_iter().filter(|(i, _)| *i != id).map(|(i, b)| format!("{} ({})", b.name, i.hex())).collect();
-    let (project, _) = super::project::read_facts_pub(&r).map_err(|e| e.to_string())?;
+    let project = ecad_file::v2::project::project_id(&r).map_err(|e| e.to_string())?;
     let created = r.meta("created_ms").map_err(|e| e.to_string())?;
     let created_ms = created.and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.as_u64());
     let writer = r
@@ -239,7 +240,10 @@ pub fn export_branch_jsonl(store: &Store, with_raw: bool, branch: &str, out: &mu
 }
 
 /// A stored value's flag and readable form, by table.
-fn decode_raw(table: &str, value: &[u8]) -> Result<(Option<u8>, Value), String> {
+///
+/// # Errors
+/// The value does not decode as its table's rows do.
+pub fn decode_raw(table: &str, value: &[u8]) -> Result<(Option<u8>, Value), String> {
     let json_of = |b: &[u8]| serde_json::from_slice::<Value>(b).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(b).into()));
     Ok(match table {
         "meta" | "branches" | "versions" => (None, json_of(value)),

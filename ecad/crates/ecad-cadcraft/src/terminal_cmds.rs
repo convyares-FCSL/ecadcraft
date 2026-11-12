@@ -38,7 +38,10 @@ numbered on from the strip's highest label; at most 200)",
             .interactive(crate::interact::bridge)
             .noundo(),
         CommandSpec::new("stripplan", "Terminal Plan", run_stripplan)
-            .params("{strip?: id, limit?: rows (500, max 5000), after?: strip index} (every strip's terminals, drawn and spare; read only)")
+            .params(
+                "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and links)} \
+(every strip's terminals, drawn and spare; read only)",
+            )
             .noundo(),
         CommandSpec::new("cablecores", "Cable Cores", run_cablecores)
             .params("{cable: id} (the cable's offered cores, used, spare and over; read only)")
@@ -508,72 +511,151 @@ fn run_bridge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
 
 // ---------------------------------------------------------------- reads (§10)
 
-/// A side cell as JSON.
-fn side_json(c: &strips::SideCell, outside: bool) -> Value {
-    let mut v = json!({"target": c.target, "wire": c.wire, "conductor": c.conductor.hex()});
-    if outside {
-        v["cable"] = json!(c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())));
-        v["core"] = json!(c.core);
+/// Put `v` under `key` in `o` when it is there (absent keys are left out, never null).
+fn put<T: serde::Serialize>(o: &mut serde_json::Map<String, Value>, key: &str, v: Option<T>) {
+    if let Some(v) = v {
+        o.insert(key.into(), json!(v));
     }
-    v
 }
 
-/// One plan row as JSON (the keys 027 exports).
+/// A side cell as JSON: `conductor`, and `target`, `wire` (and outside `cable`, `core`) when known.
+fn side_json(c: &strips::SideCell, outside: bool) -> Value {
+    let mut o = serde_json::Map::new();
+    put(&mut o, "target", c.target.as_ref());
+    put(&mut o, "wire", c.wire.as_ref());
+    if outside {
+        put(&mut o, "cable", c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())));
+        put(&mut o, "core", c.core.as_ref());
+    }
+    o.insert("conductor".into(), json!(c.conductor.hex()));
+    Value::Object(o)
+}
+
+/// One plan row as JSON (the keys 027 exports; design 028 §10).
 pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
-    json!({
-        "terminal": r.terminal.map(|t| t.hex()),
-        "label": r.label,
-        "type": if r.pe { "pe" } else { "feed-through" },
-        "state": if r.spare() { "spare" } else { "drawn" },
-        "inside": r.inside.iter().map(|c| side_json(c, false)).collect::<Vec<_>>(),
-        "outside": r.outside.iter().map(|c| side_json(c, true)).collect::<Vec<_>>(),
-        "bridge_group": r.bridge_group,
-        "place": r.place.as_ref().map(|p| p.text(style)),
-    })
+    let mut o = serde_json::Map::new();
+    put(&mut o, "terminal", r.terminal.map(|t| t.hex()));
+    o.insert("label".into(), json!(r.label));
+    o.insert("type".into(), json!(if r.pe { "pe" } else { "feed-through" }));
+    o.insert("state".into(), json!(if r.spare() { "spare" } else { "drawn" }));
+    o.insert("inside".into(), Value::Array(r.inside.iter().map(|c| side_json(c, false)).collect()));
+    o.insert("outside".into(), Value::Array(r.outside.iter().map(|c| side_json(c, true)).collect()));
+    put(&mut o, "bridge_group", r.bridge_group);
+    put(&mut o, "place", r.place.as_ref().map(|p| p.text(style)));
+    Value::Object(o)
 }
 
-/// One strip as JSON.
-pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle) -> Value {
-    json!({
-        "strip": s.component.hex(),
-        "tag": s.tag,
-        "location": s.location,
-        "offered": s.offer.map(|o| o.text()),
-        "drawn": s.drawn,
-        "spare": s.spare,
-        "rows": s.rows.iter().map(|r| row_json(r, style)).collect::<Vec<_>>(),
-    })
+/// A gap row as JSON (design 030 §7.2).
+fn gap_json(s: &StripData, gap: &str, a: crate::accessories::Acc) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("kind".into(), json!("accessory"));
+    o.insert("state".into(), json!("accessory"));
+    o.insert("accessory".into(), json!(a.key()));
+    o.insert("gap".into(), json!(gap));
+    put(&mut o, "part_number", s.acc.gap_part(a, crate::outputs::gap_pe(s, gap)));
+    o.insert("terminal".into(), Value::Null);
+    o.insert("label".into(), Value::Null);
+    Value::Object(o)
 }
 
+/// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
+/// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
+/// `marker` and `links`, and the strip carries `accessories` and `links`; without, 028's rows.
+pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("strip".into(), json!(s.component.hex()));
+    o.insert("tag".into(), json!(s.tag));
+    put(&mut o, "location", s.location.as_ref());
+    put(&mut o, "offered", s.offer.map(|x| x.text()));
+    o.insert("drawn".into(), json!(s.drawn));
+    o.insert("spare".into(), json!(s.spare));
+    if first > 0 {
+        o.insert("first_row".into(), json!(first));
+    }
+    let plan = s.plan(accessories);
+    let rows: Vec<Value> = plan
+        .get(first..end)
+        .unwrap_or_default()
+        .iter()
+        .map(|item| match item {
+            strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
+            strips::PlanItem::Term(i, r) => {
+                let mut v = row_json(r, style);
+                if accessories {
+                    v["kind"] = json!("terminal");
+                    v["marker"] = json!(s.acc.markers.contains(&r.label));
+                    let links: Vec<Value> = s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane})).collect();
+                    v["links"] = Value::Array(links);
+                }
+                v
+            }
+        })
+        .collect();
+    o.insert("rows".into(), Value::Array(rows));
+    if accessories {
+        let counts: serde_json::Map<String, Value> =
+            crate::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
+        o.insert("accessories".into(), Value::Object(counts));
+        let links: Vec<Value> = s
+            .acc
+            .links
+            .iter()
+            .map(|l| {
+                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars});
+                if let Some(pn) = &l.part_number {
+                    v["part_number"] = json!(pn);
+                }
+                if let Some(m) = &l.maker {
+                    v["maker"] = json!(m);
+                }
+                v
+            })
+            .collect();
+        o.insert("links".into(), Value::Array(links));
+    }
+    Value::Object(o)
+}
+
+/// `stripplan {strip?, limit?, after?}`: the strips in tag order (or one), paged by rows: `after`
+/// rows are skipped and at most `limit` returned, a strip split across pages carrying
+/// `first_row`; `total` counts the rows, `next` is the next `after`.
 fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
     let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)
         .map_err(err)?
-        .map_or(crate::outputs::DEFAULT_LIMIT, |n| n as usize)
+        .map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
         .clamp(1, crate::outputs::MAX_LIMIT);
-    let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.unwrap_or(0) as usize;
+    let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
+    let accessories = opt_typed(params, "accessories", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     with_any_page(s, |p, _| {
         let style = p.ledger.document().settings.reference_style;
         let o = p.outputs();
-        if let Some(c) = strip {
-            let d = o.strips.get(c).ok_or("No such terminal strip.")?;
-            return Ok(json!({"strips": [strip_json(d, style)]}));
-        }
-        let all = o.strips.sorted();
+        let shown: Vec<&StripData> = match strip {
+            Some(c) => vec![o.strips.get(c).ok_or("No such terminal strip.")?],
+            None => o.sorted_strips(),
+        };
+        let len = |d: &StripData| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() };
+        let total: usize = shown.iter().map(|d| len(d)).sum();
         let mut out = Vec::new();
-        let mut rows = 0;
-        let mut next = None;
-        for (i, d) in all.iter().enumerate().skip(after) {
-            if !out.is_empty() && rows + d.rows.len() > limit {
-                next = Some(i);
+        let (mut skip, mut left) = (after, limit);
+        for d in &shown {
+            let n = len(d);
+            if skip >= n && n > 0 {
+                skip -= n;
+                continue;
+            }
+            if left == 0 {
                 break;
             }
-            rows += d.rows.len();
-            out.push(strip_json(d, style));
+            let end = (skip + left).min(n);
+            out.push(strip_json(d, style, skip, end, accessories));
+            left -= end - skip;
+            skip = 0;
         }
-        let mut v = json!({"strips": out, "total": all.len()});
-        if let Some(n) = next {
-            v["next"] = json!(n);
+        let mut v = json!({"strips": out, "total": total});
+        let shown_rows = limit - left;
+        if after.saturating_add(shown_rows) < total {
+            v["next"] = json!(after + shown_rows);
         }
         Ok(v)
     })
@@ -584,7 +666,7 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     with_any_page(s, |p, _| {
         p.outputs();
         let o = p.outputs.as_ref().ok_or("The reports could not be built.")?;
-        let row = o.cables().into_iter().find(|r| r.cable == k).cloned().ok_or("no such cable")?;
+        let row = o.cable_row(k).cloned().ok_or("no such cable")?;
         let wire = |w: ConductorId| o.wire(w).cloned();
         let doc = p.ledger.document();
         let style = doc.settings.reference_style;
@@ -592,14 +674,14 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let member_json = |i: usize, label: Option<String>, state: &str| {
             let w = row.members.get(i).copied();
             let r = w.and_then(wire);
-            json!({
-                "label": label,
-                "state": state,
-                "conductor": w.map(|w| w.hex()),
-                "wire": r.as_ref().and_then(|r| r.wire_number.clone()),
-                "from": r.as_ref().and_then(|r| r.from.text(style)),
-                "to": r.as_ref().and_then(|r| r.to.text(style)),
-            })
+            let mut o = serde_json::Map::new();
+            put(&mut o, "label", label);
+            o.insert("state".into(), json!(state));
+            put(&mut o, "conductor", w.map(|w| w.hex()));
+            put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
+            put(&mut o, "from", r.as_ref().and_then(|r| r.from.text(style)));
+            put(&mut o, "to", r.as_ref().and_then(|r| r.to.text(style)));
+            Value::Object(o)
         };
         let stored = |i: usize| doc.cables.get(&k).and_then(|c| c.members.get(i)).and_then(|m| m.core.clone());
         let mut cores = Vec::new();
@@ -608,7 +690,8 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 for label in offer {
                     match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
                         Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
-                        None => cores.push(json!({"label": label, "state": "spare", "from": "spare"})),
+                        // A spare core has no ends (review of PR #55, finding 3).
+                        None => cores.push(json!({"label": label, "state": "spare"})),
                     }
                 }
             }
@@ -619,15 +702,15 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             }
         }
         let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
-        Ok(json!({
-            "cable": k.hex(),
-            "tag": row.tag,
-            "offer": count.offer_text,
-            "source": count.source.map(|s| s.word()),
-            "used": count.used(),
-            "spare": count.offer.as_ref().map(|_| count.spare.clone()),
-            "cores": cores,
-            "over": over,
-        }))
+        let mut v = serde_json::Map::new();
+        v.insert("cable".into(), json!(k.hex()));
+        put(&mut v, "tag", row.tag.as_ref());
+        put(&mut v, "offer", count.offer_text.as_ref());
+        put(&mut v, "source", count.source.map(|s| s.word()));
+        v.insert("used".into(), json!(count.used()));
+        put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
+        v.insert("cores".into(), Value::Array(cores));
+        v.insert("over".into(), Value::Array(over));
+        Ok(Value::Object(v))
     })
 }

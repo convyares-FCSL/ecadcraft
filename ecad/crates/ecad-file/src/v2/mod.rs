@@ -5,6 +5,8 @@
 //! - [`pack`]: Zstandard compression of rows and chunks (EEP-0005 §4).
 //! - [`chunks`]: snapshot chunks built from and assembled into a document (EEP-0005 §3.5).
 //! - [`project`]: opening from the latest snapshot and saving (EEP-0005 §5–§6).
+//! - [`verify`]: Verify (brief 029). The text views of a file are the developer tool
+//!   `ecadinspect` (`dev/ecad-inspector`), not this crate.
 //!
 //! Excluded in this brief: creating, switching and merging branches (the tables and fork
 //! records are in place), per-page lazy loading (phase 2), user-triggered history compaction,
@@ -15,7 +17,6 @@ pub mod chunks;
 pub mod convert;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
-pub mod inspect;
 pub mod pack;
 pub mod project;
 pub mod schema;
