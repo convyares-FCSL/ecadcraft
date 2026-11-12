@@ -1396,8 +1396,9 @@ impl Project {
         {
             return parts.clone();
         }
-        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024).
-        if crate::generated::has_bom_page(self.ledger.document()) {
+        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
+        // once built they track their pages themselves.
+        if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         let doc = self.ledger.document();
@@ -1978,10 +1979,12 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
         // and cable rows, so the book's Total is compared whenever such a page exists.
+        // Only the pages drawn from the models can change their sheet count here (review of PR
+        // #55, finding 1): the kept set, each counted from kept totals; none, no work.
         let doc = ledger.document();
-        let generated = crate::generated::has_bom_page(doc);
-        let sheets =
-            |o: &crate::outputs::Outputs| if generated { crate::generated::book_sheets(doc, Some(o)) } else { crate::generated::bom_sheets(o) };
+        let sheets = |o: &crate::outputs::Outputs| -> usize {
+            o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| crate::generated::sheets(doc, *p, Some(o))).sum()
+        };
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
         if ecad_model::ledger::verify_mode()

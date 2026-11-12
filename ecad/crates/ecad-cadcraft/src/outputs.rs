@@ -473,6 +473,14 @@ pub struct Outputs {
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
+    /// The pages drawn from these models (BOM, terminal plan, cable schedule), kept from the page
+    /// ops (review of PR #55, finding 1: no page scan per commit).
+    generated: BTreeSet<PageId>,
+    /// Which build these models are (unique in the run): a copy keyed on kept revisions also
+    /// keys on this, so a rebuild (reload, branch switch) is never mistaken for the old models.
+    pub build_id: u64,
+    /// How many sorted row lists were made (tests: an unrelated edit makes none).
+    pub sorts: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -498,7 +506,45 @@ impl Outputs {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
+        static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         o
+    }
+
+    /// The pages drawn from these models.
+    pub fn generated_pages(&self) -> &BTreeSet<PageId> {
+        &self.generated
+    }
+
+    /// How many BOM rows `group` lists, from kept counts (no rows made).
+    pub fn bom_count(&self, group: Group) -> usize {
+        let strips: usize = self.strips.bom_rows.values().sum();
+        match group {
+            Group::Location => self.by_location.len() + strips,
+            Group::Part => self.by_part.len() + strips,
+        }
+    }
+
+    /// How many wire rows.
+    pub fn wire_count(&self) -> usize {
+        self.wires.len()
+    }
+
+    /// One cable's row.
+    pub fn cable_row(&self, k: CableId) -> Option<&CableRow> {
+        self.cables.get(&k)
+    }
+
+    /// How many cables (no sort).
+    pub fn cable_count(&self) -> usize {
+        self.cables.len()
+    }
+
+    /// The strips sorted by tag (counted in [`Outputs::sorts`]).
+    pub fn sorted_strips(&self) -> Vec<&crate::strips::StripData> {
+        self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.strips.sorted()
     }
 
     /// What `ops`, about to be committed on `before`, could change. Pair with [`Outputs::update`].
@@ -518,6 +564,18 @@ impl Outputs {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
+        for op in ops {
+            let p = match op {
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == crate::generated::KEY => *p,
+                _ => continue,
+            };
+            if needs_outputs(doc, p) {
+                self.generated.insert(p);
+            } else {
+                self.generated.remove(&p);
+            }
+        }
         scope.collect(doc, ops);
         if scope.is_empty() {
             return;
@@ -1045,10 +1103,10 @@ impl Outputs {
     pub fn bom_sheets(&self) -> usize {
         let per = crate::generated::ROWS_PER_SHEET;
         let (mut sheets, mut used) = (1, 0);
-        // Brief 028: each strip adds one row per terminal type it has (O(strips)).
+        // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
         let mut rows = self.loc_rows.clone();
-        for (loc, n) in self.strip_rows() {
-            *rows.entry(loc).or_default() += n;
+        for (loc, n) in &self.strips.bom_rows {
+            *rows.entry(loc_key(loc.as_deref())).or_default() += n;
         }
         for n in rows.values() {
             if used == per {
@@ -1078,18 +1136,6 @@ impl Outputs {
     /// How many devices.
     pub fn device_count(&self) -> usize {
         self.devices.len()
-    }
-
-    /// The strips' BOM rows per location key: one per terminal type with a quantity.
-    fn strip_rows(&self) -> Vec<(LocKey, usize)> {
-        self.strips
-            .strips
-            .values()
-            .map(|s| {
-                let (ft, pe) = s.quantities();
-                (loc_key(s.location.as_deref()), usize::from(ft > 0) + usize::from(pe > 0))
-            })
-            .collect()
     }
 
     /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
@@ -1197,6 +1243,7 @@ impl Outputs {
 
     /// The cable rows, sorted by tag naturally.
     pub fn cables(&self) -> Vec<&CableRow> {
+        self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut v: Vec<&CableRow> = self.cables.values().collect();
         v.sort_by(|a, b| loc_key(a.tag.as_deref()).cmp(&loc_key(b.tag.as_deref())).then(a.cable.cmp(&b.cable)));
         v
@@ -1388,6 +1435,11 @@ impl Outputs {
         }
         t
     }
+}
+
+/// Whether `page` exists and is drawn from the report models.
+fn needs_outputs(doc: &Document, page: PageId) -> bool {
+    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(crate::generated::GenKind::needs_outputs)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).

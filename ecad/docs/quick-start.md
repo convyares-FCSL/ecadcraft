@@ -1307,7 +1307,7 @@ a new one); the steps make their own page so its numbers do not matter.
 4. **A bridge.** Click **Draw Bridge**, click terminal 2, then terminal 3: a staple 4 mm above
    them (`Bridged -X01:2–3.`). The next click would continue from 3; press Enter to end.
 5. **Spares.** Click a terminal; in Properties set **Terminals offered** to `8+1PE`. Expected:
-   **Terminals** reads `3 drawn, 5 spare`. Typing `8X` is refused under the field:
+   **Terminals** reads `3 drawn, 6 spare` (8 feed-through and 1 PE: 9 positions). Typing `8X` is refused under the field:
    `"8X" is not a terminal count. Write 12, or 12+2PE.`
 6. **Cores.** Click the cable slash; set its **type** to `7G1.5`. Expected: **Cores** shows
    `from type: 7G`, **Used / Spare** `3 / 4 (4, 5, 6, GNYE)`. Hover the slash:

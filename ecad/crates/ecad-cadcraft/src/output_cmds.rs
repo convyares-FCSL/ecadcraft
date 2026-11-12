@@ -180,12 +180,15 @@ fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             .cables()
             .iter()
             .map(|r| {
-                json!({
-                    "cable": r.cable.hex(), "used": r.count.used(),
-                    "spare": r.count.offer.as_ref().map(|_| r.count.spare.clone()),
-                    "over": r.count.over.len(),
+                let mut v = json!({
+                    "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
                     "from_devices": r.from_devices, "to_devices": r.to_devices,
-                })
+                });
+                // `spare` only when the offer is known (absent keys are left out, not null).
+                if r.count.offer.is_some() {
+                    v["spare"] = json!(r.count.spare);
+                }
+                v
             })
             .collect();
         let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];

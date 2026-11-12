@@ -508,72 +508,94 @@ fn run_bridge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
 
 // ---------------------------------------------------------------- reads (§10)
 
-/// A side cell as JSON.
-fn side_json(c: &strips::SideCell, outside: bool) -> Value {
-    let mut v = json!({"target": c.target, "wire": c.wire, "conductor": c.conductor.hex()});
-    if outside {
-        v["cable"] = json!(c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())));
-        v["core"] = json!(c.core);
+/// Put `v` under `key` in `o` when it is there (absent keys are left out, never null).
+fn put<T: serde::Serialize>(o: &mut serde_json::Map<String, Value>, key: &str, v: Option<T>) {
+    if let Some(v) = v {
+        o.insert(key.into(), json!(v));
     }
-    v
 }
 
-/// One plan row as JSON (the keys 027 exports).
+/// A side cell as JSON: `conductor`, and `target`, `wire` (and outside `cable`, `core`) when known.
+fn side_json(c: &strips::SideCell, outside: bool) -> Value {
+    let mut o = serde_json::Map::new();
+    put(&mut o, "target", c.target.as_ref());
+    put(&mut o, "wire", c.wire.as_ref());
+    if outside {
+        put(&mut o, "cable", c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())));
+        put(&mut o, "core", c.core.as_ref());
+    }
+    o.insert("conductor".into(), json!(c.conductor.hex()));
+    Value::Object(o)
+}
+
+/// One plan row as JSON (the keys 027 exports; design 028 §10).
 pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
-    json!({
-        "terminal": r.terminal.map(|t| t.hex()),
-        "label": r.label,
-        "type": if r.pe { "pe" } else { "feed-through" },
-        "state": if r.spare() { "spare" } else { "drawn" },
-        "inside": r.inside.iter().map(|c| side_json(c, false)).collect::<Vec<_>>(),
-        "outside": r.outside.iter().map(|c| side_json(c, true)).collect::<Vec<_>>(),
-        "bridge_group": r.bridge_group,
-        "place": r.place.as_ref().map(|p| p.text(style)),
-    })
+    let mut o = serde_json::Map::new();
+    put(&mut o, "terminal", r.terminal.map(|t| t.hex()));
+    o.insert("label".into(), json!(r.label));
+    o.insert("type".into(), json!(if r.pe { "pe" } else { "feed-through" }));
+    o.insert("state".into(), json!(if r.spare() { "spare" } else { "drawn" }));
+    o.insert("inside".into(), Value::Array(r.inside.iter().map(|c| side_json(c, false)).collect()));
+    o.insert("outside".into(), Value::Array(r.outside.iter().map(|c| side_json(c, true)).collect()));
+    put(&mut o, "bridge_group", r.bridge_group);
+    put(&mut o, "place", r.place.as_ref().map(|p| p.text(style)));
+    Value::Object(o)
 }
 
-/// One strip as JSON.
-pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle) -> Value {
-    json!({
-        "strip": s.component.hex(),
-        "tag": s.tag,
-        "location": s.location,
-        "offered": s.offer.map(|o| o.text()),
-        "drawn": s.drawn,
-        "spare": s.spare,
-        "rows": s.rows.iter().map(|r| row_json(r, style)).collect::<Vec<_>>(),
-    })
+/// One strip as JSON with rows `first..end` of it (`first_row` when it does not start at 0).
+pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("strip".into(), json!(s.component.hex()));
+    o.insert("tag".into(), json!(s.tag));
+    put(&mut o, "location", s.location.as_ref());
+    put(&mut o, "offered", s.offer.map(|x| x.text()));
+    o.insert("drawn".into(), json!(s.drawn));
+    o.insert("spare".into(), json!(s.spare));
+    if first > 0 {
+        o.insert("first_row".into(), json!(first));
+    }
+    o.insert("rows".into(), Value::Array(s.rows.get(first..end).unwrap_or_default().iter().map(|r| row_json(r, style)).collect()));
+    Value::Object(o)
 }
 
+/// `stripplan {strip?, limit?, after?}`: the strips in tag order (or one), paged by rows: `after`
+/// rows are skipped and at most `limit` returned, a strip split across pages carrying
+/// `first_row`; `total` counts the rows, `next` is the next `after`.
 fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
     let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)
         .map_err(err)?
-        .map_or(crate::outputs::DEFAULT_LIMIT, |n| n as usize)
+        .map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
         .clamp(1, crate::outputs::MAX_LIMIT);
-    let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.unwrap_or(0) as usize;
+    let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
     with_any_page(s, |p, _| {
         let style = p.ledger.document().settings.reference_style;
         let o = p.outputs();
-        if let Some(c) = strip {
-            let d = o.strips.get(c).ok_or("No such terminal strip.")?;
-            return Ok(json!({"strips": [strip_json(d, style)]}));
-        }
-        let all = o.strips.sorted();
+        let shown: Vec<&StripData> = match strip {
+            Some(c) => vec![o.strips.get(c).ok_or("No such terminal strip.")?],
+            None => o.sorted_strips(),
+        };
+        let total: usize = shown.iter().map(|d| d.rows.len()).sum();
         let mut out = Vec::new();
-        let mut rows = 0;
-        let mut next = None;
-        for (i, d) in all.iter().enumerate().skip(after) {
-            if !out.is_empty() && rows + d.rows.len() > limit {
-                next = Some(i);
+        let (mut skip, mut left) = (after, limit);
+        for d in &shown {
+            let n = d.rows.len();
+            if skip >= n && n > 0 {
+                skip -= n;
+                continue;
+            }
+            if left == 0 {
                 break;
             }
-            rows += d.rows.len();
-            out.push(strip_json(d, style));
+            let end = (skip + left).min(n);
+            out.push(strip_json(d, style, skip, end));
+            left -= end - skip;
+            skip = 0;
         }
-        let mut v = json!({"strips": out, "total": all.len()});
-        if let Some(n) = next {
-            v["next"] = json!(n);
+        let mut v = json!({"strips": out, "total": total});
+        let shown_rows = limit - left;
+        if after.saturating_add(shown_rows) < total {
+            v["next"] = json!(after + shown_rows);
         }
         Ok(v)
     })
@@ -584,7 +606,7 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     with_any_page(s, |p, _| {
         p.outputs();
         let o = p.outputs.as_ref().ok_or("The reports could not be built.")?;
-        let row = o.cables().into_iter().find(|r| r.cable == k).cloned().ok_or("no such cable")?;
+        let row = o.cable_row(k).cloned().ok_or("no such cable")?;
         let wire = |w: ConductorId| o.wire(w).cloned();
         let doc = p.ledger.document();
         let style = doc.settings.reference_style;
@@ -592,14 +614,14 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let member_json = |i: usize, label: Option<String>, state: &str| {
             let w = row.members.get(i).copied();
             let r = w.and_then(wire);
-            json!({
-                "label": label,
-                "state": state,
-                "conductor": w.map(|w| w.hex()),
-                "wire": r.as_ref().and_then(|r| r.wire_number.clone()),
-                "from": r.as_ref().and_then(|r| r.from.text(style)),
-                "to": r.as_ref().and_then(|r| r.to.text(style)),
-            })
+            let mut o = serde_json::Map::new();
+            put(&mut o, "label", label);
+            o.insert("state".into(), json!(state));
+            put(&mut o, "conductor", w.map(|w| w.hex()));
+            put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
+            put(&mut o, "from", r.as_ref().and_then(|r| r.from.text(style)));
+            put(&mut o, "to", r.as_ref().and_then(|r| r.to.text(style)));
+            Value::Object(o)
         };
         let stored = |i: usize| doc.cables.get(&k).and_then(|c| c.members.get(i)).and_then(|m| m.core.clone());
         let mut cores = Vec::new();
@@ -608,7 +630,8 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 for label in offer {
                     match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
                         Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
-                        None => cores.push(json!({"label": label, "state": "spare", "from": "spare"})),
+                        // A spare core has no ends (review of PR #55, finding 3).
+                        None => cores.push(json!({"label": label, "state": "spare"})),
                     }
                 }
             }
@@ -619,15 +642,15 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             }
         }
         let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
-        Ok(json!({
-            "cable": k.hex(),
-            "tag": row.tag,
-            "offer": count.offer_text,
-            "source": count.source.map(|s| s.word()),
-            "used": count.used(),
-            "spare": count.offer.as_ref().map(|_| count.spare.clone()),
-            "cores": cores,
-            "over": over,
-        }))
+        let mut v = serde_json::Map::new();
+        v.insert("cable".into(), json!(k.hex()));
+        put(&mut v, "tag", row.tag.as_ref());
+        put(&mut v, "offer", count.offer_text.as_ref());
+        put(&mut v, "source", count.source.map(|s| s.word()));
+        v.insert("used".into(), json!(count.used()));
+        put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
+        v.insert("cores".into(), Value::Array(cores));
+        v.insert("over".into(), Value::Array(over));
+        Ok(Value::Object(v))
     })
 }
