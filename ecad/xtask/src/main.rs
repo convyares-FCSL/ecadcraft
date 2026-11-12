@@ -11,14 +11,19 @@
 //! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches, wasm.
 //! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
-//! - `test-changed`: the fast tests of the crates changed since `dev` and of every crate that
-//!   depends on them (brief 017). The worker's default check.
+//! - `test-changed`: the fast tests of the crates changed since the last push (the upstream
+//!   branch; `--base` for another ref), and with `--with-dependents` of every crate that depends
+//!   on them (brief 017; process clean-up, 2026-11-12). The worker's default check.
+//! - `clean-builds`: delete the build folders of every checkout under a folder, skipping those in
+//!   use, and remove worktrees whose branch is merged into `origin/dev` (see [`clean`]).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use serde_json::Value;
+
+mod clean;
 
 /// How an ECAD crate may depend on others.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -374,10 +379,15 @@ fn ci() -> Result<(), String> {
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed>
-  test-changed [--base <ref>] [--dry-run] [-- <test arguments>]
-        fast tests of the crates changed since <ref> (default dev, committed or not) and of
-        every crate that depends on them; --dry-run only names the crates
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed|clean-builds>
+  test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
+        fast tests of the crates changed since <ref> (default: the branch's upstream, so what
+        was not pushed yet, else HEAD; committed or not); --with-dependents also tests every
+        crate that depends on them (CI does); --dry-run only names the crates
+  clean-builds --root <folder> [--dry-run]
+        delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
+        skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
+        into origin/dev (never with uncommitted changes); print the space freed
   demo [<path.ecad>] [--force]
         write the demo project (default C:\\dev\\ecad-projects\\demo.ecad, ~/ecad-projects/demo.ecad
         elsewhere) from ecad/examples/demo/commands.jsonl; an existing file needs --force
@@ -421,9 +431,9 @@ const READ_BY: &[(&str, &str)] = &[
 ///
 /// # Semantics
 ///
-/// A changed file selects the innermost local package whose folder holds it; then every workspace
-/// member that depends on a selected package, directly or not, through any kind of dependency (dev
-/// included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
+/// A changed file selects the innermost local package whose folder holds it; then, with
+/// `with_dependents`, every workspace member that depends on a selected package, directly or not,
+/// through any kind of dependency (dev included), is selected too. CADCraft's crates used by path are packages in `meta`, so an
 /// upstream change selects the ECAD crates that use it. The files [`affects_everything`] names
 /// (the workspace manifest and lock file, the repository root manifest, cargo configuration and
 /// toolchain files) select every member. Markdown files and files in no package
@@ -434,7 +444,7 @@ const READ_BY: &[(&str, &str)] = &[
 /// # Errors
 ///
 /// `meta` has no package list or no resolve graph.
-fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<String>, String> {
+fn crates_to_test(meta: &Value, repo: &str, changed: &[String], with_dependents: bool) -> Result<Vec<String>, String> {
     let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
     let repo = norm(repo);
     let relative = |dir: &str| dir.strip_prefix(&repo).map(|r| format!("{}/", r.trim_start_matches('/')));
@@ -477,20 +487,22 @@ fn crates_to_test(meta: &Value, repo: &str, changed: &[String]) -> Result<Vec<St
             }
         }
     }
-    // Everything that depends on a selected package, to a fixed point (the graph is finite and
-    // each pass adds at least one package, so this ends).
+    // With dependents: everything that depends on a selected package, to a fixed point (the
+    // graph is finite and each pass adds at least one package, so this ends).
     let nodes = meta["resolve"]["nodes"].as_array().ok_or("cargo metadata: no resolve graph")?;
-    loop {
-        let before = hit.len();
-        for n in nodes {
-            let Some(id) = n["id"].as_str() else { continue };
-            let deps = n["deps"].as_array().into_iter().flatten().filter_map(|d| d["pkg"].as_str());
-            if !hit.contains(id) && deps.clone().any(|d| hit.contains(d)) {
-                hit.insert(id);
+    if with_dependents {
+        loop {
+            let before = hit.len();
+            for n in nodes {
+                let Some(id) = n["id"].as_str() else { continue };
+                let deps = n["deps"].as_array().into_iter().flatten().filter_map(|d| d["pkg"].as_str());
+                if !hit.contains(id) && deps.clone().any(|d| hit.contains(d)) {
+                    hit.insert(id);
+                }
             }
-        }
-        if hit.len() == before {
-            break;
+            if hit.len() == before {
+                break;
+            }
         }
     }
     let mut out: Vec<String> =
@@ -511,9 +523,11 @@ fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
     Ok(String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
 }
 
-/// `cargo xtask test-changed [--base <ref>] [--dry-run] [-- <test arguments>]`: runs
-/// `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge base
-/// with `<ref>` (default `dev`, else `origin/dev`), committed, staged, unstaged or untracked.
+/// `cargo xtask test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]`:
+/// runs `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge
+/// base with `<ref>` (default: the branch's upstream, `@{upstream}`, so what was not pushed yet;
+/// without one, `HEAD`), committed, staged, unstaged or untracked. Dependents only with
+/// `--with-dependents` (CI runs them on pull requests into `dev`).
 fn test_changed(args: &[String]) -> Result<(), String> {
     let (ours, passed) = match args.iter().position(|a| a == "--") {
         Some(i) => (args.get(..i).unwrap_or_default(), args.get(i + 1..).unwrap_or_default()),
@@ -521,11 +535,13 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     };
     let mut base: Option<&str> = None;
     let mut dry_run = false;
+    let mut with_dependents = false;
     let mut it = ours.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--base" => base = Some(it.next().ok_or("--base needs a git ref")?),
             "--dry-run" => dry_run = true,
+            "--with-dependents" => with_dependents = true,
             other => return Err(format!("test-changed: unknown argument {other:?}\n{USAGE}")),
         }
     }
@@ -533,10 +549,10 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     let repo = root.parent().ok_or("no repository root")?;
     let base = match base {
         Some(b) => b.to_string(),
-        None => ["dev", "origin/dev"]
+        None => ["@{upstream}", "HEAD"]
             .into_iter()
             .find(|b| git_lines(repo, &["rev-parse", "--verify", "--quiet", b]).is_ok())
-            .ok_or("test-changed: no `dev` or `origin/dev` branch; pass --base <ref>")?
+            .ok_or("test-changed: no upstream and no HEAD; pass --base <ref>")?
             .to_string(),
     };
     let mut changed: BTreeSet<String> = BTreeSet::new();
@@ -549,8 +565,9 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     }
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let changed: Vec<String> = changed.into_iter().collect();
-    let crates = crates_to_test(&meta, &repo.to_string_lossy(), &changed)?;
-    println!("test-changed: {} files changed since {base}; crates: {}", changed.len(), crates.join(" "));
+    let crates = crates_to_test(&meta, &repo.to_string_lossy(), &changed, with_dependents)?;
+    let scope = if with_dependents { "crates and their dependents" } else { "crates" };
+    println!("test-changed: {} files changed since {base}; {scope}: {}", changed.len(), crates.join(" "));
     if crates.is_empty() {
         println!("test-changed: nothing to test");
         return Ok(());
@@ -580,6 +597,7 @@ fn main() -> ExitCode {
         "bench" => bench(rest),
         "demo" => demo(rest),
         "test-changed" => test_changed(rest),
+        "clean-builds" => clean::clean_builds(rest, &ecad_root()),
         _ => Err(USAGE.into()),
     };
     match r {
@@ -753,7 +771,22 @@ mod tests {
         ];
         for (changed, want) in rows {
             let changed: Vec<String> = changed.iter().map(|s| s.to_string()).collect();
-            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed).unwrap(), *want, "{changed:?}");
+            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed, true).unwrap(), *want, "{changed:?}");
+        }
+    }
+
+    /// Without `--with-dependents` (the worker's default), only the changed crates themselves.
+    #[test]
+    fn test_changed_without_dependents_picks_only_the_changed_crates() {
+        let rows: &[(&[&str], &[&str])] = &[
+            (&["ws/crates/core/src/lib.rs"], &["core"]),
+            (&["crates/up/src/lib.rs"], &[]),
+            (&["ws/apps/app/tests/all/x.rs", "ws/crates/mid/src/m.rs"], &["app", "mid"]),
+            (&["ws/Cargo.lock"], &["app", "bench", "core", "lone", "mid"]),
+        ];
+        for (changed, want) in rows {
+            let changed: Vec<String> = changed.iter().map(|s| s.to_string()).collect();
+            assert_eq!(crates_to_test(&graph(), "c:/r/", &changed, false).unwrap(), *want, "{changed:?}");
         }
     }
 
@@ -765,7 +798,7 @@ mod tests {
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
         let repo = root.parent().unwrap().to_string_lossy().to_string();
-        let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
+        let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()], true).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
             ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-inspector", "ecad-mcp", "ecad-model", "ecad-trial"]
