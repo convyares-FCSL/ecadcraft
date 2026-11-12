@@ -125,7 +125,8 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     let k2 = device(&mut h, "-K02");
     let e = h.state_mut().submit_command(&format!(r#"setprop {{"component":"{}","key":"tag","value":"K01"}}"#, k2.hex()));
     let e = e.unwrap_or_default();
-    assert!(e.contains("Tag -K01 is already used by -K01"), "{e}");
+    // Brief 026 (design §7.1): the three ways, Swap first.
+    assert!(e.contains("-K01 is used by -K01"), "{e}");
     let away = screen(&h, 200.0, 200.0);
     pointer_to(&mut h, away);
     h.run_steps(3);

@@ -222,6 +222,13 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
     out
 }
 
+/// The devices, cables and wires `selection` on `page` stands for, as hex IDs (brief 026: the
+/// Renumber dialog's Sel scope).
+pub fn selected_objects(p: &Project, page: PageId, selection: &[Handle]) -> Vec<String> {
+    let k = pick(p, page, selection);
+    k.devices.iter().map(|c| c.hex()).chain(k.cables.iter().map(|c| c.hex())).chain(k.wires.iter().map(|w| w.hex())).collect()
+}
+
 /// The ECAD section for `selection` on the active page `page` of `p`.
 pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsView {
     let doc = p.ledger.document();
@@ -411,6 +418,12 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
             }
         }
         rows.push(r);
+        // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
+        if key == "tag" && one {
+            let c = devices.iter().next().copied();
+            let props = c.and_then(|c| doc.components.get(&c)).map(|x| &x.properties);
+            rows.push(fixed_row(props));
+        }
     }
     let title = if one {
         let c = devices.iter().next().copied();
@@ -665,7 +678,9 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
     let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default())];
-    rows.extend(free_rows(props, &["tag", crate::strips::CORES_KEY]));
+    // Brief 026: Fixed beside Tag.
+    rows.push(fixed_row(props));
+    rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
     let count = crate::strips::cable_cores(doc, k).unwrap_or_default();
@@ -694,6 +709,27 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     }
 }
 
+/// The Fixed row of a device or cable (brief 026): `yes` or `no`, read-only for a provisional tag
+/// or none.
+fn fixed_row(props: Option<&ecad_model::Properties>) -> Row {
+    let t = props.and_then(|p| p.get(ecad_model::tag::TAG_KEY));
+    let fixed = props.is_some_and(ecad_model::numbering::is_fixed);
+    let value = if fixed { "yes" } else { "no" }.to_string();
+    let mut r = if t.is_some_and(|t| !ecad_model::tag::is_provisional(t)) {
+        Row::rw(ecad_model::tag::FIXED_KEY, "Fixed", value)
+    } else {
+        Row::ro(ecad_model::tag::FIXED_KEY, "Fixed", value)
+    };
+    r.choices = vec!["yes".into(), "no".into()];
+    r
+}
+
+/// The key a clash box's button edits (`tag#swap`, `tag#merge`, `tag#next`): the tag, with that
+/// way forward (brief 026, design §7).
+pub fn conflict_key(way: &str) -> String {
+    format!("{}#{way}", ecad_model::tag::TAG_KEY)
+}
+
 fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section {
     let Some(Subject::Cable(k)) = doc.representations.get(&r).map(|x| x.subject) else {
         return Section {
@@ -720,6 +756,19 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
 /// (clear). Several devices are written in one `setprop` with `components`.
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));
+    // Brief 026: a clash box's choice (`tag#swap`…), and Fixed `no` releasing the flag.
+    if let Some(way) = key.strip_prefix("tag#") {
+        let mut j = match target {
+            Target::Devices(cs) => serde_json::json!({"component": cs.first().map(|c| c.hex())}),
+            Target::Cable(k) => serde_json::json!({"cable": k.hex()}),
+            _ => serde_json::json!({}),
+        };
+        j["key"] = "tag".into();
+        j["value"] = v;
+        j["conflict"] = way.into();
+        return format!("setprop {j}");
+    }
+    let v = if key == ecad_model::tag::FIXED_KEY && value.is_some_and(|s| s.trim().eq_ignore_ascii_case("no")) { serde_json::Value::Null } else { v };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();

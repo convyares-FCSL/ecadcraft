@@ -542,7 +542,7 @@ fn hovering_a_fan_line_shows_the_cable() {
     let lines = g.h.p(|p| hover_lines(p, uid, h)).unwrap();
     assert_eq!(
         lines,
-        ["Cable C1".to_string(), format!("id {}", g.c1.hex()), "View: fan".into(), "Wires: 3".into(), "  W0".into(), "  W5".into(), "  W10".into()]
+        ["Cable -C01".to_string(), format!("id {}", g.c1.hex()), "View: fan".into(), "Wires: 3".into(), "  W0".into(), "  W5".into(), "  W10".into()]
     );
 }
 
@@ -566,7 +566,7 @@ fn the_selection_and_clicks_switch_cables() {
     let vs = views_of(&mut g.h);
     assert_eq!((vs[g.c1.hex()].as_str(), vs[c2.hex()].as_str()), (Some("fan"), Some("fan")));
     assert!(g.h.s.selection().is_empty());
-    assert!(g.h.s.log.iter().any(|l| l == "Cable C2 now shown in fan view."), "{:?}", g.h.s.log);
+    assert!(g.h.s.log.iter().any(|l| l == "Cable -C02 now shown in fan view."), "{:?}", g.h.s.log);
     let fans = fan_handles(&mut g.h, g.page);
     let map = g.h.p(|p| p.pages[&g.page].map.clone());
     let of = |k: CableId| fans.iter().copied().find(|h| map.get(*h) == Some(Mapped::Fan(k))).unwrap();
@@ -591,7 +591,7 @@ fn the_selection_and_clicks_switch_cables() {
     assert_eq!(last_echo(&g.h), "That is not a cable or a wire in a cable.");
     // A wire in a cable names its cable.
     click(&mut g.h, 40.0, 35.0);
-    assert_eq!(last_echo(&g.h), "Cable C2 now shown in fan view.");
+    assert_eq!(last_echo(&g.h), "Cable -C02 now shown in fan view.");
     assert_eq!(prompt(&g.h), "Select a cable to switch its view:");
     g.h.s.input(Input::Enter).unwrap();
     assert!(g.h.s.running.is_none());

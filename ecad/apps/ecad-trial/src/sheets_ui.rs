@@ -92,6 +92,9 @@ pub struct ProjectProps {
     label_height_orig: String,
     /// Wire label height, millimetres (brief 022).
     pub label_height: String,
+    provisional_orig: bool,
+    /// Brief 026: Provisional tags until Finalise.
+    pub provisional: bool,
     pub read_only: bool,
     /// The command's refusal of the last OK.
     pub error: Option<String>,
@@ -158,6 +161,8 @@ impl ProjectProps {
             colour_style,
             label_height_orig: label_height.clone(),
             label_height,
+            provisional_orig: v.get("provisional").and_then(Value::as_bool).unwrap_or(false),
+            provisional: v.get("provisional").and_then(Value::as_bool).unwrap_or(false),
             orig: fields.clone(),
             fields,
             sheet_orig: sheet,
@@ -219,6 +224,9 @@ impl ProjectProps {
         }
         if self.colour_style != self.colour_style_orig {
             m.insert("colour_style".into(), Value::String(self.colour_style.clone()));
+        }
+        if self.provisional != self.provisional_orig {
+            m.insert("provisional".into(), json!(self.provisional));
         }
         if self.label_height.trim() != self.label_height_orig {
             let h: f64 = self
@@ -401,6 +409,14 @@ impl ProjectProps {
                             }
                         }
                     });
+                });
+                // Brief 026 (design §5.1): numbering.
+                ui.separator();
+                ui.label(RichText::new("Numbering").small().strong());
+                ui.add_enabled_ui(!ro, |ui| {
+                    ui.checkbox(&mut self.provisional, "Provisional tags until Finalise")
+                        .accessible_name("ecad.settings.provisional")
+                        .on_hover_text("New devices get -K?1, cables -W?1, new nets 24V-?; Finalise numbering numbers them in drawing order");
                 });
                 // Brief 022 (owner, 2026-11-09): wire label colours and size.
                 ui.separator();
@@ -788,7 +804,33 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
         }
     });
     if let Some(e) = error {
-        ui.label(RichText::new(e).small().color(RED));
+        ui.label(RichText::new(&e).small().color(RED));
+        // Brief 026 (design §7.1): a taken tag offers Swap first, then the same device, then the
+        // next free tag. Nothing is written until a button is clicked.
+        if row.key == "tag"
+            && let Some(tg) = target
+            && let Some((typed, _)) = e.split_once(" is used by ")
+        {
+            let typed = typed.trim().to_string();
+            let next = e.split("\"next\" (use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string);
+            let same_kind = e.contains("\"swap\"");
+            let noun = if matches!(tg, ecad_cadcraft::props::Target::Cable(_)) { "cable" } else { "device" };
+            ui.horizontal(|ui| {
+                if same_kind {
+                    let swap = egui::Button::new(RichText::new("Swap").color(t.text)).fill(t.accent);
+                    if ui.add(swap).accessible_name("ecad.tagclash.swap").clicked() {
+                        sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("swap"), Some(typed.clone())));
+                    }
+                    if ui.button(format!("Make it the same {noun}")).accessible_name("ecad.tagclash.merge").clicked() {
+                        sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("merge"), Some(typed.clone())));
+                    }
+                }
+                let label = next.as_deref().map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
+                if ui.button(label).accessible_name("ecad.tagclash.next").clicked() {
+                    sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("next"), Some(typed.clone())));
+                }
+            });
+        }
     }
 }
 

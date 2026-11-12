@@ -19,13 +19,33 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
+numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
+group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
+Wires** opens it with Wires chosen) previews old → new in **drawing order** (page, then column,
+then row of the sheet grid) and applies it as one transaction (one `u`). Typing a tag fixes it
+(**Fixed** beside Tag releases it); a taken tag offers **Swap** first, then **Make it the same
+device**, then **Use -K08**. **Project settings → Numbering → Provisional tags until Finalise**
+gives new devices `-K?1`, cables `-W?1` and new nets `24V-?` (orange) until **Finalise
+numbering**; Checks lists them and Issue Revision asks **Finalise numbering now** or **Issue
+anyway**. New cables are tagged `-W01`… automatically; devices and cables share one tag namespace.
+A merge's tag conflict offers **Make them one device**. Section 5M describes it.
+- *Automated checks:* `ecad/crates/ecad-model/src/numbering.rs` (drawing order, scopes, fixed,
+  provisional, hostile requests), `tag.rs` (provisional form, the high-water reset), `merge.rs`
+  (Make them one, provisional duplicates), `ecad/apps/ecad-mcp/tests/all/numbering_contracts.rs`
+  (every new or changed write through `execute`, its transaction and author, writes off), and
+  `ecad/crates/ecad-cadcraft/tests/all/numbering_contracts.rs` (labels, Checks, save and reopen).
+- *Agent-observed:* the worker looked at the headless screenshots `026-*.png`; no agent has
+  clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 028 (design `ecad/docs/design/028.md`), on `feature/terminal-strips`, not yet in `dev`:**
 a terminal clicked on a wire splits it and both halves land on it; **Place Terminals** puts one
 terminal on every wire a line crosses; **Draw Bridge** links two terminals of a strip. A strip's
 **Terminals offered** (`12+2PE`) gives spare positions; a cable's **Cores** (or its type, `7G1.5`)
 gives used, spare and over cores, and a new member takes the next free core. The terminal plan
 and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
-type; five Checks rows have fixes. Section 5M describes it.
+type; five Checks rows have fixes. Section 5N describes it.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
   A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
   and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
@@ -1230,11 +1250,43 @@ Typed instead, in the ECAD command field: `setprop {"component":"<id>","key":"co
 `page`), `refgoto {"source":"<representation id>"}` (a contact goes to its coil; from a coil add
 `"target"`), `projectprops {"contact_mirror":"off"}`.
 
-## 5M. Terminal strips and cables (by clicking)
+## 5M. Numbering (by clicking)
+
+On the demo project (`cargo xtask demo`, then open `C:\dev\ecad-projects\demo.ecad`). Design 026.
+
+1. **Renumber in drawing order.** Show page 2 (**Motor control**). Place two coils near its right
+   edge and one near its left edge (**Place Symbol**, `coil`). Click **Renumber…** (ECAD tab,
+   **Numbering**), choose **Dev** and **Prefix** `-K`. Expected: the list shows `Old → New At` for
+   every `-K` device, page by page and column by column (`page · col · row`): the left coil gets the
+   lower number. **Apply**: one step; `u` puts every tag back; redo.
+2. **Fixed.** Select `-K01`'s coil. In **Properties** (`ECAD · DEVICE -K01`) set **Fixed** to `yes`
+   (or tick **Fixed** in the Devices tab). Renumber again: `-K01` shows `F` and keeps its tag; the
+   others are numbered around it. Typing a tag in Properties fixes it too.
+3. **Swap.** Select `-K03`'s coil, type `-K02` as its **Tag**, Enter. Expected: under the field,
+   `-K02 is used by -K02 (…)` and three buttons: **Swap** (first), **Make it the same device**, **Use
+   -K0n**. Click **Swap**: both tags change in one step; `u` undoes both.
+4. **Provisional tags.** **Project settings** (PROJECT panel header) → **Numbering** → tick
+   **Provisional tags until Finalise**, OK. Place a coil: it is `-K?1`, drawn orange. Draw a wire
+   between two empty spots with potential `24V`: it reads `24V-?`, orange. Slash two wires into a
+   cable: `-W?1`. The **Checks** tab shows `▲ Provisional tag` per device and cable, and one row
+   `▲ n wire numbers provisional`, each with **Finalise**.
+5. **Issue with provisional items.** Open **Revisions…**, fill Rev, Description and Drawn, **Issue
+   Rev …**, **Issue**. Expected: a window lists the provisional items with **Finalise numbering
+   now**, **Issue anyway** and **Cancel**. **Finalise numbering now** opens Finalise numbering (all
+   kinds, Prov, Start `next`); **Apply 3** numbers them after the highest in use, then the issue
+   follows. Two steps: `u` twice takes both back.
+
+Typed instead, in the ECAD command field: `renumber {"kind":"devices","scope":"all","preview":true}`,
+`renumber {"kind":"devices","scope":{"prefix":"-K"},"start":1,"digits":2}`, `finalise {}`,
+`numbering {"provisional":true}`, `setprop {"component":"<id>","key":"tag","value":"-K02","conflict":"swap"}`
+(`"merge"`, `"next"`), `setprop {"component":"<id>","key":"tag_fixed","value":null}`,
+`issuerevision {"provisional":"finalise"}` (or `"issue"`), and in a merge `choices: {"<id>": "one"}`.
+
+## 5N. Terminal strips and cables (by clicking)
 
 A terminal strip `-X01` is one device whose terminals `-X01:1…n` are placed on wires; a cable
 knows its cores. The terminal plan and the cable schedule are read off the drawing, live, and
-never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5L, or
+never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5M, or
 a new one); the steps make their own page so its numbers do not matter.
 
 1. **Some wires.** Add a page with **+**. Place two `coil`s (`-K..`) near the top and a `motor3`

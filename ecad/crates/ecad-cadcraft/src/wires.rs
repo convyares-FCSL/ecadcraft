@@ -103,6 +103,8 @@ pub struct WireLabel {
     pub text: String,
     /// Drawn in `ecad.orphan`: the net is in a number error.
     pub error: bool,
+    /// Drawn in `ecad.provisional`: no number yet, provisional tags on (brief 026).
+    pub provisional: bool,
 }
 
 /// The vertices of a route path.
@@ -278,7 +280,16 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             .or_else(|| tried.first());
         let Some((at, bx)) = pick else { continue };
         placed.push(*bx);
-        out.push(WireLabel { conductor: *c, rep: *rid, at: *at, rotation: theta, height: h, text: label.text, error: label.error });
+        out.push(WireLabel {
+            conductor: *c,
+            rep: *rid,
+            at: *at,
+            rotation: theta,
+            height: h,
+            text: label.text,
+            error: label.error,
+            provisional: label.provisional,
+        });
     }
     out
 }
@@ -286,8 +297,13 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
 /// A label as an entity on [`LABEL_LAYER`].
 pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
-    let color =
-        if l.error { cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI) } else { cadcraft_engine::doc::color::Color::ByLayer };
+    let color = if l.error {
+        cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI)
+    } else if l.provisional {
+        cadcraft_engine::doc::color::Color::Index(crate::devices::PROVISIONAL_ACI)
+    } else {
+        cadcraft_engine::doc::color::Color::ByLayer
+    };
     Entity {
         handle,
         common: Common { layer: LABEL_LAYER.into(), color, ..Common::default() },

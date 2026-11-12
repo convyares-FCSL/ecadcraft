@@ -95,6 +95,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
             tbupd_ms: 0.5,
             gridchange_ms: 1.0,
             revopen_ms: 10.0,
+            numbering: Default::default(),
             xbuild_ms: 1.0,
             xmove_ms: 1.0,
             xrenum_ms: 1.0,

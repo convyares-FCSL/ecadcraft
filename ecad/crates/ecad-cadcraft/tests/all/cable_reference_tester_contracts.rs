@@ -404,7 +404,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(sid)).unwrap();
     let e = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == text).unwrap();
     assert_eq!(format!("{:?}", e.common.color), format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)), "red text");
-    assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable C1 on page 1 (?)".to_string()]);
+    assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     // The Field stubs, slash and attachments stay: only the reference went.
     assert_eq!(orphaned.conductors, linked.conductors);
     assert_eq!(nets(&orphaned), nets(&linked));

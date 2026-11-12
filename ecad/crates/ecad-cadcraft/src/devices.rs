@@ -33,6 +33,8 @@ use crate::symbols::{self, Kind, STARTERS, Starter};
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
 pub const TAG_LAYER: &str = "ECAD-TAGS";
+/// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
+pub const PROVISIONAL_ACI: u8 = 30;
 /// `ecad.tag-height`, millimetres.
 pub const TAG_HEIGHT: f64 = 3.5;
 /// `ecad.term-label-height`, millimetres.
@@ -97,13 +99,16 @@ pub struct TagHigh {
     /// The high-water mark at the ledger's base (a version 2 snapshot carries it, brief 021): the
     /// history before the base is never read for it.
     base: tag::HighWater,
+    /// Provisional numbers given out since the last transaction (brief 026), so two new devices of
+    /// one edit never share one; cleared when a transaction is read.
+    prov: BTreeMap<String, u64>,
 }
 
 impl TagHigh {
     /// Starting from `base`, the high-water mark at the ledger's base (empty for a ledger
     /// replayed from the root).
     pub fn starting_at(base: tag::HighWater) -> Self {
-        Self { seen: 0, high: base.clone(), base }
+        Self { seen: 0, high: base.clone(), base, prov: BTreeMap::new() }
     }
 
     /// Read the transactions added to `ledger`'s log since the last call.
@@ -115,7 +120,51 @@ impl TagHigh {
         for tx in log.get(self.seen..).unwrap_or_default() {
             tag::note_ops(&mut self.high, &tx.ops);
         }
+        if self.seen != log.len() {
+            self.prov.clear();
+        }
         self.seen = log.len();
+    }
+
+    /// The highest number of each prefix (the high-water mark), as read so far.
+    pub fn marks(&self) -> &tag::HighWater {
+        &self.high
+    }
+
+    /// The next automatic tag for `prefix` (brief 026): provisional (`-K?3`) when the project has
+    /// provisional tags on, else [`TagHigh::next`].
+    ///
+    /// # Errors
+    /// As [`TagHigh::next`].
+    pub fn next_auto(&mut self, ledger: &Ledger, prefix: &str) -> Result<String, String> {
+        self.catch_up(ledger);
+        self.next_auto_in(ledger.document(), prefix)
+    }
+
+    /// [`TagHigh::next_auto`] without reading the log first.
+    ///
+    /// # Errors
+    /// As [`TagHigh::next`].
+    pub fn next_auto_in(&mut self, doc: &Document, prefix: &str) -> Result<String, String> {
+        if ecad_model::numbering::provisional_on(doc) { Ok(self.next_provisional_in(doc, prefix)) } else { self.next_in(doc, prefix) }
+    }
+
+    /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number in use, or
+    /// given out in this edit, + 1. Counts as given.
+    pub fn next_provisional_in(&mut self, doc: &Document, prefix: &str) -> String {
+        let p = prefix.trim_start_matches('-').to_ascii_uppercase();
+        let in_use = tag::provisional(&ecad_model::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
+        let n = in_use.max(self.prov.get(&p).map_or(0, |g| g.saturating_add(1)));
+        self.prov.insert(p.clone(), n);
+        tag::format_provisional(&p, n)
+    }
+
+    /// The automatic tag a new device of `prefix` would get, without using it up (prompts).
+    ///
+    /// # Errors
+    /// As [`TagHigh::next`].
+    pub fn peek_auto(&self, doc: &Document, prefix: &str) -> Result<String, String> {
+        if ecad_model::numbering::provisional_on(doc) { Ok(ecad_model::numbering::next_provisional(doc, prefix)) } else { self.peek(doc, prefix) }
     }
 
     /// The next automatic tag for `prefix`: its highest number + 1, skipping (boundedly) any tag a
@@ -155,7 +204,8 @@ impl TagHigh {
         // Bounded: a hostile file may hold many tags above the highest the log shows.
         for n in (first..=tag::MAX_TAG_NUMBER).take(10_000) {
             let t = tag::format(&prefix, n, padding(doc));
-            if doc.components_tagged(&t).is_empty() {
+            // Devices and cables share one namespace (brief 026).
+            if !doc.tag_taken(&t) {
                 return Ok((prefix, n, t));
             }
         }
@@ -227,6 +277,78 @@ pub fn holder_words(doc: &Document, c: ComponentId) -> String {
 /// The device other than `except` that holds `t` (the same tag), if any.
 pub fn holder_of(doc: &Document, t: &str, except: Option<ComponentId>) -> Option<ComponentId> {
     doc.components_tagged(t).into_iter().find(|c| Some(*c) != except)
+}
+
+/// What holds a tag: a device or a cable (brief 026, one namespace).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Holder {
+    Device(ComponentId),
+    Cable(ecad_model::CableId),
+}
+
+impl Holder {
+    /// The holder as an object reference.
+    pub fn object(self) -> ecad_model::ObjectRef {
+        match self {
+            Holder::Device(c) => ecad_model::ObjectRef::Component(c),
+            Holder::Cable(c) => ecad_model::ObjectRef::Cable(c),
+        }
+    }
+}
+
+/// The device or cable other than `except` holding `t`, devices first.
+pub fn tag_holder(doc: &Document, t: &str, except: Option<ecad_model::ObjectRef>) -> Option<Holder> {
+    doc.components_tagged(t)
+        .into_iter()
+        .map(Holder::Device)
+        .chain(doc.cables_tagged(t).into_iter().map(Holder::Cable))
+        .find(|h| Some(h.object()) != except)
+}
+
+/// A cable's tag as stored.
+pub fn cable_tag_of(doc: &Document, k: ecad_model::CableId) -> Option<&str> {
+    doc.cables.get(&k)?.properties.get(TAG_KEY).map(String::as_str)
+}
+
+/// `-K03 (Contactor / relay coil, 101-C-1)` or `-W01 (cable, 3 wires)`.
+pub fn holder_words_of(doc: &Document, h: Holder) -> String {
+    match h {
+        Holder::Device(c) => holder_words(doc, c),
+        Holder::Cable(k) => {
+            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            format!("{} (cable, {n} wire{})", cable_tag_of(doc, k).unwrap_or("(no tag)"), if n == 1 { "" } else { "s" })
+        }
+    }
+}
+
+/// The prefix of new cable tags: the project's `tag_prefixes["cable"]`, else `W` (brief 026).
+pub fn cable_prefix(doc: &Document) -> String {
+    doc.settings.tag_prefixes.get("cable").and_then(|p| valid_prefix(p)).unwrap_or_else(|| "W".to_string())
+}
+
+/// The tag a new cable gets (brief 026, design §6): `typed` as stored (normalised; `-W?` is the next
+/// provisional), else the next automatic one (`-W01`, or `-W?1` with provisional tags on).
+///
+/// # Errors
+/// A typed tag that cannot be stored, or that a device or cable holds (with the next free one).
+pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -> Result<String, String> {
+    high.catch_up(ledger);
+    let doc = ledger.document();
+    match typed {
+        Some(t) => {
+            let t = tag::normalise(t, padding(doc))?;
+            if let Some((p, 0)) = tag::provisional(&t) {
+                return Ok(high.next_provisional_in(doc, &p));
+            }
+            if let Some(h) = tag_holder(doc, &t, None) {
+                let next = tag::prefix_of(&t).and_then(|p| high.peek(doc, &p).ok());
+                let way = next.map_or_else(|| "Choose another tag.".to_string(), |n| format!("Choose another tag (the next free one is {n})."));
+                return Err(format!("Tag {t} is already used by {}. {way}", holder_words_of(doc, h)));
+            }
+            Ok(t)
+        }
+        None => high.next_auto_in(doc, &cable_prefix(doc)),
+    }
 }
 
 /// The refusal of a duplicate, with the ways forward.
@@ -371,6 +493,10 @@ pub fn plan_place(
     let target = match target {
         Target::New(Some(t)) => match holder_of(doc, &t, None) {
             Some(c) => Target::Join(c),
+            // Devices and cables share one namespace (brief 026).
+            None if !doc.cables_tagged(&t).is_empty() => {
+                return Err(format!("Tag {t} is a cable's; choose another tag for a device."));
+            }
             None => Target::New(Some(t)),
         },
         other => other,
@@ -381,8 +507,13 @@ pub fn plan_place(
     match target {
         Target::New(t) => {
             let t = match t {
+                // `-K?` typed: the next provisional number (brief 026).
+                Some(t) if tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
+                    high.catch_up(ledger);
+                    high.next_provisional_in(doc, &tag::provisional(&t).map(|x| x.0).unwrap_or_default())
+                }
                 Some(t) => t,
-                None => high.next(ledger, &prefix_for(doc, s))?,
+                None => high.next_auto(ledger, &prefix_for(doc, s))?,
             };
             let c: ComponentId = ids.fresh();
             let mut properties = ecad_model::Properties::new();
@@ -664,8 +795,9 @@ fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
 /// The tag a copy of device `c` gets (design 018 §3.3): the next automatic number of its prefix;
 /// `None` when its tag is not of the usual form (the copy then has no tag).
 pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Component) -> Option<String> {
-    let (prefix, _) = tag::parse(c.properties.get(TAG_KEY)?)?;
-    high.next_in(doc, &prefix).ok()
+    let t = c.properties.get(TAG_KEY)?;
+    let (prefix, _) = tag::parse(t).or_else(|| tag::provisional(t))?;
+    high.next_auto_in(doc, &prefix).ok()
 }
 
 // ---------------------------------------------------------------- derived texts (§2.4)
@@ -774,9 +906,12 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
             out.extend(texts);
             continue;
         }
+        // Brief 026: a provisional tag is drawn in `ecad.provisional`.
+        let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
         let tag = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes));
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag.as_deref(), &labels) {
-            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None });
+            let aci = (prov && of == TextOf::Tag).then_some(PROVISIONAL_ACI);
+            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci });
         }
     }
     out
@@ -929,6 +1064,9 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
+    // Brief 026.
+    v["tag_fixed"] = Value::Bool(ecad_model::numbering::is_fixed(&props));
+    v["provisional"] = Value::Bool(props.get(TAG_KEY).is_some_and(|t| tag::is_provisional(t)));
     v
 }
 
@@ -990,6 +1128,9 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
     let props = doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
     let get = |k: &str| props.get(k).cloned().unwrap_or_else(|| "?".into());
     let head = match props.get(TAG_KEY) {
+        // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
+        Some(t) if tag::is_provisional(t) => format!("Device {t} (provisional)   {}", description(doc, c)),
+        Some(t) if ecad_model::numbering::is_fixed(&props) => format!("Device {t} (fixed)   {}", description(doc, c)),
         Some(t) => format!("Device {t}   {}", description(doc, c)),
         None => format!("Device (no tag)   {}", description(doc, c)),
     };
@@ -1057,5 +1198,5 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
 /// prompts and pick lists).
 pub fn next_tag_preview(p: &crate::project::Project, s: &Starter) -> Option<String> {
     let doc = p.ledger.document();
-    p.tag_high.peek(doc, &prefix_for(doc, s)).ok()
+    p.tag_high.peek_auto(doc, &prefix_for(doc, s)).ok()
 }

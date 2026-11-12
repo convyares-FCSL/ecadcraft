@@ -46,6 +46,7 @@ pub mod interact;
 pub mod locations;
 pub mod look;
 pub mod merging;
+pub mod numbering_cmds;
 pub mod oops;
 pub mod output_cmds;
 pub mod outputs;
