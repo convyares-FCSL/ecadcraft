@@ -1,7 +1,7 @@
 # Brief 031: Text styles, show and hide, placement
 
-Status: Draft (designer, 2026-11-12; waiting for the owner's answers in design 031 §15 and the
-overseer's decision on FP1–FP6 in design 031 §14)
+Status: Draft (designer, 2026-11-12; waiting for the owner's answers in design 031 §15. Format:
+FP1–FP3, FP5 and FP6 approved by the overseer, FP4 approved on condition, design 031 §14)
 Branch: `feature/text-styles`, from `origin/dev` `6729c8f1`.
 Designer: **yes** (`docs/design/031.md`) · Size: L (Q1 M, Q3 M, Q2 L)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` (branch `docs/roadmap-2026-11`), v0.15 lane
