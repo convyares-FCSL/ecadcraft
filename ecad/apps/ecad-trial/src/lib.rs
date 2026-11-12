@@ -52,6 +52,7 @@ pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
 pub mod merge_dialog;
+pub mod outputs_ui;
 pub mod preview;
 pub mod project_panel;
 pub mod renumber_dialog;
@@ -348,6 +349,9 @@ pub struct Trial {
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
     pub search: search::SymbolSearch,
+    /// Brief 024: the Reports window and the Print Book dialog, while open.
+    pub reports: Option<outputs_ui::Reports>,
+    pub print_book: Option<outputs_ui::PrintBook>,
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: sheets_ui::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
@@ -496,6 +500,8 @@ impl Trial {
             home: ecad_cadcraft::home(),
             lwdisplay_set: None,
             search: search::SymbolSearch::default(),
+            reports: None,
+            print_book: None,
             props,
             props_seen: None,
             props_rebuilds: 0,
@@ -1401,6 +1407,7 @@ impl Trial {
         self.drop_frame_selection();
         self.handle_tools();
         self.sheet_windows(ui.ctx());
+        self.output_windows(ui.ctx());
         self.merge_windows(ui.ctx());
         self.renumber_window(ui.ctx());
         self.issue_prompt_window(ui.ctx());
@@ -1745,6 +1752,26 @@ impl Trial {
             A::Finalise => self.open_renumber(true, false, None),
             A::Renumber => self.open_renumber(false, false, None),
             A::RenumberFolder(f) => self.open_renumber(false, false, Some(f)),
+            A::UseBoxLocation(c) => {
+                let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "location", "value": null})));
+            }
+            A::ShowReports => {
+                self.open_reports();
+                if let Some(r) = &mut self.reports {
+                    r.tab = outputs_ui::Tab::Bom;
+                    r.only_flagged = true;
+                    r.invalidate();
+                }
+            }
+            A::Reports => self.open_reports(),
+            A::PrintBook(folder) => self.open_print_book(folder),
+            A::NewGenerated(kind) => {
+                let mut v = json!({"generated": kind.value()});
+                if let Some(f) = self.panel.target_folder() {
+                    v["folder"] = json!(f.hex());
+                }
+                let _ = self.run_line(&format!("newpage {v}"));
+            }
             A::MoveInto { page, folder, index } => {
                 let mut v = json!({"page": page.hex(), "folder": folder.map(|f| f.hex())});
                 if let Some(i) = index {
@@ -2484,6 +2511,183 @@ impl Trial {
                     }
                 }
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- brief 024
+
+    /// The project file's path without `.ecad`, or its name, for default output names.
+    fn output_stem(&mut self) -> String {
+        let Some(p) = self.project.clone() else { return "project".into() };
+        p.read(&mut self.cad.session, |p, _| match &p.path {
+            Some(path) => std::path::Path::new(path).with_extension("").to_string_lossy().into_owned(),
+            None => p.name.clone(),
+        })
+        .unwrap_or_else(|_| "project".into())
+    }
+
+    /// A typed output path with `~` expanded.
+    fn output_path(&self, path: &str) -> Result<String, String> {
+        ecad_cadcraft::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// Open the Reports window (design 024 §6.2).
+    pub fn open_reports(&mut self) {
+        if self.reports.is_none() {
+            let stem = self.output_stem();
+            let mut r = outputs_ui::Reports::default();
+            r.stem = stem;
+            self.reports = Some(r);
+        }
+    }
+
+    /// Open the Print Book dialog (design 024 §4.1), scoped to `folder` when given.
+    pub fn open_print_book(&mut self, folder: Option<ecad_model::FolderId>) {
+        let Some(p) = self.project.clone() else { return };
+        let folders = p
+            .read(&mut self.cad.session, |p, _| {
+                let doc = p.ledger.document();
+                doc.folders.keys().map(|f| (f.hex(), ecad_cadcraft::sheet_cmds::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f.hex()));
+        let path = format!("{}.pdf", self.output_stem());
+        self.print_book = Some(outputs_ui::PrintBook {
+            scope: if chosen.is_some() { outputs_ui::ScopeKind::Folder } else { outputs_ui::ScopeKind::All },
+            folders,
+            folder: chosen.unwrap_or(0),
+            path,
+            mono: true,
+            lineweights: true,
+            ..outputs_ui::PrintBook::default()
+        });
+    }
+
+    /// The Reports window and the Print Book dialog.
+    fn output_windows(&mut self, ctx: &egui::Context) {
+        let serial = self.project_serial;
+        if let Some(p) = self.project.clone()
+            && p.is_attached(&self.cad.session)
+            && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.open_reports)).unwrap_or(false)
+        {
+            self.open_reports();
+        }
+        if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
+        }
+        let out = self.reports.as_mut().and_then(|r| r.show(ctx));
+        match out {
+            Some(outputs_ui::Out::Close) => self.reports = None,
+            Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
+            Some(outputs_ui::Out::Goto(tab, i) | outputs_ui::Out::Select(tab, i)) => self.goto_report_row(tab, i),
+            None => {}
+        }
+        self.print_window(ctx);
+    }
+
+    /// Write the Reports tab as shown to `path` as CSV (design 024 §6.3).
+    pub fn export_report(&mut self, path: &str) {
+        let path = self.output_path(path);
+        let Some(r) = &mut self.reports else { return };
+        let t = r.shown_table();
+        let flagged = t.flagged();
+        let text = ecad_cadcraft::outputs::csv(&t, true);
+        match path.and_then(|path| ecad_cadcraft::printbook::write_file(&path, text.as_bytes()).map(|()| path)) {
+            Ok(path) => {
+                let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };
+                let m = format!("Wrote {} rows to {path} ({marked}).", t.rows.len());
+                r.note = Some(m.clone());
+                r.export = None;
+                self.cad.session.echo(m);
+            }
+            Err(e) => r.note = Some(e),
+        }
+    }
+
+    /// Go to a Reports row: a BOM row's first device's main symbol, a wire's first route, a
+    /// cable's label box (design 024 §6.2). Nothing is recorded.
+    pub fn goto_report_row(&mut self, tab: outputs_ui::Tab, i: usize) {
+        enum To {
+            Symbol(ecad_model::RepresentationId),
+            Place(PageId, ecad_model::Pt),
+        }
+        let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(p) = self.project.clone() else { return };
+        let group = self.reports.as_ref().map(|r| r.group).unwrap_or_default();
+        let to = p
+            .configure(&mut self.cad.session, |p| {
+                let o = p.outputs();
+                match tab {
+                    outputs_ui::Tab::Bom => {
+                        let row = o.bom(group).into_iter().nth(k)?;
+                        let c = *row.devices.first()?;
+                        o.device(c).and_then(|d| d.main).map(|(rep, _, _)| To::Symbol(rep))
+                    }
+                    outputs_ui::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
+                    outputs_ui::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
+                }
+            })
+            .ok()
+            .flatten();
+        match to {
+            Some(To::Symbol(rep)) => {
+                let _ = self.goto_symbol(rep);
+            }
+            Some(To::Place(page, at)) => {
+                if self.show_page(page).is_ok()
+                    && let Ok(st) = self.cad.session.state_mut()
+                {
+                    let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// Print with the dialog's choices (Print): `printbook` through the command path.
+    pub fn print_from_dialog(&mut self) -> Result<serde_json::Value, String> {
+        let Some(d) = self.print_book.clone() else { return Err("Print Book is not open".into()) };
+        let mut params = d.params();
+        params["path"] = json!(self.output_path(&d.path)?);
+        let r = self.run_value("printbook", params);
+        match &r {
+            Ok(_) => self.print_book = None,
+            Err(e) => {
+                if let Some(d) = &mut self.print_book {
+                    d.error = Some(e.clone());
+                }
+            }
+        }
+        r
+    }
+
+    /// The Print Book dialog: live counts, then `printbook` on Print.
+    fn print_window(&mut self, ctx: &egui::Context) {
+        let Some(d) = &self.print_book else { return };
+        let scope = match d.scope {
+            outputs_ui::ScopeKind::All => ecad_cadcraft::printbook::Scope::All,
+            outputs_ui::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
+                Some(f) => ecad_cadcraft::printbook::Scope::Folder(f),
+                None => ecad_cadcraft::printbook::Scope::All,
+            },
+            outputs_ui::ScopeKind::Pages => ecad_cadcraft::printbook::Scope::Pages(d.pages.clone()),
+        };
+        if let Some(p) = self.project.clone()
+            && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_cadcraft::printbook::count(p, &scope))
+            && let Some(d) = &mut self.print_book
+        {
+            d.sheets = sheets;
+            d.unknown = unknown;
+            d.flagged = flagged;
+        }
+        let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
+        match answer {
+            Some(true) => {
+                let _ = self.print_from_dialog();
+            }
+            Some(false) => self.print_book = None,
+            None => {}
         }
     }
 

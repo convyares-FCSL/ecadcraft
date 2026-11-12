@@ -166,6 +166,14 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click a wire near an attached end to detach it",
         kind: Kind::Start("disconnect"),
     },
+    // Brief 024: location boxes.
+    Tool {
+        id: "ecad.tool.locationbox",
+        group: "Components",
+        label: "Location Box",
+        tooltip: "Draw a dashed rectangle or closed polyline labelled +…: every device symbol inside takes its location",
+        kind: Kind::Start("locationbox"),
+    },
     Tool {
         id: "ecad.cableslash",
         group: "Wiring",

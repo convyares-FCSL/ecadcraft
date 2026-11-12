@@ -24,6 +24,9 @@ pub const ADD_JUNCTION: &str = "Add junction";
 pub const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
+/// Brief 024's fix buttons.
+pub const USE_BOX_LOCATION: &str = "Use the box's location";
+pub const SHOW: &str = "Show";
 
 /// One copied row, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -102,7 +105,8 @@ impl ChecksPanel {
     /// Bring the copy up to date with the project's kept list (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
         let hidden = self.hidden.clone();
-        let revision = p.checks().revision;
+        // Brief 024: the location rows come from the report models, kept the same way.
+        let revision = p.checks().revision.wrapping_mul(1_000_003).wrapping_add(p.outputs().revision);
         if self.seen.as_ref().is_some_and(|(s, r, h)| *s == serial && *r == revision && *h == hidden) {
             return;
         }
@@ -110,8 +114,13 @@ impl ChecksPanel {
         let p: &ecad_cadcraft::Project = p;
         let doc = p.ledger.document();
         let Some(list) = p.checks.as_ref() else { return };
-        let rows: Vec<Row> =
-            list.sorted(doc).into_iter().filter(|c| !hidden.contains(&c.kind)).map(|c| Row { locator: c.locator(doc), check: c }).collect();
+        let mut all: Vec<Check> = list.rows().cloned().collect();
+        all.extend(p.outputs.as_ref().map(|o| o.checks()).unwrap_or_default());
+        let rows: Vec<Row> = ecad_cadcraft::checks::sort(doc, all)
+            .into_iter()
+            .filter(|c| !hidden.contains(&c.kind))
+            .map(|c| Row { locator: c.locator(doc), check: c })
+            .collect();
         self.counts = (
             rows.iter().filter(|r| r.check.severity() == Severity::Error).count(),
             rows.iter().filter(|r| r.check.severity() == Severity::Warning).count(),
@@ -198,13 +207,15 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let summary = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires);
-                let what = if summary { r.check.which.clone() } else { r.check.what() };
+                let count_row = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation);
+                let what = if count_row { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
                 // description takes the room left, cut with an ellipsis.
-                let right = if fix.is_some() { rect.right() - 92.0 } else { rect.right() - 4.0 };
-                let tail = if summary { String::new() } else { format!("{} {}", r.locator, r.check.which) };
+                let wide = matches!(fix, Some(Fix::UseBoxLocation(_)));
+                let bw = if wide { 150.0 } else { 84.0 };
+                let right = if fix.is_some() { rect.right() - bw - 8.0 } else { rect.right() - 4.0 };
+                let tail = if count_row { String::new() } else { format!("{} {}", r.locator, r.check.which) };
                 let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
                 let tail_w = tail_g.size().x;
                 let room = (right - tail_w - 6.0 - (rect.left() + 18.0)).max(0.0);
@@ -215,17 +226,21 @@ impl ChecksPanel {
                 let label = row_label(&r);
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
                 if let Some(f) = fix {
-                    let b = egui::Rect::from_min_size(pos2(rect.right() - 88.0, rect.top() + 2.0), vec2(84.0, ROW_H - 4.0));
+                    let b = egui::Rect::from_min_size(pos2(rect.right() - bw - 4.0, rect.top() + 2.0), vec2(bw, ROW_H - 4.0));
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
                         Fix::NumberThem => NUMBER_THEM,
                         Fix::Finalise => FINALISE,
+                        Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
+                        Fix::ShowReports => SHOW,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
                             (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
                             (Fix::NumberThem, _) => out.push(Action::NumberThem),
                             (Fix::Finalise, _) => out.push(Action::Finalise),
+                            (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),
+                            (Fix::ShowReports, _) => out.push(Action::ShowReports),
                             _ => {}
                         }
                         continue;

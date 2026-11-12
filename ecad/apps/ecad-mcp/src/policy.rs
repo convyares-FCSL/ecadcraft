@@ -49,6 +49,14 @@ pub const READ_COMMANDS: &[&str] = &[
     "branches",
     "showpoint",
     "closepoint",
+    // Brief 024: the reports and the printed book read the project and record nothing (a `path`
+    // is refused in every mode, as for `plot` and `export`: `printbook` then returns the PDF as
+    // base64 data); `reports` only asks the trial to open its window.
+    "bom",
+    "wirelist",
+    "cablelist",
+    "printbook",
+    "reports",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and

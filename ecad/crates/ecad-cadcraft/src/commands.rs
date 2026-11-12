@@ -37,6 +37,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::history::specs());
     v.extend(crate::merging::specs());
     v.extend(crate::numbering_cmds::specs());
+    v.extend(crate::output_cmds::specs());
     v
 }
 
@@ -1129,7 +1130,15 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
 }
 
 fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let title = params.get("title").and_then(Value::as_str).unwrap_or("new").to_string();
+    // Brief 024 (FP1): a generated page's kind, set only here.
+    let generated = match params.get("generated") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(
+            crate::generated::GenKind::parse(t).ok_or_else(|| err("`generated` is \"cover\", \"contents\", \"revisions\" or \"bom-location\""))?,
+        ),
+        Some(_) => return Err(err("`generated` must be a string")),
+    };
+    let title = params.get("title").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| generated.map_or("new", |g| g.title()).to_string());
     let number = match params.get("number") {
         None | Some(Value::Null) => None,
         Some(Value::String(t)) => Some(t.clone()),
@@ -1137,7 +1146,14 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     };
     let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
     let (page, number) = with_project(s, |p, pg, _| {
-        let (id, number, ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
+        let (id, number, mut ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
+        if let Some(g) = generated {
+            for op in &mut ops {
+                if let Op::AddPage { page, .. } = op {
+                    page.properties.insert(crate::generated::KEY.into(), g.value().into());
+                }
+            }
+        }
         p.apply_edit(pg, "newpage", "New page", ops)?;
         p.pages.entry(id).or_default();
         Ok((id, number))

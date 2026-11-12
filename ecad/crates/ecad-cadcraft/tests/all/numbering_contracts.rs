@@ -127,7 +127,11 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     };
     let kept = kinds(&mut f.h);
     assert!(kept.contains(&"provisional-tag".to_string()) && kept.contains(&"provisional-wires".to_string()), "{kept:?}");
-    let fresh = f.h.p(|p| ecad_cadcraft::checks::all(p.ledger.document(), p.tolerance).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>());
+    // The kept Checks list against a fresh build of it (`checks::all` adds brief 024's report rows).
+    let fresh = f.h.p(|p| {
+        let doc = p.ledger.document();
+        ecad_cadcraft::checks::Checks::build(doc, p.tolerance).sorted(doc).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>()
+    });
     assert_eq!(kept, fresh);
     f.h.run("finalise", json!({})).unwrap();
     assert_eq!(tag(&mut f.h, k), "-K08", "after the highest in use");

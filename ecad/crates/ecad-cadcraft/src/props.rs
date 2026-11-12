@@ -92,6 +92,12 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
         match op {
             Op::SetProperty { object, .. } => {
                 out.insert(*object);
+                // A location box's own location is what its page's devices inherit (brief 024).
+                if let ObjectRef::Component(c) = object
+                    && crate::locations::is_box(doc, *c)
+                {
+                    out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
+                }
             }
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
                 out.insert(ObjectRef::Component(*id));
@@ -121,9 +127,18 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     subject(r.subject, &mut out);
+                    if matches!(r.subject, Subject::Component(c) if crate::locations::is_box(doc, c)) {
+                        out.insert(ObjectRef::Page(r.page));
+                    }
                 }
             }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep.subject, &mut out),
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                subject(rep.subject, &mut out);
+                // A location box (brief 024) changes the location its page's devices inherit.
+                if matches!(rep.subject, Subject::Component(c) if crate::locations::is_box(doc, c) || rep.role == crate::locations::ROLE) {
+                    out.insert(ObjectRef::Page(rep.page));
+                }
+            }
             Op::ModifyRepresentation { before, after, .. } => {
                 subject(before.subject, &mut out);
                 subject(after.subject, &mut out);
@@ -260,7 +275,18 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     if !k.devices.is_empty() {
         v.deps.extend(k.devices.iter().map(|c| ObjectRef::Component(*c)));
         v.deps.insert(ObjectRef::Page(page));
-        v.sections.push(device_section(doc, &k.devices, k.symbol));
+        // An inherited location (brief 024) reads the main symbol's page (its boxes and
+        // `location`) and the project's.
+        v.deps.insert(ObjectRef::Project);
+        for c in &k.devices {
+            if let Some((_, r)) = crate::locations::main_rep(doc, *c) {
+                v.deps.insert(ObjectRef::Page(r.page));
+            }
+        }
+        match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
+            [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
+            _ => v.sections.push(device_section(doc, &k.devices, k.symbol)),
+        }
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
@@ -344,6 +370,27 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
 }
 
+/// A location box (design 024 §3.5): Location (editable), Vertices and Devices inside.
+fn box_section(doc: &Document, b: ComponentId) -> Section {
+    let shape = doc.representations_of(Subject::Component(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
+    let location = doc.components.get(&b).and_then(|c| c.properties.get(LOCATION_KEY)).cloned().unwrap_or_default();
+    let mut rows = vec![Row::rw(LOCATION_KEY, "Location", location.clone())];
+    if let Some(s) = &shape {
+        rows.push(Row::ro("vertices", "Vertices", s.vertices.len().to_string()));
+        let (n, keeps) = crate::locations::inside_counts(doc, s);
+        let words = if keeps == 0 { n.to_string() } else { format!("{n}, {keeps} keep their own location") };
+        rows.push(Row::ro("inside", "Devices inside", words));
+    }
+    Section {
+        title: format!("ECAD · LOCATION BOX {location}"),
+        kind: "box",
+        target: Some(Target::Devices(vec![b])),
+        rows,
+        note: None,
+        buttons: Vec::new(),
+    }
+}
+
 fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
@@ -353,6 +400,19 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
         let value = if varies { "*varies*".into() } else { values.into_iter().next().flatten().cloned().unwrap_or_default() };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
+        // Brief 024 (design 024 §3.4): with no own value, the inherited location and its source,
+        // faint; `?` when there is none.
+        if key == LOCATION_KEY && !varies && r.value.is_empty() {
+            let shown: BTreeSet<String> = devices.iter().map(|c| crate::locations::resolve(doc, *c).shown(doc)).collect();
+            r.inherited = true;
+            match shown.len() {
+                1 => r.value = shown.into_iter().next().unwrap_or_default(),
+                _ => {
+                    r.value = "*varies*".into();
+                    r.varies = true;
+                }
+            }
+        }
         rows.push(r);
         // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
         if key == "tag" && one {

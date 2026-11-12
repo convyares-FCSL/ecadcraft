@@ -59,3 +59,14 @@ are.
 | **revision** | One step in the project's release history (`Rev A`, `B`…), with its date, description and who drew, checked and approved it. Users only ever see "revision", never "version". |
 | **issue** | Releasing a revision: its fields are fixed and the project as it is then can be reopened read-only (**Reopen**). Undoing an issue asks first. |
 | **preview** | A read-only view of another page, for checking a reference's other end. |
+| **generated page** | A page whose content ECAD draws from the project (cover, contents, revision list, BOM by location). It has a number, title and folder like any page; nothing on it is stored (brief 024). |
+| **sheet** (of a page) | One printed A3 (or other) sheet. A generated page whose table does not fit continues on more sheets of the same page; Total counts sheets. |
+
+## Locations and outputs (brief 024)
+
+| Word | Means |
+| --- | --- |
+| **location** | Where a device physically is (`+CP1`, `+FIELD`), the IEC 81346 `+` aspect. A device's own value, else inherited: the location box its main symbol is in, then its page's, then the project's. |
+| **location box** | A dashed rectangle or closed polyline labelled `+…` on a page; every device symbol inside it takes its location, live. Innermost wins. |
+| **report** | A table derived from the project (BOM, wire report, cable report), shown and exported as CSV, never stored. Wires are never on the BOM. |
+| **Print Book** | One PDF of every page (or a folder, or a page list) in book order, generated pages included. |
