@@ -20,4 +20,5 @@ mod records_contracts;
 mod recovery_contracts;
 mod save_contracts;
 mod tag_rule_contracts;
+mod tester_029_contracts;
 mod verify_contracts;

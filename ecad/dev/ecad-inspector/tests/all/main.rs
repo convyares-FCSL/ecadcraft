@@ -5,3 +5,4 @@ mod common;
 mod cli_contracts;
 mod protocol_contracts;
 mod serve_contracts;
+mod tester_029_serve;
