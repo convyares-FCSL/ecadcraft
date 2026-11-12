@@ -40,7 +40,6 @@ fn reads(c: &mut Client) -> Value {
 }
 
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t030 Schaltpl\u{e4}ne mit Leerzeichen");
     let path = dir.file("Klemmen -X01 (A).ecad");

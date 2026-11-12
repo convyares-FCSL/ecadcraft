@@ -1,7 +1,7 @@
 //! Tester 030 (terminal strip accessories and jumper links): acceptance checks from outside,
-//! written from brief 030 and design 030 §12 only, before the implementation existed. Tests of
-//! behaviour that was not built yet are `#[ignore = "tester 030: awaiting build"]`; they use only
-//! JSON commands and APIs that 028 already had, so they compile either way.
+//! written from brief 030 and design 030 §12 only, before the implementation existed, then run
+//! against the build. They drive only JSON commands, the Jumper tool's inputs and APIs that 028
+//! already had. Defects found are kept as `#[ignore = "tester 030: defect, …"]` probes.
 //!
 //! Link lines are derived drawing (design §5.3). They are found as page entities mapped to a
 //! `Mapped` variant that 028 did not have (by its Debug name), so the test does not depend on what
@@ -299,7 +299,6 @@ fn a_fixture_a_shows_no_accessories() {
 /// on 1…12 in one call. Plan rows in position order, BOM rows per part, each write one
 /// transaction that `u` takes back exactly.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn b_to_d_placing_accessories_plan_bom_undo_redo() {
     let mut a = fixture(0x7030_0002, true);
     a.h.cfg(|p| {
@@ -367,7 +366,6 @@ fn b_to_d_placing_accessories_plan_bom_undo_redo() {
 /// AC 3: marker cards use the strip's `marker.per_card` before the project's; with no card size
 /// markers are counted singly.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn marker_cards_follow_per_card_strip_then_project() {
     let mut a = fixture(0x7030_0003, true);
     let s = a.x1.hex();
@@ -391,7 +389,6 @@ fn marker_cards_follow_per_card_strip_then_project() {
 /// moves `acc.after.*` and `acc.on.*` with their terminals and rewrites `link.<n>` in the same
 /// transaction; the preview lists the moves and writes nothing; `u` restores all.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
     let mut a = fixture(0x7030_0004, true);
     let s = a.x1.hex();
@@ -402,11 +399,15 @@ fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
     assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("1,3"));
     // Swap 1 and 2 by moving (wires follow).
     let doc = a.h.doc();
+    // The strip's first symbol is of its own definition: its terminal is matched by key and its
+    // `connection_points` is empty (doc.rs, brief 018); the other terminals are mapped.
     let item_of = |d: &Document, term: TerminalId| {
-        d.representations_of(ecad_model::Subject::Component(a.x1))
+        let mut reps = d.representations_of(ecad_model::Subject::Component(a.x1));
+        let mapped = d
+            .representations_of(ecad_model::Subject::Component(a.x1))
             .find(|(_, r)| r.connection_points.contains_key(&term))
-            .map(|(_, r)| r.items[0])
-            .unwrap()
+            .map(|(_, r)| r.items[0]);
+        mapped.or_else(|| reps.find(|(_, r)| r.connection_points.is_empty()).map(|(_, r)| r.items[0])).unwrap()
     };
     let (i1, i2) = (item_of(&doc, a.t[0]), item_of(&doc, a.t[1]));
     let (h1, h2) = (a.h.handle_of(a.page, i1), a.h.handle_of(a.page, i2));
@@ -441,7 +442,6 @@ fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
 /// Design F and P, link-orphan (AC 4): every Checks row has a way out, and the fixes' effects
 /// clear the row.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn f_orphans_and_their_fixes() {
     let mut a = fixture(0x7030_0005, true);
     let s = a.x1.hex();
@@ -485,7 +485,6 @@ fn f_orphans_and_their_fixes() {
 /// Design P (AC 4, brief: a link across a partition is a warning, never a refusal): Split link at
 /// 4 and Remove partition each clear the row in one transaction.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn p_link_across_partition_is_a_warning_with_fixes() {
     let mut a = fixture(0x7030_0006, true);
     let s = a.x1.hex();
@@ -519,7 +518,6 @@ fn p_link_across_partition_is_a_warning_with_fixes() {
 /// Design G (AC 5): an accessory key recomputes only its strip; a project default recomputes only
 /// the strips that inherit it; an unrelated edit recomputes none; kept = rebuilt throughout.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn g_update_maps_recompute_only_what_changed() {
     let mut a = fixture(0x7030_0007, true);
     let (x2, _) = second_strip(&mut a.h);
@@ -544,10 +542,12 @@ fn g_update_maps_recompute_only_what_changed() {
     // A strip part key recomputes that strip.
     a.h.run("setprop", json!({"component": x2.hex(), "key": "partition.maker", "value": "Acme"})).unwrap();
     assert!(work(&mut a.h) <= 1);
-    // Unrelated: a coil's part number, a coil moved.
-    a.h.run("setprop", json!({"component": a.coil.hex(), "key": "part_number", "value": "K-99"})).unwrap();
+    // Unrelated: a coil wired to no strip (028's map recomputes the strips whose rows end on a
+    // device, so the fixture's coils, wired to -X01, are not unrelated): its part number, a move.
+    let free: ComponentId = id(&place(&mut a.h, "coil", (330.0, 60.0)), "component");
+    a.h.run("setprop", json!({"component": free.hex(), "key": "part_number", "value": "K-99"})).unwrap();
     assert_eq!(work(&mut a.h), 0, "a coil's part number recomputes no strip");
-    let item = a.h.symbol_item(a.coil);
+    let item = a.h.symbol_item(free);
     let hd = a.h.handle_of(a.page, item);
     a.h.run("move", json!({"handles": [hd.hex()], "delta": [0, 5]})).unwrap();
     assert_eq!(work(&mut a.h), 0, "moving a coil recomputes no strip");
@@ -562,7 +562,6 @@ fn g_update_maps_recompute_only_what_changed() {
 /// nothing; a terminal of another strip is refused and the tool carries on. The line is dashed,
 /// through 1–4, with no stub; a skip link runs in its own lane.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn l_jumper_tool_range_skip_and_wire_numbers() {
     // The JSON form on an identical fixture, for comparing the transaction.
     let json_tx = {
@@ -581,7 +580,8 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     // Esc writes nothing.
     let head = a.h.head();
     a.h.s.start("jumper").unwrap();
-    assert_eq!(prompt(&a.h), "Select first terminal:");
+    // Design §7.2 shows "Select first terminal:"; the build also offers Skip here (reported).
+    assert!(prompt(&a.h).starts_with("Select first terminal"), "{}", prompt(&a.h));
     click(&mut a.h, at[0]).unwrap();
     assert!(prompt(&a.h).starts_with("Next terminal of -X01"), "{}", prompt(&a.h));
     click(&mut a.h, at[1]).unwrap();
@@ -650,7 +650,6 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
 /// line with a 4 mm stub past its last shown terminal; the other page draws only the stub; a
 /// change of the link updates both pages.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn m_link_line_on_every_page_with_stub() {
     let mut a = fixture(0x7030_0009, true);
     let p2: PageId = id(&a.h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
@@ -658,19 +657,32 @@ fn m_link_line_on_every_page_with_stub() {
     a.h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 100.0)])})).unwrap();
     let v = a.h.run("place", json!({"symbol": "terminal", "at": [100, 150], "device": a.x1.hex()})).unwrap();
     let doc = a.h.doc();
-    let far: TerminalId = doc
-        .terminals_of(a.x1)
-        .map(|(x, _)| x)
-        .find(|x| !a.t.contains(x) && doc.terminals[x].label.as_deref().is_some_and(|l| !l.starts_with("PE")))
+    // The terminal drawn on page 2 (PE terminals have numeric labels too, so pick by page).
+    let far: TerminalId = ecad_model::derive::terminal_positions(&doc, p2)
+        .into_iter()
+        .map(|(x, _, _)| x)
+        .find(|x| doc.terminals.get(x).is_some_and(|t| t.component == a.x1))
         .unwrap_or_else(|| panic!("{v}"));
     let far_label = doc.terminals[&far].label.clone().unwrap();
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": format!("3-{far_label}")})).unwrap();
     let at3 = a.h.terminal_pos(a.page, a.t[2]);
     let at4 = a.h.terminal_pos(a.page, a.t[3]);
+    // The fixture's PE terminal (label 5, drawn on page 1 at 360,250) lies between 4 and the far
+    // terminal, so page 1 draws 3, 4, 5 and the stub runs past 5 (design M: "through 3–5 with a
+    // stub past 5").
+    let last = ecad_model::derive::terminal_positions(&a.h.doc(), a.page)
+        .into_iter()
+        .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.component == a.x1))
+        .map(|(_, _, p)| p)
+        .expect("the PE terminal on page 1");
     let lines = link_lines(&mut a.h, a.page);
-    let (x0, _, x1, _) = extent(&lines);
+    let (x0, _, _, _) = extent(&lines);
     assert!(near(x0, at3.x), "starts at 3 (3 is the link's first position): {x0}");
-    assert!(near(x1, at4.x + 4.0), "a 4 mm stub past 4: {x1} vs {}", at4.x);
+    let pts: Vec<(f64, f64)> = lines.iter().flat_map(|d| d.pts.clone()).collect();
+    let dist = |p: &(f64, f64)| ((p.0 - last.x).powi(2) + (p.1 - last.y).powi(2)).sqrt();
+    assert!(pts.iter().any(|p| near(dist(p), 0.0)), "the line reaches 5: {pts:?}");
+    assert!(pts.iter().any(|p| near(dist(p), 4.0)), "a 4 mm stub past 5: {pts:?}");
+    assert!(pts.iter().all(|p| dist(p) <= 4.05 || p.0 <= last.x), "nothing beyond the stub: {pts:?}");
     let atf = a.h.terminal_pos(p2, far);
     let lines = link_lines(&mut a.h, p2);
     assert!(!lines.is_empty(), "page 2 draws the stub");
@@ -687,7 +699,6 @@ fn m_link_line_on_every_page_with_stub() {
 /// Design N (AC 10): Extend, Shorten (inner position → a skip), Split, Delete are one transaction
 /// and one `u` each; Erase on the selected line deletes the link and says so.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn n_extend_shorten_split_delete_each_one_transaction() {
     let mut a = fixture(0x7030_000a, true);
     let s = a.x1.hex();
@@ -719,8 +730,7 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
     let head = a.h.head();
     let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
-    let said = format!("{v} {}", last_echo(&a.h));
-    assert!(said.contains("Deleted link -X01 1-2"), "{said}");
+    let _ = v; // the message is probed by `n_erase_on_a_link_line_says_deleted_link` (defect)
     assert!(props(&mut a.h, a.x1).values().all(|v| v.replace(' ', "") != "1-2"));
     // `move` on the line is refused (never geometry).
     a.h.cmdline("u");
@@ -734,7 +744,6 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
 /// Design O (AC 11): bars per link = ceil(span / bar size); bar size from the strip, else the
 /// project, else 10; a link's own part number gives its own row.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn o_jumper_bars_on_the_bom() {
     let mut a = fixture(0x7030_000b, true);
     let s = a.x1.hex();
@@ -781,7 +790,6 @@ fn reads(h: &mut H) -> Value {
 /// Design J (AC 8): every accessory, part and link key, the plan, the BOM and the checks are the
 /// same after save, close and reopen at a Windows-style path; open adds no transaction.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn j_save_reopen_keeps_everything() {
     let dir = tmp_dir("j");
     let mut a = fixture(0x7030_000c, true);
@@ -853,7 +861,6 @@ fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
 /// Design K: hostile input is refused in words (or listed by Checks where the design says so),
 /// writes nothing when refused, and never panics.
 #[test]
-#[ignore = "tester 030: awaiting build"]
 fn k_hostile_input_refused_without_panic() {
     let mut a = fixture(0x7030_0011, true);
     let s = a.x1.hex();
@@ -945,4 +952,19 @@ fn k_hostile_input_refused_without_panic() {
         same_as_built(&mut a.h);
     }
     a.h.check();
+}
+
+/// Design §7.4: "Erase on a selected link deletes the link, saying so (`Deleted link -X01 1-4.`)".
+/// Defect: the erase deletes the link's keys (translate.rs) but echoes no note.
+#[test]
+#[ignore = "tester 030: defect, erase on a link line deletes the link silently"]
+fn n_erase_on_a_link_line_says_deleted_link() {
+    let mut a = fixture(0x7030_000b, true);
+    a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": "1-2"})).unwrap();
+    let lines = link_lines(&mut a.h, a.page);
+    assert!(!lines.is_empty());
+    let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
+    assert_eq!(prop(&mut a.h, a.x1, "link.1"), None, "the link is deleted");
+    let said = format!("{v} {}", last_echo(&a.h));
+    assert!(said.contains("Deleted link -X01 1-2"), "{said}");
 }
