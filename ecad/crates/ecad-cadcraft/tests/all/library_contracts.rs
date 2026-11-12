@@ -288,3 +288,93 @@ fn a_changed_registered_prefix_is_followed_by_the_next_device() {
     assert_eq!(entry(&mut h)["from"], "builtin");
     assert_eq!(place(&mut h, "fusebank8", [100.0, -60.0])["tag"], "-F03");
 }
+
+/// Review of PR #63, 2: clearing `rating.<n>` always works, also once the device is no longer a
+/// fuse bank (its bank symbol erased, its fault contact kept).
+#[test]
+fn a_fuse_rating_can_be_cleared_after_the_bank_is_erased() {
+    let mut h = new_h();
+    let page = h.first_page();
+    let bank = place(&mut h, "fusebank8", [0.0, 0.0]);
+    let f: ComponentId = id(&bank, "component");
+    join(&mut h, "no", f, [150.0, 0.0]).unwrap();
+    setprop(&mut h, f, "rating.3", json!("2A")).unwrap();
+    let item: ecad_model::ItemId = id(&bank, "item");
+    let handle = h.handle_of(page, item);
+    h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
+    assert!(h.doc().components.contains_key(&f), "the fault contact keeps the device");
+    // Setting is still refused: the device is no longer a fuse bank.
+    assert!(setprop(&mut h, f, "rating.3", json!("4A")).is_err());
+    // Clearing works, by null and by an empty value.
+    setprop(&mut h, f, "rating.3", Value::Null).unwrap();
+    assert_eq!(prop(&mut h, f, "rating.3"), None);
+    setprop(&mut h, f, "rating.3", json!("x")).unwrap_err();
+    setprop(&mut h, f, "rating.7", json!("  ")).unwrap();
+    // A bank never had fuse 13; clearing it is a no-op, not an error.
+    let g: ComponentId = id(&place(&mut h, "fusebank4", [0.0, -100.0]), "component");
+    setprop(&mut h, g, "rating.13", Value::Null).unwrap();
+}
+
+/// Review of PR #63, 4 (design 034 §3): a fuse bank's outputs `11`/`12` are not contacts, so a
+/// fault contact joined to a 12-way bank is `13`/`14`; a contact never reuses an output's label.
+#[test]
+fn a_fault_contact_on_a_fuse_bank_ignores_its_outputs() {
+    let mut h = new_h();
+    let f: ComponentId = id(&place(&mut h, "fusebank12", [0.0, 0.0]), "component");
+    assert_eq!(labels(&join(&mut h, "no", f, [200.0, 0.0]).unwrap()), ["13", "14"]);
+    assert_eq!(labels(&join(&mut h, "nc", f, [220.0, 0.0]).unwrap()), ["21", "22"]);
+    assert_eq!(labels(&join(&mut h, "co", f, [240.0, 0.0]).unwrap()), ["31", "32", "34"]);
+    // A change-over first on a 12-way bank skips the digit whose labels outputs 11 and 12 hold.
+    let g: ComponentId = id(&place(&mut h, "fusebank12", [0.0, -100.0]), "component");
+    assert_eq!(labels(&join(&mut h, "co", g, [200.0, -100.0]).unwrap()), ["21", "22", "24"]);
+    // On a 4-way bank nothing collides.
+    let k: ComponentId = id(&place(&mut h, "fusebank4", [0.0, -200.0]), "component");
+    assert_eq!(labels(&join(&mut h, "nc", k, [100.0, -200.0]).unwrap()), ["11", "12"]);
+}
+
+/// Design 034 §13 check 11 (review of PR #63, 3): save, close and reopen keep every new device,
+/// its labels, its ratings and the embedded definitions, which still resolve to their catalogue
+/// entries by origin.
+#[test]
+fn save_close_and_reopen_keep_the_library_devices() {
+    let mut h = new_h();
+    let k: ComponentId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
+    join(&mut h, "co", k, [20.0, 0.0]).unwrap();
+    join(&mut h, "no", k, [40.0, 0.0]).unwrap();
+    let f: ComponentId = id(&place(&mut h, "fusebank8", [0.0, -60.0]), "component");
+    setprop(&mut h, f, "rating", json!("10A")).unwrap();
+    setprop(&mut h, f, "rating.3", json!("2A")).unwrap();
+    let q: ComponentId = id(&place(&mut h, "rcbo2", [150.0, -60.0]), "component");
+    setprop(&mut h, q, "rating", json!("13A C 30mA")).unwrap();
+    for (i, key) in ["prox3", "valve2", "dsub9s", "rj45", "plcdi"].into_iter().enumerate() {
+        place(&mut h, key, [60.0 * i as f64, -160.0]);
+    }
+    h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
+    let dir = std::env::temp_dir().join(format!("ecad-034-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("library.ecad").display().to_string();
+    h.run("saveas", json!({"path": path})).unwrap();
+    let live = h.doc();
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = cadcraft_engine::Session::empty();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 77).unwrap();
+    let mut h2 = H { s, project, trail: Vec::new() };
+    let doc = h2.doc();
+    assert_eq!(doc, live, "devices, labels, ratings and embedded definitions");
+    assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
+    let all: std::collections::BTreeSet<String> = ecad_cadcraft::devices::labels_of(&doc, k);
+    assert_eq!(all.into_iter().collect::<Vec<_>>(), ["11", "12", "14", "23", "24", "A1", "A2"]);
+    assert_eq!(doc.components[&f].properties.get("rating.3").map(String::as_str), Some("2A"));
+    assert_eq!(doc.components[&q].properties.get("rating").map(String::as_str), Some("13A C 30mA"));
+    // Every embedded definition is still the catalogue's, by origin and content hash.
+    assert_eq!(doc.definitions.len(), 10);
+    for d in doc.definitions.values() {
+        let s = symbols::of_definition(d).expect("a catalogue symbol");
+        assert_eq!(d.origin, s.definition().unwrap().origin, "{}", s.key);
+    }
+    h2.check();
+    drop(h2);
+    let _ = std::fs::remove_dir_all(&dir);
+}

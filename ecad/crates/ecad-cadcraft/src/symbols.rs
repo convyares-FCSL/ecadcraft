@@ -384,19 +384,45 @@ pub fn is_quiet(s: &Starter, point: &str) -> bool {
 /// # Errors
 /// s would be over 9: `<who> already has 9 contacts.`
 pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<String>, String> {
+    sequence_labels(used, &BTreeSet::new(), &['1', '2', '4'], who)
+}
+
+/// The labels a contact gets joining a device (design 018 §3.1, 034 §2.3): `suffixes` after the
+/// next IEC sequence digit s, in that order (`['3', '4']` NO, `['1', '2']` NC, `['1', '2', '4']`
+/// change-over).
+///
+/// # Semantics
+/// s = 1 + the highest digit among the labels of `used` of the form `[1-9][1-4]` that are not in
+/// `skip`, then the first digit from there whose labels `used` does not already hold. `skip` is a
+/// fuse bank's own outputs ([`bank_outputs`]): fuse `11` or `12` is not a contact, so a fault
+/// contact on a 12-way bank is still `13`/`14` (design 034 §3), and an NC skips to `21`/`22`.
+///
+/// # Errors
+/// s would be over 9: `<who> already has 9 contacts.`
+pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixes: &[char], who: &str) -> Result<Vec<String>, String> {
     let highest = used
         .iter()
+        .filter(|l| !skip.contains(*l))
         .filter_map(|l| match l.as_bytes() {
             [s @ b'1'..=b'9', b'1'..=b'4'] => Some(u32::from(s - b'0')),
             _ => None,
         })
         .max()
         .unwrap_or(0);
-    let next = highest + 1;
-    if next > 9 {
-        return Err(format!("{who} already has 9 contacts."));
-    }
-    Ok(vec![format!("{next}1"), format!("{next}2"), format!("{next}4")])
+    let labels = |s: u32| suffixes.iter().map(|x| format!("{s}{x}")).collect::<Vec<_>>();
+    // At most nine digits are tried.
+    (highest + 1..=9).map(labels).find(|l| !l.iter().any(|x| used.contains(x))).ok_or_else(|| format!("{who} already has 9 contacts."))
+}
+
+/// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
+/// when its head is not a fuse bank.
+pub fn bank_outputs(doc: &Document, c: ecad_model::ComponentId) -> BTreeSet<String> {
+    doc.representations_of(Subject::Component(c))
+        .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
+        .find(|s| s.kind == Kind::Fixed { exclusive: true })
+        .filter(|s| is_fuse_bank(s))
+        .map(|s| s.labels().into_iter().filter(|l| l.bytes().all(|b| b.is_ascii_digit())).collect())
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- ratings (design 034 §7.3)
@@ -426,7 +452,8 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
 /// # Semantics
 /// `rating` on a device follows the 018 §6.1 value rules (at most 200 characters, no control
 /// characters, trimmed; empty or `None` clears). `rating.<n>` follows them too, and only on a
-/// device whose head is a fuse bank, with `<n>` one of its fuse outputs. Any other key, or an
+/// device whose head is a fuse bank, with `<n>` one of its fuse outputs; clearing it is always
+/// allowed, whatever the device now is. Any other key, or an
 /// object that is not a device: no opinion, the value comes back unchanged.
 ///
 /// # Errors
@@ -437,7 +464,10 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));
     }
-    if let Some(n) = key.strip_prefix(RATING_OF_PREFIX) {
+    // Clearing always works (review of PR #63, 2): a `rating.<n>` left on a device that is no
+    // longer a fuse bank (its bank symbol erased, or an older free property) must stay removable.
+    let clearing = value.map(str::trim).is_none_or(str::is_empty);
+    if let Some(n) = key.strip_prefix(RATING_OF_PREFIX).filter(|_| !clearing) {
         let who = crate::devices::tag_words(doc, c);
         // Capped before any lookup: only the first 12 characters are ever read.
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
@@ -1355,6 +1385,14 @@ mod tests {
         // next digit, and its `s1`/`s2`/`s4` count as that digit for later contacts.
         assert_eq!(changeover_labels(&set(&["13", "14", "21", "22"]), "-K01").unwrap(), ["31", "32", "34"]);
         assert_eq!(changeover_labels(&set(&["11", "12", "14", "23", "24"]), "-K01").unwrap(), ["31", "32", "34"]);
+        // A fuse bank's outputs are skipped for the digit, and their labels are never reused.
+        let bank12 = set(&["L+", "M", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+        let outs = set(&["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+        assert_eq!(sequence_labels(&bank12, &outs, &['3', '4'], "-F01").unwrap(), ["13", "14"]);
+        assert_eq!(sequence_labels(&bank12, &outs, &['1', '2'], "-F01").unwrap(), ["21", "22"]);
+        assert_eq!(sequence_labels(&bank12, &outs, &['1', '2', '4'], "-F01").unwrap(), ["21", "22", "24"]);
+        // Without the skip, outputs 11 and 12 would count as contact 1.
+        assert_eq!(sequence_labels(&bank12, &BTreeSet::new(), &['3', '4'], "-F01").unwrap(), ["23", "24"]);
         // Labels that are not sequence labels do not count.
         assert_eq!(changeover_labels(&set(&["15", "x1", "1"]), "-K01").unwrap(), ["11", "12", "14"]);
     }

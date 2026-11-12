@@ -367,7 +367,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         let o = d.origin.as_ref().unwrap_or_else(|| panic!("{}: no origin", e.key));
         assert_eq!(o.library, STARTER_LIBRARY, "{}", e.key);
         assert_eq!(o.definition, s.id, "{}", e.key);
-        assert_eq!(Some(o.content_hash.clone()), ecad_file::definition_hash(d).ok(), "{}: content hash is its origin's", e.key);
+        assert_eq!(Some(o.content_hash), ecad_file::definition_hash(d).ok(), "{}: content hash is its origin's", e.key);
         // ID block (§2.2).
         let n = s.id.0.checked_sub(DEF_BASE).unwrap_or_else(|| panic!("{}: ID below the library base", e.key));
         assert!((e.block..e.block + 0x100).contains(&n), "{}: def_id({n:#x}) outside block {:#x}", e.key, e.block);
