@@ -1,0 +1,6 @@
+# Pinned so local builds and CI format and lint with the same Rust (owner decision, 2026-11-12).
+# Bump deliberately at the weekly upstream review: change the version, run cargo fmt --all, commit both.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
