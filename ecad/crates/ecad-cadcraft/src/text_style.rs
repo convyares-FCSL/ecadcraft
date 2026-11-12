@@ -503,6 +503,244 @@ pub fn width_in(fonts: &Fonts, s: TextStyle, value: &str) -> f64 {
 /// A character's width as a share of the height, for a width no font could give (a guard).
 const ROUGH_WIDTH: f64 = 0.8;
 
+// ---------------------------------------------------------------- Show Hidden Text (§5.7)
+
+/// The layer hidden derived texts are drawn on while Show Hidden Text is on: never plotted.
+pub const HIDDEN_LAYER: &str = "ECAD-HIDDEN-TEXT";
+/// `ecad.hidden-text`: ACI 8.
+pub const HIDDEN_ACI: u8 = 8;
+
+/// Add [`HIDDEN_LAYER`] to `d` when it is missing (not plotted).
+pub fn add_hidden_layer(d: &mut cadcraft_engine::doc::Drawing) {
+    if d.layer(HIDDEN_LAYER).is_none() {
+        let mut l = cadcraft_engine::doc::Layer::new(HIDDEN_LAYER);
+        l.plot = false;
+        l.color = cadcraft_engine::doc::color::Color::Index(HIDDEN_ACI);
+        d.layers.push(l);
+    }
+}
+
+/// Draw a derived text entity as a hidden one: on [`HIDDEN_LAYER`], in `ecad.hidden-text`.
+pub fn dim_hidden(e: &mut cadcraft_engine::doc::Entity) {
+    e.common.layer = HIDDEN_LAYER.to_string();
+    e.common.color = cadcraft_engine::doc::color::Color::Index(HIDDEN_ACI);
+}
+
+// ---------------------------------------------------------------- Justification and boxes
+
+/// A two-letter justification code (`L`/`C`/`R` then `T`/`M`/`B`; baseline counts as `B`).
+pub fn justify_code(h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> String {
+    use cadcraft_engine::doc::{HAlign, VAlign};
+    let a = match h {
+        HAlign::Center | HAlign::Middle => 'C',
+        HAlign::Right => 'R',
+        _ => 'L',
+    };
+    let b = match v {
+        VAlign::Top => 'T',
+        VAlign::Middle => 'M',
+        VAlign::Bottom | VAlign::Baseline => 'B',
+    };
+    format!("{a}{b}")
+}
+
+/// The alignment a two-letter code names (any case); `None` for anything else.
+pub fn parse_justify(code: &str) -> Option<(cadcraft_engine::doc::HAlign, cadcraft_engine::doc::VAlign)> {
+    use cadcraft_engine::doc::{HAlign, VAlign};
+    let c = code.trim().to_ascii_uppercase();
+    let mut it = c.chars();
+    let h = match it.next()? {
+        'L' => HAlign::Left,
+        'C' => HAlign::Center,
+        'R' => HAlign::Right,
+        _ => return None,
+    };
+    let v = match it.next()? {
+        'T' => VAlign::Top,
+        'M' => VAlign::Middle,
+        'B' => VAlign::Bottom,
+        _ => return None,
+    };
+    it.next().is_none().then_some((h, v))
+}
+
+/// The box of a one-line text of `width` and `height` at `at` with this justification.
+pub fn text_box(
+    width: f64, height: f64, at: ecad_model::Pt, h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign,
+) -> (ecad_model::Pt, ecad_model::Pt) {
+    use cadcraft_engine::doc::{HAlign, VAlign};
+    let x0 = match h {
+        HAlign::Center | HAlign::Middle => at.x - width / 2.0,
+        HAlign::Right => at.x - width,
+        _ => at.x,
+    };
+    let y0 = match v {
+        VAlign::Top => at.y - height,
+        VAlign::Middle => at.y - height / 2.0,
+        VAlign::Bottom | VAlign::Baseline => at.y,
+    };
+    (ecad_model::Pt::new(x0, y0), ecad_model::Pt::new(x0 + width, y0 + height))
+}
+
+// ---------------------------------------------------------------- Symbol keys (§6.4, FP5)
+
+/// The prefix of a symbol's own text keys on its component: `text.<rep>.`.
+pub fn symbol_prefix(rep: RepresentationId) -> String {
+    format!("text.{}.", rep.hex())
+}
+
+/// A symbol's own text keys and values on its component (`text.<rep>.*`).
+pub fn symbol_text_keys(props: &ecad_model::Properties, rep: RepresentationId) -> Vec<(String, String)> {
+    let prefix = symbol_prefix(rep);
+    props.range(prefix.clone()..).take_while(|(k, _)| k.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
+/// `key` of symbol `old` as the same key of symbol `new`.
+pub fn rename_symbol_key(key: &str, old: RepresentationId, new: RepresentationId) -> String {
+    match key.strip_prefix(&symbol_prefix(old)) {
+        Some(rest) => format!("{}{rest}", symbol_prefix(new)),
+        None => key.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------- Runs (§5.3)
+
+/// Most symbols on a page for which runs are worked out; beyond it every symbol counts as the
+/// first of its own run (a guard on hostile pages: the grouping is quadratic in a line's symbols).
+const MAX_RUN_SYMBOLS: usize = 20_000;
+
+/// One symbol on a page, as the run grouping sees it.
+#[derive(Debug, Clone, Copy)]
+struct Placed {
+    rep: RepresentationId,
+    component: ComponentId,
+    /// The run class: the same starter kind (strip terminals, PLC channels, or the starter itself).
+    class: u64,
+    centre: (f64, f64),
+    lo: (f64, f64),
+    hi: (f64, f64),
+}
+
+/// The symbols of `page` that are the first of their run (design 031 §5.3): leftmost of a row,
+/// topmost of a column, or a run of one. A run is a maximal set of symbols of one device, of one
+/// starter kind, whose centres are within `text.run.align` across the line, whose neighbouring
+/// boxes are at most `text.run.gap` apart along it, with no symbol of another device between
+/// them. Rows are tried before columns.
+pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<RepresentationId> {
+    use std::collections::BTreeSet;
+    let align = defaults::resolve(doc, &d::RUN_ALIGN, Scope::project()).length(doc);
+    let gap = defaults::resolve(doc, &d::RUN_GAP, Scope::project()).length(doc);
+    let mut all: Vec<Placed> = Vec::new();
+    for (rid, r) in doc.representations_on(page) {
+        let ecad_model::Subject::Component(c) = r.subject else { continue };
+        if r.form != ecad_model::Form::Symbol {
+            continue;
+        }
+        let Some((def, pl)) = crate::devices::rep_definition(doc, r) else { continue };
+        let Some((lo, hi)) = crate::devices::placed_box(def, &pl) else { continue };
+        let class = match crate::devices::run_rule(doc, r) {
+            RunRule::Strip => 1,
+            RunRule::Plc => 2,
+            RunRule::None => {
+                // Other symbols: their starter (a definition ID otherwise), so only like with like.
+                let key =
+                    crate::devices::rep_starter(doc, r).map_or(0, |s| s.key.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
+                3 + key
+            }
+        };
+        all.push(Placed { rep: rid, component: c, class, centre: ((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0), lo: (lo.x, lo.y), hi: (hi.x, hi.y) });
+    }
+    if all.len() > MAX_RUN_SYMBOLS {
+        return all.iter().map(|p| p.rep).collect();
+    }
+    let mut placed_in_row: BTreeSet<RepresentationId> = BTreeSet::new();
+    let mut firsts: BTreeSet<RepresentationId> = BTreeSet::new();
+    // Groups: one device, one class.
+    let mut groups: std::collections::BTreeMap<(ComponentId, u64), Vec<Placed>> = std::collections::BTreeMap::new();
+    for p in &all {
+        groups.entry((p.component, p.class)).or_default().push(*p);
+    }
+    for axis in [Axis::Row, Axis::Column] {
+        for members in groups.values() {
+            let free: Vec<Placed> = members.iter().copied().filter(|p| !placed_in_row.contains(&p.rep)).collect();
+            for run in runs_along(&free, &all, axis, align, gap) {
+                if run.len() < 2 {
+                    continue;
+                }
+                if let Some(first) = run.first() {
+                    firsts.insert(first.rep);
+                }
+                placed_in_row.extend(run.iter().map(|p| p.rep));
+            }
+        }
+    }
+    // Runs of one.
+    for p in &all {
+        if !placed_in_row.contains(&p.rep) {
+            firsts.insert(p.rep);
+        }
+    }
+    firsts
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Axis {
+    /// A horizontal row: same y; first is the leftmost.
+    Row,
+    /// A vertical column: same x; first is the topmost.
+    Column,
+}
+
+/// The runs of `members` (one device, one class) along `axis`, each in order from its first.
+fn runs_along(members: &[Placed], all: &[Placed], axis: Axis, align: f64, gap: f64) -> Vec<Vec<Placed>> {
+    // (across, along) coordinates; along grows from the first of a run.
+    let key = |p: &Placed| match axis {
+        Axis::Row => (p.centre.1, p.centre.0),
+        Axis::Column => (p.centre.0, -p.centre.1),
+    };
+    // The box's extent along the line, in the same direction.
+    let span = |p: &Placed| match axis {
+        Axis::Row => (p.lo.0, p.hi.0),
+        Axis::Column => (-p.hi.1, -p.lo.1),
+    };
+    let mut sorted: Vec<Placed> = members.to_vec();
+    sorted.sort_by(|a, b| key(a).0.total_cmp(&key(b).0).then(key(a).1.total_cmp(&key(b).1)));
+    // Lines: consecutive (by across) members within `align` of the line's first.
+    let mut lines: Vec<Vec<Placed>> = Vec::new();
+    for p in sorted {
+        match lines.last_mut() {
+            Some(line) if line.first().is_some_and(|f| (key(&p).0 - key(f).0).abs() <= align) => line.push(p),
+            _ => lines.push(vec![p]),
+        }
+    }
+    let mut out = Vec::new();
+    for mut line in lines {
+        line.sort_by(|a, b| key(a).1.total_cmp(&key(b).1));
+        let across = line.first().map_or(0.0, |f| key(f).0);
+        let Some(component) = line.first().map(|f| f.component) else { continue };
+        // Other devices' symbols on this line, by their position along it.
+        let mut others: Vec<f64> = all.iter().filter(|o| o.component != component && (key(o).0 - across).abs() <= align).map(|o| key(o).1).collect();
+        others.sort_by(f64::total_cmp);
+        let mut run: Vec<Placed> = Vec::new();
+        for p in line {
+            let joins = run.last().is_some_and(|prev| {
+                let open = span(&p).0 - span(prev).1;
+                let (a, b) = (key(prev).1, key(&p).1);
+                let between = others.partition_point(|x| *x <= a) < others.partition_point(|x| *x < b);
+                open <= gap && !between
+            });
+            if !joins && !run.is_empty() {
+                out.push(std::mem::take(&mut run));
+            }
+            run.push(p);
+        }
+        if !run.is_empty() {
+            out.push(run);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

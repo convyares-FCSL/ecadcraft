@@ -25,6 +25,7 @@ mod forms;
 mod location_form;
 mod refs;
 mod terminals;
+pub(crate) mod text_tools;
 mod wiring_forms;
 mod xrefs;
 
