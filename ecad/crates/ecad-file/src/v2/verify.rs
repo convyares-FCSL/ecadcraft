@@ -370,12 +370,13 @@ fn replay_branch(
     let mut snapshots = 0usize;
     let mut full_checks = 0usize;
     let mut lines: Vec<String> = Vec::new();
+    let mut info: Vec<String> = Vec::new();
     if want.contains(&0) {
         kept.insert((b.id, 0), (start_doc.clone(), start_high));
     }
     // A snapshot at 0 (a branch saved before its first edit) is the fork state itself.
     if let Some(vs) = at.get(&0) {
-        check_point(r, name, 0, vs, &start_doc, &high, &stacks, &mut snapshots, &mut full_checks, &mut lines);
+        check_point(r, name, 0, vs, &start_doc, &high, &stacks, &mut snapshots, &mut full_checks, &mut lines, &mut info);
     }
     let named_before = start_doc.versions.clone();
     let txs = std::mem::take(&mut b.txs);
@@ -387,12 +388,13 @@ fn replay_branch(
             kept.insert((b.id, tx.seq), (doc.clone(), high.clone()));
         }
         if let Some(vs) = at.get(&tx.seq) {
-            check_point(r, name, tx.seq, vs, doc, &high, &stacks, &mut snapshots, &mut full_checks, &mut lines);
+            check_point(r, name, tx.seq, vs, doc, &high, &stacks, &mut snapshots, &mut full_checks, &mut lines, &mut info);
         }
     });
     rep.snapshots += snapshots;
     rep.full_checks += full_checks;
     let failed = !lines.is_empty();
+    rep.lines.extend(info);
     for l in lines {
         rep.fail(l);
     }
@@ -453,7 +455,7 @@ fn full_check(doc: &Document) -> ecad_model::Result<()> {
 #[allow(clippy::too_many_arguments)]
 fn check_point(
     r: &Reader, branch: &str, seq: u64, vs: &[&VersionRecord], doc: &Document, high: &HighWater, stacks: &Stacks, snapshots: &mut usize,
-    full_checks: &mut usize, lines: &mut Vec<String>,
+    full_checks: &mut usize, lines: &mut Vec<String>, info: &mut Vec<String>,
 ) {
     *full_checks += 1;
     if let Err(e) = full_check(doc) {
@@ -463,8 +465,18 @@ fn check_point(
         match snapshot_doc(r, v) {
             Ok((d, meta)) if d == *doc => {
                 *snapshots += 1;
-                // `model:meta` is a cache: it must equal what the history gives.
-                if let Some(m) = meta
+                // `model:meta` is a cache: it must equal what the history gives, under the rule it
+                // was computed with. Marks of an older rule are not compared: opening recomputes
+                // them (brief 029, FP1), which Verify reports as information.
+                if !v.tag_marks_current() {
+                    info.push(format!(
+                        "{branch}: the tag numbers of {:?} were written under tag rule {}; recomputed on open (rule {} → {})",
+                        v.name,
+                        v.tag_rule(),
+                        v.tag_rule(),
+                        ecad_model::tag::TAG_RULE
+                    ));
+                } else if let Some(m) = meta
                     && m.tag_high != *high
                 {
                     lines.push(format!("{branch}: the tag numbers of {:?} differ from the history's", v.name));

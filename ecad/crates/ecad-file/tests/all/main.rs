@@ -19,4 +19,5 @@ mod merge_store_tester_contracts;
 mod records_contracts;
 mod recovery_contracts;
 mod save_contracts;
+mod tag_rule_contracts;
 mod verify_contracts;
