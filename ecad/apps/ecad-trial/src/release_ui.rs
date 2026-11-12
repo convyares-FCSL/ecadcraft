@@ -273,6 +273,11 @@ impl ReleaseDialog {
                         }
                     });
                 }
+                // Why Release is greyed, in words, with its way out beside it (design 027 §6).
+                if let Some(why) = self.blocked().filter(|_| self.exists.is_none()) {
+                    ui.add(egui::Label::new(RichText::new(why).small().color(ui.visuals().warn_fg_color)).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.why"));
+                }
                 ui.horizontal(|ui| {
                     if self.rev.is_none() && v.refusal.as_deref() == Some(ecad_cadcraft::release::SAVE_FIRST) && ui.button("Save As…").clicked() {
                         out = Some(Out::SaveAs);

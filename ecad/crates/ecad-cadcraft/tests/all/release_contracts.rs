@@ -205,7 +205,9 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     // The Revisions table knows where it went.
     let row = f.h.p(|p| ecad_cadcraft::revisions::issued(p.ledger.document()).into_iter().next().unwrap());
     assert_eq!(row.released.as_deref(), Some("release/Rev B"));
-    // Undo removes the issue (with FP1's key); the folder stays on disk.
+    // Undo asks first, saying the folder stays; it removes the issue with FP1's key, not the folder.
+    let e = f.h.run("u", Value::Null).unwrap_err();
+    assert!(e.contains("Undo the issue? This removes the release mark. Its release folder stays on disk."), "{e}");
     f.h.run("undoissue", json!({})).unwrap();
     assert!(!f.h.doc().properties.contains_key("rev.2.released"));
     assert!(out.join("release.json").exists());
@@ -288,6 +290,23 @@ fn a_failure_at_each_step_leaves_nothing_half_done() {
         }
         let _ = std::fs::remove_dir_all(&f.dir);
     }
+}
+
+/// A folder named like the staging folder but not made by a release is never cleared: the
+/// release stops before the issue and says what to do.
+#[test]
+fn a_foreign_partial_folder_is_never_deleted() {
+    let mut f = fixture("foreign");
+    let partial = release::partial_of(&folder(&f, "B"));
+    std::fs::create_dir_all(&partial).unwrap();
+    std::fs::write(partial.join("mine.txt"), "keep me").unwrap();
+    let head = f.h.head();
+    let e = f.h.run("release", json!({})).unwrap_err();
+    assert!(e.contains("exists and was not made by a release; move it, or choose another folder"), "{e}");
+    assert!(e.contains("Nothing was issued or written."), "{e}");
+    assert_eq!(f.h.head(), head);
+    assert_eq!(std::fs::read_to_string(partial.join("mine.txt")).unwrap(), "keep me");
+    let _ = std::fs::remove_dir_all(&f.dir);
 }
 
 /// §14 F, §8, §9: writing an issued revision's folder records nothing and gives the same files;

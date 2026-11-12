@@ -55,6 +55,9 @@ pub const RELEASE_DIR: &str = "release";
 pub const REPLACED_DIR: &str = "replaced";
 /// The staging folder's suffix.
 pub const PARTIAL: &str = ".partial";
+/// The empty file that marks a staging folder as a release's own (only such a folder is ever
+/// cleared); removed just before the folder is renamed into place.
+pub const STAGING_MARK: &str = ".ecad-release-staging";
 /// Most characters of a file stem.
 pub const MAX_STEM: usize = 80;
 /// Rows per group `prerelease` returns by default, and at most.
@@ -451,10 +454,16 @@ pub struct Build<'a> {
 /// # Errors
 /// A projection, plot or write failure, in words.
 pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
+    // An old staging folder (a crash, or a folder left to finish) is cleared only when it is one
+    // of ours; a folder of that name made by someone else is never deleted.
     if dir.exists() {
+        if !dir.join(STAGING_MARK).exists() {
+            return Err(format!("{} exists and was not made by a release; move it, or choose another folder", shown(dir)));
+        }
         std::fs::remove_dir_all(dir).map_err(|e| format!("Can't clear {}: {e}", shown(dir)))?;
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("Can't write to {}: {e}", shown(dir)))?;
+    std::fs::write(dir.join(STAGING_MARK), b"").map_err(|e| format!("Can't write to {}: {e}", shown(dir)))?;
     let mut st = Staged::default();
     let base = format!("{} Rev {}", b.stem, b.rev);
     // The book: every page, generated ones included (Print Book, design 024 §4).
@@ -706,7 +715,19 @@ fn land(staging: &Path, l: &Landing, staged: &Staged, manifest: &Value) -> Resul
         }
         std::fs::rename(from, to).map_err(|e| format!("could not move {} aside: {e}", shown(from)))?;
     }
-    std::fs::rename(staging, &l.folder).map_err(|e| format!("could not rename {}: {e}", shown(staging)))
+    let _ = std::fs::remove_file(staging.join(STAGING_MARK));
+    std::fs::rename(staging, &l.folder).map_err(|e| {
+        // Still ours: a release of this revision again may clear it.
+        let _ = std::fs::write(staging.join(STAGING_MARK), b"");
+        format!("could not rename {}: {e}", shown(staging))
+    })
+}
+
+/// Remove a staging folder after a failure, only when it is ours.
+fn clear_staging(dir: &Path) {
+    if dir.join(STAGING_MARK).exists() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 // ---------------------------------------------------------------- the manifest (FP2)
@@ -1083,7 +1104,7 @@ pub(crate) fn release_pending(
         match built.and_then(|st| landing(&target, &st, existing).map(|l| (st, l))) {
             Ok(x) => (x, b.stem.clone(), b.options),
             Err(e) => {
-                let _ = std::fs::remove_dir_all(&staging);
+                clear_staging(&staging);
                 return Err(stopped(&e));
             }
         }
@@ -1102,7 +1123,7 @@ pub(crate) fn release_pending(
     // 4. Issue.
     let issued = injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()));
     if let Err(e) = issued {
-        let _ = std::fs::remove_dir_all(&staging);
+        clear_staging(&staging);
         return Err(e);
     }
     let tx = p.ledger.head();
@@ -1216,7 +1237,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     let (st, l) = match built {
         Ok(x) => x,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&staging);
+            clear_staging(&staging);
             return Err(format!(
                 "Rev {rev}'s folder was not written: {}. Nothing was written. Choose another folder, or try again.",
                 e.trim_end_matches('.')
@@ -1232,7 +1253,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
         .and_then(|()| injected(p, Step::Rename))
         .and_then(|()| land(&staging, &l, &st, &m));
     if let Err(e) = finished {
-        let _ = std::fs::remove_dir_all(&staging);
+        clear_staging(&staging);
         return Err(format!(
             "Rev {rev}'s folder was not written: {}. Nothing was written. Choose another folder, or try again.",
             e.trim_end_matches('.')
