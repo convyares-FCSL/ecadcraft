@@ -189,7 +189,7 @@ are fixed, and the v0.1 QA gate runs. Everything the drawing-pack test found mov
 recognisable pages are recognisable but ugly, and font, text size and position matter most. The
 owner also wants to hide text that should not repeat, such as a strip's tag printed on every
 terminal. v0.15 takes every finding about how a drawing looks, and every bug the redraw found,
-before M1 adds features. Its items are numbered Q1–Q8.
+before M1 adds features. Its items are numbered Q1–Q9.
 
 | # | Feature | Purpose | Depends on | Size | Format change |
 |---|---|---|---|---|---|
@@ -201,14 +201,16 @@ before M1 adds features. Its items are numbered Q1–Q8.
 | Q6 | **Bug sweep** | **Wires drawn end to end join** (high: today the second wire floats on a new net with nothing on screen to show it). The `table` refusal and its broken message. Each fix lands with a test that fails before it | 0.3 | S–M | No |
 | Q7 | **Pack quick fixes** | **Tag display style**: the leading `-` optional and the case kept as typed; input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. **Revision table columns** chosen per project, stored as `rev.<n>.<field>` properties as today. **A pending-revision marker** after an issue (question 23). **Continuation sheets of generated pages numbered in sequence** (400, 401, …), for the BOM and every other generated report | 0.3 | S each, M in all | Additive: project settings for the tag style, the revision columns and the pending marker |
 | Q8 | **A cable across pages through continuations** | A cable continued onto another page through continuations can be drawn there. Today a second slash and `cablecontinue` are both refused, and the cable stops at the page edge | 0.3 | M | No, if the continued cable is one more reference of the kind that exists (`references.rs` limits a cable to two today); confirm in design |
+| Q9 | **Component library build-up** | Built-in definitions, each with sensible connection points, for the families the pack needed: **change-over contacts** (11/12/14) and **4-pole contactors**; **RCBO** and **residual-current devices**; **SSRs**; **proximity, float and roller switches**, and **interlocks**; **valves**; **thermocouples** and **heaters**; **fuse terminals with ratings**, and a **fuse bank** (one device holding several fuses, connection points per fuse); **connector** bodies (plug and socket halves, D-sub, fieldbus, RJ45/USB bulkhead); and **PLC card bodies** that 1.3 will use. All are our own definitions, drawn in code like the 21 starters. Their text anchors follow Q1's sizes and Q2's placement rules | 0.3 | L | No (built-in definitions, embedded on use as today) |
 
-**v0.15 lanes.** Three lanes that do not touch the same files:
+**v0.15 lanes.** Four lanes that do not touch the same files:
 
 | Lane | Owns | Order |
 |---|---|---|
 | **T: text** | `look.rs`, a new text-style module, the font loading, tag and label placement in `devices.rs`, `strips.rs` and `locations.rs`, the visibility properties | Q1 → Q3 → Q2 |
 | **W: wires and nets** | `wires.rs`, `wire_cmds.rs`, `references.rs` | Q6 wire join (first) → Q8 → Q4 |
 | **P: print and project** | `printbook.rs`, `frame.rs`, `generated.rs`, `xref.rs` (contact tables), `revisions.rs`, the tag display in `ecad-model`, the `table` command | Q5 → Q7 → Q6 `table` |
+| **S: symbols** | `symbols.rs`, `convert.rs`, the starter registration (append-only in `commands.rs`) | Q9, by family in the order of the pack's ranking: contacts and protection first, then sensors and field devices, then connectors and PLC card bodies |
 
 - **Q3 before Q2** in lane T: once repeated tags are hidden there is far less to place, and the
   placement rules are written against the drawing as it will look.
@@ -217,12 +219,11 @@ before M1 adds features. Its items are numbered Q1–Q8.
 - **Lane P's frame and generated pages** read the same getter for title-block and table text. That
   getter is the only shared point.
 - **Q6 is split by file**: the wire join is lane W's first job, the `table` refusal is lane P's.
+- **Lane S runs beside the text work.** It draws definitions; lane T decides how their text is
+  sized and placed. Lane S's definitions carry text anchors only, so the two never edit one file.
 
-**Acceptance for v0.15:** re-run the drawing-pack recreation script, with these targets:
-
-- the schematic pages that are recognisable today become faithful in look;
-- no silently disconnected wires;
-- the PDF under about 5 MB for the pack.
+**v0.15 is done** when each item's tests pass, including a regression test for every defect in
+Q6. Its result is judged at the end of M1 (below), not on its own.
 
 **M1: real drawings (v0.2).** Draw a real panel's schematics without workarounds.
 
@@ -238,13 +239,12 @@ before M1 adds features. Its items are numbered Q1–Q8.
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
 | 1.8 | **Graphical terminal-strip pages** | A generated page per strip, drawn as the strip is built. Each terminal shows its inside target above and outside target below, with wire numbers, page references, cable boxes with core colours, levels, links and accessories (end plates). It is the same derived data as 028's tabular plan, in a second page style; it is not a second model | 1.2, 030 | L | No (derived) |
 | 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. | 022, 025 | M | No: derived; a caption is a continuation property |
-| 1.10 | **Symbol pack** | More built-in starters, available before the builder: change-over contacts (11/12/14), 4-pole contactor, RCBO, residual-current device, SSR, proximity and float sensors, valve, thermocouple, heater, interlock, fuse terminal with a rating, and a **fuse bank**: one device holding several fuses, with connection points per fuse. All are our own definitions | 018 | M | No (built-in definitions, embedded on use as today) |
-| 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages | 1.1 | M | Probably no (properties); FP to confirm in design |
+| 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages. The connector bodies come from Q9; this item adds the mating | Q9 | M | Probably no (properties); FP to confirm in design |
 | 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. | 024, 030 | M | No (properties) |
 
 **Order within M1, by lane.** Each lane's order follows the ranking in §6.
 
-- **Lane S:** 1.10 symbol pack, then 1.1 symbol builder, then 1.11 connectors.
+- **Lane S:** 1.11 connectors (on Q9's bodies), then 1.1 symbol builder.
 - **Lane D:** 1.2 multi-level terminals, then 1.3 PLC racks and cards, then 1.9 continuation
   cross-references, then 1.4 wire types.
 - **Lane U:** 1.0 live bridge, then 1.8 graphical strip pages, then 1.12 BOM completeness, then
@@ -255,6 +255,17 @@ before M1 adds features. Its items are numbered Q1–Q8.
 Lane U is the longest. 1.6 and 1.7 may slip to the start of M2, but the managers wait for them
 (principle 3). 1.8 starts only after 1.2 lands, because it reads lane D's strip data; it writes
 only `generated.rs` and the page styles.
+
+**Acceptance gate at the end of M1: re-run the drawing-pack test.** The owner's plan is v0.15, then
+M1 (v0.2), then the same recreation script again to see where ECAD stands. Targets:
+
+- the schematic pages that are recognisable today become faithful in look;
+- the graphical strip pages, multi-level terminals, PLC racks and cards, and continuation
+  cross-references are reproduced, not worked around;
+- no silently disconnected wires;
+- the PDF under about 5 MB for the pack.
+
+The result is recorded the way §6 is, and it orders M2.
 
 **1.0 Live MCP bridge, in detail.** Why first: every later brief is tested, demonstrated and
 increasingly drafted by agents, and the drawing-pack test is an agent building a real pack. Today
@@ -336,7 +347,7 @@ name the lane's files in their §0, so the overseer can see an overlap before a 
 
 | Lane | Owns | M1 | M2 | M3 |
 |---|---|---|---|---|
-| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.10 symbol pack → 1.1 symbol builder → 1.11 connectors | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
+| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.11 connectors → 1.1 symbol builder (Q9 in v0.15 before them) | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
 | **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.4 wire types | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
 | **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.8 graphical strip pages → 1.12 BOM completeness → 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
 
@@ -443,8 +454,10 @@ Each has a recommendation. Answer "as recommended" to accept them all.
 19. **Graphical strip pages as a second page style of the one terminal plan** (1.8), not a separate
     report? **Recommend yes.** One derived plan, two styles (table and graphical), and the project
     chooses which goes in the book.
-20. **A symbol pack (1.10) before the symbol builder?** It is about a week of lane S that unblocks
-    most of the pack's missing symbols while the builder is designed. **Recommend yes.**
+20. **Built-in components (Q9) before the symbol builder?** The owner asked to build up the
+    component library in v0.15. It unblocks most of the pack's missing symbols while the builder is
+    designed, and the builder later lets users add their own. **Recommend yes**, with Q9 limited to
+    the families the pack needed.
 21. **Continuation captions** (1.9): a caption is a property of the continuation, and the arrows
     that share it are grouped under it? **Recommend yes.** No new object is needed.
 22. **Cables with more than two references and with pairs and shields go in M2** (2.7), not M1?
@@ -475,8 +488,8 @@ column was checked against `dev` where the code could settle it.
 | 3 | **PLC racks and cards**: CPU with slots; DI, DQ, AI, RTD and IO-Link cards with channel numbers, addresses, rotated labels and spare channels | Single-channel DI and DO symbols only | **1.3**, widened from "PLC cards" to racks, slots and card types; resized to XL and split | Second in lane D |
 | 4 | **Off-page continuation arrows with derived cross-references**, grouped under captions, 10–20 per page | Continuations join nets (022) but are not on the reference index (025), so their references would be typed by hand | **1.9** (new) | New M1 item in lane D |
 | 5 | **Connector devices**: male and female halves, D-sub, fieldbus, RJ45/USB bulkheads | None | **1.11** (new) | New M1 item in lane S, after the builder |
-| 6 | **A reusable user symbol library**: float switches, interlocks, proximity sensors, valves, thermocouples, heaters, SSRs, RCBO with RCD, 4-pole contactors | 21 starters; no builder, no library | **1.10** symbol pack (new), then **1.1** builder, then **2.1** `.ecadlib` | Symbol pack added first in lane S as quick relief |
-| 7 | **Change-over contacts** (C/NO/NC, 11/12/14) on relays and switches | NO and NC only | **1.10** | In the symbol pack |
+| 6 | **A reusable user symbol library**: float switches, interlocks, proximity sensors, valves, thermocouples, heaters, SSRs, RCBO with RCD, 4-pole contactors | 21 starters; no builder, no library | **Q9** component library (v0.15), then **1.1** builder, then **2.1** `.ecadlib` | Built-in families in v0.15, in parallel with the text work |
+| 7 | **Change-over contacts** (C/NO/NC, 11/12/14) on relays and switches | NO and NC only | **Q9** | In the component library (v0.15) |
 | 8 | **BOM completeness**: accessory and assembly rows (contactor + aux block, CPU + memory card); untagged rows (trunking and DIN rail in metres, end plates, jumper bars, fuse inserts, crimps); an internal article-number column | Devices and strip terminals (024, 028); end plates and jumper bars arrive with 030 | **1.12** (new); assemblies move to **2.3** parts later | New M1 item in lane U |
 | 9 | **Cross-section and colour per conductor**, not only per potential | Partly there: conductors already store `cross_section` and `colour` (022 FP3); what is missing is setting them quickly and showing them | **1.4** wire types | No change; 1.4's purpose now names it |
 | 10 | **Shielded and twisted-pair cables**, and cables referenced from more than two places | A cable has at most two references (`references.rs`); no pairs or shields | **2.7** cable manager, widened | Stays M2 (question 22) |
@@ -489,13 +502,13 @@ Smaller gaps:
 | Cable-type summary (used length and count per type) | **2.7** |
 | Fuse list (each fuse and the circuit it supplies) | **2.9**, as a built-in report definition |
 | Revision table columns (change request, validated, verified) | **Q7** quick fix (v0.15) |
-| Fuse terminals with ratings | **1.10** symbol pack and **1.2** multi-level terminals |
+| Fuse terminals with ratings | **Q9** component library and **1.2** multi-level terminals |
 | Tags without the leading `-` | **Q7** quick fix (v0.15; display only, input already accepts both) |
 
 **What changed in the roadmap because of these findings:**
 
-- **Five new M1 items:** 1.8 graphical strip pages, 1.9 continuation cross-references, 1.10 symbol
-  pack, 1.11 connectors and 1.12 BOM completeness.
+- **New items:** 1.8 graphical strip pages, 1.9 continuation cross-references, 1.11 connectors and
+  1.12 BOM completeness in M1, and a symbol pack that is now v0.15's Q9.
 - **PLC (1.3) widened** to racks, slots and card types, and resized to XL.
 - **The cable manager (2.7) widened** to pairs, shields and more than two references.
 - **Quick fixes made concrete** (now Q7 in v0.15).
@@ -520,7 +533,7 @@ The redraw confirms the stage 1 ranking. It adds these gaps:
 |---|---|
 | Relabelling a strip terminal (labels such as `1.L`) | **1.2**, with multi-level terminals |
 | A cable that crosses pages through continuations cannot be drawn on the second page (neither a second slash nor `cablecontinue` works) | **Q8** (v0.15) |
-| A fuse bank: one device holding several fuses | **1.10** symbol pack |
+| A fuse bank: one device holding several fuses | **Q9** component library (v0.15) |
 | Fuse terminals that break the net | **1.2** |
 | BOM continuation sheets numbered in sequence, not all with the first sheet's number | **Q7** (v0.15), as a rule for every generated report |
 | Tag display style: no forced leading `-`, case kept | **Q7** (v0.15) |
@@ -545,9 +558,10 @@ in Q2, contact tables, missing data and PDF size in Q5, and repeated tags in Q3:
 and M1. Presentation became the owner's top gap: the pages are hard to read because of the thin
 font, sizes fixed at 3.5 mm, repeated and colliding tags, and labels on every wire segment. v0.15
 holds that work (Q1–Q4), print quality (Q5), every defect above (Q6 and the others named there), the
-quick fixes (Q7) and the cable across continuations (Q8). M1 also changes: 1.2 gains relabelling
-and net-breaking fuse terminals, 1.10 gains the fuse bank, and question 23 asks about a pending
-revision in the title block.
+quick fixes (Q7), the cable across continuations (Q8) and, at the owner's request, the built-in
+component library (Q9, with the fuse bank). M1 also changes: 1.2 gains relabelling and
+net-breaking fuse terminals, and question 23 asks about a pending revision in the title block. The
+pack test runs again at the end of M1 as its acceptance gate.
 
 ---
 
