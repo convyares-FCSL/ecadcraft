@@ -75,17 +75,31 @@ fn terminal_strips_in_the_trial() {
     let sections = h.state().props.lock().unwrap().view.sections.clone();
     let rows: Vec<_> = sections.iter().flat_map(|s| s.rows.iter()).collect();
     assert!(rows.iter().any(|r| r.key == "terminals" && r.value == "8+1PE"), "{rows:?}");
-    assert!(rows.iter().any(|r| r.key == "terminalcounts" && r.value == "4 drawn, 4 spare"), "{rows:?}");
+    assert!(rows.iter().any(|r| r.key == "terminalcounts" && r.value == "4 drawn, 5 spare"), "{rows:?}");
     // Reports ▸ Terminals and ▸ Cables.
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
     let r = h.state().reports.as_ref().unwrap();
     assert_eq!(r.tab, outputs_ui::Tab::Terminals);
     let t = r.table().clone();
-    assert_eq!(t.rows.len(), 8, "four drawn, four spare");
+    assert_eq!(t.rows.len(), 9, "four drawn, five spare (8+1PE is 9 positions)");
     assert_eq!(t.rows[0][1].text, "-K01:A2");
     assert_eq!(t.rows[0][8].text, "-M01:U1");
     save(&h, &deltas, "028-reports-terminals.png");
+    // Review of PR #55, finding 2: the Terminals tab copies again only when a strip it shows
+    // changed, for one strip and for All.
+    for strip in [Some(x1), None] {
+        h.state_mut().show_plan(strip);
+        h.run_steps(3);
+        let copies = h.state().reports.as_ref().unwrap().copies;
+        ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"part_number","value":"K-{}"}}"#, k2.hex(), copies));
+        h.run_steps(3);
+        assert_eq!(h.state().reports.as_ref().unwrap().copies, copies, "an unrelated edit copies nothing");
+        let offer = if strip.is_some() { "9" } else { "8+1PE" };
+        ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminals","value":"{offer}"}}"#, x1.hex()));
+        h.run_steps(3);
+        assert_eq!(h.state().reports.as_ref().unwrap().copies, copies + 1, "the strip's own edit copies once");
+    }
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);
     let t = h.state().reports.as_ref().unwrap().table().clone();

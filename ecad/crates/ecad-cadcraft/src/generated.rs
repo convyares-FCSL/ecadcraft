@@ -125,15 +125,18 @@ pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::ComponentId>
 fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o Outputs) -> Vec<&'o crate::strips::StripData> {
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).into_iter().collect(),
-        None => o.strips.sorted(),
+        None => o.sorted_strips(),
     }
 }
 
 /// How many sheets a terminal plan needs: each strip starts a sheet, its heading repeated on
 /// each sheet it runs onto (O(strips)).
 fn terminal_sheets(doc: &Document, page: PageId, o: &Outputs) -> usize {
-    let per = ROWS_PER_SHEET - 1;
-    strips_shown(doc, page, o).iter().map(|s| (crate::strips::plan_lines(s) - 1).div_ceil(per).max(1)).sum::<usize>().max(1)
+    // Kept per strip and in total (review of PR #55, finding 1): no walk of the rows.
+    match strip_of(doc, page) {
+        Some(c) => o.strips.get(c).map_or(1, |s| s.sheets),
+        None => o.strips.sheets_total.max(1),
+    }
 }
 
 /// How many sheets the BOM-by-location table needs.
@@ -200,7 +203,7 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Revisions) => crate::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
-        Some(GenKind::Cables) => outputs.map_or(0, |o| o.cables().len()),
+        Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
 }

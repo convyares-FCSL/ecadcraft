@@ -91,6 +91,10 @@ pub struct Reports {
     table: Table,
     counts: [usize; 4],
     seen: Option<(u64, u64, Tab, Group, Option<ecad_model::ComponentId>, Option<ecad_model::CableId>)>,
+    /// The (project, models revision) the tab counts were taken at.
+    counted: Option<(u64, u64, Group)>,
+    /// The strips revision the strip picker was taken at.
+    strips_seen: Option<(u64, u64)>,
     /// Brief 028: the strip the Terminals tab shows (`None`: all), and the strips to pick from.
     pub strip: Option<ecad_model::ComponentId>,
     pub strips: Vec<(ecad_model::ComponentId, String)>,
@@ -119,8 +123,20 @@ impl Reports {
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
+        let style = p.ledger.document().settings.reference_style as u64;
         let o = p.outputs();
-        let key = (serial, o.revision, self.tab, self.group, self.strip, self.cores_of);
+        // The counts on the tabs, from kept counts (no rows made).
+        if self.counted != Some((serial, o.build_id ^ o.revision, self.group)) {
+            self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
+            self.counted = Some((serial, o.build_id ^ o.revision, self.group));
+        }
+        // The Terminals tab follows only the strips it shows (review of PR #55, finding 2; design
+        // 028 §11.1): an edit that changes none leaves its copy; the others follow the models.
+        let revision = match self.tab {
+            Tab::Terminals => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
+            _ => o.revision,
+        };
+        let key = (serial, revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
             self.filter();
             return;
@@ -137,8 +153,10 @@ impl Reports {
                 t
             }
         };
-        self.strips = o.strips.sorted().iter().map(|s| (s.component, s.tag.clone())).collect();
-        self.counts = [o.bom(self.group).len(), o.wires().len(), o.cables().len(), o.strips.len()];
+        if self.strips_seen != Some((serial, o.strips.revision)) {
+            self.strips = o.strips.sorted().iter().map(|s| (s.component, s.tag.clone())).collect();
+            self.strips_seen = Some((serial, o.strips.revision));
+        }
         self.seen = Some(key);
         self.copies += 1;
         self.filter();
@@ -147,6 +165,8 @@ impl Reports {
     /// Forget the copy.
     pub fn invalidate(&mut self) {
         self.seen = None;
+        self.counted = None;
+        self.strips_seen = None;
     }
 
     fn filter(&mut self) {

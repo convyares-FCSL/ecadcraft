@@ -65,6 +65,8 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 028: the terminal plan and a cable's cores read the project and record nothing.
     "stripplan",
     "cablecores",
+    // Brief 027: the pre-release check reads the project and records nothing.
+    "prerelease",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
@@ -75,17 +77,29 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("pr
 /// the Renumber and Finalise previews).
 const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
 
-/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`]).
+/// Commands whose form naming an issued revision records nothing (brief 027: `release {rev}`
+/// writes that revision's folder again, beside the project, and never issues; it refuses a `rev`
+/// that is not issued). Its `folder` is a file key, refused in every mode.
+const READ_WITH_REV: &[&str] = &["release"];
+
+/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
+/// [`READ_WITH_REV`]).
 pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
         || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
+        || (READ_WITH_REV.contains(&id)
+            && params.get("rev").is_some_and(Value::is_string)
+            // Replace moves a folder on disk aside: a write, never with writes off (review of PR #54, 1).
+            && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
 }
 
 /// How many transactions one call of `id` with `params` may record: one
-/// ([`crate::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}`, which
-/// records Finalise numbering and then the issue (brief 026, design §5.5): two.
+/// ([`crate::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}` and
+/// `release {provisional: "finalise"}` of the pending revision (no `rev`), which record Finalise
+/// numbering and then the issue (brief 026, design §5.5; brief 027, design §4.4): two.
 pub fn transactions_allowed(id: &str, params: &Value) -> usize {
-    let finalise = id == "issuerevision"
+    let issuing = id == "issuerevision" || (id == "release" && params.get("rev").is_none_or(Value::is_null));
+    let finalise = issuing
         && params
             .get("provisional")
             .and_then(Value::as_str)
@@ -282,5 +296,22 @@ mod tests {
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());
+        // Brief 027: the check reads; `release` issues only without `rev`; no folder of its own.
+        assert!(check("prerelease", &none, false, Some("locked")).is_ok());
+        assert!(check("release", &json!({"rev": "A"}), false, Some("locked")).is_ok());
+        assert_eq!(check("release", &none, false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": null}), false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": "A", "existing": "replace"}), false, None), Err(WRITES_OFF.into()));
+        assert!(check("release", &json!({"rev": "A", "existing": "keep-both"}), false, None).is_ok());
+        assert!(check("release", &json!({"rev": "A", "existing": "replace"}), true, None).is_ok());
+        assert!(check("release", &none, true, None).is_ok());
+        assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
+        // Tester 027, 2: release of the pending revision with Finalise may record two, and no more.
+        let one = crate::MAX_TRANSACTIONS_PER_CALL;
+        assert_eq!(transactions_allowed("release", &json!({"provisional": "finalise"})), one + 1);
+        assert_eq!(transactions_allowed("release", &json!({"provisional": "issue"})), one);
+        assert_eq!(transactions_allowed("release", &json!({})), one);
+        assert_eq!(transactions_allowed("release", &json!({"rev": "A", "provisional": "finalise"})), one);
+        assert_eq!(transactions_allowed("wire", &json!({"provisional": "finalise"})), one);
     }
 }

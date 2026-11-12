@@ -45,7 +45,7 @@ terminal on every wire a line crosses; **Draw Bridge** links two terminals of a 
 **Terminals offered** (`12+2PE`) gives spare positions; a cable's **Cores** (or its type, `7G1.5`)
 gives used, spare and over cores, and a new member takes the next free core. The terminal plan
 and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
-type; five Checks rows have fixes. Section 5N describes it.
+type; five Checks rows have fixes. Section 5O describes it.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
   A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
   and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
@@ -1282,11 +1282,54 @@ Typed instead, in the ECAD command field: `renumber {"kind":"devices","scope":"a
 (`"merge"`, `"next"`), `setprop {"component":"<id>","key":"tag_fixed","value":null}`,
 `issuerevision {"provisional":"finalise"}` (or `"issue"`), and in a merge `choices: {"<id>": "one"}`.
 
-## 5N. Terminal strips and cables (by clicking)
+## 5N. Release (by clicking)
+
+One action checks the project, issues the pending revision and writes a folder that can be sent:
+the PDF book and every list, stamped with that revision. Brief 027, design
+`ecad/docs/design/027.md`. On the demo project (`cargo xtask demo`, then open it, section 7); the
+project must have been saved once, since the folder goes beside it (`…\release\Rev A\`). (Section
+5M is brief 026's numbering; the design calls this section 5L.)
+
+1. **The check.** Click **Release** in the PROJECT panel (beside **Revisions**; once the Checks
+   tab has been shown it carries a badge: red `●n` for errors, else yellow `▲n` for warnings).
+   Expected: a window `RELEASE REV A` with the pending revision's fields, the folder, a **Writes**
+   line (`demo Rev A.pdf · bom · wires · cables · terminal-plan · cable-schedule · checks`; a
+   project with no strips adds `terminal-plan: No terminal strips in this project.`), then the
+   check by group: **Open ends**, **Orphans**, **?
+   parts** (`-S01` has no part number) and **Other** (folded). Click a row: its page comes up with
+   the place ringed; the window stays open. To see an orphan, place a **Cable Reference** on `-W01`
+   (section 5D) without continuing it: at once **Orphans** lists `▲ Cable reference with no other
+   end … -W01 /?`; type `u` and it goes.
+2. **Release.** Fill **Description** (`First issue`) and **Drawn** (your initials) in the window;
+   **Release Rev A** is greyed until both are there (hover: `Fill in Rev, Description and Drawn
+   first.`). Click **Release Rev A**. Expected: the window closes and the command line says
+   `Rev A released to …\release\Rev A: n sheets, 5 lists, … listed.` The project is saved. Open the
+   folder: `demo Rev A.pdf` (the title blocks' Rev box reads `A`, and the Revision list page lists
+   Rev A), `demo Rev A BOM.csv`, `… wires.csv`, `… cables.csv`, `… terminal plan.csv` and `… cable
+   schedule.csv` (brief 028), `… checks.csv` (every row of the
+   check, with its group) and `release.json` (the revision, the log point, the app and each file's
+   SHA-256).
+3. **Revisions.** Open **Revisions**: Rev A's new **Folder** cell reads **Open** (opens the folder in
+   the file manager). Beside **Issue Rev B…** there is **Release Rev B…**.
+4. **Again.** In Revisions click Rev A's **Folder** cell after renaming its folder away, or click
+   **Write…** on a revision issued without a folder: `WRITE REV A'S FOLDER` writes it from Rev A as
+   issued and records nothing. Doing it while the folder exists asks first: **Add missing files**
+   (only when the rest is the same), **Replace** (the old folder is moved to
+   `release\replaced\Rev A <date time>`, never deleted), **Keep both** (`Rev A (2)`), **Cancel**.
+5. **An error.** Join a `24V` and a `0V` continuation with one wire: the check shows **Errors (1)**
+   and Release is greyed; tick `Release with 1 error (it is listed in the folder's checks.csv)` to
+   go on. `u` after a release undoes the issue (it asks first); the folder stays on disk.
+
+Typed instead, in the ECAD command field: `prerelease {}` (the check as JSON, with what `release`
+would write or refuse), `release {}`, `release {"accept":"errors"}`, `release {"rev":"A"}` (write an
+issued revision's folder again; records nothing), `release {"rev":"A","existing":"keep-both"}`
+(`add-missing`, `replace`), `release {"folder":"C:/tmp/out/Rev B"}`.
+
+## 5O. Terminal strips and cables (by clicking)
 
 A terminal strip `-X01` is one device whose terminals `-X01:1…n` are placed on wires; a cable
 knows its cores. The terminal plan and the cable schedule are read off the drawing, live, and
-never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5M, or
+never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5N, or
 a new one); the steps make their own page so its numbers do not matter.
 
 1. **Some wires.** Add a page with **+**. Place two `coil`s (`-K..`) near the top and a `motor3`
@@ -1307,7 +1350,7 @@ a new one); the steps make their own page so its numbers do not matter.
 4. **A bridge.** Click **Draw Bridge**, click terminal 2, then terminal 3: a staple 4 mm above
    them (`Bridged -X01:2–3.`). The next click would continue from 3; press Enter to end.
 5. **Spares.** Click a terminal; in Properties set **Terminals offered** to `8+1PE`. Expected:
-   **Terminals** reads `3 drawn, 5 spare`. Typing `8X` is refused under the field:
+   **Terminals** reads `3 drawn, 6 spare` (8 feed-through and 1 PE: 9 positions). Typing `8X` is refused under the field:
    `"8X" is not a terminal count. Write 12, or 12+2PE.`
 6. **Cores.** Click the cable slash; set its **type** to `7G1.5`. Expected: **Cores** shows
    `from type: 7G`, **Used / Spare** `3 / 4 (4, 5, 6, GNYE)`. Hover the slash:
@@ -1857,6 +1900,11 @@ Your table of three clean runs goes here once you have run it.
   than putting the cursor in the Cores field. A new cable member takes the next free core when
   added with `cableadd` to a cable with an offer; a new slash always makes a new cable.
   New Page ▸ **Terminal plan** shows every strip (one strip: `newpage` with `strip`).
+
+- **Release (brief 027).** No transmittal, zip or upload, and one folder layout. The folder is a typed path (no folder
+  dialog in the trial). The PDF is written in one go: Esc does not stop a release while it writes.
+  The History tab has no Release button yet (Revisions and the PROJECT panel have). Provisional
+  tags (brief 026) are released as they are until 026's Finalise is wired in.
 - **Cross-references (brief 025).** No PLC card symbol yet (a card with channels is a later step);
   no change-over (`CO`) contacts; a contact's text sits at a fixed place under it and only a
   device's whole table can be moved (Move Mirror Table); continuations are not on the reference

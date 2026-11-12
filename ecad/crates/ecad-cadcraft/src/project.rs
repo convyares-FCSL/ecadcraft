@@ -366,6 +366,9 @@ pub struct Faults {
     pub fail_projections: u32,
     /// The next `n` cable view switches (`cableview` with a cable) fail before changing anything.
     pub fail_view_switches: u32,
+    /// The next release fails at this step (brief 027's failure-injection tests): the step's own
+    /// failure path runs, as when the disk or the save fails there.
+    pub fail_release_at: Option<crate::release::Step>,
     /// The next commit callback panics (`fault-injection` feature only).
     #[cfg(feature = "fault-injection")]
     pub panic_in_commit: bool,
@@ -551,6 +554,10 @@ pub struct Project {
     pub frame_builds: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
     pub revision_view: Option<crate::sheet_cmds::RevisionView>,
+    /// How many transactions the command now running may record, when its caller caps them (an
+    /// agent's call through MCP); `None` for no cap. Commands that write files check it before
+    /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
+    pub tx_budget: Option<usize>,
     /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the trial's
     /// confirmation, used by the next undo only.
     pub confirm_issue_undo: bool,
@@ -988,6 +995,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,
@@ -1070,6 +1078,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,
@@ -1193,6 +1202,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,
@@ -1219,6 +1229,28 @@ impl Project {
     /// Where the project's file stands (`Persistence::File`).
     pub fn file_status(&self) -> crate::file::FileStatus {
         self.file.status()
+    }
+
+    /// Save now, as Ctrl+S does (brief 027's release, step 5), whatever the persistence: the file,
+    /// the test store, or the refusal when there is none.
+    ///
+    /// # Errors
+    /// The save failed, in words; the project stays as it is in memory.
+    pub(crate) fn save_now(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
+        match self.persistence {
+            Persistence::File => self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string()),
+            Persistence::Unavailable => Err(SAVE_UNAVAILABLE.into()),
+            Persistence::TestStore => {
+                let head = self.ledger.head();
+                let r = self.store.save(self.id, &mut self.ledger, &writer());
+                match &r {
+                    Ok(n) => self.events.record(EventKind::Saved, Some("qsave"), head, None, format!("persisted through seq {n}")),
+                    Err(e) => self.events.record(EventKind::SaveFailed, Some("qsave"), head, None, e.clone()),
+                }
+                self.sync_saved(pg);
+                r.map(|_| ()).map_err(|e| format!("{} was not saved: {e}", self.name))
+            }
+        }
     }
 
     /// Save the pending transactions to the bound file (Save, as the branch actions of brief 020
@@ -1396,8 +1428,9 @@ impl Project {
         {
             return parts.clone();
         }
-        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024).
-        if crate::generated::has_bom_page(self.ledger.document()) {
+        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
+        // once built they track their pages themselves.
+        if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         let doc = self.ledger.document();
@@ -1978,10 +2011,12 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
         // and cable rows, so the book's Total is compared whenever such a page exists.
+        // Only the pages drawn from the models can change their sheet count here (review of PR
+        // #55, finding 1): the kept set, each counted from kept totals; none, no work.
         let doc = ledger.document();
-        let generated = crate::generated::has_bom_page(doc);
-        let sheets =
-            |o: &crate::outputs::Outputs| if generated { crate::generated::book_sheets(doc, Some(o)) } else { crate::generated::bom_sheets(o) };
+        let sheets = |o: &crate::outputs::Outputs| -> usize {
+            o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| crate::generated::sheets(doc, *p, Some(o))).sum()
+        };
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
         if ecad_model::ledger::verify_mode()
@@ -2464,7 +2499,11 @@ impl Project {
             && !std::mem::take(&mut self.confirm_issue_undo)
         {
             let date = self.ledger.document().properties.get(&crate::revisions::key(n, "date")).cloned();
-            let q = crate::sheet_cmds::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            let mut q = crate::sheet_cmds::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
+            if self.ledger.document().properties.contains_key(&crate::revisions::key(n, crate::revisions::RELEASED)) {
+                q.push_str(" Its release folder stays on disk.");
+            }
             self.issue_undo_question = Some(q.clone());
             return Err(EngineError::Other(format!("{q} Use Undo Issue (`undoissue`) to confirm.")));
         }

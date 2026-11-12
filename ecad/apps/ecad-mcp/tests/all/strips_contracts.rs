@@ -76,7 +76,7 @@ fn terminal_strip_commands_through_execute() {
     let n = c.log().len();
     let plan = c.exec("stripplan", json!({}));
     assert_eq!(plan["strips"][0]["offered"], "8+1PE", "{plan}");
-    assert_eq!(plan["strips"][0]["rows"].as_array().unwrap().len(), 8);
+    assert_eq!(plan["strips"][0]["rows"].as_array().unwrap().len(), 9, "8 feed-through and 1 PE");
     let cores = c.exec("cablecores", json!({"cable": cable}));
     assert_eq!(cores["used"], 3, "{cores}");
     assert_eq!(cores["spare"], json!(["4", "GNYE"]));

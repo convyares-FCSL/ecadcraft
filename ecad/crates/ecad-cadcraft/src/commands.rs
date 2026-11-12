@@ -40,6 +40,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
     v.extend(crate::terminal_cmds::specs());
+    v.extend(crate::release::specs());
     v
 }
 
@@ -638,7 +639,8 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::xref::CONTACTS_KEY) => crate::xref::offer_value(value.as_deref())?,
             (ObjectRef::Component(_), crate::xref::MIRROR_KEY) => crate::xref::mirror_value(value.as_deref())?,
             // Brief 028 (FP1, FP2, FP4): a strip's offer, a cable's cores, the PE row's part.
-            (ObjectRef::Component(_), crate::strips::OFFER_KEY) => crate::strips::offer_value(value.as_deref())?,
+            // A strip's offer; on another device `terminals` stays free text (review of PR #55, 5).
+            (ObjectRef::Component(c), crate::strips::OFFER_KEY) if crate::strips::is_strip(doc, c) => crate::strips::offer_value(value.as_deref())?,
             (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
@@ -672,7 +674,7 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
         let after = match key.as_str() {
             crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
             crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
-            crate::strips::OFFER_KEY => crate::strips::offer_value(value.as_deref())?,
+            crate::strips::OFFER_KEY if cs.iter().any(|c| crate::strips::is_strip(doc, *c)) => crate::strips::offer_value(value.as_deref())?,
             _ => crate::devices::property_value(doc, &key, value.as_deref())?,
         };
         let mut ops = Vec::new();

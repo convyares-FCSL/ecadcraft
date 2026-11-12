@@ -473,6 +473,23 @@ pub struct Outputs {
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
+    /// The pages drawn from these models (BOM, terminal plan, cable schedule), kept from the page
+    /// ops (review of PR #55, finding 1: no page scan per commit).
+    generated: BTreeSet<PageId>,
+    /// Which build these models are (unique in the run): a copy keyed on kept revisions also
+    /// keys on this, so a rebuild (reload, branch switch) is never mistaken for the old models.
+    pub build_id: u64,
+    /// How many sorted row lists were made (tests: an unrelated edit makes none).
+    pub sorts: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Devices whose own location differs from their box's (one warning row each), and the
+    /// location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
+    own_box: usize,
+    box_counts: [usize; 2],
+    /// Bumped only when the check rows may read differently (brief 027's Release dialog).
+    pub checks_changed: u64,
+    /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
+    /// cables with no core count (one info row when any).
+    cable_checks: [usize; 3],
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -498,7 +515,45 @@ impl Outputs {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
+        static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         o
+    }
+
+    /// The pages drawn from these models.
+    pub fn generated_pages(&self) -> &BTreeSet<PageId> {
+        &self.generated
+    }
+
+    /// How many BOM rows `group` lists, from kept counts (no rows made).
+    pub fn bom_count(&self, group: Group) -> usize {
+        let strips: usize = self.strips.bom_rows.values().sum();
+        match group {
+            Group::Location => self.by_location.len() + strips,
+            Group::Part => self.by_part.len() + strips,
+        }
+    }
+
+    /// How many wire rows.
+    pub fn wire_count(&self) -> usize {
+        self.wires.len()
+    }
+
+    /// One cable's row.
+    pub fn cable_row(&self, k: CableId) -> Option<&CableRow> {
+        self.cables.get(&k)
+    }
+
+    /// How many cables (no sort).
+    pub fn cable_count(&self) -> usize {
+        self.cables.len()
+    }
+
+    /// The strips sorted by tag (counted in [`Outputs::sorts`]).
+    pub fn sorted_strips(&self) -> Vec<&crate::strips::StripData> {
+        self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.strips.sorted()
     }
 
     /// What `ops`, about to be committed on `before`, could change. Pair with [`Outputs::update`].
@@ -518,6 +573,18 @@ impl Outputs {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
+        for op in ops {
+            let p = match op {
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == crate::generated::KEY => *p,
+                _ => continue,
+            };
+            if needs_outputs(doc, p) {
+                self.generated.insert(p);
+            } else {
+                self.generated.remove(&p);
+            }
+        }
         scope.collect(doc, ops);
         if scope.is_empty() {
             return;
@@ -588,6 +655,10 @@ impl Outputs {
             let cx = cx.get_or_insert_with(|| PageCx::of(doc));
             strips.recompute(doc, &which, self, cx);
         }
+        // Brief 028's strip Checks rows read from the strips just recomputed (brief 027's key).
+        if !strips.last_changed.is_empty() {
+            self.checks_changed += 1;
+        }
         self.strips = strips;
         self.last_work = work;
         self.revision += 1;
@@ -641,6 +712,10 @@ impl Outputs {
         }
         self.no_part_number -= usize::from(old.part_number.is_none());
         self.no_location -= usize::from(old.location.value.is_none());
+        self.own_box -= usize::from(old.own_box.is_some());
+        if old.own_box.is_some() {
+            self.checks_changed += 1;
+        }
     }
 
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
@@ -687,6 +762,10 @@ impl Outputs {
         }
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
+        self.own_box += usize::from(row.own_box.is_some());
+        if row.own_box.is_some() {
+            self.checks_changed += 1;
+        }
         self.devices.insert(c, row);
     }
 
@@ -809,6 +888,19 @@ impl Outputs {
         self.set_cable_row(doc, k);
         if self.cables.get(&k) != before.as_ref() {
             self.last_cables_changed = true;
+            let rows = |r: Option<&CableRow>| -> [usize; 3] {
+                r.map_or([0, 0, 0], |r| {
+                    let known = r.count.offer.is_some();
+                    [usize::from(known && !r.count.over.is_empty()), r.count.twice.len(), usize::from(!known)]
+                })
+            };
+            let (old, new) = (rows(before.as_ref()), rows(self.cables.get(&k)));
+            for ((n, o), a) in self.cable_checks.iter_mut().zip(old).zip(new) {
+                *n = n.saturating_sub(o) + a;
+            }
+            if old != new {
+                self.checks_changed += 1;
+            }
         }
     }
 
@@ -923,6 +1015,22 @@ impl Outputs {
                 }
             }
         }
+        let old = self.box_checks.get(&page);
+        if old.map_or(out.is_empty(), |o| *o == out) {
+            return;
+        }
+        let tally = |v: &[Check]| {
+            let w = v.iter().filter(|c| c.severity() == crate::checks::Severity::Warning).count();
+            [w, v.len() - w]
+        };
+        let before = old.map_or([0, 0], |o| tally(o));
+        let now = tally(&out);
+        for i in 0..2 {
+            if let (Some(n), Some(b), Some(a)) = (self.box_counts.get_mut(i), before.get(i), now.get(i)) {
+                *n = n.saturating_sub(*b) + a;
+            }
+        }
+        self.checks_changed += 1;
         if out.is_empty() {
             self.box_checks.remove(&page);
         } else {
@@ -1040,15 +1148,32 @@ impl Outputs {
         }
     }
 
+    /// The check rows by severity: (errors, warnings, info), as [`Outputs::checks`] would give
+    /// them. O(1): kept by every change (brief 027's badge).
+    pub fn check_counts(&self) -> (usize, usize, usize) {
+        let info = self.box_counts[1]
+            + usize::from(self.no_part_number > 0)
+            + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
+            + usize::from(self.cable_checks[2] > 0);
+        // Brief 028: the strips' and cables' rows, kept with them.
+        let warnings = self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1];
+        (self.strips.check_errors, warnings, info)
+    }
+
+    /// What the check rows depend on besides [`Outputs::checks_changed`]: the two count rows.
+    pub fn checks_key(&self) -> (u64, usize, usize, usize) {
+        (self.checks_changed, self.no_part_number, self.no_location, self.devices.len())
+    }
+
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
     /// location only (O(locations)), never the BOM rows themselves.
     pub fn bom_sheets(&self) -> usize {
         let per = crate::generated::ROWS_PER_SHEET;
         let (mut sheets, mut used) = (1, 0);
-        // Brief 028: each strip adds one row per terminal type it has (O(strips)).
+        // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
         let mut rows = self.loc_rows.clone();
-        for (loc, n) in self.strip_rows() {
-            *rows.entry(loc).or_default() += n;
+        for (loc, n) in &self.strips.bom_rows {
+            *rows.entry(loc_key(loc.as_deref())).or_default() += n;
         }
         for n in rows.values() {
             if used == per {
@@ -1078,18 +1203,6 @@ impl Outputs {
     /// How many devices.
     pub fn device_count(&self) -> usize {
         self.devices.len()
-    }
-
-    /// The strips' BOM rows per location key: one per terminal type with a quantity.
-    fn strip_rows(&self) -> Vec<(LocKey, usize)> {
-        self.strips
-            .strips
-            .values()
-            .map(|s| {
-                let (ft, pe) = s.quantities();
-                (loc_key(s.location.as_deref()), usize::from(ft > 0) + usize::from(pe > 0))
-            })
-            .collect()
     }
 
     /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
@@ -1197,6 +1310,7 @@ impl Outputs {
 
     /// The cable rows, sorted by tag naturally.
     pub fn cables(&self) -> Vec<&CableRow> {
+        self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut v: Vec<&CableRow> = self.cables.values().collect();
         v.sort_by(|a, b| loc_key(a.tag.as_deref()).cmp(&loc_key(b.tag.as_deref())).then(a.cable.cmp(&b.cable)));
         v
@@ -1352,6 +1466,83 @@ impl Outputs {
         (t, go)
     }
 
+    /// The terminal plan as the release writes it (027's `terminal-plan` slot): one line per
+    /// position and conductor of every strip in tag order, columns named by `stripplan`'s keys
+    /// (design 028 §10); an absent value is an empty cell.
+    pub fn terminal_plan_csv(&self) -> Table {
+        let style = self.style;
+        let mut t = Table {
+            headers: vec![
+                "tag",
+                "location",
+                "offered",
+                "label",
+                "type",
+                "state",
+                "inside_target",
+                "inside_wire",
+                "bridge_group",
+                "outside_wire",
+                "cable",
+                "core",
+                "outside_target",
+                "place",
+            ],
+            rows: Vec::new(),
+        };
+        let opt = |v: Option<&String>| Cell::ok(v.cloned().unwrap_or_default());
+        for s in self.strips.sorted() {
+            for r in &s.rows {
+                let lines = r.inside.len().max(r.outside.len()).max(1);
+                for i in 0..lines {
+                    let (inside, outside) = (r.inside.get(i), r.outside.get(i));
+                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    t.rows.push(vec![
+                        Cell::ok(s.tag.clone()),
+                        opt(s.location.as_ref()),
+                        Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default()),
+                        Cell::ok(label),
+                        Cell::ok(if r.pe { "pe" } else { "feed-through" }),
+                        Cell::ok(if r.spare() { "spare" } else { "drawn" }),
+                        opt(inside.and_then(|c| c.target.as_ref())),
+                        opt(inside.and_then(|c| c.wire.as_ref())),
+                        Cell::ok(r.bridge_group.filter(|_| i == 0).map(|g| g.to_string()).unwrap_or_default()),
+                        opt(outside.and_then(|c| c.wire.as_ref())),
+                        Cell::ok(outside.and_then(|c| c.cable.as_ref()).map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())).unwrap_or_default()),
+                        opt(outside.and_then(|c| c.core.as_ref())),
+                        opt(outside.and_then(|c| c.target.as_ref())),
+                        Cell::ok(if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() }),
+                    ]);
+                }
+            }
+        }
+        t
+    }
+
+    /// The cable schedule as the release writes it (027's `cable-schedule` slot): every cable in
+    /// tag order with its cores (`cablecores`' keys: `label`, `state`, `wire`, `from`, `to`), an
+    /// over core after the offered ones; an absent value is an empty cell.
+    pub fn cable_schedule_csv(&self) -> Table {
+        let mut t = Table { headers: vec!["cable", "type", "offer", "label", "state", "wire", "from", "to"], rows: Vec::new() };
+        for r in self.cables() {
+            let head = [
+                Cell::ok(r.tag.clone().unwrap_or_default()),
+                Cell::ok(r.kind.clone().unwrap_or_default()),
+                Cell::ok(r.count.offer_text.clone().unwrap_or_default()),
+            ];
+            for row in self.core_table(r.cable).rows {
+                let mut line = head.to_vec();
+                // core_table: Core, Wire number, From, To, State; a spare core has no From.
+                let get = |i: usize| row.get(i).map(|c| c.text.clone()).unwrap_or_default();
+                let state = get(4);
+                let from = if state == "spare" { String::new() } else { get(2) };
+                line.extend([Cell::ok(get(0)), Cell::ok(state), Cell::ok(get(1)), Cell::ok(from), Cell::ok(get(3))]);
+                t.rows.push(line);
+            }
+        }
+        t
+    }
+
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
@@ -1388,6 +1579,11 @@ impl Outputs {
         }
         t
     }
+}
+
+/// Whether `page` exists and is drawn from the report models.
+fn needs_outputs(doc: &Document, page: PageId) -> bool {
+    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(crate::generated::GenKind::needs_outputs)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).
