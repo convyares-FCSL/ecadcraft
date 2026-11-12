@@ -37,7 +37,7 @@ use crate::chain::{self, Hash};
 pub struct VerifyReport {
     pub ok: bool,
     pub lines: Vec<String>,
-    /// The branch's verified transactions (main).
+    /// Main's transactions (read and chain-checked; replayed too by [`verify`]).
     pub transactions: u64,
     /// Snapshots checked against the replay.
     pub snapshots: usize,
@@ -217,6 +217,9 @@ fn chain_branch(
         intact = false;
     }
     let n = txs.len() as u64;
+    if line.len() == 1 {
+        rep.transactions = n;
+    }
     if intact {
         rep.lines.push(format!("{name}: {n} transactions, chain and head intact"));
     }
@@ -357,9 +360,6 @@ fn replay_branch(
 ) {
     let name = &b.rec.name;
     let n = b.txs.len() as u64;
-    if b.line.len() == 1 {
-        rep.transactions = n;
-    }
     // Snapshots by point.
     let mut at: BTreeMap<u64, Vec<&VersionRecord>> = BTreeMap::new();
     for v in &b.versions {

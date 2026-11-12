@@ -1,7 +1,10 @@
 //! ECAD workspace checks.
 //!
 //! - `layers`: document crates must not depend on CADCraft; only the adapter may use the engine;
-//!   only UI crates and apps may use UI toolkits (principle P10, proposal §8).
+//!   only UI crates and apps may use UI toolkits (principle P10, proposal §8). Developer tools
+//!   (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product crate depends
+//!   on one except through its own `dev` feature, dev features are read only in a crate's `dev`
+//!   module, and no product source reads a file under `dev/`.
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`.
@@ -26,6 +29,9 @@ enum Class {
     Adapter,
     /// May use anything.
     Ui,
+    /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
+    /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
+    Dev,
     Exempt,
 }
 
@@ -40,7 +46,26 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-trial", Class::Ui),
     // Headless by construction: CADCraft crates below the UI only.
     ("ecad-mcp", Class::Adapter),
+    ("ecad-inspector", Class::Dev),
     ("ecad-xtask", Class::Exempt),
+];
+
+/// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
+/// trial app's debugger, while the trial is the only app).
+const DEV_BY_DEFAULT: &[&str] = &["ecad-trial"];
+
+/// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
+const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "translate-oracle", "fault-injection", "test-ops"];
+
+/// Files that still read a dev feature outside their crate's `dev` module, with the brief that
+/// will move the code (design 029 §12.4). This list only shrinks: an entry whose file no longer
+/// needs it fails `layers`, and a new place is a violation.
+const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
+    ("crates/ecad-cadcraft/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/project.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/translate.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
 const UI_CRATES: &[&str] = &["cadcraft-ui-egui", "craft-ui", "egui", "eframe", "egui-wgpu", "wgpu", "winit", "rfd"];
@@ -57,15 +82,60 @@ fn run(cmd: &mut Command) -> Result<(), String> {
     if status.success() { Ok(()) } else { Err(format!("{cmd:?} failed ({status})")) }
 }
 
+fn class_of(name: &str) -> Option<Class> {
+    TABLE.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
+}
+
+/// Whether `manifest` (a `Cargo.toml` path) is under the workspace's `dev/` folder, `root` being
+/// the workspace folder.
+fn under_dev(root: &str, manifest: &str) -> bool {
+    let norm = |s: &str| s.replace('\\', "/").to_lowercase();
+    let (root, manifest) = (norm(root), norm(manifest));
+    manifest.strip_prefix(root.trim_end_matches('/')).is_some_and(|rest| rest.starts_with("/dev/"))
+}
+
+/// Why a product crate's dependency on the `Dev` crate `dep` (the entry `d` of package `p`) is not
+/// allowed, if it is not: it must be optional, enabled only by the crate's own `dev` feature
+/// (through `dep:`, so no feature named after it), and `dev` must not be on by default.
+fn dev_dependency_problem(p: &Value, d: &Value, dep: &str) -> Option<String> {
+    let name = p["name"].as_str().unwrap_or_default();
+    if d["kind"].as_str() == Some("dev") || d["optional"].as_bool() != Some(true) {
+        return Some(format!("{name} must not depend on the developer tool {dep} (only optionally, through its `dev` feature)"));
+    }
+    let features = p["features"].as_object();
+    let enables = |list: &Value| {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .any(|f| f == dep || f == format!("dep:{dep}") || f.starts_with(&format!("{dep}/")) || f.starts_with(&format!("{dep}?/")))
+    };
+    let enablers: Vec<&String> = features.into_iter().flatten().filter(|(k, v)| enables(v) || k.as_str() == dep).map(|(k, _)| k).collect();
+    if enablers.iter().any(|k| k.as_str() != "dev") {
+        return Some(format!("{name}: only its `dev` feature may enable {dep} (enabled by {enablers:?}; use `dev = [\"dep:{dep}\"]`)"));
+    }
+    let on_by_default =
+        features.and_then(|f| f.get("default")).and_then(Value::as_array).is_some_and(|d| d.iter().any(|x| x.as_str() == Some("dev")));
+    if on_by_default && !DEV_BY_DEFAULT.contains(&name) {
+        return Some(format!("{name}: its `dev` feature (which enables {dep}) must not be on by default"));
+    }
+    None
+}
+
 fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
     let pkgs = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
+    let root = meta["workspace_root"].as_str().unwrap_or_default();
     let mut out = Vec::new();
     for p in pkgs {
         let name = p["name"].as_str().unwrap_or_default();
-        let Some(class) = TABLE.iter().find(|(n, _)| *n == name).map(|(_, c)| *c) else {
+        let Some(class) = class_of(name) else {
             out.push(format!("{name}: not registered in ecad/xtask layering table"));
             continue;
         };
+        let in_dev = under_dev(root, p["manifest_path"].as_str().unwrap_or_default());
+        if in_dev != (class == Class::Dev) {
+            out.push(format!("{name}: a crate is under ecad/dev/ exactly when its class is Dev (it is {class:?})"));
+        }
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             let dev = d["kind"].as_str() == Some("dev");
@@ -74,11 +144,144 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let bad = match class {
                 Class::Core => (cadcraft || ui) && !dev,
                 Class::Adapter => ui && !dev,
-                Class::Ui | Class::Exempt => false,
+                Class::Ui | Class::Dev | Class::Exempt => false,
             };
             if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
+            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui);
+            if product
+                && class_of(dep) == Some(Class::Dev)
+                && let Some(why) = dev_dependency_problem(p, d, dep)
+            {
+                out.push(why);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The places in one product source file (`rel`: its path from the workspace folder, `/`
+/// separated) that read a dev feature outside the crate's `dev` module (design 029 §12.3 rule 2),
+/// as `rel:line: text`.
+///
+/// # Semantics
+/// A dev feature is one of [`DEV_FEATURES`], written `feature = "<f>"`. It may appear in
+/// `src/dev.rs` or `src/dev/**`, or on an attribute line directly before a single line that uses
+/// `dev::` (a one-line hook, ending in `;` or `,`) or declares `mod dev;`. Comment lines are
+/// skipped.
+fn dev_feature_places(rel: &str, text: &str) -> Vec<String> {
+    let rel = rel.replace('\\', "/");
+    if rel.contains("/src/dev/") || rel.ends_with("/src/dev.rs") {
+        return Vec::new();
+    }
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let code = line.trim();
+        if code.starts_with("//") {
+            continue;
+        }
+        let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        let reads = DEV_FEATURES.iter().any(|f| compact.contains(&format!("feature=\"{f}\"")));
+        if !reads {
+            continue;
+        }
+        let attribute = code.starts_with("#[") && code.ends_with(']');
+        let next = lines.iter().skip(i + 1).map(|l| l.trim()).find(|l| !l.is_empty() && !l.starts_with("#["));
+        let hook = next.is_some_and(|n| {
+            let one_line_use = n.contains("dev::") && (n.ends_with(';') || n.ends_with(','));
+            let module = matches!(n, "mod dev;" | "pub mod dev;" | "pub(crate) mod dev;");
+            one_line_use || module
+        });
+        if !(attribute && hook) {
+            out.push(format!("{rel}:{}: {code}", i + 1));
+        }
+    }
+    out
+}
+
+/// A path as components, `.` and `..` resolved (never above the start).
+fn normalise(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// The places in one product source file (`file`, under `root`, the workspace folder) that read a
+/// file under `root/dev/` (`include_str!`, `include_bytes!`, `#[path]`; design 029 §12.3 rule 3).
+fn dev_file_reads(root: &Path, file: &Path, text: &str) -> Vec<String> {
+    let dev = normalise(&root.join("dev"));
+    let dir = file.parent().unwrap_or(root);
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let code = line.trim();
+        if code.starts_with("//") {
+            continue;
+        }
+        for marker in ["include_str!(", "include_bytes!(", "#[path"] {
+            let Some(at) = code.find(marker) else { continue };
+            let rest = code.get(at + marker.len()..).unwrap_or_default();
+            let Some(lit) = rest.split('"').nth(1) else { continue };
+            if normalise(&dir.join(lit)).starts_with(&dev) {
+                out.push(format!("{}:{}: {code}", file.display(), i + 1));
+            }
+        }
+    }
+    out
+}
+
+/// Every `.rs` file under `dir`.
+fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            rust_files(&p, out);
+        } else if p.extension().is_some_and(|x| x == "rs") {
+            out.push(p);
+        }
+    }
+}
+
+/// Rules 2 and 3 of design 029 §12.3 over the product crates' `src/` folders in `meta`: the
+/// violations, and the allowlist entries no longer needed.
+fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        if !matches!(class_of(name), Some(Class::Core | Class::Adapter | Class::Ui)) {
+            continue;
+        }
+        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            let places = dev_feature_places(&rel, &text);
+            match DEV_FEATURE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                Some((path, _)) if !places.is_empty() => {
+                    allowed_used.insert(path);
+                }
+                _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
+            }
+            out.extend(dev_file_reads(&root, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
+        }
+    }
+    for (path, brief) in DEV_FEATURE_ALLOWLIST {
+        if !allowed_used.contains(path) {
+            out.push(format!("{path}: in the dev-feature allowlist ({brief}) but no longer needs it; remove the entry"));
         }
     }
     Ok(out)
@@ -91,7 +294,8 @@ fn layers() -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
-    let v = layer_violations(&meta)?;
+    let mut v = layer_violations(&meta)?;
+    v.extend(source_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -398,9 +602,113 @@ mod tests {
             {"name": "ecad-cadcraft", "dependencies": [{"name": "cadcraft-engine", "kind": null}, {"name": "egui", "kind": null}]},
             {"name": "ecad-store", "dependencies": [{"name": "cadcraft-engine", "kind": "dev"}]},
             {"name": "mystery", "dependencies": []}
-        ]});
+        ], "workspace_root": ""});
         let v = layer_violations(&meta).unwrap();
         assert_eq!(v.len(), 3, "{v:?}");
+    }
+
+    /// Design 029 §12.3 rule 1 (and 4): a product crate may depend on a `dev/` crate only
+    /// optionally, through its own `dev` feature, never on by default (except the trial, Q1); a
+    /// crate is under `dev/` exactly when its class is Dev.
+    #[test]
+    fn product_crates_reach_developer_tools_only_through_their_dev_feature() {
+        let pkg = |name: &str, dir: &str, deps: Value, features: Value| serde_json::json!({"name": name, "manifest_path": format!("C:\\w\\{dir}\\Cargo.toml"), "dependencies": deps, "features": features});
+        let insp = |optional: bool, kind: Option<&str>| serde_json::json!([{"name": "ecad-inspector", "kind": kind, "optional": optional}]);
+        let rows: &[(Value, usize, &str)] = &[
+            (pkg("ecad-file", "crates\\ecad-file", insp(false, None), serde_json::json!({})), 1, "a plain dependency"),
+            (pkg("ecad-file", "crates\\ecad-file", insp(false, Some("dev")), serde_json::json!({})), 1, "a dev-dependency"),
+            (pkg("ecad-file", "crates\\ecad-file", insp(true, None), serde_json::json!({"dev": ["dep:ecad-inspector"]})), 0, "optional, by `dev`"),
+            (
+                pkg(
+                    "ecad-file",
+                    "crates\\ecad-file",
+                    insp(true, None),
+                    serde_json::json!({"dev": ["dep:ecad-inspector"], "extra": ["ecad-inspector/x"]}),
+                ),
+                1,
+                "also enabled by another feature",
+            ),
+            (
+                pkg(
+                    "ecad-file",
+                    "crates\\ecad-file",
+                    insp(true, None),
+                    serde_json::json!({"ecad-inspector": ["dep:ecad-inspector"], "dev": ["ecad-inspector"]}),
+                ),
+                1,
+                "an implicit feature named after it",
+            ),
+            (
+                pkg("ecad-file", "crates\\ecad-file", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
+                1,
+                "dev on by default",
+            ),
+            (
+                pkg("ecad-trial", "apps\\ecad-trial", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
+                0,
+                "the trial's dev on by default (Q1)",
+            ),
+            (pkg("ecad-inspector", "crates\\ecad-inspector", serde_json::json!([]), serde_json::json!({})), 1, "a Dev crate outside dev/"),
+            (pkg("ecad-file", "dev\\ecad-file", serde_json::json!([]), serde_json::json!({})), 1, "a product crate inside dev/"),
+            (
+                pkg("ecad-inspector", "dev\\ecad-inspector", serde_json::json!([{"name": "egui", "kind": null}]), serde_json::json!({})),
+                0,
+                "a Dev crate may use anything",
+            ),
+        ];
+        for (p, want, what) in rows {
+            let meta = serde_json::json!({"workspace_root": "C:\\w", "packages": [p]});
+            let v = layer_violations(&meta).unwrap();
+            assert_eq!(v.len(), *want, "{what}: {v:?}");
+        }
+    }
+
+    /// Rule 2 (and 4): dev features are read only in the crate's `dev` module, or on the attribute
+    /// line before a one-line hook into it.
+    #[test]
+    fn dev_features_are_read_only_in_the_dev_module() {
+        let rows: &[(&str, &str, usize)] = &[
+            ("crates/c/src/dev.rs", "fn f() -> bool { cfg!(feature = \"verify-invariants\") }", 0),
+            ("crates/c/src/dev/oracle.rs", "#[cfg(feature = \"translate-oracle\")]\nfn big() {\n}\n", 0),
+            ("crates/c/src/lib.rs", "#[cfg(feature = \"test-ops\")]\nmod dev;\n", 0),
+            ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    crate::dev::maybe_panic(at);\n", 0),
+            ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    if crate::dev::fail() {\n        return;\n    }\n", 1),
+            ("crates/c/src/ledger.rs", "fn f() -> bool { cfg!(feature = \"verify-invariants\") }", 1),
+            ("crates/c/src/ledger.rs", "#[cfg(any(test, feature=\"dev\"))]\nfn helper() {}\n", 1),
+            ("crates/c/src/ledger.rs", "// #[cfg(feature = \"dev\")] in a comment\n#[cfg(feature = \"serde\")]\nfn f() {}\n", 0),
+        ];
+        for (rel, text, want) in rows {
+            let v = dev_feature_places(rel, text);
+            assert_eq!(v.len(), *want, "{rel}: {text:?}: {v:?}");
+        }
+    }
+
+    /// Rule 3 (and 4): no product source reads a file under `dev/`.
+    #[test]
+    fn product_sources_do_not_read_files_under_dev() {
+        let root = Path::new("C:/w");
+        let file = Path::new("C:/w/apps/ecad-mcp/src/demo.rs");
+        let rows: &[(&str, usize)] = &[
+            ("pub const C: &str = include_str!(\"../../../examples/demo/commands.jsonl\");", 0),
+            ("pub const P: &str = include_str!(\"../../../dev/ecad-inspector/page/index.html\");", 1),
+            ("static B: &[u8] = include_bytes!(\"../../../dev/x.bin\");", 1),
+            ("#[path = \"../../../dev/ecad-inspector/src/text.rs\"]", 1),
+            ("// include_str!(\"../../../dev/x\") in a comment", 0),
+        ];
+        for (text, want) in rows {
+            assert_eq!(dev_file_reads(root, file, text).len(), *want, "{text}");
+        }
+    }
+
+    /// Rules 1–3 on this workspace: no violation, and every allowlist entry is still needed.
+    #[test]
+    fn this_workspace_keeps_developer_tools_apart() {
+        let root = ecad_root();
+        let out = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1", "--no-deps"]).current_dir(&root).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(layer_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(source_violations(&meta).unwrap(), Vec::<String>::new());
     }
 
     /// A small graph: `core` ← `mid` ← `app`, `mid` ← `bench` (dev only), `lone`, and an upstream
@@ -460,12 +768,12 @@ mod tests {
         let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()]).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-mcp", "ecad-model", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-inspector", "ecad-mcp", "ecad-model", "ecad-trial"]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-mcp", "ecad-store", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store", "ecad-trial"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());

@@ -156,6 +156,14 @@ pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenError
     read_facts(r).map(|f| (f.project, f.cache))
 }
 
+/// The project ID of a file, after checking its container facts as opening does.
+///
+/// # Errors
+/// Not a version 2 project file this build reads, or its facts are damaged.
+pub fn project_id(r: &Reader) -> Result<ProjectId, OpenErrorV2> {
+    read_facts(r).map(|f| f.project)
+}
+
 pub(crate) use decode_row as decode_row_pub;
 
 /// A transaction row decoded and checked: its record against its stored chain value, its `seq`,

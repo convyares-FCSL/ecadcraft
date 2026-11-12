@@ -1,38 +1,24 @@
 //! ecad-cli
 //!
-//! ECAD's command-line tools (brief 021):
+//! ECAD's command-line tool `ecad` (brief 021):
 //!
 //! - `ecad upgrade <file> [--out <file>]`: convert a version 1 project file to a new version 2
 //!   file (EEP-0003 §16.2 option a), verified by replaying both; the source is never changed.
-//! - `ecadinspect <file> <view>` (also `ecad inspect <file> <view>`): read-only views of a
-//!   version 2 file: `tables`, `branches`, `log <branch> [--last N]`, `versions`, `chunk <hash>`,
-//!   `verify`, and `export-jsonl [--with-raw] [--out <file>]`.
 //!
-//! Excluded: anything that changes a version 2 file.
+//! Excluded: anything that changes a version 2 file, and looking inside one: that is the
+//! developer tool `ecadinspect` (`dev/ecad-inspector`, brief 029), which never ships. `ecad
+//! inspect` says where it went.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io::Write;
 use std::path::Path;
 
-use ecad_file::v2::{Store, inspect};
-
 /// How `ecad` is used.
 pub const USAGE: &str = "usage:
-  ecad upgrade <file.ecad> [--out <new.ecad>]
-  ecad inspect <file.ecad> <view>     (the same as ecadinspect)
+  ecad upgrade <file.ecad> [--out <new.ecad>]";
 
-ecadinspect <file.ecad> <view>, where <view> is one of:
-  tables                     row counts and sizes of every table, and meta
-  branches                   branches, fork points and heads
-  log <branch> [--last N]    the last N transactions (default 20), decompressed
-  versions                   named versions, revisions and automatic snapshots
-  chunk <hash>                one snapshot chunk, decompressed
-  verify                     replay from the root and check every snapshot (reads everything)
-  export-jsonl [--branch <name|id>] [--with-raw] [--out <file>]
-                             a branch's history (default main) as a version 1 JSON Lines file
-                             (stdout by default; the branches left out are named on stderr);
-                             --with-raw writes every stored row with its raw bytes instead
-  <branch> is a name or a branch ID (32 hex digits); a name several branches share is refused";
+/// What `ecad inspect` answers (brief 029: the text views moved to the developer tool).
+pub const INSPECT_MOVED: &str = "`inspect` moved to the developer tool `ecadinspect`; run `cargo run -p ecad-inspector --bin ecadinspect -- <file> <view>` from ecad/ (or `ecadinspect serve <file>` for the inspector page)";
 
 /// The value after `flag` in `args`, and `args` without both.
 fn take_opt(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, String> {
@@ -44,13 +30,6 @@ fn take_opt(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, String
         }
         None => Ok(None),
     }
-}
-
-/// Whether `flag` is in `args` (removed).
-fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
-    let before = args.len();
-    args.retain(|a| a != flag);
-    args.len() != before
 }
 
 /// Run `ecad <args>`; what to print, or an error message.
@@ -67,7 +46,7 @@ pub fn ecad(args: &[String], out: &mut dyn Write) -> Result<(), String> {
             let r = ecad_file::v2::convert::convert_file(Path::new(file), output.as_deref().map(Path::new), &writer())?;
             writeln!(out, "{}", r.describe()).map_err(|e| e.to_string())
         }
-        Some("inspect") => ecadinspect(args.get(1..).unwrap_or_default(), out),
+        Some("inspect") => Err(INSPECT_MOVED.into()),
         _ => Err(USAGE.into()),
     }
 }
@@ -75,79 +54,4 @@ pub fn ecad(args: &[String], out: &mut dyn Write) -> Result<(), String> {
 /// This build, as recorded in files it writes.
 pub fn writer() -> String {
     format!("ecad-cli {}", env!("CARGO_PKG_VERSION"))
-}
-
-/// Run `ecadinspect <args>`.
-///
-/// # Errors
-/// Bad usage, a version 1 or unreadable file, or the view failed.
-pub fn ecadinspect(args: &[String], out: &mut dyn Write) -> Result<(), String> {
-    ecadinspect_with(args, out, &mut std::io::stderr())
-}
-
-/// [`ecadinspect`], with notes (the branches `export-jsonl` left out) written to `err`.
-///
-/// # Errors
-/// As [`ecadinspect`].
-pub fn ecadinspect_with(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(), String> {
-    let mut args = args.to_vec();
-    let branch = take_opt(&mut args, "--branch")?;
-    let last = take_opt(&mut args, "--last")?;
-    let to = take_opt(&mut args, "--out")?;
-    let with_raw = take_flag(&mut args, "--with-raw");
-    let (Some(file), Some(view)) = (args.first().cloned(), args.get(1).cloned()) else { return Err(USAGE.into()) };
-    let path = Path::new(&file);
-    match ecad_file::v2::convert::sniff(path).map_err(|e| format!("{file}: {e}"))? {
-        ecad_file::v2::convert::Major::V2 => {}
-        ecad_file::v2::convert::Major::V1 => {
-            return Err(format!("{file} is a version 1 file; convert it with `ecad upgrade {file}`"));
-        }
-        ecad_file::v2::convert::Major::Unknown => return Err(format!("{file} is not an ECAD project file")),
-    }
-    let store = Store::open(path, false).map_err(|e| format!("{file}: {e}"))?;
-    let p = |r: Result<String, ecad_file::v2::StoreError>| r.map_err(|e| e.to_string());
-    let text = match (view.as_str(), args.get(2)) {
-        ("tables", None) => {
-            let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            format!("{file}: {len} bytes\n\n{}", p(inspect::tables(&store))?)
-        }
-        ("branches", None) => p(inspect::branches(&store))?,
-        ("log", Some(branch)) => {
-            let n = match last {
-                Some(n) => n.parse::<u64>().map_err(|_| format!("--last {n} is not a number"))?,
-                None => 20,
-            };
-            p(inspect::log(&store, branch, n))?
-        }
-        ("versions", None) => p(inspect::versions(&store))?,
-        ("chunk", Some(hash)) => p(inspect::chunk(&store, hash))?,
-        ("verify", None) => {
-            let v = ecad_file::v2::verify::verify(&store);
-            format!("{}\n{}", v.lines.join("\n"), if v.ok { "OK" } else { "FAILED" })
-        }
-        ("export-jsonl", None) => {
-            let n = match &to {
-                Some(dest) => {
-                    if Path::new(dest).exists() {
-                        return Err(format!("{dest} already exists; it is never overwritten"));
-                    }
-                    let mut f = std::io::BufWriter::new(std::fs::File::create_new(dest).map_err(|e| format!("{dest}: {e}"))?);
-                    let n = inspect::export_branch_jsonl(&store, with_raw, branch.as_deref().unwrap_or("main"), &mut f)?;
-                    f.flush().map_err(|e| e.to_string())?;
-                    n
-                }
-                None => inspect::export_branch_jsonl(&store, with_raw, branch.as_deref().unwrap_or("main"), out)?,
-            };
-            let (n, left) = n;
-            if !left.is_empty() {
-                writeln!(err, "left out: {} other branch(es): {}", left.len(), left.join(", ")).map_err(|e| e.to_string())?;
-            }
-            match to {
-                Some(dest) => format!("wrote {n} lines to {dest}"),
-                None => return Ok(()),
-            }
-        }
-        _ => return Err(USAGE.into()),
-    };
-    writeln!(out, "{}", text.trim_end()).map_err(|e| e.to_string())
 }
