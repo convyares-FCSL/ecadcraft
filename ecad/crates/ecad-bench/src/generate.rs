@@ -27,10 +27,10 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition,
-    DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Ledger, LengthUnit,
-    ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind,
+    Author, Cable, CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, End, Form,
+    IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId,
+    ProjectSettings, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId,
+    TxKind,
 };
 use ecad_store::{Medium, MemoryMedium};
 
@@ -67,6 +67,11 @@ pub const TIERS: [Tier; 3] = [
     Tier { name: "medium", pages: 100, components: 1_000, wires: 5_000, cables: 500 },
     Tier { name: "large", pages: 500, components: 5_000, wires: 25_000, cables: 2_500 },
 ];
+
+/// The 25-page project Print Book and release are measured on (owner, 2026-11-12: printing is
+/// timed on a book of a real panel's size, never on the 100- or 500-page tiers). The small tier's
+/// density, so per page it is the same drawing.
+pub const PRINT_TIER: Tier = Tier { name: "print", pages: 25, components: 250, wires: 1_250, cables: 125 };
 
 /// The tier called `name`.
 pub fn tier(name: &str) -> Option<Tier> {
@@ -140,12 +145,10 @@ impl Generated {
 fn coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {
+        bridges: Vec::new(),
         name: "Coil (bench)".into(),
         origin: None,
-        graphics: vec![Primitive::Polyline {
-            vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(),
-            closed: true,
-        }],
+        graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
@@ -218,14 +221,7 @@ fn drawn(subject: Subject, page: PageId, role: &str, items: Vec<ItemId>) -> Repr
 
 /// The ops of one wire as `wire` records it: a conductor tagged `tag`, its route on `page`
 /// through `vertices`, and its ends attached to `ends` (A, then B). Returns the new conductor.
-pub fn wire_ops(
-    ids: &mut IdAllocator,
-    page: PageId,
-    style: &Style,
-    vertices: Vec<Pt>,
-    ends: [TerminalId; 2],
-    tag: &str,
-) -> (ConductorId, Vec<Op>) {
+pub fn wire_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], tag: &str) -> (ConductorId, Vec<Op>) {
     let (w, item, rep): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let mut conductor = Conductor::default();
     conductor.properties.insert("tag".into(), tag.into());
@@ -234,11 +230,7 @@ pub fn wire_ops(
         Op::CreateConductor { id: w, conductor },
         Op::AddItem {
             id: item,
-            item: Item {
-                page,
-                style: style.clone(),
-                kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }),
-            },
+            item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }) },
         },
         Op::LinkRepresentation { id: rep, rep: drawn(Subject::Conductor(w), page, "route", vec![item]) },
         Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
@@ -255,8 +247,7 @@ pub fn wire_ops(
 /// The project has no page, no layer `0`, or fewer than two terminals on its first page.
 pub fn added_wire(doc: &Document, ids: &mut IdAllocator, tag: &str) -> Result<Vec<Op>, String> {
     let page = *doc.page_order.first().ok_or("the project has no page")?;
-    let layer =
-        doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
+    let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
     let shown = ecad_model::derive::terminal_positions(doc, page);
     let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
@@ -304,11 +295,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         "New project",
         TxKind::Edit,
         vec![
-            Op::AddPage { id: first_page, page: Page { title: "1".into() }, index: 0 },
+            Op::AddPage { id: first_page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
-                after: ProjectSettings { length_unit: LengthUnit::Millimetre },
+                after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
             },
         ],
     )?;
@@ -329,15 +320,12 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         } else {
             let id: PageId = ids.fresh();
             let title = (p + 1).to_string();
-            let renamed_page = Page { title: format!("{title} (draft)") };
+            let renamed_page = Page::new(format!("{title} (draft)"));
             b.step(
                 "New page",
-                vec![Op::AddPage { id, page: Page { title: title.clone() }, index: p }],
+                vec![Op::AddPage { id, page: Page::new(title.clone()), index: p }],
                 "Rename page",
-                vec![
-                    Op::RemovePage { id, page: Page { title }, index: p },
-                    Op::AddPage { id, page: renamed_page, index: p },
-                ],
+                vec![Op::RemovePage { id, page: Page::new(title), index: p }, Op::AddPage { id, page: renamed_page, index: p }],
             )?;
             id
         };
@@ -359,16 +347,12 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let mut keyed = Vec::new();
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
-                    id: t,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) },
-                });
+                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
                 keyed.push(t);
             }
             let origin = Pt::new(PITCH * i as f64 + PITCH / 2.0, ROW_Y);
             let placement = Placement { origin, ..Placement::default() };
-            let symbol =
-                Item { page, style: style.clone(), kind: ItemKind::Symbol(SymbolInstance { definition, placement }) };
+            let symbol = Item { page, style: style.clone(), kind: ItemKind::Symbol(SymbolInstance { definition, placement }) };
             ops.push(Op::AddItem { id: item, item: symbol.clone() });
             ops.push(Op::LinkRepresentation {
                 id: rep,
@@ -396,9 +380,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             wire_no += 1;
             let pair = j % n;
             let lane = (j / n) as f64;
-            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) =
-                (terminals.get(pair).copied(), terminals.get((pair + 1) % n).copied())
-            else {
+            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) = (terminals.get(pair).copied(), terminals.get((pair + 1) % n).copied()) else {
                 return Err("generator: a wire's component is missing".into());
             };
             let a = Pt::new(from_at.x, from_at.y - 10.0);
@@ -421,8 +403,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if wires.is_empty() {
                 continue;
             }
-            let (Some((_, from_t, _)), Some((to_t, _, _))) = (terminals.get(pair), terminals.get((pair + 1) % n))
-            else {
+            let (Some((_, from_t, _)), Some((to_t, _, _))) = (terminals.get(pair), terminals.get((pair + 1) % n)) else {
                 return Err("generator: a net's component is missing".into());
             };
             let mut ts = vec![*from_t, *to_t];
@@ -446,19 +427,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             value.properties.insert("tag".into(), tag.clone());
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
             for (index, w) in members.iter().enumerate() {
-                ops.push(Op::AddCableMember {
-                    cable,
-                    index,
-                    member: CableMember { conductor: *w, core: Some((index + 1).to_string()) },
-                });
+                ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: *w, core: Some((index + 1).to_string()) } });
             }
             ops.push(Op::AddItem {
                 id: item,
-                item: Item {
-                    page,
-                    style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }),
-                },
+                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
             });
             ops.push(Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), page, "slash", vec![item]) });
             b.step("Cable slash", ops, "Rename", vec![renamed(ObjectRef::Cable(cable), &tag)])?;
@@ -470,30 +443,22 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         // The previous page's first cable continues here (`cableref` there, `cablecontinue` here).
         if let Some((from_page, cable, members, at)) = previous.take() {
             let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
-            let point =
-                Item { page: from_page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) };
+            let point = Item { page: from_page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) };
             b.step(
                 "Cable reference",
                 vec![
                     Op::AddItem { id: item, item: point.clone() },
-                    Op::LinkRepresentation {
-                        id: rep,
-                        rep: drawn(Subject::Cable(cable), from_page, REFERENCE_ROLE, vec![item]),
-                    },
+                    Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), from_page, REFERENCE_ROLE, vec![item]) },
                 ],
                 "Move",
                 vec![moved(item, point, 5.0)],
             )?;
             let here = Pt::new(PITCH / 2.0, ROW_Y + 80.0);
             let (ref_item, ref_rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
-            let ref_point =
-                Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: here }) };
+            let ref_point = Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: here }) };
             let mut ops = vec![
                 Op::AddItem { id: ref_item, item: ref_point.clone() },
-                Op::LinkRepresentation {
-                    id: ref_rep,
-                    rep: drawn(Subject::Cable(cable), page, REFERENCE_ROLE, vec![ref_item]),
-                },
+                Op::LinkRepresentation { id: ref_rep, rep: drawn(Subject::Cable(cable), page, REFERENCE_ROLE, vec![ref_item]) },
             ];
             for (lane, w) in members.iter().enumerate() {
                 let y = here.y - 5.0 * lane as f64;
@@ -503,10 +468,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                     item: Item {
                         page,
                         style: style.clone(),
-                        kind: ItemKind::Primitive(Primitive::Line {
-                            a: Pt::new(here.x, y),
-                            b: Pt::new(here.x + 30.0, y),
-                        }),
+                        kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(here.x, y), b: Pt::new(here.x + 30.0, y) }),
                     },
                 });
                 ops.push(Op::LinkRepresentation { id: r, rep: drawn(Subject::Conductor(*w), page, "route", vec![i]) });
@@ -518,16 +480,10 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 item: Item {
                     page,
                     style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line {
-                        a: Pt::new(here.x + 13.0, here.y + 3.0),
-                        b: Pt::new(here.x + 17.0, here.y - span),
-                    }),
+                    kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(here.x + 13.0, here.y + 3.0), b: Pt::new(here.x + 17.0, here.y - span) }),
                 },
             });
-            ops.push(Op::LinkRepresentation {
-                id: slash_rep,
-                rep: drawn(Subject::Cable(cable), page, "slash", vec![slash_item]),
-            });
+            ops.push(Op::LinkRepresentation { id: slash_rep, rep: drawn(Subject::Cable(cable), page, "slash", vec![slash_item]) });
             b.step("Continue cable", ops, "Move", vec![moved(ref_item, ref_point, 5.0)])?;
             continuations.push(Continuation { cable, from: from_page, to: page, references: [rep, ref_rep] });
         }

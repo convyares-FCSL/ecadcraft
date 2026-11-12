@@ -19,16 +19,10 @@
 //!
 //! Excluded on purpose: the bridged mode (an agent driving the running trial; a later brief),
 //! proposals held outside the log, library tools and anything beyond stdio on this machine.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod args;
+pub mod demo;
 pub mod policy;
 mod tools;
 
@@ -60,15 +54,12 @@ const INVALID_REQUEST: i64 = -32600;
 const INVALID_PARAMS: i64 = -32602;
 
 /// CADCraft's tools that ECAD's server offers; the others are refused as unknown tools.
-pub const CADCRAFT_TOOLS: &[&str] =
-    &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
+pub const CADCRAFT_TOOLS: &[&str] = &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
 
 /// Said when an agent asks for a CADCraft tool ECAD's server does not offer.
 pub fn not_offered(name: &str) -> String {
     let why = match name {
-        "command_line" | "script" | "cancel" => {
-            " ECAD changes go through `execute` only (one command with JSON parameters per call)."
-        }
+        "command_line" | "script" | "cancel" => " ECAD changes go through `execute` only (one command with JSON parameters per call).",
         "new_drawing" | "open" => " The project is opened by the person who starts the server.",
         _ => "",
     };
@@ -111,8 +102,7 @@ pub fn author_text(a: &Author) -> String {
 }
 
 /// Said when the project cannot be read to check a call; the call is refused (fail closed).
-pub const UNREADABLE: &str =
-    "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
+pub const UNREADABLE: &str = "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
 
 /// The session, the project and the gate, shared by the server and its backend.
 pub(crate) struct State {
@@ -157,14 +147,24 @@ impl State {
         }
     }
 
-    fn log_len(&mut self) -> Result<usize, String> {
+    /// The branch shown and the length of its log in memory: where a call's transactions start.
+    fn log_len(&mut self) -> Result<(String, usize), String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.ledger.log().len()).map_err(|_| UNREADABLE.to_string())
+        p.read(self.session(), |p, _| (ecad_cadcraft::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
     }
 
-    fn log_since(&mut self, from: usize) -> Result<Vec<Transaction>, String> {
+    /// The transactions recorded since `from`. A call that switched branch (brief 020) saved the
+    /// branch it left first and switching is not a step, so what it recorded is the new branch's
+    /// unsaved steps (a merge into the parent switches, then records one merge: brief 020b).
+    fn log_since(&mut self, from: &(String, usize)) -> Result<Vec<Transaction>, String> {
         let p = self.project.clone();
-        p.read(self.session(), |p, _| p.ledger.log().get(from..).map(<[Transaction]>::to_vec).unwrap_or_default())
+        p.read(self.session(), |p, _| {
+            if ecad_cadcraft::history::current(p).hex() != from.0 {
+                let saved = p.ledger.persisted();
+                return p.ledger.log().iter().filter(|t| t.seq > saved).cloned().collect();
+            }
+            p.ledger.log().get(from.1..).map(<[Transaction]>::to_vec).unwrap_or_default()
+        })
     }
 
     /// Record the agent's name as the author of the project's next transactions.
@@ -194,6 +194,11 @@ impl State {
         for (done, t) in txs.iter().rev().enumerate() {
             let step = match t.kind {
                 TxKind::Undo { .. } => "redo",
+                // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
+                TxKind::Merge { .. } => "undomerge",
+                TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
+                // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
+                TxKind::Edit | TxKind::Redo { .. } if ecad_cadcraft::revisions::issue_in(&t.ops).is_some() => "undoissue",
                 TxKind::Edit | TxKind::Redo { .. } => "u",
             };
             if let Err(e) = self.session().execute(step, &json!({})) {
@@ -201,6 +206,12 @@ impl State {
             }
         }
         Ok(txs.len())
+    }
+
+    /// Tell the project how many transactions the call about to run may record (`None` after it).
+    fn set_budget(&mut self, budget: Option<usize>) -> Result<(), String> {
+        let p = self.project.clone();
+        p.configure(self.session(), |p| p.tx_budget = budget)
     }
 
     /// `engine.execute` through the gate, with the caps and the transactions it recorded.
@@ -212,13 +223,24 @@ impl State {
         policy::check(&id, &params, self.write, read_only.as_deref())?;
         // Fail closed: a call whose transactions cannot be counted does not run.
         let before = self.log_len()?;
+        // What this call may still record, told to the project before it runs: a command that
+        // writes files (brief 027's release) refuses up front rather than write what the cap
+        // below would take back (tester 027, 3).
+        let line_used = self.line_transactions;
+        let cap = if line_used == 0 { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
+        self.set_budget(Some(cap.saturating_sub(line_used)))?;
         let r = self.headless.call("engine.execute", json!({ "command": given, "params": params }));
+        self.set_budget(None)?;
         let name = id.to_ascii_uppercase();
-        let new = self.log_since(before).map_err(|e| {
-            format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history.")
-        })?;
+        let new =
+            self.log_since(&before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
         let used = self.line_transactions;
-        if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
+        // Brief 026 (design §5.5): `issuerevision {provisional: "finalise"}` records Finalise, then
+        // the issue: two transactions by design (the revision point holds the finalised tags).
+        // Only when this call is the line's first write and it really recorded Finalise, then the
+        // issue (reviewer 026, 3); anything else keeps the cap of one.
+        let allowed = if used == 0 && finalised_then_issued(&new) { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
+        if used.saturating_add(new.len()) > allowed {
             let what = if used > 0 {
                 format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
             } else {
@@ -229,13 +251,13 @@ impl State {
             return Err(match self.roll_back(&new) {
                 Ok(n) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). They were taken back by {n} \
+                     {allowed} transaction(s); {what} ({seqs}). They were taken back by {n} \
                      undo/redo transaction(s) recorded after them, so the design is as before {name}; the history \
                      keeps both."
                 ),
                 Err((done, e)) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). Taking them back stopped after {done} \
+                     {allowed} transaction(s); {what} ({seqs}). Taking them back stopped after {done} \
                      of {}: {e}. The project is NOT as before {name}; check ecad_history.",
                     new.len()
                 ),
@@ -268,6 +290,19 @@ impl State {
             }
             _ => self.headless.call(method, p),
         }
+    }
+}
+
+/// Whether `txs` is exactly a Finalise edit followed by an issue (brief 026, design §5.5).
+fn finalised_then_issued(txs: &[Transaction]) -> bool {
+    match txs {
+        [f, i] => {
+            matches!(f.kind, TxKind::Edit)
+                && f.label == "Finalise numbering"
+                && matches!(i.kind, TxKind::Edit)
+                && ecad_cadcraft::revisions::issue_in(&i.ops).is_some()
+        }
+        _ => false,
     }
 }
 
@@ -317,6 +352,8 @@ pub struct EcadMcp {
 /// Install the ECAD commands, or say why they are missing.
 fn install() -> Result<(), String> {
     ecad_cadcraft::install();
+    // Brief 024: `printbook` plots through CADCraft's PDF plotter.
+    ecad_cadcraft::printbook::install_io();
     if cadcraft_engine::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }
@@ -325,14 +362,7 @@ fn install() -> Result<(), String> {
 
 impl EcadMcp {
     fn with(headless: Headless, project: ProjectHandle, opts: Options) -> Result<Self, String> {
-        let state = Rc::new(RefCell::new(State {
-            headless,
-            project,
-            write: opts.write,
-            agent: String::new(),
-            named: false,
-            line_transactions: 0,
-        }));
+        let state = Rc::new(RefCell::new(State { headless, project, write: opts.write, agent: String::new(), named: false, line_transactions: 0 }));
         let inner = Server::new(Box::new(Gated(Rc::clone(&state))));
         let mut me = EcadMcp { inner, state, agent_override: opts.agent.clone() };
         // No agent edit is ever recorded as the person's, even before `initialize`.
@@ -351,7 +381,14 @@ impl EcadMcp {
         install()?;
         let path = ecad_cadcraft::normalize(path)?;
         let mut headless = Headless { session: Session::empty() };
-        let (project, summary) = ProjectHandle::open_file(&mut headless.session, &path, ecad_cadcraft::session_seed())?;
+        // Writes off: the file is opened for reading only, so it is never changed, not even by the
+        // database's own bookkeeping (brief 021: a version 2 file is a redb database).
+        let seed = ecad_cadcraft::session_seed();
+        let (project, summary) = if opts.write {
+            ProjectHandle::open_file(&mut headless.session, &path, seed)?
+        } else {
+            ProjectHandle::open_file_read_only(&mut headless.session, &path, seed)?
+        };
         Ok((Self::with(headless, project, opts)?, summary))
     }
 
@@ -372,10 +409,8 @@ impl EcadMcp {
             return Err(format!("the folder {} does not exist; create it first. Nothing was written.", dir.display()));
         }
         let mut headless = Headless { session: Session::empty() };
-        let name =
-            std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-        let project =
-            Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
+        let name = std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        let project = Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
         headless.session.execute("saveas", &json!({ "path": path })).map_err(|e| e.to_string())?;
         Self::with(headless, project, opts)
     }
@@ -431,16 +466,11 @@ impl EcadMcp {
                 return Ok(());
             }
             let reply = if over {
-                Some(
-                    error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)"))
-                        .to_string(),
-                )
+                Some(error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)")).to_string())
             } else {
                 match std::str::from_utf8(&line) {
                     Ok(text) => self.handle_line(text),
-                    Err(_) => {
-                        Some(error(Value::Null, PARSE_ERROR, "parse error: the request is not UTF-8").to_string())
-                    }
+                    Err(_) => Some(error(Value::Null, PARSE_ERROR, "parse error: the request is not UTF-8").to_string()),
                 }
             };
             if let Some(reply) = reply {
@@ -458,10 +488,7 @@ impl EcadMcp {
             return None;
         }
         if line.len() > MAX_REQUEST_BYTES {
-            return Some(
-                error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)"))
-                    .to_string(),
-            );
+            return Some(error(Value::Null, INVALID_REQUEST, format!("request too large (over {MAX_REQUEST_BYTES} bytes)")).to_string());
         }
         // One request line is one call for the transaction cap, batches included.
         if let Ok(mut st) = self.state_mut() {
@@ -515,10 +542,7 @@ impl EcadMcp {
                 let writes = self.writes();
                 let agent = self.agent();
                 if let Some(res) = r.get_mut("result").and_then(Value::as_object_mut) {
-                    res.insert(
-                        "serverInfo".into(),
-                        json!({"name": "ecad", "title": "ECAD (headless)", "version": env!("CARGO_PKG_VERSION")}),
-                    );
+                    res.insert("serverInfo".into(), json!({"name": "ecad", "title": "ECAD (headless)", "version": env!("CARGO_PKG_VERSION")}));
                     res.insert("instructions".into(), json!(tools::instructions(writes, &agent)));
                 }
                 Some(r)

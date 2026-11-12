@@ -85,8 +85,7 @@ fn hit(s0: Pt, s1: Pt, a: Pt, b: Pt, tol: f64) -> Option<Hit> {
     // A segment of no length is a point.
     if len_e <= tol {
         let t = along_of(a);
-        return (line_dist(a, s0, dx, dy, len_s) <= tol && t >= -tol && t <= len_s + tol)
-            .then(|| Hit::Point { at: a, along: t.clamp(0.0, len_s) });
+        return (line_dist(a, s0, dx, dy, len_s) <= tol && t >= -tol && t <= len_s + tol).then(|| Hit::Point { at: a, along: t.clamp(0.0, len_s) });
     }
     // Collinear: both ends of the segment on the slash's line.
     if line_dist(a, s0, dx, dy, len_s) <= tol && line_dist(b, s0, dx, dy, len_s) <= tol {
@@ -221,8 +220,7 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
                         Hit::Point { at, along } => Some((along, at)),
                         Hit::Along { along } => {
                             let len = from.dist(to);
-                            let at =
-                                Pt::new(from.x + (to.x - from.x) * along / len, from.y + (to.y - from.y) * along / len);
+                            let at = Pt::new(from.x + (to.x - from.x) * along / len, from.y + (to.y - from.y) * along / len);
                             Some((along, at))
                         }
                     })
@@ -328,10 +326,7 @@ pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f6
 /// primitives there (`prims`), already gathered by the caller (one index per page, brief 009
 /// review S4).
 pub fn member_crossings_with<'p>(
-    c: &ecad_model::Cable,
-    slashes: &[(Pt, Pt)],
-    prims: impl Fn(ConductorId) -> &'p [&'p Primitive],
-    tol: f64,
+    c: &ecad_model::Cable, slashes: &[(Pt, Pt)], prims: impl Fn(ConductorId) -> &'p [&'p Primitive], tol: f64,
 ) -> Vec<(ConductorId, Pt, Pt)> {
     let tol = usable(tol);
     let mut out = Vec::new();
@@ -436,11 +431,7 @@ fn bare_wire_name(doc: &Document, c: ConductorId) -> String {
 /// Refusal: some wires are already in a cable. `tail` ends the message (`Nothing was created.`).
 pub fn already_in_cable(doc: &Document, blocked: &[(ConductorId, CableId)], tail: &str) -> String {
     match blocked {
-        [(w, k)] => format!(
-            "Wire {} is already in {}; a wire can be in only one cable. {tail}",
-            bare_wire_name(doc, *w),
-            cable_label(doc, *k)
-        ),
+        [(w, k)] => format!("Wire {} is already in {}; a wire can be in only one cable. {tail}", bare_wire_name(doc, *w), cable_label(doc, *k)),
         _ => {
             let names: Vec<String> = blocked.iter().map(|(w, _)| bare_wire_name(doc, *w)).collect();
             format!("Wires {} are already in a cable; a wire can be in only one cable. {tail}", name_list(&names))
@@ -458,13 +449,7 @@ fn cable_label(doc: &Document, k: CableId) -> String {
 
 /// The echo after a slash (§5.3): the first line, then one line each for ignored objects and
 /// touched wires when there are any.
-pub fn created_lines(
-    doc: &Document,
-    cable: CableId,
-    members: &[ConductorId],
-    ignored: usize,
-    touched: usize,
-) -> Vec<String> {
+pub fn created_lines(doc: &Document, cable: CableId, members: &[ConductorId], ignored: usize, touched: usize) -> Vec<String> {
     let names: Vec<String> = members.iter().map(|c| wire_name(doc, *c)).collect();
     let mut out = vec![format!("Cable {} created with {}: {}.", cable.hex(), wires(members.len()), name_list(&names))];
     match ignored {

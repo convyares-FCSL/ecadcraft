@@ -1,0 +1,374 @@
+//! The **Devices** tab of the Project panel (owner request, 2026-11-08, after brief 018): every
+//! device grouped by its tag prefix, each row its tag and description, expandable to its symbols
+//! with page and column; a click on a symbol shows its page and selects it; the selected device's
+//! properties are edited in place through `setprop` (brief 018's rules, its merge offer included).
+//!
+//! The list is a copy ([`ecad_cadcraft::device_list::DeviceEntry`]) rebuilt only when the
+//! project's change count or the filter changed; the rows are virtualised, so a frame lays out only
+//! the visible ones.
+//!
+//! Excluded: cables, terminals, creating or deleting devices.
+
+use std::collections::BTreeSet;
+
+use cadcraft_ui_egui::theme::Tokens;
+use ecad_cadcraft::device_list::DeviceEntry;
+use ecad_cadcraft::devices::PROPERTIES;
+use ecad_model::{ComponentId, RepresentationId};
+use eframe::egui::{self, RichText, Sense, Stroke, pos2, vec2};
+
+use crate::project_panel::{Action, ROW_H};
+
+/// Accessible label of the filter field.
+pub const FILTER: &str = "Filter devices";
+/// The merge offer's button.
+pub const MERGE: &str = "Make it the same device";
+/// Brief 026: the clash box's first button, and the header's Renumber.
+pub const SWAP: &str = "Swap";
+pub const RENUMBER: &str = "Renumber…";
+/// `ecad.provisional` (design 026 §10): ACI 30.
+pub const PROVISIONAL: egui::Color32 = egui::Color32::from_rgb(0xff, 0x7f, 0x00);
+
+/// The accessible label of a device row: `Device -K01: Contactor / relay coil`.
+pub fn device_label(e: &DeviceEntry) -> String {
+    format!("Device {}: {}", e.tag.as_deref().unwrap_or("(no tag)"), e.description)
+}
+
+/// The accessible label of a symbol row: `-K01 NO contact, 2-C-4` (its place in the project's
+/// reference style, brief 019).
+pub fn symbol_label(e: &DeviceEntry, s: &ecad_cadcraft::device_list::SymbolEntry) -> String {
+    format!("{} {}, {}", e.tag.as_deref().unwrap_or("(no tag)"), s.name, s.place)
+}
+
+/// One laid-out row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Row {
+    Group(String, usize),
+    Device(usize),
+    Symbol(usize, usize),
+}
+
+/// A property being edited: (device, property key, text).
+type Editing = (ComponentId, &'static str, String);
+
+/// The tab's state.
+/// The clash box's ways for a taken tag (brief 026, design §7.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Clash {
+    /// The holder is a device, so Swap and Make it the same device are offered.
+    pub same_kind: bool,
+    /// The next free tag, for **Use -K08**.
+    pub next: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct DevicesPanel {
+    pub filter: String,
+    /// The list of every device, kept up to date by `ecad-cadcraft`.
+    pub list: ecad_cadcraft::device_list::DeviceList,
+    /// The filter the rows were laid out with (a new filter lays them out again; the list itself
+    /// is never rebuilt for it).
+    laid_out_filter: String,
+    rows: Vec<Row>,
+    pub expanded: BTreeSet<ComponentId>,
+    /// How many devices the filter shows.
+    shown: usize,
+    pub selected: Option<ComponentId>,
+    editing: Option<Editing>,
+    /// A refusal of the last property edit, and, for a tag another device holds, the edit to
+    /// offer as a merge.
+    pub error: Option<(String, Option<(ComponentId, String)>)>,
+    /// Brief 026: what the clash box offers with that refusal.
+    pub clash: Option<Clash>,
+    /// Rows laid out on the last frame (tests: virtualised).
+    pub rows_drawn: usize,
+}
+
+impl DevicesPanel {
+    /// The devices listed now (those the filter matches).
+    pub fn entries(&self) -> Vec<DeviceEntry> {
+        self.list.entries.iter().filter(|e| ecad_cadcraft::device_list::matches(e, &self.filter)).cloned().collect()
+    }
+
+    /// Bring the list up to date ([`ecad_cadcraft::device_list::DeviceList::sync`]: built whole
+    /// once, then only the devices a change touched), and lay it out again when it changed.
+    pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
+        let filtered = self.filter != self.laid_out_filter;
+        if self.list.sync(serial, p) || filtered {
+            self.flatten();
+        }
+    }
+
+    /// The tab is shown again: the next [`DevicesPanel::sync`] builds the list whole.
+    pub fn invalidate(&mut self) {
+        self.list.invalidate();
+    }
+
+    /// Lay the copy out as rows: a group header per prefix, its devices, and the symbols of the
+    /// expanded ones.
+    fn flatten(&mut self) {
+        let mut rows = Vec::new();
+        let mut last: Option<&str> = None;
+        let shown: Vec<usize> = (0..self.list.entries.len())
+            .filter(|i| self.list.entries.get(*i).is_some_and(|e| ecad_cadcraft::device_list::matches(e, &self.filter)))
+            .collect();
+        for (k, &i) in shown.iter().enumerate() {
+            let Some(e) = self.list.entries.get(i) else { continue };
+            if last != Some(e.group.as_str()) {
+                let n = shown.iter().skip(k).take_while(|j| self.list.entries.get(**j).is_some_and(|x| x.group == e.group)).count();
+                rows.push(Row::Group(e.group.clone(), n));
+                last = Some(e.group.as_str());
+            }
+            rows.push(Row::Device(i));
+            if self.expanded.contains(&e.id) {
+                rows.extend((0..e.symbols.len()).map(|j| Row::Symbol(i, j)));
+            }
+        }
+        self.rows = rows;
+        self.shown = shown.len();
+        self.laid_out_filter = self.filter.clone();
+    }
+
+    /// Expand or fold device `c`'s symbols.
+    pub fn toggle(&mut self, c: ComponentId) {
+        if !self.expanded.remove(&c) {
+            self.expanded.insert(c);
+        }
+        self.flatten();
+    }
+
+    /// The tab's contents. Returns the actions asked for.
+    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
+        let mut out = Vec::new();
+        let t = Tokens::get();
+        ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("Filter: tag or text").desired_width(f32::INFINITY))
+            .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
+        let count = self.shown;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim));
+            // Brief 026 (design §9): Renumber in the header.
+            if ui.add_enabled(writable, egui::Button::new(RichText::new(RENUMBER).small())).accessible_name("ecad.devices.renumber").clicked() {
+                out.push(Action::Renumber);
+            }
+        });
+        // The selected device's properties, at the bottom of the tab.
+        let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
+        let list_h = (ui.available_height() - editor_h).max(ROW_H * 3.0);
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let mut drawn = 0;
+        let mut toggled = None;
+        egui::ScrollArea::vertical().id_salt("ecad.devices.list").max_height(list_h).auto_shrink([false, false]).show_rows(
+            ui,
+            ROW_H,
+            self.rows.len(),
+            |ui, range| {
+                for i in range {
+                    let Some(row) = self.rows.get(i).cloned() else { continue };
+                    drawn += 1;
+                    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+                    let p = ui.painter_at(rect);
+                    let font = egui::FontId::monospace(12.0);
+                    match row {
+                        Row::Group(g, n) => {
+                            // Brief 026: `-K  (12, 2 prov)`.
+                            let prov = self
+                                .list
+                                .entries
+                                .iter()
+                                .filter(|e| e.group == g && e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional))
+                                .count();
+                            let counts = if prov > 0 { format!("{n}, {prov} prov") } else { n.to_string() };
+                            p.text(
+                                pos2(rect.left() + 4.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                format!("{g}  ({counts})"),
+                                egui::FontId::proportional(11.0),
+                                t.text_dim,
+                            );
+                        }
+                        Row::Device(d) => {
+                            let Some(e) = self.list.entries.get(d) else { continue };
+                            let selected = self.selected == Some(e.id);
+                            if selected {
+                                p.rect_filled(rect, 0.0, t.tab_active);
+                                p.rect_filled(egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height())), 0.0, t.accent);
+                            } else if resp.hovered() {
+                                p.rect_filled(rect, 0.0, t.chrome);
+                            }
+                            let open = self.expanded.contains(&e.id);
+                            let arrow = if e.symbols.is_empty() {
+                                " "
+                            } else if open {
+                                "▾"
+                            } else {
+                                "▸"
+                            };
+                            let tag = e.tag.as_deref().unwrap_or("(no tag)");
+                            // Brief 026: `F` after a fixed tag; a provisional one in its colour.
+                            let fixed = if e.fixed { " F" } else { "" };
+                            let text = format!("{arrow} {tag:<7}{fixed} {}", e.description);
+                            let colour = if ecad_model::tag::is_provisional(tag) {
+                                PROVISIONAL
+                            } else if selected {
+                                t.text
+                            } else {
+                                t.text_dim
+                            };
+                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, colour);
+                            let label = device_label(e);
+                            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
+                            if resp.clicked() {
+                                // A click on the arrow folds or unfolds; anywhere else selects the
+                                // device and unfolds its symbols.
+                                if resp.interact_pointer_pos().is_some_and(|q| q.x < rect.left() + 20.0) {
+                                    toggled = Some(e.id);
+                                } else {
+                                    if self.selected != Some(e.id) {
+                                        self.editing = None;
+                                        self.error = None;
+                                    }
+                                    self.selected = Some(e.id);
+                                    if !open {
+                                        toggled = Some(e.id);
+                                    }
+                                }
+                            }
+                        }
+                        Row::Symbol(d, s) => {
+                            let Some(e) = self.list.entries.get(d) else { continue };
+                            let Some(sym) = e.symbols.get(s) else { continue };
+                            if resp.hovered() {
+                                p.rect_filled(rect, 0.0, t.chrome);
+                            }
+                            let text = format!("    {}  {}", sym.place, sym.name);
+                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, t.text_dim);
+                            let label = symbol_label(e, sym);
+                            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+                            let rep: RepresentationId = sym.rep;
+                            if resp.on_hover_text("Show this symbol's page and select it").clicked() {
+                                self.selected = Some(e.id);
+                                out.push(Action::GotoSymbol(rep));
+                            }
+                        }
+                    }
+                }
+            },
+        );
+        self.rows_drawn = drawn;
+        if let Some(c) = toggled {
+            self.toggle(c);
+        }
+        if let Some(c) = self.selected {
+            self.editor(ui, c, writable, &mut out);
+        }
+        out
+    }
+
+    /// The selected device's six properties, each a field; Enter or leaving a changed field runs
+    /// `setprop`, Esc puts it back.
+    fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, out: &mut Vec<Action>) {
+        let Some(e) = self.list.entries.iter().find(|e| e.id == c).cloned() else {
+            self.selected = None;
+            return;
+        };
+        let t = Tokens::get();
+        ui.add_space(4.0);
+        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(1.0, t.border));
+        ui.add_space(4.0);
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(t.text_dim));
+        if let Some((msg, offer)) = self.error.clone() {
+            ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
+            // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
+            if let Some((target, tag)) = offer {
+                let (same_kind, next) = self.clash.as_ref().map_or((false, None), |k| (k.same_kind, k.next.clone()));
+                ui.horizontal(|ui| {
+                    if same_kind {
+                        let swap = egui::Button::new(RichText::new(SWAP).small().color(t.text)).fill(t.accent);
+                        if ui.add(swap).accessible_name("ecad.tagclash.swap").on_hover_text("Exchange the two tags (one undo step)").clicked() {
+                            self.error = None;
+                            out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("swap") });
+                        }
+                        if ui
+                            .small_button(MERGE)
+                            .accessible_name("ecad.tagclash.merge")
+                            .on_hover_text("Make this device part of the device that has that tag (one undo step)")
+                            .clicked()
+                        {
+                            self.error = None;
+                            out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("merge") });
+                        }
+                    }
+                    let label = next.map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
+                    if ui.small_button(label).accessible_name("ecad.tagclash.next").clicked() {
+                        self.error = None;
+                        out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("next") });
+                    }
+                });
+            }
+        }
+        // Brief 026 (design §4): the Fixed box beside the tag; greyed for a provisional tag.
+        let provisional = e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional);
+        let mut fixed = e.fixed;
+        let can = writable && e.tag.is_some() && !provisional;
+        let r = ui.add_enabled(can, egui::Checkbox::new(&mut fixed, RichText::new("Fixed").small())).accessible_name("ecad.props.tagfixed");
+        let r = if provisional { r.on_disabled_hover_text("A provisional tag can't be fixed; give it a number first.") } else { r };
+        if r.changed() {
+            out.push(Action::SetDeviceProperty {
+                component: c,
+                key: "tag_fixed",
+                value: if fixed { "yes".into() } else { String::new() },
+                conflict: None,
+            });
+        }
+        egui::Grid::new("ecad.devices.props").num_columns(2).spacing(vec2(6.0, 2.0)).show(ui, |ui| {
+            for (i, (key, name)) in PROPERTIES.iter().enumerate() {
+                let stored = e.properties.get(i).cloned().flatten().unwrap_or_default();
+                ui.label(RichText::new(*name).small());
+                let mine = self.editing.as_ref().filter(|(d, k, _)| *d == c && k == key);
+                let mut text = mine.map_or_else(|| stored.clone(), |(_, _, x)| x.clone());
+                let field = ui.add_enabled(
+                    writable,
+                    egui::TextEdit::singleline(&mut text).id(egui::Id::unique(("ecad.devices.prop", *key))).desired_width(f32::INFINITY),
+                );
+                let field = field.accessible_name(format!("{name} field"));
+                if field.changed() {
+                    self.editing = Some((c, key, text.clone()));
+                }
+                if field.lost_focus() && self.editing.as_ref().is_some_and(|(d, k, _)| *d == c && k == key) {
+                    let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    // The key that ended the edit is the field's, not CADCraft's command line's.
+                    ui.input_mut(|i| {
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+                    });
+                    let edited = self.editing.take().map(|(_, _, x)| x).unwrap_or_default();
+                    if !esc && edited.trim() != stored.trim() {
+                        let _ = enter;
+                        out.push(Action::SetDeviceProperty { component: c, key, value: edited, conflict: None });
+                    }
+                }
+                ui.end_row();
+            }
+        });
+    }
+
+    /// The trial reports a refused property edit; a tag held by another device offers the merge.
+    pub fn refused(&mut self, c: ComponentId, key: &str, value: &str, message: String) {
+        let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
+        // Brief 026: the ways are read from the refusal before it is shortened.
+        self.clash = offer.as_ref().map(|_| Clash {
+            same_kind: message.contains(r#""swap""#),
+            next: message.split("(use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string),
+        });
+        // The command's ways forward name its JSON parameter; here the buttons are the ways, so
+        // only the first sentence is shown.
+        let message = match message.find(" Give conflict:").or_else(|| message.find(" It is a ")) {
+            Some(i) if offer.is_some() => message.get(..i).unwrap_or(&message).to_string(),
+            _ => message,
+        };
+        self.error = Some((message, offer));
+    }
+}

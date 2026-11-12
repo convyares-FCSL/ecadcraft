@@ -153,13 +153,7 @@ impl<M: Medium> ProjectFile<M> {
     ///
     /// # Errors
     /// [`SaveError`]; the medium is then discarded by the caller (it is the temporary target).
-    pub fn create(
-        medium: M,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-    ) -> Result<Self, SaveError> {
+    pub fn create(medium: M, project: ProjectId, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str) -> Result<Self, SaveError> {
         let file = Self::write_new(medium, project, ledger, created_ms, writer)?;
         file.acknowledge(ledger)?;
         Ok(file)
@@ -172,13 +166,7 @@ impl<M: Medium> ProjectFile<M> {
     ///
     /// # Errors
     /// [`SaveError`]; the medium is then discarded by the caller (it is the temporary target).
-    pub fn write_new(
-        mut medium: M,
-        project: ProjectId,
-        ledger: &Ledger,
-        created_ms: Option<u64>,
-        writer: &str,
-    ) -> Result<Self, SaveError> {
+    pub fn write_new(mut medium: M, project: ProjectId, ledger: &Ledger, created_ms: Option<u64>, writer: &str) -> Result<Self, SaveError> {
         if !medium.is_empty() {
             return Err(SaveError::NotEmpty);
         }
@@ -234,8 +222,7 @@ impl<M: Medium> ProjectFile<M> {
     pub fn open(medium: M, seed: u64) -> Result<(Self, Ledger, OpenReport), OpenError> {
         let bytes = medium.read_all().map_err(|e| OpenError::Header(format!("could not read: {e}")))?;
         let opened = read::open_project(&bytes, seed)?;
-        let verified =
-            usize::try_from(opened.report.verified_len).ok().and_then(|n| bytes.get(..n)).unwrap_or_default();
+        let verified = usize::try_from(opened.report.verified_len).ok().and_then(|n| bytes.get(..n)).unwrap_or_default();
         let file = Self {
             medium,
             header: opened.header,
@@ -261,9 +248,7 @@ impl<M: Medium> ProjectFile<M> {
             return Err(SaveError::ReadOnly);
         }
         let head = ledger.head();
-        if head < self.persisted
-            || (self.persisted > 0 && ledger.log().get(self.persisted as usize - 1).map(|t| t.id) != self.last_tx)
-        {
+        if head < self.persisted || (self.persisted > 0 && ledger.log().get(self.persisted as usize - 1).map(|t| t.id) != self.last_tx) {
             return Err(SaveError::NotThisHistory("its saved transactions are not this project's".into()));
         }
         // 1. The whole verified prefix must still be ours: it is re-read and its digest compared,
@@ -278,23 +263,14 @@ impl<M: Medium> ProjectFile<M> {
         // 2. Classify bytes beyond the verified prefix.
         let extra_len = len - self.verified_len;
         if extra_len > 0 {
-            let known = self
-                .attempt
-                .as_ref()
-                .map_or(0, |a| a.bytes.len() as u64)
-                .max(self.fragment.as_ref().map_or(0, |f| f.len() as u64));
+            let known = self.attempt.as_ref().map_or(0, |a| a.bytes.len() as u64).max(self.fragment.as_ref().map_or(0, |f| f.len() as u64));
             if extra_len > known {
-                return Err(SaveError::ExternalChange(format!(
-                    "{extra_len} unexpected bytes follow the saved history"
-                )));
+                return Err(SaveError::ExternalChange(format!("{extra_len} unexpected bytes follow the saved history")));
             }
             let extra = self.medium.read_range(self.verified_len, extra_len).map_err(SaveError::Read)?;
-            let ours = self.attempt.as_ref().is_some_and(|a| a.bytes.starts_with(&extra))
-                || self.fragment.as_ref().is_some_and(|f| *f == extra);
+            let ours = self.attempt.as_ref().is_some_and(|a| a.bytes.starts_with(&extra)) || self.fragment.as_ref().is_some_and(|f| *f == extra);
             if !ours {
-                return Err(SaveError::ExternalChange(
-                    "the bytes after the saved history are not this writer's".into(),
-                ));
+                return Err(SaveError::ExternalChange("the bytes after the saved history are not this writer's".into()));
             }
             self.medium.truncate(self.verified_len).map_err(SaveError::Truncate)?;
         }
@@ -304,28 +280,15 @@ impl<M: Medium> ProjectFile<M> {
             return Ok(SaveOutcome::NothingToSave);
         }
         // 3. Write the batch afresh (it includes edits made since any failed attempt).
-        let (bytes, spans, head_hash) =
-            encode_batch(ledger, self.persisted as usize, self.chain_head).map_err(SaveError::Encode)?;
+        let (bytes, spans, head_hash) = encode_batch(ledger, self.persisted as usize, self.chain_head).map_err(SaveError::Encode)?;
         let first_seq = self.persisted + 1;
         if let Err(e) = self.medium.append(&bytes) {
-            self.attempt = Some(Attempt {
-                offset: self.verified_len,
-                bytes,
-                first_seq,
-                last_seq: head,
-                stage: AttemptStage::AppendFailed,
-            });
+            self.attempt = Some(Attempt { offset: self.verified_len, bytes, first_seq, last_seq: head, stage: AttemptStage::AppendFailed });
             return Err(SaveError::Append(e));
         }
         // 4. Flush; a failure is never retried on the same bytes.
         if let Err(e) = self.medium.flush() {
-            self.attempt = Some(Attempt {
-                offset: self.verified_len,
-                bytes,
-                first_seq,
-                last_seq: head,
-                stage: AttemptStage::FlushFailed,
-            });
+            self.attempt = Some(Attempt { offset: self.verified_len, bytes, first_seq, last_seq: head, stage: AttemptStage::FlushFailed });
             return Err(SaveError::Flush(e));
         }
         // 5. Acknowledge.

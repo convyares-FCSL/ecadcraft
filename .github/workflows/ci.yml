@@ -1,8 +1,11 @@
 # Continuous integration in two levels (owner decision, 2026-11-08; ecad/CLAUDE.md, "Branches and
 # testing"):
 # - Quick check, on every pull request into dev: fmt and clippy (all targets, so tests must still
-#   compile) for the ECAD workspace on Linux. Tests run in the worker's scoped checks and at the
-#   QA gate; compiling ~50 test binaries took ~8 min of a ~12 min run (2026-11-08).
+#   compile) for the ECAD workspace on Linux, then the fast tests of the crates the pull request
+#   changed and of every crate that depends on them (`cargo xtask test-changed --with-dependents`;
+#   2026-11-12). Workers test only their own changed crates; the slow set and the whole suite run
+#   at the QA gate. All test binaries took ~8 min of a ~12 min run (2026-11-08); a change to a
+#   leaf crate builds a few of them.
 # - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
 #   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
 #   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
@@ -40,6 +43,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # test-changed diffs from the merge base with origin/dev; the whole history is ~25 MB.
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
@@ -52,6 +58,10 @@ jobs:
       - name: Clippy
         working-directory: ecad
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      # Fast tests only (no --include-ignored): the slow set runs at the QA gate.
+      - name: Tests of changed crates and their dependents
+        working-directory: ecad
+        run: cargo xtask test-changed --base origin/dev --with-dependents
 
   fmt:
     name: Format

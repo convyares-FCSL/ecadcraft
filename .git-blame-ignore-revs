@@ -1,0 +1,3 @@
+# Formatting-only commits, skipped by `git blame` (git config blame.ignoreRevsFile .git-blame-ignore-revs)
+# ECAD workspace reformat, owner rustfmt standard (2026-11-09)
+b214f4c3743328481488c4fe5d84d554bf576c9a

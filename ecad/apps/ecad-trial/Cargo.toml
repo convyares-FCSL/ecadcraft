@@ -17,8 +17,12 @@ ecad-model = { workspace = true }
 ecad-file = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
-# The same eframe build as CADCraft's desktop app (system clipboard included; without its persistence of window state).
-eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11"] }
+# The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
+# remembers the window's size and position (brief 023).
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence"] }
+# Reads eframe's app.ron to tell whether a window state was saved (`window::saved_window`); the
+# version eframe uses, so nothing is built twice.
+ron = "0.12"
 serde_json = { workspace = true }
 
 [dev-dependencies]
@@ -29,3 +33,5 @@ ecad-store = { workspace = true }
 ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
+# Brief 022: the UI test of the Checks tab opens the demo project, built as `cargo xtask demo` builds it.
+ecad-mcp = { path = "../ecad-mcp" }

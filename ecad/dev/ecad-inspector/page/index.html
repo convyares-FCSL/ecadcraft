@@ -1,0 +1,577 @@
+<!doctype html>
+<!--
+  ECAD inspector page (brief 029): a read-only developer tool. It never ships.
+
+  Two modes, chosen automatically:
+  - Server mode, when served by `ecadinspect serve <file>` (the address it prints carries the
+    token): the page is a thin client of the inspector protocol over a WebSocket (design 029 §2,
+    §5). Every view is a protocol call; nothing on the page writes, and the protocol has no op
+    that writes.
+  - Snapshots mode, opened from disk or with "Open snapshots…": reads ecad-inspect/1 and /2 JSON
+    snapshots exactly as before (`cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>`).
+
+  Every value goes through esc(). No inline event handlers: the server's Content-Security-Policy
+  runs only this script.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECAD Inspector</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1b1f24; --muted: #5d6670; --line: #d8dde3; --panel: #f5f7f9;
+  --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; --accent: #0b6bcb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --fg: #e3e7ec; --muted: #9aa4ae; --line: #2a3139; --panel: #171c22;
+    --ok: #4ac26b; --bad: #ff6b6b; --warn: #e3b341; --accent: #6cb6ff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --fg: #e3e7ec; --muted: #9aa4ae; --line: #2a3139; --panel: #171c22;
+  --ok: #4ac26b; --bad: #ff6b6b; --warn: #e3b341; --accent: #6cb6ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+header, main { padding: 12px 16px; }
+header { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+h1 { font-size: 16px; margin: 0; }
+h2 { font-size: 14px; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+header label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+input[type="file"] { max-width: 100%; }
+select, input, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; max-width: 100%; }
+button { cursor: pointer; }
+button[aria-pressed="true"], nav button.on { border-color: var(--accent); color: var(--accent); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.wrap { overflow-x: auto; }
+.ok { color: var(--ok); } .bad { color: var(--bad); font-weight: 600; } .warn { color: var(--warn); } .muted { color: var(--muted); }
+.pill { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+details > summary { cursor: pointer; }
+pre { background: var(--panel); padding: 6px; margin: 4px 0; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 24px; }
+#drop { border: 1px dashed var(--line); padding: 24px; text-align: center; color: var(--muted); }
+mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.bar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 6px 0; }
+.msg { border: 1px solid var(--line); border-left: 4px solid var(--warn); background: var(--panel); padding: 8px 12px; margin: 8px 0; }
+.msg.bad { border-left-color: var(--bad); font-weight: normal; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ECAD Inspector <span class="pill">read-only</span> <span class="pill" id="modepill">exported snapshots, not live</span></h1>
+  <span id="status"></span>
+  <span id="fileinfo" class="muted"></span>
+  <button id="reload" type="button" hidden>Reload</button>
+  <label>Open snapshots… <input id="files" type="file" accept=".json,application/json" multiple></label>
+  <label id="pickbox">Snapshot <select id="pick"></select></label>
+  <label id="qbox">Search IDs and labels <input id="q" type="search" placeholder="id, short id or label"></label>
+</header>
+<nav id="tabs" hidden></nav>
+<main id="out"><div id="drop">Drop ecad-inspect JSON snapshots here, or use “Open snapshots…”.</div></main>
+<script>
+"use strict";
+const snaps = [];
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const short = (hex) => (hex && hex.length === 32 ? hex.slice(0, 8) : hex);
+
+// ------------------------------------------------------------------ Snapshots mode (unchanged)
+
+async function load(files) {
+  for (const f of files) {
+    try {
+      const s = JSON.parse(await f.text());
+      if (s.format !== "ecad-inspect/1" && s.format !== "ecad-inspect/2") throw new Error("not an ecad-inspect/1 or /2 snapshot");
+      s._file = f.name;
+      snaps.push(s);
+    } catch (e) {
+      alert(`${f.name}: ${e.message}`);
+    }
+  }
+  snaps.sort((a, b) => a.seq - b.seq || (a.kind === "live") - (b.kind === "live"));
+  $("pick").innerHTML = snaps.map((s, i) => `<option value="${i}">${esc(s.project)} · ${esc(s.label)} · ${esc(s._file)}</option>`).join("");
+  $("pick").value = String(snaps.length - 1);
+  render();
+}
+
+function labelIndex(s) {
+  const m = new Map();
+  for (const x of s.index) m.set(x.id, x);
+  return m;
+}
+
+function render() {
+  const s = snaps[Number($("pick").value)];
+  if (!s) return;
+  const q = $("q").value.trim().toLowerCase();
+  const idx = labelIndex(s);
+  const name = (hex) => {
+    const x = idx.get(hex);
+    const text = x ? `${esc(x.label)} <span class="mono">(${esc(x.short)})</span>` : `<span class="mono">${esc(short(hex))}</span>`;
+    return q && ((x && x.label.toLowerCase().includes(q)) || hex.includes(q) || (x && x.short.includes(q))) ? `<mark>${text}</mark>` : text;
+  };
+  const d = s.document;
+  const ok = (b) => (b === null || b === undefined ? `<span class="warn">n/a</span>` : b ? `<span class="ok">yes</span>` : `<span class="bad">NO</span>`);
+  const checks = s.checks;
+  let h = `<div class="grid"><div>
+    <h2>Project</h2><table>
+    <tr><th>Project</th><td>${esc(s.project)}</td></tr>
+    <tr><th>Snapshot</th><td>${esc(s.label)} (${esc(s.kind)})</td></tr>
+    <tr><th>Sequence shown</th><td>${esc(s.seq)}</td></tr>
+    <tr><th>Head / persisted</th><td>${esc(s.head)} / ${esc(s.persisted)} ${s.unsaved ? '<span class="warn">unsaved</span>' : '<span class="ok">saved</span>'}</td></tr>
+    <tr><th>Versions</th><td>product ${esc(s.product_version)}, schema ${esc(s.schema_version)}</td></tr>
+    <tr><th>CADCraft commit</th><td class="mono">${esc(short(s.upstream || ""))}</td></tr>
+    </table></div><div>
+    <h2>Checks</h2><table>
+    <tr><th>Replay equals live</th><td>${ok(checks.replay_equals_live)}</td></tr>
+    <tr><th>Invariants hold</th><td>${ok(checks.invariants_hold)}</td></tr>
+    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
+    <tr><th>Nets (derived)</th><td>${esc(checks.nets.length)}</td></tr>
+    </table></div></div>
+    <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
+    ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${esc(p.mapped_handles ?? "")}</td></tr>`).join("")}</table></div>`;
+  const f = s.persistence;
+  const records = new Map(((f && f.records) || []).map((r) => [r.seq, r]));
+  if (f) {
+    const hd = f.header;
+    h += `<h2>Persistence (when the snapshot was taken)</h2><div class="wrap"><table>
+    <tr><th>Persistence</th><td>${esc(f.persistence)}${f.in_memory ? " (test store, in memory)" : ""}</td></tr>
+    <tr><th>File</th><td class="mono">${esc(f.path ?? "none yet")}</td></tr>
+    <tr><th>Writer lock</th><td class="mono">${esc(f.lock_file ?? "not held")}</td></tr>
+    <tr><th>Header</th><td>${hd ? `container ${esc(hd.container)} v${esc(hd.container_version)}, schema ${esc(hd.schema_version)}, codec ${esc(hd.codec)}, writer ${esc(hd.writer)}` : "none"}</td></tr>
+    <tr><th>Verified bytes / writer persisted</th><td>${esc(f.verified_len ?? "")} / ${esc(f.writer_persisted ?? "")}</td></tr>
+    <tr><th>Read-only</th><td>${f.read_only ? `<span class="warn">${esc(f.read_only)}</span>` : "no"}</td></tr>
+    <tr><th>Unconfirmed Save As</th><td>${f.unconfirmed ? '<span class="warn">yes</span>' : "no"}</td></tr>
+    <tr><th>Failed save attempt</th><td>${f.attempt ? `<span class="warn">${esc(JSON.stringify(f.attempt))}</span>` : "none"}</td></tr>
+    ${f.preserved_tail != null ? `<tr><th>Preserved tail</th><td class="mono">${esc(f.preserved_tail)}</td></tr>` : ""}
+    <tr><th>Opening found</th><td>${esc(f.open_report ?? "")}</td></tr>
+    <tr><th>Records in the file</th><td>${esc(records.size)}</td></tr>
+    </table></div>`;
+  }
+
+  const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
+  const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
+  h += `<h2>Components and terminals</h2><div class="wrap"><table><tr><th>Component</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
+  for (const [c, comp] of Object.entries(d.components)) {
+    const ts = termsOf(c);
+    if (!match([c, ...ts.map(([t]) => t)])) continue;
+    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Component === c);
+    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
+      <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
+  }
+  h += `</table></div><h2>Conductors</h2><div class="wrap"><table><tr><th>Conductor</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
+  for (const [w, c] of Object.entries(d.conductors)) {
+    if (!match([w, ...c.ends.filter(Boolean)])) continue;
+    const cables = Object.entries(d.cables).filter(([, k]) => k.members.some((m) => m.conductor === w)).map(([k]) => name(k));
+    const shown = Object.values(d.representations).some((r) => r.subject.Conductor === w);
+    h += `<tr><td>${name(w)}</td><td>${c.ends[0] ? name(c.ends[0]) : '<span class="muted">open</span>'}</td><td>${c.ends[1] ? name(c.ends[1]) : "open"}</td>
+      <td>${cables.join(", ")}</td><td>${shown ? "yes" : '<span class="warn">not shown</span>'}</td></tr>`;
+  }
+  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Members (in order)</th></tr>`;
+  for (const [k, c] of Object.entries(d.cables)) {
+    if (!match([k, ...c.members.map((m) => m.conductor)])) continue;
+    h += `<tr><td>${name(k)}</td><td>${c.members.map((m) => name(m.conductor) + (m.core ? ` core ${esc(m.core)}` : "")).join("<br>")}</td></tr>`;
+  }
+  h += `</table></div><h2>Transactions (1-${esc(s.seq)})</h2>`;
+  for (const t of [...s.transactions].reverse()) {
+    const kind = typeof t.kind === "string" ? t.kind : Object.keys(t.kind)[0] + " of " + short(Object.values(t.kind)[0].of);
+    const txt = JSON.stringify(t.ops);
+    if (q && !txt.toLowerCase().includes(q) && !t.label.toLowerCase().includes(q)) continue;
+    const rec = records.get(t.seq);
+    const where = t.seq <= s.persisted ? `<span class="ok">saved</span>${rec ? ` at offset ${esc(rec.offset)} (${esc(rec.len)} bytes)` : ""}` : rec ? `<span class="warn">written, unconfirmed</span> at offset ${esc(rec.offset)}` : '<span class="warn">pending</span>';
+    h += `<details><summary><b>${esc(t.seq)}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${esc(t.ops.length)} ops · ${where}</summary>
+      ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
+  }
+  h += `<h2>Runtime events (diagnostics, not design history)</h2><div class="wrap"><table><tr><th>#</th><th>Kind</th><th>Command</th><th>Seq</th><th>Page</th><th>Message</th></tr>`;
+  const failing = new Set(["Refused", "SaveFailed", "ProjectionFailed", "SaveUnavailable", "PageUnavailable", "FidelityMismatch", "RecoveryVerificationFailed", "Recovered", "IndexRebuilt"]);
+  for (const e of [...s.events].reverse()) {
+    if (q && !JSON.stringify(e).toLowerCase().includes(q)) continue;
+    h += `<tr><td>${esc(e.n)}</td><td class="${failing.has(e.kind) ? "bad" : ""}">${esc(e.kind)}</td><td class="mono">${esc(e.command)}</td><td>${esc(e.seq)}</td><td>${e.page ? name(e.page) : ""}</td><td>${esc(e.message)}</td></tr>`;
+  }
+  h += `</table></div>`;
+  if (checks.mismatches.length) h += `<h2>Mismatches</h2><pre>${esc(JSON.stringify(checks.mismatches, null, 1))}</pre>`;
+  $("out").innerHTML = h;
+}
+
+
+// ------------------------------------------------------------------ Server mode (design 029 §5.3)
+
+const params = new URLSearchParams(location.search);
+const token = params.get("t");
+const server = location.protocol === "http:" && !!token;
+let ws = null;
+let nextId = 1;
+const pending = new Map();
+let tab = "project";
+let info = null;
+let verifyTimer = null;
+const lists = {}; // per list: { from, q }
+const PAGE = 200;
+
+const utc = (ms) => (typeof ms === "number" ? new Date(ms).toISOString().replace("T", " ").slice(0, 19) + " UTC" : "");
+const bytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : n >= 1e3 ? (n / 1e3).toFixed(0) + " KB" : n + " bytes");
+const msg = (e, cls = "") => `<div class="msg ${cls}"><b>${esc(e.why)}</b><br>${esc(e.way_out)}</div>`;
+
+function call(op, body = {}) {
+  return new Promise((resolve) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      resolve({ error: { what: "disconnected", why: "Not connected to the inspector server.", way_out: "Reconnect." } });
+      return;
+    }
+    const id = String(nextId++);
+    pending.set(id, resolve);
+    ws.send(JSON.stringify({ v: 1, id, op, ...body }));
+  });
+}
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws?t=${encodeURIComponent(token)}`);
+  ws.addEventListener("open", start);
+  ws.addEventListener("message", (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.id != null && pending.has(String(m.id))) {
+      const r = pending.get(String(m.id));
+      pending.delete(String(m.id));
+      r(m);
+    }
+  });
+  ws.addEventListener("close", (e) => {
+    for (const r of pending.values()) r({ error: { what: "disconnected", why: "Disconnected.", way_out: "Reconnect." } });
+    pending.clear();
+    clearTimeout(verifyTimer);
+    const reason = e.reason || (e.code === 1006 ? "the server stopped" : `code ${e.code}`);
+    $("status").innerHTML = `<span class="pill bad">disconnected</span>`;
+    $("out").innerHTML = `<div class="msg bad"><b>Disconnected from the inspector server (${esc(reason)}).</b><br>
+      Reconnect, or start it again: <code>ecadinspect serve &lt;file&gt;</code></div><button id="reconnect" type="button">Reconnect</button>`;
+  });
+}
+
+async function start() {
+  const h = await call("hello");
+  if (h.error) { $("out").innerHTML = msg(h.error, "bad"); return; }
+  if (!h.ok.source) { showEmpty(); return; }
+  await loadSummary();
+}
+
+function showEmpty() {
+  info = null;
+  $("tabs").hidden = true;
+  $("fileinfo").textContent = "";
+  $("status").innerHTML = `<span class="pill">local only</span>`;
+  $("out").innerHTML = `<div id="drop">No file is open. Drop a <code>.ecad</code> file anywhere on the page, or start with <code>ecadinspect serve &lt;file&gt;</code>.</div>`;
+}
+
+async function loadSummary(reply) {
+  const s = reply || (await call("summary"));
+  if (s.error) {
+    if (s.error.what === "not-open") { showEmpty(); return; }
+    $("out").innerHTML = msg(s.error, "bad");
+    return;
+  }
+  info = s.ok;
+  for (const k of Object.keys(lists)) delete lists[k];
+  const m = info.meta || {};
+  const src = info.source;
+  $("fileinfo").innerHTML = `<b>${esc(src.name)}</b> · ${esc(bytes(src.size))}` +
+    (m.container_version != null ? ` · container ${esc(m.container_version)} · schema ${esc(m.schema_version)} · ${esc(m.codec)}` : "") +
+    (m.writer ? ` · writer ${esc(m.writer)}` : "");
+  $("reload").hidden = src.kind !== "file";
+  pills();
+  const caps = new Set(info.capabilities || []);
+  const tabs = [["project", "Project", "model"], ["devices", "Devices", "model"], ["wiring", "Wires and nets", "model"],
+    ["history", "History", "store"], ["tables", "Tables", "store"], ["checks", "Checks", null]];
+  $("tabs").hidden = false;
+  $("tabs").innerHTML = tabs.filter(([, , need]) => !need || caps.has(need))
+    .map(([id, label]) => `<button type="button" data-tab="${id}" class="${id === tab ? "on" : ""}">${esc(label)}</button>`).join("");
+  if (!tabs.some(([id, , need]) => id === tab && (!need || caps.has(need)))) tab = caps.has("model") ? "project" : caps.has("store") ? "tables" : "checks";
+  if (info.verify && info.verify.state === "running") pollVerify();
+  show();
+}
+
+function pills() {
+  if (!info) return;
+  let h = `<span class="pill">local only</span> `;
+  if (info.problem) h += `<span class="pill bad">${esc(info.problem.what)}</span> `;
+  if (info.chain) h += info.chain.ok ? `<span class="pill ok">chain PASS</span> ` : `<span class="pill bad">chain FAIL</span> `;
+  else if (info.capabilities && info.capabilities.includes("store")) h += `<span class="pill warn">raw tables only</span> `;
+  const o = info.open || {};
+  if (o.state === "damaged") h += `<span class="pill warn">damaged: read-only at ${esc(o.verified_seq)}</span> `;
+  if (o.repaired) h += `<span class="pill warn">repaired in memory</span> `;
+  const v = info.verify || {};
+  if (v.state === "running") h += `<span class="pill warn">verifying…</span>`;
+  else if (v.state === "done") h += `<span class="pill ok">verified</span>`;
+  else if (v.state === "failed") h += `<span class="pill bad">Verify FAIL</span>`;
+  $("status").innerHTML = h;
+}
+
+async function pollVerify() {
+  clearTimeout(verifyTimer);
+  const v = await call("verify");
+  if (v.error || !info) return;
+  info.verify = v.ok;
+  pills();
+  if (v.ok.state === "running") verifyTimer = setTimeout(pollVerify, 1000);
+  else if (tab === "checks") show();
+}
+
+function setTab(t) {
+  tab = t;
+  for (const b of document.querySelectorAll("#tabs button")) b.className = b.dataset.tab === t ? "on" : "";
+  show();
+}
+
+async function show() {
+  if (!info) return;
+  const out = $("out");
+  let h = info.problem ? msg(info.problem, "bad") : "";
+  if (info.v1_header) h += `<h2>Version 1 header</h2><pre>${esc(info.v1_header)}</pre>`;
+  if (info.head_hex) h += `<h2>First bytes</h2><pre>${esc(info.head_hex)}</pre>`;
+  const o = info.open || {};
+  if (o.state === "damaged") {
+    h += msg({ why: `Damage at transaction ${o.damage && o.damage.seq != null ? o.damage.seq : "?"}: shown read-only at ${o.verified_seq}, as the app opens it.`,
+      way_out: "The Checks tab has Verify's full report; the app's Save As makes a clean copy." });
+  }
+  if (o.repaired) h += msg({ why: "This copy needed a repair in memory (probably copied while ECAD was saving); the file is unchanged.", way_out: "Wait for the save and drop it again." });
+  out.innerHTML = h + `<div id="view">Loading…</div>`;
+  const view = $("view");
+  try {
+    view.innerHTML = await views[tab]();
+  } catch (e) {
+    view.innerHTML = msg({ why: String(e), way_out: "Reload the page." }, "bad");
+  }
+}
+
+function table(head, rows) {
+  return `<div class="wrap"><table><tr>${head.map((x) => `<th>${esc(x)}</th>`).join("")}</tr>${rows.join("")}</table></div>`;
+}
+
+/// A paged list: its search box, the rows and Previous / Next.
+async function paged(key, op, body, head, row) {
+  const st = (lists[key] ||= { from: 0, q: "" });
+  const r = await call(op, { ...body, from: st.from, count: PAGE, q: st.q });
+  if (r.error) return msg(r.error, "bad");
+  const total = r.ok.total;
+  const last = Math.min(st.from + r.ok.rows.length, total);
+  return `<div class="bar"><input type="search" data-list="${esc(key)}" placeholder="search" value="${esc(st.q)}">
+    <span class="muted">${esc(total ? st.from + 1 : 0)}–${esc(last)} of ${esc(total)}</span>
+    <button type="button" data-page="${esc(key)}" data-dir="-1" ${st.from ? "" : "disabled"}>Previous</button>
+    <button type="button" data-page="${esc(key)}" data-dir="1" ${last < total ? "" : "disabled"}>Next</button></div>` +
+    table(head, r.ok.rows.map(row));
+}
+
+const join = (a) => (a || []).map(esc).join(", ");
+
+const views = {
+  async project() {
+    const p = await call("project");
+    if (p.error) return msg(p.error, "bad");
+    const pr = p.ok;
+    const props = Object.entries(pr.properties).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+    const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${v}`).join(" · "))}</td></tr>`).join("");
+    const counts = Object.entries(pr.counts).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
+    const o = info.open || {};
+    return `<div class="grid"><div><h2>Project</h2><table>${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+      <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
+      <div><h2>Counts</h2><table>${counts}</table></div></div>
+      ${revs ? `<h2>Revisions</h2>${table(["#", "fields"], [revs])}` : ""}
+      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Items", "Devices", "Wires", "Properties"],
+      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td><td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
+  },
+  async devices() {
+    return `<h2>Devices</h2>` + (await paged("devices", "devices", { detail: true }, ["Tag", "Function", "Location", "Definition", "Pages", "Connection points", "Properties"],
+      (r) => `<tr><td>${esc(r.tag ?? "(no tag)")}${r.duplicate ? ' <span class="pill bad">duplicate</span>' : ""}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td>
+        <td>${esc(r.definition)}</td><td>${join(r.pages)}</td>
+        <td>${r.points.map((p) => `${esc(p.name)}${p.wires.length ? ` → ${join(p.wires)}` : ""}`).join("<br>")}</td>
+        <td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
+  },
+  async wiring() {
+    return `<h2>Nets</h2>` + (await paged("nets", "nets", {}, ["Number", "Fixed", "Potential", "Place", "Connection points", "Wires"],
+      (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${r.fixed ? "yes" : ""}</td><td>${esc(r.potential)}</td><td>${esc(r.place)}</td><td>${join(r.points)}</td><td>${esc(r.wires)}</td></tr>`)) +
+      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Cross-section", "Colour", "Cable", "Core"],
+      (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td>${esc(r.cross_section)}</td><td>${esc(r.colour)}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
+      `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Members", "Ends"],
+      (r) => `<tr><td>${esc(r.tag)}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
+  },
+  async history() {
+    const b = await call("branches");
+    if (b.error) return msg(b.error, "bad");
+    const branch = (lists.log && lists.log.branch) || (info.open && info.open.branch) || "main";
+    const names = b.ok.rows.map((r) => r.name);
+    let h = `<h2>Branches</h2>` + table(["Name", "Status", "Head", "Fork", "Rows", "ID"], b.ok.rows.map((r) =>
+      `<tr><td>${esc(r.name)}${r.release_line ? ' <span class="pill">release line</span>' : ""}</td><td>${esc(r.status)}</td><td>${esc(r.head)}</td>
+       <td>${r.fork ? `${esc(r.fork.parent)} after ${esc(r.fork.seq)}` : "the project root"}</td><td>${esc(r.rows)}</td><td class="mono">${esc(r.id)}</td></tr>`));
+    h += `<h2>Log</h2><div class="bar"><label>Branch <select id="logbranch">${names.map((n) => `<option ${n === branch ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+      <button type="button" id="export">Export JSONL</button></div>`;
+    h += await paged("log", "log", { branch }, ["#", "Time", "Author", "Kind", "Label", "Ops", "Stored", "Compression", "Record"],
+      (r) => `<tr><td>${esc(r.seq)}</td><td>${esc(utc(r.time_ms))}</td><td>${esc(JSON.stringify(r.author))}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td>
+        <td>${esc(r.label)}</td><td>${esc(r.ops)}</td><td>${esc(r.stored)}</td><td>${esc(r.compression)}</td>
+        <td><details data-rec="${esc(r.seq)}"><summary>show</summary><pre class="rec">…</pre></details></td></tr>`);
+    const v = await call("versions");
+    if (!v.error) {
+      h += `<h2>Versions</h2>` + table(["Branch", "Kind", "Name", "At", "Chunks", "Undo / redo", "Release", "Description"], v.ok.rows.map((r) =>
+        `<tr><td>${esc(r.branch)}</td><td>${esc(r.kind)}</td><td>${esc(r.name)}</td><td>${esc(r.seq)}</td><td>${esc(r.chunks)}</td><td>${esc(r.undo)} / ${esc(r.redo)}</td>
+         <td>${r.release ? esc(Object.entries(r.release).map(([k, x]) => `${k}: ${x}`).join(" · ")) : ""}${r.merge ? `merge from ${esc(r.merge.source)} at ${esc(r.merge.source_head)}` : ""}</td><td>${esc(r.description)}</td></tr>`));
+    }
+    return h;
+  },
+  async tables() {
+    const t = await call("tables");
+    if (t.error) return msg(t.error, "bad");
+    const which = (lists.rows && lists.rows.table) || "transactions";
+    let h = `<h2>Tables</h2>` + table(["Table", "Rows", "Stored bytes", "Metadata", "Fragmented"], t.ok.tables.map((r) =>
+      `<tr><td><button type="button" data-table="${esc(r.name)}" aria-pressed="${r.name === which}">${esc(r.name)}</button></td><td>${esc(r.rows)}</td><td>${esc(r.stored)}</td><td>${esc(r.metadata)}</td><td>${esc(r.fragmented)}</td></tr>`));
+    h += `<h2>meta</h2>` + table(["Name", "Value"], Object.entries(t.ok.meta).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="mono">${esc(JSON.stringify(v))}</td></tr>`));
+    h += `<h2>Rows of ${esc(which)}</h2>` + (await paged("rows", "rows", { table: which }, ["Key", "Size", "Compression", "Row"],
+      (r) => `<tr><td class="mono">${esc(r.key_text)}</td><td>${esc(r.size)}</td><td>${esc(r.compression)}</td>
+        <td><details data-row="${esc(r.key)}" data-tbl="${esc(which)}"><summary>show</summary>
+        <div class="bar"><button type="button" data-form="readable" aria-pressed="true">Readable</button><button type="button" data-form="raw" aria-pressed="false">Raw</button></div>
+        <pre class="rowbody">…</pre></details></td></tr>`));
+    return h;
+  },
+  async checks() {
+    const o = info.open || {};
+    let h = `<h2>Open</h2><table><tr><th>State</th><td>${esc(o.state)}</td></tr>` +
+      (o.error ? `<tr><th>Why</th><td>${esc(o.error.why)}</td></tr>` : "") +
+      (o.damage ? `<tr><th>Damage</th><td>${esc(o.damage.seq)}: ${esc(o.damage.detail)}</td></tr>` : "") + `</table>`;
+    const c = await call("check_chain");
+    h += `<h2>Chain</h2>` + (c.error ? msg(c.error) : report(c.ok));
+    const inv = await call("invariants");
+    if (!inv.error) {
+      const i = inv.ok;
+      h += `<h2>Invariants (the opened state)</h2><table><tr><th>Invariants</th><td>${i.invariants ? `<span class="bad">${esc(i.invariants)}</span>` : '<span class="ok">hold</span>'}</td></tr>
+        <tr><th>Index</th><td>${i.index ? `<span class="bad">${esc(i.index)}</span>` : '<span class="ok">matches a rebuild</span>'}</td></tr>
+        <tr><th>Attached ends off their connection point</th><td>${i.mismatches ? `<span class="bad">${esc(i.mismatches)}</span>` : '<span class="ok">0</span>'}</td></tr></table>`;
+    }
+    const v = (await call("verify")).ok || {};
+    info.verify = v;
+    pills();
+    h += `<h2>Verify</h2>`;
+    if (v.state === "running") h += `<p><span class="pill warn">verifying…</span> ${esc((v.elapsed_ms / 1000).toFixed(1))} s</p>`;
+    else if (v.report) h += `<p>${v.state === "done" ? '<span class="pill ok">verified</span>' : '<span class="pill bad">Verify FAIL</span>'} in ${esc((v.elapsed_ms / 1000).toFixed(1))} s</p>` + report(v.report);
+    else h += `<p class="muted">not run</p>`;
+    return h;
+  },
+};
+
+function report(r) {
+  return `<p>${r.ok ? '<span class="ok">PASS</span>' : '<span class="bad">FAIL</span>'} · ${esc(r.transactions)} transactions on main · ${esc(r.snapshots)} snapshot(s) · ${esc(r.full_checks)} full check(s)</p>` +
+    (r.failures.length ? `<pre class="bad">${esc(r.failures.join("\n"))}</pre>` : "") + `<details><summary>all lines</summary><pre>${esc(r.lines.join("\n"))}</pre></details>`;
+}
+
+async function showRow(det, form) {
+  const body = det.querySelector(".rowbody");
+  for (const b of det.querySelectorAll("button[data-form]")) b.setAttribute("aria-pressed", String(b.dataset.form === form));
+  const r = await call("row", { table: det.dataset.tbl, key: det.dataset.row, form });
+  if (r.error) { body.textContent = r.error.why; return; }
+  body.textContent = form === "raw" ? `${r.ok.size} bytes${r.ok.truncated ? " (first 64 KiB)" : ""}\n${r.ok.hex}` : JSON.stringify(r.ok.decoded ?? r.ok.decode_error, null, 1);
+}
+
+/// Snapshots in server mode: the snapshot views replace the server's.
+function snapshotsMode() {
+  clearTimeout(verifyTimer);
+  info = null;
+  $("tabs").hidden = true;
+  $("pickbox").hidden = false;
+  $("qbox").hidden = false;
+  $("modepill").textContent = "exported snapshots, not live";
+}
+
+async function dropServer(file) {
+  if (/\.json$/i.test(file.name)) { snapshotsMode(); await load([file]); return; }
+  $("out").innerHTML = `<p class="muted">Sending ${esc(file.name)} (${esc(bytes(file.size))})…</p>`;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const id = String(nextId++);
+  const reply = new Promise((resolve) => pending.set(id, resolve));
+  ws.send(JSON.stringify({ v: 1, id, op: "open", name: file.name, size: file.size }));
+  if (file.size <= 1 << 30) ws.send(await file.arrayBuffer());
+  const r = await reply;
+  if (r.error) {
+    if (r.error.what === "too-large") { $("out").innerHTML = msg(r.error, "bad"); return; }
+    $("out").innerHTML = msg(r.error, "bad");
+    return;
+  }
+  if (r.ok.problem && r.ok.problem.what === "snapshot") { snapshotsMode(); await load([file]); return; }
+  tab = "project";
+  await loadSummary(r);
+}
+
+$("pick").addEventListener("change", render);
+$("q").addEventListener("input", render);
+
+if (server) {
+  $("modepill").textContent = "server: the file, read-only";
+  $("pickbox").hidden = true;
+  $("qbox").hidden = true;
+  $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab); });
+  $("reload").addEventListener("click", async () => { const r = await call("reload"); await loadSummary(r); });
+  $("out").addEventListener("click", async (e) => {
+    const t = e.target;
+    if (t.id === "reconnect") { connect(); return; }
+    if (t.id === "export") {
+      const branch = $("logbranch") ? $("logbranch").value : "main";
+      const r = await call("export_jsonl", { branch });
+      if (r.error) { alert(`${r.error.why}\n${r.error.way_out}`); return; }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([r.ok.text], { type: "application/x-ndjson" }));
+      a.download = `${(info && info.source.name) || "export"}.${branch}.jsonl`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      return;
+    }
+    if (t.dataset.page) { const st = lists[t.dataset.page]; st.from = Math.max(0, st.from + Number(t.dataset.dir) * PAGE); show(); return; }
+    if (t.dataset.table) { lists.rows = { from: 0, q: "", table: t.dataset.table }; show(); return; }
+    if (t.dataset.form) { showRow(t.closest("details"), t.dataset.form); }
+  });
+  $("out").addEventListener("toggle", async (e) => {
+    const d = e.target;
+    if (!d.open) return;
+    if (d.dataset.row && !d.dataset.loaded) { d.dataset.loaded = "1"; showRow(d, "readable"); }
+    if (d.dataset.rec && !d.dataset.loaded) {
+      d.dataset.loaded = "1";
+      const branch = $("logbranch") ? $("logbranch").value : "main";
+      const r = await call("log", { branch, from: 0, count: 1, detail: true, q: "" });
+      // The record of exactly this row: ask the window that starts at it.
+      const head = r.ok ? r.ok.total : 0;
+      const one = await call("log", { branch, from: head - Number(d.dataset.rec), count: 1, detail: true });
+      d.querySelector(".rec").textContent = one.error ? one.error.why : JSON.stringify(one.ok.rows[0] && one.ok.rows[0].record, null, 1);
+    }
+  }, true);
+  $("out").addEventListener("change", (e) => {
+    if (e.target.id === "logbranch") { lists.log = { from: 0, q: "", branch: e.target.value }; show(); }
+  });
+  let typing = null;
+  $("out").addEventListener("input", (e) => {
+    const key = e.target.dataset.list;
+    if (!key) return;
+    clearTimeout(typing);
+    typing = setTimeout(() => { lists[key].q = e.target.value; lists[key].from = 0; show(); }, 250);
+  });
+  $("files").addEventListener("change", (e) => { snapshotsMode(); load(e.target.files); });
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) dropServer(f); });
+  $("out").innerHTML = `<p class="muted">Connecting…</p>`;
+  connect();
+} else {
+  $("files").addEventListener("change", (e) => load(e.target.files));
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const fs = [...e.dataTransfer.files];
+    if (fs.some((f) => !/\.json$/i.test(f.name))) {
+      $("out").innerHTML = `<div class="msg">Reading a .ecad needs the inspector server: run <code>ecadinspect serve &lt;file&gt;</code> and open the address it prints.</div>`;
+      return;
+    }
+    load(fs);
+  });
+}
+</script>
+</body>
+</html>

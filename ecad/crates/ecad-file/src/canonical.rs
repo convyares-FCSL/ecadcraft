@@ -167,12 +167,8 @@ fn closest_digits(x: f64, digits: &str, exp: i64) -> String {
     let high = low.saturating_mul(10);
     let e10 = exp - (k as i64 - 1);
     let round_trips = |v: u64| format!("{v}e{e10}").parse::<f64>().is_ok_and(|y| y == x);
-    let candidates: Vec<u64> = [c.checked_sub(1), Some(c), c.checked_add(1)]
-        .into_iter()
-        .flatten()
-        .filter(|v| (low..high).contains(v))
-        .filter(|v| round_trips(*v))
-        .collect();
+    let candidates: Vec<u64> =
+        [c.checked_sub(1), Some(c), c.checked_add(1)].into_iter().flatten().filter(|v| (low..high).contains(v)).filter(|v| round_trips(*v)).collect();
     let Some(mut best) = candidates.first().copied() else { return digits.to_string() };
     for next in candidates.iter().skip(1).copied() {
         // Compare 2x with best + next, both scaled by 10^e10: above the midpoint, `next` is closer.

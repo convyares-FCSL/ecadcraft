@@ -11,7 +11,8 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | File | Why |
 | --- | --- |
 | `README.md` | ECAD repository front page |
-| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
+| `.git-blame-ignore-revs` | Commits `git blame` skips: the ECAD workspace reformat (PR #46) |
+| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy, fast tests of changed crates and their dependents) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
 | `docs/decisions.md` | ECAD decision log |
@@ -19,11 +20,20 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | `docs/document-architecture-proposal.md` | architecture proposal (PR #1) |
 | `docs/ecad-architecture-foundations.md` | owner's foundations note |
 
+## Upstream fixes taken ahead of the next sync
+
+Already merged upstream; each entry goes away at the next upstream sync, which brings the same change.
+
+| File | Upstream change | Why now |
+| --- | --- | --- |
+| `crates/fonts/src/mtext.rs` | CADCraft #2954 (`6f0f1fe`): `strips_formatting` expects a short `\U+` escape to keep its digits, as `unicode_escapes_are_decoded_in_every_parser` already did (test only) | After CADCraft 0.19.0 the two tests contradicted each other, so the root workspace's tests failed at the v0.1 QA gate |
+
 ## Code patches to upstream crates: the generic extension interface
 
 Proposal §14, capabilities X1-X7, X8 (Tool Sets tabs supplied by the embedder, approved
 2026-10-15) and X9 (overlay marks drawn by a document's owner, approved 2026-11-01 for brief 008,
-owner answer O2). One shape, one marker (`ECAD-SEAM(owner)`), nothing
+owner answer O2) and X10 (a section of the Properties palette drawn by the embedder, approved
+2026-11-08 for brief 019, owner answer Q8). One shape, one marker (`ECAD-SEAM(owner)`), nothing
 ECAD-specific: the interface passes drawings, handles, command ids and provenance. Documents
 without an owner behave exactly as before.
 
@@ -45,8 +55,8 @@ without an owner behave exactly as before.
 | `crates/ui-egui/src/canvas.rs` | X9 | the drawing area paints the active document's overlay marks (`owner_mark_shapes`: a ring, dot or square centred on a drawing position, at a constant size on screen, after the drawing and before grips and previews); a plain drawing has none, so it is drawn as before |
 | `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before the drawing changes; plain drawings unaffected; a panicking check refuses and recovers) and overlay marks (`the_owner_draws_overlay_marks`: plain drawings have none; undrawable marks dropped; capped; busy or panicking owner draws none; asking changes nothing) |
 | `crates/engine/tests/ext_commands.rs` | tests | **new file**: extension command registration test |
-| `crates/ui-egui/src/palettes.rs` | X8 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged |
-| `crates/ui-egui/src/lib.rs` | X8 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once) |
+| `crates/ui-egui/src/palettes.rs` | X8, X10 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged; X10 (approved 2026-11-08 for brief 019, owner answer Q8): `properties_section` calls `CadApp::owner_properties` under its header, before CADCraft's own rows; without it the palette is unchanged |
+| `crates/ui-egui/src/lib.rs` | X8, X10 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once); X10: `CadApp::owner_properties`, a section of the Properties palette drawn by the embedder (`None` by default) |
 | `crates/ui-egui/tests/owner_overlay.rs` | tests | **new file** (X9): marks keep their screen size at every zoom and sit on their drawing position; marks off the drawing area or off any screen are left out; an owned drawing asks its owner every frame and drawing the marks changes nothing |
 | `crates/ui-egui/tests/toolsets_extra.rs` | tests | **new file**: without extra tabs Drafting and Modeling are unchanged; an extra tab shows its groups, queues a click once without starting it, and keeps the selection; a tab named like a built-in one is ignored |
 
@@ -61,3 +71,24 @@ steps of their own are refused on owned documents by the start check instead (th
 `REFUSED_COMMANDS` and `LISP_REFUSED`, owner decision 2026-10-31): the Block Editor (BEDIT, BSAVE,
 BSAVEAS, BCLOSE), in-place reference editing (REFEDIT, REFSET, REFCLOSE), and LISP (expressions
 typed at the command line, APPLOAD, the LISP command, `c:` commands and `(command …)` routines).
+
+The sync to CADCraft 0.19.0 (brief 023, 2026-11-09) needed no new seam points; the three
+conflicting files (`execute.rs`, `interactive.rs`, `file.rs`) keep the same hand-overs, ordered
+before upstream's LISP `U` handling and save options. Paths CADCraft 0.16.0 to 0.19.0 added that
+change a page all reach the commit gate, and the ECAD adapter records or refuses them (overseer
+decisions, 2026-11-09):
+- BREAK and TRIM keep the object's handle for one piece (#2545). The adapter refuses a commit
+  that changes an object with an electrical meaning in place while adding objects without
+  provenance, as it refuses a replacement; on plain drawing they are recorded.
+- OOPS brings back erased objects with their old handles. The adapter records it when it brings
+  back only plain drawing removed by the last erase on the same page, and refuses it, with a
+  reason, otherwise (`ecad-cadcraft/src/oops.rs`).
+- `-ARRAY` copies carry provenance (the transform copy path) and are recorded as copies; MINSERT
+  of an ECAD symbol is refused by the gate, and BLOCK stays refused, so MINSERT has nothing else
+  to insert on an ECAD page.
+- The Find and Replace and TEXTEDIT windows run commands, so they pass the gate.
+
+**Candidate to offer upstream later (not implemented, brief 023):** CADCraft 0.18.0's UI panic
+guard autosaves open drawings through `autosave::plan_with`, which skips owned documents (X5), so
+an ECAD page's unsaved work is not saved when the UI panics (the app keeps running, so the
+project can still be saved). A generic `DocumentOwner::emergency_save` hook would close that gap.

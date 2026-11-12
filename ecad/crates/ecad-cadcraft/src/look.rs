@@ -18,9 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{
-    CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject,
-};
+use ecad_model::{CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject};
 
 // ---------------------------------------------------------------- tokens (design §12)
 
@@ -146,37 +144,21 @@ pub fn flag_shape(at: Pt, w: f64, side: FlagSide) -> FlagShape {
     let h = LABEL_HEIGHT;
     let (lo, hi, text_at) = match side {
         FlagSide::Right => (Pt::new(at.x - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + w + 0.5 * h, at.y + 1.5 * h), at),
-        FlagSide::Left => (
-            Pt::new(at.x - w - 0.5 * h, at.y - 0.5 * h),
-            Pt::new(at.x + 0.5 * h, at.y + 1.5 * h),
-            Pt::new(at.x - w, at.y),
-        ),
-        FlagSide::Up => (
-            Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 0.5 * h),
-            Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 1.5 * h),
-            Pt::new(at.x - 0.5 * w, at.y),
-        ),
-        FlagSide::Down => (
-            Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 1.5 * h),
-            Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 0.5 * h),
-            Pt::new(at.x - 0.5 * w, at.y - h),
-        ),
+        FlagSide::Left => (Pt::new(at.x - w - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + 0.5 * h, at.y + 1.5 * h), Pt::new(at.x - w, at.y)),
+        FlagSide::Up => {
+            (Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 1.5 * h), Pt::new(at.x - 0.5 * w, at.y))
+        }
+        FlagSide::Down => {
+            (Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 1.5 * h), Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 0.5 * h), Pt::new(at.x - 0.5 * w, at.y - h))
+        }
     };
     let xm = lo.x + 0.5 * (hi.x - lo.x);
     let ym = lo.y + 0.5 * (hi.y - lo.y);
     let (outline, attach) = match side {
-        FlagSide::Right => {
-            (vec![lo, Pt::new(hi.x, lo.y), Pt::new(hi.x + h, ym), hi, Pt::new(lo.x, hi.y)], Pt::new(lo.x, ym))
-        }
-        FlagSide::Left => {
-            (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y), Pt::new(lo.x - h, ym)], Pt::new(hi.x, ym))
-        }
-        FlagSide::Up => {
-            (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(xm, hi.y + h), Pt::new(lo.x, hi.y)], Pt::new(xm, lo.y))
-        }
-        FlagSide::Down => {
-            (vec![lo, Pt::new(xm, lo.y - h), Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], Pt::new(xm, hi.y))
-        }
+        FlagSide::Right => (vec![lo, Pt::new(hi.x, lo.y), Pt::new(hi.x + h, ym), hi, Pt::new(lo.x, hi.y)], Pt::new(lo.x, ym)),
+        FlagSide::Left => (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y), Pt::new(lo.x - h, ym)], Pt::new(hi.x, ym)),
+        FlagSide::Up => (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(xm, hi.y + h), Pt::new(lo.x, hi.y)], Pt::new(xm, lo.y)),
+        FlagSide::Down => (vec![lo, Pt::new(xm, lo.y - h), Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], Pt::new(xm, hi.y)),
     };
     FlagShape { lo, hi, text_at, outline, attach }
 }
@@ -414,9 +396,7 @@ fn clip_outside(path: &[Pt], lo: Pt, hi: Pt, tol: f64) -> Vec<Vec<Pt>> {
     pieces
         .into_iter()
         .map(|p| tidy(p, tol))
-        .filter(|p| {
-            p.len() >= 2 && p.windows(2).any(|w| w.first().zip(w.get(1)).is_some_and(|(a, b)| !a.near(*b, tol)))
-        })
+        .filter(|p| p.len() >= 2 && p.windows(2).any(|w| w.first().zip(w.get(1)).is_some_and(|(a, b)| !a.near(*b, tol))))
         .collect()
 }
 
@@ -601,15 +581,7 @@ struct Frame {
 
 /// The frame of one fanned end (design §4.2 steps 1 to 5). `ends`: each member's end on this side.
 #[allow(clippy::too_many_arguments)]
-fn frame(
-    doc: &Document,
-    members: &[Member],
-    reference: usize,
-    side: usize,
-    ends: &[Pt],
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
-) -> Option<Frame> {
+fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Option<Frame> {
     let g = LABEL_GAP;
     let o = *ends.get(reference)?;
     let rpath = &members.get(reference)?.path;
@@ -623,23 +595,15 @@ fn frame(
     // Pitch and bend radius.
     let mut sorted = t.clone();
     sorted.sort_by(f64::total_cmp);
-    let pitch = sorted
-        .windows(2)
-        .filter_map(|w| w.first().zip(w.get(1)).map(|(x, y)| y - x))
-        .filter(|d| *d > tol)
-        .fold(f64::INFINITY, f64::min);
+    let pitch = sorted.windows(2).filter_map(|w| w.first().zip(w.get(1)).map(|(x, y)| y - x)).filter(|d| *d > tol).fold(f64::INFINITY, f64::min);
     let rho = BEND_RADIUS.min(pitch / 2.0);
     // Labels and tail length.
     let labels: Vec<Labels> = members
         .iter()
         .map(|m| {
             let core = m.core.as_deref().filter(|c| !c.trim().is_empty()).map(|c| shorten(c, MAX_CORE_CHARS));
-            let wire = doc
-                .conductors
-                .get(&m.conductor)
-                .and_then(|c| c.properties.get("tag"))
-                .filter(|t| !t.is_empty())
-                .map(|t| shorten(t, MAX_SHOWN_CHARS));
+            let wire =
+                doc.conductors.get(&m.conductor).and_then(|c| c.properties.get("tag")).filter(|t| !t.is_empty()).map(|t| shorten(t, MAX_SHOWN_CHARS));
             let core_w = core.as_deref().map_or(0.0, measure);
             let wire_w = wire.as_deref().map_or(0.0, measure);
             Labels { core, wire, core_w, wire_w }
@@ -683,16 +647,10 @@ fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Op
             let centre = at(o, u, v, c - rad, *ti + s * rad);
             let (a1, a2) = (angle(u), angle(mul(v, -s)));
             let (s0, s1) = if cross(u, mul(v, -s)) > 0.0 { (a1, a2) } else { (a2, a1) };
-            parts.push(
-                Part::new(Role::Bend, Shape::Arc { center: centre, radius: rad, start: s0, end: s1 }, Weight::Wire)
-                    .of_core(m.conductor),
-            );
+            parts.push(Part::new(Role::Bend, Shape::Arc { center: centre, radius: rad, start: s0, end: s1 }, Weight::Wire).of_core(m.conductor));
         }
         if !start.near(*e, tol) {
-            parts.push(
-                Part::new(Role::Tail, Shape::Path { points: vec![start, *e], closed: false }, Weight::Wire)
-                    .of_core(m.conductor),
-            );
+            parts.push(Part::new(Role::Tail, Shape::Path { points: vec![start, *e], closed: false }, Weight::Wire).of_core(m.conductor));
         }
         // Labels at the tail start, reading left to right or bottom to top (design §4.5).
         let second = if l.core.is_some() { g + l.core_w + LABEL_SPACING } else { g };
@@ -704,35 +662,18 @@ fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Op
         } else if r.y > 0.5 {
             (add(start, Pt::new(-lift, g)), add(start, Pt::new(-lift, second)), std::f64::consts::FRAC_PI_2)
         } else {
-            (
-                add(start, Pt::new(-lift, -g - l.core_w)),
-                add(start, Pt::new(-lift, -second - l.wire_w)),
-                std::f64::consts::FRAC_PI_2,
-            )
+            (add(start, Pt::new(-lift, -g - l.core_w)), add(start, Pt::new(-lift, -second - l.wire_w)), std::f64::consts::FRAC_PI_2)
         };
         if let Some(text) = &l.core {
-            parts.push(
-                Part::new(Role::CoreLabel, Shape::Text { at: core_at, rotation, value: text.clone() }, Weight::Text)
-                    .of_core(m.conductor),
-            );
+            parts.push(Part::new(Role::CoreLabel, Shape::Text { at: core_at, rotation, value: text.clone() }, Weight::Text).of_core(m.conductor));
         }
         if let Some(text) = &l.wire {
-            parts.push(
-                Part::new(Role::WireNumber, Shape::Text { at: wire_at, rotation, value: text.clone() }, Weight::Text)
-                    .of_core(m.conductor),
-            );
+            parts.push(Part::new(Role::WireNumber, Shape::Text { at: wire_at, rotation, value: text.clone() }, Weight::Text).of_core(m.conductor));
         }
     }
     let junction = at(o, u, v, c, tj);
     if hi - lo > tol {
-        parts.insert(
-            0,
-            Part::new(
-                Role::Spine,
-                Shape::Path { points: vec![at(o, u, v, c, lo), at(o, u, v, c, hi)], closed: false },
-                Weight::Cable,
-            ),
-        );
+        parts.insert(0, Part::new(Role::Spine, Shape::Path { points: vec![at(o, u, v, c, lo), at(o, u, v, c, hi)], closed: false }, Weight::Cable));
     }
     if !junction.is_finite() || parts.iter().any(|p| !shape_finite(&p.shape)) {
         return None;
@@ -743,9 +684,7 @@ fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Op
 fn shape_finite(s: &Shape) -> bool {
     match s {
         Shape::Path { points, .. } => points.iter().all(|p| p.is_finite()),
-        Shape::Arc { center, radius, start, end } => {
-            center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite()
-        }
+        Shape::Arc { center, radius, start, end } => center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite(),
         Shape::Text { at, rotation, .. } => at.is_finite() && rotation.is_finite(),
     }
 }
@@ -767,11 +706,7 @@ fn trunk_between(a: &FannedEnd, b: &FannedEnd, tol: f64) -> Vec<Pt> {
         }
     } else {
         let corner = if d0.x.abs() > 0.5 { Pt::new(j1.x, j0.y) } else { Pt::new(j0.x, j1.y) };
-        if dot(sub(corner, j0), d0) > tol && dot(sub(corner, j1), d1) > tol {
-            vec![j0, corner, j1]
-        } else {
-            vec![j0, j1]
-        }
+        if dot(sub(corner, j0), d0) > tol && dot(sub(corner, j1), d1) > tol { vec![j0, corner, j1] } else { vec![j0, j1] }
     }
 }
 
@@ -815,18 +750,10 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
         .into_iter()
         .map(|p| Part::new(Role::Trunk, Shape::Path { points: p, closed: false }, Weight::Cable))
         .collect();
-    parts.push(Part::new(
-        Role::LabelBox,
-        Shape::Path { points: vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], closed: true },
-        Weight::Wire,
-    ));
+    parts.push(Part::new(Role::LabelBox, Shape::Path { points: vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], closed: true }, Weight::Wire));
     for (i, (line, w)) in lines.into_iter().zip(widths).enumerate() {
         let baseline = hi.y - BOX_PAD - h - i as f64 * BOX_LINE_PITCH;
-        parts.push(Part::new(
-            Role::BoxText,
-            Shape::Text { at: Pt::new(centre.x - w / 2.0, baseline), rotation: 0.0, value: line },
-            Weight::Text,
-        ));
+        parts.push(Part::new(Role::BoxText, Shape::Text { at: Pt::new(centre.x - w / 2.0, baseline), rotation: 0.0, value: line }, Weight::Text));
     }
     parts
 }
@@ -837,9 +764,7 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
     let core_of: BTreeMap<ConductorId, String> = c
         .members
         .iter()
-        .filter_map(|m| {
-            m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| (m.conductor, shorten(x, MAX_CORE_CHARS)))
-        })
+        .filter_map(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| (m.conductor, shorten(x, MAX_CORE_CHARS))))
         .collect();
     if core_of.is_empty() {
         return Vec::new();
@@ -868,51 +793,27 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
         }
         let n = rot90(d);
         let at = add(p, add(mul(d, 0.5 * h), mul(n, 0.3 * h)));
-        out.push(
-            Part::new(Role::CoreAtSlash, Shape::Text { at, rotation: angle(d), value: text.clone() }, Weight::Text)
-                .of_core(w),
-        );
+        out.push(Part::new(Role::CoreAtSlash, Shape::Text { at, rotation: angle(d), value: text.clone() }, Weight::Text).of_core(w));
     }
     out
 }
 
 /// `cable` on `page`: its fan when `fan` is asked for and can be drawn, else its traditional
 /// computed parts (core labels at the slashes), with its reference ends in both views.
-pub fn cable_on_page(
-    doc: &Document,
-    page: PageId,
-    cable: CableId,
-    fan: bool,
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
-) -> CableDrawing {
+pub fn cable_on_page(doc: &Document, page: PageId, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
     cable_in(doc, &PageIndex::new(doc, page), cable, fan, tol, measure)
 }
 
 /// [`cable_on_page`] with the page's [`PageIndex`] built once by the caller. Any part that is not
 /// finite (a point near ±f64::MAX) is left out, in both views.
-fn cable_in(
-    doc: &Document,
-    idx: &PageIndex<'_>,
-    cable: CableId,
-    fan: bool,
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
-) -> CableDrawing {
+fn cable_in(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
     let mut out = cable_unfiltered(doc, idx, cable, fan, tol, measure);
     out.parts.retain(|p| shape_finite(&p.shape));
     out.quiet.retain(|p| p.is_finite());
     out
 }
 
-fn cable_unfiltered(
-    doc: &Document,
-    idx: &PageIndex<'_>,
-    cable: CableId,
-    fan: bool,
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
-) -> CableDrawing {
+fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     let Some(c) = doc.cables.get(&cable) else { return CableDrawing::default() };
     let mut seen = BTreeSet::new();
@@ -1001,19 +902,11 @@ fn cable_unfiltered(
         None => out.parts = slash_labels(doc, idx, cable, tol),
     }
     // Stored fan joins are not drawn: the trunk shows where the cable joins (owner request).
-    out.hidden.extend(
-        idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()),
-    );
+    out.hidden.extend(idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()));
     for (m, (flag, _)) in markers.iter().zip(&flags) {
-        out.parts.push(
-            Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id),
-        );
-        let mut text = Part::new(
-            Role::ReferenceText,
-            Shape::Text { at: m.shape().text_at, rotation: 0.0, value: m.text.clone() },
-            Weight::Text,
-        )
-        .of_reference(m.id);
+        out.parts.push(Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id));
+        let mut text = Part::new(Role::ReferenceText, Shape::Text { at: m.shape().text_at, rotation: 0.0, value: m.text.clone() }, Weight::Text)
+            .of_reference(m.id);
         text.color = m.orphan.then_some(ORPHAN_ACI);
         out.parts.push(text);
     }
@@ -1038,16 +931,8 @@ fn cable_unfiltered(
 /// The fan's parts and hidden items, or `None` when it cannot be drawn.
 #[allow(clippy::too_many_arguments)]
 fn fan_parts(
-    doc: &Document,
-    idx: &PageIndex<'_>,
-    cable: CableId,
-    members: &[Member],
-    reference: usize,
-    side_ends: &[Vec<Pt>; 2],
-    stopped: &[Option<usize>; 2],
-    flags: &[(Vec<Pt>, Pt)],
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
+    doc: &Document, idx: &PageIndex<'_>, cable: CableId, members: &[Member], reference: usize, side_ends: &[Vec<Pt>; 2],
+    stopped: &[Option<usize>; 2], flags: &[(Vec<Pt>, Pt)], tol: f64, measure: &dyn Fn(&str) -> f64,
 ) -> Option<(Vec<Part>, Vec<ItemId>, [Option<Pt>; 2])> {
     let attach = |s: usize| stopped.get(s).copied().flatten().and_then(|i| flags.get(i)).map(|(_, m)| *m);
     let m = [attach(0), attach(1)];
@@ -1063,8 +948,7 @@ fn fan_parts(
     let mut fanned: [Option<FannedEnd>; 2] = [None, None];
     for (s, slot) in fanned.iter_mut().enumerate() {
         let Some(f) = frames.get(s).and_then(Option::as_ref) else { continue };
-        let join =
-            joins.get(s).copied().flatten().and_then(|(_, _, p)| f.spine.join_for(p)).unwrap_or(f.spine.middle());
+        let join = joins.get(s).copied().flatten().and_then(|(_, _, p)| f.spine.join_for(p)).unwrap_or(f.spine.middle());
         *slot = Some(fan_end(f, members, side_ends.get(s)?, join, tol)?);
     }
     let trunk = match (&fanned[0], &fanned[1], m[0], m[1]) {
@@ -1092,10 +976,7 @@ fn fan_parts(
         hidden.extend(idx.conductor_reps(m.conductor).iter().flat_map(|r| r.items.iter().copied()));
     }
     hidden.extend(
-        idx.cable_reps(cable)
-            .iter()
-            .filter(|(_, r)| r.role != REFERENCE_ROLE && r.role != ANCHOR_ROLE)
-            .flat_map(|(_, r)| r.items.iter().copied()),
+        idx.cable_reps(cable).iter().filter(|(_, r)| r.role != REFERENCE_ROLE && r.role != ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()),
     );
     Some((parts, hidden, m))
 }
@@ -1104,12 +985,7 @@ fn fan_parts(
 /// representation of `cable` on the page, with the point of its first Point item, goes to the
 /// fanned end whose spine is nearest (one per end; the nearest pair first, then the other end).
 /// Each entry: representation, item, point.
-fn anchors_by_side(
-    doc: &Document,
-    idx: &PageIndex<'_>,
-    cable: CableId,
-    spines: &[Option<Spine>; 2],
-) -> [Option<(RepresentationId, ItemId, Pt)>; 2] {
+fn anchors_by_side(doc: &Document, idx: &PageIndex<'_>, cable: CableId, spines: &[Option<Spine>; 2]) -> [Option<(RepresentationId, ItemId, Pt)>; 2] {
     let found: Vec<(RepresentationId, ItemId, Pt)> = idx
         .cable_reps(cable)
         .iter()
@@ -1169,13 +1045,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
         .members
         .iter()
         .filter(|m| seen.insert(m.conductor))
-        .filter_map(|m| {
-            idx.route(m.conductor).and_then(path_of).map(|path| Member {
-                conductor: m.conductor,
-                core: m.core.clone(),
-                path,
-            })
-        })
+        .filter_map(|m| idx.route(m.conductor).and_then(path_of).map(|path| Member { conductor: m.conductor, core: m.core.clone(), path }))
         .collect();
     let Some((reference, s)) = sides(&members) else { return Vec::new() };
     let ends: [Vec<Pt>; 2] = [s.iter().map(|x| x.0).collect(), s.iter().map(|x| x.1).collect()];
@@ -1201,11 +1071,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
         .iter()
         .enumerate()
         .filter_map(|(side, sp)| {
-            sp.map(|spine| FanEnd {
-                end: if side == 0 { MarkerEnd::A } else { MarkerEnd::B },
-                spine,
-                anchor: anchors.get(side).copied().flatten(),
-            })
+            sp.map(|spine| FanEnd { end: if side == 0 { MarkerEnd::A } else { MarkerEnd::B }, spine, anchor: anchors.get(side).copied().flatten() })
         })
         .collect()
 }
@@ -1213,11 +1079,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
 /// Every cable's computed drawing on `page` (cables in `fan` drawn as fans where they can be),
 /// leaving out cables with nothing computed there.
 pub fn cables_on_page(
-    doc: &Document,
-    page: PageId,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
-    measure: &dyn Fn(&str) -> f64,
+    doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64, measure: &dyn Fn(&str) -> f64,
 ) -> BTreeMap<CableId, CableDrawing> {
     let idx = PageIndex::new(doc, page);
     // Only cables shown on the page: with a representation there, or a member routed there.
@@ -1246,12 +1108,7 @@ pub struct PageIndex<'a> {
 impl<'a> PageIndex<'a> {
     /// One pass over the representations on `page` (through the page index, brief 014).
     pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
-        let mut idx = PageIndex {
-            routes: BTreeMap::new(),
-            prims: BTreeMap::new(),
-            conductors: BTreeMap::new(),
-            cables: BTreeMap::new(),
-        };
+        let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), conductors: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
             match r.subject {
                 Subject::Conductor(w) => {
@@ -1300,12 +1157,8 @@ mod tests {
 
     #[test]
     fn clipping_removes_the_middle_of_a_segment() {
-        let pieces =
-            clip_outside(&[Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)], Pt::new(4.0, -1.0), Pt::new(6.0, 1.0), 1e-9);
-        assert_eq!(
-            pieces,
-            vec![vec![Pt::new(0.0, 0.0), Pt::new(4.0, 0.0)], vec![Pt::new(6.0, 0.0), Pt::new(10.0, 0.0)]]
-        );
+        let pieces = clip_outside(&[Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)], Pt::new(4.0, -1.0), Pt::new(6.0, 1.0), 1e-9);
+        assert_eq!(pieces, vec![vec![Pt::new(0.0, 0.0), Pt::new(4.0, 0.0)], vec![Pt::new(6.0, 0.0), Pt::new(10.0, 0.0)]]);
     }
 
     #[test]

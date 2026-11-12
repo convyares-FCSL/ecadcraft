@@ -87,8 +87,7 @@ impl Codec for JsonLines {
         {
             return Err(shape());
         }
-        let stored =
-            std::str::from_utf8(crc_hex).ok().and_then(|t| u32::from_str_radix(t, 16).ok()).ok_or_else(shape)?;
+        let stored = std::str::from_utf8(crc_hex).ok().and_then(|t| u32::from_str_radix(t, 16).ok()).ok_or_else(shape)?;
         let payload = frame.get(PREFIX_LEN..frame.len() - 1).ok_or_else(shape)?;
         let computed = crc32c(payload);
         if stored != computed {

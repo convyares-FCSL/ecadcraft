@@ -1,14 +1,19 @@
-//! A project's file on disk (persistence stage 2a): the binding between a [`crate::Project`] and
-//! its `.ecad` file, through `ecad_file::DiskProject`. Native only; in a browser build every
+//! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
+//! binding between a [`crate::Project`] and its `.ecad` file, through
+//! `ecad_file::v2::disk::DiskProjectV2`. A version 1 file is never opened for editing: opening one
+//! offers to convert it ([`needs_conversion`], [`convert`]). Native only; in a browser build every
 //! operation reports that project files are not available.
 
-use ecad_file::OpenReport;
+use ecad_file::v2::ReportV2;
 use ecad_model::{Ledger, ProjectId};
 
 /// What Save says when a project has never been saved and no file was chosen.
 pub const NO_FILE_YET: &str = "this project has no file yet; use Save As and choose a .ecad file";
 /// What Save As says without a file name.
 pub const SAVE_AS_NEEDS_PATH: &str = "Save As needs a file name (a .ecad file)";
+/// What opening a version 1 file says until it is converted.
+pub const NEEDS_CONVERSION: &str = "is a version 1 project file and is not opened for editing; convert it to a new \
+version 2 file (the original is left untouched)";
 
 /// Where a project's file stands, for status displays.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -19,8 +24,6 @@ pub struct FileStatus {
     pub read_only: Option<String>,
     /// The last Save As replaced its target, but durability was not confirmed; Save confirms it.
     pub unconfirmed: bool,
-    /// Where the interrupted trailing bytes found at open were preserved.
-    pub preserved_tail: Option<String>,
 }
 
 /// The outcome of writing a project to a new file.
@@ -37,20 +40,83 @@ pub enum Written {
 pub struct Opened {
     pub binding: Binding,
     pub ledger: Ledger,
-    pub report: OpenReport,
+    pub report: ReportV2,
     pub project: ProjectId,
     /// A lock file left by a session that ended without releasing it, reclaimed: its record.
     pub reclaimed_lock: Option<String>,
+    /// The tag high-water mark at the snapshot the ledger starts from (brief 021).
+    pub tag_high: ecad_model::tag::HighWater,
 }
 
 /// The file a project is bound to, holding its writer lock while bound.
 #[derive(Debug, Default)]
 pub struct Binding {
     #[cfg(not(target_arch = "wasm32"))]
-    disk: Option<Box<ecad_file::DiskProject>>,
-    /// Faults for the next first save (tests).
+    disk: Option<Box<ecad_file::v2::disk::DiskProjectV2>>,
+}
+
+/// What the debugger's Storage view shows of a version 2 file (copies; no file access).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StorageFacts {
+    /// The branch this session edits.
+    pub branch: String,
+    /// The branch head in the file.
+    pub head: u64,
+    /// The snapshot the next one is built from (the latest written or opened from).
+    pub snapshot_seq: u64,
+    /// Transactions between automatic snapshots.
+    pub snapshot_every: u64,
+    /// What the last save wrote: first and last `seq`, bytes, chunks and snapshots written.
+    pub last_save: Option<ecad_file::v2::SavedV2>,
+    /// The version 1 history a converted file continues: its final hash and length.
+    pub link_v1: Option<(String, u64)>,
+    pub writable: bool,
+}
+
+/// The new file opening `path` would first convert it to, when `path` is a version 1 file;
+/// `None` for anything else (a file that cannot be read included: opening reports that).
+pub fn needs_conversion(path: &str) -> Option<String> {
     #[cfg(not(target_arch = "wasm32"))]
-    pub faults: ecad_file::StepFaults,
+    {
+        let p = std::path::Path::new(path);
+        if ecad_file::v2::convert::sniff(p).ok()? == ecad_file::v2::convert::Major::V1 {
+            return Some(ecad_file::v2::convert::default_output(p).display().to_string());
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = path;
+    None
+}
+
+/// Refuse a file that exists but is neither version of an ECAD project.
+#[cfg(not(target_arch = "wasm32"))]
+fn not_a_project(path: &str) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if ecad_file::v2::convert::sniff(std::path::Path::new(path)).ok() == Some(ecad_file::v2::convert::Major::Unknown) {
+        return Err(format!("could not open {path}: it is not an ECAD project file"));
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = path;
+    Ok(())
+}
+
+/// Convert the version 1 file at `path` to a new version 2 file (`output`, or `<name>.v2.ecad`
+/// beside it), verified by replaying both. The report in words, and the new file's path.
+///
+/// # Errors
+/// Why it was not converted (the source is never changed).
+pub fn convert(path: &str, output: Option<&str>, writer: &str) -> Result<(String, String), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let out = output.map(std::path::Path::new);
+        let r = ecad_file::v2::convert::convert_file(std::path::Path::new(path), out, writer)?;
+        Ok((r.describe(), r.output.display().to_string()))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (path, output, writer);
+        Err(NO_FILES.into())
+    }
 }
 
 /// What a path starting with `~` says when the home folder is not known.
@@ -59,8 +125,8 @@ pub const HOME_UNKNOWN: &str = "the home folder is not known, so ~ cannot be use
 /// Device names Windows reserves in every folder (`CON.ecad` is the console, not a file). Refused
 /// on every platform, so that a project's file name works everywhere.
 const RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
-    "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+    "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// The user's home folder (`std::env::home_dir`: on Windows the user profile, whether or not
@@ -117,9 +183,7 @@ pub fn normalize_with(path: &str, home: Option<&std::path::Path>) -> Result<Stri
         && drive.is_ascii_alphabetic()
         && !chars.next().is_some_and(|c| c == '/' || c == '\\')
     {
-        return Err(format!(
-            "{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"
-        ));
+        return Err(format!("{p} is relative to drive {drive}:'s current folder; type a full path such as {drive}:\\dev\\ecad-projects\\demo"));
     }
     let full = expand_home(p, home)?;
     let p = full.to_str().ok_or_else(|| format!("{} is not a valid Unicode path", full.display()))?;
@@ -162,19 +226,49 @@ pub fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Binding {
-    /// Open the project file at `path` (already normalised): take its writer lock and replay it.
+    /// Open the project file at `path` (already normalised): take its writer lock and open it
+    /// from its latest snapshot.
     ///
     /// # Errors
-    /// The file cannot be read, or is not a project file this build supports.
+    /// The file cannot be read, is a version 1 file ([`NEEDS_CONVERSION`]), or is not a project
+    /// file this build supports.
     pub fn open(path: &str, seed: u64, writer: &str) -> Result<Opened, String> {
-        let o = ecad_file::DiskProject::open(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
-        let project = o.project.project_id().ok_or("the file has no project ID")?;
+        if let Some(out) = needs_conversion(path) {
+            return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
+        }
+        not_a_project(path)?;
+        let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
+        let project = o.project.project().project_id();
+        let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
-            binding: Binding { disk: Some(Box::new(o.project)), faults: ecad_file::StepFaults::default() },
+            binding: Binding { disk: Some(Box::new(o.project)) },
             ledger: o.ledger,
             report: o.report,
             project,
             reclaimed_lock: o.reclaimed_lock,
+            tag_high,
+        })
+    }
+
+    /// [`Binding::open`] for reading only: no writer lock, and the file is never changed.
+    ///
+    /// # Errors
+    /// As [`Binding::open`].
+    pub fn open_read_only(path: &str, seed: u64, writer: &str) -> Result<Opened, String> {
+        not_a_project(path)?;
+        if let Some(out) = needs_conversion(path) {
+            return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
+        }
+        let o = ecad_file::v2::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
+        let project = o.project.project().project_id();
+        let tag_high = o.project.project().base_tag_high().clone();
+        Ok(Opened {
+            binding: Binding { disk: Some(Box::new(o.project)) },
+            ledger: o.ledger,
+            report: o.report,
+            project,
+            reclaimed_lock: o.reclaimed_lock,
+            tag_high,
         })
     }
 
@@ -186,18 +280,13 @@ impl Binding {
     /// Where the file stands.
     pub fn status(&self) -> FileStatus {
         let Some(d) = &self.disk else { return FileStatus::default() };
-        FileStatus {
-            path: Some(d.path().display().to_string()),
-            read_only: d.read_only().map(ToString::to_string),
-            unconfirmed: d.unconfirmed(),
-            preserved_tail: d.preserved_fragment().map(|p| p.display().to_string()),
-        }
+        FileStatus { path: Some(d.path().display().to_string()), read_only: d.read_only().map(ToString::to_string), unconfirmed: d.unconfirmed() }
     }
 
     /// Save to the bound file.
     ///
     /// # Errors
-    /// No file yet, or the save failed (see `ecad_file::DiskError`).
+    /// No file yet, or the save failed.
     pub(crate) fn save(&mut self, ledger: &mut Ledger) -> Result<(), String> {
         let d = self.disk.as_mut().ok_or(NO_FILE_YET)?;
         d.save(ledger).map(|_| ()).map_err(|e| e.to_string())
@@ -208,30 +297,21 @@ impl Binding {
     /// # Errors
     /// The file could not be written; the previous binding is kept.
     pub(crate) fn save_as(
-        &mut self,
-        path: &str,
-        project: ProjectId,
-        ledger: &mut Ledger,
-        writer: &str,
-        created_ms: Option<u64>,
+        &mut self, path: &str, project: ProjectId, ledger: &mut Ledger, writer: &str, created_ms: Option<u64>,
     ) -> Result<Written, String> {
         let p = std::path::Path::new(path);
-        let durability = match &mut self.disk {
-            Some(d) => d.save_as(p, ledger, created_ms, writer).map_err(|e| e.to_string())?,
-            None => {
-                let faults = std::mem::take(&mut self.faults);
-                let (d, durability) = ecad_file::DiskProject::create(p, project, ledger, created_ms, writer, faults)
-                    .map_err(|e| e.to_string())?;
+        let r = match &mut self.disk {
+            Some(d) => d.save_as(p, ledger, created_ms, writer),
+            None => ecad_file::v2::disk::DiskProjectV2::create(p, project, ledger, None, created_ms, writer).map(|(d, unconfirmed)| {
                 self.disk = Some(Box::new(d));
-                durability
-            }
+                unconfirmed
+            }),
         };
-        Ok(match durability {
-            ecad_file::Durability::Confirmed => Written::Confirmed,
-            ecad_file::Durability::Unconfirmed(e) => {
-                Written::Unconfirmed(ecad_file::DiskError::Unconfirmed(e).to_string())
-            }
-        })
+        match r {
+            Ok(None) => Ok(Written::Confirmed),
+            Ok(Some(e)) => Ok(Written::Unconfirmed(ecad_file::v2::disk::DiskErrorV2::Unconfirmed(e).to_string())),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     /// Let go of the file and its writer lock (the project was closed).
@@ -244,16 +324,35 @@ impl Binding {
         self.disk.as_ref().and_then(|d| d.lock_file()).map(|p| p.display().to_string())
     }
 
-    /// The file's header, writer summary and record spans (copies, for the debugger; a failed
-    /// save's bytes are not copied).
-    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
-        let f = self.disk.as_ref()?.file();
-        Some((f.header().clone(), f.summary(), f.spans().to_vec()))
+    /// The version 2 file's facts (copies, for the debugger's Storage view; no file access).
+    pub fn storage(&self) -> Option<StorageFacts> {
+        let d = self.disk.as_ref()?;
+        let p = d.project();
+        Some(StorageFacts {
+            branch: format!("{} ({})", p.branch_record().name, p.branch().hex()),
+            head: p.head().0,
+            snapshot_seq: p.snapshot_seq(),
+            snapshot_every: p.snapshot_every(),
+            last_save: p.last_save().cloned(),
+            link_v1: p.link_v1().map(|l| (l.hash.clone(), l.transactions)),
+            writable: p.read_only().is_none(),
+        })
     }
 
-    /// The disk project, to inject faults in tests.
-    pub fn disk_mut(&mut self) -> Option<&mut ecad_file::DiskProject> {
-        self.disk.as_deref_mut()
+    /// The bound file's database, for the debugger's on-request reads (table sizes, branches,
+    /// versions). Reads only.
+    pub fn store(&self) -> Option<std::sync::Arc<ecad_file::v2::Store>> {
+        self.disk.as_ref().map(|d| d.project().store().clone())
+    }
+
+    /// The project in the bound file (brief 020: its branches and history).
+    pub fn v2(&self) -> Option<&ecad_file::v2::ProjectV2> {
+        self.disk.as_deref().map(|d| d.project())
+    }
+
+    /// The project in the bound file, for branch actions (brief 020).
+    pub(crate) fn v2_mut(&mut self) -> Option<&mut ecad_file::v2::ProjectV2> {
+        self.disk.as_deref_mut().map(|d| d.project_mut())
     }
 }
 
@@ -267,6 +366,14 @@ impl Binding {
     /// # Errors
     /// Always.
     pub fn open(_path: &str, _seed: u64, _writer: &str) -> Result<Opened, String> {
+        Err(NO_FILES.into())
+    }
+
+    /// Not available in a browser build.
+    ///
+    /// # Errors
+    /// Always.
+    pub fn open_read_only(_path: &str, _seed: u64, _writer: &str) -> Result<Opened, String> {
         Err(NO_FILES.into())
     }
 
@@ -286,7 +393,22 @@ impl Binding {
     }
 
     /// No file.
-    pub fn writer(&self) -> Option<(ecad_file::Header, ecad_file::WriterSummary, Vec<ecad_file::RecordSpan>)> {
+    pub fn storage(&self) -> Option<StorageFacts> {
+        None
+    }
+
+    /// No file.
+    pub fn store(&self) -> Option<std::sync::Arc<ecad_file::v2::Store>> {
+        None
+    }
+
+    /// No file.
+    pub fn v2(&self) -> Option<&ecad_file::v2::ProjectV2> {
+        None
+    }
+
+    /// No file.
+    pub(crate) fn v2_mut(&mut self) -> Option<&mut ecad_file::v2::ProjectV2> {
         None
     }
 
@@ -295,12 +417,7 @@ impl Binding {
     }
 
     pub(crate) fn save_as(
-        &mut self,
-        _path: &str,
-        _project: ProjectId,
-        _ledger: &mut Ledger,
-        _writer: &str,
-        _created_ms: Option<u64>,
+        &mut self, _path: &str, _project: ProjectId, _ledger: &mut Ledger, _writer: &str, _created_ms: Option<u64>,
     ) -> Result<Written, String> {
         Err(NO_FILES.into())
     }

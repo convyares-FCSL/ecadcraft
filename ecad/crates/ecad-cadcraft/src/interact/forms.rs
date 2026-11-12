@@ -8,15 +8,15 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, ComponentId, ConductorId, Definition, End, Placement, Primitive, Pt, Subject};
+use ecad_model::{CableId, ComponentId, ConductorId, End, Placement, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 use super::{
-    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start,
-    capture_at, capture_preview, drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name,
-    pick, pixel, preview_entity, preview_text, pt, read, ring_kind, terminal_for, terminal_name, v2, valid_name,
+    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start, capture_at, capture_preview,
+    drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read,
+    ring_kind, terminal_for, terminal_name, v2, valid_name,
 };
-use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, builtin_coil, with_project};
+use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, with_project};
 use crate::project::Mapped;
 use crate::slash;
 use crate::views::View;
@@ -39,10 +39,7 @@ pub(super) fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -
                 p.refresh_pages(pg, Some(name));
                 Ok(())
             });
-            s.echo(format!(
-                "Internal error in {}; the page was redrawn from the project. Objects already added stay.",
-                name.to_ascii_uppercase()
-            ));
+            s.echo(format!("Internal error in {}; the page was redrawn from the project. Objects already added stay.", name.to_ascii_uppercase()));
             Ok(Step::Done)
         }
     }
@@ -234,7 +231,7 @@ impl AddTerminal {
                 };
                 commit(s, "addterminal", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;
-                s.echo(format!("Terminal {label} added to component {}.", c.hex()));
+                s.echo(format!("Connection point {label} added to component {}.", c.hex()));
                 Ok(Step::Continue)
             }
             Input::Enter => Ok(Step::Done),
@@ -251,17 +248,17 @@ impl Interactive for AddTerminal {
     fn prompt(&self, s: &Session) -> Prompt {
         let shown = self.shown_name(s);
         if self.naming {
-            let p = Prompt::new("Enter terminal name", Accept::TEXT);
+            let p = Prompt::new("Enter connection point name", Accept::TEXT);
             return match shown {
                 Some(n) => p.default(n),
                 None => p,
             };
         }
         let message = match shown {
-            Some(n) => format!("Specify point for terminal {n} on a component"),
+            Some(n) => format!("Specify point for connection point {n} on a component"),
             // Off any component the number is not known yet: it is the smallest unused one of the
             // component the point lands on.
-            None => "Specify point for a terminal on a component".to_string(),
+            None => "Specify point for a connection point on a component".to_string(),
         };
         Prompt::new(message, Accept::POINT).kw(&["Name"])
     }
@@ -281,73 +278,10 @@ impl Interactive for AddTerminal {
 
 // ---------------------------------------------------------------- Place Symbol (§6)
 
-/// `place`: the built-in coil follows the cursor; Rotate and Mirror before the click; repeat
-/// until Enter.
-pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
-    can_start(s)?;
-    Ok(Box::new(Safe(Place::default())))
-}
-
-#[derive(Default)]
-struct Place {
-    /// Degrees counter-clockwise: 0, 90, 180 or 270.
-    rotation: u16,
-    mirror: bool,
-}
-
-impl Place {
-    /// The definition the JSON form places without `definition`: the project's coil, else the
-    /// built-in one it would embed.
-    fn definition(s: &Session) -> Definition {
-        let name = builtin_coil().name;
-        read(s, |p, _| Ok(p.ledger.document().definitions.values().find(|d| d.name == name).cloned()))
-            .ok()
-            .flatten()
-            .unwrap_or_else(builtin_coil)
-    }
-
-    fn placement(&self, at: Vec2) -> Placement {
-        Placement { origin: pt(at), rotation: f64::from(self.rotation).to_radians(), mirror: self.mirror, scale: 1.0 }
-    }
-
-    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        match i {
-            Input::Keyword(k) if k == "Rotate" => {
-                self.rotation = (self.rotation + 90) % 360;
-                Ok(Step::Continue)
-            }
-            Input::Keyword(k) if k == "Mirror" => {
-                self.mirror = !self.mirror;
-                Ok(Step::Continue)
-            }
-            Input::Point(p) => {
-                if !in_range(p) {
-                    return Err(other(OUT_OF_RANGE));
-                }
-                let r = commit(
-                    s,
-                    "place",
-                    &json!({"at": [p.x, p.y], "rotation": f64::from(self.rotation), "mirror": self.mirror}),
-                )?;
-                let keys: Vec<&str> = r
-                    .get("terminals")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|t| t.get("key").and_then(Value::as_str))
-                    .collect();
-                s.echo(format!("Coil placed: component {}, terminals {}.", hex_of(&r, "component"), keys.join(", ")));
-                Ok(Step::Continue)
-            }
-            Input::Enter => Ok(Step::Done),
-            Input::Text(t) => Err(not_a_point(&t)),
-            _ => Ok(Step::Continue),
-        }
-    }
-}
+// Brief 018 replaced the experiment's coil-only form with `super::devices::place`.
 
 /// A primitive moved by a placement (the shapes the coil and its kind use).
-fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
+pub(super) fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
     Some(match prim {
         Primitive::Line { a, b } => Primitive::Line { a: pl.apply(*a), b: pl.apply(*b) },
         Primitive::Polyline { vertices, closed } => {
@@ -357,47 +291,6 @@ fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
         Primitive::Point { at } => Primitive::Point { at: pl.apply(*at) },
         _ => return None,
     })
-}
-
-impl Interactive for Place {
-    fn name(&self) -> &'static str {
-        "PLACE"
-    }
-    fn prompt(&self, _s: &Session) -> Prompt {
-        let mirrored = if self.mirror { "mirrored" } else { "not mirrored" };
-        Prompt::new(format!("Specify insertion point (rotation {}, {mirrored})", self.rotation), Accept::POINT)
-            .kw(&["Rotate", "Mirror"])
-    }
-    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        paper_guard(s, &i)?;
-        safely(s, "place", |s| self.step(s, i))
-    }
-    /// The coil at the cursor, as it would be placed.
-    fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !super::model_space(s) {
-            return Vec::new();
-        }
-        if !in_range(cursor) {
-            return Vec::new();
-        }
-        let pl = self.placement(cursor);
-        Self::definition(s)
-            .graphics
-            .iter()
-            .filter_map(|g| placed(g, &pl))
-            .map(|g| crate::convert::kind_for_primitive(&g))
-            .collect()
-    }
-    /// Its terminal rings at their would-be positions.
-    fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
-        let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
-        let pl = self.placement(cursor);
-        Self::definition(s)
-            .terminals
-            .iter()
-            .map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI))
-            .collect()
-    }
 }
 
 // ---------------------------------------------------------------- Wire (§7)
@@ -414,19 +307,25 @@ struct Wire {
     points: Vec<Pt>,
     /// The first point is on a terminal.
     first_on_terminal: bool,
+    /// Asking for the potential of new wires (design 022 §6).
+    asking_potential: bool,
+}
+
+/// The Wire tool's potential for this session (`None`: auto).
+fn wire_potential(s: &Session) -> Option<String> {
+    read(s, |p, _| Ok(p.wire_potential.clone())).ok().flatten()
 }
 
 impl Wire {
     fn finish(&mut self, s: &mut Session) -> R<Step> {
         let points: Vec<[f64; 2]> = self.points.iter().map(|p| [p.x, p.y]).collect();
-        let r = commit(s, "wire", &json!({ "points": points }))?;
-        let attached: Vec<(String, String)> = r
-            .get("attached")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(|a| (hex_of(a, "end"), hex_of(a, "terminal")))
-            .collect();
+        let mut params = json!({ "points": points });
+        if let Some(pot) = wire_potential(s) {
+            params["potential"] = json!(pot);
+        }
+        let r = commit(s, "wire", &params)?;
+        let attached: Vec<(String, String)> =
+            r.get("attached").and_then(Value::as_array).into_iter().flatten().map(|a| (hex_of(a, "end"), hex_of(a, "terminal"))).collect();
         let names = read(s, |p, _| {
             let doc = p.ledger.document();
             Ok(attached
@@ -445,12 +344,51 @@ impl Wire {
                 None => format!("end {e} not attached"),
             })
             .collect();
-        s.echo(format!("Wire {} drawn; {}.", hex_of(&r, "conductor"), outcome.join(", ")));
+        let number = r.get("number").and_then(Value::as_str).unwrap_or("?");
+        let joined = if r.get("junctions").is_some() { "; a junction joins it to the wire it ends on" } else { "" };
+        s.echo(format!("Wire {number} drawn; {}{joined}.", outcome.join(", ")));
         Ok(Step::Done)
     }
 
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        if self.asking_potential {
+            let choice = match &i {
+                Input::Enter => {
+                    return {
+                        self.asking_potential = false;
+                        Ok(Step::Continue)
+                    };
+                }
+                Input::Cancel => {
+                    return {
+                        self.asking_potential = false;
+                        Ok(Step::Continue)
+                    };
+                }
+                Input::Keyword(k) | Input::Text(k) => k.trim().to_string(),
+                _ => return Ok(Step::Continue),
+            };
+            let value = if choice.eq_ignore_ascii_case("auto") || choice.is_empty() {
+                None
+            } else {
+                Some(ecad_model::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
+            };
+            with_project(s, |p, _, _| {
+                // A table name is written as the table spells it.
+                let v = value.map(|v| p.ledger.document().settings.wiring.potential(&v).map_or(v, |r| r.name.clone()));
+                p.wire_potential = v;
+                Ok(())
+            })?;
+            self.asking_potential = false;
+            let shown = wire_potential(s).unwrap_or_else(|| "auto".into());
+            s.echo(format!("New wires: potential {shown}."));
+            return Ok(Step::Continue);
+        }
         match i {
+            Input::Keyword(k) if k == "Potential" && self.points.is_empty() => {
+                self.asking_potential = true;
+                Ok(Step::Continue)
+            }
             Input::Point(p) => {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
@@ -499,9 +437,19 @@ impl Interactive for Wire {
     fn name(&self) -> &'static str {
         "WIRE"
     }
-    fn prompt(&self, _s: &Session) -> Prompt {
+    fn prompt(&self, s: &Session) -> Prompt {
+        if self.asking_potential {
+            let names = read(s, |p, _| Ok(crate::wire_cmds::potential_choices(p))).unwrap_or_default();
+            let mut p = Prompt::new(format!("Potential for new wires [{}]", names.join("/")), Accept::TEXT);
+            p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
+            return p;
+        }
         match self.points.last() {
-            None => Prompt::new("Specify first point of wire", Accept::POINT),
+            None => {
+                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential"]);
+                p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
+                p
+            }
             Some(last) => Prompt::new("Specify next point", Accept::POINT).kw(&["Undo"]).base(v2(*last)),
         }
     }
@@ -514,8 +462,7 @@ impl Interactive for Wire {
         if !super::model_space(s) {
             return Vec::new();
         }
-        let mut out: Vec<EntityKind> =
-            self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
+        let mut out: Vec<EntityKind> = self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
         if let Some(last) = self.points.last()
             && in_range(cursor)
         {
@@ -526,7 +473,20 @@ impl Interactive for Wire {
     }
     /// The attach ring and name of a captured terminal; a dot on a first point that attaches.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
-        let mut out = capture_at(s, cursor).map(|c| capture_preview(s, &c, ATTACHED_ACI)).unwrap_or_default();
+        let captured = capture_at(s, cursor);
+        let mut out = captured.as_ref().map(|c| capture_preview(s, c, ATTACHED_ACI)).unwrap_or_default();
+        // An end on another wire's interior gets a junction (design 022 §3.1): the ring says so.
+        if captured.is_none()
+            && in_range(cursor)
+            && let Some(px) = pixel(s)
+        {
+            let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE);
+            let on = read(s, |p, page| Ok(crate::wires::wire_at(p.ledger.document(), page, pt(cursor), tol, None)));
+            if let Ok(Some(on)) = on {
+                out.push(preview_entity(s, ring_kind(on.at, RING_PX, px), ATTACHED_ACI));
+                out.push(preview_text(s, on.at, px, "junction".into(), ATTACHED_ACI));
+            }
+        }
         if let (true, Some(first), Some(px)) = (self.first_on_terminal, self.points.first(), pixel(s)) {
             out.extend([4.0, 2.0].map(|d| preview_entity(s, ring_kind(*first, d, px), ATTACHED_ACI)));
         }
@@ -549,7 +509,7 @@ pub(crate) fn disconnect(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 const NOT_WIRE: &str = "That is not a wire.";
-const NO_TERMINAL: &str = "No terminal there. Move onto a terminal until the green ring shows.";
+const NO_TERMINAL: &str = "No connection point there. Move onto a connection point until the green ring shows.";
 
 struct Link {
     connect: bool,
@@ -621,9 +581,7 @@ impl Interactive for Link {
         match (self.end, self.connect) {
             (None, true) => Prompt::new("Select wire near the end to connect", Accept::POINT),
             (None, false) => Prompt::new("Select wire near the end to disconnect", Accept::POINT),
-            (Some((_, end, at)), _) => {
-                Prompt::new(format!("Select terminal for end {}", end_name(end)), Accept::POINT).base(v2(at))
-            }
+            (Some((_, end, at)), _) => Prompt::new(format!("Select connection point for end {}", end_name(end)), Accept::POINT).base(v2(at)),
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -654,10 +612,7 @@ impl Interactive for Link {
             (false, true) => LOOSE_ACI,
             (false, false) => return Vec::new(),
         };
-        [RING_PX - 1.0, RING_PX, RING_PX + 1.0]
-            .into_iter()
-            .map(|d| preview_entity(s, ring_kind(at, d, px), aci))
-            .collect()
+        [RING_PX - 1.0, RING_PX, RING_PX + 1.0].into_iter().map(|d| preview_entity(s, ring_kind(at, d, px), aci)).collect()
     }
 }
 
@@ -720,12 +675,7 @@ impl Convert {
                 let changed: Vec<Handle> = if self.removing {
                     hs.iter().copied().filter(|h| self.members.contains(h)).collect()
                 } else {
-                    hs.iter()
-                        .copied()
-                        .filter(|h| !self.members.contains(h))
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect()
+                    hs.iter().copied().filter(|h| !self.members.contains(h)).collect::<BTreeSet<_>>().into_iter().collect()
                 };
                 if !self.removing && self.picked.len().saturating_add(changed.len()) > MAX_HANDLES {
                     return Err(other(format!("At most {MAX_HANDLES} objects can be converted at once.")));
@@ -780,10 +730,7 @@ impl Interactive for Convert {
         })
     }
     fn prompt(&self, _s: &Session) -> Prompt {
-        Prompt::new(
-            if self.removing { "Remove objects" } else { "Select objects to convert to a component" },
-            Accept::SELECT,
-        )
+        Prompt::new(if self.removing { "Remove objects" } else { "Select objects to convert to a component" }, Accept::SELECT)
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
@@ -856,8 +803,7 @@ impl CableSlash {
                 // Refused too (design 004 §5.2: red whenever the slash would be refused).
                 ("-> no wires".to_string(), true)
             } else if others > 0 {
-                let objects =
-                    if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
+                let objects = if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
                 (format!("-> {}, {objects} ignored", slash::wires(n)), false)
             } else {
                 (format!("-> {}", slash::wires(n)), false)
@@ -958,9 +904,7 @@ impl Interactive for CableSlash {
             return Vec::new();
         }
         let Some(look) = Self::look(s, a, pt(cursor)) else { return Vec::new() };
-        let ring = |at: &Pt, aci: u8| {
-            [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci))
-        };
+        let ring = |at: &Pt, aci: u8| [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci));
         let mut out: Vec<Entity> = look.join.iter().flat_map(|at| ring(at, ATTACHED_ACI)).collect();
         out.extend(look.block.iter().flat_map(|at| ring(at, REFUSE_ACI)));
         let at = Pt::new(cursor.x + 10.0 * px, cursor.y + 10.0 * px);
@@ -998,7 +942,8 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             Some(Subject::Conductor(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
             _ => Err(NOT_A_CABLE),
         },
-        Mapped::Marker(..) => Err(NOT_A_CABLE),
+        Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
+        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::Xref(_) | Mapped::Link(..) => Err(NOT_A_CABLE),
     }
 }
 
@@ -1141,11 +1086,7 @@ impl CableCore {
                 _ => return Err(CORE_NOT_WIRE.into()),
             };
             let k = doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)?;
-            let core = doc
-                .cables
-                .get(&k)
-                .and_then(|c| c.members.iter().find(|m| m.conductor == w))
-                .and_then(|m| m.core.clone());
+            let core = doc.cables.get(&k).and_then(|c| c.members.iter().find(|m| m.conductor == w)).and_then(|m| m.core.clone());
             Ok((w, slash::wire_name(doc, w), core))
         })
         .map_err(other)
@@ -1222,9 +1163,7 @@ impl Interactive for CableCore {
     /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
     fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
-        let route = read(s, |p, page| {
-            Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim))
-        });
+        let route = read(s, |p, page| Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim)));
         match route {
             Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
             _ => Vec::new(),

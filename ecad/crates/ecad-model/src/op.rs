@@ -8,13 +8,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Item, Layer, Page, ProjectSettings,
-    Representation, Terminal,
+    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal,
 };
 use crate::error::{ModelError, Result};
-use crate::id::{
-    CableId, ComponentId, ConductorId, DefinitionId, ItemId, LayerId, PageId, RepresentationId, TerminalId,
-};
+use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::Delta;
 
 /// An object that carries properties.
@@ -23,6 +20,17 @@ pub enum ObjectRef {
     Component(ComponentId),
     Conductor(ConductorId),
     Cable(CableId),
+    /// A page's properties (brief 019, decision FP1).
+    Page(PageId),
+    /// The project's own properties (brief 019, decision FP1).
+    Project,
+}
+
+/// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
+pub(crate) fn settle(doc: &mut Document) {
+    let mut conn = std::mem::take(&mut doc.conn);
+    conn.settle(doc);
+    doc.conn = conn;
 }
 
 /// One recorded change.
@@ -142,10 +150,33 @@ pub enum Op {
     NameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
     UnnameVersion {
         name: String,
         at: u64,
+        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+    },
+    /// A folder of pages at `index` in the folder order (brief 019, decision FP3).
+    AddFolder {
+        id: FolderId,
+        folder: Folder,
+        index: usize,
+    },
+    RemoveFolder {
+        id: FolderId,
+        folder: Folder,
+        index: usize,
+    },
+    /// Rename or re-parent a folder.
+    ModifyFolder {
+        id: FolderId,
+        before: Folder,
+        after: Folder,
     },
 }
 
@@ -163,13 +194,7 @@ fn absent<K: Ord + Copy + std::fmt::Display, V>(map: &BTreeMap<K, V>, id: K, wha
 
 /// Precondition: `map` holds exactly `v` at `id` (only that it holds something at `id` when not
 /// `checked`).
-fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(
-    map: &BTreeMap<K, V>,
-    id: K,
-    v: &V,
-    what: &str,
-    checked: bool,
-) -> Result<()> {
+fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(map: &BTreeMap<K, V>, id: K, v: &V, what: &str, checked: bool) -> Result<()> {
     match map.get(&id) {
         Some(cur) if !checked || cur == v => Ok(()),
         Some(_) => Err(pre(format!("{what} {id} differs from the recorded value"))),
@@ -194,26 +219,23 @@ impl Op {
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
-            Op::ModifyRepresentation { id, before, after } => {
-                Op::ModifyRepresentation { id, before: after, after: before }
-            }
+            Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
             Op::CreateConductor { id, conductor } => Op::DeleteConductor { id, conductor },
             Op::DeleteConductor { id, conductor } => Op::CreateConductor { id, conductor },
-            Op::AttachEnd { conductor, end, before, after } => {
-                Op::AttachEnd { conductor, end, before: after, after: before }
-            }
+            Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
             Op::AddCableMember { cable, index, member } => Op::RemoveCableMember { cable, index, member },
             Op::RemoveCableMember { cable, index, member } => Op::AddCableMember { cable, index, member },
-            Op::SetProperty { object, key, before, after } => {
-                Op::SetProperty { object, key, before: after, after: before }
-            }
+            Op::SetProperty { object, key, before, after } => Op::SetProperty { object, key, before: after, after: before },
             Op::EmbedDefinition { id, definition } => Op::RemoveDefinition { id, definition },
             Op::RemoveDefinition { id, definition } => Op::EmbedDefinition { id, definition },
             Op::SetProjectSettings { before, after } => Op::SetProjectSettings { before: after, after: before },
-            Op::NameVersion { name, at } => Op::UnnameVersion { name, at },
-            Op::UnnameVersion { name, at } => Op::NameVersion { name, at },
+            Op::NameVersion { name, at, description } => Op::UnnameVersion { name, at, description },
+            Op::UnnameVersion { name, at, description } => Op::NameVersion { name, at, description },
+            Op::AddFolder { id, folder, index } => Op::RemoveFolder { id, folder, index },
+            Op::RemoveFolder { id, folder, index } => Op::AddFolder { id, folder, index },
+            Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
         }
     }
 
@@ -232,7 +254,23 @@ impl Op {
     /// # Errors
     /// [`ModelError::Precondition`] when the document does not hold the recorded `before` state.
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
-        self.apply_with(doc, true)
+        let r = self.apply_unsettled(doc, true);
+        settle(doc);
+        r
+    }
+
+    /// [`Op::apply`] without settling the nets (brief 022): the ledger settles them once after a
+    /// whole transaction ([`settle`]).
+    pub(crate) fn apply_unsettled(&self, doc: &mut Document, checked: bool) -> Result<()> {
+        let mut conn = std::mem::take(&mut doc.conn);
+        conn.before_op(doc, self);
+        let r = self.apply_with(doc, checked);
+        match &r {
+            Ok(()) => conn.after_op(doc, self),
+            Err(_) => conn.repair(doc, self),
+        }
+        doc.conn = conn;
+        r
     }
 
     /// Undo this op, which was the last change applied to `doc`, by applying its inverse without
@@ -251,7 +289,7 @@ impl Op {
     /// # Errors
     /// [`ModelError::Precondition`] only when `doc` is not the state this op produced.
     pub(crate) fn revert(&self, doc: &mut Document) -> Result<()> {
-        self.inverse().apply_with(doc, false)
+        self.inverse().apply_unsettled(doc, false)
     }
 
     fn apply_with(&self, doc: &mut Document, checked: bool) -> Result<()> {
@@ -261,6 +299,7 @@ impl Op {
                 if *index > doc.page_order.len() {
                     return Err(pre(format!("page index {index} is past the end")));
                 }
+                doc.index.page(*id, page, Delta::Add);
                 doc.pages.insert(*id, page.clone());
                 doc.page_order.insert(*index, *id);
             }
@@ -269,7 +308,9 @@ impl Op {
                     return Err(pre(format!("page {id} is not at index {index}")));
                 }
                 holds(&doc.pages, *id, page, "page", checked)?;
-                doc.pages.remove(id);
+                if let Some(old) = doc.pages.remove(id) {
+                    doc.index.page(*id, &old, Delta::Remove);
+                }
                 doc.page_order.remove(*index);
             }
             Op::AddLayer { id, layer } => {
@@ -350,10 +391,7 @@ impl Op {
                 }
             }
             Op::AttachEnd { conductor, end, before, after } => {
-                let c = doc
-                    .conductors
-                    .get_mut(conductor)
-                    .ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
+                let c = doc.conductors.get_mut(conductor).ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
                 let current = c.end(*end);
                 if checked && current != *before {
                     return Err(pre(format!("conductor {conductor} end {end:?} is not attached as recorded")));
@@ -397,15 +435,69 @@ impl Op {
                     ObjectRef::Component(id) => doc.components.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Conductor(id) => doc.conductors.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
+                    ObjectRef::Project => Some(&mut doc.properties),
                 }
                 .ok_or_else(|| pre(format!("{object:?} does not exist")))?;
                 if checked && props.get(key) != before.as_ref() {
                     return Err(pre(format!("property {key} of {object:?} differs from the recorded value")));
                 }
-                match after {
+                let old = match after {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
+                // A continuation's name is indexed (brief 022).
+                if let ObjectRef::Component(id) = object
+                    && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
+                {
+                    let mut before_props = props.clone();
+                    match &old {
+                        Some(v) => before_props.insert(key.clone(), v.clone()),
+                        None => before_props.remove(key),
+                    };
+                    let was = crate::connectivity::continuation_key(&before_props);
+                    let now = crate::connectivity::continuation_key(props);
+                    if was != now {
+                        if let Some(k) = was {
+                            doc.index.continuation(*id, k, Delta::Remove);
+                        }
+                        if let Some(k) = now {
+                            doc.index.continuation(*id, k, Delta::Add);
+                        }
+                    }
+                }
+                // A component's tag is indexed (brief 018).
+                if let ObjectRef::Component(id) = object
+                    && key == crate::tag::TAG_KEY
+                {
+                    if let Some(old) = &old {
+                        doc.index.tag(*id, old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.tag(*id, new, Delta::Add);
+                    }
+                }
+                if let ObjectRef::Cable(id) = object
+                    && key == crate::tag::TAG_KEY
+                {
+                    if let Some(old) = &old {
+                        doc.index.cable_tag(*id, old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.cable_tag(*id, new, Delta::Add);
+                    }
+                }
+                // A page's folder is indexed (brief 019).
+                if let ObjectRef::Page(id) = object
+                    && key == crate::book::FOLDER_KEY
+                {
+                    if let Some(old) = &old {
+                        doc.index.page_folder(*id, old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.page_folder(*id, new, Delta::Add);
+                    }
+                }
             }
             Op::EmbedDefinition { id, definition } => {
                 absent(&doc.definitions, *id, "definition")?;
@@ -421,17 +513,43 @@ impl Op {
                 }
                 doc.settings = after.clone();
             }
-            Op::NameVersion { name, at } => {
+            Op::NameVersion { name, at, .. } => {
                 if doc.versions.contains_key(name) {
                     return Err(pre(format!("version name {name:?} is already used")));
                 }
                 doc.versions.insert(name.clone(), *at);
             }
-            Op::UnnameVersion { name, at } => {
+            Op::UnnameVersion { name, at, .. } => {
                 if doc.versions.get(name) != Some(at) {
                     return Err(pre(format!("version name {name:?} does not name transaction {at}")));
                 }
                 doc.versions.remove(name);
+            }
+            Op::AddFolder { id, folder, index } => {
+                absent(&doc.folders, *id, "folder")?;
+                if *index > doc.folder_order.len() {
+                    return Err(pre(format!("folder index {index} is past the end")));
+                }
+                doc.index.folder(*id, folder, Delta::Add);
+                doc.folders.insert(*id, folder.clone());
+                doc.folder_order.insert(*index, *id);
+            }
+            Op::RemoveFolder { id, folder, index } => {
+                if doc.folder_order.get(*index) != Some(id) {
+                    return Err(pre(format!("folder {id} is not at index {index}")));
+                }
+                holds(&doc.folders, *id, folder, "folder", checked)?;
+                if let Some(old) = doc.folders.remove(id) {
+                    doc.index.folder(*id, &old, Delta::Remove);
+                }
+                doc.folder_order.remove(*index);
+            }
+            Op::ModifyFolder { id, before, after } => {
+                holds(&doc.folders, *id, before, "folder", checked)?;
+                if let Some(old) = doc.folders.insert(*id, after.clone()) {
+                    doc.index.folder(*id, &old, Delta::Remove);
+                }
+                doc.index.folder(*id, after, Delta::Add);
             }
         }
         Ok(())
@@ -467,6 +585,9 @@ impl Op {
             Op::SetProjectSettings { .. } => "SetProjectSettings",
             Op::NameVersion { .. } => "NameVersion",
             Op::UnnameVersion { .. } => "UnnameVersion",
+            Op::AddFolder { .. } => "AddFolder",
+            Op::RemoveFolder { .. } => "RemoveFolder",
+            Op::ModifyFolder { .. } => "ModifyFolder",
         }
     }
 }

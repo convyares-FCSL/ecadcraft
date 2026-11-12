@@ -1,5 +1,5 @@
 //! Write ecad-inspect snapshots of a short experiment run, for the static inspector
-//! (`ecad/tools/inspector/index.html`).
+//! (`ecad/dev/ecad-inspector/page/index.html`).
 //!
 //! Usage: `cargo run -p ecad-cadcraft --example experiment_snapshots -- <output dir>`
 //!
@@ -29,7 +29,8 @@ fn main() -> Result<(), String> {
         }
     };
     s.cmdline("line 0,0 40,0 40,20 0,20 c").map_err(|e| e.to_string())?;
-    let lines: Vec<String> = s.doc().map_err(|e| e.to_string())?.model.iter().map(|e| e.handle.hex()).collect();
+    let lines: Vec<String> =
+        s.doc().map_err(|e| e.to_string())?.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     let c = run(&mut s, "convertcomponent", json!({"handles": lines}));
     run(&mut s, "setprop", json!({"component": c["component"], "key": "tag", "value": "-K1"}));
     let t1 = run(&mut s, "addterminal", json!({"handle": lines[1], "at": [40, 15], "label": "13"}));
@@ -67,8 +68,7 @@ fn main() -> Result<(), String> {
             Some(n) => format!("history-seq{n:03}.json"),
         };
         let path = dir.join(&name);
-        std::fs::write(&path, serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        std::fs::write(&path, serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         written.push(path.display().to_string());
     }
     println!("wrote:\n  {}", written.join("\n  "));

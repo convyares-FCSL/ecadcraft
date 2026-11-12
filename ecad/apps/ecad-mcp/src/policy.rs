@@ -29,7 +29,83 @@ pub const READ_COMMANDS: &[&str] = &[
     // or shows its page and selects it, and records nothing.
     "cablerefs",
     "cablegoto",
+    // Devices and starter symbols (brief 018): finding and listing them, and one device's
+    // properties, read the project only.
+    "symbols",
+    "devices",
+    "deviceprops",
+    // Nets, wire numbers and checks (brief 022): listing them reads the project.
+    "nets",
+    "net",
+    "checks",
+    // Cross-references (brief 025): listing references and a device's contacts reads the project;
+    // going to a reference opens or shows its page and records nothing.
+    "xrefs",
+    "contacts",
+    "refgoto",
+    // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
+    "openrevision",
+    "closerevision",
+    // Brief 020a: the History graph, steps, a point's details, the branch list, and a point
+    // shown read-only, read the project or open a session view; nothing is recorded.
+    "history",
+    "steps",
+    "pointinfo",
+    "branches",
+    "showpoint",
+    "closepoint",
+    // Brief 024: the reports and the printed book read the project and record nothing (a `path`
+    // is refused in every mode, as for `plot` and `export`: `printbook` then returns the PDF as
+    // base64 data); `reports` only asks the trial to open its window.
+    "bom",
+    "wirelist",
+    "cablelist",
+    "printbook",
+    "reports",
+    // Brief 028: the terminal plan and a cable's cores read the project and record nothing.
+    "stripplan",
+    "cablecores",
+    // Brief 027: the pre-release check reads the project and records nothing.
+    "prerelease",
 ];
+
+/// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
+/// `projectprops {}`; brief 026: `numbering {}`.
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[])];
+
+/// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
+/// the Renumber and Finalise previews).
+const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
+
+/// Commands whose form naming an issued revision records nothing (brief 027: `release {rev}`
+/// writes that revision's folder again, beside the project, and never issues; it refuses a `rev`
+/// that is not issued). Its `folder` is a file key, refused in every mode.
+const READ_WITH_REV: &[&str] = &["release"];
+
+/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
+/// [`READ_WITH_REV`]).
+pub fn reads_only(id: &str, params: &Value) -> bool {
+    READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
+        || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
+        || (READ_WITH_REV.contains(&id)
+            && params.get("rev").is_some_and(Value::is_string)
+            // Replace moves a folder on disk aside: a write, never with writes off (review of PR #54, 1).
+            && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
+}
+
+/// How many transactions one call of `id` with `params` may record: one
+/// ([`crate::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}` and
+/// `release {provisional: "finalise"}` of the pending revision (no `rev`), which record Finalise
+/// numbering and then the issue (brief 026, design §5.5; brief 027, design §4.4): two.
+pub fn transactions_allowed(id: &str, params: &Value) -> usize {
+    let issuing = id == "issuerevision" || (id == "release" && params.get("rev").is_none_or(Value::is_null));
+    let finalise = issuing
+        && params
+            .get("provisional")
+            .and_then(Value::as_str)
+            .is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"));
+    if finalise { crate::MAX_TRANSACTIONS_PER_CALL + 1 } else { crate::MAX_TRANSACTIONS_PER_CALL }
+}
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
 /// person who starts the server; saving is the `save` tool (only with `--write`).
@@ -82,7 +158,16 @@ pub const NEVER_COMMANDS: &[&str] = &[
 pub const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
 
 /// Commands whose `path` parameter is not a file (ARRAYPATH's path is a handle).
-const PATH_IS_NOT_A_FILE: &[&str] = &["arraypath"];
+const PATH_IS_NOT_A_FILE: &[&str] = &[
+    "arraypath",
+    // Brief 019: `folder` names a folder of pages, never a file.
+    "newpage",
+    "movepage",
+    "newfolder",
+    "renamefolder",
+    "movefolder",
+    "deletefolder",
+];
 
 /// Said when one call asks for several undo or redo steps.
 pub fn one_step(id: &str) -> String {
@@ -101,16 +186,14 @@ fn several_steps(id: &str, params: &Value) -> bool {
     }
     let count = params.get("count").filter(|v| !v.is_null());
     let counted = count.is_some_and(|c| c.as_f64().is_none_or(|n| n.is_nan() || n > 1.0));
-    let back =
-        id == "undo" && params.get("mode").and_then(Value::as_str).is_some_and(|m| m.eq_ignore_ascii_case("back"));
+    let back = id == "undo" && params.get("mode").and_then(Value::as_str).is_some_and(|m| m.eq_ignore_ascii_case("back"));
     let all = id == "mredo" && params.get("all").is_some_and(|v| !v.is_null() && v != &Value::Bool(false));
     counted || back || all
 }
 
 /// Whether SETVAR is asked to set AUDITCTL (which makes AUDIT write a log file).
 fn sets_auditctl(id: &str, params: &Value) -> bool {
-    id == "setvar"
-        && params.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().eq_ignore_ascii_case("auditctl"))
+    id == "setvar" && params.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().eq_ignore_ascii_case("auditctl"))
 }
 
 /// Said when a write is refused because the server was started without `--write`.
@@ -159,7 +242,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     if sets_auditctl(id, params) {
         return Err(never("setvar auditctl"));
     }
-    if READ_COMMANDS.contains(&id) {
+    if READ_COMMANDS.contains(&id) || reads_only(id, params) {
         return Ok(());
     }
     if !writes {
@@ -200,9 +283,7 @@ mod tests {
         ] {
             assert_eq!(check(id, &p, true, None), Err(one_step(id)), "{id} {p}");
         }
-        for (id, p) in
-            [("undo", json!({"count": 1})), ("redo", json!({})), ("u", json!({})), ("mredo", json!({"all": false}))]
-        {
+        for (id, p) in [("undo", json!({"count": 1})), ("redo", json!({})), ("u", json!({})), ("mredo", json!({"all": false}))] {
             assert!(check(id, &p, true, None).is_ok(), "{id} {p}");
         }
         assert!(check("audit", &none, true, None).is_err());
@@ -215,5 +296,22 @@ mod tests {
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());
+        // Brief 027: the check reads; `release` issues only without `rev`; no folder of its own.
+        assert!(check("prerelease", &none, false, Some("locked")).is_ok());
+        assert!(check("release", &json!({"rev": "A"}), false, Some("locked")).is_ok());
+        assert_eq!(check("release", &none, false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": null}), false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": "A", "existing": "replace"}), false, None), Err(WRITES_OFF.into()));
+        assert!(check("release", &json!({"rev": "A", "existing": "keep-both"}), false, None).is_ok());
+        assert!(check("release", &json!({"rev": "A", "existing": "replace"}), true, None).is_ok());
+        assert!(check("release", &none, true, None).is_ok());
+        assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
+        // Tester 027, 2: release of the pending revision with Finalise may record two, and no more.
+        let one = crate::MAX_TRANSACTIONS_PER_CALL;
+        assert_eq!(transactions_allowed("release", &json!({"provisional": "finalise"})), one + 1);
+        assert_eq!(transactions_allowed("release", &json!({"provisional": "issue"})), one);
+        assert_eq!(transactions_allowed("release", &json!({})), one);
+        assert_eq!(transactions_allowed("release", &json!({"rev": "A", "provisional": "finalise"})), one);
+        assert_eq!(transactions_allowed("wire", &json!({"provisional": "finalise"})), one);
     }
 }

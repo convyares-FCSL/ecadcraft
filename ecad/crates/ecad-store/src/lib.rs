@@ -14,20 +14,17 @@
 //!   operating-system lock that makes one session the writer; and the steps of an atomic
 //!   replacement (temporary file, rename, folder flush).
 //!
+//! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes
+//!   since the last flush), for the version 2 container's crash tests.
+//!
 //! Excluded: the order of those steps and what is written (`ecad-file`), and any file format.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
+pub mod power;
 #[cfg(not(target_arch = "wasm32"))]
 pub use disk::{FileIdentity, FileMedium, LockAttempt, MediumFaults, WriterLock};
 

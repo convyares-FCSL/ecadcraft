@@ -4,15 +4,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Document, End, Form, ItemKind, LengthUnit, Primitive, Representation, Subject};
+use crate::book::Book;
+use crate::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::geom::Pt;
 use crate::id::{CableId, ConductorId, ItemId, PageId, RepresentationId, TerminalId};
+use crate::sheet::Grid;
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
 ///
 /// # Semantics
 /// Symbol terminal positions are computed from the stored placement and the embedded
-/// definition's local terminal position (proposal §4.3). A terminal shown by several
+/// definition's local terminal position (proposal §4.3), or the representation's connection
+/// points in the definition's local frame when it has them (brief 018). A terminal shown by several
 /// representations on the same page appears once per representation.
 pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, RepresentationId, Pt)> {
     let mut out = Vec::new();
@@ -48,6 +51,11 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
             let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
                 return Vec::new();
             };
+            // Connection points of a symbol representation are in the definition's local frame
+            // (brief 018): the terminals follow the instance.
+            if !r.connection_points.is_empty() {
+                return r.connection_points.iter().map(|(t, p)| (*t, inst.placement.apply(*p))).collect();
+            }
             let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
             doc.terminals_of(component)
                 .filter_map(|(tid, t)| {
@@ -102,13 +110,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
             };
             for (end, at) in [(End::A, a), (End::B, b)] {
                 let Some(t) = c.end(end) else { continue };
-                let shown: Vec<Pt> = positions
-                    .get(&r.page)
-                    .into_iter()
-                    .flatten()
-                    .filter(|(pt, _, _)| *pt == t)
-                    .map(|(_, _, p)| *p)
-                    .collect();
+                let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
                 if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
                     let terminal_at = shown.first().copied().unwrap_or_default();
                     out.push(Mismatch { conductor: *cid, end, terminal: t, page: r.page, route_end: at, terminal_at });
@@ -190,13 +192,6 @@ enum Node {
 /// cable holding one Point item, where the drawing of the cable stops on its page.
 pub const REFERENCE_ROLE: &str = "reference";
 
-/// Width of the fixed column grid, counted from x = 0, in millimetres (`ecad.column-width`, design
-/// 010 §6.2), until drawing frames define their own columns.
-pub const COLUMN_WIDTH_MM: f64 = 40.0;
-
-/// The highest column a reference text names; larger values are clamped to it.
-pub const MAX_COLUMN: u32 = 999;
-
 /// Most other ends one reference text lists before `+N` (design 010 §6.2); also the most partner
 /// IDs a [`CableReference`] keeps, so a hostile file with many references of one cable costs
 /// linear, not quadratic, memory.
@@ -210,53 +205,87 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 /// for any real cable, and a bound on the work per reference.
 pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
-/// The column grid's width in the project's length unit.
-pub fn column_width(doc: &Document) -> f64 {
-    match doc.settings.length_unit {
-        LengthUnit::Millimetre => COLUMN_WIDTH_MM,
-        LengthUnit::Inch => COLUMN_WIDTH_MM / 25.4,
+/// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08): `105-C-4` or
+/// `/105.C`; `?` (`/?`) when the place cannot be located.
+pub fn place_text(style: ReferenceStyle, page: &str, column: Option<&str>, row: Option<&str>) -> String {
+    match (style, column, row) {
+        (ReferenceStyle::PageColumnRow, Some(c), Some(r)) => format!("{page}-{c}-{r}"),
+        (ReferenceStyle::PageColumn, Some(c), _) => format!("/{page}.{c}"),
+        _ => unlocated(style).to_string(),
     }
 }
 
-/// The column of `x` on a grid of `width` (1-based, clamped to 1..=[`MAX_COLUMN`]); `None` when it
-/// cannot be located (`x` not finite, or a width that is not positive).
-pub fn column_of(x: f64, width: f64) -> Option<u32> {
-    if !(x.is_finite() && width.is_finite() && width > 0.0) {
-        return None;
+/// What a reference shows for a place that cannot be located, or for no other end.
+pub fn unlocated(style: ReferenceStyle) -> &'static str {
+    match style {
+        ReferenceStyle::PageColumnRow => "?",
+        ReferenceStyle::PageColumn => "/?",
     }
-    let c = ((x / width).floor() + 1.0).clamp(1.0, f64::from(MAX_COLUMN));
-    // Finite and within 1..=999 here, so the conversion is exact.
-    Some(c as u32)
 }
 
-/// One cable reference end, with everything it says derived from the document (design 010 §6).
+/// Where a point lies on its page's sheet (brief 019): the page's shown number and the frame's
+/// column and row, as the frame letters and numbers them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    pub page: String,
+    pub column: u32,
+    pub row: u32,
+    pub column_label: String,
+    pub row_label: String,
+}
+
+impl Place {
+    /// `105-C-4` (or `/105.C`) in the project's reference style.
+    pub fn text(&self, style: ReferenceStyle) -> String {
+        place_text(style, &self.page, Some(&self.column_label), Some(&self.row_label))
+    }
+}
+
+/// The place of `at` on a page with `grid`, whose shown number is `page_label`. `None` when `at`
+/// is not finite.
+pub fn place_on(grid: &Grid, page_label: &str, at: Pt) -> Option<Place> {
+    let (column, row) = (grid.column_of(at.x)?, grid.row_of(at.y)?);
+    Some(Place { page: page_label.to_string(), column, row, column_label: grid.column_label(column), row_label: grid.row_label(row) })
+}
+
+/// One cable reference end, with everything it says derived from the document (design 010 §6,
+/// design 019 §3.3).
 ///
 /// # Semantics
-/// Nothing here is stored: the page number is the reference page's 1-based position in
-/// `page_order`, the column comes from the fixed grid ([`column_of`]), the partners are the
-/// cable's other references, and the text names the partners. All of it changes when pages are
-/// reordered or a reference point moves, with no transaction of its own.
+/// Nothing here is stored: the page number is the page's `number` property or its book position
+/// ([`crate::book`]), the column and row come from the page's sheet ([`crate::sheet`]), the
+/// partners are the cable's other references, and the text names the partners in the project's
+/// reference style. All of it changes when pages are renumbered, reordered or moved between
+/// folders, or a reference point moves, with no transaction of its own.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CableReference {
     /// The reference representation.
     pub reference: RepresentationId,
     pub cable: CableId,
     pub page: PageId,
-    /// The 1-based position of `page` in the page order (`None` for a page in no order: hostile).
-    pub page_number: Option<usize>,
+    /// The 1-based book position of `page` (`None` for a page in no order: hostile).
+    pub position: Option<usize>,
+    /// The number `page` is shown with (`?` for a page in no order).
+    pub page_number: String,
     /// The Point item, when the representation holds one.
     pub item: Option<ItemId>,
     /// Where the reference is, when it can be located (a finite Point item).
     pub at: Option<Pt>,
-    /// The column of `at`.
+    /// The frame column and row of `at` (1-based), and their labels.
     pub column: Option<u32>,
+    pub row: Option<u32>,
+    pub column_label: Option<String>,
+    pub row_label: Option<String>,
+    /// The project's reference style when derived.
+    pub style: ReferenceStyle,
     /// The cable's other references, in page order, then column, then ID: at most
     /// [`MAX_LISTED_PARTNERS`] of them (the count is [`CableReference::partner_count`]).
     pub partners: Vec<RepresentationId>,
     /// How many other references the cable has.
     pub partner_count: usize,
-    /// `/<page>.<column>` of each partner (at most [`MAX_LISTED_PARTNERS`], then `+N`), separated
-    /// by a space; `/?` for an orphan, and for a partner that cannot be located.
+    /// The place of each partner ([`CableReference::locator`], at most [`MAX_LISTED_PARTNERS`],
+    /// then `+N`), separated by a space; [`unlocated`] for an orphan, and for a partner that
+    /// cannot be located.
     pub text: String,
     /// The cable has no other reference.
     pub orphan: bool,
@@ -269,12 +298,12 @@ pub struct CableReference {
 }
 
 impl CableReference {
-    /// `/<page>.<column>` of this end (`/?` when it cannot be located), as its partners show it.
+    /// This end's place (`105-C-4`, or `?` when it cannot be located), as its partners show it.
     pub fn locator(&self) -> String {
-        match (self.page_number, self.column) {
-            (Some(n), Some(c)) => format!("/{n}.{c}"),
-            _ => "/?".into(),
+        if self.position.is_none() {
+            return unlocated(self.style).to_string();
         }
+        place_text(self.style, &self.page_number, self.column_label.as_deref(), self.row_label.as_deref())
     }
 
     /// The partner shown first (the cable's other end, in page order), if any.
@@ -346,8 +375,10 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
     if refs.is_empty() {
         return Vec::new();
     }
-    let width = column_width(doc);
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    let style = doc.settings.reference_style;
+    let book = Book::of(doc);
+    // Each page's grid and shown number, worked out once per page.
+    let mut pages: BTreeMap<PageId, (Grid, String)> = BTreeMap::new();
     // Route ends per (conductor, page), looked up once each (a cable may list a conductor twice).
     let mut routes: BTreeMap<(ConductorId, PageId), Option<(Pt, Pt)>> = BTreeMap::new();
     // The member routes of each (cable, page) with a reference, built once per pair.
@@ -358,12 +389,8 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
             continue;
         }
         let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
-        let ends: Vec<(Pt, Pt)> = members
-            .iter()
-            .filter_map(|m| {
-                *routes.entry((m.conductor, r.page)).or_insert_with(|| route_ends_on(doc, m.conductor, r.page))
-            })
-            .collect();
+        let ends: Vec<(Pt, Pt)> =
+            members.iter().filter_map(|m| *routes.entry((m.conductor, r.page)).or_insert_with(|| route_ends_on(doc, m.conductor, r.page))).collect();
         here.insert((cable, r.page), ends);
     }
     let mut out: Vec<CableReference> = Vec::with_capacity(refs.len());
@@ -386,14 +413,21 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
         }
         let len = sx.hypot(sy);
         let text_dir = if len.is_finite() && len > 0.0 { Pt::new(-sx / len, -sy / len) } else { Pt::new(1.0, 0.0) };
+        let (grid, number) = pages.entry(r.page).or_insert_with(|| (Grid::of(doc, r.page), book.number(doc, r.page))).clone();
+        let place = at.and_then(|p| place_on(&grid, &number, p));
         out.push(CableReference {
             reference: *rid,
             cable,
             page: r.page,
-            page_number: order.get(&r.page).copied(),
+            position: book.position(r.page),
+            page_number: number,
             item,
             at,
-            column: at.and_then(|p| column_of(p.x, width)),
+            column: place.as_ref().map(|p| p.column),
+            row: place.as_ref().map(|p| p.row),
+            column_label: place.as_ref().map(|p| p.column_label.clone()),
+            row_label: place.as_ref().map(|p| p.row_label.clone()),
+            style,
             partners: Vec::new(),
             partner_count: 0,
             text: String::new(),
@@ -403,7 +437,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
         });
     }
     // Page order (a page in no order last), then column, then ID.
-    out.sort_by_key(|r| (r.page_number.unwrap_or(usize::MAX), r.column.unwrap_or(u32::MAX), r.reference));
+    out.sort_by_key(|r| (r.position.unwrap_or(usize::MAX), r.column.unwrap_or(u32::MAX), r.reference));
     // Partners: the cable's other references, already in that order. Each reference keeps at
     // most MAX_LISTED_PARTNERS of them and a count, so the work and memory are linear in the
     // number of references (a hostile file may hold many of one cable).
@@ -421,7 +455,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
         r.partner_count = count;
         r.orphan = count == 0;
         r.text = if r.orphan {
-            "/?".into()
+            unlocated(style).into()
         } else {
             let mut words: Vec<String> = shown.iter().filter_map(|j| locators.get(*j).cloned()).collect();
             if count > MAX_LISTED_PARTNERS {

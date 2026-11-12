@@ -36,8 +36,8 @@ use ecad_file::codec::{Codec, JsonLines};
 use ecad_file::{AttemptStage, AttemptSummary, Header, RecordSpan};
 use ecad_inspect::Event;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId,
-    ProjectId, RepresentationId, Subject, TerminalId, Transaction, TxId, TxKind,
+    CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
+    TerminalId, Transaction, TxId, TxKind,
 };
 use serde_json::{Value, json};
 
@@ -206,9 +206,10 @@ pub struct FileFacts {
     pub read_only: Option<String>,
     /// The last Save As replaced its target without confirming durability.
     pub unconfirmed: bool,
-    pub preserved_tail: Option<String>,
     /// What opening found, when the project was opened from a file.
     pub open_report: Option<String>,
+    /// A version 2 file's facts (the debugger's Storage view).
+    pub storage: Option<crate::file::StorageFacts>,
 }
 
 impl FileFacts {
@@ -230,8 +231,16 @@ impl FileFacts {
             "records": self.spans.iter().map(|s| json!({"seq": s.seq, "offset": s.offset, "len": s.len})).collect::<Vec<_>>(),
             "read_only": self.read_only,
             "unconfirmed": self.unconfirmed,
-            "preserved_tail": self.preserved_tail,
             "open_report": self.open_report,
+            "storage": self.storage.as_ref().map(|s| json!({
+                "branch": s.branch, "head": s.head, "snapshot_seq": s.snapshot_seq,
+                "snapshot_every": s.snapshot_every, "writable": s.writable,
+                "link_v1": s.link_v1.as_ref().map(|(h, n)| json!({"hash": h, "transactions": n})),
+                "last_save": s.last_save.as_ref().map(|l| json!({
+                    "first_seq": l.first_seq, "last_seq": l.last_seq, "bytes": l.bytes,
+                    "chunks_written": l.chunks_written, "snapshots": l.snapshots,
+                })),
+            })),
         })
     }
 }
@@ -301,9 +310,27 @@ pub struct DebugSnapshot {
     /// The most recent runtime events (at most [`MAX_EVENTS`]); never part of the saved history.
     pub events: Vec<Event>,
     pub file: FileFacts,
+    /// The `seq` the copied history starts after (a project opened from a version 2 snapshot);
+    /// `new_transactions[i].seq == base + log_from + i + 1`.
+    pub base: u64,
+    /// Where the history before `base` is read, on request only.
+    pub history: Option<Arc<dyn ecad_model::History>>,
+    /// The bound version 2 file's database, for on-request reads (records, Verify file, the
+    /// Storage and Branches views). Reads only; weak, so a copy never keeps a closed project's
+    /// file open.
+    pub store: Option<std::sync::Weak<ecad_file::v2::Store>>,
 }
 
 impl DebugSnapshot {
+    /// The bound file's database, while the project still has it open.
+    pub fn store_arc(&self) -> Option<Arc<ecad_file::v2::Store>> {
+        self.store.as_ref().and_then(std::sync::Weak::upgrade)
+    }
+
+    /// The copied history's transaction `seq`, from a copy that starts after [`Self::base`].
+    pub fn tx_in<'a>(&self, log: &'a [Transaction], seq: u64) -> Option<&'a Transaction> {
+        seq.checked_sub(self.base + 1).and_then(|i| usize::try_from(i).ok()).and_then(|i| log.get(i))
+    }
     /// What the snapshot shows, for its heading.
     pub fn label(&self) -> String {
         format!("live at seq {}", self.head)
@@ -350,14 +377,12 @@ pub fn record_state(file: &FileFacts, persisted: u64, seq: u64) -> RecordState {
     }
     match span {
         Some(s) => RecordState::Unconfirmed(s),
-        None => RecordState::Pending {
-            attempt: file.attempt.as_ref().filter(|a| (a.first_seq..=a.last_seq).contains(&seq)).map(|a| a.stage),
-        },
+        None => RecordState::Pending { attempt: file.attempt.as_ref().filter(|a| (a.first_seq..=a.last_seq).contains(&seq)).map(|a| a.stage) },
     }
 }
 
 impl Project {
-    fn active_page(&self, pg: &PagesRef<'_>) -> (Option<u64>, Option<PageId>, Vec<Handle>) {
+    fn front_page(&self, pg: &PagesRef<'_>) -> (Option<u64>, Option<PageId>, Vec<Handle>) {
         match pg.active() {
             Some((uid, sel)) => match self.page_of(uid) {
                 Some(page) => (Some(uid), Some(page), sel),
@@ -369,7 +394,7 @@ impl Project {
 
     /// The key of the snapshot that would be built now.
     pub(crate) fn debug_key(&self, pg: &PagesRef<'_>) -> SnapshotKey {
-        let (active, _, selection) = self.active_page(pg);
+        let (active, _, selection) = self.front_page(pg);
         SnapshotKey {
             project: Some(self.id),
             head: self.ledger.head(),
@@ -384,7 +409,11 @@ impl Project {
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
             persistence: Some(self.persistence),
-            open_report: self.open_report.as_ref().map(ecad_file::OpenReport::describe),
+            open_report: self
+                .open_report
+                .as_ref()
+                .map(ecad_file::OpenReport::describe)
+                .or_else(|| self.open_report_v2.as_ref().map(ecad_file::v2::ReportV2::describe)),
             ..FileFacts::default()
         };
         let writer = match self.persistence {
@@ -397,9 +426,10 @@ impl Project {
                 f.path = st.path;
                 f.read_only = st.read_only;
                 f.unconfirmed = st.unconfirmed;
-                f.preserved_tail = st.preserved_tail;
                 f.lock_file = self.file.lock_file();
-                self.file.writer()
+                f.storage = self.file.storage();
+                f.writer_persisted = f.storage.as_ref().map(|s| s.head);
+                None
             }
             Persistence::Unavailable => None,
         };
@@ -416,7 +446,7 @@ impl Project {
 
     /// Build a snapshot (under the caller's lock; copies only).
     pub(crate) fn debug_snapshot(&self, pg: &PagesRef<'_>, key: SnapshotKey, have: TxCursor) -> DebugSnapshot {
-        let (_, active_page, selection) = self.active_page(pg);
+        let (_, active_page, selection) = self.front_page(pg);
         let log = self.ledger.log();
         // Continue the caller's copy only when its last transaction is ours.
         let continues = match (have.len, have.last) {
@@ -433,10 +463,7 @@ impl Project {
             .take(MAX_SELECTION)
             .map(|h| SelectedObject {
                 handle: *h,
-                entity: drawing
-                    .as_ref()
-                    .and_then(|d| d.entity(*h))
-                    .map_or_else(|| "missing".to_string(), |e| e.kind.type_name().to_string()),
+                entity: drawing.as_ref().and_then(|d| d.entity(*h)).map_or_else(|| "missing".to_string(), |e| e.kind.type_name().to_string()),
                 mapped: map.and_then(|m| m.get(*h)),
             })
             .collect();
@@ -457,8 +484,7 @@ impl Project {
                 }
             })
             .collect();
-        let events: Vec<Event> =
-            self.events.events().skip(self.events.len().saturating_sub(MAX_EVENTS)).cloned().collect();
+        let events: Vec<Event> = self.events.events().skip(self.events.len().saturating_sub(MAX_EVENTS)).cloned().collect();
         DebugSnapshot {
             key,
             name: self.name.clone(),
@@ -475,6 +501,9 @@ impl Project {
             pages,
             events,
             file: self.file_facts(),
+            base: self.ledger.base(),
+            history: self.ledger.history().cloned(),
+            store: self.file.store().as_ref().map(Arc::downgrade),
         }
     }
 
@@ -528,6 +557,21 @@ pub struct Check {
     pub lines: Vec<String>,
 }
 
+/// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
+/// of the kept one (the debugger's **Check index**, design 025 §3.3).
+pub fn verify_index(doc: &Document, kept: &crate::xref::RefIndex, head: u64) -> Check {
+    let (members, groups, edges) = kept.sizes();
+    match kept.verify(doc) {
+        Ok(()) => Check {
+            what: "reference index",
+            at_seq: head,
+            ok: true,
+            lines: vec![format!("{members} members in {groups} groups, {edges} edges: the same as a rebuild.")],
+        },
+        Err(e) => Check { what: "reference index", at_seq: head, ok: false, lines: vec![e] },
+    }
+}
+
 /// Replay the history into a fresh document and compare it with the live one (copies of both),
 /// then check the document's invariants.
 ///
@@ -558,6 +602,202 @@ pub fn verify_replay(log: &[Transaction], live: &Document) -> Check {
     Check { what: "replay", at_seq, ok: ok && invariants.is_ok(), lines }
 }
 
+/// [`verify_replay`] for a copy of the history that starts after `base` (a project opened from a
+/// version 2 snapshot): the state at `base` is read from `history`, then the copy is applied.
+pub fn verify_replay_from(base: u64, history: Option<&Arc<dyn ecad_model::History>>, log: &[Transaction], live: &Document) -> Check {
+    if base == 0 {
+        return verify_replay(log, live);
+    }
+    let at_seq = base + log.len() as u64;
+    let mut lines = Vec::new();
+    let replayed = history
+        .ok_or_else(|| "no history to read the snapshot from".to_string())
+        .and_then(|h| h.state_at(base).map_err(|e| e.to_string()))
+        .and_then(|mut doc| {
+            lines.push(format!("the state at the snapshot ({base}) was rebuilt from the file"));
+            for tx in log {
+                for op in &tx.ops {
+                    op.apply(&mut doc).map_err(|e| format!("transaction {}: {e}", tx.seq))?;
+                }
+            }
+            Ok(doc)
+        });
+    let ok = match replayed {
+        Ok(d) if &d == live => {
+            lines.push(format!("replaying the {} transactions after it gives the live document", log.len()));
+            true
+        }
+        Ok(_) => {
+            lines.push(format!("replaying the {} transactions after it gives a DIFFERENT document", log.len()));
+            false
+        }
+        Err(e) => {
+            lines.push(format!("replay failed: {e}"));
+            false
+        }
+    };
+    let invariants = live.check();
+    match &invariants {
+        Ok(()) => lines.push("document invariants hold".into()),
+        Err(e) => lines.push(format!("document invariants fail: {e}")),
+    }
+    Check { what: "replay", at_seq, ok: ok && invariants.is_ok(), lines }
+}
+
+/// **Verify file** for a version 2 file (EEP-0005 §5.8): replay the branch from the root with
+/// every check and check every snapshot against the replay, then compare the file's rows with the
+/// copied history (after `base`) up to the saved position. Reads only, on request.
+pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
+    let at_seq = base + log.len() as u64;
+    let v = ecad_file::v2::verify::verify(store);
+    let mut ok = v.ok;
+    let mut lines = v.lines;
+    let rows = store.reader().map_err(|e| e.to_string()).and_then(|r| {
+        let branch =
+            r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
+        let head = r.last_seq(branch).map_err(|e| e.to_string())?.unwrap_or(0);
+        Ok((r, branch, head))
+    });
+    match rows {
+        Ok((r, branch, head)) => {
+            if head < persisted {
+                ok = false;
+                lines.push(format!("the file ends at transaction {head}, before the saved position {persisted}"));
+            }
+            let mut differ = None;
+            for tx in log.iter().filter(|t| t.seq <= head.min(persisted)) {
+                let row = r.tx(branch, tx.seq).ok().flatten();
+                let same = row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
+                    serde_json::from_slice::<Value>(&rec).ok().and_then(|v| ecad_file::record::decode_tx(&v).ok()).is_some_and(|t| &t == tx)
+                });
+                if !same {
+                    differ = Some(tx.seq);
+                    break;
+                }
+            }
+            match differ {
+                Some(seq) => {
+                    ok = false;
+                    lines.push(format!("transaction {seq} in the file DIFFERS from the project's"));
+                }
+                None => lines.push(format!(
+                    "the file's rows match the project's history; saved through {persisted}, {} pending in memory",
+                    at_seq.saturating_sub(persisted)
+                )),
+            }
+        }
+        Err(e) => {
+            ok = false;
+            lines.push(format!("the file's rows could not be read: {e}"));
+        }
+    }
+    Check { what: "file", at_seq, ok, lines }
+}
+
+/// Read transaction `seq`'s row from a version 2 file (no project lock) and check that it decodes
+/// to exactly `expected`. `shown` is the record, decompressed; the span gives its stored size.
+///
+/// # Errors
+/// The file cannot be read, or holds no such row.
+pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let branch = r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
+    let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
+    let record = ecad_file::v2::pack::unpack(flag, &body)?;
+    let check = (|| {
+        if ecad_file::chain::tx_hash(&record) != chain {
+            return Err("the record does not match its chain value".to_string());
+        }
+        let v: Value = serde_json::from_slice(&record).map_err(|e| format!("not JSON: {e}"))?;
+        let tx = ecad_file::record::decode_tx(&v).map_err(|e| format!("not a transaction record: {e:?}"))?;
+        match expected {
+            Some(e) if *e != tx => Err(format!("transaction {seq} in the file differs from the one in memory")),
+            _ => Ok(()),
+        }
+    })();
+    let span = RecordSpan { seq, offset: 0, len: (body.len() + 33) as u64 };
+    let mut shown = record;
+    let truncated = shown.len() > MAX_RECORD_SHOWN;
+    shown.truncate(MAX_RECORD_SHOWN);
+    Ok(RecordBytes { span, shown, truncated, check })
+}
+
+/// What the Storage and Branches views read from a version 2 file, on request: table sizes, the
+/// file's size, branches and version rows (without their chunk maps).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StorageRead {
+    pub file_bytes: u64,
+    pub tables: Vec<ecad_file::v2::TableStat>,
+    /// Name, ID, status, head, rows, parent and fork point.
+    pub branches: Vec<BranchRow>,
+    /// Branch name, kind, name, point and chunk count.
+    pub versions: Vec<(String, String, String, u64, usize)>,
+}
+
+/// One branch, for the Branches view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchRow {
+    pub name: String,
+    pub id: String,
+    pub status: String,
+    pub head: u64,
+    pub head_chain: String,
+    pub rows: u64,
+    pub release_line: bool,
+    /// Parent branch and fork point, for a branch that is not the original.
+    pub fork: Option<(String, u64)>,
+}
+
+/// The branches of a version 2 file (a few rows and one key read each; read after each save, so
+/// its cost never depends on the history's length).
+///
+/// # Errors
+/// The file cannot be read.
+pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for (id, b) in r.branches().map_err(|e| e.to_string())? {
+        out.push(BranchRow {
+            name: b.name.clone(),
+            id: id.hex(),
+            status: format!("{:?}", b.status),
+            head: b.head.seq,
+            head_chain: b.head.chain.clone(),
+            // The last stored `seq`, one key read: a branch's rows run 1..=last without gaps, so
+            // it is the row count. Counting the rows would read the whole log after every save.
+            rows: r.last_seq(id).map_err(|e| e.to_string())?.unwrap_or(0),
+            release_line: b.release_line,
+            fork: b.parent.clone().zip(b.fork_point.as_ref().map(|f| f.seq)),
+        });
+    }
+    Ok(out)
+}
+
+/// Read the Storage view's facts (on request: table statistics walk the tables).
+///
+/// # Errors
+/// The file cannot be read.
+pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result<StorageRead, String> {
+    let r = store.reader().map_err(|e| e.to_string())?;
+    let tables = r.stats().map_err(|e| e.to_string())?;
+    let mut versions = Vec::new();
+    for (id, b) in r.branches().map_err(|e| e.to_string())? {
+        for kind in [ecad_file::v2::schema::VersionKind::User, ecad_file::v2::schema::VersionKind::Revision, ecad_file::v2::schema::VersionKind::Auto]
+        {
+            for v in r.versions(id, kind).map_err(|e| e.to_string())? {
+                versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
+            }
+        }
+    }
+    drop(r);
+    Ok(StorageRead {
+        file_bytes: path.and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len()),
+        tables,
+        branches: read_branches(store)?,
+        versions,
+    })
+}
+
 /// Reproject every open page from the document and compare (same handles), then check each page
 /// without relying on handle numbers ([`verify_page`]). Runs on copies, outside the lock.
 pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
@@ -571,9 +811,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
         let same = project_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance)
             .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
-            Ok(true) => {
-                lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len()))
-            }
+            Ok(true) => lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len())),
             Ok(false) => {
                 ok = false;
                 lines.push(format!("page {title}: drawing DIFFERS from a fresh projection"));
@@ -618,10 +856,7 @@ pub fn verify_file(path: &Path, log: &[Transaction], file: &FileFacts, persisted
         ok = false;
         lines.push(format!("the file ends at transaction {n}, before the saved position {persisted}"));
     } else {
-        lines.push(format!(
-            "saved through transaction {persisted}; {} pending in memory",
-            at_seq.saturating_sub(n as u64)
-        ));
+        lines.push(format!("saved through transaction {persisted}; {} pending in memory", at_seq.saturating_sub(n as u64)));
     }
     if opened.spans == file.spans {
         lines.push(format!("all {} record offsets match the writer's", opened.spans.len()));
@@ -695,6 +930,29 @@ fn check_record(bytes: &[u8], seq: u64, expected: Option<&Transaction>) -> Resul
 ///
 /// # Errors
 /// `seq` past the end of `log`, or replay failure.
+pub fn state_at_from(base: u64, history: Option<&Arc<dyn ecad_model::History>>, log: &[Transaction], seq: u64) -> Result<Document, String> {
+    if base == 0 {
+        return state_at(log, seq);
+    }
+    let h = history.ok_or("no history to read older states from")?;
+    if seq <= base {
+        return h.state_at(seq).map_err(|e| e.to_string());
+    }
+    let n = usize::try_from(seq - base).map_err(|e| e.to_string())?;
+    let tail = log.get(..n).ok_or_else(|| format!("transaction {seq} is past the head {}", base + log.len() as u64))?;
+    let mut doc = h.state_at(base).map_err(|e| e.to_string())?;
+    for tx in tail {
+        for op in &tx.ops {
+            op.apply(&mut doc).map_err(|e| format!("transaction {}: {e}", tx.seq))?;
+        }
+    }
+    Ok(doc)
+}
+
+/// The document after transaction `seq`, replayed from a copy of the history from the root.
+///
+/// # Errors
+/// Past the copy's end, or replay failed.
 pub fn state_at(log: &[Transaction], seq: u64) -> Result<Document, String> {
     let n = usize::try_from(seq).map_err(|e| e.to_string())?;
     let prefix = log.get(..n).ok_or_else(|| format!("transaction {seq} is past the head {}", log.len()))?;
@@ -708,6 +966,9 @@ pub fn tx_kind(tx: &Transaction, log: &[Transaction]) -> String {
         TxKind::Edit => "edit".into(),
         TxKind::Undo { of } => format!("undo of {}", seq_of(of)),
         TxKind::Redo { of } => format!("redo of {}", seq_of(of)),
+        TxKind::Merge { source, source_head, .. } => {
+            format!("merge of {}… at {}", source.iter().take(4).map(|b| format!("{b:02x}")).collect::<String>(), source_head.seq)
+        }
     }
 }
 
@@ -744,21 +1005,20 @@ pub fn op_view(op: &Op) -> OpView {
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
         Op::CreateConductor { conductor, .. } => (None, val(conductor)),
         Op::DeleteConductor { conductor, .. } => (val(conductor), None),
-        Op::AttachEnd { end, before, after, .. } => {
-            (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after})))
-        }
+        Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
         Op::AddCableMember { index, member, .. } => (None, val(&json!({"index": index, "member": member}))),
         Op::RemoveCableMember { index, member, .. } => (val(&json!({"index": index, "member": member})), None),
-        Op::SetProperty { key, before, after, .. } => {
-            (val(&json!({ key.as_str(): before })), val(&json!({ key.as_str(): after })))
-        }
+        Op::SetProperty { key, before, after, .. } => (val(&json!({ key.as_str(): before })), val(&json!({ key.as_str(): after }))),
         Op::EmbedDefinition { definition, .. } => (None, val(definition)),
         Op::RemoveDefinition { definition, .. } => (val(definition), None),
         Op::SetProjectSettings { before, after } => (val(before), val(after)),
-        Op::NameVersion { name, at } => (None, val(&json!({"name": name, "at": at}))),
-        Op::UnnameVersion { name, at } => (val(&json!({"name": name, "at": at})), None),
+        Op::NameVersion { name, at, .. } => (None, val(&json!({"name": name, "at": at}))),
+        Op::UnnameVersion { name, at, .. } => (val(&json!({"name": name, "at": at})), None),
+        Op::AddFolder { folder, index, .. } => (None, val(&json!({"folder": folder, "index": index}))),
+        Op::RemoveFolder { folder, index, .. } => (val(&json!({"folder": folder, "index": index})), None),
+        Op::ModifyFolder { before, after, .. } => (val(before), val(after)),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -830,10 +1090,14 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             ecad_model::ObjectRef::Component(c) => ObjectId::Component(*c),
             ecad_model::ObjectRef::Conductor(c) => ObjectId::Conductor(*c),
             ecad_model::ObjectRef::Cable(c) => ObjectId::Cable(*c),
+            ecad_model::ObjectRef::Page(p) => ObjectId::Page(*p),
+            ecad_model::ObjectRef::Project => ObjectId::Settings,
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
         Op::SetProjectSettings { .. } => out.push(ObjectId::Settings),
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+        // Folders (brief 019) are not among the debugger's objects yet.
+        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}
     }
     let mut seen = BTreeSet::new();
     out.retain(|i| seen.insert(*i));
@@ -875,18 +1139,26 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Fan(_) => {}
         // A reference's derived text (brief 010) stands for its reference representation.
         Mapped::RefText(rep) => r.representation = Some(rep),
+        // A device's tag text or terminal label (brief 018) stands for its symbol representation.
+        Mapped::Tag(rep) => r.representation = Some(rep),
+        // A conductor label (brief 022) stands for its conductor.
+        Mapped::Label(_) => {}
+        // A line or text of the sheet frame (brief 019) stands for nothing stored.
+        Mapped::Frame(_) => {}
+        // A device cross-reference (brief 025) stands for its contact or head representation.
+        Mapped::Xref(rep) => r.representation = Some(rep),
+        // A link line (brief 030) stands for its strip.
+        Mapped::Link(..) => {}
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
+        Mapped::Label(c) => Some(Subject::Conductor(c)),
+        Mapped::Link(c, _) => Some(Subject::Component(c)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {
-        Some(Subject::Component(c)) => {
-            doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect()
-        }
-        Some(Subject::Conductor(c)) => {
-            doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default()
-        }
+        Some(Subject::Component(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
+        Some(Subject::Conductor(c)) => doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
@@ -941,12 +1213,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .iter()
             .filter(|(_, c)| c.definition == Some(d))
             .map(|(i, _)| ObjectId::Component(*i))
-            .chain(
-                doc.items
-                    .iter()
-                    .filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d))
-                    .map(|(i, _)| ObjectId::Item(*i)),
-            )
+            .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
         ObjectId::Component(c) => doc
             .terminals
@@ -955,12 +1222,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .map(|(i, _)| ObjectId::Terminal(*i))
             .chain(reps_of(Subject::Component(c)))
             .collect(),
-        ObjectId::Terminal(t) => doc
-            .conductors
-            .iter()
-            .filter(|(_, c)| c.ends.contains(&Some(t)))
-            .map(|(i, _)| ObjectId::Conductor(*i))
-            .collect(),
+        ObjectId::Terminal(t) => doc.conductors.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Conductor(*i)).collect(),
         ObjectId::Conductor(c) => doc
             .cables
             .iter()
@@ -975,9 +1237,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .flat_map(|k| k.members.iter().map(|m| ObjectId::Conductor(m.conductor)))
             .chain(reps_of(Subject::Cable(c)))
             .collect(),
-        ObjectId::Page(p) => {
-            doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect()
-        }
+        ObjectId::Page(p) => doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect(),
         ObjectId::Representation(r) => match doc.representations.get(&r) {
             Some(rep) if crate::references::is_reference(rep) => {
                 let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
@@ -1018,12 +1278,10 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Conductor(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
-                k.members.iter().find(|m| m.conductor == c).and_then(|m| {
-                    m.core
-                        .as_deref()
-                        .filter(|x| !x.trim().is_empty())
-                        .map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS))
-                })
+                k.members
+                    .iter()
+                    .find(|m| m.conductor == c)
+                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),

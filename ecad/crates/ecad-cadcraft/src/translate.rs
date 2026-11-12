@@ -21,8 +21,8 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::derive::{route_on_page, terminal_position, terminal_positions};
 use ecad_model::{
-    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger,
-    Op, PageId, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId,
+    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Pt, Representation,
+    RepresentationId, Subject, Terminal, TerminalId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -40,6 +40,8 @@ pub(crate) struct Ctx<'a> {
     pub clips: &'a BTreeMap<u64, ClipSnapshot>,
     pub ids: &'a mut IdAllocator,
     pub tol: f64,
+    /// Tag numbers for copied devices (brief 018), caught up with the ledger before the edit.
+    pub tags: &'a mut crate::devices::TagHigh,
 }
 
 /// The result: ops plus the handles of objects the engine created.
@@ -59,8 +61,7 @@ pub(crate) struct Translation {
 /// to any of them is refused.
 fn table_changes(last: &Drawing, now: &Drawing) -> Vec<&'static str> {
     let mut out = Vec::new();
-    let user_groups =
-        |d: &Drawing| d.groups.iter().filter(|g| !g.name.starts_with(ECAD_PREFIX)).cloned().collect::<Vec<_>>();
+    let user_groups = |d: &Drawing| d.groups.iter().filter(|g| !g.name.starts_with(ECAD_PREFIX)).cloned().collect::<Vec<_>>();
     let checks: [(&'static str, bool); 15] = [
         ("layers", last.layers != now.layers),
         ("linetypes", last.linetypes != now.linetypes),
@@ -70,10 +71,7 @@ fn table_changes(last: &Drawing, now: &Drawing) -> Vec<&'static str> {
         ("table styles", last.table_styles != now.table_styles),
         ("multiline styles", last.mline_styles != now.mline_styles),
         ("block definitions", last.blocks != now.blocks),
-        (
-            "layouts",
-            last.layouts.iter().map(|l| (&l.name, &l.entities)).ne(now.layouts.iter().map(|l| (&l.name, &l.entities))),
-        ),
+        ("layouts", last.layouts.iter().map(|l| (&l.name, &l.entities)).ne(now.layouts.iter().map(|l| (&l.name, &l.entities)))),
         ("named views", last.views != now.views),
         ("UCSs", last.ucss != now.ucss),
         ("layer states", last.layer_states != now.layer_states),
@@ -216,11 +214,7 @@ impl Scope {
     }
 
     fn everything(doc: &Document) -> Scope {
-        Scope {
-            terminals: doc.terminals.keys().copied().collect(),
-            routes: doc.conductors.keys().copied().collect(),
-            attached: BTreeSet::new(),
-        }
+        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.conductors.keys().copied().collect(), attached: BTreeSet::new() }
     }
 }
 
@@ -235,6 +229,8 @@ struct Earlier {
 pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     #[cfg(feature = "translate-oracle")]
     let ids_before = cx.ids.clone();
+    #[cfg(feature = "translate-oracle")]
+    let tags_before = cx.tags.clone();
     let result = translate_scoped(cx);
     #[cfg(feature = "translate-oracle")]
     crate::translate_oracle::compare(
@@ -247,6 +243,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             provenance: cx.provenance,
             clips: cx.clips,
             tol: cx.tol,
+            tags: tags_before,
         },
         ids_before,
         cx.ids,
@@ -264,10 +261,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let (now_order, after) = entities(cx.now);
     let mut t = Translation::default();
     let mut reps: BTreeMap<RepresentationId, Representation> = BTreeMap::new();
-    let rep = |reps: &mut BTreeMap<RepresentationId, Representation>,
-               id: RepresentationId,
-               doc: &Document|
-     -> Result<(), String> {
+    let rep = |reps: &mut BTreeMap<RepresentationId, Representation>, id: RepresentationId, doc: &Document| -> Result<(), String> {
         if let std::collections::btree_map::Entry::Vacant(e) = reps.entry(id) {
             e.insert(doc.representations.get(&id).cloned().ok_or("representation missing")?);
         }
@@ -276,10 +270,12 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let mut counts = [0usize; 4]; // added, modified, removed, copied components
     // Whether an object with a meaning (an item of a representation, a terminal marker) was removed.
     let mut linked_removed = false;
+    // Whether such an object was changed in place (BREAK and TRIM keep the handle since CADCraft
+    // 0.18.0, brief 023).
+    let mut linked_changed = false;
 
     // Removed and changed entities.
-    let mut removed: Vec<(Handle, &Arc<Entity>)> =
-        before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
+    let mut removed: Vec<(Handle, &Arc<Entity>)> = before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
     removed.sort_by_key(|(h, _)| *h);
 
     // Computed parts of a traditional-view cable (core labels at the slash, reference flags;
@@ -287,31 +283,81 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // round a labelled cable moves, copies or erases the rest, and the parts are drawn again from
     // the document. An edit of nothing but such parts is refused (brief 009 review S2).
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
-    let drawn = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k));
-    let copied_drawn = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
-        Some(Source::Entity(s)) => drawn(cx.map, *s),
-        Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).is_some_and(|c| drawn(&c.map, *handle)),
+    // Conductor labels (brief 022) are left out the same way: drawn again from the document.
+    // Device cross-references (brief 025) too.
+    let drawn = |map: &HandleMap, h: Handle| {
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
+    };
+    // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
+    // copied with other objects; erasing one erases its symbol (below).
+    let tag_text = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Tag(_)));
+    let copied_source = |h: &Handle, f: &dyn Fn(&HandleMap, Handle) -> bool| match prov.get(h).map(|(s, _)| s) {
+        Some(Source::Entity(s)) => f(cx.map, *s),
+        Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).is_some_and(|c| f(&c.map, *handle)),
         None => false,
     };
-    let changed_handles: Vec<Handle> = before
-        .iter()
-        .filter(|(h, old)| after.get(h).is_some_and(|new| !Arc::ptr_eq(old, new) && ****old != ***new))
-        .map(|(h, _)| *h)
-        .collect();
+    let copied_drawn = |h: &Handle| copied_source(h, &|m, x| drawn(m, x) || tag_text(m, x));
+    let changed_handles: Vec<Handle> =
+        before.iter().filter(|(h, old)| after.get(h).is_some_and(|new| !Arc::ptr_eq(old, new) && ****old != ***new)).map(|(h, _)| *h).collect();
     let added_handles: Vec<Handle> = now_order.iter().copied().filter(|h| !before.contains_key(h)).collect();
     let skipped: BTreeSet<Handle> = removed
         .iter()
         .map(|(h, _)| *h)
         .chain(changed_handles.iter().copied())
         .filter(|h| drawn(cx.map, *h))
+        .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
+        // Brief 030: a link line moved or copied with other objects is drawn again from its link.
+        .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::Link(..)))))
+        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::Link(..))))))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
         .collect();
+    // The sheet frame (brief 019) is left out of an edit of other objects too, and drawn again;
+    // its copies are dropped. An edit of nothing but the frame is refused.
+    let frame = |m: &HandleMap, h: Handle| matches!(m.get(h), Some(Mapped::Frame(_)));
+    let framed: BTreeSet<Handle> = removed
+        .iter()
+        .map(|(h, _)| *h)
+        .chain(changed_handles.iter().copied())
+        .filter(|h| frame(cx.map, *h))
+        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &frame)))
+        .collect();
     let touched = removed.len() + changed_handles.len() + added_handles.len();
+    if !framed.is_empty() && framed.len() + skipped.len() >= touched {
+        return Err(crate::frame::DERIVED.into());
+    }
+    let skipped: BTreeSet<Handle> = skipped.into_iter().chain(framed).collect();
     if !skipped.is_empty() && skipped.len() == touched {
-        return Err(crate::views::DRAWN_REFUSED.into());
+        let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
+        let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
+        let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
+        let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Xref(_)));
+        let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
+        let link = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Link(..)));
+        if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
+            return Err(crate::link_lines::LINK_DERIVED.into());
+        }
+        return Err(if tags_only {
+            crate::devices::TAG_DERIVED
+        } else if labels_only {
+            crate::wires::LABEL_DERIVED
+        } else if xrefs_only {
+            {
+                // A copy's handle is not mapped: its source says whether it is a table (brief 025).
+                let source = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
+                    Some(Source::Entity(s)) => cx.map.get(*s),
+                    Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).and_then(|c| c.map.get(*handle)),
+                    None => None,
+                };
+                crate::xref::refusal(cx.ledger.document(), skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
+            }
+        } else {
+            crate::views::DRAWN_REFUSED
+        }
+        .into());
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
     let mut erased_refs: Vec<RepresentationId> = Vec::new();
+    let mut erased_links: BTreeSet<(ecad_model::ComponentId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -327,10 +373,19 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
+            // Brief 030: erasing a link line deletes its link (and its own part keys).
+            Some(Mapped::Link(c, n)) => {
+                erased_links.insert((c, n));
+            }
+            Some(Mapped::Frame(_)) => {}
+            // Erasing a device's tag text or terminal label erases that symbol (design 018 §2.4).
+            Some(Mapped::Tag(rid)) => erased_refs.push(rid),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
                 rep(&mut reps, rid, cx.ledger.document())?;
@@ -343,6 +398,18 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     }
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
+    for (c, n) in erased_links {
+        let props = cx.ledger.document().components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+        let key = ecad_model::links::key(n);
+        if let Some(v) = props.get(&key) {
+            t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.ledger.document(), c)));
+        }
+        for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
+            if let Some(before) = props.get(&k).cloned() {
+                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key: k, before: Some(before), after: None });
+            }
+        }
+    }
     for rid in erased_refs {
         linked_removed = true;
         rep(&mut reps, rid, cx.ledger.document())?;
@@ -359,12 +426,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             r.items.clear();
         }
     }
-    let mut changed: Vec<(Handle, &Arc<Entity>)> = before
-        .iter()
-        .filter_map(|(h, old)| {
-            after.get(h).filter(|new| !Arc::ptr_eq(old, new) && **old != ***new).map(|new| (*h, *new))
-        })
-        .collect();
+    let mut changed: Vec<(Handle, &Arc<Entity>)> =
+        before.iter().filter_map(|(h, old)| after.get(h).filter(|new| !Arc::ptr_eq(old, new) && **old != ***new).map(|new| (*h, *new))).collect();
     changed.sort_by_key(|(h, _)| *h);
     for (h, new) in &changed {
         match cx.map.get(*h) {
@@ -375,17 +438,29 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
                 if item != old {
+                    // A location box stays a closed outline of three points or more (tester 024).
+                    if let Some(m) = crate::locations::reshape_refusal(cx.ledger.document(), id, &item) {
+                        return Err(m);
+                    }
+                    linked_changed |= cx.ledger.document().representation_of_item(id).is_some();
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::Frame(_)) => {}
+            Some(Mapped::Link(..)) if skipped.contains(h) => {}
+            Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
+            Some(Mapped::Tag(_)) if skipped.contains(h) => {}
+            Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
-                let at = marker_position(new).ok_or("terminal markers can only be moved")?;
+                let at = marker_position(new).ok_or("connection point markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
-                    return Err("terminal markers can only be moved".into());
+                    return Err("connection point markers can only be moved".into());
                 }
                 rep(&mut reps, rid, cx.ledger.document())?;
                 if let Some(r) = reps.get_mut(&rid) {
@@ -403,11 +478,10 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let mut fresh_conductor_ends: Vec<(ConductorId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
-    if linked_removed && added.iter().any(|h| !prov.contains_key(h)) {
-        return Err(
-            "this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet"
-                .into(),
-        );
+    // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
+    // object's handle for one of the pieces since CADCraft 0.18.0; brief 023).
+    if (linked_removed || linked_changed) && added.iter().any(|h| !prov.contains_key(h)) {
+        return Err("this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet".into());
     }
     for h in &added {
         match prov.get(h) {
@@ -415,7 +489,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             None => {
                 let e = after.get(h).ok_or("added entity missing")?;
                 if e.common.layer == MARKER_LAYER {
-                    return Err(format!("the {MARKER_LAYER} layer is reserved for terminal markers"));
+                    return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
                 }
                 let item = item_from(cx.ledger.document(), cx.page, e)?;
                 if matches!(item.kind, ItemKind::Symbol(_)) {
@@ -432,15 +506,25 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         copy_batch(cx, &after, &batch, &mut t, &mut fresh_conductor_ends, &mut counts)?;
     }
 
-    // Representation edits: an emptied representation is removed (its subject stays, DOC-06).
+    // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
+    // symbol's connection points are in its definition's frame (brief 018): with no symbol left
+    // they place nothing.
+    let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
         let old = cx.ledger.document().representations.get(&id).cloned().ok_or("representation missing")?;
-        if r.items.is_empty() && r.connection_points.is_empty() {
+        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol) {
+            unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {
             t.ops.push(Op::ModifyRepresentation { id, before: old, after: r });
         }
     }
+
+    // Erased device symbols (design 018 §3.3): the terminals only they showed go, and a device
+    // whose last symbol went is deleted.
+    let (more, notes) = crate::devices::erase_followups(cx.ledger.document(), &unlinked);
+    t.ops.extend(more);
+    t.notes.extend(notes);
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {
@@ -449,19 +533,14 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     movement(cx, &mut t, &fresh_conductor_ends)?;
     preview(cx.ledger, &t.ops, |_| ())?;
-    t.summary =
-        format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
+    t.summary = format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
     Ok(t)
 }
 
 /// One copy operation's new entities (§11.1).
 fn copy_batch(
-    cx: &mut Ctx<'_>,
-    after: &HashMap<Handle, &Arc<Entity>>,
-    batch: &[(Handle, Source)],
-    t: &mut Translation,
-    fresh_ends: &mut Vec<(ConductorId, End)>,
-    counts: &mut [usize; 4],
+    cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation,
+    fresh_ends: &mut Vec<(ConductorId, End)>, counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
     let mut src_doc: Option<&Document> = None;
@@ -471,10 +550,7 @@ fn copy_batch(
         let (doc, map, h) = match src {
             Source::Entity(h) => (cx.ledger.document(), cx.map, *h),
             Source::Clipboard { serial, handle } => {
-                let snap = cx
-                    .clips
-                    .get(serial)
-                    .ok_or("the clipboard was filled before this project recorded it; copy again")?;
+                let snap = cx.clips.get(serial).ok_or("the clipboard was filled before this project recorded it; copy again")?;
                 if snap.page != cx.page {
                     return Err("pasting onto another page is not supported in the experiment yet".into());
                 }
@@ -484,6 +560,7 @@ fn copy_batch(
         match map.get(h) {
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);
@@ -501,7 +578,8 @@ fn copy_batch(
         let marker_handles: Vec<(TerminalId, Handle)> =
             r.connection_points.keys().filter_map(|tm| smap.marker(*rid, *tm).map(|h| (*tm, h))).collect();
         let all_copied = item_handles.len() == r.items.len()
-            && marker_handles.len() == r.connection_points.len()
+            // A symbol's connection points are in its definition's frame: it has no markers.
+            && marker_handles.len() == if r.form == Form::Drawn { r.connection_points.len() } else { 0 }
             && item_handles.iter().chain(marker_handles.iter().map(|(_, h)| h)).all(|h| by_source.contains_key(h));
         if !all_copied || item_handles.is_empty() {
             continue;
@@ -514,6 +592,14 @@ fn copy_batch(
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
         let new_comp: ComponentId = cx.ids.fresh();
+        // A copied device gets the next tag of its prefix (design 018 §3.3).
+        let mut comp = comp;
+        if comp.properties.contains_key(ecad_model::tag::TAG_KEY) {
+            match crate::devices::copy_tag(cx.ledger.document(), cx.tags, &comp) {
+                Some(tag) => comp.properties.insert(ecad_model::tag::TAG_KEY.into(), tag),
+                None => comp.properties.remove(ecad_model::tag::TAG_KEY),
+            };
+        }
         t.ops.push(Op::CreateComponent { id: new_comp, component: Component { ..comp } });
         for (src_t, term) in sdoc.terminals_of(src_comp) {
             let nt: TerminalId = cx.ids.fresh();
@@ -534,11 +620,16 @@ fn copy_batch(
             consumed.insert(nh);
         }
         let mut cps = BTreeMap::new();
+        if r.form == Form::Symbol {
+            for (src_t, at) in &r.connection_points {
+                cps.insert(term_map.get(src_t).copied().ok_or("connection point not copied")?, *at);
+            }
+        }
         for (src_t, sh) in &marker_handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied marker missing")?;
             let at = marker_position(e).ok_or("copied marker is not a marker")?;
-            let nt = term_map.get(src_t).copied().ok_or("terminal not copied")?;
+            let nt = term_map.get(src_t).copied().ok_or("connection point not copied")?;
             cps.insert(nt, at);
             t.new_markers.push(((new_rep, nt), nh));
             consumed.insert(nh);
@@ -566,10 +657,7 @@ fn copy_batch(
         }
         let c = sdoc.conductors.get(&src_c).cloned().ok_or("source conductor missing")?;
         let new_c: ConductorId = cx.ids.fresh();
-        t.ops.push(Op::CreateConductor {
-            id: new_c,
-            conductor: Conductor { properties: c.properties.clone(), ends: [None, None] },
-        });
+        t.ops.push(Op::CreateConductor { id: new_c, conductor: Conductor { properties: c.properties.clone(), ends: [None, None] } });
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
         for sh in &handles {
@@ -610,7 +698,7 @@ fn copy_batch(
             Source::Entity(h) | Source::Clipboard { handle: h, .. } => *h,
         };
         if matches!(smap.get(sh), Some(Mapped::Marker(..))) {
-            return Err("copying terminal markers without their whole component is not supported yet".into());
+            return Err("copying connection point markers without their whole component is not supported yet".into());
         }
         let e = after.get(new).ok_or("copied entity missing")?;
         let item = item_from(cx.ledger.document(), cx.page, e)?;
@@ -641,15 +729,10 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, E
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
         positions: scope.terminals.iter().map(|term| (*term, terminal_position(doc, page, *term))).collect(),
-        routes: scope
-            .routes
-            .iter()
-            .map(|cid| (*cid, route_on_page(doc, *cid, page).map(|(id, p)| (id, p.path_ends()))))
-            .collect(),
+        routes: scope.routes.iter().map(|cid| (*cid, route_on_page(doc, *cid, page).map(|(id, p)| (id, p.path_ends())))).collect(),
     };
     // After the ops, on the live document, rolled back afterwards.
-    let (amend, attach, notes) =
-        preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
+    let (amend, attach, notes) = preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
     for (id, (before, after)) in amend {
         let handle = cx.map.item(id).or_else(|| t.new_items.iter().find(|(i, _)| *i == id).map(|(_, h)| *h));
         // Fold into the op that already touches the item, else add a modification.
@@ -684,14 +767,7 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, E
 type Moves = (BTreeMap<ItemId, (Item, Item)>, Vec<Op>, Vec<String>);
 
 /// The movement policy on the proposed document, for the conductors `scope` names.
-fn moved(
-    proposed: &Document,
-    page: PageId,
-    tol: f64,
-    scope: &Scope,
-    earlier: &Earlier,
-    fresh_ends: &[(ConductorId, End)],
-) -> Moves {
+fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(ConductorId, End)]) -> Moves {
     let eps = 1e-9;
     let mut candidates: BTreeSet<ConductorId> = scope.routes.union(&scope.attached).copied().collect();
     candidates.extend(fresh_ends.iter().map(|(c, _)| *c));
@@ -714,8 +790,7 @@ fn moved(
         let mut route = prim.clone();
         for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
             let fresh = fresh_ends.contains(&(*cid, end));
-            let end_moved =
-                fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
+            let end_moved = fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
             match c.end(end) {
                 Some(term) => {
                     // A terminal outside the scope is where it was.
@@ -732,13 +807,7 @@ fn moved(
                         {
                             route = r;
                         }
-                    } else if end_moved
-                        && earlier
-                            .positions
-                            .get(&term)
-                            .copied()
-                            .unwrap_or_else(|| terminal_position(proposed, page, term))
-                            .is_some()
+                    } else if end_moved && earlier.positions.get(&term).copied().unwrap_or_else(|| terminal_position(proposed, page, term)).is_some()
                     {
                         // M3: a deliberate reconnection, resolved once. Only for a terminal shown
                         // on this page before the ops (brief 010): an end attached on another page

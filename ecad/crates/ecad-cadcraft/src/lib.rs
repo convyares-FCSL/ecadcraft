@@ -28,43 +28,63 @@
 //!
 //! This crate intentionally contains **no** UI, no file encoding of its own (that is `ecad-file`)
 //! and no ECAD semantics inside upstream crates.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
+pub mod accessories;
+pub mod accessory_cmds;
+pub mod checks;
 pub mod commands;
 pub mod convert;
 pub mod debug;
+mod device_cmds;
+pub mod device_list;
+pub mod devices;
 pub mod file;
+pub mod frame;
+pub mod generated;
+pub mod history;
 pub mod interact;
+pub mod link_lines;
+pub mod locations;
 pub mod look;
+pub mod merging;
+pub mod numbering_cmds;
+pub mod oops;
+pub mod output_cmds;
+pub mod outputs;
+pub mod preview;
+pub mod printbook;
 pub mod project;
+pub mod props;
 pub mod references;
+pub mod release;
+pub mod revisions;
+pub mod sheet_cmds;
 pub mod slash;
+pub mod strips;
+pub mod symbols;
+pub mod terminal_cmds;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]
 pub mod translate_oracle;
 pub mod verify;
 pub mod views;
+mod wire_cmds;
+pub mod wires;
+pub mod xref;
+mod xref_cmds;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use file::{
-    FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path,
-};
+pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
 pub use project::{
-    Faults, HandleMap, Mapped, PageView, Persistence, Project, SAVE_UNAVAILABLE, View, project_page, project_page_with,
-    session_seed,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_framed,
+    project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).
-pub const UPSTREAM_COMMIT: &str = "00c7613f1af3c73f7157fa91d9fe2635c6f23c06";
+pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 
 /// Install the ECAD commands into the engine's registry. Call once, before the engine's command
 /// list is first used. Returns `false` if it was too late or already done.

@@ -11,17 +11,10 @@
 //!
 //! The snapshot reuses the model's own serialisation (`Document`, `Transaction`) instead of a
 //! second model, adding only an index of readable labels and the results of consistency checks.
-//! The static viewer in `ecad/tools/inspector/` reads these files.
+//! The inspector page (`ecad/dev/ecad-inspector/page/`, Snapshots mode) reads these files.
 //!
 //! This crate intentionally has **no** mutation API, no network server and no CADCraft dependency.
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unimplemented,
-    clippy::todo,
-    clippy::unreachable
-)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::collections::VecDeque;
 
@@ -75,6 +68,9 @@ pub enum EventKind {
     ClipboardCaptured,
     /// The project was opened from a file; the message is what opening found.
     ProjectOpened,
+    /// Verify mode found the kept reference index (or what it derived before a commit) out of
+    /// step with the document: a bug. It was rebuilt from the document (brief 025).
+    IndexRebuilt,
 }
 
 /// One runtime event.
@@ -108,25 +104,11 @@ impl Default for EventLog {
 
 impl EventLog {
     /// Record an event.
-    pub fn record(
-        &mut self,
-        kind: EventKind,
-        command: Option<&str>,
-        seq: u64,
-        page: Option<PageId>,
-        message: impl Into<String>,
-    ) {
+    pub fn record(&mut self, kind: EventKind, command: Option<&str>, seq: u64, page: Option<PageId>, message: impl Into<String>) {
         if self.events.len() >= self.cap {
             self.events.pop_front();
         }
-        self.events.push_back(Event {
-            n: self.next,
-            kind,
-            command: command.map(str::to_string),
-            seq,
-            page,
-            message: message.into(),
-        });
+        self.events.push_back(Event { n: self.next, kind, command: command.map(str::to_string), seq, page, message: message.into() });
         self.next += 1;
     }
     /// All retained events, oldest first.
@@ -178,15 +160,9 @@ pub struct LiveFacts {
 fn label_of(doc: &Document, s: Subject) -> String {
     let tag = |p: &ecad_model::Properties| p.get("tag").cloned();
     match s {
-        Subject::Component(c) => {
-            doc.components.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged component".into())
-        }
-        Subject::Conductor(c) => {
-            doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into())
-        }
-        Subject::Cable(c) => {
-            doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into())
-        }
+        Subject::Component(c) => doc.components.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged component".into()),
+        Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into()),
+        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
     }
 }
 
@@ -214,21 +190,14 @@ fn index(doc: &Document) -> Vec<Value> {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
     }
     for (id, r) in &doc.representations {
-        push(
-            "representation",
-            format!("{:032x}", id.0),
-            id.short(),
-            format!("{} of {}", r.role, label_of(doc, r.subject)),
-        );
+        push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));
     }
     for (id, d) in &doc.definitions {
         push("definition", format!("{:032x}", id.0), id.short(), d.name.clone());
     }
     for (id, i) in &doc.items {
         let what = match &i.kind {
-            ecad_model::ItemKind::Primitive(p) => {
-                format!("{p:?}").split([' ', '{']).next().unwrap_or("item").to_lowercase()
-            }
+            ecad_model::ItemKind::Primitive(p) => format!("{p:?}").split([' ', '{']).next().unwrap_or("item").to_lowercase(),
             ecad_model::ItemKind::Symbol(_) => "symbol".into(),
         };
         push("item", format!("{:032x}", id.0), id.short(), what);
@@ -249,13 +218,7 @@ fn index(doc: &Document) -> Vec<Value> {
 ///
 /// # Errors
 /// `seq` past the head, or a log that fails to replay.
-pub fn snapshot(
-    name: &str,
-    ledger: &Ledger,
-    at: Option<u64>,
-    events: &EventLog,
-    live: Option<&LiveFacts>,
-) -> Result<Value, ModelError> {
+pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog, live: Option<&LiveFacts>) -> Result<Value, ModelError> {
     let seq = at.unwrap_or(ledger.head());
     let reconstructed;
     let doc: &Document = match at {
@@ -345,6 +308,11 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
                     "page_title": doc.pages.get(&r.page).map(|p| p.title.clone()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
+                    // Brief 019: the frame's row and labels, and this end's own place.
+                    "row": r.row,
+                    "column_label": r.column_label,
+                    "row_label": r.row_label,
+                    "place": r.locator(),
                     "text": r.text,
                     "partner": r.partner().map(|p| p.hex()),
                     "orphan": r.orphan,

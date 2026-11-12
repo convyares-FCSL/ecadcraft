@@ -43,10 +43,8 @@ impl Verification {
 
     /// One line for the event log.
     pub fn summary(&self) -> String {
-        let counts = format!(
-            "{} items, {} terminal positions, {} groups, {} attached ends",
-            self.items, self.terminals, self.groups, self.attached_ends
-        );
+        let counts =
+            format!("{} items, {} connection points, {} groups, {} attached ends", self.items, self.terminals, self.groups, self.attached_ends);
         match self.problems.first() {
             None => format!("rebuilt page agrees with the document: {counts}"),
             Some(p) => format!("{} problems ({counts}); first: {p}", self.problems.len()),
@@ -95,14 +93,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
-pub fn verify_page_with(
-    doc: &Document,
-    page: PageId,
-    drawing: &Drawing,
-    map: &HandleMap,
-    fan: &BTreeSet<CableId>,
-    tol: f64,
-) -> Verification {
+pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
@@ -113,6 +104,31 @@ pub fn verify_page_with(
             let e = part_entity(part, Handle(0));
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
+    }
+    // Device tags and terminal labels (brief 018), derived like the cable parts.
+    for t in crate::devices::texts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
+    }
+    // Device cross-references (brief 025), derived the same way.
+    for part in crate::xref::parts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
+    }
+    // Link lines (brief 030), derived the same way.
+    for part in crate::link_lines::parts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
+    }
+    // Location box labels (brief 024), derived the same way.
+    for (_, value, at) in crate::locations::labels_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
+    }
+    // Conductor labels (brief 022), derived the same way.
+    for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
+        *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
+    }
+    // The sheet frame (brief 019), derived like the cable parts.
+    // Generated pages and Total in sheets (brief 024) come from the same function.
+    for part in crate::generated::parts_of(doc, page, None) {
+        *fan_expected.entry(computed_key(&crate::frame::entity(&part, Handle(0)))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
@@ -137,6 +153,31 @@ pub fn verify_page_with(
         if let Some(Mapped::RefText(r)) = map.get(e.handle) {
             if !doc.representations.contains_key(&r) {
                 problems.push(format!("a reference text is drawn for {r}, which does not exist"));
+            }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Label(c)) = map.get(e.handle) {
+            if !doc.conductors.contains_key(&c) {
+                problems.push(format!("a label is drawn for {c}, which does not exist"));
+            }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Frame(_) | Mapped::Link(..)) = map.get(e.handle) {
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Xref(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a cross-reference is drawn for {r}, which does not exist"));
+            }
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Tag(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a tag text is drawn for {r}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
@@ -186,9 +227,7 @@ pub fn verify_page_with(
                     v.terminals += 1;
                     match map.marker(*rid, *t).and_then(|h| entities.get(&h)).and_then(|e| marker_position(e)) {
                         Some(p) if near(p, *at) => {}
-                        _ => {
-                            problems.push(format!("terminal {t} of representation {rid} is not marked at its position"))
-                        }
+                        _ => problems.push(format!("connection point {t} of representation {rid} is not marked at its position")),
                     }
                 }
             }
@@ -200,24 +239,19 @@ pub fn verify_page_with(
                     problems.push(format!("symbol of representation {rid} is not an insert of its definition's block"));
                     continue;
                 }
-                let want: Vec<Pt> = ecad_model::derive::terminal_positions(doc, page)
-                    .into_iter()
-                    .filter(|(_, rep, _)| rep == rid)
-                    .map(|(_, _, p)| p)
-                    .collect();
+                let want: Vec<Pt> =
+                    ecad_model::derive::terminal_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
                 let got = block_terminals(drawing, e);
                 v.terminals += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.
                 if !want.iter().all(|w| got.iter().any(|g| near(*g, *w))) {
-                    problems.push(format!(
-                        "symbol of representation {rid} does not show its terminals where the document puts them"
-                    ));
+                    problems.push(format!("symbol of representation {rid} does not show its connection points where the document puts them"));
                 }
             }
         }
     }
     if !same_points(markers_shown, expected_markers) {
-        problems.push("terminal markers in the drawing differ from the document's connection points".into());
+        problems.push("connection point markers in the drawing differ from the document's connection points".into());
     }
 
     // 4. Blocks: one per definition used on the page, with the definition's graphics.
@@ -226,25 +260,20 @@ pub fn verify_page_with(
             problems.push(format!("block {name} has no definition in the document"));
             continue;
         };
-        let graphics: Vec<EntityKind> =
-            b.entities.iter().filter(|e| marker_position(e).is_none()).map(|e| e.kind.clone()).collect();
+        let graphics: Vec<EntityKind> = b.entities.iter().filter(|e| marker_position(e).is_none()).map(|e| e.kind.clone()).collect();
         let want: Vec<EntityKind> = def.graphics.iter().map(kind_for_primitive).collect();
         if graphics != want {
             problems.push(format!("block {name} does not show its definition's graphics"));
         }
         let terms: Vec<Pt> = b.entities.iter().filter_map(|e| marker_position(e)).collect();
         if !same_points(terms, def.terminals.iter().map(|t| t.at).collect()) {
-            problems.push(format!("block {name} does not mark its definition's terminals"));
+            problems.push(format!("block {name} does not mark its definition's connection points"));
         }
     }
 
     // 5. Groups: each drawn component with several parts is one group of exactly those parts.
-    let groups: HashMap<&str, BTreeSet<Handle>> = drawing
-        .groups
-        .iter()
-        .filter(|g| g.name.starts_with(ECAD_PREFIX))
-        .map(|g| (g.name.as_str(), g.members.iter().copied().collect()))
-        .collect();
+    let groups: HashMap<&str, BTreeSet<Handle>> =
+        drawing.groups.iter().filter(|g| g.name.starts_with(ECAD_PREFIX)).map(|g| (g.name.as_str(), g.members.iter().copied().collect())).collect();
     let mut wanted_groups = 0;
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: BTreeSet<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
@@ -295,7 +324,7 @@ pub fn verify_page_with(
             v.attached_ends += 1;
             let at = if end == End::A { path.0 } else { path.1 };
             if !drawn_terminals.iter().any(|p| near(*p, at)) {
-                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a terminal"));
+                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a connection point"));
             }
         }
     }
@@ -306,5 +335,5 @@ pub fn verify_page_with(
 
 /// What a computed entity draws, for comparing multisets: its kind, lineweight and colour.
 fn computed_key(e: &Entity) -> String {
-    format!("{:?} {:?} {:?}", e.kind, e.common.lineweight, e.common.color)
+    format!("{:?} {:?} {:?} {}", e.kind, e.common.lineweight, e.common.color, e.common.layer)
 }

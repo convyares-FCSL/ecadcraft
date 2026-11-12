@@ -169,6 +169,23 @@ impl FileIdentity {
     /// # Errors
     /// Nothing is at `path`, or it cannot be opened to read its identity.
     pub fn at(path: &Path) -> io::Result<Self> {
+        #[cfg(windows)]
+        {
+            // Open for attributes only: a handle with read access to a file just written makes
+            // Windows' malware scanner read the whole file when it closes (measured 24 ms on a
+            // 16 MB project, more on larger ones, on every save; brief 021).
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_READ_ATTRIBUTES: u32 = 0x80;
+            const FILE_SHARE_ALL: u32 = 0x1 | 0x2 | 0x4;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            let file = OpenOptions::new()
+                .access_mode(FILE_READ_ATTRIBUTES)
+                .share_mode(FILE_SHARE_ALL)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)?;
+            Ok(Self(same_file::Handle::from_file(file)?))
+        }
+        #[cfg(not(windows))]
         Ok(Self(same_file::Handle::from_path(path)?))
     }
 }
@@ -241,10 +258,7 @@ impl WriterLock {
             Err(TryLockError::WouldBlock) => {
                 let mut s = String::new();
                 // Best effort where it is shown at all.
-                let holder = HOLDER_SHOWN
-                    .then(|| file.read_to_string(&mut s).ok().map(|_| s.trim().to_string()))
-                    .flatten()
-                    .filter(|s| !s.is_empty());
+                let holder = HOLDER_SHOWN.then(|| file.read_to_string(&mut s).ok().map(|_| s.trim().to_string())).flatten().filter(|s| !s.is_empty());
                 return Ok(LockAttempt::HeldByOther { holder });
             }
             Err(TryLockError::Error(e)) => return Err(e),
