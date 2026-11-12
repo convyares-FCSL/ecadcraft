@@ -1,7 +1,8 @@
 # Brief 031: Text styles, show and hide, placement
 
-Status: Draft (designer, 2026-11-12; waiting for the owner's answers in design 031 §15. Format:
-FP1–FP3, FP5 and FP6 approved by the overseer, FP4 approved on condition, design 031 §14)
+Status: Approved (owner, 2026-11-12: design 031 §15 Q1–Q9 answered "as recommended", plus the
+defaults-registry principle, design §3.5. Format: FP1–FP3, FP5 and FP6 approved by the overseer,
+FP4 approved on condition, design 031 §14)
 Branch: `feature/text-styles`, from `origin/dev` `6729c8f1`.
 Designer: **yes** (`docs/design/031.md`) · Size: L (Q1 M, Q3 M, Q2 L)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` (branch `docs/roadmap-2026-11`), v0.15 lane
@@ -51,6 +52,13 @@ UGLY." and "Ability to hide/show text, e.g. terminals: you do not want to show T
    survives regeneration, renumbering, save and reopen. `text` with `justify` is recorded, so
    justified and centred text works.
 
+**Across all three steps: the defaults registry** (owner principle, 2026-11-12, for every v0.15
+lane). Every new default (sizes, weights, show rules, the run gap…) is registered once in
+`crates/ecad-cadcraft/src/defaults/`, never written as a literal where it is used, and resolved
+built-in → standard → project → page → object. Lane T builds it in Q1's first commit; lanes W, P
+and S each add their defaults in their own file of it (design §3.5). A later Standards screen will
+list and override them; this brief adds only the read-only `defaults` command.
+
 ## Later (not designed now)
 
 - Wire labels avoiding tags and the one-label-per-net rule: lane W's Q4 (it reads this lane's
@@ -92,7 +100,10 @@ Each step lands with its tests; the full list is design §13.
 6. **Bench** (design §12): page draw on the medium project's densest page is no more than 15 %
    slower than `dev`; the large tier is run once for `textplace` and `textstyle`.
 
+7. **Defaults registry** (design §3.5): every default this brief adds is a registry entry; a test
+   proves keys are unique, each built-in value is valid for its own entry, and `defaults {}` lists
+   them with writes off (MCP contract test).
+
 ## Needs owner check
 
-Design §15 Q1–Q9, in particular the font (Q1), whether ECAD builds embed craft-fonts (Q2) and the
-default sizes (Q3).
+None open: design §15 Q1–Q9 answered "as recommended" (owner, 2026-11-12).
