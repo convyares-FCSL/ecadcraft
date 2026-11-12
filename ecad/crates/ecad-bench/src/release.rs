@@ -8,10 +8,13 @@
 //!   the Checks kept, then undone; **orphanwork**: of that, the orphan rows re-derived for the
 //!   cable (`checks::reference_checks`), the only work 027 adds to the edit (target: under 1 ms
 //!   over the same edit without it).
+//!
+//! On the 25-page project only ([`measure_print`], owner 2026-11-12):
+//! - **print**: Print Book of every page, to memory.
 //! - **release**: `release` of the pending revision: the whole book and the lists to a staging
-//!   folder, the issue, the save, the manifest and the rename (once; reported).
-//! - **rerelease**: `release {rev}` of that revision again, its state and report models built on
-//!   request (once; reported).
+//!   folder, the issue, the save, the manifest and the rename. Target ≤ 5 s.
+//! - **rerelease**: `release {rev}` of that revision again (Keep both), its state and report models
+//!   built on request; reported.
 
 use std::path::Path;
 use std::time::Instant;
@@ -25,18 +28,26 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0027_0000;
 
-/// What brief 027 measured: milliseconds and seconds.
+/// What brief 027 measured on a tier, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredRelease {
     pub prerelease_ms: f64,
     pub orphanupd_ms: f64,
     pub orphanwork_ms: f64,
+    /// Rows in the check.
+    pub rows: usize,
+}
+
+/// Print Book and release on the 25-page project: milliseconds and seconds.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct MeasuredPrint {
+    pub pages: usize,
+    pub print_ms: f64,
+    pub print_sheets: usize,
     pub release_s: f64,
     pub rerelease_s: f64,
     pub sheets: usize,
     pub files: usize,
-    /// Rows in the check.
-    pub rows: usize,
 }
 
 fn ms(t: Instant) -> f64 {
@@ -103,16 +114,57 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
         }
         out.orphanupd_ms = median(&mut upd);
         out.orphanwork_ms = median(&mut work);
-        let t = Instant::now();
-        let v = run(&mut s, "release", json!({"accept": "errors", "provisional": "issue"}))?;
-        out.release_s = t.elapsed().as_secs_f64();
-        let files = v["files"].as_array().cloned().unwrap_or_default();
-        out.files = files.len();
-        out.sheets = files.iter().filter_map(|f| f["sheets"].as_u64()).sum::<u64>() as usize;
-        let rev = v["rev"].as_str().unwrap_or("A").to_string();
-        let t = Instant::now();
-        run(&mut s, "release", json!({"rev": rev, "existing": "keep-both"}))?;
-        out.rerelease_s = t.elapsed().as_secs_f64();
+        drop(project);
+        drop(s);
+        Ok(out)
+    })();
+    crate::measure::release_lock_file(&copy);
+    remove(&copy);
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+/// Measure Print Book, release and re-release on `path` (the 25-page project), `runs` times each:
+/// every run releases the next pending revision.
+///
+/// # Errors
+/// Opening, or a refused command.
+pub fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPrint, String> {
+    let dir = scratch.join("print-bench");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let copy = dir.join("print.ecad");
+    std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_cadcraft::install();
+        ecad_cadcraft::printbook::install_io();
+        let mut s = Session::empty();
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let mut out = MeasuredPrint { pages: project.read(&mut s, |p, _| p.ledger.document().page_order.len())?, ..MeasuredPrint::default() };
+        let mut print = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            let v = run(&mut s, "printbook", json!({}))?;
+            print.push(ms(t));
+            out.print_sheets = v["sheets"].as_u64().unwrap_or(0) as usize;
+        }
+        out.print_ms = median(&mut print);
+        let (mut rel, mut again) = (Vec::new(), Vec::new());
+        for _ in 0..runs {
+            run(&mut s, "revision", json!({"description": "Bench", "drawn": "BEN"}))?;
+            let t = Instant::now();
+            let v = run(&mut s, "release", json!({"accept": "errors", "provisional": "issue"}))?;
+            rel.push(t.elapsed().as_secs_f64());
+            let files = v["files"].as_array().cloned().unwrap_or_default();
+            out.files = files.len();
+            out.sheets = files.iter().filter_map(|f| f["sheets"].as_u64()).sum::<u64>() as usize;
+            let rev = v["rev"].as_str().unwrap_or("A").to_string();
+            let t = Instant::now();
+            run(&mut s, "release", json!({"rev": rev, "existing": "keep-both"}))?;
+            again.push(t.elapsed().as_secs_f64());
+        }
+        out.release_s = median(&mut rel);
+        out.rerelease_s = median(&mut again);
         drop(project);
         drop(s);
         Ok(out)
