@@ -15,7 +15,7 @@
 //! | --- | --- |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` | that conductor; the connection points at its ends before and after; their nets (before and after) and the nets sharing their numbers |
 //! | `AddTerminal` / `RemoveTerminal` | that point and its net |
-//! | `CreateComponent` / `DeleteComponent` / `SetProperty` component | that component; its points' nets; continuations with its name (partners) |
+//! | `CreateComponent` / `DeleteComponent` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
 //! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that conductor; loose ends near its old and new route |
 //! | the same of a component symbol | conductors attached to its points ("drawn away"); continuations with its name |
@@ -101,10 +101,12 @@ pub enum Kind {
     NoPartNumber,
     /// Devices without a location (one count row).
     NoLocation,
+    /// A device with more contacts of a kind drawn than its part offers (brief 025).
+    TooManyContacts,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 22] = [
+    pub const ALL: [Kind; 23] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -127,6 +129,7 @@ impl Kind {
         Kind::BoxesOverlap,
         Kind::NoPartNumber,
         Kind::NoLocation,
+        Kind::TooManyContacts,
     ];
 
     /// The JSON name.
@@ -154,6 +157,7 @@ impl Kind {
             Kind::BoxesOverlap => "boxes-overlap",
             Kind::NoPartNumber => "no-part-number",
             Kind::NoLocation => "no-location",
+            Kind::TooManyContacts => "too-many-contacts",
         }
     }
 
@@ -187,6 +191,7 @@ impl Kind {
             Kind::BoxesOverlap => "Location boxes overlap without nesting",
             Kind::NoPartNumber => "Devices without a part number",
             Kind::NoLocation => "Devices without a location",
+            Kind::TooManyContacts => "More contacts than the part offers",
         }
     }
 
@@ -201,6 +206,7 @@ impl Kind {
             | Kind::UnknownName
             | Kind::ProvisionalTag
             | Kind::ProvisionalWires
+            | Kind::TooManyContacts
             | Kind::OwnLocation
             | Kind::BoxCrosses => Severity::Warning,
             _ => Severity::Info,
@@ -720,6 +726,10 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 }
             }
         }
+    }
+    // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
+    for (which, page, at) in crate::xref::count_checks(doc, c) {
+        out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
     }
     out
 }

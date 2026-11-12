@@ -24,6 +24,7 @@ mod forms;
 mod location_form;
 mod refs;
 mod wiring_forms;
+mod xrefs;
 
 use std::collections::BTreeSet;
 
@@ -45,6 +46,7 @@ pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, 
 pub(crate) use location_form::locationbox;
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
+pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -448,16 +450,34 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A device's tag text or terminal label (brief 018): the device's lens.
         Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
-            Subject::Component(c) => crate::devices::hover_lines(doc, c, r),
+            Subject::Component(c) => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             _ => return None,
         },
+        // A device cross-reference (brief 025): a table row's pole, the table's contacts, or the
+        // contact's lens with its coil.
+        Mapped::Xref(r) => {
+            let Subject::Component(c) = doc.representations.get(&r)?.subject else { return None };
+            let row = view.map.xref_part(h).and_then(|(_, i)| {
+                let dev = crate::xref::device(doc, c);
+                let mut places = crate::xref::Places::new(doc);
+                let t = crate::xref::table(doc, &mut places, &dev)?;
+                t.parts.get(usize::try_from(i).ok()?)?.row
+            });
+            match row {
+                Some(i) => crate::xref::row_lines(doc, c, i)?,
+                None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
+                None => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+            }
+        }
         // A conductor label (brief 022): its wire's lens.
         Mapped::Label(w) => wire_lines(doc, w, page),
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
-                Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => crate::devices::hover_lines(doc, c, rid),
+                Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
+                    with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid))
+                }
                 Subject::Component(c) => component_lines(doc, c),
                 Subject::Conductor(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
@@ -690,6 +710,18 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
     lines
 }
 
+/// A device's lens (design 018 §6.4) with its cross-reference lines (design 025 §5.1): the coil's
+/// place on a contact, the table's contacts on a coil, before the lens's last (`id`) line.
+fn with_xrefs(doc: &ecad_model::Document, c: ComponentId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
+    let mut extra = crate::xref::contact_lines(doc, c, rep);
+    extra.extend(crate::xref::head_lines(doc, c, rep));
+    let at = lines.len().saturating_sub(1);
+    for (i, l) in extra.into_iter().enumerate() {
+        lines.insert(at + i, l);
+    }
+    lines
+}
+
 /// The drawn component `h` is an outline item of, with the item's primitive, or the reason it is
 /// not one (design §5's wording).
 pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(ComponentId, Primitive), String> {
@@ -697,7 +729,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
     let doc = p.ledger.document();
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
-        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::Xref(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),

@@ -109,6 +109,10 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     for t in crate::devices::texts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
     }
+    // Device cross-references (brief 025), derived the same way.
+    for part in crate::xref::parts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
+    }
     // Location box labels (brief 024), derived the same way.
     for (_, value, at) in crate::locations::labels_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
@@ -157,6 +161,13 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
             continue;
         }
         if let Some(Mapped::Frame(_)) = map.get(e.handle) {
+            *fan_shown.entry(computed_key(e)).or_default() += 1;
+            continue;
+        }
+        if let Some(Mapped::Xref(r)) = map.get(e.handle) {
+            if !doc.representations.contains_key(&r) {
+                problems.push(format!("a cross-reference is drawn for {r}, which does not exist"));
+            }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }

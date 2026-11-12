@@ -422,19 +422,41 @@ pub(crate) fn cablegoto(s: &Session) -> R<Box<dyn Interactive>> {
 
 struct Goto;
 
-const NOT_A_REFERENCE: &str = "That is not a cable reference.";
-const NOTHING_TO_GO: &str = "Nothing there. Click a cable reference.";
+/// What Go to Reference found (design 025 §5.3 generalised it beyond cables).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Found {
+    /// A cable reference end, and whether it is an orphan.
+    Cable(RepresentationId, bool),
+    /// A device reference source (a contact, its text, a coil, a table row) and the row's contact.
+    Device(RepresentationId, Option<RepresentationId>),
+}
+
+const NOT_A_REFERENCE: &str = "That is not a reference: click a cable reference, a contact, a coil or a contact table row.";
+const NOTHING_TO_GO: &str = "Nothing there. Click a cable reference, a contact or a coil.";
 const ORPHAN: &str = "This reference has no other end (orphan); continue the cable on another page with Continue Cable.";
 
 impl Goto {
-    /// The reference under a handle and whether it has another end.
-    fn named(s: &Session, h: Handle) -> Result<(RepresentationId, bool), String> {
+    /// The reference under a handle: a cable reference end and whether it has another end, else
+    /// a device reference source (brief 025).
+    fn named(s: &Session, h: Handle) -> Result<Found, String> {
         read(s, |p, page| {
-            let m = p.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(NOT_A_REFERENCE)?;
-            let r = reference_named(p, m).ok_or(NOT_A_REFERENCE)?;
-            let orphan = refs::all(p.ledger.document()).iter().find(|x| x.reference == r).is_none_or(|x| x.orphan);
-            Ok((r, orphan))
+            let view = p.pages.get(&page).ok_or(NOT_A_REFERENCE)?;
+            let m = view.map.get(h).ok_or(NOT_A_REFERENCE)?;
+            if let Some(r) = reference_named(p, m) {
+                let orphan = refs::all(p.ledger.document()).iter().find(|x| x.reference == r).is_none_or(|x| x.orphan);
+                return Ok(Found::Cable(r, orphan));
+            }
+            let (r, t) = super::xrefs::device_source(p, &view.map, h).ok_or(NOT_A_REFERENCE)?;
+            Ok(Found::Device(r, t))
         })
+    }
+
+    fn go(s: &mut Session, f: Found) -> R<Step> {
+        match f {
+            Found::Cable(_, true) => Err(other(ORPHAN)),
+            Found::Cable(r, false) => Self::jump(s, r),
+            Found::Device(r, t) => super::xrefs::jump(s, r, t),
+        }
     }
 
     fn jump(s: &mut Session, r: RepresentationId) -> R<Step> {
@@ -448,13 +470,13 @@ impl Goto {
     /// The reference end under a click: a reference point or text inside the pick box first (a
     /// continued end's middle wire starts exactly on its point and would win the generic pick),
     /// then whatever the generic pick finds.
-    fn under(s: &Session, p: Vec2) -> Result<(RepresentationId, bool), String> {
+    fn under(s: &Session, p: Vec2) -> Result<Found, String> {
         let radius = pick_radius(s).unwrap_or(0.0);
         let direct = read(s, |proj, page| {
             let doc = proj.ledger.document();
             Ok(refs::reference_at(doc, page, pt(p), radius).map(|r| {
                 let orphan = refs::all(doc).iter().find(|x| x.reference == r).is_none_or(|x| x.orphan);
-                (r, orphan)
+                Found::Cable(r, orphan)
             }))
         })?;
         if let Some(found) = direct {
@@ -468,11 +490,8 @@ impl Goto {
         match i {
             Input::Point(p) if !in_range(p) => Err(other(OUT_OF_RANGE)),
             Input::Point(p) => {
-                let (r, orphan) = Self::under(s, p).map_err(other)?;
-                if orphan {
-                    return Err(other(ORPHAN));
-                }
-                Self::jump(s, r)
+                let f = Self::under(s, p).map_err(other)?;
+                Self::go(s, f)
             }
             Input::Enter => Ok(Step::Done),
             Input::Text(t) => Err(not_a_point(&t)),
@@ -489,14 +508,14 @@ impl Interactive for Goto {
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "cablegoto", |s| {
             let sel = s.selection();
-            let found: BTreeSet<(RepresentationId, bool)> =
-                sel.iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
+            let found: BTreeSet<Found> = sel.iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
             match found.iter().next() {
-                Some((r, false)) if found.len() == 1 => Self::jump(s, *r),
-                Some((_, true)) if found.len() == 1 => {
+                Some(Found::Cable(r, false)) if found.len() == 1 => Self::jump(s, *r),
+                Some(Found::Cable(_, true)) if found.len() == 1 => {
                     s.echo(ORPHAN);
                     Ok(Step::Continue)
                 }
+                Some(f @ Found::Device(..)) if found.len() == 1 => Self::go(s, *f),
                 _ => Ok(Step::Continue),
             }
         })

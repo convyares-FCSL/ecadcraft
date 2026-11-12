@@ -119,6 +119,8 @@ F4. It is about M in size, and 473 commits have built up so far.
 - **Debugger as a popup** (Developer section height snaps).
 - **Text convention:** electrical shorthand: IEC 60757 colour codes (BN, BU, GNYE) by default,
   3-letter option; labels small and spaced.
+- Double-click a reference text to follow it (brief 025 deviation, owner accepted 2026-11-12; Go to
+  Reference and Properties ▸ Go to do it today).
 
 ## Owner decisions (2026-11-08)
 

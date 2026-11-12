@@ -557,6 +557,21 @@ pub struct Check {
     pub lines: Vec<String>,
 }
 
+/// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
+/// of the kept one (the debugger's **Check index**, design 025 §3.3).
+pub fn verify_index(doc: &Document, kept: &crate::xref::RefIndex, head: u64) -> Check {
+    let (members, groups, edges) = kept.sizes();
+    match kept.verify(doc) {
+        Ok(()) => Check {
+            what: "reference index",
+            at_seq: head,
+            ok: true,
+            lines: vec![format!("{members} members in {groups} groups, {edges} edges: the same as a rebuild.")],
+        },
+        Err(e) => Check { what: "reference index", at_seq: head, ok: false, lines: vec![e] },
+    }
+}
+
 /// Replay the history into a fresh document and compare it with the live one (copies of both),
 /// then check the document's invariants.
 ///
@@ -1130,6 +1145,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Label(_) => {}
         // A line or text of the sheet frame (brief 019) stands for nothing stored.
         Mapped::Frame(_) => {}
+        // A device cross-reference (brief 025) stands for its contact or head representation.
+        Mapped::Xref(rep) => r.representation = Some(rep),
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),

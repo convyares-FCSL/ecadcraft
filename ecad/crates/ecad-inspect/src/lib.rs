@@ -68,6 +68,9 @@ pub enum EventKind {
     ClipboardCaptured,
     /// The project was opened from a file; the message is what opening found.
     ProjectOpened,
+    /// Verify mode found the kept reference index (or what it derived before a commit) out of
+    /// step with the document: a bug. It was rebuilt from the document (brief 025).
+    IndexRebuilt,
 }
 
 /// One runtime event.

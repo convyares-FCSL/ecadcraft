@@ -30,3 +30,4 @@ mod startup_tester;
 mod tools;
 mod trial;
 mod windows_trial_contracts;
+mod xref_ui;

@@ -84,6 +84,8 @@ pub enum CheckKind {
     Projection,
     /// Re-read the file and check frames, checksums, hash chain and history.
     File,
+    /// Rebuild the reference index (brief 025) and compare it with the kept one.
+    Index,
 }
 
 /// What the panel asks the trial to do after drawing (things that need the project).
@@ -394,6 +396,11 @@ impl Debugger {
                 (Some(st), _) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
                 (None, Some(p)) => debug::verify_file(Path::new(p), &self.log, &snap.file, snap.persisted),
                 (None, None) => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
+            },
+            // Copies taken under the lock; the rebuild runs with the project unlocked.
+            (CheckKind::Index, Some(snap)) => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref.clone(), p.ledger.head())) {
+                Ok((doc, idx, head)) => debug::verify_index(&doc, &idx, head),
+                Err(e) => Check { what: "reference index", at_seq: snap.head, ok: false, lines: vec![e] },
             },
         };
         self.checks.push(Ran { check, time: now() });
@@ -827,6 +834,14 @@ impl Debugger {
             }
             if ui.button("Verify file").on_hover_text("Re-read the file: frames, checksums, hash chain, history").clicked() {
                 run = Some(CheckKind::File);
+            }
+            if ui
+                .button("Check index")
+                .on_hover_text("Rebuild the reference index from a copy and compare it with the kept one")
+                .accessible_name("ecad.debug.xrefcheck")
+                .clicked()
+            {
+                run = Some(CheckKind::Index);
             }
         });
         let warn = ui.visuals().warn_fg_color;

@@ -29,7 +29,7 @@ device**, then **Use -K08**. **Project settings → Numbering → Provisional ta
 gives new devices `-K?1`, cables `-W?1` and new nets `24V-?` (orange) until **Finalise
 numbering**; Checks lists them and Issue Revision asks **Finalise numbering now** or **Issue
 anyway**. New cables are tagged `-W01`… automatically; devices and cables share one tag namespace.
-A merge's tag conflict offers **Make them one device**. Section 5L describes it.
+A merge's tag conflict offers **Make them one device**. Section 5M describes it.
 - *Automated checks:* `ecad/crates/ecad-model/src/numbering.rs` (drawing order, scopes, fixed,
   provisional, hostile requests), `tag.rs` (provisional form, the high-water reset), `merge.rs`
   (Make them one, provisional duplicates), `ecad/apps/ecad-mcp/tests/all/numbering_contracts.rs`
@@ -58,6 +58,20 @@ location. Section 5K describes it.
   (the windows, headless, with screenshots).
 - *Agent-observed:* the worker looked at the headless screenshots `024-*.png`; no agent has
   clicked through the live window.
+**Brief 025 (design `ecad/docs/design/025.md`), on `feature/cross-references`, not yet in `dev`:**
+a contact shows where its coil is (`100-B-3`) and a coil shows a **contact table** under it: one
+row per pole, power then auxiliary, with each pole's place, the poles the part offers that nobody
+drew (grey, `—`) and those drawn beyond the offer (red, and a Checks warning). A device's
+**Contacts offered** (`3P+1NO+1NC`) and **Contact table** placement are set in Properties; Move
+Mirror Table moves the table; Go to Reference follows contacts and coils both ways. Cable
+references now run on the same reference index with no visible change. Section 5L describes it.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/xref_contracts.rs` (design 025 §10
+  checks A–G, J, K, and the index against a rebuild after every commit in verify mode),
+  `ecad/apps/ecad-mcp/tests/all/xref_contracts.rs` (the brief 011 rule), unit tests of the
+  `contacts` grammar and `mirror` values in `ecad/crates/ecad-cadcraft/src/xref.rs`.
+- *Agent-observed:* the worker looked at the headless screenshots `025-coil-table.png`,
+  `025-contacts.png`, `025-props.png` and `025-checks.png`; no agent has clicked through the live
+  window.
 - *Owner-tried:* not yet.
 
 **Brief 020b (design `ecad/docs/design/020.md` §4–§6), on `feature/history-merge`, not yet in
@@ -1166,7 +1180,62 @@ Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corne
 `bom {}`, `bom {"group":"part"}`, `wirelist {}`, `cablelist {}`, `bom {"path":"C:/tmp/bom.csv"}`,
 `newpage {"generated":"contents"}`, `printbook {"path":"C:/tmp/demo.pdf","scope":{"pages":"1, 3"}}`.
 
-## 5L. Numbering (by clicking)
+## 5L. Cross-references (by clicking)
+
+A contact says where its coil is, and a coil lists its contacts in a **contact table** under it,
+including those the part offers that nobody has drawn yet. The texts are derived and stay live:
+nothing is stored for them. Brief 025, design `ecad/docs/design/025.md`. Start a new project (or
+use any project; the demo's `-K01` already shows them on pages 1 and 2). Open the **ECAD** tab.
+
+1. **Numbers and a coil.** With nothing selected, set page 1's **Number** to `100` and its
+   **Title** to `Supply` in the Properties palette. With **Find Symbol**, place a `coil` as a new
+   device `-K01` at about the middle of the sheet's upper half. Click **Wire** and draw from the
+   coil's `A2` straight down 20 mm, then a horizontal rail across under it.
+   Expected: no table yet (the coil has no contacts and no offer).
+2. **Contacts on two pages.** Find `power3`, click the `-K01` line and place it right of the coil.
+   Make a page with **+**, number it `105`, title `Motor control`; place a `no` and an `nc`, each
+   joined to `-K01`. Expected: under each contact, just right of its lower wire, `100-B-3` (the
+   coil's page, column and row; yours may differ with where you clicked). Show page 100: under
+   the rail a table of five rows: `1`/`2`, `3`/`4`, `5`/`6` with the power contacts' place,
+   then (a little gap) `13`/`14` and `21`/`22` with their places on 105.
+3. **Follow a reference.** Click **Go to Reference** (ECAD tab, Wiring), then the `100-B-3` text
+   under the NC on page 105. Expected: page 100 comes up, centred on the coil, which is ringed and
+   selected; `Page 100 "Supply", -K01's coil (100-B-3).` Select the coil: the Properties palette
+   lists **Contacts** with a **Go to 21/22** button; click it: back to the NC on 105.
+4. **The part's contacts.** With the coil selected, set **Contacts offered** to `3P+2NO+1NC` and
+   press Enter. Expected: a grey row `23`/`24` with `—` appears (offered, not drawn). Type `u`:
+   it goes; set it again. Typing `3X` is refused under the field:
+   `"3X" is not a contact list. Write it like 3P+1NO+1NC, or 13/14 NO, 21/22 NC.`
+5. **One too many.** On 105 place two more `no` contacts joined to `-K01`. Expected: the first
+   takes `23`/`24` (the spare row turns into a drawn one); the second takes `43`/`44`, its row is
+   red, the echo says `… its part offers 2 auxiliary NO, now 3 drawn (see Checks).` and the
+   **Checks** tab lists `More contacts than the part offers` (`-K01: 3 auxiliary NO drawn, part
+   offers 2 (3P+2NO+1NC)`). Click that row: page 105, the extra contact ringed. Type `u`.
+6. **Move the table.** Click **Move Mirror Table** (ECAD tab, Components), click the coil (or its
+   table), then click a new place: the table follows the cursor while you choose. Move the coil
+   with MOVE: the table moves with it. In Properties set **Contact table** to `Off` (the table
+   goes; the texts under the contacts stay), then to `Project default (auto)`. Each is one `u`.
+   **Project Properties → References → Contact tables** sets the default for every coil.
+7. **Renumber.** Set page 105's **Number** to `106`. Expected: the two auxiliary rows on page 100
+   read `106-…`; the texts on 106 still read `100-B-3`. Type `u`.
+8. **An MCB with an auxiliary contact.** Place an `mcb1` (`-Q01`) and join an `nc` to it: the NC
+   shows the MCB's place and the MCB shows a one-row table.
+
+Hovering a contact adds `Coil: 100-B-3  (page 100 "Supply")` to its lens; hovering a coil adds
+`Contacts: 5 drawn, 1 spare (3P+2NO+1NC)` and its rows; hovering a table row describes that pole.
+The texts and the table cannot be edited or erased on their own (`The contact table is derived;
+move it with Move Mirror Table, or set it in Properties.`); a window move of a coil and its table
+moves the coil and draws the table again.
+
+Typed instead, in the ECAD command field: `setprop {"component":"<id>","key":"contacts","value":"3P+1NO+1NC"}`,
+`setprop {"component":"<id>","key":"mirror","value":"below"}` (`auto`, `below`, `right`, `off`,
+`at dx,dy` in millimetres from the coil; `null` follows the project),
+`mirrormove {"component":"<id>","at":[x,y]}` (or `"placement":"off"`), `contacts {"component":"<id>"}`
+(the table as JSON), `xrefs {"component":"<id>"}` (every reference, one per pole; also `cable`,
+`page`), `refgoto {"source":"<representation id>"}` (a contact goes to its coil; from a coil add
+`"target"`), `projectprops {"contact_mirror":"off"}`.
+
+## 5M. Numbering (by clicking)
 
 On the demo project (`cargo xtask demo`, then open `C:\dev\ecad-projects\demo.ecad`). Design 026.
 
@@ -1713,6 +1782,11 @@ Your table of three clean runs goes here once you have run it.
   Spare stay `—` until terminal strips (brief 028) count cores. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Cross-references (brief 025).** No PLC card symbol yet (a card with channels is a later step);
+  no change-over (`CO`) contacts; a contact's text sits at a fixed place under it and only a
+  device's whole table can be moved (Move Mirror Table); continuations are not on the reference
+  index yet. Going to a reference is **Go to Reference** or a Properties **Go to** button:
+  double-clicking a reference text does nothing yet.
 
 - **History and branches (briefs 020a, 020b):** a branch merges into, and updates from, its
   parent only (owner answer 14). The merge dialog has no **Show ▾** preview of an object's page

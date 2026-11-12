@@ -38,6 +38,11 @@ pub const READ_COMMANDS: &[&str] = &[
     "nets",
     "net",
     "checks",
+    // Cross-references (brief 025): listing references and a device's contacts reads the project;
+    // going to a reference opens or shows its page and records nothing.
+    "xrefs",
+    "contacts",
+    "refgoto",
     // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",
     "closerevision",
