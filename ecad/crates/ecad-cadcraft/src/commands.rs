@@ -39,6 +39,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::numbering_cmds::specs());
     v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
+    v.extend(crate::release::specs());
     v
 }
 
