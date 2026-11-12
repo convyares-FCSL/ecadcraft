@@ -89,6 +89,7 @@ pub fn needs_conversion(path: &str) -> Option<String> {
 }
 
 /// Refuse a file that exists but is neither version of an ECAD project.
+#[cfg(not(target_arch = "wasm32"))]
 fn not_a_project(path: &str) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     if ecad_file::v2::convert::sniff(std::path::Path::new(path)).ok() == Some(ecad_file::v2::convert::Major::Unknown) {
