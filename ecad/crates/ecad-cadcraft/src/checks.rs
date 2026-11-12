@@ -22,7 +22,9 @@
 //! | `EmbedDefinition` / `RemoveDefinition` | components using it and their points |
 //! | `SetProjectSettings` changing the numbering or potentials (`wiring` scheme, digits, prefix, table) | every net (rare and explicit) |
 //! | `SetProjectSettings` changing anything else (label looks, tags, sheet, reference style) | nothing (sheet and reference style: rows are copied again) |
-//! | pages, layers, cables, versions | nothing (page texts are worked out when shown) |
+//! | representation ops of a cable (reference ends), `CreateCable` / `DeleteCable` / cable ops | that cable's reference ends (orphan, brief 027) |
+//! | `RemovePage` | the cables with a reference end on it (orphan, brief 027) |
+//! | pages, layers, versions | nothing (page texts are worked out when shown) |
 //!
 //! This module reads the document; it changes nothing.
 
@@ -30,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::wires::{self, ON_WIRE, kind_of};
@@ -97,10 +99,12 @@ pub enum Kind {
     NoLocation,
     /// A device with more contacts of a kind drawn than its part offers (brief 025).
     TooManyContacts,
+    /// A cable reference end with no other end (brief 027, design 027 §4.2).
+    OrphanReference,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 20] = [
+    pub const ALL: [Kind; 21] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -121,6 +125,7 @@ impl Kind {
         Kind::NoPartNumber,
         Kind::NoLocation,
         Kind::TooManyContacts,
+        Kind::OrphanReference,
     ];
 
     /// The JSON name.
@@ -146,6 +151,7 @@ impl Kind {
             Kind::NoPartNumber => "no-part-number",
             Kind::NoLocation => "no-location",
             Kind::TooManyContacts => "too-many-contacts",
+            Kind::OrphanReference => "orphan-reference",
         }
     }
 
@@ -177,6 +183,7 @@ impl Kind {
             Kind::NoPartNumber => "Devices without a part number",
             Kind::NoLocation => "Devices without a location",
             Kind::TooManyContacts => "More contacts than the part offers",
+            Kind::OrphanReference => "Cable reference with no other end",
         }
     }
 
@@ -191,7 +198,8 @@ impl Kind {
             | Kind::UnknownName
             | Kind::TooManyContacts
             | Kind::OwnLocation
-            | Kind::BoxCrosses => Severity::Warning,
+            | Kind::BoxCrosses
+            | Kind::OrphanReference => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -203,6 +211,8 @@ pub enum Object {
     Conductor(ConductorId),
     Terminal(TerminalId),
     Component(ComponentId),
+    /// A cable reference end (brief 027).
+    Reference(ecad_model::RepresentationId),
     None,
 }
 
@@ -263,6 +273,7 @@ impl Check {
             Object::Conductor(c) => json!({"conductor": c.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Component(c) => json!({"component": c.hex()}),
+            Object::Reference(r) => json!({"reference": r.hex()}),
             Object::None => Value::Null,
         };
         let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::wiring::place(doc, p, a));
@@ -288,6 +299,8 @@ pub enum Key {
     Conductor(ConductorId),
     Terminal(TerminalId),
     Component(ComponentId),
+    /// The reference ends of a cable (brief 027: orphans).
+    CableReferences(CableId),
     Project,
 }
 
@@ -684,6 +697,19 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     out
 }
 
+/// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
+/// reference end has an orphan (`/?`). Reads that cable's representations only.
+pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
+    let refs = crate::references::references_of(doc, k);
+    let [(rid, r)] = refs.as_slice() else { return Vec::new() };
+    let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+        ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
+        _ => None,
+    });
+    let which = format!("{} /?", crate::views::cable_title(doc, k));
+    vec![Check { kind: Kind::OrphanReference, page: Some(r.page), at, object: Object::Reference(*rid), which, fix: None }]
+}
+
 /// The kept Checks list (see the module docs).
 #[derive(Debug, Clone, Default)]
 pub struct Checks {
@@ -718,6 +744,9 @@ impl Checks {
         }
         for c in doc.components.keys() {
             ch.set(Key::Component(*c), component_checks(doc, *c));
+        }
+        for k in doc.cables.keys() {
+            ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
         }
         ch.set_unnumbered();
         ch
@@ -835,6 +864,9 @@ impl Checks {
         for c in &scope.components {
             self.set(Key::Component(*c), component_checks(doc, *c));
         }
+        for k in &scope.cable_references {
+            self.set(Key::CableReferences(*k), reference_checks(doc, *k));
+        }
         self.set_unnumbered();
         self.revision += 1;
     }
@@ -854,6 +886,8 @@ pub struct Scope {
     routes: BTreeSet<ConductorId>,
     terminals: BTreeSet<TerminalId>,
     components: BTreeSet<ComponentId>,
+    /// Cables whose reference ends to re-check (brief 027: orphans).
+    cable_references: BTreeSet<CableId>,
 }
 
 impl Scope {
@@ -923,6 +957,8 @@ impl Scope {
                 | Op::DeleteCable { id: k, .. }
                 | Op::AddCableMember { cable: k, .. }
                 | Op::RemoveCableMember { cable: k, .. } => {
+                    // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
+                    self.cable_references.insert(*k);
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
                         self.conductors.extend(cable.members.iter().map(|m| m.conductor));
@@ -968,8 +1004,16 @@ impl Scope {
                 | Op::AddFolder { .. }
                 | Op::RemoveFolder { .. }
                 | Op::ModifyFolder { .. }
-                | Op::AddPage { .. }
-                | Op::RemovePage { .. } => self.relocate = true,
+                | Op::AddPage { .. } => self.relocate = true,
+                // Brief 027: a removed page's reference ends go with it.
+                Op::RemovePage { id, .. } => {
+                    self.relocate = true;
+                    for (_, r) in doc.representations_on(*id) {
+                        if let Subject::Cable(k) = r.subject {
+                            self.cable_references.insert(k);
+                        }
+                    }
+                }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
             }
         }
@@ -1015,7 +1059,10 @@ impl Scope {
                     self.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
-            Subject::Cable(_) => {}
+            // Brief 027: a reference end linked, changed or unlinked (its point an item op).
+            Subject::Cable(k) => {
+                self.cable_references.insert(k);
+            }
         }
     }
 }
@@ -1028,6 +1075,14 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let subject = match object {
         Object::Conductor(c) => Subject::Conductor(c),
         Object::Component(c) => Subject::Component(c),
+        Object::Reference(r) => {
+            return doc
+                .representations
+                .get(&r)
+                .filter(|x| x.page == page)
+                .map(|x| x.items.iter().filter_map(|i| map.item(*i)).collect())
+                .unwrap_or_default();
+        }
         Object::Terminal(t) => match doc.terminals.get(&t) {
             Some(x) => Subject::Component(x.component),
             None => return Vec::new(),
