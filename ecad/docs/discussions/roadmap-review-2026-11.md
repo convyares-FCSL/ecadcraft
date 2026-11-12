@@ -112,7 +112,7 @@ term that is not generic electrical practice.
 5. **Editable tables**: the terminal, cable, device and PLC managers, editing the same model as the
    pages, both ways, live.
 6. **Lists in**: device-list and I/O-list import, creating unplaced devices to draw from.
-7. **Wire types**: already deferred in `roadmap-v0.1.md`, needed for real wire reports.
+7. **Wire types** (now wire categories, 1.4): already deferred in `roadmap-v0.1.md`, needed for real wire reports.
 8. **A report generator**: column choice, filter, sort and group over fixed data sources, out to a
    page, CSV and XLSX.
 9. **A 2D panel layout**: rails, ducts and devices from part dimensions; rail fill; a mounting
@@ -231,6 +231,9 @@ before M1 adds features. Its items are numbered Q1–Q9.
   styles as its first entries. 032, 033 and 034 add their defaults (wire label rule, tag style,
   revision columns, pending marker, symbol ratings and labels) as entries, append-only, and never
   as a constant at the point of use. Until 1.13, the values live in today's project settings.
+- **031 stores text styles as named styles from the start** (one per kind: tag, terminal label,
+  wire label, references, location label, continuation, title block), each with a stable ID, so
+  1.13's text-style catalogue adopts them unchanged.
 
 **v0.15 is done** when each item's tests pass, including a regression test for every defect in
 Q6. Its result is judged at the end of M1 (below), not on its own.
@@ -243,7 +246,7 @@ Q6. Its result is judged at the end of M1 (below), not on its own.
 | 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1). It also edits **the symbol's defaults** (ratings, labels, text slots) as registry entries at the symbol level (1.13) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
 | 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals. A **fuse or disconnect terminal breaks the net**: its two sides are different nets, as for any fuse. **Relabelling a strip terminal** (labels such as `1.L`, `1.N`, `1.PE`), shown on the page, the plan and the strip pages | 030 | M | No (definitions and properties) |
 | 1.3 | **PLC racks and cards** | A rack or CPU with slots, and cards in them (DI, DQ, AI, AO, RTD, IO-Link, power) as devices. Each card's channels are drawn on any page, with channel numbers, addresses (`%I0.0`, `I0.0`, free text), labels that may be rotated, and spare channels listed. Automatic addressing by slot and channel. A generated **I/O list** page and CSV | 018, 025 | XL. Split it: (a) rack, slot and card model; (b) channel symbols and addressing; (c) I/O list | No if slots and channels are connection points and properties; FP to confirm in design |
-| 1.4 | **Wire types** | Named conductor types per potential, overridable per wire, on wire reports and the BOM. Conductors already store their own `cross_section` and `colour` (022 FP3). The gap the pack shows is setting them quickly and showing them, which this item covers | 022 | M | Additive: project setting `wire_types` |
+| 1.4 | **Wire categories** (was wire types) | The wire-category catalogue on 1.13(a)'s style model: for example power L/N, 24 V DC, 0 V, PE, signal and analogue, each with colour, cross-section, line style, label rule and the default for new wires on a potential. Shown on wire reports and the BOM. Conductors already store their own `cross_section` and `colour` (022 FP3); those stay as per-wire overrides of the category. The gap the pack shows is setting them quickly and showing them, which this item covers | 022, 1.13(a) | M | Additive: the category catalogue in the standard; a wire or potential refers to a category by ID |
 | 1.5 | **UI shell** (look-and-feel, part 1) | Tokens, type, panel layout, the History polish from 020b, a calm modern frame. Never a copy of another product | none | L | No |
 | 1.6 | **Radial wheel** | Right-click quick-use wheel: the eight most likely actions for what is under the cursor | 1.5 | M | No |
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
@@ -251,16 +254,19 @@ Q6. Its result is judged at the end of M1 (below), not on its own.
 | 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. | 022, 025 | M | No: derived; a caption is a continuation property |
 | 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages. The connector bodies come from Q9; this item adds the mating | Q9 | M | Probably no (properties); FP to confirm in design |
 | 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. | 024, 030 | M | No (properties) |
-| 1.13 | **Standards and defaults** (house style) | All defaults in one model: text styles and sizes, tag prefixes and style, wire label rules, revision columns and the pending marker, jumper bar sizes, accessory part defaults, and the symbol families' ratings and labels. Each value resolves in one order: **built-in → standard → project → page → object**, where a **standard** is a named, shareable house style. One **Settings ▸ Standards** screen lists every default, shows where its value comes from, and overrides it at the level chosen; no scattered dialogs. Later, `.ecadlib` (2.1) carries standards beside symbols and parts, so a company shares one house style | v0.15's registry, 1.7 | L. Split: (a) the resolution model and standards (lane D); (b) the Standards screen (lane U) | Additive: a standard is a set of properties, and a project records which standard it uses |
+| 1.13 | **Standards, defaults and style catalogues** (house style) | All defaults in one model: tag prefixes and style, wire label rules, revision columns and the pending marker, jumper bar sizes, accessory part defaults, and the symbol families' ratings and labels. Each value resolves in one order: **built-in → standard → project → page → object**, where a **standard** is a named, shareable house style. **Named style catalogues**, carried by the standard: **text styles** (031's kinds as named styles: font, height, weight, colour or none); **wire categories** (1.4); **cable types** (core notation, shield, cross-section); **location and box styles** (line style, label style, fill); **title block and frame styles**; **terminal and accessory part sets**. Objects refer to a style by ID; changing a style updates every object that uses it, live, through an update map (which ops change which objects), never a full rebuild. One **Settings ▸ Standards** screen lists every default and every catalogue, shows where each value comes from, and overrides it at the level chosen; no scattered dialogs. Later, `.ecadlib` (2.1) carries standards beside symbols and parts, so a company shares one house style | v0.15's registry, 1.7 | L–XL. Split: (a) the resolution and style model, with the text, location and title-block catalogues (lane D); (b) the Standards screen (lane U); cable types and part sets follow in 2.7 and 2.6 on the same model | Additive: a standard is a set of properties and named styles with stable IDs; a project records which standard it uses; objects refer to styles by ID |
 
 **Order within M1, by lane.** Each lane's order follows the ranking in §6.
 
 - **Lane S:** 1.11 connectors (on Q9's bodies), then 1.1 symbol builder.
 - **Lane D:** 1.2 multi-level terminals, then 1.3 PLC racks and cards, then 1.9 continuation
-  cross-references, then 1.4 wire types.
+  cross-references, then 1.13(a) the style model, then 1.4 wire categories on it.
 - **Lane U:** 1.0 live bridge, then 1.8 graphical strip pages, then 1.12 BOM completeness, then
   1.5 UI shell, then 1.6 wheel, then 1.7 table, then 1.13(b) the Standards screen.
-- **Lane D** adds 1.13(a), the resolution model and standards, after 1.4 wire types.
+- **1.4 depends on 1.13(a); it is not folded into it.** 1.13(a) builds the style model once, with
+  the simpler catalogues; wire categories are the first catalogue with behaviour of its own (the
+  default per potential, reports, the BOM), which is worth its own brief. Building 1.4 first would
+  make a second, wire-only style model that 1.13 would then have to replace.
 - **Lane S, design only, during M1:** the designs for 2.1 `.ecadlib` and 2.2 library viewer
   (question 24), so the library, the symbol editor and the standards share one model before more
   defaults pile up.
@@ -336,7 +342,7 @@ seconds, and it is mostly composition.
 | 2.4 | **Device manager** (device list) | Every device, placed or **unplaced**, in one live table. Create devices here and place them later (P6, DOC-06 already allow it) | 1.7 | M | No |
 | 2.5 | **List-driven design** | Import a device list or I/O list (CSV/XLSX) as a proposal, review it, accept it; unplaced devices then appear in the device manager to draw from. Re-import shows differences, never overwrites silently | 2.4, 1.3 | L | No |
 | 2.6 | **Terminal manager** | The terminal plan made editable: positions, levels, accessories, links, targets, reorder by drag, renumber. It **replaces** Reports ▸ Terminals; it is not built beside it | 1.2, 1.7 | L | No |
-| 2.7 | **Cable manager** | Cables, cores, types, lengths, from and to, spare cores; assign cores in the table. A cable-type summary (used length and count per type). Cable structure: shields and twisted pairs, and a cable referenced from more than two places (today a cable has at most two references, `references.rs`) | 1.4, 1.7 | L (split: structure, then manager) | Additive: cable types typed like wire types; pair and shield membership as properties, FP to confirm |
+| 2.7 | **Cable manager** | Cables, cores, types, lengths, from and to, spare cores; assign cores in the table. A cable-type summary (used length and count per type). Cable structure: shields and twisted pairs, and a cable referenced from more than two places (today a cable has at most two references, `references.rs`) | 1.4, 1.7, 1.13(a) | L (split: structure, then manager) | Additive: cable types as a catalogue on 1.13's style model; pair and shield membership as properties, FP to confirm |
 | 2.8 | **PLC manager** | Channels, addresses, symbols, descriptions and the connected wire in one table; export and import of the assignment list | 1.3, 1.7 | M | No |
 | 2.9 | **Report generator** | Report definitions: data source (devices, wires, cables, terminals, PLC, parts) × columns × filter × sort × group, out to a generated page, CSV or XLSX, live. It ships a **fuse list** (each fuse and the circuit it supplies) as one of its built-in definitions | 1.7 | L | Additive: project `reports` definitions |
 
@@ -363,7 +369,7 @@ name the lane's files in their §0, so the overseer can see an overlap before a 
 | Lane | Owns | M1 | M2 | M3 |
 |---|---|---|---|---|
 | **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.11 connectors → 1.1 symbol builder (Q9 in v0.15 before them); design-only 2.1 and 2.2 with standards | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
-| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.4 wire types → 1.13(a) standards model | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
+| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire categories), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.13(a) style model → 1.4 wire categories | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
 | **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.8 graphical strip pages → 1.12 BOM completeness → 1.5 UI shell → 1.6 wheel → 1.7 table → 1.13(b) Standards screen | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
 
 The known collisions, and how to avoid them:
@@ -422,7 +428,8 @@ wheel, command line, MCP), never a second editor.
 ## 5. Questions for the owner
 
 **Decided (2026-11-12): the owner answered "as recommended" to questions 1–23.** Each is marked
-so. Questions 24–26 came later and are open.
+so. Questions 24–30 came later and are open; 24–26 still stand as written, and 26 also covers
+the fields of a named style.
 
 1. **Order of M1.** Is M1 as ranked by the drawing-pack test (§3.2, "Order within M1") the right
    next milestone? **Recommend yes.** **Decided: as recommended.**
@@ -497,6 +504,19 @@ so. Questions 24–26 came later and are open.
     five levels apply (for example revision columns: standard and project only; tag text size:
     every level). **Recommend yes.** It keeps the Standards screen honest and stops a page from
     quietly differing on a setting that must be the same across the book.
+27. **An object may override single fields of its style**, shown as "overridden" with a "reset to
+    style" action, rather than every difference needing a new style? **Recommend yes**, within the
+    levels question 26 allows. Today's per-conductor colour and cross-section become exactly this.
+28. **Styles have stable IDs, and the name is only a label.** Renaming a style keeps every
+    reference. Deleting a style in use asks for a replacement and moves its users in one
+    transaction; it never leaves an object pointing at nothing. **Recommend yes** (P2, stable IDs).
+29. **A project may add its own styles** without editing the standard, shown as project-only, with
+    "promote to standard" to share one later (as "promote to symbol" does for symbols)?
+    **Recommend yes.** A one-off job is not blocked by the house style, and the house style grows
+    from real use.
+30. **Wire categories (1.4) depend on the style model (1.13(a)) rather than being folded into it.**
+    **Recommend yes**, for the reason in §3.2: one style model, and a brief of its own for the
+    catalogue that has behaviour.
 
 ---
 
@@ -520,7 +540,7 @@ column was checked against `dev` where the code could settle it.
 | 6 | **A reusable user symbol library**: float switches, interlocks, proximity sensors, valves, thermocouples, heaters, SSRs, RCBO with RCD, 4-pole contactors | 21 starters; no builder, no library | **Q9** component library (v0.15), then **1.1** builder, then **2.1** `.ecadlib` | Built-in families in v0.15, in parallel with the text work |
 | 7 | **Change-over contacts** (C/NO/NC, 11/12/14) on relays and switches | NO and NC only | **Q9** | In the component library (v0.15) |
 | 8 | **BOM completeness**: accessory and assembly rows (contactor + aux block, CPU + memory card); untagged rows (trunking and DIN rail in metres, end plates, jumper bars, fuse inserts, crimps); an internal article-number column | Devices and strip terminals (024, 028); end plates and jumper bars arrive with 030 | **1.12** (new); assemblies move to **2.3** parts later | New M1 item in lane U |
-| 9 | **Cross-section and colour per conductor**, not only per potential | Partly there: conductors already store `cross_section` and `colour` (022 FP3); what is missing is setting them quickly and showing them | **1.4** wire types | No change; 1.4's purpose now names it |
+| 9 | **Cross-section and colour per conductor**, not only per potential | Partly there: conductors already store `cross_section` and `colour` (022 FP3); what is missing is setting them quickly and showing them | **1.4** wire categories | No change; 1.4's purpose now names it |
 | 10 | **Shielded and twisted-pair cables**, and cables referenced from more than two places | A cable has at most two references (`references.rs`); no pairs or shields | **2.7** cable manager, widened | Stays M2 (question 22) |
 
 Smaller gaps:
