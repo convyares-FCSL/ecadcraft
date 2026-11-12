@@ -368,11 +368,12 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
     }
     if let Some(p) = print {
         out.push_str(&format!(
-            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets), release {:.2} s ({} sheets, {} files; \
+            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets, {} KB), release {:.2} s ({} sheets, {} files; \
              target 5 s), rerelease {:.2} s\n",
             p.pages,
             p.print_ms / 1000.0,
             p.print_sheets,
+            p.print_bytes.div_ceil(1024),
             p.release_s,
             p.sheets,
             p.files,
@@ -455,7 +456,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
     let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
     let print_v = print.map(|p| {
         json!({
-            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "release_s": p.release_s,
+            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "print_bytes": p.print_bytes, "release_s": p.release_s,
             "rerelease_s": p.rerelease_s, "sheets": p.sheets, "files": p.files,
         })
     });

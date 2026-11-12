@@ -3647,3 +3647,69 @@ fn solid_hatch_keeps_angle_scale_and_double_flag() {
     assert!(f("41").is_some_and(|s| (s - 2.0).abs() < 1e-12), "{h:?}");
     assert_eq!(group(h, "77"), Some("0"), "{h:?}");
 }
+
+// ECAD-SEAM(owner): window culling for `pages` plots (ECAD brief 033, AC1).
+/// A drawing of `n` sheets side by side, 100 units square and 50 apart, each holding one
+/// square outline in its own colour (ACI 1 to 6 in turn) and one line across it.
+fn book(n: usize) -> (Drawing, serde_json::Value) {
+    let mut d = Drawing::new_imperial();
+    let mut pages = Vec::new();
+    for i in 0..n {
+        let x = i as f64 * 150.0;
+        let common = Common { color: Color::Index(1 + (i % 6) as u8), ..Common::default() };
+        let v = [(10.0, 10.0), (90.0, 10.0), (90.0, 90.0), (10.0, 90.0)].map(|(a, b)| PolyVertex::new(Vec2::new(x + a, b)));
+        d.add(
+            &Space::Model,
+            common.clone(),
+            EntityKind::LwPolyline(LwPolyline { vertices: v.to_vec(), closed: true, const_width: 0.0, elevation: 0.0, plinegen: false }),
+        )
+        .unwrap();
+        d.add(&Space::Model, common, EntityKind::Line(Line { a: Vec3::new(x + 10.0, 50.0, 0.0), b: Vec3::new(x + 90.0, 50.0, 0.0) })).unwrap();
+        pages.push(serde_json::json!({"window": [[x, 0.0], [x + 100.0, 100.0]], "paper": "A4", "landscape": true}));
+    }
+    (d, serde_json::json!({"pages": pages, "compress": false}))
+}
+
+#[test]
+fn a_page_of_a_pages_plot_holds_only_what_lies_in_its_window() {
+    let (d, o) = book(6);
+    let doc = pdf_read::read(&plot(&d, &Space::Model, &o).unwrap());
+    assert_eq!(doc.pages.len(), 6);
+    let colours = ["1 0 0 RG", "1 1 0 RG", "0 1 0 RG", "0 1 1 RG", "0 0 1 RG", "1 0 1 RG"];
+    for (i, page) in doc.pages.iter().enumerate() {
+        for (j, c) in colours.iter().enumerate() {
+            assert_eq!(page.content.contains(c), i == j, "page {i}, colour of sheet {j} ({c}): {}", page.content);
+        }
+        // The clip rectangle, one square and one line: nothing from the other sheets.
+        assert_eq!(pdf_read::count(&page.content, "m"), 3, "page {i}: {}", page.content);
+    }
+}
+
+#[test]
+fn a_pages_plot_grows_linearly_with_its_pages() {
+    let size = |n: usize| {
+        let (d, o) = book(n);
+        plot(&d, &Space::Model, &o).unwrap().len()
+    };
+    let (ten, twenty) = (size(10), size(20));
+    assert!(twenty as f64 <= 2.2 * ten as f64, "10 pages: {ten} bytes, 20 pages: {twenty} bytes");
+}
+
+#[test]
+fn a_culled_page_draws_exactly_what_its_sheet_alone_draws() {
+    let (d, o) = book(3);
+    let doc = pdf_read::read(&plot(&d, &Space::Model, &o).unwrap());
+    let pages = o["pages"].as_array().unwrap();
+    for (i, page) in doc.pages.iter().enumerate() {
+        // The same window over a drawing holding only this sheet's entities (two per sheet).
+        let mut alone = d.clone();
+        let keep: Vec<Handle> = d.model.iter().skip(2 * i).take(2).map(|e| e.handle).collect();
+        let others: Vec<Handle> = d.model.iter().map(|e| e.handle).filter(|h| !keep.contains(h)).collect();
+        for h in others {
+            alone.model.remove(h);
+        }
+        let one = serde_json::json!({"pages": [pages[i].clone()], "compress": false});
+        let single = pdf_read::read(&plot(&alone, &Space::Model, &one).unwrap());
+        assert_eq!(page.content, single.pages[0].content, "page {i}");
+    }
+}
