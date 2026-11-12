@@ -33,8 +33,8 @@ hidden or shown per symbol, device, page or project (**Show/Hide Text**, Propert
 run of its channels; continuation names are hidden by default. **Show Hidden Text** draws hidden
 texts dimmed, never printed. Tags (with any shown description and part number under them) are
 placed beside their symbol where they cross no wire, symbol or other text; **Move Text** and
-`movetext` store a place that follows the symbol; `text` with `justify` is recorded. The cable look's texts (core labels, label box) keep their 2.5 mm in
-this step.
+`movetext` store a place that follows the symbol; `text` with `justify` is recorded. The cable look's texts (core labels, label box) are drawn at the cable text height (1.6 mm) and
+reference ends at the reference height (2.0 mm); a copied symbol keeps its own text settings.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
   registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
   (drawn sizes and styles, redraw, a font change then an edit),

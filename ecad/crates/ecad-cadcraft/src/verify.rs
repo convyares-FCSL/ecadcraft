@@ -107,14 +107,14 @@ pub fn verify_page_shown(
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    let look = crate::text_style::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
-            let e = part_entity(part, Handle(0));
+            let e = part_entity(&look, part, Handle(0));
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
     // Device tags and terminal labels (brief 018), derived like the cable parts.
-    let look = crate::text_style::Look::new(doc);
     for t in crate::devices::all_texts_on_page(doc, page) {
         if !t.shown && !hidden_text {
             continue;

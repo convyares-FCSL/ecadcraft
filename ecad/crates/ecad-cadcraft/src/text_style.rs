@@ -704,6 +704,21 @@ pub fn symbol_text_keys(props: &ecad_model::Properties, rep: RepresentationId) -
     props.range(prefix.clone()..).take_while(|(k, _)| k.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
+/// Whether `key` is a symbol's own text key (`text.<32 hex digits>.…`).
+pub fn is_symbol_key(key: &str) -> bool {
+    key.strip_prefix("text.").and_then(|r| r.split_once('.')).is_some_and(|(id, _)| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// The properties of a copy of symbol `old` that is now symbol `new` (FP5): every symbol key of the
+/// source component is dropped, and `old`'s own keys come back under `new`.
+pub fn copy_symbol_keys(props: &mut ecad_model::Properties, old: RepresentationId, new: RepresentationId) {
+    let mine = symbol_text_keys(props, old);
+    props.retain(|k, _| !is_symbol_key(k));
+    for (k, v) in mine {
+        props.insert(rename_symbol_key(&k, old, new), v);
+    }
+}
+
 /// `key` of symbol `old` as the same key of symbol `new`.
 pub fn rename_symbol_key(key: &str, old: RepresentationId, new: RepresentationId) -> String {
     match key.strip_prefix(&symbol_prefix(old)) {

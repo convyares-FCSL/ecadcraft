@@ -234,3 +234,40 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     assert_eq!(moved.len(), 2, "{moved:?}");
     h.check();
 }
+
+#[test]
+fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    let k = place(&mut h, "coil", [100.0, 150.0], None);
+    let c: ComponentId = id(&k, "component");
+    place(&mut h, "no", [140.0, 150.0], Some(c));
+    let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
+    let coil = reps.iter().copied().find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == "coil")).unwrap();
+    let other = reps.iter().copied().find(|r| *r != coil).unwrap();
+    h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
+    h.run("showtext", json!({"kind": "tag", "show": "on", "representation": other.hex()})).unwrap();
+    h.run("movetext", json!({"representation": coil.hex(), "kind": "tag", "to": [80, 170]})).unwrap();
+    let item = h.doc().representations[&coil].items[0];
+    let hd = h.handle_of(page, item);
+    let head = h.head();
+    h.run("copy", json!({"handles": [hd.hex()], "delta": [0, 60]})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    let doc = h.doc();
+    let (new_c, new_rep) = doc
+        .representations
+        .iter()
+        .find_map(|(r, x)| match x.subject {
+            Subject::Component(n) if n != c => Some((n, *r)),
+            _ => None,
+        })
+        .expect("the copy");
+    let props = &doc.components[&new_c].properties;
+    let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
+    let new_hex = new_rep.hex();
+    assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
+    assert_eq!(props.get(&ecad_cadcraft::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("off"));
+    assert!(props.contains_key(&format!("text.{new_hex}.tag.at")), "{keys:?}");
+    assert_eq!(keys.len(), 2, "{keys:?}");
+    h.check();
+}
