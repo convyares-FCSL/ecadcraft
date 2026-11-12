@@ -25,7 +25,13 @@ are.
 | **component** | The model object a device is. A component without a tag (an outline converted with **Convert to Component**) is listed under "No tag". |
 | **symbol** | The drawing of a device, or part of one, on a page: a coil, a contact, a terminal. One device can be drawn by several symbols on several pages (`-K01`'s coil on page 2, its contacts on pages 2 and 3). |
 | **representation** | The model's link between a subject (a device, a conductor, a cable) and what draws it on one page: a symbol, a drawn outline, a wire's route, a cable's slash or reference. |
-| **definition** | A symbol's shape and its connection points, embedded in the project (the 18 starter symbols come built in). |
+| **definition** | A symbol's shape and its connection points, embedded in the project (81 symbols come built in). |
+| **change-over contact** | A contact with a common, a normally-closed and a normally-open point: `-K01:11`/`12`/`14`. |
+| **fuse bank** | One device holding several fuses fed from one supply point, with a connection point and a rating per fuse: `-F01:L+`, `-F01:3`. |
+| **fuse terminal** | A terminal-sized fuse holder; for now a device of its own, not a strip position: `-F02`. |
+| **connector half** | The plug or the socket side of a connector, drawn as a body with one connection point per pin. Mating two halves is not built yet: `-X03:1`. |
+| **bulkhead** | A connector through a panel wall; each pin is one connection point that wires reach from both sides: `-X04:1`. |
+| **card body** | The outline of a PLC card or CPU, with its supply points; its channels join it as PLC input and output symbols: `-A01:L+`. |
 
 ## Connections
 
