@@ -123,7 +123,15 @@ fn hashes_match_an_independent_sha256_and_checks_csv_matches_prerelease() {
     let out = rel(&dir, "B");
     assert_eq!(
         names(&out),
-        ["D-1001 Rev B BOM.csv", "D-1001 Rev B cables.csv", "D-1001 Rev B checks.csv", "D-1001 Rev B wires.csv", "D-1001 Rev B.pdf", "release.json"]
+        [
+            "D-1001 Rev B BOM.csv",
+            "D-1001 Rev B cable schedule.csv",
+            "D-1001 Rev B cables.csv",
+            "D-1001 Rev B checks.csv",
+            "D-1001 Rev B wires.csv",
+            "D-1001 Rev B.pdf",
+            "release.json"
+        ]
     );
     hashes_match(&out);
     let csv = std::fs::read_to_string(out.join("D-1001 Rev B checks.csv")).unwrap();

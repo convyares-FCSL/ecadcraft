@@ -159,6 +159,13 @@ pub enum Action {
     Release,
     /// Brief 024: `newpage {generated}`.
     NewGenerated(ecad_cadcraft::generated::GenKind),
+    /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
+    /// **Show** (Reports ▸ Cables, Only ?).
+    OfferDrawn(ecad_model::ComponentId),
+    RenumberStrip(ecad_model::ComponentId),
+    SetCores(ecad_model::CableId),
+    NextFreeCore(ecad_model::ConductorId),
+    ShowCables,
 }
 
 /// A field typed in place over a row: a page number or a folder name.

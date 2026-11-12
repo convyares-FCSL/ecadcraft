@@ -579,7 +579,13 @@ fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, all
 /// then top to bottom and left to right; [`crate::numbering`]). Fixed numbers never change.
 pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
     let scope = if all { crate::numbering::Scope::All } else { crate::numbering::Scope::Provisional };
-    let req = crate::numbering::Request { kinds: [crate::numbering::Kind::Wires].into_iter().collect(), scope, start: None, digits: None };
+    let req = crate::numbering::Request {
+        kinds: [crate::numbering::Kind::Wires].into_iter().collect(),
+        scope,
+        start: None,
+        digits: None,
+        strips: Default::default(),
+    };
     crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
 

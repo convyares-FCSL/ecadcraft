@@ -134,7 +134,7 @@ fn prerelease_groups_the_check_and_records_nothing() {
     assert!(group("errors").is_null());
     assert_eq!(v["writes"][0]["file"], "D-1001 Rev B.pdf");
     assert!(v["writes"].as_array().unwrap().iter().any(|w| w["file"] == "D-1001 Rev B checks.csv"));
-    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": release::COMES_WITH_028}));
+    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": release::NO_STRIPS}));
     assert_eq!(v["folder"], json!(folder(&f, "B").to_string_lossy()));
     assert_eq!(v["exists"], false);
     // Each refusal is said up front: never saved, a needed field empty, read-only.
@@ -159,10 +159,18 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert_eq!(v["finished"], true);
     let out = folder(&f, "B");
     assert_eq!(v["folder"], json!(out.to_string_lossy()));
-    assert!(v["message"].as_str().unwrap().starts_with(&format!("Rev B released to {}: 1 sheet, 3 lists, ", out.to_string_lossy())), "{v}");
+    assert!(v["message"].as_str().unwrap().starts_with(&format!("Rev B released to {}: 1 sheet, 4 lists, ", out.to_string_lossy())), "{v}");
     assert_eq!(
         names(&out),
-        ["D-1001 Rev B BOM.csv", "D-1001 Rev B cables.csv", "D-1001 Rev B checks.csv", "D-1001 Rev B wires.csv", "D-1001 Rev B.pdf", "release.json"]
+        [
+            "D-1001 Rev B BOM.csv",
+            "D-1001 Rev B cable schedule.csv",
+            "D-1001 Rev B cables.csv",
+            "D-1001 Rev B checks.csv",
+            "D-1001 Rev B wires.csv",
+            "D-1001 Rev B.pdf",
+            "release.json"
+        ]
     );
     assert!(!release::partial_of(&out).exists());
     // The issue transaction carries FP1.
@@ -187,7 +195,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert_eq!(m["issued"]["point"], head);
     assert_eq!(m["checks"]["accepted_errors"], false);
     assert!(m["written"].as_str().unwrap().ends_with('Z'));
-    assert_eq!(m["not_included"].as_array().unwrap().len(), 2);
+    assert_eq!(m["not_included"].as_array().unwrap().len(), 1, "no strips: no terminal plan (brief 028)");
     for file in m["files"].as_array().unwrap() {
         let bytes = std::fs::read(out.join(file["name"].as_str().unwrap())).unwrap();
         assert_eq!(file["sha256"], release::sha256_hex(&bytes), "{file}");
@@ -363,14 +371,14 @@ fn an_issued_revision_is_written_again_and_existing_folders_are_kept() {
     assert!(before.iter().any(|(n, _)| n == "D-1001 Rev A.pdf"));
     // The same again: refused before anything is written, with the compare and the ways on.
     let e = f.h.run("release", json!({"rev": "A"})).unwrap_err();
-    assert!(e.contains("exists (5 files the same)"), "{e}");
+    assert!(e.contains("exists (6 files the same)"), "{e}");
     assert!(e.contains("Give existing: \"add-missing\", \"replace\""), "{e}");
     assert!(!release::partial_of(&a).exists());
     // Keep both: `Rev A (2)`, byte-equal (the PDF too: CADCraft's writer embeds no time).
     let v = f.h.run("release", json!({"rev": "A", "existing": "keep-both"})).unwrap();
     let a2 = f.dir.join("release").join("Rev A (2)");
     assert_eq!(v["folder"], json!(a2.to_string_lossy()));
-    assert_eq!(v["compare"]["same"].as_array().unwrap().len(), 5, "{v}");
+    assert_eq!(v["compare"]["same"].as_array().unwrap().len(), 6, "{v}");
     for (n, bytes) in &before {
         assert_eq!(&std::fs::read(a2.join(n)).unwrap(), bytes, "{n}");
     }
@@ -576,4 +584,33 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
     f.h.run("wire", json!({"points": [[60, 80], [120, 80]]})).unwrap();
     assert_ne!(key(&mut f.h).0, before.0, "a loose wire is a new row");
     let _ = std::fs::remove_dir_all(&f.dir);
+}
+
+/// Brief 028 fills 027's two slots: with a terminal strip and a cable, the folder holds the
+/// terminal plan and the cable schedule, their columns named by 028's JSON keys (design 028 §10);
+/// a spare core has no `from`.
+#[test]
+fn a_release_writes_the_terminal_plan_and_cable_schedule() {
+    let mut f = fixture("strips");
+    f.h.run("terminals", json!({"from": [70, -2], "to": [70, 12]})).unwrap();
+    f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "cores", "value": "4G"})).unwrap();
+    let pre = f.h.run("prerelease", json!({})).unwrap();
+    assert!(pre.get("not_included").is_none_or(|n| n.as_array().is_some_and(Vec::is_empty)), "{pre}");
+    let v = f.h.run("release", json!({})).unwrap();
+    let out = folder(&f, "B");
+    assert!(v["message"].as_str().unwrap().contains("5 lists"), "{v}");
+    let read = |name: &str| std::fs::read_to_string(out.join(format!("D-1001 Rev B {name}.csv"))).unwrap();
+    let plan = read("terminal plan");
+    let mut lines = plan.lines();
+    assert_eq!(
+        lines.next().unwrap().trim_start_matches('\u{feff}'),
+        "tag,location,offered,label,type,state,inside_target,inside_wire,bridge_group,outside_wire,cable,core,outside_target,place"
+    );
+    assert_eq!(lines.count(), 3, "{plan}");
+    let schedule = read("cable schedule");
+    let rows: Vec<&str> = schedule.lines().collect();
+    assert_eq!(rows[0].trim_start_matches('\u{feff}'), "cable,type,offer,label,state,wire,from,to");
+    assert_eq!(rows.len(), 1 + 4, "{schedule}");
+    let spare = rows.iter().find(|r| r.contains(",spare,")).unwrap();
+    assert!(spare.ends_with("spare,,,"), "a spare core: no wire, from or to: {spare}");
 }

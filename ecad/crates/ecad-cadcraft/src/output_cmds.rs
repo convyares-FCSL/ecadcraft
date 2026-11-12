@@ -174,29 +174,32 @@ fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     with_any_page(s, |p, _| {
         let o = p.outputs();
         let t = o.cable_table();
-        let ids: Vec<Value> = o.cables().iter().map(|r| json!({"cable": r.cable.hex(), "used": null, "spare": null})).collect();
-        let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text"];
-        for h in t.headers.iter().skip(7) {
+        // Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the
+        // offer is unknown) and the devices at each end; these keys are 027's CSV columns.
+        let ids: Vec<Value> = o
+            .cables()
+            .iter()
+            .map(|r| {
+                let mut v = json!({
+                    "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
+                    "from_devices": r.from_devices, "to_devices": r.to_devices,
+                });
+                // `spare` only when the offer is known (absent keys are left out, not null).
+                if r.count.offer.is_some() {
+                    v["spare"] = json!(r.count.spare);
+                }
+                v
+            })
+            .collect();
+        let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
+        for h in t.headers.iter().skip(9) {
             keys.push(match *h {
                 "Maker" => "maker",
                 "Length" => "length",
                 _ => "designation",
             });
         }
-        let mut v = report_result(&t, &keys, &ids, &pg, "cable")?;
-        // Used and spare are null until brief 028 counts cores.
-        if let Some(rows) = v.get_mut("rows").and_then(Value::as_array_mut) {
-            for r in rows {
-                if let Some(o) = r.as_object_mut() {
-                    o.remove("used_text");
-                    o.remove("spare_text");
-                    if let Some(f) = o.get_mut("flags").and_then(Value::as_array_mut) {
-                        f.retain(|x| x != "used_text" && x != "spare_text");
-                    }
-                }
-            }
-        }
-        Ok(v)
+        report_result(&t, &keys, &ids, &pg, "cable")
     })
 }
 

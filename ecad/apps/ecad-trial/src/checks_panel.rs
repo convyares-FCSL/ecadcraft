@@ -27,6 +27,11 @@ pub const FINALISE: &str = "Finalise";
 /// Brief 024's fix buttons.
 pub const USE_BOX_LOCATION: &str = "Use the box's location";
 pub const SHOW: &str = "Show";
+/// Brief 028's fix buttons.
+pub const OFFER: &str = "Offer drawn";
+pub const RENUMBER_STRIP: &str = "Renumber strip";
+pub const SET_CORES: &str = "Set cores\u{2026}";
+pub const NEXT_FREE_CORE: &str = "Next free core";
 
 /// One copied row, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -207,12 +212,13 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let count_row = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation);
+                let count_row =
+                    matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount);
                 let what = if count_row { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
                 // description takes the room left, cut with an ellipsis.
-                let wide = matches!(fix, Some(Fix::UseBoxLocation(_)));
+                let wide = matches!(fix, Some(Fix::UseBoxLocation(_) | Fix::NextFreeCore(_) | Fix::RenumberStrip(_)));
                 let bw = if wide { 150.0 } else { 84.0 };
                 let right = if fix.is_some() { rect.right() - bw - 8.0 } else { rect.right() - 4.0 };
                 let tail = if count_row { String::new() } else { format!("{} {}", r.locator, r.check.which) };
@@ -232,7 +238,11 @@ impl ChecksPanel {
                         Fix::NumberThem => NUMBER_THEM,
                         Fix::Finalise => FINALISE,
                         Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
-                        Fix::ShowReports => SHOW,
+                        Fix::ShowReports | Fix::ShowCables => SHOW,
+                        Fix::OfferDrawn(_) => OFFER,
+                        Fix::RenumberStrip(_) => RENUMBER_STRIP,
+                        Fix::SetCores(_) => SET_CORES,
+                        Fix::NextFreeCore(_) => NEXT_FREE_CORE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
@@ -241,6 +251,11 @@ impl ChecksPanel {
                             (Fix::Finalise, _) => out.push(Action::Finalise),
                             (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),
                             (Fix::ShowReports, _) => out.push(Action::ShowReports),
+                            (Fix::OfferDrawn(c), _) => out.push(Action::OfferDrawn(c)),
+                            (Fix::RenumberStrip(c), _) => out.push(Action::RenumberStrip(c)),
+                            (Fix::SetCores(k), _) => out.push(Action::SetCores(k)),
+                            (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
+                            (Fix::ShowCables, _) => out.push(Action::ShowCables),
                             _ => {}
                         }
                         continue;

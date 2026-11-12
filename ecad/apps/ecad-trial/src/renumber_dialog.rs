@@ -22,6 +22,8 @@ pub enum What {
     Devices,
     Cables,
     Wires,
+    /// Brief 028: terminal labels per strip.
+    Terminals,
     All,
 }
 
@@ -31,6 +33,7 @@ impl What {
             What::Devices => "devices",
             What::Cables => "cables",
             What::Wires => "wires",
+            What::Terminals => "terminals",
             What::All => "all",
         }
     }
@@ -193,6 +196,7 @@ impl RenumberDialog {
                             (What::Devices, "Dev", "devices"),
                             (What::Cables, "Cbl", "cables"),
                             (What::Wires, "Wire", "wires"),
+                            (What::Terminals, "Trm", "terminals"),
                             (What::All, "All", "all"),
                         ] {
                             if ui.radio(self.what == w, RichText::new(label).small()).accessible_name(format!("ecad.renumber.kind.{name}")).clicked()
@@ -337,6 +341,7 @@ impl RenumberDialog {
                             let kind = match r["kind"].as_str() {
                                 Some("devices") => "Dev  ",
                                 Some("cables") => "Cbl  ",
+                                Some("terminals") => "Trm  ",
                                 _ => "Wire ",
                             };
                             let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });

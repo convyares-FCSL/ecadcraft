@@ -464,8 +464,11 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
         format!("ECAD · {} DEVICES", devices.len())
     };
     let mut buttons = Vec::new();
-    if let (true, Some(c)) = (one, devices.iter().next().copied()) {
-        xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+    match (one, devices.iter().next().copied()) {
+        // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
+        (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
+        (true, Some(c)) => xref_rows(doc, c, symbol, &mut rows, &mut buttons),
+        _ => {}
     }
     Section {
         title,
@@ -536,6 +539,28 @@ fn xref_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::Represen
             buttons.push(format!("refgoto:{}::Go to coil", sym.hex()));
         }
     }
+}
+
+/// Brief 028's rows of a strip (design 028 §7.2): Terminals offered, the read-only counts with
+/// **Show plan** (`showplan:<strip>`), and the PE terminals' part number and maker.
+fn strip_rows(doc: &Document, c: ComponentId, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
+    use crate::strips;
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
+    rows.push(Row::rw(strips::OFFER_KEY, "Terminals offered", get(strips::OFFER_KEY)));
+    let drawn = strips::drawn_terminals(doc, c).len();
+    let value = match strips::offer_of(doc, c) {
+        Some(o) => {
+            let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+            let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();
+            format!("{drawn} drawn, {spare} spare")
+        }
+        None => format!("{drawn} drawn"),
+    };
+    rows.push(Row::ro("terminalcounts", "Terminals", value));
+    rows.push(Row::rw(strips::PE_PART_KEY, "PE part number", get(strips::PE_PART_KEY)));
+    rows.push(Row::rw(strips::PE_MAKER_KEY, "PE maker", get(strips::PE_MAKER_KEY)));
+    buttons.push(format!("showplan:{}", c.hex()));
 }
 
 fn end_words(doc: &Document, w: ConductorId, end: End) -> String {
@@ -655,15 +680,32 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default())];
     // Brief 026: Fixed beside Tag.
     rows.push(fixed_row(props));
-    rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY]));
-    rows.push(Row::ro("cores", "Cores", cable.map_or(0, |c| c.members.len()).to_string()));
+    rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
+    // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
+    // read-only Used / Spare with Show cores.
+    let count = crate::strips::cable_cores(doc, k).unwrap_or_default();
+    let own = props.and_then(|p| p.get(crate::strips::CORES_KEY)).cloned();
+    let mut cores = Row::rw(crate::strips::CORES_KEY, "Cores", own.clone().unwrap_or_default());
+    if own.is_none()
+        && let Some(t) = &count.offer_text
+    {
+        cores.value = format!("from type: {t}");
+        cores.inherited = true;
+    }
+    rows.push(cores);
+    let members = cable.map_or(0, |c| c.members.len());
+    let used = match count.spare_text() {
+        Some(s) => format!("{} / {s}", count.used()),
+        None => format!("{members} / ? (set the cable's cores or type to count spares)"),
+    };
+    rows.push(Row::ro("usedspare", "Used / Spare", used));
     Section {
         title: format!("ECAD · CABLE {}", crate::views::cable_title(doc, k)),
         kind: "cable",
         target: Some(Target::Cable(k)),
         rows,
         note: None,
-        buttons: Vec::new(),
+        buttons: vec![format!("showcores:{}", k.hex())],
     }
 }
 

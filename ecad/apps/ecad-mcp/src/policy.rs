@@ -62,6 +62,9 @@ pub const READ_COMMANDS: &[&str] = &[
     "cablelist",
     "printbook",
     "reports",
+    // Brief 028: the terminal plan and a cable's cores read the project and record nothing.
+    "stripplan",
+    "cablecores",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
 ];

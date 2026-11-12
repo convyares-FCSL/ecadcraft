@@ -16,6 +16,12 @@
 //!   `-K01 ↔ -K02` are plain `SetProperty` ops.
 //! - **High-water reset** (FP4): last, one `SetProperty(Project, "numbering.high.<P>")` per prefix
 //!   whose tags changed, set to the highest number of `P` in use after the plan.
+//! - **Terminals** (brief 028, design 028 §9.5): the caller names the strips in scope
+//!   ([`Request::strips`]; this crate does not know the starter catalogue). Per strip, its drawn
+//!   terminals are labelled `start`, `start + 1`, … in drawing order, feed-through and PE in one
+//!   sequence; a strip's fixed tag does not stop it. A changed terminal is relabelled by
+//!   `RemoveTerminal` + `AddTerminal` of the same ID with the same key; its wires stay attached
+//!   (the transaction's end state holds every invariant, decision FP5 of 2026-11-12).
 //! - The plan is built on request only (a preview, an Apply); it reads each item once, sorts, and
 //!   writes one op per changed item (§11).
 //!
@@ -27,7 +33,7 @@ use crate::book::Book;
 use crate::connectivity::{self, NetData, NetId, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ComponentId, ConductorId, FolderId, PageId};
+use crate::id::{CableId, ComponentId, ConductorId, FolderId, PageId, TerminalId};
 use crate::op::{ObjectRef, Op};
 use crate::sheet::Grid;
 use crate::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
@@ -39,6 +45,8 @@ pub enum Kind {
     Devices,
     Cables,
     Wires,
+    /// Brief 028: terminal labels per strip.
+    Terminals,
 }
 
 impl Kind {
@@ -48,6 +56,7 @@ impl Kind {
             Kind::Devices => "Dev",
             Kind::Cables => "Cbl",
             Kind::Wires => "Wire",
+            Kind::Terminals => "Trm",
         }
     }
 
@@ -57,6 +66,7 @@ impl Kind {
             Kind::Devices => "devices",
             Kind::Cables => "cables",
             Kind::Wires => "wires",
+            Kind::Terminals => "terminals",
         }
     }
 }
@@ -88,6 +98,8 @@ pub struct Request {
     pub start: Option<u64>,
     /// Digits for this run (default: the project's tag padding, or the wire digits).
     pub digits: Option<u8>,
+    /// Brief 028: the strips whose terminals [`Kind::Terminals`] numbers, chosen by the caller.
+    pub strips: BTreeSet<ComponentId>,
 }
 
 /// What a row does (design §3, row marks).
@@ -156,6 +168,8 @@ pub struct Row {
     /// The anchor point, for going to it.
     pub point: Option<Pt>,
     pub mark: Mark,
+    /// Brief 028: the terminal a [`Kind::Terminals`] row relabels.
+    pub terminal: Option<TerminalId>,
     order: Order,
 }
 
@@ -423,6 +437,9 @@ pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, Str
     if req.kinds.contains(&Kind::Wires) {
         plan_wires(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
+    if req.kinds.contains(&Kind::Terminals) {
+        plan_terminals(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
+    }
     rows.sort_by(|a, b| a.mark.group().cmp(&b.mark.group()).then(a.kind.cmp(&b.kind)).then(a.order.cmp(&b.order)));
     Ok(Plan { rows, ops })
 }
@@ -604,6 +621,69 @@ fn plan_tags(
     }
 }
 
+/// Brief 028: number each strip's terminals in drawing order (module docs).
+fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
+    let start = req.start.unwrap_or(1);
+    for strip in &req.strips {
+        let Some(comp) = doc.components.get(strip) else { continue };
+        let tag = comp.properties.get(TAG_KEY).cloned().unwrap_or_else(|| "?".into());
+        // Each terminal once, anchored at the symbol that shows it.
+        let mut seen: BTreeSet<TerminalId> = BTreeSet::new();
+        let mut list: Vec<(TerminalId, PageId, Pt, Order)> = Vec::new();
+        for (_, r) in doc.representations_of(Subject::Component(*strip)) {
+            let Some(at) = places.rep_point(r) else { continue };
+            let shown: Vec<TerminalId> = if r.connection_points.is_empty() {
+                let keys: BTreeSet<&str> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
+                    Some(ItemKind::Symbol(s)) => {
+                        doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| t.key.as_str()).collect()).unwrap_or_default()
+                    }
+                    _ => BTreeSet::new(),
+                };
+                doc.terminals_of(*strip).filter(|(_, t)| t.key.as_deref().is_some_and(|k| keys.contains(k))).map(|(t, _)| t).collect()
+            } else {
+                r.connection_points.keys().copied().collect()
+            };
+            let o = places.order(r.page, at);
+            for t in shown {
+                if seen.insert(t) {
+                    list.push((t, r.page, at, o));
+                }
+            }
+        }
+        // Page and folder scopes: a strip with a terminal on those pages, numbered whole.
+        if let Some(ps) = pages
+            && !list.iter().any(|(_, p, _, _)| ps.contains(p))
+        {
+            continue;
+        }
+        list.sort_by(|a, b| a.3.cmp(&b.3).then(a.0.cmp(&b.0)));
+        for (n, (t, page, at, order)) in (start..).zip(list) {
+            let Some(term) = doc.terminals.get(&t) else { continue };
+            let old_label = term.label.clone().unwrap_or_default();
+            let new_label = n.to_string();
+            let mark = if old_label == new_label { Mark::Same } else { Mark::Change };
+            if mark == Mark::Change {
+                let mut after = term.clone();
+                after.label = Some(new_label.clone());
+                ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+                ops.push(Op::AddTerminal { id: t, terminal: after });
+            }
+            rows.push(Row {
+                object: ObjectRef::Component(*strip),
+                kind: Kind::Terminals,
+                old: format!("{tag}:{old_label}"),
+                new: format!("{tag}:{new_label}"),
+                at: places.text(page, at),
+                page: Some(page),
+                point: Some(at),
+                mark,
+                terminal: Some(t),
+                order,
+            });
+        }
+    }
+}
+
 fn row_of(places: &mut Places<'_>, it: &Tagged, old: String, new: String, mark: Mark) -> Row {
     let (page, point, order) = match it.anchor {
         Some((pg, at, o)) => (Some(pg), Some(at), o),
@@ -613,7 +693,7 @@ fn row_of(places: &mut Places<'_>, it: &Tagged, old: String, new: String, mark: 
         (Some(pg), Some(p)) => places.text(pg, p),
         _ => String::new(),
     };
-    Row { object: it.object, kind: it.kind, old, new, at, page, point, mark, order }
+    Row { object: it.object, kind: it.kind, old, new, at, page, point, mark, terminal: None, order }
 }
 
 fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
@@ -671,7 +751,7 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
             _ => String::new(),
         };
         let object = ObjectRef::Conductor(net.first_conductor().unwrap_or(ConductorId(0)));
-        Row { object, kind: Kind::Wires, old, new, at, page, point, mark, order }
+        Row { object, kind: Kind::Wires, old, new, at, page, point, mark, terminal: None, order }
     };
     for (_, net, anchor) in fixed_rows {
         let n = wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
@@ -802,7 +882,7 @@ mod tests {
     }
 
     fn req(scope: Scope) -> Request {
-        Request { kinds: [Kind::Devices].into_iter().collect(), scope, start: None, digits: None }
+        Request { kinds: [Kind::Devices].into_iter().collect(), scope, start: None, digits: None, strips: BTreeSet::new() }
     }
 
     fn after(d: &Document, p: &Plan) -> BTreeMap<u128, String> {
