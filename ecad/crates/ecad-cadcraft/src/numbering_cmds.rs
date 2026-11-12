@@ -459,37 +459,64 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     Provisional { tags, nets, by_potential }
 }
 
-/// `issuerevision`'s provisional step (design §5.5): `Ok(note)` to go on (the note for the echo),
-/// after finalising first when asked.
+/// What the provisional step before an issue will do (design §5.5), worked out without writing.
+#[derive(Debug, Clone)]
+pub enum BeforeIssue {
+    /// Go on to the issue; the note for the echo (`(2 provisional tags issued)`), if any.
+    Go(Option<String>),
+    /// Finalise numbering first, with this plan (its own transaction, `Finalise numbering`).
+    Finalise(Plan),
+}
+
+/// Plan the provisional step before an issue (reads only; brief 027's release stages from it
+/// before anything is recorded).
 ///
 /// # Errors
 /// Provisional items present and no `provisional` given (the ways forward), or a bad value.
-pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, params: &Value) -> Result<Option<String>, String> {
+pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, String> {
     let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?.map(|w| w.trim().to_ascii_lowercase());
     let items = provisional_items(p.ledger.document());
     if items.is_empty() {
-        return Ok(None);
+        return Ok(BeforeIssue::Go(None));
     }
     match way.as_deref() {
         None => Err(format!(
             "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
             items.words()
         )),
-        Some("issue") => Ok(Some(if items.tags.is_empty() {
+        Some("issue") => Ok(BeforeIssue::Go(Some(if items.tags.is_empty() {
             format!("({} issued)", plural(items.nets, "provisional wire number", "provisional wire numbers"))
         } else {
             format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
-        })),
+        }))),
         Some("finalise" | "finalize") => {
             let req = Request { kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(), scope: Scope::Provisional, start: None, digits: None };
             let plan = plan_for(p, &req)?;
-            if !plan.ops.is_empty() {
-                p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
-                pg.echo(applied_words(&plan, true));
-            }
-            Ok(None)
+            Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
         }
         Some(other) => Err(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}")),
+    }
+}
+
+/// Commit a planned Finalise numbering (one transaction) and echo what it did.
+///
+/// # Errors
+/// The commit was refused.
+pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>, plan: &Plan) -> Result<(), String> {
+    p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
+    pg.echo(applied_words(plan, true));
+    Ok(())
+}
+
+/// `issuerevision`'s provisional step (design §5.5): `Ok(note)` to go on (the note for the echo),
+/// after finalising first when asked.
+///
+/// # Errors
+/// Provisional items present and no `provisional` given (the ways forward), or a bad value.
+pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, params: &Value) -> Result<Option<String>, String> {
+    match plan_before_issue(p, params)? {
+        BeforeIssue::Go(note) => Ok(note),
+        BeforeIssue::Finalise(plan) => commit_finalise(p, pg, &plan).map(|()| None),
     }
 }
 

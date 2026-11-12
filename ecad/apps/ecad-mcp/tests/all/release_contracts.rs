@@ -135,3 +135,87 @@ fn with_writes_off_release_of_the_pending_revision_is_refused_and_an_issued_one_
     assert!(m.contains("Rev B is not issued yet"), "{m}");
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
+
+/// What is on disk for a project: the `.ecad` file's size and time, the versions it names (read by
+/// a fresh read-only server), and every path under `release/`.
+fn on_disk(dir: &TempDir, path: &str) -> (u64, std::time::SystemTime, Vec<String>, Vec<String>) {
+    let meta = std::fs::metadata(path).unwrap();
+    let (s, _) = EcadMcp::open(path, Options { write: false, agent: None }).unwrap();
+    let mut r = Client::new(s);
+    let versions: Vec<String> = r.doc().versions.keys().cloned().collect();
+    drop(r);
+    let mut files = Vec::new();
+    let mut todo = vec![root(dir).join("release")];
+    while let Some(d) = todo.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            files.push(p.to_string_lossy().into_owned());
+            if p.is_dir() {
+                todo.push(p);
+            }
+        }
+    }
+    files.sort();
+    (meta.len(), meta.modified().unwrap(), versions, files)
+}
+
+/// Tester 027, 3: every way an agent's release is refused leaves the `.ecad` file and the release
+/// folder exactly as they were: an error without `accept`, provisional items without a choice, an
+/// existing folder without `existing`, a release after another write on the same request line,
+/// and Finalise with the issue after another write (over the cap before anything is written).
+#[test]
+fn every_refused_release_leaves_the_file_and_the_folder_untouched() {
+    let dir = TempDir::new("027-refusals");
+    let (mut c, path) = project(&dir);
+    // An existing foreign folder for Rev B.
+    let b = root(&dir).join("release").join("Rev B");
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(b.join("notes.txt"), "mine").unwrap();
+    let before = on_disk(&dir, &path);
+    let log = c.log().len();
+    let line = |c: &mut Client, msgs: Vec<Value>| -> Vec<Value> {
+        let reply = c.s.handle_line(&Value::Array(msgs).to_string()).expect("a reply");
+        serde_json::from_str::<Value>(&reply).unwrap().as_array().unwrap().clone()
+    };
+    let call = |id: u64, command: &str, params: Value| json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": "execute", "arguments": {"command": command, "params": params}}});
+    // The folder exists and no choice is given.
+    let m = c.refused("execute", json!({"command": "release", "params": {}}));
+    assert!(m.contains("Give existing:"), "{m}");
+    assert_eq!(on_disk(&dir, &path), before, "existing folder");
+    // After another write on the same line, release may record nothing more: refused up front.
+    let r = line(&mut c, vec![call(1, "wire", json!({"points": [[0, 60], [40, 60]]})), call(2, "release", json!({"existing": "keep-both"}))]);
+    assert_eq!(r[1]["result"]["isError"], json!(true), "{}", r[1]);
+    let text = r[1]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Release refused: it records the issue (1 step), and the caller allows no more steps"), "{text}");
+    assert_eq!(c.log().len(), log + 1, "only the wire");
+    let mut mid = on_disk(&dir, &path);
+    mid.0 = before.0;
+    mid.1 = before.1;
+    assert_eq!(mid, before, "nothing of the release on disk (the wire is unsaved)");
+    // An error without accept.
+    c.exec("place", json!({"symbol": "continuation", "at": [300, 100], "name": "24V"}));
+    c.exec("place", json!({"symbol": "continuation", "at": [300, 140], "rotation": 180, "name": "0V"}));
+    c.exec("wire", json!({"points": [[300, 100], [300, 140]]}));
+    let m = c.refused("execute", json!({"command": "release", "params": {"existing": "keep-both"}}));
+    assert!(m.contains("give accept: \"errors\""), "{m}");
+    // Provisional items without a choice; then Finalise after another write on the line.
+    c.exec("numbering", json!({"provisional": true}));
+    c.exec("place", json!({"symbol": "coil", "at": [250, 150]}));
+    let m = c.refused("execute", json!({"command": "release", "params": {"existing": "keep-both", "accept": "errors"}}));
+    assert!(m.contains("Give provisional:"), "{m}");
+    let r = line(
+        &mut c,
+        vec![
+            call(3, "wire", json!({"points": [[0, 80], [40, 80]]})),
+            call(4, "release", json!({"existing": "keep-both", "accept": "errors", "provisional": "finalise"})),
+        ],
+    );
+    assert_eq!(r[1]["result"]["isError"], json!(true), "{}", r[1]);
+    let after = on_disk(&dir, &path);
+    assert_eq!((after.0, after.1, &after.2, &after.3), (before.0, before.1, &before.2, &before.3), "file and folder untouched");
+    assert!(c.log().iter().all(|t| t.label != "Finalise numbering" && !t.label.starts_with("Issue Rev B")));
+    // Allowed on its own: Finalise and the issue, saved, the folder beside the foreign one.
+    let v = c.exec("release", json!({"existing": "keep-both", "accept": "errors", "provisional": "finalise"}));
+    assert!(v["folder"].as_str().unwrap().ends_with("Rev B (2)"), "{v}");
+    assert_eq!(std::fs::read_to_string(b.join("notes.txt")).unwrap(), "mine");
+}

@@ -194,13 +194,20 @@ pub mod numbering_seam {
         })
     }
 
-    /// Before the issue: 026's finalise when asked (its own transaction), or its refusal; the
-    /// note for the echo.
+    /// 026's provisional step, planned without writing (release records it with the issue).
     ///
     /// # Errors
-    /// An unknown `provisional`, or 026's refusal.
-    pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, params: &Value) -> Result<Option<String>, String> {
-        crate::numbering_cmds::before_issue(p, pg, params)
+    /// 026's refusal or a bad `provisional`.
+    pub fn plan(p: &mut Project, params: &Value) -> Result<crate::numbering_cmds::BeforeIssue, String> {
+        crate::numbering_cmds::plan_before_issue(p, params)
+    }
+
+    /// Record a planned Finalise numbering.
+    ///
+    /// # Errors
+    /// The commit was refused.
+    pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
+        crate::numbering_cmds::commit_finalise(p, pg, plan)
     }
 }
 
@@ -1072,13 +1079,32 @@ pub(crate) fn release_pending(
     let rev0 = revisions::pending_rev(p.ledger.document());
     let target = folder_param(p, params, default_folder(p, &rev0))?;
     let warning = nothing_changed(p);
-    // 2. 026's finalise, when asked (its own transaction).
-    let head0 = p.ledger.head();
-    let note = numbering_seam::before_issue(p, pg, params)?;
-    let rows = if p.ledger.head() != head0 { check_rows(p) } else { rows };
-    let finalise_tx = (p.ledger.head() != head0).then(|| p.ledger.head());
-    // 3. Build into staging, from the state as it will be issued.
+    // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
+    // release that stops before the issue records nothing at all (tester 027, 1).
+    let (finalise, note) = match numbering_seam::plan(p, params)? {
+        crate::numbering_cmds::BeforeIssue::Go(note) => (None, note),
+        crate::numbering_cmds::BeforeIssue::Finalise(plan) => (Some(plan), None),
+    };
+    // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
+    // before anything reaches the disk, never found out after (tester 027, 3).
+    let needed = 1 + usize::from(finalise.is_some());
+    if let Some(budget) = p.tx_budget
+        && needed > budget
+    {
+        return Err(over_budget(needed, budget));
+    }
+    // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
+    // the issue's, on the current document.
     let mut plan = crate::sheet_cmds::plan_issue(p, &json!({}))?;
+    if finalise.is_some() {
+        // The issue names the step before it: Finalise, once recorded.
+        plan.head += 1;
+        for op in plan.ops.iter_mut() {
+            if let Op::NameVersion { at, .. } = op {
+                *at = plan.head;
+            }
+        }
+    }
     let rev = plan.rev.clone();
     let target = if rev == rev0 { target } else { folder_param(p, params, default_folder(p, &rev))? };
     let staging = partial_of(&target);
@@ -1091,12 +1117,22 @@ pub(crate) fn release_pending(
             after: Some(recorded(p, &target)),
         },
     );
-    let issued_doc = p.ledger.preview(&plan.ops).map_err(|e| e.to_string())?;
+    let all_ops: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).chain(plan.ops.iter().cloned()).collect();
+    let issued_doc = p.ledger.preview(&all_ops).map_err(|e| e.to_string())?;
+    // With Finalise, the lists and the check are those of the finalised state (built on this
+    // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
+    let finalised = finalise.as_ref().map(|_| {
+        let o = Outputs::build(&issued_doc);
+        let r = checks::all_with(&issued_doc, p.tolerance, &o);
+        (o, r)
+    });
+    let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
     let stem = stem(p);
     let staged = {
         let fail = injected(p, Step::Partial);
         p.outputs();
-        let outputs = p.outputs.as_ref().ok_or("the report models could not be built")?;
+        let kept = p.outputs.as_ref().ok_or("the report models could not be built")?;
+        let outputs = finalised.as_ref().map_or(kept, |(o, _)| o);
         let b =
             Build { doc: &issued_doc, outputs, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
         let built = fail.and_then(|()| stage(&b, &staging, progress));
@@ -1119,10 +1155,24 @@ pub(crate) fn release_pending(
             }
         }
     }
-    // 4. Issue.
+    // 4. Finalise (when asked), then the issue. An issue that fails takes Finalise back with it.
+    let mut finalise_tx = None;
+    if let Some(f) = &finalise {
+        if let Err(e) = numbering_seam::commit_finalise(p, pg, f) {
+            clear_staging(&staging);
+            return Err(stopped(&e));
+        }
+        finalise_tx = Some(p.ledger.head());
+    }
     let issued = injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()));
     if let Err(e) = issued {
         clear_staging(&staging);
+        if finalise_tx.is_some() {
+            return Err(match p.undo_step(pg) {
+                Ok(()) => format!("Release stopped: {e}. Finalise numbering was undone; nothing was issued or written."),
+                Err(u) => format!("Release stopped: {e}. Finalise numbering stays recorded ({u}); nothing was issued or written. Undo it with u."),
+            });
+        }
         return Err(e);
     }
     let tx = p.ledger.head();
@@ -1184,6 +1234,17 @@ pub(crate) fn release_pending(
         v["warning"] = json!(wn);
     }
     Ok(v)
+}
+
+/// The refusal of a release that would record more transactions than its caller allows.
+fn over_budget(needed: usize, budget: usize) -> String {
+    let what = if needed == 2 { "Finalise numbering and the issue (2 steps)" } else { "the issue (1 step)" };
+    let allowed = match budget {
+        0 => "no more steps in this call".to_string(),
+        1 => "1 step in this call".to_string(),
+        n => format!("{n} steps in this call"),
+    };
+    format!("Release refused: it records {what}, and the caller allows {allowed}. Nothing was issued or written; call release on its own.")
 }
 
 /// The words of a release stopped before the issue.

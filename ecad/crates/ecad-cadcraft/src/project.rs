@@ -554,6 +554,10 @@ pub struct Project {
     pub frame_builds: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
     pub revision_view: Option<crate::sheet_cmds::RevisionView>,
+    /// How many transactions the command now running may record, when its caller caps them (an
+    /// agent's call through MCP); `None` for no cap. Commands that write files check it before
+    /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
+    pub tx_budget: Option<usize>,
     /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the trial's
     /// confirmation, used by the next undo only.
     pub confirm_issue_undo: bool,
@@ -991,6 +995,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,
@@ -1073,6 +1078,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,
@@ -1196,6 +1202,7 @@ impl Project {
             frame_stale: false,
             frame_builds: 0,
             revision_view: None,
+            tx_budget: None,
             confirm_issue_undo: false,
             issue_undo_question: None,
             confirm_merge_undo: false,

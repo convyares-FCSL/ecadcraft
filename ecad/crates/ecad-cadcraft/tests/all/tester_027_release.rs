@@ -3,7 +3,6 @@
 //! hashes checked by an independent SHA-256 (the OS tool), `checks.csv` against `prerelease`,
 //! FP1 through undo, redo, save and reopen, the existing-folder choices repeated, and Windows
 //! paths (spaces, long paths, characters a file name cannot hold). A probe that found a bug is
-//! `#[ignore = "tester 027: <bug>"]` and fails until it is fixed.
 
 use std::path::{Path, PathBuf};
 
@@ -189,6 +188,8 @@ fn a_partial_left_by_a_crash_is_cleared_by_the_next_release() {
 /// is refused up front with nothing recorded, or (as on Windows today, where the save still
 /// succeeds) the folder is finished; a failed save keeps the issue and says to save.
 #[test]
+// Clears the attribute this test set on its own temporary file, so the folder can be removed.
+#[allow(clippy::permissions_set_readonly_false)]
 fn a_real_save_failure_keeps_the_issue_and_finishes_the_folder() {
     let dir = tmp("ro");
     let (mut h, path) = project_in(&dir, "D-1001");
@@ -198,7 +199,6 @@ fn a_real_save_failure_keeps_the_issue_and_finishes_the_folder() {
     let head = h.head();
     let r = h.run("release", json!({}));
     perm.set_readonly(false);
-    #[allow(clippy::permissions_set_readonly_false)]
     std::fs::set_permissions(&path, perm).unwrap();
     let v = match r {
         Ok(v) => v,
@@ -256,7 +256,6 @@ fn finalise_then_issue_and_the_folder_shows_the_finalised_tags() {
 /// `provisional: "finalise"`, a failure while staging must not leave `Finalise numbering`
 /// recorded either.
 #[test]
-#[ignore = "tester 027: Finalise stays recorded when the release stops before the issue"]
 fn a_staging_failure_after_finalise_leaves_the_project_unchanged() {
     let dir = tmp("finfail");
     let (mut h, _) = project_in(&dir, "D-1001");
@@ -272,7 +271,6 @@ fn a_staging_failure_after_finalise_leaves_the_project_unchanged() {
 
 /// Same rule with a real failure: the folder cannot be made (`release` is a file).
 #[test]
-#[ignore = "tester 027: Finalise stays recorded when the release stops before the issue"]
 fn an_unwritable_folder_after_finalise_leaves_the_project_unchanged() {
     let dir = tmp("finnowrite");
     let (mut h, _) = project_in(&dir, "D-1001");
@@ -289,7 +287,6 @@ fn an_unwritable_folder_after_finalise_leaves_the_project_unchanged() {
 /// Design §10: "an existing folder without `existing` refuses before any transaction", also
 /// with `provisional: "finalise"`.
 #[test]
-#[ignore = "tester 027: Finalise stays recorded when the release stops before the issue"]
 fn an_existing_folder_with_finalise_refuses_before_any_transaction() {
     let dir = tmp("finexists");
     let (mut h, _) = project_in(&dir, "D-1001");

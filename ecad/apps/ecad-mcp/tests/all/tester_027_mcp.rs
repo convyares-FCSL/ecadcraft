@@ -1,7 +1,6 @@
 //! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records two
 //! transactions as the agent (as `issuerevision` may), a release taken back by the per-call cap
 //! leaves the file on disk agreeing with the reply, and `rev` given as odd text with writes off
-//! never issues. A probe that found a bug is `#[ignore = "tester 027: <bug>"]`.
 
 use std::path::{Path, PathBuf};
 
@@ -58,7 +57,6 @@ fn versions_on_disk(path: &str) -> Vec<String> {
 /// "finalise"}` may record two transactions in one call (tester 026); `release` with the same
 /// choice records the same two and must be allowed them, as the agent.
 #[test]
-#[ignore = "tester 027: MCP caps release {provisional: finalise} at one transaction and takes it back"]
 fn release_with_finalise_records_two_transactions_as_the_agent() {
     let dir = TempDir::new("t027-fin");
     let (mut c, path) = project(&dir, true);
@@ -74,7 +72,6 @@ fn release_with_finalise_records_two_transactions_as_the_agent() {
 /// Whatever the reply, the file on disk and the release folder agree with what the agent was
 /// told: a release reported refused and taken back leaves no issued Rev B in the saved file.
 #[test]
-#[ignore = "tester 027: a release taken back by the MCP cap stays issued in the saved file"]
 fn a_release_taken_back_by_the_cap_is_not_left_saved_on_disk() {
     let dir = TempDir::new("t027-cap");
     let (mut c, path) = project(&dir, false);
@@ -89,7 +86,6 @@ fn a_release_taken_back_by_the_cap_is_not_left_saved_on_disk() {
 
 /// The same with finalise alone on the line (no other edit): over the cap of one today.
 #[test]
-#[ignore = "tester 027: a release taken back by the MCP cap stays issued in the saved file"]
 fn a_release_with_finalise_is_never_left_half_taken_back() {
     let dir = TempDir::new("t027-fincap");
     let (mut c, path) = project(&dir, true);
