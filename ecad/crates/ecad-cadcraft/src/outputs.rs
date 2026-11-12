@@ -21,6 +21,7 @@
 //! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
@@ -350,11 +351,14 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), .. } => {
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
+                    }
+                    if key == ecad_model::connectivity::NAME {
+                        self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
@@ -1741,6 +1745,28 @@ impl Outputs {
         }
         t
     }
+}
+
+/// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
+/// `c` included, read on `doc` (called on the state before and after a rename, so both the old
+/// and the new group): their core chains may join or break.
+fn continuation_group_cables(doc: &Document, c: ComponentId) -> BTreeSet<CableId> {
+    let Some(key) = doc.components.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+        return BTreeSet::new();
+    };
+    let mut group = doc.continuations_named(&key);
+    if !group.contains(&c) {
+        group.push(c);
+    }
+    let mut out = BTreeSet::new();
+    for k in group {
+        for (t, _) in doc.terminals_of(k) {
+            for (w, _) in doc.ends_at(t) {
+                out.extend(doc.cables_of(w));
+            }
+        }
+    }
+    out
 }
 
 /// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each

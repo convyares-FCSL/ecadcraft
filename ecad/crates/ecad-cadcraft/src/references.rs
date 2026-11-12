@@ -901,25 +901,27 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
     let mut not: Vec<String> = Vec::new();
     for w in crossed {
         let ends = doc.conductors.get(w).map(|x| x.ends).unwrap_or_default();
+        // The member it continues, and the continuation's name as drawn.
         let found = ends.iter().flatten().find_map(|t| {
             let (k, key, kp) = continuation_at(doc, *t)?;
             if kp != Some(page) {
                 return None;
             }
+            let name = doc.components.get(&k).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or(key.clone());
             match groups.get(&key).map(Vec::as_slice) {
-                Some([(i, other, Some(op))]) if *other != k && *op != page => members.get(*i).copied(),
+                Some([(i, other, Some(op))]) if *other != k && *op != page => members.get(*i).copied().map(|m| (m, name)),
                 _ => None,
             }
         });
-        let chain = found.and_then(|m| chain_of(m).map(|i| (m, i)));
+        let chain = found.and_then(|(m, name)| chain_of(m).map(|i| (m, i, name)));
         match chain {
-            Some((m, i)) if chains.get(i).is_some_and(|ch| !drawn_here(ch)) => {
+            Some((m, i, name)) if chains.get(i).is_some_and(|ch| !drawn_here(ch)) => {
                 if used.insert(i, *w).is_some() {
-                    let core = chains
-                        .get(i)
-                        .and_then(label_of)
-                        .map_or_else(|| format!("the core of wire {}", crate::slash::wire_name(doc, m)), |l| format!("core {l}"));
-                    return Err(format!("Two of the wires continue {tag}'s {core}."));
+                    // Fix round (review of #65, tester t13c): plain words, with the way out.
+                    let core = chains.get(i).and_then(label_of).map_or_else(|| format!("core at continuation {name}"), |l| format!("core {l}"));
+                    return Err(format!(
+                        "Two of the wires continue {tag}'s {core}. Slash only one wire per core, or give one of the continuations another name."
+                    ));
                 }
                 out.push(Continued { conductor: *w, core: chains.get(i).and_then(label_of), continues: m });
             }

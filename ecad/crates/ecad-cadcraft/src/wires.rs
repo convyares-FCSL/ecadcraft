@@ -111,6 +111,11 @@ pub struct WireLabel {
     pub error: bool,
     /// Drawn in `ecad.provisional`: no number yet, provisional tags on (brief 026).
     pub provisional: bool,
+    /// Brief 032 fix round: the CADCraft text style it is drawn in (lane T's wire-label weight).
+    pub style: &'static str,
+    /// Brief 032 fix round: its text width as the project's font draws it (lane T's
+    /// `text_style::width_in`), which placement keeps clear.
+    pub width: f64,
 }
 
 /// The vertices of a route path.
@@ -180,8 +185,7 @@ fn text_box(at: Pt, theta: f64, w: f64, h: f64) -> Bbox {
 
 /// The box round label `l`'s text, as placement sees it (tests check that labels never touch).
 pub fn label_box(l: &WireLabel) -> (Pt, Pt) {
-    let w = cadcraft_engine::fonts::line_width(&l.text, l.height, 1.0);
-    let w = if w.is_finite() && w > 0.0 { w } else { l.text.chars().count() as f64 * l.height * 0.8 };
+    let w = if l.width.is_finite() && l.width > 0.0 { l.width } else { l.text.chars().count() as f64 * l.height * 0.8 };
     text_box(l.at, l.rotation, w, l.height)
 }
 
@@ -244,8 +248,10 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    // Brief 032 §4.3: the wire label height through lane T's text-style getter.
-    let h = crate::text_style::text_style(doc, crate::text_style::TextKind::WireLabel).height;
+    // Brief 032 §4.3: the wire label height, weight and width through lane T's text styles.
+    let style = crate::text_style::text_style(doc, crate::text_style::TextKind::WireLabel);
+    let fonts = crate::text_style::Fonts::resolve(doc);
+    let h = style.height;
     // Every route on the page: (representation, conductor, vertices).
     let mut routes: Vec<(RepresentationId, ConductorId, Vec<Pt>)> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
@@ -286,7 +292,7 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
         if !theta.is_finite() {
             continue;
         }
-        let w = cadcraft_engine::fonts::line_width(&label.text, h, 1.0);
+        let w = crate::text_style::width_in(&fonts, style, &label.text);
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
         let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h).into_iter().filter(|p| p.is_finite()).map(|p| (p, text_box(p, theta, w, h))).collect();
@@ -313,6 +319,8 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             text: label.text,
             error: label.error,
             provisional: label.provisional,
+            style: style.weight.style_name(),
+            width: w,
         });
     }
     out
@@ -339,7 +347,7 @@ pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
             rotation: l.rotation,
             width_factor: 1.0,
             oblique: 0.0,
-            style: "Standard".into(),
+            style: l.style.into(),
             halign: HAlign::Center,
             valign: VAlign::Bottom,
         }),
@@ -1611,4 +1619,15 @@ pub fn label_min_length(doc: &Document) -> f64 {
 /// The project's label rule (design 032 §4.1).
 pub fn label_rule(doc: &Document) -> LabelRule {
     if label_rule_word(doc) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
+}
+
+/// The quiet wire ends on `page` (cable reference ends, briefs 009 and 010): the ends a new wire
+/// never joins and that show no loose-end square. Derived from the document and the cables shown
+/// as fans (`fan`), never from what is on screen (review of #65, finding 5). Only a page with a
+/// cable reference has any, so other pages cost nothing.
+pub fn quiet_ends_of(doc: &Document, page: PageId, fan: &std::collections::BTreeSet<ecad_model::CableId>, tol: f64) -> Vec<Pt> {
+    if crate::references::markers_on_page(doc, page).is_empty() {
+        return Vec::new();
+    }
+    crate::views::drawings_on_page(doc, page, fan, tol).into_values().flat_map(|d| d.quiet).collect()
 }

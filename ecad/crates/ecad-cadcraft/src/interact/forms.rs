@@ -317,7 +317,7 @@ struct Wire {
 
 /// The page's quiet ends (cable reference ends): never joined.
 fn quiet_on(p: &crate::project::Project, page: ecad_model::PageId) -> Vec<Pt> {
-    p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default()
+    crate::wire_cmds::quiet_ends(p, page)
 }
 
 /// The Wire tool's potential for this session (`None`: auto).

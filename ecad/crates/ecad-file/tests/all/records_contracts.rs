@@ -295,9 +295,11 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
 /// defaults.
 #[test]
 fn wiring_settings_without_the_label_rule_read_with_its_defaults() {
-    let mut v = serde_json::to_value(ecad_file::v1::WiringSettings::from(&ecad_model::wiring::WiringSettings::default())).unwrap();
-    let o = v.as_object_mut().unwrap();
-    assert!(o.remove("label_rule").is_some() && o.remove("label_min_length").is_some());
+    // At their defaults the two fields are left out (review of #65, finding 4), like their
+    // neighbours; such a record reads back with the defaults.
+    let v = serde_json::to_value(ecad_file::v1::WiringSettings::from(&ecad_model::wiring::WiringSettings::default())).unwrap();
+    let o = v.as_object().unwrap();
+    assert!(!o.contains_key("label_rule") && !o.contains_key("label_min_length"), "{v}");
     let read: ecad_file::v1::WiringSettings = serde_json::from_value(v).unwrap();
     let w = ecad_model::wiring::WiringSettings::from(read);
     assert_eq!(w.label_rule, ecad_model::wiring::DEFAULT_LABEL_RULE);

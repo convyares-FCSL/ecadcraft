@@ -551,3 +551,195 @@ fn a_fold_keeps_the_folded_wires_properties() {
     assert!(m.contains("different cross-sections (2.5 and 1.5)"), "{m}");
     assert_eq!(h.head(), head);
 }
+
+/// Review of #65, finding 1 (design 032 §8.4): renaming a continuation re-counts the cables of its
+/// old and new name groups. W04 continued, then page 115's A1 renamed Z1: that core breaks in two.
+#[test]
+fn renaming_a_continuation_recounts_the_cables_cores() {
+    let mut f = pack();
+    f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
+    let cores = |h: &mut H, k: ecad_model::CableId| h.run("cablecores", json!({"cable": k.hex()})).unwrap()["cores"].as_array().map_or(0, Vec::len);
+    assert_eq!(cores(&mut f.h, f.cable), 3);
+    let doc = f.h.doc();
+    let a1 = doc
+        .continuations_named("A1")
+        .into_iter()
+        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .expect("A1 on page 115");
+    f.h.run("setprop", json!({"component": a1.hex(), "key": "name", "value": "Z1"})).unwrap();
+    assert_eq!(cores(&mut f.h, f.cable), 4, "the A1 core is two cores now");
+    f.h.cmdline("u");
+    assert_eq!(cores(&mut f.h, f.cable), 3, "undo joins it again");
+}
+
+/// Review of #65, finding 3: wire labels are drawn in lane T's wire-label style (a bold weight
+/// gives the bold text style), and their placement box is as wide as that font draws them.
+#[test]
+fn wire_labels_take_the_wire_label_text_style() {
+    let mut h = H::new(0x3216);
+    let page = h.first_page();
+    wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
+    let regular = h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page));
+    assert_eq!(regular.len(), 1);
+    assert_eq!(regular[0].style, ecad_cadcraft::text_style::STYLE_REGULAR);
+    h.run("textstyle", json!({"kind": "wire_label", "weight": "bold"})).unwrap();
+    let (bold, width) = h.p(|p| {
+        let doc = p.ledger.document();
+        let l = ecad_cadcraft::wires::labels_on_page(doc, page);
+        let w = l.first().map(|x| ecad_cadcraft::text_style::text_width(doc, ecad_cadcraft::text_style::TextKind::WireLabel, &x.text));
+        (l, w)
+    });
+    let l = &bold[0];
+    assert_eq!(l.style, ecad_cadcraft::text_style::STYLE_BOLD);
+    assert!((l.width - width.unwrap()).abs() < 1e-9, "the box is the font's width");
+    let e = ecad_cadcraft::wires::label_entity(l, cadcraft_engine::doc::Handle(1));
+    let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
+    assert_eq!(t.style, ecad_cadcraft::text_style::STYLE_BOLD);
+}
+
+/// Review of #65, finding 5: the quiet ends (a cable reference end) come from the document, the
+/// same with no projected page as the page map gives, and a wire ending there stays open.
+#[test]
+fn quiet_ends_come_from_the_document() {
+    let mut h = H::new(0x32_17);
+    let page = h.first_page();
+    for y in [0.0, 5.0, 10.0] {
+        terminal(&mut h, (0.0, y), "X01");
+        wire(&mut h, &[(0.0, y), (60.0, y)], json!({}));
+    }
+    let k: ecad_model::CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 13]})).unwrap(), "cable");
+    h.run("cableref", json!({"cable": k.hex(), "at": [65, 5]})).unwrap();
+    // Continued on another page: its members leave page 1 at the reference (brief 010 §6.4).
+    let other: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.activate(other);
+    h.run("cablecontinue", json!({"cable": k.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    h.activate(page);
+    let doc = h.doc();
+    // No project, no page map: the document alone.
+    let quiet = ecad_cadcraft::wires::quiet_ends_of(&doc, page, &std::collections::BTreeSet::new(), 1e-6);
+    let shown = h.p(|p| p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default());
+    assert!(
+        !quiet.is_empty(),
+        "the ends at the reference are quiet: {quiet:?} shown {shown:?} markers {}",
+        ecad_cadcraft::references::markers_on_page(&doc, page).len()
+    );
+    for q in &shown {
+        assert!(quiet.iter().any(|x| x.near(*q, 1e-9)), "{q:?} not in {quiet:?}");
+    }
+    // A wire from a quiet end stays a wire of its own.
+    let at = quiet[0];
+    let before = h.doc().conductors.len();
+    let r = wire(&mut h, &[(at.x, at.y), (at.x + 20.0, at.y - 30.0)], json!({}));
+    assert_eq!(r["created"], json!(true), "{r}");
+    assert_eq!(h.doc().conductors.len(), before + 1);
+}
+
+// ---------------------------------------------------------------- update maps (§8, §12 item 17)
+
+/// The pages a command marked for redrawing (`None`: every page).
+fn marked(h: &mut H, cmd: &str, params: Value) -> Option<std::collections::BTreeSet<PageId>> {
+    let n = h.p(|p| p.change_count());
+    h.run(cmd, params).unwrap();
+    h.p(|p| p.changes_since(n))
+}
+
+/// The kept Checks rows and cable rows equal a rebuild from the document (§8.3, §8.4).
+fn kept_equals_rebuild(h: &mut H, what: &str) {
+    h.cfg(|p| {
+        p.checks();
+        let doc = p.ledger.document();
+        let kept_checks = p.checks.as_ref().map(|c| c.sorted(doc)).unwrap_or_default();
+        let fresh = ecad_cadcraft::checks::Checks::build(doc, p.tolerance).sorted(doc);
+        assert_eq!(kept_checks, fresh, "{what}: Checks differ from a rebuild");
+        p.outputs();
+        let doc = p.ledger.document();
+        let kept = p.outputs.as_ref().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        let rebuilt = ecad_cadcraft::outputs::Outputs::build(doc);
+        let fresh: Vec<_> = rebuilt.cables().into_iter().cloned().collect();
+        assert_eq!(kept, fresh, "{what}: cable rows differ from a rebuild");
+    });
+}
+
+/// §8.1 and §8.2: a route op on a page marks that page only; a fold marks its page only (not
+/// every page); a change on another page leaves this one; wiring settings mark every page.
+#[test]
+fn label_and_mark_updates_reach_only_the_pages_they_name() {
+    let mut f = pack();
+    let p115 = f.p115;
+    f.h.activate(f.p100);
+    let m = marked(&mut f.h, "wire", json!({"points": [[200, 0], [240, 0]]}));
+    assert_eq!(m, Some([f.p100].into()), "a route on page 100");
+    f.h.run("wire", json!({"points": [[260, 0], [300, 0]]})).unwrap();
+    let m = marked(&mut f.h, "wire", json!({"points": [[240, 0], [260, 0]]}));
+    assert_eq!(m, Some([f.p100].into()), "a fold: its page only");
+    let m = marked(&mut f.h, "wiresettings", json!({"label_rule": "each"}));
+    assert!(m.is_none() || m.as_ref().is_some_and(|s| s.contains(&p115)), "settings: every page, {m:?}");
+    // The looks-connected marks of page 100 follow its projection: none on page 115 change.
+    f.h.activate(p115);
+    let before = f.h.p(|p| p.pages.get(&p115).map(|v| v.map.looks_connected().to_vec()).unwrap_or_default());
+    f.h.activate(f.p100);
+    f.h.run("wire", json!({"points": [[300, 0], [300, -20]], "join": false})).unwrap();
+    f.h.activate(p115);
+    let after = f.h.p(|p| p.pages.get(&p115).map(|v| v.map.looks_connected().to_vec()).unwrap_or_default());
+    assert_eq!(before, after, "page 115's marks are untouched by page 100");
+}
+
+/// §8.3 and §8.4: after each op of the rows (members, a slash, a member's end, a continuation's
+/// name) and after an unrelated op, the kept Checks and cable rows equal a rebuild; the unrelated
+/// op changes no cable row.
+#[test]
+fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
+    let mut f = pack();
+    kept_equals_rebuild(&mut f.h, "start");
+    f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
+    kept_equals_rebuild(&mut f.h, "slash continuing the cable");
+    let doc = f.h.doc();
+    let a2 = doc
+        .continuations_named("A2")
+        .into_iter()
+        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .unwrap();
+    f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z2"})).unwrap();
+    kept_equals_rebuild(&mut f.h, "continuation renamed");
+    f.h.run("disconnect", json!({"conductor": f.second[0].hex(), "end": "A"})).unwrap();
+    kept_equals_rebuild(&mut f.h, "a member's end detached");
+    // Unrelated: a wire far away on page 115 changes no cable row.
+    f.h.run("wire", json!({"points": [[400, 400], [440, 400]]})).unwrap();
+    let changed = f.h.p(|p| p.outputs.as_ref().is_some_and(|o| o.last_cables_changed));
+    assert!(!changed, "an unrelated wire changes no cable row");
+    kept_equals_rebuild(&mut f.h, "unrelated wire");
+}
+
+/// Review of #65, finding 1, at the update map itself (§8.4): the rename op alone (no numbering
+/// pass, which would also bring the cable in) re-counts the cable's cores.
+#[test]
+fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
+    let mut f = pack();
+    f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
+    let doc = f.h.doc();
+    let a1 = doc
+        .continuations_named("A1")
+        .into_iter()
+        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .unwrap();
+    let cable = f.cable;
+    let (kept, fresh) = f.h.cfg(|p| {
+        p.outputs();
+        let before = p.ledger.document().clone();
+        let ops = vec![ecad_model::Op::SetProperty {
+            object: ecad_model::ObjectRef::Component(a1),
+            key: "name".into(),
+            before: Some("A1".into()),
+            after: Some("Z1".into()),
+        }];
+        let scope = p.outputs.as_ref().unwrap().scope(&before, &ops);
+        p.ledger.commit(ecad_model::Author::User, "rename", ops.clone()).unwrap();
+        let doc = p.ledger.document();
+        p.outputs.as_mut().unwrap().update(doc, &ops, scope);
+        let kept = p.outputs.as_ref().unwrap().cable_row(cable).cloned();
+        let fresh = ecad_cadcraft::outputs::Outputs::build(doc).cable_row(cable).cloned();
+        (kept, fresh)
+    });
+    assert_eq!(kept.as_ref().map(|r| r.cores), Some(4), "{kept:?}");
+    assert_eq!(kept, fresh);
+}

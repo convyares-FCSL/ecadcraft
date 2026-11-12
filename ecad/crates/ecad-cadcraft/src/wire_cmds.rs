@@ -655,6 +655,13 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
 
 // ---------------------------------------------------------------- wire (brief 032 §2)
 
+/// The quiet wire ends on `page` (cable reference ends, brief 009/010): never joined. Derived
+/// from the document (review of #65, finding 5), not from what is on screen; only a page with a
+/// cable reference has any, so other pages cost nothing.
+pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
+    wires::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
+}
+
 /// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
 /// the registered default `wire.join`.
 pub(crate) fn join_by_default(doc: &Document) -> bool {
@@ -695,7 +702,7 @@ pub(crate) fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Resu
     let join = join_param(params).map_err(err)?;
     with_project(s, |p, pg, page| {
         let style = plain_style(p);
-        let quiet: Vec<Pt> = p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default();
+        let quiet = quiet_ends(p, page);
         let doc = p.ledger.document();
         let join = join.unwrap_or_else(|| join_by_default(doc));
         let input =
@@ -744,7 +751,7 @@ pub(crate) fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Resu
 pub(crate) fn run_joinwires(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     with_project(s, |p, pg, page| {
-        let quiet: Vec<Pt> = p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default();
+        let quiet = quiet_ends(p, page);
         let doc = p.ledger.document();
         let loose = wires::joinable_ends_at(doc, page, at, &quiet);
         let through = wires::interior_wire_at(doc, page, at);

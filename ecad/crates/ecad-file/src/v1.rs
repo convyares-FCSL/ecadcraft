@@ -379,6 +379,14 @@ fn default_label_min_length() -> f64 {
     m::wiring::DEFAULT_LABEL_MIN_LENGTH
 }
 
+fn is_default_label_rule(r: &str) -> bool {
+    r == m::wiring::DEFAULT_LABEL_RULE
+}
+
+fn is_default_label_min_length(v: &f64) -> bool {
+    *v == m::wiring::DEFAULT_LABEL_MIN_LENGTH
+}
+
 fn is_default_label_height(h: &f64) -> bool {
     *h == m::wiring::DEFAULT_LABEL_HEIGHT
 }
@@ -396,11 +404,11 @@ pub struct WiringSettings {
     pub colour_style: ColourStyle,
     #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
     pub label_height: f64,
-    /// Brief 032 (FP-W1); a file without it reads with the default.
-    #[serde(default = "default_label_rule")]
+    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    #[serde(default = "default_label_rule", skip_serializing_if = "is_default_label_rule")]
     pub label_rule: String,
-    /// Brief 032 (FP-W1); a file without it reads with the default.
-    #[serde(default = "default_label_min_length")]
+    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    #[serde(default = "default_label_min_length", skip_serializing_if = "is_default_label_min_length")]
     pub label_min_length: f64,
 }
 
