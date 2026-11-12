@@ -451,16 +451,60 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
         if let Some(pn) = &s.part_number {
             head.push_str(&format!("  (part: {pn})"));
         }
+        // Brief 030 (design 030 §7.1): the accessory totals.
+        let acc = s.acc.summary();
+        if !acc.is_empty() {
+            head.push_str(&format!(" \u{b7} {acc}"));
+        }
         rows.push(TRow { cells: vec![head], heading: true, ..TRow::default() });
         let mut last_cable: Option<ecad_model::CableId> = None;
-        for r in &s.rows {
+        for item in s.plan(true) {
+            let (ri, r) = match item {
+                crate::strips::PlanItem::Term(i, r) => (i, r),
+                // Brief 030 (design 030 §7.3): a gap row is a full row, the word in Inside target,
+                // a mark across Terminal, the part in Place.
+                crate::strips::PlanItem::Gap { gap, acc } => {
+                    let mut cells = vec![String::new(); TERMINAL_COLUMNS.len()];
+                    let words = if acc == crate::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                    let mark = match acc {
+                        crate::accessories::Acc::EndStop => "||",
+                        crate::accessories::Acc::EndPlate => "|",
+                        crate::accessories::Acc::Partition => "==",
+                        _ => "[ ]",
+                    };
+                    let part = s.acc.gap_part(acc, crate::outputs::gap_pe(s, gap)).cloned().unwrap_or_else(|| "?".into());
+                    for (i, v) in [(0, words), (2, mark.to_string()), (8, part)] {
+                        if let Some(c) = cells.get_mut(i) {
+                            *c = v;
+                        }
+                    }
+                    rows.push(TRow { cells, heading: false, marks: Marks::default() });
+                    last_cable = None;
+                    continue;
+                }
+            };
+            let marker = if s.acc.markers.contains(&r.label) { " []" } else { "" };
+            let links: String = {
+                let at = s.links_at(ri);
+                let lanes = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
+                let mut m = vec![' '; lanes];
+                for (l, on) in &at {
+                    if let Some(x) = m.get_mut(l.lane) {
+                        *x = if *on { 'o' } else { ':' };
+                    }
+                }
+                m.into_iter().collect::<String>().trim_end().to_string()
+            };
             if r.spare() {
                 let mut cells = vec![String::new(); TERMINAL_COLUMNS.len()];
                 if let Some(c) = cells.get_mut(0) {
                     *c = "spare".into();
                 }
                 if let Some(c) = cells.get_mut(2) {
-                    *c = if r.pe { format!("{} PE", r.label) } else { r.label.clone() };
+                    *c = if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) };
+                }
+                if let Some(c) = cells.get_mut(3) {
+                    *c = links.clone();
                 }
                 rows.push(TRow { cells, heading: false, marks: Marks { terminal_box: Some(2), ..Marks::default() } });
                 last_cable = None;
@@ -471,7 +515,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                 let inside = r.inside.get(i);
                 let outside = r.outside.get(i);
                 let q = |v: Option<&String>| v.cloned().unwrap_or_else(|| "?".into());
-                let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
                 let label = if r.pe { format!("{label} PE") } else { label };
                 let cable = outside.and_then(|c| c.cable.as_ref());
                 let starts = cable.is_some_and(|(k, _)| last_cable != Some(*k));
@@ -480,7 +524,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                     inside.map_or_else(String::new, |c| q(c.target.as_ref())),
                     inside.map_or_else(String::new, |c| q(c.wire.as_ref())),
                     label,
-                    String::new(),
+                    if i == 0 && r.bridge_group.is_none() { links.clone() } else { String::new() },
                     outside.map_or_else(String::new, |c| q(c.wire.as_ref())),
                     match cable {
                         Some((_, t)) if starts => t.clone().unwrap_or_else(|| "?".into()),

@@ -166,6 +166,8 @@ struct Picked {
     wires: BTreeSet<ConductorId>,
     cables: BTreeSet<CableId>,
     references: BTreeSet<ecad_model::RepresentationId>,
+    /// Brief 030: link lines picked: (strip, link).
+    links: BTreeSet<(ComponentId, u32)>,
     plain: usize,
 }
 
@@ -180,6 +182,11 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::Xref(r)) => Some(r),
+            // Brief 030: a link line shows its strip (Properties ▸ Link).
+            Some(Mapped::Link(c, n)) => {
+                out.links.insert((c, n));
+                None
+            }
             Some(Mapped::Fan(k)) => {
                 match map.reference_of(*h) {
                     Some(r) => {
@@ -244,6 +251,17 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         return v;
     }
     let k = pick(p, page, selection);
+    // Brief 030: a link line alone selects its link.
+    if k.devices.is_empty()
+        && k.wires.is_empty()
+        && k.cables.is_empty()
+        && k.references.is_empty()
+        && let Some((c, n)) = k.links.first().copied()
+    {
+        v.deps.insert(ObjectRef::Component(c));
+        v.sections.push(link_section(p, c, n));
+        return v;
+    }
     let kinds = [!k.devices.is_empty(), !k.wires.is_empty(), !k.cables.is_empty(), !k.references.is_empty()];
     let n_kinds = kinds.iter().filter(|x| **x).count();
     if n_kinds == 0 {
@@ -560,7 +578,82 @@ fn strip_rows(doc: &Document, c: ComponentId, rows: &mut Vec<Row>, buttons: &mut
     rows.push(Row::ro("terminalcounts", "Terminals", value));
     rows.push(Row::rw(strips::PE_PART_KEY, "PE part number", get(strips::PE_PART_KEY)));
     rows.push(Row::rw(strips::PE_MAKER_KEY, "PE maker", get(strips::PE_MAKER_KEY)));
+    // Brief 030 (design 030 §2.5): what is placed, and the parts (the project's value shown
+    // faint where the strip has none).
+    rows.push(Row::ro("acc.placed", "Accessories placed", placed_words(props)));
+    for item in crate::accessories::PART_ITEMS {
+        let words = item.replace('_', " ");
+        for (field, label) in [("part_number", "part number"), ("maker", "maker")] {
+            rows.push(part_row(doc, props, &format!("{item}.{field}"), &format!("{words} {label}")));
+        }
+    }
+    rows.push(part_row(doc, props, crate::accessories::PER_CARD_KEY, "markers per card"));
+    rows.push(part_row(doc, props, crate::accessories::BAR_KEY, "jumper bar size"));
     buttons.push(format!("showplan:{}", c.hex()));
+}
+
+/// A strip part row: its own value, else the project's shown faint.
+fn part_row(doc: &Document, props: Option<&ecad_model::Properties>, key: &str, label: &str) -> Row {
+    let own = props.and_then(|p| p.get(key)).cloned();
+    let mut label: String = label.to_string();
+    if let Some(f) = label.get_mut(0..1) {
+        f.make_ascii_uppercase();
+    }
+    match own {
+        Some(v) => Row::rw(key, &label, v),
+        None => {
+            let from = doc.properties.get(&crate::accessories::project_key(key)).cloned().unwrap_or_default();
+            Row { inherited: !from.is_empty(), ..Row::rw(key, &label, from) }
+        }
+    }
+}
+
+/// `start: end stop · after 4: partition · end: end plate, end stop · markers: 12`.
+fn placed_words(props: Option<&ecad_model::Properties>) -> String {
+    let Some(props) = props else { return String::new() };
+    let mut parts = Vec::new();
+    let mut markers = 0;
+    for (k, v) in props.range(crate::accessories::ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(crate::accessories::ACC_PREFIX)) {
+        match crate::accessories::spot_of(k) {
+            Some(crate::accessories::Spot::On(_)) => markers += 1,
+            Some(s) => {
+                let at = match &s {
+                    crate::accessories::Spot::Start => "start".to_string(),
+                    crate::accessories::Spot::End => "end".to_string(),
+                    other => format!("after {}", other.gap()),
+                };
+                parts.push(format!("{at}: {}", v.replace(',', ", ").replace('_', " ")));
+            }
+            None => {}
+        }
+    }
+    if markers > 0 {
+        parts.push(format!("markers: {markers}"));
+    }
+    if parts.is_empty() { "No accessories placed.".into() } else { parts.join(" \u{b7} ") }
+}
+
+/// Properties ▸ Link (design 030 §5.5): positions, part, bars.
+fn link_section(p: &Project, c: ComponentId, n: u32) -> Section {
+    let doc = p.ledger.document();
+    let key = ecad_model::links::key(n);
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
+    let info = p.outputs.as_ref().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n).cloned());
+    let rows = vec![
+        Row::rw(&key, "Positions", get(&key)),
+        Row::rw(&format!("{key}.part_number"), "Part number", get(&format!("{key}.part_number"))),
+        Row::rw(&format!("{key}.maker"), "Maker", get(&format!("{key}.maker"))),
+        Row::ro("link.bars", "Bars", info.map_or_else(String::new, |l| l.bars.to_string())),
+    ];
+    Section {
+        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tag_words(doc, c), get(&key)),
+        kind: "link",
+        target: Some(Target::Devices(vec![c])),
+        rows,
+        note: None,
+        buttons: vec![format!("link:{}:{n}", c.hex())],
+    }
 }
 
 fn end_words(doc: &Document, w: ConductorId, end: End) -> String {

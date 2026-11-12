@@ -6,7 +6,9 @@
 //! 2. a continuation (a component with `kind = continuation` and a `name`) joins its terminals to
 //!    every other continuation with the same name key ([`name_key`]): the name group is a node;
 //! 3. a definition's bridges ([`crate::Definition::bridges`]) join a component's terminals whose
-//!    keys are in one group.
+//!    keys are in one group;
+//! 4. a component's links (`link.<n>` properties, [`crate::links`], brief 030) join its terminals
+//!    whose labels the link names.
 //!
 //! Nothing else joins: crossings, T-junctions without a junction device and loose ends lying on
 //! another route are separate nets.
@@ -234,6 +236,16 @@ fn degree(doc: &Document, node: &Node) -> usize {
 
 /// The present nodes joined to `node` by one edge.
 fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
+    let mut out = neighbors_base(doc, node);
+    if let Node::Terminal(t) = node {
+        out.extend(crate::links::linked(doc, *t).into_iter().map(Node::Terminal));
+    }
+    out
+}
+
+/// [`neighbors`] without the links (brief 030): what [`Connectivity::build`] adds link edges to
+/// from one pass per component (review of PR #57, 2).
+fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = Vec::new();
     match node {
         Node::Terminal(t) => {
@@ -275,6 +287,21 @@ impl Connectivity {
             .map(|t| Node::Terminal(*t))
             .chain(doc.conductors.keys().map(|k| Node::Conductor(*k)))
             .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())));
+        // Link edges, worked out once per component with links (a chain per link).
+        let mut link_edges: HashMap<TerminalId, Vec<TerminalId>> = HashMap::new();
+        for (id, comp) in &doc.components {
+            for (_, p) in crate::links::of(&comp.properties) {
+                let m = crate::links::Matcher::of(&p);
+                let members: Vec<TerminalId> =
+                    doc.terminals_of(*id).filter(|(_, x)| x.label.as_deref().is_some_and(|l| m.matches(l))).map(|(t, _)| t).collect();
+                for w in members.windows(2) {
+                    if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
+                        link_edges.entry(*a).or_default().push(*b);
+                        link_edges.entry(*b).or_default().push(*a);
+                    }
+                }
+            }
+        }
         for node in all {
             if c.node_net.contains_key(&node) {
                 continue;
@@ -286,7 +313,11 @@ impl Connectivity {
                 if c.node_net.contains_key(&n) {
                     continue;
                 }
-                stack.extend(neighbors(doc, &n).into_iter().filter(|m| !c.node_net.contains_key(m)));
+                let mut next = neighbors_base(doc, &n);
+                if let Node::Terminal(t) = &n {
+                    next.extend(link_edges.get(t).into_iter().flatten().map(|x| Node::Terminal(*x)));
+                }
+                stack.extend(next.into_iter().filter(|m| !c.node_net.contains_key(m)));
                 c.attach(doc, n, id);
             }
         }
@@ -514,6 +545,7 @@ impl Connectivity {
     /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
+    /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
         match op {
@@ -548,6 +580,12 @@ impl Connectivity {
                     for t in Self::terminals_of(doc, comp) {
                         self.cut_around(doc, &t);
                     }
+                }
+            }
+            // Brief 030: the terminals a link joined are on the sides of a cut.
+            Op::SetProperty { object: ObjectRef::Component(id), key, before, .. } if crate::links::link_number(key).is_some() => {
+                for t in crate::links::terminals_named(doc, *id, before.as_deref()) {
+                    self.cut(&Node::Terminal(t));
                 }
             }
             _ => {}
@@ -605,6 +643,11 @@ impl Connectivity {
                     for t in Self::terminals_of(doc, comp) {
                         self.ensure(doc, t);
                     }
+                }
+            }
+            Op::SetProperty { object: ObjectRef::Component(id), key, after, .. } if crate::links::link_number(key).is_some() => {
+                for t in crate::links::terminals_named(doc, *id, after.as_deref()) {
+                    self.ensure(doc, Node::Terminal(t));
                 }
             }
             _ => {}

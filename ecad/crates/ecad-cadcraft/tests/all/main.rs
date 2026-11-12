@@ -5,6 +5,7 @@
 
 mod common;
 
+mod accessories_contracts;
 mod cable_look_contracts;
 mod cable_look_tester_contracts;
 mod cable_reference_contracts;
@@ -39,6 +40,7 @@ mod tester_026_numbering;
 mod tester_027_release;
 mod tester_028_strips;
 mod tester_029_tag_rule;
+mod tester_030_accessories;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
 mod wiring_contracts;

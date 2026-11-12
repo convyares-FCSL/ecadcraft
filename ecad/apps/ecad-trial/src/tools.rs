@@ -109,6 +109,21 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click a terminal, then another of the same strip: a bridge; the next click continues from it, Enter ends",
         kind: Kind::Start("bridge"),
     },
+    // Brief 030 (design 030 §2.3, §5.4): after Draw Bridge.
+    Tool {
+        id: "ecad.tool.accessory",
+        group: "Components",
+        label: "Strip Accessory",
+        tooltip: "Click a terminal (or Start/End), then Partition, Endplate, endStop, Marker, Label or Remove; repeats until Enter",
+        kind: Kind::Start("accessory"),
+    },
+    Tool {
+        id: "ecad.tool.jumper",
+        group: "Components",
+        label: "Jumper",
+        tooltip: "Click a terminal, then the next: a link through every position between (Skip: only those picked); Enter writes the link",
+        kind: Kind::Start("jumper"),
+    },
     Tool {
         id: "ecad.deviceprops",
         group: "Components",
@@ -374,6 +389,10 @@ impl Picked {
                 // A line of a cable's fan view names its cable (brief 005).
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
+                }
+                // A link line names its strip (brief 030).
+                Some(Mapped::Link(c, _)) => {
+                    subjects.insert(Subject::Component(c));
                 }
                 // A cable reference's text names its cable (brief 010); a device's tag text or
                 // terminal label names its device (brief 018).

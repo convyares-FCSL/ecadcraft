@@ -1379,6 +1379,41 @@ is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":tr
 `newpage {"generated":"terminals","strip":"<strip id>"}`, `newpage {"generated":"cables"}`,
 `renumber {"kind":"terminals","preview":true}`, `renumber {"kind":"terminals","scope":"selection","strips":["<strip id>"]}`.
 
+## 5P. Strip accessories and jumpers (by clicking)
+
+End stops, end plates, partitions, strip labels and markers are placed by you, where you want
+them; jumpers are links owned by the strip, never wires. They appear in the terminal plan in
+position order and on the BOM. Brief 030, design `ecad/docs/design/030.md`. Continue from 5O
+(strip `-X01`, terminals 1–3, offer `8+1PE`).
+
+1. **Parts.** Open **Project info** and add the properties `strip_end_stop_part_number` `ES-1`
+   and `strip_end_plate_part_number` `EP-1` (Properties of a strip also shows them, faint, under
+   **End stop part number** and **End plate part number**).
+2. **Ends.** Open **Reports ▸ Terminals**, pick `-X01`, **Accessory v ▸ At start: end stop**, then
+   **At end: end plate** and **At end: end stop**. Expected: an `end stop` row before position 1
+   and `end plate`, `end stop` rows after the last position; their Place column shows `ES-1`/`EP-1`.
+   Untick **Accessories** to hide those rows (view only).
+3. **A partition.** Click **Strip Accessory** (ECAD tab, Components), click terminal 2, press Enter
+   (Partition). Expected: `Partition after -X01:2.`; a `partition` row after 2.
+4. **Markers.** **Accessory v ▸ Marker on every position**: each position shows `▭`. Without a
+   marker part number the BOM lists none, and Checks counts them (`… strip accessories have no part
+   number`).
+5. **Jumpers.** Click **Jumper**, click terminal 1, then terminal 3, press Enter: a dashed line
+   through 1–3 (`Linked -X01 1-3.`), and 1–3 share one wire number. Hover the line:
+   `-X01 link 1-3 (3 positions, 1 bar …)`. Click it: Properties shows **Link** with its
+   **Positions**; type `1-5` to extend it (positions 4 and 5 are spare: a short stub past 3 says
+   the link goes on). Erase the line to delete the link; `u` brings it back.
+6. **BOM.** **Reports ▸ BOM**: end stops `ES-1 ×2`, end plate `EP-1 ×1`, partition (`?`), and
+   `Jumper bar ×10` rows per strip.
+
+Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
+`accessory {"strip":"<id>","at":["1","2","3"],"on":true,"items":["marker"]}`,
+`accessory {"strip":"<id>","at":"2","remove":["partition"]}`,
+`jumper {"terminals":["<terminal id>","<terminal id>"]}` (`"skip":true` for only those),
+`jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
+`jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
+`setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1938,6 +1973,15 @@ Your table of three clean runs goes here once you have run it.
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Strip accessories (brief 030):** accessories are placed by hand (no automatic rule yet); no
+  level jumpers, test plugs or rail parts; marker text is not printed; links join whole positions
+  (no levels). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
+  a partition or a single marker with **Strip Accessory**); a link is extended, shortened or split
+  through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
+  generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).
+  Merging two branches that each added a link with the same number on one strip shows one conflict
+  on that `link.<n>` key: keep one side, then add the other link again with **Jumper** (design
+  030 §9.4 "Keep both" is later work).
 - **Terminal strips (brief 028):** no multi-level, disconnect or fuse terminals; no bridge parts
   (end plates, markers) on the BOM; no reference texts under terminals; cable lengths are typed,
   not measured. A terminal on a wire drawn on several pages is refused (place it where the wire

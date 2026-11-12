@@ -110,6 +110,11 @@ fn drawn_at(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId
     out
 }
 
+/// A strip's drawn terminals with the page and point each is drawn at (brief 030: link lines).
+pub fn drawn_points(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId, PageId, Pt)> {
+    drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
+}
+
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<ComponentId> {
     let c = doc.terminals.get(&t)?.component;
@@ -597,6 +602,8 @@ pub struct StripData {
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
     pub bom_rows: usize,
+    /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
+    pub acc: crate::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     conductors: BTreeSet<ConductorId>,
     far: BTreeSet<ComponentId>,
@@ -621,7 +628,7 @@ impl StripData {
     /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` warnings).
     pub fn check_rows(&self) -> (usize, usize) {
         let over = self.offer.is_some_and(|o| self.drawn > o.positions as usize);
-        (self.twice.len(), usize::from(over))
+        (self.twice.len(), usize::from(over) + self.acc.warnings())
     }
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
@@ -633,6 +640,68 @@ impl StripData {
     pub fn row_of(&self, t: TerminalId) -> Option<&TermRow> {
         self.rows.iter().find(|r| r.terminal == Some(t))
     }
+
+    /// The plan in physical order (design 030 §7.1): `acc.start`'s items, each position followed
+    /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, 028's rows only.
+    pub fn plan(&self, accessories: bool) -> Vec<PlanItem<'_>> {
+        let mut out = Vec::with_capacity(self.rows.len() + self.acc.gap_rows());
+        fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::accessories::Acc]) {
+            if on {
+                out.extend(items.iter().map(|a| PlanItem::Gap { gap: g, acc: *a }));
+            }
+        }
+        gap(&mut out, accessories, "start", &self.acc.start);
+        for (i, r) in self.rows.iter().enumerate() {
+            out.push(PlanItem::Term(i, r));
+            let last_of_label = self.rows.get(i + 1).is_none_or(|n| n.label != r.label);
+            if last_of_label && let Some(items) = self.acc.after.get(&r.label) {
+                gap(&mut out, accessories, &r.label, items);
+            }
+        }
+        gap(&mut out, accessories, "end", &self.acc.end);
+        out
+    }
+
+    /// The links through plan position `i`: (link, whether `i` is one of its positions).
+    pub fn links_at(&self, i: usize) -> Vec<(&crate::accessories::LinkInfo, bool)> {
+        let label = self.rows.get(i).map(|r| r.label.as_str());
+        self.acc
+            .links
+            .iter()
+            .filter(|l| l.span > 0 && l.first <= i && i <= l.last)
+            .map(|l| (l, label.is_some_and(|x| l.labels.iter().any(|y| y == x))))
+            .collect()
+    }
+
+    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per link
+    /// lane: `●` on a linked position, `┆` past a skipped one.
+    pub fn bridge_cell(&self, i: usize) -> String {
+        let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
+        let at = self.links_at(i);
+        let lanes = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
+        if lanes > 0 {
+            let mut marks = vec![' '; lanes];
+            for (l, on) in &at {
+                if let Some(m) = marks.get_mut(l.lane) {
+                    *m = if *on { '\u{25cf}' } else { '\u{2506}' };
+                }
+            }
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.extend(marks);
+        }
+        text
+    }
+}
+
+/// One row of a strip's plan in physical order.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PlanItem<'a> {
+    /// An accessory in a gap: `start`, `end` or the label it follows.
+    Gap { gap: &'a str, acc: crate::accessories::Acc },
+    /// A position (its index in [`StripData::rows`]).
+    Term(usize, &'a TermRow),
 }
 
 /// The strips of a project (see the module's update map).
@@ -643,6 +712,10 @@ pub struct Strips {
     by_far: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
     by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
     by_cable: BTreeMap<CableId, BTreeSet<ComponentId>>,
+    /// Brief 030: the strips reading each project `strip_*` key (no value of their own).
+    inherits: BTreeMap<String, BTreeSet<ComponentId>>,
+    /// Brief 030: placed accessories with no part number, over every strip (one info row).
+    pub acc_no_part: usize,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
     /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
@@ -662,13 +735,13 @@ pub struct Strips {
     pub last_changed: BTreeSet<ComponentId>,
 }
 
-fn add_to<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn add_to<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
-        map.entry(*k).or_default().insert(c);
+        map.entry(k.clone()).or_default().insert(c);
     }
 }
 
-fn remove_from<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn remove_from<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
         if let Some(set) = map.get_mut(k) {
             set.remove(&c);
@@ -685,6 +758,8 @@ pub struct StripScope<'a> {
     pub conductors: &'a BTreeSet<ConductorId>,
     pub cables: &'a BTreeSet<CableId>,
     pub pages: &'a BTreeSet<PageId>,
+    /// Brief 030: project `strip_*` keys that changed.
+    pub project_keys: &'a BTreeSet<String>,
 }
 
 impl Strips {
@@ -727,6 +802,40 @@ impl Strips {
         out
     }
 
+    /// Brief 030: the strips reading a changed project `strip_*` key (no value of their own), not
+    /// already in `full`: only their accessories need recomputing.
+    pub fn touched_acc(&self, project_keys: &BTreeSet<String>, full: &BTreeSet<ComponentId>) -> BTreeSet<ComponentId> {
+        project_keys.iter().flat_map(|k| self.inherits.get(k).into_iter().flatten().copied()).filter(|c| !full.contains(c)).collect()
+    }
+
+    /// Recompute only the accessories of `which` (design 030 §11.1: a project default changes
+    /// part data, never terminal rows). Adds to [`Strips::last_changed`] and `last_work`.
+    pub fn recompute_acc(&mut self, doc: &Document, which: &BTreeSet<ComponentId>) {
+        let mut changed = false;
+        for c in which {
+            let Some(old) = self.strips.get(c) else { continue };
+            let Some(props) = doc.components.get(c).map(|x| &x.properties) else { continue };
+            let acc = crate::accessories::strip_acc(doc, props, &old.rows);
+            if acc == old.acc {
+                continue;
+            }
+            let mut d = old.clone();
+            d.acc = acc;
+            d.finish();
+            self.remove(*c);
+            self.insert(*c, d);
+            self.last_changed.insert(*c);
+            changed = true;
+        }
+        if changed {
+            self.revision += 1;
+            for c in which.iter().filter(|c| self.last_changed.contains(c)) {
+                self.changed_at.insert(*c, self.revision);
+            }
+        }
+        self.last_work += which.len();
+    }
+
     /// Recompute `which` on `doc`.
     pub fn recompute(&mut self, doc: &Document, which: &BTreeSet<ComponentId>, o: &Outputs, cx: &PageCx) {
         self.last_changed.clear();
@@ -762,6 +871,8 @@ impl Strips {
         remove_from(&mut self.by_far, &old.far, c);
         remove_from(&mut self.by_page, &old.pages, c);
         remove_from(&mut self.by_cable, &old.cables, c);
+        remove_from(&mut self.inherits, &old.acc.inherits, c);
+        self.acc_no_part = self.acc_no_part.saturating_sub(old.acc.no_part);
     }
 
     fn set(&mut self, doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) {
@@ -770,10 +881,16 @@ impl Strips {
             return;
         }
         let d = strip_data(doc, c, o, cx);
+        self.insert(c, d);
+    }
+
+    fn insert(&mut self, c: ComponentId, d: StripData) {
         add_to(&mut self.by_conductor, &d.conductors, c);
         add_to(&mut self.by_far, &d.far, c);
         add_to(&mut self.by_page, &d.pages, c);
         add_to(&mut self.by_cable, &d.cables, c);
+        add_to(&mut self.inherits, &d.acc.inherits, c);
+        self.acc_no_part += d.acc.no_part;
         self.sheets_total += d.sheets;
         let (er, wa) = d.check_rows();
         self.check_errors += er;
@@ -799,6 +916,8 @@ impl Strips {
             && self.by_far == other.by_far
             && self.by_page == other.by_page
             && self.by_cable == other.by_cable
+            && self.inherits == other.inherits
+            && self.acc_no_part == other.acc_no_part
             && self.sheets_total == other.sheets_total
             && self.check_errors == other.check_errors
             && self.check_warnings == other.check_warnings
@@ -895,6 +1014,7 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         twice: Vec::new(),
         sheets: 1,
         bom_rows: 0,
+        acc: crate::accessories::StripAcc::default(),
         conductors: BTreeSet::new(),
         far: BTreeSet::new(),
         pages: BTreeSet::new(),
@@ -1045,10 +1165,18 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         rows.sort_by_key(label_key);
     }
     d.rows = rows;
-    d.sheets = (plan_lines(&d) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
-    let (ft, pe) = d.quantities();
-    d.bom_rows = usize::from(ft > 0) + usize::from(pe > 0);
+    d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
+    d.finish();
     d
+}
+
+impl StripData {
+    /// Its kept sheet and BOM row counts, from its rows and accessories.
+    fn finish(&mut self) {
+        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
+        let (ft, pe) = self.quantities();
+        self.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + self.acc.bom.len();
+    }
 }
 
 // ---------------------------------------------------------------- hover (§7.1)
@@ -1154,7 +1282,7 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
 /// The rows a generated `terminals` sheet needs for `strip` (`None`: every strip): one heading per
 /// strip and one per position's conductor line (at least one).
 pub fn plan_lines(s: &StripData) -> usize {
-    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>()
+    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
 }
 
 #[cfg(test)]

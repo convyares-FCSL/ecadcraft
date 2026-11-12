@@ -186,3 +186,74 @@ fn opening_a_non_project_read_only_reports_why() {
     let e = ecad_cadcraft::file::Binding::open_read_only(&p, 1, "test").err().unwrap();
     assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
 }
+
+/// A strip `-X01` of four terminals on four wires, saved as `name` in `d` (brief 030, AC 8).
+fn strip_project(d: &TempDir, name: &str, seed: u64) -> (H, String, String) {
+    let mut h = H::new(seed);
+    h.cfg(|p| p.persistence = Persistence::File);
+    h.first_page();
+    for x in [50.0, 90.0, 130.0, 170.0] {
+        h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
+    }
+    let v = h.run("terminals", json!({"from": [30, 160], "to": [190, 160]})).unwrap();
+    let strip = v["strip"].as_str().unwrap().to_string();
+    h.run("setprop", json!({"component": strip, "key": "terminals", "value": "8+1PE"})).unwrap();
+    h.run("saveas", json!({"path": d.path(name)})).unwrap();
+    (h, d.path(&format!("{name}.ecad")), strip)
+}
+
+/// Reopen `path` in a fresh session.
+fn reopen(h: &mut H, path: &str, seed: u64) -> H {
+    close_all(&mut h.s);
+    let mut s = Session::empty();
+    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
+    H { s, project, trail: Vec::new() }
+}
+
+/// Brief 030, AC 8: accessories, parts and links save and reopen with the same document and log;
+/// the plan and BOM read the same.
+#[test]
+fn accessories_and_links_survive_save_and_reopen() {
+    let d = TempDir::new("acc-reopen");
+    let (mut h, path, strip) = strip_project(&d, "acc", 0x30_a8);
+    h.run("projectprops", json!({"props": {"strip_end_stop_part_number": "ES-1", "strip_jumper_bar": "4"}})).unwrap();
+    h.run("accessory", json!({"strip": strip, "at": "start", "items": ["end_stop", "strip_label"]})).unwrap();
+    h.run("accessory", json!({"strip": strip, "at": "2", "add": ["partition"]})).unwrap();
+    h.run("accessory", json!({"strip": strip, "at": "all", "on": true, "items": ["marker"]})).unwrap();
+    h.run("jumper", json!({"strip": strip, "positions": "1-2"})).unwrap();
+    h.run("jumper", json!({"strip": strip, "positions": "3, 5, 7", "skip": true})).unwrap();
+    h.run("setprop", json!({"component": strip, "key": "link.2.part_number", "value": "JB-BU"})).unwrap();
+    h.run("qsave", Value::Null).unwrap();
+    let (doc, log) = (h.doc(), h.p(|p| p.ledger.full_log().unwrap()));
+    let plan = h.run("stripplan", json!({})).unwrap();
+    let bom = h.run("bom", json!({})).unwrap();
+    let mut h2 = reopen(&mut h, &path, 0x30_a9);
+    assert_eq!(h2.doc(), doc, "the same document");
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "the same log");
+    assert_eq!(h2.run("stripplan", json!({})).unwrap(), plan);
+    assert_eq!(h2.run("bom", json!({})).unwrap(), bom);
+    assert!(!h2.p(|p| p.unsaved()));
+    h2.check();
+}
+
+/// Brief 030, AC 8: a project as 028 wrote it (a strip, no 030 keys) opens with no new
+/// transaction and the same document, and shows no accessories or links.
+#[test]
+fn a_028_project_opens_unchanged_with_no_accessories() {
+    let d = TempDir::new("acc-028");
+    let (mut h, path, _) = strip_project(&d, "old", 0x30_aa);
+    let (doc, log, head) = (h.doc(), h.p(|p| p.ledger.full_log().unwrap()), h.head());
+    let mut h2 = reopen(&mut h, &path, 0x30_ab);
+    assert_eq!(h2.head(), head, "no transaction on open");
+    assert_eq!(h2.doc(), doc);
+    assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log);
+    assert!(!h2.p(|p| p.unsaved()));
+    let plan = h2.run("stripplan", json!({})).unwrap();
+    let s0 = &plan["strips"][0];
+    assert!(s0["rows"].as_array().unwrap().iter().all(|r| r["kind"] == "terminal"), "{plan}");
+    assert_eq!(s0["links"], json!([]));
+    let bom = h2.run("bom", json!({})).unwrap();
+    assert!(bom["rows"].as_array().unwrap().iter().all(|r| r.get("accessory").is_none()), "{bom}");
+    // The store's own pages (session and lock records) change on any open; the project's log
+    // and document are what must not.
+}

@@ -20,6 +20,15 @@
 //!   "terminals", scope: "selection", strips}`), committed and updated, then undone.
 //! - **work**: the most strips one ordinary edit above recomputed (never all of them).
 //!
+//! - Brief 030 (design 030 §11.3): the copy also gets project part defaults for every accessory,
+//!   end stops and end plates at both ends of every strip, a partition after every 5th terminal
+//!   on 50 strips, markers on every position of 50 others, and 2 links (`1-4` and the skip link
+//!   `7, 9, 11`) on every strip. **accset**: a partition after 4 (`accessory`); **accmany**:
+//!   markers on 20 positions in one call; **accproj**: `strip_end_plate_part_number` changed (every
+//!   strip inherits it); **linkset**: a 10-position link made with `jumper` (the numbering pass in
+//!   its transaction, the page redrawn); **linkpage**: the link lines of page 1 worked out. Each
+//!   committed and updated, then undone.
+//!
 //! Each edit is undone after it is measured.
 
 use std::path::Path;
@@ -27,7 +36,9 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_model::{Author, CableId, CableMember, ComponentId, ConductorId, End, Item, ItemKind, Op, PageId, Primitive, Pt, Representation, Subject};
+use ecad_model::{
+    Author, CableId, CableMember, ComponentId, ConductorId, End, Item, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Representation, Subject,
+};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -52,6 +63,13 @@ pub struct MeasuredStrips {
     pub relocate_ms: f64,
     pub tplan_ms: f64,
     pub trenum_ms: f64,
+    /// Brief 030.
+    pub accset_ms: f64,
+    pub accmany_ms: f64,
+    pub accproj_ms: f64,
+    pub accproj_work: usize,
+    pub linkset_ms: f64,
+    pub linkpage_ms: f64,
     /// Strips, terminals and cables in the project.
     pub strips: usize,
     pub terminals: usize,
@@ -113,6 +131,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         p.ledger.commit(Author::User, "bench wires", ops).map_err(|e| e.to_string())?;
         // A strip on each page, with bridges and cables (tags -W90001…, clear of the generator's).
         let mut serial = 0usize;
+        let mut made: Vec<ComponentId> = Vec::new();
         for page in &pages {
             let f = ecad_cadcraft::terminal_cmds::plan_fence_in(
                 p,
@@ -123,6 +142,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 Pt::new(X0 - 5.0, 100.0),
                 Pt::new(X0 + PITCH * TERMINALS as f64, 100.0),
             )?;
+            made.push(f.strip);
             let mut ops = f.ops;
             for pair in f.placed.chunks(5) {
                 let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
@@ -168,6 +188,35 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             }
             p.ledger.commit(Author::User, "bench strip", ops).map_err(|e| e.to_string())?;
         }
+        // Brief 030: accessories, parts and links (design 030 §11.3), one transaction.
+        let mut ops = Vec::new();
+        let doc = p.ledger.document();
+        let set = |ops: &mut Vec<Op>, object: ObjectRef, key: String, value: String| {
+            ops.push(Op::SetProperty { object, key, before: None, after: Some(value) });
+        };
+        for item in ecad_cadcraft::accessories::PART_ITEMS {
+            if !doc.properties.contains_key(&format!("strip_{item}_part_number")) {
+                set(&mut ops, ObjectRef::Project, format!("strip_{item}_part_number"), format!("{}-1", item.to_ascii_uppercase()));
+            }
+        }
+        set(&mut ops, ObjectRef::Project, "strip_marker_per_card".into(), "10".into());
+        for (i, c) in made.iter().enumerate() {
+            let o = ObjectRef::Component(*c);
+            set(&mut ops, o, "acc.start".into(), "end_stop".into());
+            set(&mut ops, o, "acc.end".into(), "end_plate,end_stop".into());
+            if i < 50 {
+                for n in (5..=TERMINALS).step_by(5) {
+                    set(&mut ops, o, format!("acc.after.{n}"), "partition".into());
+                }
+            } else if i < 100 {
+                for n in 1..=TERMINALS {
+                    set(&mut ops, o, format!("acc.on.{n}"), "marker".into());
+                }
+            }
+            set(&mut ops, o, "link.1".into(), "1-4".into());
+            set(&mut ops, o, "link.2".into(), "7, 9, 11".into());
+        }
+        p.ledger.commit(Author::User, "bench accessories", ops).map_err(|e| e.to_string())?;
         Ok(())
     })??;
     run(s, "qsave", json!({}))?;
@@ -287,6 +336,38 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             run(&mut s, "undo", json!({}))?;
         }
         out.trenum_ms = median(&mut trenum);
+        // Brief 030 (design 030 §11.3), each undone.
+        let timed = |s: &mut Session, cmd: &str, params: serde_json::Value| -> Result<f64, String> {
+            let mut v = Vec::new();
+            for _ in 0..runs {
+                let t = Instant::now();
+                run(s, cmd, params.clone())?;
+                v.push(ms(t));
+                run(s, "undo", json!({}))?;
+            }
+            Ok(median(&mut v))
+        };
+        out.accset_ms = timed(&mut s, "accessory", json!({"strip": strip.hex(), "at": "3", "add": ["partition"]}))?;
+        out.accmany_ms = timed(&mut s, "accessory", json!({"strip": strip.hex(), "at": "all", "on": true, "items": ["marker"]}))?;
+        out.linkset_ms = timed(&mut s, "jumper", json!({"strip": strip.hex(), "positions": "11-20"}))?;
+        let mut proj = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "projectprops", json!({"props": {"strip_end_plate_part_number": format!("EP-{}", i + 2)}}))?;
+            proj.push(ms(t));
+            out.accproj_work = out.accproj_work.max(work(&project, &mut s));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.accproj_ms = median(&mut proj);
+        let mut lp = Vec::new();
+        for _ in 0..runs {
+            lp.push(project.read(&mut s, |p, _| {
+                let t = Instant::now();
+                std::hint::black_box(ecad_cadcraft::link_lines::parts_on_page(p.ledger.document(), page1));
+                ms(t)
+            })?);
+        }
+        out.linkpage_ms = median(&mut lp);
         // A far device: a lamp at the top end of the first wire, connected, in +FIELD; the strip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;

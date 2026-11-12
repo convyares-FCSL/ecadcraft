@@ -1803,6 +1803,19 @@ impl Trial {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
+            A::AccessoryFix(fix, i) => {
+                let cmd: Option<String> = self.project.clone().and_then(|p| {
+                    p.configure(&mut self.cad.session, |p| {
+                        let o = p.outputs();
+                        ecad_cadcraft::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
+                    })
+                    .ok()
+                    .flatten()
+                });
+                if let Some(line) = cmd {
+                    let _ = self.run_line(&line);
+                }
+            }
             A::ShowCables => {
                 self.open_reports();
                 if let Some(r) = &mut self.reports {
@@ -2646,6 +2659,9 @@ impl Trial {
         match out {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
+            Some(outputs_ui::Out::Run(line)) => {
+                let _ = self.run_line(&line);
+            }
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)

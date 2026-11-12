@@ -53,6 +53,10 @@ pub enum Mapped {
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
     Xref(RepresentationId),
+    /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
+    /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
+    /// edits of it alone are refused, and it is left out of an edit with other objects.
+    Link(ComponentId, u32),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -83,6 +87,8 @@ pub struct HandleMap {
     xrefs: BTreeMap<(RepresentationId, u32), Handle>,
     /// The part each cross-reference handle is.
     xref_parts: HashMap<Handle, (RepresentationId, u32)>,
+    /// Brief 030: link line segments: (strip, link, index) → handle.
+    links: BTreeMap<(ComponentId, u32, u32), Handle>,
 }
 
 impl HandleMap {
@@ -185,6 +191,14 @@ impl HandleMap {
     pub fn xref(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.xrefs.get(&(rep, index)).copied()
     }
+    /// Brief 030: the handle of segment `index` of link `n` of `strip`.
+    pub fn link(&self, strip: ComponentId, n: u32, index: u32) -> Option<Handle> {
+        self.links.get(&(strip, n, index)).copied()
+    }
+    pub fn insert_link(&mut self, strip: ComponentId, n: u32, index: u32, h: Handle) {
+        self.links.insert((strip, n, index), h);
+        self.by_handle.insert(h, Mapped::Link(strip, n));
+    }
     pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
         self.xrefs.insert((rep, index), h);
         self.xref_parts.insert(h, (rep, index));
@@ -227,6 +241,8 @@ impl HandleMap {
                 + self.labels.len()
                 + self.frame.len()
                 + self.xrefs.len()
+                + self.links.len()
+            && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
             && self.xref_parts.len() == self.xrefs.len()
             && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
@@ -685,6 +701,20 @@ pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
     e
 }
 
+/// One link line segment (brief 030) as a dashed hairline on the links layer.
+pub(crate) fn link_entity(part: &crate::link_lines::LinkPart, handle: Handle) -> Entity {
+    Entity {
+        handle,
+        common: Common {
+            layer: crate::link_lines::LAYER.into(),
+            linetype: crate::locations::LINETYPE.into(),
+            lineweight: Lineweight::Mm100(crate::look::WIRE_WEIGHT),
+            ..Common::default()
+        },
+        kind: kind_for_primitive(&ecad_model::Primitive::Line { a: part.a, b: part.b }),
+    }
+}
+
 pub(crate) fn base_drawing() -> Drawing {
     let mut d = Drawing::new_metric();
     if d.layer(MARKER_LAYER).is_none() {
@@ -787,6 +817,9 @@ pub fn project_page_framed(
         d.layers.push(crate::frame::layer());
     }
     crate::locations::add_linetype(&mut d);
+    if d.layer(crate::link_lines::LAYER).is_none() {
+        d.layers.push(CLayer::new(crate::link_lines::LAYER));
+    }
     if d.layer(crate::generated::LAYER).is_none() {
         let mut l = CLayer::new(crate::generated::LAYER);
         l.locked = true;
@@ -878,6 +911,15 @@ pub fn project_page_framed(
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
         ents.push(xref_entity(&part, h));
         map.insert_xref(part.rep, part.index, h);
+    }
+    // Link lines (brief 030): derived on every draw, never stored.
+    let mut seen: BTreeMap<(ComponentId, u32), u32> = BTreeMap::new();
+    for part in crate::link_lines::parts_on_page(doc, page) {
+        let i = seen.entry((part.strip, part.n)).or_default();
+        let h = prev.link(part.strip, part.n, *i).unwrap_or_else(|| d.new_handle());
+        ents.push(link_entity(&part, h));
+        map.insert_link(part.strip, part.n, *i, h);
+        *i += 1;
     }
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
@@ -2636,6 +2678,9 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 }
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
+            // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
+            // page, kept by its own rule).
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}
             _ => return None,
         }
     }

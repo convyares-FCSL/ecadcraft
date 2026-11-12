@@ -555,29 +555,8 @@ impl Row {
 
 /// Natural order of labels: `2` before `13`, `A2` before `A10`.
 pub fn natural_key(s: &str) -> Vec<(u8, u128, String)> {
-    let mut out = Vec::new();
-    let mut digits = String::new();
-    let mut other = String::new();
-    for ch in s.chars() {
-        if ch.is_ascii_digit() {
-            if !other.is_empty() {
-                out.push((1, 0, std::mem::take(&mut other)));
-            }
-            digits.push(ch);
-        } else {
-            if !digits.is_empty() {
-                out.push((0, digits.parse().unwrap_or(u128::MAX), std::mem::take(&mut digits)));
-            }
-            other.push(ch);
-        }
-    }
-    if !digits.is_empty() {
-        out.push((0, digits.parse().unwrap_or(u128::MAX), digits));
-    }
-    if !other.is_empty() {
-        out.push((1, 0, other));
-    }
-    out
+    // One ordering for labels (review of PR #57, 5): the model's.
+    ecad_model::links::natural_key(s)
 }
 
 /// The rows of device `dev` (design 025 §4.2): offered poles matched to drawn poles by labels,

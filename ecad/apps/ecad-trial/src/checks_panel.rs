@@ -32,6 +32,23 @@ pub const OFFER: &str = "Offer drawn";
 pub const RENUMBER_STRIP: &str = "Renumber strip";
 pub const SET_CORES: &str = "Set cores\u{2026}";
 pub const NEXT_FREE_CORE: &str = "Next free core";
+/// Brief 030's fix buttons, two per row (design 030 §8).
+pub const MOVE_TO_END: &str = "Move to end";
+pub const REMOVE: &str = "Remove";
+pub const SPLIT_LINK: &str = "Split link";
+pub const REMOVE_PARTITION: &str = "Remove partition";
+pub const DROP_MISSING: &str = "Drop missing";
+pub const DELETE_LINK: &str = "Delete link";
+
+/// The two buttons of a brief 030 fix.
+pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
+    match f {
+        Fix::AccessoryOrphan(..) => Some([MOVE_TO_END, REMOVE]),
+        Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
+        Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
+        _ => None,
+    }
+}
 
 /// One copied row, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -212,14 +229,23 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let count_row =
-                    matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount);
+                let count_row = matches!(
+                    r.check.kind,
+                    Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount | Kind::NoAccessoryPart
+                );
                 let what = if count_row { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
                 // description takes the room left, cut with an ellipsis.
                 let wide = matches!(fix, Some(Fix::UseBoxLocation(_) | Fix::NextFreeCore(_) | Fix::RenumberStrip(_)));
-                let bw = if wide { 150.0 } else { 84.0 };
+                let two = fix.and_then(pair);
+                let bw = if two.is_some() {
+                    228.0
+                } else if wide {
+                    150.0
+                } else {
+                    84.0
+                };
                 let right = if fix.is_some() { rect.right() - bw - 8.0 } else { rect.right() - 4.0 };
                 let tail = if count_row { String::new() } else { format!("{} {}", r.locator, r.check.which) };
                 let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
@@ -231,7 +257,21 @@ impl ChecksPanel {
                 p.galley(pos2(right - tail_w, top), tail_g, t.text_dim);
                 let label = row_label(&r);
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
-                if let Some(f) = fix {
+                if let (Some(f), Some(names)) = (fix, two) {
+                    let mut hit = None;
+                    for (k, name) in names.iter().enumerate() {
+                        let w = (bw - 4.0) / 2.0;
+                        let x = rect.right() - bw - 4.0 + (w + 4.0) * k as f32;
+                        let b = egui::Rect::from_min_size(pos2(x, rect.top() + 2.0), vec2(w, ROW_H - 4.0));
+                        if ui.put(b, egui::Button::new(RichText::new(*name).small())).clicked() {
+                            hit = Some(k);
+                        }
+                    }
+                    if let Some(k) = hit {
+                        out.push(Action::AccessoryFix(f, k));
+                        continue;
+                    }
+                } else if let Some(f) = fix {
                     let b = egui::Rect::from_min_size(pos2(rect.right() - bw - 4.0, rect.top() + 2.0), vec2(bw, ROW_H - 4.0));
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
@@ -243,6 +283,7 @@ impl ChecksPanel {
                         Fix::RenumberStrip(_) => RENUMBER_STRIP,
                         Fix::SetCores(_) => SET_CORES,
                         Fix::NextFreeCore(_) => NEXT_FREE_CORE,
+                        Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
@@ -256,6 +297,7 @@ impl ChecksPanel {
                             (Fix::SetCores(k), _) => out.push(Action::SetCores(k)),
                             (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
                             (Fix::ShowCables, _) => out.push(Action::ShowCables),
+                            (Fix::LinkOnNonStrip(_), _) => out.push(Action::AccessoryFix(f, 0)),
                             _ => {}
                         }
                         continue;

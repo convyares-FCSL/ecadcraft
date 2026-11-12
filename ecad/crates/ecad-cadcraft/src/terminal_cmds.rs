@@ -38,7 +38,10 @@ numbered on from the strip's highest label; at most 200)",
             .interactive(crate::interact::bridge)
             .noundo(),
         CommandSpec::new("stripplan", "Terminal Plan", run_stripplan)
-            .params("{strip?: id, limit?: rows (500, max 5000), after?: strip index} (every strip's terminals, drawn and spare; read only)")
+            .params(
+                "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and links)} \
+(every strip's terminals, drawn and spare; read only)",
+            )
             .noundo(),
         CommandSpec::new("cablecores", "Cable Cores", run_cablecores)
             .params("{cable: id} (the cable's offered cores, used, spare and over; read only)")
@@ -542,8 +545,24 @@ pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     Value::Object(o)
 }
 
-/// One strip as JSON with rows `first..end` of it (`first_row` when it does not start at 0).
-pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize) -> Value {
+/// A gap row as JSON (design 030 §7.2).
+fn gap_json(s: &StripData, gap: &str, a: crate::accessories::Acc) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("kind".into(), json!("accessory"));
+    o.insert("state".into(), json!("accessory"));
+    o.insert("accessory".into(), json!(a.key()));
+    o.insert("gap".into(), json!(gap));
+    put(&mut o, "part_number", s.acc.gap_part(a, crate::outputs::gap_pe(s, gap)));
+    put(&mut o, "maker", s.acc.makers.get(a.key()));
+    o.insert("terminal".into(), Value::Null);
+    o.insert("label".into(), Value::Null);
+    Value::Object(o)
+}
+
+/// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
+/// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
+/// `marker` and `links`, and the strip carries `accessories` and `links`; without, 028's rows.
+pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("strip".into(), json!(s.component.hex()));
     o.insert("tag".into(), json!(s.tag));
@@ -554,7 +573,47 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
     if first > 0 {
         o.insert("first_row".into(), json!(first));
     }
-    o.insert("rows".into(), Value::Array(s.rows.get(first..end).unwrap_or_default().iter().map(|r| row_json(r, style)).collect()));
+    let plan = s.plan(accessories);
+    let rows: Vec<Value> = plan
+        .get(first..end)
+        .unwrap_or_default()
+        .iter()
+        .map(|item| match item {
+            strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
+            strips::PlanItem::Term(i, r) => {
+                let mut v = row_json(r, style);
+                if accessories {
+                    v["kind"] = json!("terminal");
+                    v["marker"] = json!(s.acc.markers.contains(&r.label));
+                    let links: Vec<Value> = s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane})).collect();
+                    v["links"] = Value::Array(links);
+                }
+                v
+            }
+        })
+        .collect();
+    o.insert("rows".into(), Value::Array(rows));
+    if accessories {
+        let counts: serde_json::Map<String, Value> =
+            crate::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
+        o.insert("accessories".into(), Value::Object(counts));
+        let links: Vec<Value> = s
+            .acc
+            .links
+            .iter()
+            .map(|l| {
+                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars});
+                if let Some(pn) = &l.part_number {
+                    v["part_number"] = json!(pn);
+                }
+                if let Some(m) = &l.maker {
+                    v["maker"] = json!(m);
+                }
+                v
+            })
+            .collect();
+        o.insert("links".into(), Value::Array(links));
+    }
     Value::Object(o)
 }
 
@@ -568,6 +627,7 @@ fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         .map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
         .clamp(1, crate::outputs::MAX_LIMIT);
     let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
+    let accessories = opt_typed(params, "accessories", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     with_any_page(s, |p, _| {
         let style = p.ledger.document().settings.reference_style;
         let o = p.outputs();
@@ -575,11 +635,12 @@ fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             Some(c) => vec![o.strips.get(c).ok_or("No such terminal strip.")?],
             None => o.sorted_strips(),
         };
-        let total: usize = shown.iter().map(|d| d.rows.len()).sum();
+        let len = |d: &StripData| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() };
+        let total: usize = shown.iter().map(|d| len(d)).sum();
         let mut out = Vec::new();
         let (mut skip, mut left) = (after, limit);
         for d in &shown {
-            let n = d.rows.len();
+            let n = len(d);
             if skip >= n && n > 0 {
                 skip -= n;
                 continue;
@@ -588,7 +649,7 @@ fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
                 break;
             }
             let end = (skip + left).min(n);
-            out.push(strip_json(d, style, skip, end));
+            out.push(strip_json(d, style, skip, end, accessories));
             left -= end - skip;
             skip = 0;
         }

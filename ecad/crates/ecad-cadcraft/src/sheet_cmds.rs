@@ -680,7 +680,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 check_free_key(doc, k)?;
                 let v = match v {
                     Value::Null => None,
-                    Value::String(t) => value(doc, k, Some(t))?,
+                    // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
+                    Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {
+                        Some(r) => r?,
+                        None => value(doc, k, Some(t))?,
+                    },
                     _ => return Err(format!("`props.{k}` must be a string, or null to clear it")),
                 };
                 ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));

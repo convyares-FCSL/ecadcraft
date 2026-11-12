@@ -316,8 +316,12 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
         };
         let plan = plan_for(p, &req)?;
         let count = p.change_count();
+        // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
+        let (acc_ops, acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
         if preview {
-            return Ok(preview_json(p.ledger.document(), &plan, count));
+            let mut v = preview_json(p.ledger.document(), &plan, count);
+            v["accessories"] = json!(acc_lines);
+            return Ok(v);
         }
         if let Some(b) = based_on
             && b != count
@@ -325,6 +329,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
             return Err(STALE.into());
         }
         let mut ops = plan.ops.clone();
+        ops.extend(acc_ops);
         if for_new && let Some(d) = req.digits {
             let doc = p.ledger.document();
             let before = doc.settings.clone();

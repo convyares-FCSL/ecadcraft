@@ -245,6 +245,9 @@ pub struct BomRow {
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
+    /// Brief 030: the accessory a strip's row counts (`end_stop`, `jumper`…); `None` for devices
+    /// and terminals.
+    pub accessory: Option<&'static str>,
 }
 
 /// The rows of a report, as text cells for tables, CSV and generated pages.
@@ -295,6 +298,8 @@ pub struct Scope {
     sheet: bool,
     /// Colour or reference style changed (no row work).
     styles: bool,
+    /// Brief 030: project `strip_*` keys that changed (the strips inheriting them).
+    strip_keys: BTreeSet<String>,
 }
 
 impl Scope {
@@ -309,6 +314,7 @@ impl Scope {
             && self.potentials.is_empty()
             && !self.sheet
             && !self.styles
+            && self.strip_keys.is_empty()
     }
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
@@ -363,6 +369,9 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Project, key, .. } => {
                     if key == LOCATION_KEY {
                         self.project_location = true;
+                    }
+                    if key.starts_with("strip_") {
+                        self.strip_keys.insert(key.clone());
                     }
                 }
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
@@ -490,6 +499,9 @@ pub struct Outputs {
     /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
     /// cables with no core count (one info row when any).
     cable_checks: [usize; 3],
+    /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
+    links_off_strip: BTreeSet<ComponentId>,
+    link_keys: BTreeMap<ComponentId, Vec<String>>,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -644,8 +656,15 @@ impl Outputs {
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
-            &crate::strips::StripScope { devices: &scope.devices, conductors: &scope.conductors, cables: &scope.cables, pages: &pages },
+            &crate::strips::StripScope {
+                devices: &scope.devices,
+                conductors: &scope.conductors,
+                cables: &scope.cables,
+                pages: &pages,
+                project_keys: &scope.strip_keys,
+            },
         );
+        let acc_only = strips.touched_acc(&scope.strip_keys, &which);
         if which.is_empty() {
             strips.last_work = 0;
             strips.last_changed.clear();
@@ -654,6 +673,10 @@ impl Outputs {
             // in the strips' own `last_work`, not in the rows'.
             let cx = cx.get_or_insert_with(|| PageCx::of(doc));
             strips.recompute(doc, &which, self, cx);
+        }
+        // Brief 030: a project default reaches only its inheriting strips' accessories.
+        if !acc_only.is_empty() {
+            strips.recompute_acc(doc, &acc_only);
         }
         // Brief 028's strip Checks rows read from the strips just recomputed (brief 027's key).
         if !strips.last_changed.is_empty() {
@@ -720,6 +743,24 @@ impl Outputs {
 
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
         self.remove_device(c);
+        // Review of PR #57, 4: a link key on a device that is not a strip.
+        let misplaced = !crate::strips::is_strip(doc, c)
+            && doc.components.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
+        if misplaced {
+            let keys = doc
+                .components
+                .get(&c)
+                .map(|x| x.properties.keys().filter(|k| ecad_model::links::link_number(k).is_some()).cloned().collect())
+                .unwrap_or_default();
+            self.link_keys.insert(c, keys);
+            self.links_off_strip.insert(c);
+        } else if self.links_off_strip.remove(&c) {
+            self.link_keys.remove(&c);
+            self.checks_changed += 1;
+        }
+        if misplaced {
+            self.checks_changed += 1;
+        }
         if !locations::is_device(doc, c) {
             return;
         }
@@ -1095,6 +1136,24 @@ impl Outputs {
                     fix: Some(Fix::RenumberStrip(s.component)),
                 });
             }
+            out.extend(accessory_checks(s));
+        }
+        for c in &self.links_off_strip {
+            let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
+            out.push(Check {
+                kind: Kind::LinkOnNonStrip,
+                page: None,
+                at: None,
+                object: Object::Component(*c),
+                which: format!("{tag} has link keys but is not a terminal strip"),
+                fix: Some(Fix::LinkOnNonStrip(*c)),
+            });
+        }
+        if self.strips.acc_no_part > 0 {
+            let n = self.strips.acc_no_part;
+            let which =
+                if n == 1 { "1 strip accessory has no part number".to_string() } else { format!("{n} strip accessories have no part number") };
+            out.push(Check { kind: Kind::NoAccessoryPart, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         let mut unknown = 0;
         for r in self.cables.values() {
@@ -1152,11 +1211,13 @@ impl Outputs {
     /// them. O(1): kept by every change (brief 027's badge).
     pub fn check_counts(&self) -> (usize, usize, usize) {
         let info = self.box_counts[1]
+            + usize::from(self.strips.acc_no_part > 0)
             + usize::from(self.no_part_number > 0)
             + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
             + usize::from(self.cable_checks[2] > 0);
         // Brief 028: the strips' and cables' rows, kept with them.
-        let warnings = self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1];
+        let warnings =
+            self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1] + self.links_off_strip.len();
         (self.strips.check_errors, warnings, info)
     }
 
@@ -1195,6 +1256,14 @@ impl Outputs {
         sheets
     }
 
+    /// The `link.<n>` keys a device that is not a strip carries (kept per device, read on demand).
+    pub fn link_keys_off_strip(&self, c: ComponentId) -> Vec<String> {
+        if !self.links_off_strip.contains(&c) {
+            return Vec::new();
+        }
+        self.link_keys.get(&c).cloned().unwrap_or_default()
+    }
+
     /// One device's row.
     pub fn device(&self, c: ComponentId) -> Option<&DeviceRow> {
         self.devices.get(&c)
@@ -1218,17 +1287,32 @@ impl Outputs {
                 description: s.description.clone(),
                 maker: s.maker.clone(),
                 part_number: s.part_number.clone(),
+                accessory: None,
             });
         }
         if pe > 0 {
             out.push(BomRow {
-                location,
+                location: location.clone(),
                 qty: pe,
                 tags: vec![s.tag.clone()],
                 devices: vec![s.component],
                 description: Some("PE terminal".into()),
                 maker: s.maker_pe.clone(),
                 part_number: s.part_number_pe.clone(),
+                accessory: None,
+            });
+        }
+        // Brief 030 (design 030 §7.4): one row per accessory part, only for what is placed.
+        for a in &s.acc.bom {
+            out.push(BomRow {
+                location: location.clone(),
+                qty: a.qty,
+                tags: vec![s.tag.clone()],
+                devices: vec![s.component],
+                description: Some(a.description.clone()),
+                maker: a.maker.clone(),
+                part_number: a.part_number.clone(),
+                accessory: Some(a.accessory),
             });
         }
         out
@@ -1247,6 +1331,7 @@ impl Outputs {
                 maker: first.and_then(|d| d.maker.clone()),
                 part_number: first.and_then(|d| d.part_number.clone()),
                 devices,
+                accessory: None,
             }
         };
         match group {
@@ -1415,6 +1500,12 @@ impl Outputs {
     /// The terminal plan as a table (Reports ▸ Terminals, CSV): every strip, or `strip` only;
     /// one line per position and conductor (design 028 §5.1), with where each line goes.
     pub fn terminal_table(&self, strip: Option<ComponentId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
+        self.terminal_table_with(strip, true)
+    }
+
+    /// [`Outputs::terminal_table`], with or without the accessory gap rows (brief 030: the
+    /// Terminals tab's Accessories check box; view only).
+    pub fn terminal_table_with(&self, strip: Option<ComponentId>, accessories: bool) -> (Table, Vec<Option<(PageId, Pt)>>) {
         let style = self.style;
         let mut t = Table {
             headers: vec!["Strip", "Inside target", "Inside wire", "Terminal", "Bridge", "Outside wire", "Cable", "Core", "Outside target", "Place"],
@@ -1426,11 +1517,27 @@ impl Outputs {
             None => self.strips.sorted(),
         };
         for s in strips {
-            for r in &s.rows {
+            for item in s.plan(accessories) {
+                let (ri, r) = match item {
+                    crate::strips::PlanItem::Term(i, r) => (i, r),
+                    crate::strips::PlanItem::Gap { gap, acc } => {
+                        let pe_before = gap_pe(s, gap);
+                        let words =
+                            if acc == crate::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                        let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(words), Cell::default(), Cell::ok(acc.mark())];
+                        row.extend(std::iter::repeat_n(Cell::default(), 5));
+                        row.push(Cell::opt(&s.acc.gap_part(acc, pe_before).cloned(), || "No part number for this accessory.".into()));
+                        t.rows.push(row);
+                        go.push(None);
+                        continue;
+                    }
+                };
+                let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
                 if r.spare() {
                     let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok("spare"), Cell::default()];
-                    row.push(Cell::ok(if r.pe { format!("{} PE", r.label) } else { r.label.clone() }));
-                    row.extend(std::iter::repeat_n(Cell::default(), 6));
+                    row.push(Cell::ok(if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) }));
+                    row.push(Cell::ok(s.bridge_cell(ri)));
+                    row.extend(std::iter::repeat_n(Cell::default(), 5));
                     t.rows.push(row);
                     go.push(None);
                     continue;
@@ -1442,14 +1549,14 @@ impl Outputs {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };
-                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
                     let cable = outside.and_then(|c| c.cable.as_ref());
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         side(inside, |c| c.target.clone(), "A loose far end."),
                         side(inside, |c| c.wire.clone(), "The wire has no number."),
                         Cell::ok(if r.pe { format!("{label} PE") } else { label }),
-                        Cell::ok(r.bridge_group.filter(|_| i == 0).map_or_else(String::new, |g| format!("\u{25cf} {g}"))),
+                        Cell::ok(if i == 0 { s.bridge_cell(ri) } else { String::new() }),
                         side(outside, |c| c.wire.clone(), "The wire has no number."),
                         Cell::ok(cable.map_or_else(String::new, |(_, t)| t.clone().unwrap_or_else(|| "?".into()))),
                         match (cable, outside) {
@@ -1487,12 +1594,33 @@ impl Outputs {
                 "core",
                 "outside_target",
                 "place",
+                // Brief 030 (design 030 §9.3).
+                "kind",
+                "accessory",
+                "gap",
+                "marker",
+                "links",
             ],
             rows: Vec::new(),
         };
         let opt = |v: Option<&String>| Cell::ok(v.cloned().unwrap_or_default());
         for s in self.strips.sorted() {
-            for r in &s.rows {
+            for item in s.plan(true) {
+                let r = match item {
+                    crate::strips::PlanItem::Term(_, r) => r,
+                    crate::strips::PlanItem::Gap { gap, acc } => {
+                        let mut row =
+                            vec![Cell::ok(s.tag.clone()), opt(s.location.as_ref()), Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default())];
+                        row.extend([Cell::default(), Cell::default(), Cell::ok("accessory")]);
+                        row.extend(std::iter::repeat_n(Cell::default(), 7));
+                        row.push(Cell::ok(s.acc.gap_part(acc, gap_pe(s, gap)).cloned().unwrap_or_else(|| "?".into())));
+                        row.extend([Cell::ok("accessory"), Cell::ok(acc.key()), Cell::ok(gap), Cell::default(), Cell::default()]);
+                        t.rows.push(row);
+                        continue;
+                    }
+                };
+                let marker = if s.acc.markers.contains(&r.label) { "yes" } else { "" };
+                let links: Vec<&str> = s.acc.links.iter().filter(|l| l.labels.contains(&r.label)).map(|l| l.text.as_str()).collect();
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
@@ -1512,6 +1640,11 @@ impl Outputs {
                         opt(outside.and_then(|c| c.core.as_ref())),
                         opt(outside.and_then(|c| c.target.as_ref())),
                         Cell::ok(if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() }),
+                        Cell::ok("terminal"),
+                        Cell::default(),
+                        Cell::default(),
+                        Cell::ok(marker),
+                        Cell::ok(links.join("; ")),
                     ]);
                 }
             }
@@ -1664,6 +1797,102 @@ pub fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
             Value::Object(o)
         })
         .collect()
+}
+
+/// Whether the position before gap `gap` of strip `s` is PE (the end gap: the last position).
+pub fn gap_pe(s: &crate::strips::StripData, gap: &str) -> bool {
+    match gap {
+        "start" => false,
+        "end" => s.rows.last().is_some_and(|r| r.pe),
+        l => s.rows.iter().rev().find(|r| r.label == l).is_some_and(|r| r.pe),
+    }
+}
+
+/// Brief 030's Checks rows of one strip (design 030 §8): orphan places, links across partitions,
+/// links naming missing positions. The go-to is the strip's last terminal, or the link's first
+/// drawn terminal.
+pub fn accessory_checks(s: &crate::strips::StripData) -> Vec<Check> {
+    let mut out = Vec::new();
+    let last = s.highest().and_then(|r| r.go);
+    let obj = |r: Option<&crate::strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal);
+    for (i, (key, items)) in s.acc.orphans.iter().enumerate() {
+        let spot = crate::accessories::spot_of(key);
+        let label = spot.as_ref().and_then(|x| x.label()).unwrap_or("?");
+        let words: Vec<&str> = items.iter().map(|a| a.words()).collect();
+        let how = if spot.as_ref().is_some_and(|x| x.is_on()) { "on" } else { "after" };
+        out.push(Check {
+            kind: Kind::AccessoryOrphan,
+            page: last.map(|(p, _)| p),
+            at: last.map(|(_, a)| a),
+            object: obj(s.highest()),
+            which: format!("{}: {} {how} {label}, but {} has no position {label}", s.tag, words.join(", "), s.tag),
+            fix: Some(Fix::AccessoryOrphan(s.component, u16::try_from(i).unwrap_or(u16::MAX))),
+        });
+    }
+    for l in &s.acc.links {
+        let first = l.labels.iter().find_map(|x| s.rows.iter().find(|r| r.label == *x && !r.spare()));
+        let go = first.and_then(|r| r.go).or(last);
+        let n = u16::try_from(l.n).unwrap_or(u16::MAX);
+        for at in &l.crosses {
+            let i = s.rows.iter().position(|r| r.label == *at).unwrap_or(0);
+            out.push(Check {
+                kind: Kind::LinkAcrossPartition,
+                page: go.map(|(p, _)| p),
+                at: go.map(|(_, a)| a),
+                object: obj(first),
+                which: format!("{}: link {} crosses the partition after {at}", s.tag, l.text),
+                fix: Some(Fix::LinkAcrossPartition(s.component, n, u16::try_from(i).unwrap_or(u16::MAX))),
+            });
+        }
+        if !l.missing.is_empty() {
+            out.push(Check {
+                kind: Kind::LinkOrphan,
+                page: go.map(|(p, _)| p),
+                at: go.map(|(_, a)| a),
+                object: obj(first),
+                which: format!("{}: link {} names {}, which {} does not have", s.tag, l.text, l.missing.join(", "), s.tag),
+                fix: Some(Fix::LinkOrphan(s.component, n)),
+            });
+        }
+    }
+    out
+}
+
+/// The JSON forms that carry out a brief 030 fix, one per button: (button words, command,
+/// params), each one transaction (**Move to end**, **Remove**; **Split link at 4**, **Remove
+/// partition**; **Drop missing positions**, **Delete link**). Empty when the strip or key is gone.
+pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static str, serde_json::Value)> {
+    use serde_json::json;
+    match fix {
+        Fix::AccessoryOrphan(c, i) => {
+            let Some((key, items)) = o.strips.get(c).and_then(|s| s.acc.orphans.get(usize::from(i))) else { return Vec::new() };
+            let mut out = Vec::new();
+            if !key.starts_with(crate::accessories::ON_PREFIX) {
+                let words: Vec<&str> = items.iter().map(|a| a.key()).collect();
+                out.push(("Move to end".to_string(), "accessory", json!({"strip": c.hex(), "at": "end", "add": words, "clear": [key]})));
+            }
+            out.push(("Remove".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": null})));
+            out
+        }
+        Fix::LinkAcrossPartition(c, n, i) => {
+            let Some(label) = o.strips.get(c).and_then(|s| s.rows.get(usize::from(i))).map(|r| r.label.clone()) else { return Vec::new() };
+            vec![
+                (format!("Split link at {label}"), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "split_at": label})),
+                ("Remove partition".to_string(), "accessory", json!({"strip": c.hex(), "at": label, "remove": ["partition"]})),
+            ]
+        }
+        Fix::LinkOnNonStrip(c) => o
+            .link_keys_off_strip(c)
+            .into_iter()
+            .take(1)
+            .map(|k| (format!("Remove {k}"), "setprop", json!({"component": c.hex(), "key": k, "value": null})))
+            .collect(),
+        Fix::LinkOrphan(c, n) => vec![
+            ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
+            ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
+        ],
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]

@@ -31,6 +31,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
+pub mod accessories;
+pub mod accessory_cmds;
 pub mod checks;
 pub mod commands;
 pub mod convert;
@@ -43,6 +45,7 @@ pub mod frame;
 pub mod generated;
 pub mod history;
 pub mod interact;
+pub mod link_lines;
 pub mod locations;
 pub mod look;
 pub mod merging;

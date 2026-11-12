@@ -75,6 +75,8 @@ pub enum Out {
     Select(Tab, usize),
     /// Write the shown table as CSV to this path.
     Export(String),
+    /// Brief 030: run this command line (the Accessory menu).
+    Run(String),
     Close,
 }
 
@@ -98,6 +100,8 @@ pub struct Reports {
     /// Brief 028: the strip the Terminals tab shows (`None`: all), and the strips to pick from.
     pub strip: Option<ecad_model::ComponentId>,
     pub strips: Vec<(ecad_model::ComponentId, String)>,
+    /// Brief 030: the Accessories check box is off (gap rows hidden; view only).
+    pub hide_accessories: bool,
     /// Brief 028: the cable whose core list the Cables tab shows instead of the schedule.
     pub cores_of: Option<ecad_model::CableId>,
     /// Where each Terminals row goes.
@@ -136,6 +140,7 @@ impl Reports {
             Tab::Terminals => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
             _ => o.revision,
         };
+        let revision = revision.wrapping_add(u64::from(self.hide_accessories));
         let key = (serial, revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
             self.filter();
@@ -148,7 +153,7 @@ impl Reports {
             (Tab::Cables, Some(k)) => o.core_table(k),
             (Tab::Cables, None) => o.cable_table(),
             (Tab::Terminals, _) => {
-                let (t, gos) = o.terminal_table(self.strip);
+                let (t, gos) = o.terminal_table_with(self.strip, !self.hide_accessories);
                 self.gos = gos;
                 t
             }
@@ -242,6 +247,31 @@ impl Reports {
                         })
                         .response
                         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.strip"));
+                        // Brief 030 (design 030 §2.4): accessories at the strip's ends and markers,
+                        // for the strip picked (or the only one).
+                        let only = match self.strips.as_slice() {
+                            [(c, _)] => Some(*c),
+                            _ => None,
+                        };
+                        let one = self.strip.or(only);
+                        let mut acc = !self.hide_accessories;
+                        if ui.checkbox(&mut acc, "Accessories").accessible_name("ecad.reports.terminals.acc").changed() {
+                            self.hide_accessories = !acc;
+                        }
+                        ui.add_enabled_ui(one.is_some(), |ui| {
+                            ui.menu_button(RichText::new("Accessory v").small(), |ui| {
+                                let Some(c) = one else { return };
+                                for (label, params) in accessory_menu(c) {
+                                    if ui.button(label).clicked() {
+                                        out = Some(Out::Run(format!("accessory {params}")));
+                                        ui.close();
+                                    }
+                                }
+                            })
+                            .response
+                            .on_disabled_hover_text("Pick one strip (or place terminals) first.")
+                            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.terminals.accessory"));
+                        });
                     }
                     if self.tab == Tab::Cables
                         && self.cores_of.is_some()
@@ -535,4 +565,19 @@ impl PrintBook {
         }
         out
     }
+}
+
+/// The Accessory menu's items (design 030 §2.4): (words, `accessory` params) for strip `c`.
+pub fn accessory_menu(c: ecad_model::ComponentId) -> Vec<(&'static str, serde_json::Value)> {
+    use serde_json::json;
+    let s = c.hex();
+    vec![
+        ("At start: end stop", json!({"strip": s, "at": "start", "add": ["end_stop"]})),
+        ("At start: strip label", json!({"strip": s, "at": "start", "add": ["strip_label"]})),
+        ("At end: end plate", json!({"strip": s, "at": "end", "add": ["end_plate"]})),
+        ("At end: end stop", json!({"strip": s, "at": "end", "add": ["end_stop"]})),
+        ("Marker on every position", json!({"strip": s, "at": "all", "on": true, "items": ["marker"]})),
+        ("Remove every marker", json!({"strip": s, "at": "all", "on": true, "items": null})),
+        ("Clear the ends", json!({"strip": s, "at": ["start", "end"], "items": null})),
+    ]
 }
