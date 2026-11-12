@@ -189,6 +189,11 @@ pub fn not_placeable(kind: &EntityKind) -> String {
 /// # Errors
 /// A message naming what ECAD pages do not support yet.
 pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, String> {
+    // Brief 033 (design 033 §11.1): a table is refused first, whatever its layer, so its words
+    // are the ones the user sees; the commit is refused, so nothing is written.
+    if matches!(e.kind, EntityKind::Table(_)) {
+        return Err(TABLE_REFUSED.into());
+    }
     if e.common.layer == MARKER_LAYER {
         return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
     }

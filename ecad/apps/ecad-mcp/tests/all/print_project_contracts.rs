@@ -73,7 +73,7 @@ fn a_table_the_user_placed_stays_and_is_a_check() {
 fn table_is_refused_on_an_ecad_page_in_clean_words() {
     let mut c = writer();
     let before = c.log();
-    let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "columns": 2}}));
+    let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "cols": 2}}));
     assert!(m.contains(ecad_cadcraft::convert::TABLE_REFUSED), "{m}");
     assert!(!m.contains("kinds"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");

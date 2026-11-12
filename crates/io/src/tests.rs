@@ -3713,3 +3713,67 @@ fn a_culled_page_draws_exactly_what_its_sheet_alone_draws() {
         assert_eq!(page.content, single.pages[0].content, "page {i}");
     }
 }
+
+/// One page's content of a `pages` plot of `d` over the window (0,0)-(100,100), uncompressed,
+/// lineweights on.
+fn window_page(d: &Drawing) -> String {
+    let o = serde_json::json!({"pages": [{"window": [[0.0, 0.0], [100.0, 100.0]], "paper": "A4", "landscape": true}], "compress": false, "lineweights": true});
+    pdf_read::read(&plot(d, &Space::Model, &o).unwrap()).pages.remove(0).content
+}
+
+#[test]
+fn culling_keeps_a_wide_stroke_whose_edge_reaches_the_window() {
+    let mut d = Drawing::new_metric();
+    let line = |y: f64, aci: u8| {
+        (
+            Common { color: Color::Index(aci), lineweight: Lineweight::Mm100(200), ..Common::default() },
+            EntityKind::Line(Line { a: Vec3::new(10.0, y, 0.0), b: Vec3::new(90.0, y, 0.0) }),
+        )
+    };
+    // Red: just above the window, its 2 mm stroke reaches in. Blue: well clear of it.
+    for (c, k) in [line(100.4, 1), line(130.0, 5)] {
+        d.add(&Space::Model, c, k).unwrap();
+    }
+    let content = window_page(&d);
+    assert!(content.contains("1 0 0 RG"), "the wide stroke at the edge is kept: {content}");
+    assert!(!content.contains("0 0 1 RG"), "the far line is culled: {content}");
+}
+
+#[test]
+fn culling_keeps_text_that_runs_into_the_window_and_drops_text_wholly_outside() {
+    let mut d = Drawing::new_metric();
+    let text = |x: f64, aci: u8| {
+        (
+            Common { color: Color::Index(aci), ..Common::default() },
+            EntityKind::Text(Text {
+                insert: Vec3::new(x, 50.0, 0.0),
+                align_pt: None,
+                height: 5.0,
+                value: "WWWWWWWWWW".into(),
+                rotation: 0.0,
+                width_factor: 1.0,
+                oblique: 0.0,
+                style: "Standard".into(),
+                halign: HAlign::Left,
+                valign: VAlign::Baseline,
+            }),
+        )
+    };
+    // Red starts left of the window and runs into it; blue lies wholly left of it.
+    for (c, k) in [text(-20.0, 1), text(-200.0, 5)] {
+        d.add(&Space::Model, c, k).unwrap();
+    }
+    let content = window_page(&d);
+    assert!(content.contains("1 0 0 rg") || content.contains("1 0 0 RG"), "text running in is kept: {content}");
+    assert!(!content.contains("0 0 1 rg") && !content.contains("0 0 1 RG"), "text wholly outside is culled: {content}");
+}
+
+#[test]
+fn a_plot_without_a_window_draws_everything() {
+    let (d, _) = book(3);
+    let content = check_pdf(&plot(&d, &Space::Model, &serde_json::json!({"paper": "A3", "compress": false})).unwrap());
+    for c in ["1 0 0 RG", "1 1 0 RG", "0 1 0 RG"] {
+        assert!(content.contains(c), "{c}: {content}");
+    }
+    assert_eq!(pdf_read::count(&content, "m"), 1 + 6, "the clip and every sheet's two paths: {content}");
+}

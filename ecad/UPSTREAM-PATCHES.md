@@ -93,4 +93,4 @@ be offered upstream to CADCraft (design 033 FU2).
 | File | What changes |
 | --- | --- |
 | `crates/io/src/pdf.rs` | `marks` skips a polyline, fill, mask or point primitive whose page-point bounds miss the plot area grown by its stroke width and `CULL_MARGIN_PT` (`outside_plot_area`); infinite lines and images are unchanged. Each page of a `pages` plot builds the whole model, so before this every page's content stream held every page's geometry and the file grew with pages squared. The page clips to the same area, so what shows is unchanged |
-| `crates/io/src/tests.rs` | tests: a page of a `pages` plot holds only its window's paths; 20 pages are at most 2.2 times 10; a culled page's content stream equals that of its sheet plotted alone |
+| `crates/io/src/tests.rs` | tests: a page of a `pages` plot holds only its window's paths; 20 pages are at most 2.2 times 10; a culled page's content stream equals that of its sheet plotted alone; a wide stroke whose edge reaches the window and text running into it are kept, text wholly outside is culled; a plot without a window draws everything |
