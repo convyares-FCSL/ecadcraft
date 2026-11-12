@@ -221,23 +221,90 @@ fn normalise(path: &Path) -> PathBuf {
     out
 }
 
-/// The places in one product source file (`file`, under `root`, the workspace folder) that read a
-/// file under `root/dev/` (`include_str!`, `include_bytes!`, `#[path]`; design 029 §12.3 rule 3).
-fn dev_file_reads(root: &Path, file: &Path, text: &str) -> Vec<String> {
+/// `text` without `//` comments (a `//` inside a string literal is kept).
+fn strip_line_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let mut in_str = false;
+        let mut prev = '\0';
+        let mut cut = line.len();
+        for (i, c) in line.char_indices() {
+            if c == '"' && prev != '\\' {
+                in_str = !in_str;
+            } else if !in_str && c == '/' && prev == '/' {
+                cut = i - 1;
+                break;
+            }
+            prev = c;
+        }
+        out.push_str(line.get(..cut).unwrap_or(line));
+        out.push('\n');
+    }
+    out
+}
+
+/// The string literals in `span`, in order.
+fn literals(span: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur: Option<String> = None;
+    let mut prev = '\0';
+    for c in span.chars() {
+        match (&mut cur, c) {
+            (None, '"') => cur = Some(String::new()),
+            (Some(s), '"') if prev != '\\' => {
+                out.push(std::mem::take(s));
+                cur = None;
+            }
+            (Some(s), c) => s.push(c),
+            (None, _) => {}
+        }
+        prev = c;
+    }
+    out
+}
+
+/// The places in one product source file (`file`, in the crate folder `krate`, under `root`, the
+/// workspace folder) that read a file under `root/dev/` (design 029 §12.3 rule 3): an
+/// `include_str!`, `include_bytes!` or `include!` invocation, or a `#[path]` attribute, read whole
+/// (it may span lines), with its string literals joined; a path built on `CARGO_MANIFEST_DIR` is
+/// resolved from the crate folder, any other from the file's folder. Comments are skipped.
+fn dev_file_reads(root: &Path, krate: &Path, file: &Path, text: &str) -> Vec<String> {
     let dev = normalise(&root.join("dev"));
     let dir = file.parent().unwrap_or(root);
+    let code = strip_line_comments(text);
     let mut out = Vec::new();
-    for (i, line) in text.lines().enumerate() {
-        let code = line.trim();
-        if code.starts_with("//") {
-            continue;
-        }
-        for marker in ["include_str!(", "include_bytes!(", "#[path"] {
-            let Some(at) = code.find(marker) else { continue };
-            let rest = code.get(at + marker.len()..).unwrap_or_default();
-            let Some(lit) = rest.split('"').nth(1) else { continue };
-            if normalise(&dir.join(lit)).starts_with(&dev) {
-                out.push(format!("{}:{}: {code}", file.display(), i + 1));
+    for marker in ["include_str!", "include_bytes!", "include!", "#[path"] {
+        let mut from = 0;
+        while let Some(found) = code.get(from..).and_then(|c| c.find(marker)) {
+            let at = from + found;
+            from = at + marker.len();
+            // The invocation runs to the matching close of its first bracket.
+            let rest = code.get(from..).unwrap_or_default();
+            let mut depth = 0i32;
+            let mut end = rest.len();
+            for (i, c) in rest.char_indices() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => {
+                        depth -= 1;
+                        if depth <= 0 {
+                            end = i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let span = rest.get(..end).unwrap_or(rest);
+            let joined: String = literals(span).into_iter().filter(|l| l != "CARGO_MANIFEST_DIR").collect();
+            if joined.is_empty() {
+                continue;
+            }
+            let target = if span.contains("CARGO_MANIFEST_DIR") { krate.join(joined.trim_start_matches(['/', '\\'])) } else { dir.join(&joined) };
+            if normalise(&target).starts_with(&dev) {
+                let line = code.get(..at).map_or(0, |c| c.matches('\n').count()) + 1;
+                let shown = text.lines().nth(line - 1).unwrap_or_default().trim();
+                out.push(format!("{}:{line}: {shown}", file.display()));
             }
         }
     }
@@ -281,7 +348,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                 }
                 _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
             }
-            out.extend(dev_file_reads(&root, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
+            out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
         }
     }
     for (path, brief) in DEV_FEATURE_ALLOWLIST {
@@ -382,8 +449,10 @@ fn ci() -> Result<(), String> {
 const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed|clean-builds>
   test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default: the branch's upstream, so what
-        was not pushed yet, else HEAD; committed or not); --with-dependents also tests every
-        crate that depends on them (CI does); --dry-run only names the crates
+        was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
+        committed or not); --with-dependents also tests every crate that depends on them (they
+        run at the QA gate until CI runs them on pull requests into dev);
+        --dry-run only names the crates
   clean-builds --root <folder> [--dry-run]
         delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
         skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
@@ -526,8 +595,8 @@ fn git_lines(dir: &Path, args: &[&str]) -> Result<Vec<String>, String> {
 /// `cargo xtask test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]`:
 /// runs `cargo test --all-features` for [`crates_to_test`] of the files changed since the merge
 /// base with `<ref>` (default: the branch's upstream, `@{upstream}`, so what was not pushed yet;
-/// without one, `HEAD`), committed, staged, unstaged or untracked. Dependents only with
-/// `--with-dependents` (CI runs them on pull requests into `dev`).
+/// without one, `origin/dev`, so everything since the branch left it), committed, staged,
+/// unstaged or untracked. Dependents only with `--with-dependents`.
 fn test_changed(args: &[String]) -> Result<(), String> {
     let (ours, passed) = match args.iter().position(|a| a == "--") {
         Some(i) => (args.get(..i).unwrap_or_default(), args.get(i + 1..).unwrap_or_default()),
@@ -549,10 +618,12 @@ fn test_changed(args: &[String]) -> Result<(), String> {
     let repo = root.parent().ok_or("no repository root")?;
     let base = match base {
         Some(b) => b.to_string(),
-        None => ["@{upstream}", "HEAD"]
+        // The upstream (what was not pushed yet); a branch never pushed: since it left `origin/dev`
+        // (the diff below is from the merge base).
+        None => ["@{upstream}", "origin/dev", "HEAD"]
             .into_iter()
             .find(|b| git_lines(repo, &["rev-parse", "--verify", "--quiet", b]).is_ok())
-            .ok_or("test-changed: no upstream and no HEAD; pass --base <ref>")?
+            .ok_or("test-changed: no upstream, no origin/dev and no HEAD; pass --base <ref>")?
             .to_string(),
     };
     let mut changed: BTreeSet<String> = BTreeSet::new();
@@ -705,8 +776,16 @@ mod tests {
     #[test]
     fn product_sources_do_not_read_files_under_dev() {
         let root = Path::new("C:/w");
+        let krate = Path::new("C:/w/apps/ecad-mcp");
         let file = Path::new("C:/w/apps/ecad-mcp/src/demo.rs");
         let rows: &[(&str, usize)] = &[
+            // Tester 029 F1: the path on the next line, `include!`, and a path built on the crate
+            // folder.
+            ("pub const T: &str = include_str!(\n    \"../../../dev/ecad-inspector/page/index.html\"\n);", 1),
+            ("include!(\"../../../dev/ecad-inspector/src/text.rs\");", 1),
+            ("const P: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../dev/ecad-inspector/page/index.html\"));", 1),
+            ("const Q: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../examples/demo/commands.jsonl\"));", 0),
+            ("let url = \"http://x\"; // include_str!(\"../../../dev/x\")", 0),
             ("pub const C: &str = include_str!(\"../../../examples/demo/commands.jsonl\");", 0),
             ("pub const P: &str = include_str!(\"../../../dev/ecad-inspector/page/index.html\");", 1),
             ("static B: &[u8] = include_bytes!(\"../../../dev/x.bin\");", 1),
@@ -714,7 +793,7 @@ mod tests {
             ("// include_str!(\"../../../dev/x\") in a comment", 0),
         ];
         for (text, want) in rows {
-            assert_eq!(dev_file_reads(root, file, text).len(), *want, "{text}");
+            assert_eq!(dev_file_reads(root, krate, file, text).len(), *want, "{text}");
         }
     }
 

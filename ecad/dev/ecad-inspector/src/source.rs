@@ -3,10 +3,11 @@
 //! session can be another source later.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
-use ecad_file::v2::verify::{VerifyReport, verify, verify_chain};
+use ecad_file::v2::verify::{VerifyReport, verify_chain, verify_stoppable};
 use ecad_file::v2::{ProjectV2, ReportV2, Store};
 use ecad_model::Document;
 use serde_json::{Value, json};
@@ -101,6 +102,9 @@ pub struct FileSource {
     opened: Result<Opened, Problem>,
     chain: Option<VerifyReport>,
     verify: Arc<Mutex<(Instant, VerifyState)>>,
+    /// Set when this source is dropped (replaced by a dropped file or a reload): its Verify thread
+    /// stops at its next check.
+    stop: Arc<AtomicBool>,
     /// The path, length and modified time it was read with (served by path).
     identity: Option<(PathBuf, u64, Option<SystemTime>)>,
 }
@@ -237,6 +241,7 @@ impl FileSource {
             me.problem = Some(p);
             return me;
         }
+        // One copy into the database; a second only if the project does not open (below).
         let bytes = Arc::new(bytes);
         me.load(|| Store::from_bytes(bytes.as_ref().clone()));
         me
@@ -252,15 +257,17 @@ impl FileSource {
             opened: Err(no),
             chain: None,
             verify: Arc::new(Mutex::new((Instant::now(), VerifyState::NotRun))),
+            stop: Arc::new(AtomicBool::new(false)),
             identity: None,
         }
     }
 
-    /// Open the store (twice: one handle for the raw views and Verify, one the project keeps),
-    /// classify its meta, run the chain check, open the project, and start Verify.
+    /// Open the store, classify its meta, run the chain check, open the project on the same store
+    /// (a second handle only when the project does not open, for the raw views), and start
+    /// Verify.
     fn load(&mut self, open: impl Fn() -> Result<Store, ecad_file::v2::StoreError>) {
-        let store = match open() {
-            Ok(s) => Arc::new(s),
+        let first = match open() {
+            Ok(s) => s,
             Err(e) => {
                 self.problem = Some(Problem::new(
                     "unreadable",
@@ -270,28 +277,38 @@ impl FileSource {
                 return;
             }
         };
-        self.store = Some(store.clone());
-        if let Some(p) = classify_meta(&store) {
+        if let Some(p) = classify_meta(&first) {
             self.problem = Some(p);
+            self.store = Some(Arc::new(first));
             return;
         }
-        self.chain = Some(verify_chain(&store));
-        self.opened = match open().map_err(|e| e.to_string()).and_then(|s| ProjectV2::open(s, 0x1A5_EC7, "ecadinspect").map_err(|e| e.to_string())) {
+        self.chain = Some(verify_chain(&first));
+        let store = match ProjectV2::open(first, 0x1A5_EC7, "ecadinspect") {
             Ok(o) => {
                 let branch = o.project.branch_record().name.clone();
-                Ok(Opened { doc: o.ledger.document().clone(), report: o.report, branch })
+                self.opened = Ok(Opened { doc: o.ledger.document().clone(), report: o.report, branch });
+                o.project.store().clone()
             }
-            Err(e) => Err(Problem::new("unavailable", format!("The project did not open: {e}."), OPEN_WAY_OUT)),
+            Err(e) => {
+                self.opened = Err(Problem::new("unavailable", format!("The project did not open: {e}."), OPEN_WAY_OUT));
+                match open() {
+                    Ok(s) => Arc::new(s),
+                    Err(_) => return,
+                }
+            }
         };
+        self.store = Some(store.clone());
         // Verify on its own thread (design 029 §3.4): nothing waits for it. A replaced source drops
         // its result with it.
         let slot = self.verify.clone();
+        let stop = self.stop.clone();
         if let Ok(mut g) = slot.lock() {
             *g = (Instant::now(), VerifyState::Running { elapsed_ms: 0 });
         }
         let spawned = std::thread::Builder::new().name("ecadinspect-verify".into()).spawn(move || {
             let started = Instant::now();
-            let report = verify(&store);
+            // Stopped when the source is dropped: nobody reads the result any more.
+            let Some(report) = verify_stoppable(&store, &|| stop.load(Ordering::Relaxed)) else { return };
             let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             if let Ok(mut g) = slot.lock() {
                 g.1 = VerifyState::Done { elapsed_ms, report };
@@ -306,19 +323,31 @@ impl FileSource {
 
     /// Wait for Verify to finish (tests and `ecadinspect verify`-like callers), at most `limit`.
     pub fn wait_verified(&self, limit: std::time::Duration) -> VerifyState {
-        let until = Instant::now() + limit;
+        // A limit too far ahead to add is no limit.
+        let until = Instant::now().checked_add(limit);
         loop {
             let s = self.verify();
-            if !matches!(s, VerifyState::Running { .. }) || Instant::now() >= until {
+            if !matches!(s, VerifyState::Running { .. }) || until.is_some_and(|u| Instant::now() >= u) {
                 return s;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 
+    /// Whether this source asked its Verify thread to stop (tests).
+    pub fn stopping(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
     /// The path it was opened from, when served by path.
     pub fn path(&self) -> Option<&Path> {
         self.identity.as_ref().map(|(p, _, _)| p.as_path())
+    }
+}
+
+impl Drop for FileSource {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 

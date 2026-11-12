@@ -4,15 +4,24 @@
 //! # Semantics
 //! - The checkouts are the folders directly under `<folder>` and under `<folder>/_tmp`. In each,
 //!   `ecad/target` and `target` are deleted.
-//! - A build folder a cargo or rustc is using is skipped: on Windows, one whose `.cargo-lock` is
-//!   held open (cargo holds it while it builds), or whose deletion hits a locked file (skipped
-//!   then, not an error; what was deleted before it stays deleted); elsewhere, one under the
-//!   working folder or on the command line of a running `cargo` or `rustc`.
+//! - A build folder in use is skipped with nothing touched. It is first renamed aside
+//!   (`target.deleting-<pid>`), which fails while a program holds a file in it (a running test or
+//!   app, or a build on Windows), and only the renamed folder is deleted. On Windows a held
+//!   `.cargo-lock` also counts as in use; elsewhere, a running `cargo` or `rustc` whose working
+//!   folder or command line names the checkout. Folders left renamed by an interrupted run are
+//!   deleted on the next.
 //! - Worktrees of this repository under `<folder>` whose branch is merged into `origin/dev` (after
-//!   `git fetch origin dev`) are removed with `git worktree remove`, which refuses a worktree with
-//!   uncommitted changes. Merged means: the branch tip is in `origin/dev` but not on its
-//!   first-parent line, so it came in through a merge; a branch just cut from `dev` with nothing
-//!   of its own is not merged. The main worktree and the one running this are never removed.
+//!   `git fetch origin dev`) are removed with `git worktree remove` (never forced). Merged means:
+//!   the branch tip is in `origin/dev` but not on its first-parent line, so it came in through a
+//!   merge, and no commit was added to the branch after it (its tip would not be in `origin/dev`).
+//!   A branch just cut from `dev` with nothing of its own is not merged. Kept, and said so:
+//!   - a worktree with uncommitted changes or untracked files;
+//!   - one holding ignored files other than its build folders (`target`, `ecad/target`), which
+//!     `git worktree remove` would delete with it (notes, `private/`, kept projects);
+//!   - a branch with an open pull request (`gh pr list`); without a working `gh`, a branch
+//!     `docs/features.md` lists as not done (its State is not "In `dev`").
+//!
+//!   The main worktree and the one running this are never removed.
 //! - `--dry-run` deletes and removes nothing, and says what it would do.
 //! - It prints the space freed (or that would be), in GB.
 
@@ -92,7 +101,11 @@ pub enum Outcome {
     Skipped(u64),
 }
 
-/// Delete (or, with `dry_run`, measure) the build folder `target`.
+/// The prefix of a build folder renamed aside for deletion.
+const ASIDE: &str = "target.deleting-";
+
+/// Delete (or, with `dry_run`, measure) the build folder `target`: renamed aside first, so a
+/// folder in use is left exactly as it was.
 pub fn clean_target(target: &Path, dry_run: bool) -> Outcome {
     let bytes = size(target);
     if in_use(target) {
@@ -101,10 +114,25 @@ pub fn clean_target(target: &Path, dry_run: bool) -> Outcome {
     if dry_run {
         return Outcome::WouldDelete(bytes);
     }
-    match std::fs::remove_dir_all(target) {
-        Ok(()) => Outcome::Deleted(bytes),
-        Err(_) => Outcome::Skipped(bytes.saturating_sub(size(target))),
+    let aside = target.with_file_name(format!("{ASIDE}{}", std::process::id()));
+    if std::fs::rename(target, &aside).is_err() {
+        return Outcome::Skipped(0);
     }
+    match std::fs::remove_dir_all(&aside) {
+        Ok(()) => Outcome::Deleted(bytes),
+        Err(_) => Outcome::Skipped(bytes.saturating_sub(size(&aside))),
+    }
+}
+
+/// Folders an earlier, interrupted run renamed aside in `dir`.
+fn leftovers(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(ASIDE)))
+        .collect()
 }
 
 /// A worktree from `git worktree list --porcelain`: its folder and branch (`None`: detached or
@@ -130,7 +158,13 @@ pub fn parse_worktrees(text: &str) -> Vec<Worktree> {
 
 /// Whether `path` is under `root` (case-insensitive, `\` and `/` alike).
 pub fn under(path: &Path, root: &Path) -> bool {
-    let norm = |p: &Path| p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_lowercase();
+    // Canonical when the folder exists, so a short Windows name (`CARLVO~1`) and the long one git
+    // prints compare equal.
+    let norm = |p: &Path| {
+        let p = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let t = p.to_string_lossy().replace('\\', "/");
+        t.strip_prefix("//?/").unwrap_or(&t).trim_end_matches('/').to_lowercase()
+    };
     let (p, r) = (norm(path), norm(root));
     p.strip_prefix(&r).is_some_and(|rest| rest.starts_with('/'))
 }
@@ -144,7 +178,8 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// The worktrees under `root` whose branch is merged into `origin/dev`, as defined above.
+/// The worktrees under `root` whose branch is merged into `origin/dev`, as defined above (before
+/// the checks that keep one).
 fn merged_worktrees(repo: &Path, root: &Path) -> Result<Vec<Worktree>, String> {
     let all = parse_worktrees(&git(repo, &["worktree", "list", "--porcelain"])?);
     let first_parent: BTreeSet<String> = git(repo, &["rev-list", "--first-parent", "origin/dev"])?.lines().map(str::to_string).collect();
@@ -164,6 +199,66 @@ fn merged_worktrees(repo: &Path, root: &Path) -> Result<Vec<Worktree>, String> {
         }
     }
     Ok(out)
+}
+
+/// Why `w` (merged) must be kept, if it must: uncommitted or untracked files, ignored files other
+/// than its build folders, an open pull request (`pr_open`: `None` when it cannot be asked), or,
+/// when that cannot be asked, a branch in `not_done`.
+pub fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, not_done: &BTreeSet<String>) -> Option<String> {
+    let status = match git(&w.path, &["status", "--porcelain", "--ignored"]) {
+        Ok(s) => s,
+        Err(e) => return Some(format!("its status could not be read: {e}")),
+    };
+    let build = |p: &str| {
+        let p = p.trim().trim_matches('"').replace('\\', "/");
+        p == "target/" || p == "ecad/target/" || p.starts_with("target/") || p.starts_with("ecad/target/") || p.contains(ASIDE)
+    };
+    let mut changed = Vec::new();
+    let mut ignored = Vec::new();
+    for line in status.lines() {
+        match line.strip_prefix("!! ") {
+            Some(p) if build(p) => {}
+            Some(p) => ignored.push(p.to_string()),
+            None => changed.push(line.get(3..).unwrap_or(line).to_string()),
+        }
+    }
+    if !changed.is_empty() {
+        return Some(format!("uncommitted changes or untracked files ({})", changed.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
+    }
+    if !ignored.is_empty() {
+        return Some(format!("it holds ignored files git would delete with it ({})", ignored.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
+    }
+    let branch = w.branch.as_deref().unwrap_or_default();
+    match pr_open(branch) {
+        Some(true) => Some("it has an open pull request".into()),
+        Some(false) => None,
+        None if not_done.contains(branch) => Some("docs/features.md lists it as not done (and gh is not available to ask)".into()),
+        None => None,
+    }
+}
+
+/// The branches `docs/features.md` lists for features whose State is not "In `dev`".
+pub fn not_done_branches(features_md: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for line in features_md.lines().filter(|l| l.starts_with('|')) {
+        let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+        let (Some(branches), Some(state)) = (cells.get(2), cells.get(4)) else { continue };
+        if state.starts_with("In `dev`") || state.starts_with("State") || state.starts_with("---") {
+            continue;
+        }
+        out.extend(branches.split('`').skip(1).step_by(2).filter(|b| b.contains('/')).map(str::to_string));
+    }
+    out
+}
+
+/// Whether `branch` has an open pull request, by `gh` in `repo`; `None` when `gh` cannot say.
+fn gh_pr_open(repo: &Path, branch: &str) -> Option<bool> {
+    let out = Command::new("gh").args(["pr", "list", "--head", branch, "--state", "open", "--json", "number"]).current_dir(repo).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    Some(v.as_array().is_some_and(|a| !a.is_empty()))
 }
 
 fn gb(bytes: u64) -> f64 {
@@ -188,6 +283,16 @@ pub fn clean_builds(args: &[String], ecad: &Path) -> Result<(), String> {
     }
     let (mut freed, mut skipped) = (0u64, 0usize);
     for c in checkouts(&root) {
+        for old in leftovers(&c).into_iter().chain(leftovers(&c.join("ecad"))) {
+            let b = size(&old);
+            if dry_run {
+                println!("would delete {} (left by an earlier run, {:.2} GB)", old.display(), gb(b));
+                freed += b;
+            } else if std::fs::remove_dir_all(&old).is_ok() {
+                println!("deleted {} (left by an earlier run, {:.2} GB)", old.display(), gb(b));
+                freed += b;
+            }
+        }
         for t in [c.join("ecad").join("target"), c.join("target")] {
             if !t.is_dir() {
                 continue;
@@ -213,10 +318,16 @@ pub fn clean_builds(args: &[String], ecad: &Path) -> Result<(), String> {
     if let Err(e) = git(repo, &["fetch", "--quiet", "origin", "dev"]) {
         println!("note: git fetch origin dev failed ({e}); using the origin/dev already here");
     }
+    let not_done = not_done_branches(&std::fs::read_to_string(ecad.join("docs").join("features.md")).unwrap_or_default());
+    let pr_open = |b: &str| gh_pr_open(repo, b);
     match merged_worktrees(repo, &root) {
         Ok(ws) => {
             for w in ws {
                 let name = w.branch.as_deref().unwrap_or_default();
+                if let Some(why) = keep_reason(&w, &pr_open, &not_done) {
+                    println!("kept worktree {} ({name}, merged into origin/dev): {why}", w.path.display());
+                    continue;
+                }
                 if dry_run {
                     println!("would remove worktree {} ({name}, merged into origin/dev)", w.path.display());
                     continue;
@@ -287,6 +398,105 @@ mod tests {
         drop(held);
         assert_eq!(clean_target(&t, false), Outcome::Deleted(4000));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Reviewer 029: a build folder with any file held open deep inside is left as it was.
+    #[cfg(windows)]
+    #[test]
+    fn a_build_folder_with_a_file_held_deep_inside_is_left_untouched() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = temp("held-deep");
+        let t = root.join("c/ecad/target");
+        let deep = t.join("debug/deps/incremental/x/held.bin");
+        file(&deep, 100);
+        file(&t.join("debug/other"), 300);
+        // As a running test executable is held: shared for reading only.
+        let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(&deep).unwrap();
+        assert_eq!(clean_target(&t, false), Outcome::Skipped(0));
+        assert!(deep.is_file() && t.join("debug/other").is_file(), "nothing touched");
+        assert!(leftovers(&root.join("c/ecad")).is_empty());
+        drop(held);
+        assert_eq!(clean_target(&t, false), Outcome::Deleted(400));
+        assert!(!t.exists() && leftovers(&root.join("c/ecad")).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn sh(dir: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+    }
+
+    /// A worktree `name` on `feature/<name>` with one commit, merged into `dev` with a merge commit.
+    fn merged_feature(repo: &Path, wt: &Path, name: &str) -> PathBuf {
+        let path = wt.join(name);
+        let branch = format!("feature/{name}");
+        sh(repo, &["worktree", "add", "-q", "-b", &branch, path.to_str().unwrap(), "dev"]);
+        std::fs::write(path.join(format!("{name}.txt")), name).unwrap();
+        sh(&path, &["add", "."]);
+        sh(&path, &["commit", "-q", "-m", name]);
+        sh(repo, &["merge", "-q", "--no-ff", "-m", &format!("merge {name}"), &branch]);
+        path
+    }
+
+    /// Reviewer 029: merged worktrees are removed only when nothing would be lost.
+    #[test]
+    fn merged_worktrees_are_kept_when_something_would_be_lost() {
+        let base = temp("worktrees");
+        let repo = base.join("repo");
+        let wt = base.join("features");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        sh(&repo, &["init", "-q", "-b", "dev"]);
+        std::fs::write(repo.join(".gitignore"), "target/\nprivate/\n").unwrap();
+        sh(&repo, &["add", "."]);
+        sh(&repo, &["commit", "-q", "-m", "start"]);
+        let clean = merged_feature(&repo, &wt, "clean");
+        let ignored = merged_feature(&repo, &wt, "ignored");
+        let dirty = merged_feature(&repo, &wt, "dirty");
+        let _pr = merged_feature(&repo, &wt, "pr");
+        let later = merged_feature(&repo, &wt, "later");
+        sh(&repo, &["worktree", "add", "-q", "-b", "feature/fresh", wt.join("fresh").to_str().unwrap(), "dev"]);
+        sh(&repo, &["update-ref", "refs/remotes/origin/dev", "dev"]);
+        // After the merge: a commit on `later`, build output in `clean`, a note in `ignored`, an
+        // edit in `dirty`.
+        std::fs::write(later.join("more.txt"), "more").unwrap();
+        sh(&later, &["add", "."]);
+        sh(&later, &["commit", "-q", "-m", "more"]);
+        file(&clean.join("target/debug/x"), 10);
+        file(&ignored.join("private/notes.md"), 10);
+        std::fs::write(dirty.join("dirty.txt"), "edited").unwrap();
+        let names = |ws: &[Worktree]| -> Vec<String> { ws.iter().map(|w| w.path.file_name().unwrap().to_string_lossy().into_owned()).collect() };
+        let merged = merged_worktrees(&repo, &wt).unwrap();
+        assert_eq!(names(&merged), ["clean", "dirty", "ignored", "pr"], "not `later` (a commit after its merge) nor `fresh` (nothing of its own)");
+        let pr_open = |b: &str| Some(b == "feature/pr");
+        let none = BTreeSet::new();
+        let reasons: Vec<(String, Option<String>)> =
+            merged.iter().map(|w| (names(std::slice::from_ref(w))[0].clone(), keep_reason(w, &pr_open, &none))).collect();
+        for (name, why) in &reasons {
+            match name.as_str() {
+                "clean" => assert_eq!(why, &None, "build output alone does not keep it"),
+                "dirty" => assert!(why.as_deref().is_some_and(|w| w.contains("uncommitted")), "{why:?}"),
+                "ignored" => assert!(why.as_deref().is_some_and(|w| w.contains("ignored") && w.contains("private")), "{why:?}"),
+                "pr" => assert!(why.as_deref().is_some_and(|w| w.contains("open pull request")), "{why:?}"),
+                other => panic!("{other}"),
+            }
+        }
+        // Without gh: features.md's not-done branches are kept.
+        let no_gh = |_: &str| None;
+        let md = "| Feature | Branch | Briefs | State |\n| --- | --- | --- | --- |\n| A | `feature/pr` | 1 | Designing |\n| B | `feature/clean` | 2 | In `dev` |\n";
+        let not_done = not_done_branches(md);
+        assert_eq!(not_done.iter().collect::<Vec<_>>(), ["feature/pr"]);
+        let pr_w = merged.iter().find(|w| w.branch.as_deref() == Some("feature/pr")).unwrap();
+        assert!(keep_reason(pr_w, &no_gh, &not_done).is_some_and(|w| w.contains("features.md")));
+        let clean_w = merged.iter().find(|w| w.branch.as_deref() == Some("feature/clean")).unwrap();
+        assert_eq!(keep_reason(clean_w, &no_gh, &not_done), None);
+        let _ = Command::new("git").args(["worktree", "prune"]).current_dir(&repo).output();
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

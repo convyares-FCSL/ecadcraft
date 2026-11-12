@@ -556,3 +556,17 @@ fn verify_report_lists_its_failures_apart() {
     let rep = VerifyReport::default();
     assert!(rep.failures.is_empty() && !rep.ok);
 }
+
+/// Reviewer 029: the inspector stops the Verify of a file it replaced.
+#[test]
+fn verify_stops_when_asked() {
+    let f = build("verify-stop");
+    let s = store(&f.path);
+    assert_eq!(ecad_file::v2::verify::verify_stoppable(&s, &|| true), None);
+    let asked = std::cell::Cell::new(0u32);
+    let r = ecad_file::v2::verify::verify_stoppable(&s, &|| {
+        asked.set(asked.get() + 1);
+        false
+    });
+    assert!(r.is_some_and(|r| r.ok) && asked.get() > 2, "asked {} times", asked.get());
+}

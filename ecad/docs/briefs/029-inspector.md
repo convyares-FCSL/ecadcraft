@@ -29,7 +29,7 @@ The brief also makes **full Verify correct and fast** in `ecad-file`. Today it c
 invariant after every transaction and does not finish on the large tier. The new Verify checks
 each transaction exactly as commit does, runs the full check at each snapshot and at the end, and
 must stay within about 10 s on the large tier. The app's **Verify file**, `ecadinspect verify` and
-the check before a revision is issued all use it.
+the inspector all use it.
 
 ## Owner decisions (2026-11-12)
 
@@ -110,7 +110,12 @@ design Q2); anything that writes.
 
 ## Format and ops
 
-None. No FP items. No new command, so no MCP contract test (the 011 rule covers commands).
+**FP1, the tag rule (overseer ruling, 2026-11-12):** an optional `tag_rule` on `versions` rows
+records the rule the snapshot's cached tag marks (`model:meta`) were computed with; marks of an
+older rule (files written before brief 026) are recomputed from the history on open, Verify
+reports them as information, and every save writes the current rule. Builds before 029 open files
+that carry it. Design 029 §10 and EEP-0005 §3.4. No new op. No new command, so no MCP contract
+test (the 011 rule covers commands).
 
 **DN1, new dependency (for the overseer, owner decision 2026-11-12):** `tungstenite`, sync, pinned
 exactly (`=` the current release when the worker starts), `default-features = false` with only
@@ -142,8 +147,8 @@ exactly (`=` the current release when the worker starts), `default-features = fa
 5. **Bench, large tier, native release** (`cargo xtask bench --tier large`): `verify` takes at
    most **10 s** on the large tier's v2 file (`large-lean.v2.ecad`: 33 998 transactions, 500
    pages, 25 000 wires), with a goal of 5 s; `verify_chain` takes at most 3 s. The rows are in the bench report beside open and save.
-6. The app's **Verify file**, `ecadinspect verify` and the check before a revision is issued all
-   go through the new `verify`, and their existing tests pass unchanged.
+6. The app's **Verify file**, `ecadinspect verify` and the inspector all go through the new
+   `verify`, and their existing tests pass unchanged. (Correction, worker, fix round of 2026-11-12: no check before a revision is issued exists; issuing a revision does not run Verify. Acceptance 6 now names what exists. Adding such a check is a separate decision.)
 7. `ecadinspect serve demo.v2.ecad` prints a `http://127.0.0.1:<port>/?t=<token>` address. Opened,
    it shows all six views in under 1 s. On the large bench file, Project shows in under 3 s.
 8. The server refuses `GET /` or a WebSocket upgrade without the token, with a `Host` other than

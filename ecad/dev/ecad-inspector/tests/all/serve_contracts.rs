@@ -207,3 +207,43 @@ fn the_banner_prints_the_address_with_the_token() {
     assert!(b.contains(&format!("open http://127.0.0.1:{}/?t={}", s.port(), s.token())), "{b}");
     assert_eq!(s.token().len(), 24, "96 bits as hex");
 }
+
+/// Reviewer 029: at most `MAX_CONNECTIONS` connections at once; more are answered 503.
+#[test]
+fn connections_are_capped() {
+    let dir = TempDir::new("serve-cap");
+    let (port, _) = start(Some(&rich(&dir, "Main")));
+    // Connections that never send a head hold their places.
+    let held: Vec<TcpStream> = (0..ecad_inspector::serve::MAX_CONNECTIONS).map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap()).collect();
+    std::thread::sleep(Duration::from_millis(200));
+    let (code, _) = get(port, "/", &format!("127.0.0.1:{port}"));
+    assert_eq!(code, 503);
+    drop(held);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(get(port, "/", &format!("127.0.0.1:{port}")).0, 403, "served again (403: no token)");
+}
+
+/// Reviewer 029: a head that does not arrive within the time limit is answered 408.
+#[test]
+#[ignore = "slow: waits out the 10 s head time limit"]
+fn a_slow_head_times_out() {
+    let dir = TempDir::new("serve-slow-head");
+    let (port, _) = start(Some(&rich(&dir, "Main")));
+    let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    // A byte every second: never idle long enough for a read timeout alone.
+    let started = std::time::Instant::now();
+    for b in b"GET / HTTP/1.1\r\nHost: x".iter() {
+        if c.write_all(&[*b]).is_err() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(800));
+        if started.elapsed() > Duration::from_secs(12) {
+            break;
+        }
+    }
+    let mut out = String::new();
+    let _ = c.read_to_string(&mut out);
+    assert!(out.starts_with("HTTP/1.1 408"), "{out}");
+    assert!(started.elapsed() < Duration::from_secs(15));
+}

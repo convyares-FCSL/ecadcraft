@@ -19,7 +19,7 @@
 //! the build, so Verify costs and decides the same in tests and in release.
 //!
 //! It reads everything, so it runs only on request (the debugger's Verify file, `ecadinspect
-//! verify`, the inspector, before a revision is issued), never as part of open.
+//! verify`, the inspector), never as part of open.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -84,7 +84,7 @@ struct Chained {
 /// chunks. Linear in the file; no replay, so `snapshots` and `full_checks` stay 0.
 pub fn verify_chain(store: &Store) -> VerifyReport {
     let mut rep = VerifyReport { ok: true, ..VerifyReport::default() };
-    chain_part(store, &mut rep);
+    chain_part(store, &mut rep, &|| false);
     if rep.ok {
         rep.lines.push("the chain verifies".into());
     }
@@ -94,19 +94,32 @@ pub fn verify_chain(store: &Store) -> VerifyReport {
 /// Verify the whole file: [`verify_chain`], then the replay with the commit-time check, then
 /// the full check at every snapshot and branch end.
 pub fn verify(store: &Store) -> VerifyReport {
+    verify_stoppable(store, &|| false).unwrap_or_default()
+}
+
+/// [`verify`], asking `stop` between slices of rows and between branches; `None` when it said
+/// stop (the inspector drops the Verify of a file it replaced).
+pub fn verify_stoppable(store: &Store, stop: &dyn Fn() -> bool) -> Option<VerifyReport> {
     let mut rep = VerifyReport { ok: true, ..VerifyReport::default() };
-    let Some(chained) = chain_part(store, &mut rep) else {
-        return rep;
+    let Some(chained) = chain_part(store, &mut rep, stop) else {
+        return (!stop()).then_some(rep);
     };
-    replay_part(chained, &mut rep);
+    if stop() {
+        return None;
+    }
+    replay_part(chained, &mut rep, stop);
+    if stop() {
+        return None;
+    }
     if rep.ok {
         rep.lines.push("everything verifies".into());
     }
-    rep
+    Some(rep)
 }
 
-/// Part (a). `None` when the file cannot be read far enough to list its branches.
-fn chain_part(store: &Store, rep: &mut VerifyReport) -> Option<Chained> {
+/// Part (a). `None` when the file cannot be read far enough to list its branches, or `stop` said
+/// stop.
+fn chain_part(store: &Store, rep: &mut VerifyReport, stop: &dyn Fn() -> bool) -> Option<Chained> {
     let r = match store.reader() {
         Ok(r) => r,
         Err(e) => {
@@ -137,7 +150,10 @@ fn chain_part(store: &Store, rep: &mut VerifyReport) -> Option<Chained> {
     let mut checked: BTreeSet<Hash> = BTreeSet::new();
     let mut branches = Vec::with_capacity(listed.len());
     for (id, rec) in listed {
-        if let Some(rows) = chain_branch(&r, project, id, rec, rep, &mut referenced, &mut checked) {
+        if stop() {
+            return None;
+        }
+        if let Some(rows) = chain_branch(&r, project, id, rec, rep, &mut referenced, &mut checked, stop) {
             branches.push(rows);
         }
     }
@@ -154,7 +170,7 @@ fn chain_part(store: &Store, rep: &mut VerifyReport) -> Option<Chained> {
 /// Part (a) for one branch. `None` when not even its lineage reads.
 fn chain_branch(
     r: &Reader, project: ProjectId, id: BranchId, rec: BranchRecord, rep: &mut VerifyReport, referenced: &mut BTreeSet<Hash>,
-    checked: &mut BTreeSet<Hash>,
+    checked: &mut BTreeSet<Hash>, stop: &dyn Fn() -> bool,
 ) -> Option<Rows> {
     let name = rec.name.clone();
     let line = match super::project::lineage(r, project, id) {
@@ -176,6 +192,9 @@ fn chain_branch(
     // Read in slices, so a long history never holds every stored row at once.
     let mut from = 1u64;
     'rows: while from <= last {
+        if stop() {
+            return None;
+        }
         let to = last.min(from.saturating_add(4_095));
         let rows = match r.tx_range(id, from..=to) {
             Ok(x) => x,
@@ -287,7 +306,7 @@ fn chain_branch(
 type ForkState = (Document, HighWater);
 
 /// Parts (b) and (c), for every intact branch, parents before children.
-fn replay_part(chained: Chained, rep: &mut VerifyReport) {
+fn replay_part(chained: Chained, rep: &mut VerifyReport, stop: &dyn Fn() -> bool) {
     let Chained { reader, mut branches } = chained;
     let r = &reader;
     // The fork states children need, by parent branch and seq.
@@ -303,6 +322,9 @@ fn replay_part(chained: Chained, rep: &mut VerifyReport) {
     // A parent's lineage is one shorter than its child's.
     branches.sort_by_key(|b| b.line.len());
     for b in branches {
+        if stop() {
+            return;
+        }
         if !b.intact {
             rep.lines.push(format!("{}: not replayed (its chain is broken)", b.rec.name));
             continue;

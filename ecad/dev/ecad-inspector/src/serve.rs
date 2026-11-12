@@ -15,7 +15,7 @@
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -37,6 +37,10 @@ pub const MAX_HEAD: usize = 16 * 1024;
 pub const MAX_TEXT: usize = 1024 * 1024;
 /// The largest file dropped on the page (design 029 §6 row 12).
 pub const MAX_DROP: u64 = 1 << 30;
+/// The most connections served at once (one page and its requests; more get 503).
+pub const MAX_CONNECTIONS: usize = 4;
+/// The longest a request head may take to arrive, in total.
+pub const HEAD_TIME: Duration = Duration::from_secs(10);
 
 /// What the server shares between connections.
 struct Shared {
@@ -45,6 +49,7 @@ struct Shared {
     path: Option<PathBuf>,
     source: Mutex<Option<Arc<FileSource>>>,
     busy: AtomicBool,
+    connections: AtomicUsize,
 }
 
 impl Shared {
@@ -100,6 +105,7 @@ impl Server {
             path: file.map(Path::to_path_buf),
             source: Mutex::new(source),
             busy: AtomicBool::new(false),
+            connections: AtomicUsize::new(0),
         });
         Ok(Self { listener, shared })
     }
@@ -142,12 +148,25 @@ impl Server {
         format!("ecadinspect: {what}\nopen {} (Ctrl+C to stop)", self.address())
     }
 
-    /// Serve until the process stops; each connection on its own thread.
+    /// Serve until the process stops; each connection on its own thread, at most
+    /// [`MAX_CONNECTIONS`] at once (more are answered 503 and closed).
     pub fn run(self) {
         for stream in self.listener.incoming() {
-            let Ok(stream) = stream else { continue };
+            let Ok(mut stream) = stream else { continue };
+            if self.shared.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+                self.shared.connections.fetch_sub(1, Ordering::SeqCst);
+                let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+                refuse(&mut stream, 503, "too many connections to the inspector");
+                continue;
+            }
             let shared = self.shared.clone();
-            let _ = std::thread::Builder::new().name("ecadinspect-conn".into()).spawn(move || connection(&shared, stream));
+            let spawned = std::thread::Builder::new().name("ecadinspect-conn".into()).spawn(move || {
+                let _count = Count(&shared.connections);
+                connection(&shared, stream);
+            });
+            if spawned.is_err() {
+                self.shared.connections.fetch_sub(1, Ordering::SeqCst);
+            }
         }
     }
 }
@@ -170,11 +189,26 @@ impl Head {
     }
 }
 
-/// Read up to the end of the head (`\r\n\r\n`): everything read, and where the head ends.
+/// Releases a connection's place, however the connection ends.
+struct Count<'a>(&'a AtomicUsize);
+
+impl Drop for Count<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Read up to the end of the head (`\r\n\r\n`) within [`HEAD_TIME`] in total: everything read,
+/// and where the head ends.
 fn read_head(stream: &mut TcpStream) -> Result<(Vec<u8>, usize), u16> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 2048];
+    let start = std::time::Instant::now();
     loop {
+        let left = HEAD_TIME.saturating_sub(start.elapsed());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return Err(408);
+        }
         if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
             return Ok((buf, i + 4));
         }
@@ -182,6 +216,7 @@ fn read_head(stream: &mut TcpStream) -> Result<(Vec<u8>, usize), u16> {
             return Err(431);
         }
         match stream.read(&mut chunk) {
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Err(408),
             Ok(0) | Err(_) => return Err(400),
             Ok(n) => buf.extend_from_slice(chunk.get(..n).unwrap_or_default()),
         }
@@ -216,9 +251,11 @@ fn respond(stream: &mut TcpStream, code: u16, extra: &[(&str, String)], body: &[
         200 => "OK",
         400 => "Bad Request",
         403 => "Forbidden",
+        408 => "Request Timeout",
         404 => "Not Found",
         405 => "Method Not Allowed",
         431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
         _ => "Error",
     };
     let mut head = format!(
@@ -257,7 +294,6 @@ fn origin_ok(h: &Head, port: u16) -> bool {
 
 /// One connection: the page, a refusal, or a WebSocket session.
 fn connection(shared: &Shared, mut stream: TcpStream) {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let (bytes, end) = match read_head(&mut stream) {
         Ok(x) => x,
         Err(code) => return refuse(&mut stream, code, "bad request"),
@@ -404,7 +440,7 @@ fn session(shared: &Shared, stream: Prefixed) {
                 }
             }
             Message::Binary(b) => match pending.take() {
-                Some((id, name, size)) if b.len() as u64 == size => summary_of(id, &shared.replace(FileSource::from_bytes(&name, b.to_vec()))),
+                Some((id, name, size)) if b.len() as u64 == size => summary_of(id, &shared.replace(FileSource::from_bytes(&name, Vec::from(b)))),
                 Some((id, _, size)) => protocol::error(
                     &id,
                     &Problem::new("bad-request", format!("The file sent has {} bytes; `open` announced {size}.", b.len()), "Drop the file again."),
