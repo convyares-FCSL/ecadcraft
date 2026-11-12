@@ -1322,13 +1322,18 @@ a new one); the steps make their own page so its numbers do not matter.
 9. **Checks.** Set **Terminals offered** to `2`: the Checks tab lists `More terminals than the
    strip offers` (`-X01: 3 terminals drawn, strip offers 2`) with **Offer drawn**, which sets it
    back to `3`.
+10. **Renumber.** Drag terminal 3 (its ring) left of terminal 1; click **Renumber…** (ECAD tab,
+    Numbering), choose **Trm**, **All**. Expected: the list shows `-X01:3 → -X01:1` and the
+    others shifted, in drawing order; **Apply**: one step, the wires stay on their terminals;
+    `u` puts the labels back.
 
 Typed instead, in the ECAD command field: `place {"symbol":"terminal","at":[x,y]}` (on a wire: it
 is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":true`),
 `bridge {"from":"<terminal id>","to":"<terminal id>"}`,
 `setprop {"component":"<strip id>","key":"terminals","value":"12+2PE"}`,
 `setprop {"cable":"<id>","key":"cores","value":"7G"}`, `stripplan {}`, `cablecores {"cable":"<id>"}`,
-`newpage {"generated":"terminals","strip":"<strip id>"}`, `newpage {"generated":"cables"}`.
+`newpage {"generated":"terminals","strip":"<strip id>"}`, `newpage {"generated":"cables"}`,
+`renumber {"kind":"terminals","preview":true}`, `renumber {"kind":"terminals","scope":"selection","strips":["<strip id>"]}`.
 
 ## 6. Check connected movement, undo/redo and pages
 

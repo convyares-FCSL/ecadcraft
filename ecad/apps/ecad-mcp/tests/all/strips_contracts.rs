@@ -50,6 +50,15 @@ fn terminal_strip_commands_through_execute() {
     let b = c.exec("bridge", json!({"from": terms[0], "to": terms[1]}));
     assert_eq!(b["bridge"], true);
     assert_eq!(last_by_agent(&mut c).0, "Bridge -X01:2\u{2013}3");
+    // Terminal numbering through the planner (026's fourth kind): preview reads, apply records.
+    let n = c.log().len();
+    let pv = c.exec("renumber", json!({"kind": "terminals", "preview": true}));
+    assert_eq!(pv["rows"].as_array().unwrap().len(), 3, "{pv}");
+    assert_eq!(c.log().len(), n, "a preview records nothing");
+    c.exec("renumber", json!({"kind": "terminals", "start": 5}));
+    let (label, ops) = last_by_agent(&mut c);
+    assert_eq!(label, "Renumber terminals");
+    assert!(ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.label.as_deref() == Some("5"))));
     // The offers.
     c.exec("setprop", json!({"component": strip, "key": "terminals", "value": "8+1PE"}));
     assert!(
@@ -89,6 +98,7 @@ fn with_writes_off_the_strip_writes_are_refused_and_the_reads_work() {
         ("setprop", json!({"component": "1", "key": "terminals", "value": "12"})),
         ("setprop", json!({"cable": "1", "key": "cores", "value": "7G"})),
         ("newpage", json!({"generated": "terminals"})),
+        ("renumber", json!({"kind": "terminals"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");

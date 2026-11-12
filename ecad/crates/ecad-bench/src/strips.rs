@@ -16,7 +16,8 @@
 //!   that row's sides flip (the design moves it into a box; a location change takes the same
 //!   path of the update map).
 //! - **tplan**: the first sheet of a one-strip terminal plan page drawn (frame and table parts).
-//! - **trenum**: renumbering one strip (brief 026's planner; 0 until it is merged).
+//! - **trenum**: one 20-terminal strip renumbered from another start (`renumber {kind:
+//!   "terminals", scope: "selection", strips}`), committed and updated, then undone.
 //! - **work**: the most strips one ordinary edit above recomputed (never all of them).
 //!
 //! Each edit is undone after it is measured.
@@ -276,6 +277,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             }
             out.attach_ms = median(&mut base);
         }
+        // One strip renumbered (every label changes), then undone.
+        let mut trenum = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "renumber", json!({"kind": "terminals", "scope": "selection", "strips": [strip.hex()], "start": 101 + i}))?;
+            trenum.push(ms(t));
+            out.work = out.work.max(work(&project, &mut s));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.trenum_ms = median(&mut trenum);
         // A far device: a lamp at the top end of the first wire, connected, in +FIELD; the strip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;

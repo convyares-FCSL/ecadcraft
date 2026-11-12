@@ -36,7 +36,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("renumber", "Renumber", run_renumber)
             .params(
-                "{kind?: \"devices\"|\"cables\"|\"wires\"|\"all\", scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)",
+                "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminals\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)",
             )
             .noundo(),
         CommandSpec::new("finalise", "Finalise Numbering", run_finalise)
@@ -56,8 +56,10 @@ fn kinds_param(params: &Value) -> Result<BTreeSet<Kind>, String> {
         "devices" | "device" | "dev" => [Kind::Devices].into(),
         "cables" | "cable" | "cbl" => [Kind::Cables].into(),
         "wires" | "wire" => [Kind::Wires].into(),
+        // Brief 028: terminal labels per strip ("all" keeps its 026 meaning: tags and wires).
+        "terminals" | "terminal" | "trm" => [Kind::Terminals].into(),
         "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
-        other => return Err(format!("`kind` must be \"devices\", \"cables\", \"wires\" or \"all\", not {other:?}")),
+        other => return Err(format!("`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not {other:?}")),
     })
 }
 
@@ -72,6 +74,10 @@ fn scope_param(doc: &Document, params: &Value) -> Result<Scope, String> {
         Some(Value::String(w)) => match w.trim().to_ascii_lowercase().as_str() {
             "all" => Ok(Scope::All),
             "provisional" | "unnumbered" => Ok(Scope::Provisional),
+            // Brief 028: a terminal renumber may name its strips in `strips` alone.
+            "selection" if params.get("objects").is_none() && params.get("strips").is_some() => {
+                Ok(Scope::Selection { components: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
+            }
             "selection" => {
                 let list =
                     params.get("objects").and_then(Value::as_array).ok_or("`objects` (array of hex ids) is required with scope \"selection\"")?;
@@ -136,7 +142,38 @@ fn request(doc: &Document, params: &Value) -> Result<Request, String> {
         None | Some(Value::Null) => None,
         Some(v) => Some(v.as_u64().and_then(|d| u8::try_from(d).ok()).ok_or(numbering::BAD_DIGITS)?),
     };
-    Ok(Request { kinds, scope, start, digits })
+    let strips = if kinds.contains(&Kind::Terminals) { strips_param(doc, params, &scope)? } else { BTreeSet::new() };
+    Ok(Request { kinds, scope, start, digits, strips })
+}
+
+/// Brief 028 (design 028 §9.5): the strips a terminal renumber covers, from the scope: every
+/// strip (all, folder, pages; the planner keeps those on the pages), the strips with that tag
+/// prefix, or the strips named in `strips` or `objects` (selection; a terminal ID names its strip).
+fn strips_param(doc: &Document, params: &Value, scope: &Scope) -> Result<BTreeSet<ComponentId>, String> {
+    let all = || doc.components.keys().copied().filter(|c| crate::strips::is_strip(doc, *c));
+    Ok(match scope {
+        Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
+        Scope::Prefix(p) => {
+            let p = p.trim_start_matches('-').to_ascii_uppercase();
+            all().filter(|c| devices::tag_of(doc, *c).and_then(tag::parse).is_some_and(|(q, _)| q == p)).collect()
+        }
+        Scope::Selection { components, .. } => {
+            let mut out: BTreeSet<ComponentId> = components.iter().copied().filter(|c| crate::strips::is_strip(doc, *c)).collect();
+            for v in params.get("strips").and_then(Value::as_array).into_iter().flatten().take(crate::commands::MAX_HANDLES) {
+                let n = hex(v).ok_or_else(|| format!("`{v}` in `strips` is not a valid hex id"))?;
+                let c = match doc.terminals.get(&ecad_model::TerminalId(n)) {
+                    Some(t) => t.component,
+                    None => ComponentId(n),
+                };
+                if !crate::strips::is_strip(doc, c) {
+                    return Err(format!("{} in `strips` is not a terminal strip or one of its terminals.", v.as_str().unwrap_or_default()));
+                }
+                out.insert(c);
+            }
+            out
+        }
+        Scope::Provisional => BTreeSet::new(),
+    })
 }
 
 fn bool_param(params: &Value, key: &str) -> Result<bool, String> {
@@ -150,6 +187,7 @@ fn kind_label(kinds: &BTreeSet<Kind>) -> &'static str {
         [Kind::Devices] => "Renumber devices",
         [Kind::Cables] => "Renumber cables",
         [Kind::Wires] => "Renumber wires",
+        [Kind::Terminals] => "Renumber terminals",
         _ => "Renumber",
     }
 }
@@ -161,7 +199,12 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 /// The echo after Apply: `Renumbered 42 devices (3 fixed kept). U undoes it.`
 pub fn applied_words(plan: &Plan, finalise: bool) -> String {
     let mut parts = Vec::new();
-    for (k, one, many) in [(Kind::Devices, "device", "devices"), (Kind::Cables, "cable", "cables"), (Kind::Wires, "net", "nets")] {
+    for (k, one, many) in [
+        (Kind::Devices, "device", "devices"),
+        (Kind::Cables, "cable", "cables"),
+        (Kind::Wires, "net", "nets"),
+        (Kind::Terminals, "terminal", "terminals"),
+    ] {
         let n = plan.changes_of(k);
         if n > 0 {
             parts.push(plural(n, one, many));
@@ -182,6 +225,7 @@ fn row_json(doc: &Document, r: &numbering::Row) -> Value {
         "object": numbering::object_id(r.object).to_string(),
         "id": format!("{:032x}", numbering::object_id(r.object)),
         "kind": r.kind.word(),
+        "terminal": r.terminal.map(|t| t.hex()),
         "old": r.old,
         "new": r.new,
         "at": r.at,
@@ -260,7 +304,13 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
     let run = |p: &mut Project, pg: &mut crate::access::Pages<'_>| -> Result<Value, String> {
         let doc = p.ledger.document();
         let req = if finalise {
-            Request { kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(), scope: Scope::Provisional, start: None, digits: None }
+            Request {
+                kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(),
+                scope: Scope::Provisional,
+                start: None,
+                digits: None,
+                strips: BTreeSet::new(),
+            }
         } else {
             request(doc, params)?
         };
@@ -301,6 +351,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
             "devices": plan.changes_of(Kind::Devices),
             "cables": plan.changes_of(Kind::Cables),
             "wires": plan.changes_of(Kind::Wires),
+            "terminals": plan.changes_of(Kind::Terminals),
             "fixed_kept": plan.fixed(),
             "message": line,
         }))
@@ -481,7 +532,13 @@ pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, p
             format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
         })),
         Some("finalise" | "finalize") => {
-            let req = Request { kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(), scope: Scope::Provisional, start: None, digits: None };
+            let req = Request {
+                kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(),
+                scope: Scope::Provisional,
+                start: None,
+                digits: None,
+                strips: BTreeSet::new(),
+            };
             let plan = plan_for(p, &req)?;
             if !plan.ops.is_empty() {
                 p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;

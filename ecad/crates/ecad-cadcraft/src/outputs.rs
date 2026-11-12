@@ -365,8 +365,10 @@ impl Scope {
                         self.project_location = true;
                     }
                 }
-                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.devices.insert(terminal.component);
+                    // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
+                    self.conductors.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
                 }
                 Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => self.subject(doc, rep.subject, rep.page),
                 Op::ModifyRepresentation { before, after, .. } => {

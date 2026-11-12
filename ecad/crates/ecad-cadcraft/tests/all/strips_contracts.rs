@@ -467,3 +467,53 @@ fn a_fence_across_too_many_wires_is_refused() {
     assert!(e.contains("That line crosses 201 wires; at most 200 at once. Draw a shorter line."), "{e}");
     assert_eq!(h.head(), head);
 }
+
+/// D (design 028 §12): renumber `{kind: "terminals"}` labels each strip's terminals 1…n in
+/// drawing order; a preview lists the rows; one transaction, one `u`; the wires stay attached.
+#[test]
+fn renumbering_terminals_follows_drawing_order() {
+    let mut t = fixture(0x28_0b);
+    t.h.cfg(|p| {
+        p.outputs();
+    });
+    let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
+    let x1: ComponentId = id(&v, "strip");
+    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    // Move terminal 4's symbol left of terminal 1 (its wires follow).
+    let doc = t.h.doc();
+    let rep4 = doc
+        .representations_of(ecad_model::Subject::Component(x1))
+        .find(|(_, r)| r.connection_points.contains_key(&terms[3]))
+        .map(|(_, r)| r.items[0])
+        .unwrap();
+    let hd = t.h.handle_of(t.page, rep4);
+    t.h.run("move", json!({"handles": [hd.hex()], "delta": [-170, 0]})).unwrap();
+    let ends: Vec<_> = terms.iter().map(|x| t.h.doc().ends_at(*x)).collect();
+    // The preview lists every terminal, -X01:4 → -X01:1 first in drawing order.
+    let pv = t.h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    let rows = pv["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4, "{pv}");
+    assert!(rows.iter().any(|r| r["old"] == "-X01:4" && r["new"] == "-X01:1" && r["kind"] == "terminals"), "{pv}");
+    let head = t.h.head();
+    let r = t.h.run("renumber", json!({"kind": "terminals"})).unwrap();
+    assert_eq!(t.h.head(), head + 1, "one transaction");
+    assert_eq!(r["terminals"], 4, "{r}");
+    let d = t.h.doc();
+    let label = |x: TerminalId| d.terminals[&x].label.clone().unwrap();
+    assert_eq!([label(terms[3]), label(terms[0]), label(terms[1]), label(terms[2])], ["1", "2", "3", "4"]);
+    let after: Vec<_> = terms.iter().map(|x| d.ends_at(*x)).collect();
+    assert_eq!(ends, after, "the wires stay attached");
+    let ops = t.h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(ops.iter().all(|o| !matches!(o, Op::AttachEnd { .. })), "Remove + Add of the same ID, no detaching");
+    same_as_built(&mut t.h);
+    let plan = strip_plan(&mut t.h);
+    assert_eq!(plan["strips"][0]["rows"][0]["outside"][0]["target"], "-S01:13", "{plan}");
+    t.h.cmdline("u");
+    assert_eq!(t.h.doc().terminals[&terms[3]].label.as_deref(), Some("4"));
+    same_as_built(&mut t.h);
+    // The Checks fix's form: one strip by `strips`.
+    let r = t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [terms[0].hex()], "start": 11})).unwrap();
+    assert_eq!(r["terminals"], 4, "{r}");
+    let e = t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [t.m1.hex()]})).unwrap_err();
+    assert!(e.contains("not a terminal strip"), "{e}");
+}

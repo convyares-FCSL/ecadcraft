@@ -212,7 +212,8 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let count_row = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount);
+                let count_row =
+                    matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount);
                 let what = if count_row { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
