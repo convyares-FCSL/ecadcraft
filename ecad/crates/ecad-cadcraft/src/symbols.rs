@@ -57,8 +57,6 @@ pub struct Starter {
     pub name: &'static str,
     /// Words that also find it.
     pub aliases: &'static [&'static str],
-    /// The default tag prefix (IEC 81346), without `-`.
-    pub prefix: &'static str,
     pub kind: Kind,
     /// Its fixed definition ID inside [`STARTER_LIBRARY`].
     pub id: DefinitionId,
@@ -134,6 +132,13 @@ impl Starter {
         Ok(d)
     }
 
+    /// Its built-in tag prefix (IEC 81346), without `-`, as the defaults registry holds it
+    /// (`symbol.<key>.prefix`, [`crate::defaults::symbols`]); empty for a tagless symbol. A
+    /// project's own prefix is [`crate::devices::prefix_for`].
+    pub fn prefix(&self) -> &'static str {
+        crate::defaults::symbols::prefix_entry(self.key).map_or("", crate::defaults::symbols::builtin_prefix)
+    }
+
     /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
     pub fn joinable(&self) -> bool {
         true
@@ -158,8 +163,8 @@ const fn def_id(n: u128) -> DefinitionId {
 
 /// A catalogue entry of the [`Family::Basic`] family with no quiet points; [`Starter::of`] and
 /// [`Starter::quiet_at`] set the rest.
-const fn st(key: &'static str, name: &'static str, aliases: &'static [&'static str], prefix: &'static str, kind: Kind, id: DefinitionId) -> Starter {
-    Starter { key, name, aliases, prefix, kind, id, family: Family::Basic, quiet: Quiet::None }
+const fn st(key: &'static str, name: &'static str, aliases: &'static [&'static str], kind: Kind, id: DefinitionId) -> Starter {
+    Starter { key, name, aliases, kind, id, family: Family::Basic, quiet: Quiet::None }
 }
 
 impl Starter {
@@ -185,9 +190,9 @@ const M12_S: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "socket", "co
 const M12_P: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "plug", "connector"];
 const USB: &[&str] = &["usb", "bulkhead", "connector"];
 
-/// A connector body (stage 3a): prefix `X`, a head, every pin quiet.
+/// A connector body (stage 3a): a head, every pin quiet (prefix `X`, `defaults::symbols`).
 const fn conn(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
-    st(key, name, aliases, "X", HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
+    st(key, name, aliases, HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
 
 /// Contacts and protection (brief 034 stage 1): definition IDs `0x100 + n`.
@@ -210,68 +215,66 @@ const fn pc(n: u128) -> DefinitionId {
     def_id(0x400 + n)
 }
 
-/// A PLC card body (stage 3b): prefix `A`, a head.
+/// A PLC card body (stage 3b): a head (prefix `A`, `defaults::symbols`).
 const fn card(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
-    st(key, name, aliases, "A", HEAD, id).of(Family::Plc)
+    st(key, name, aliases, HEAD, id).of(Family::Plc)
 }
 
 /// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
 /// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
-    st("coil", "Contactor / relay coil", &["coil", "relay", "contactor"], "K", HEAD, def_id(1)),
-    st("no", "NO contact", &["make", "normally open", "contact"], "K", Kind::Contact { make: true }, def_id(2)),
-    st("nc", "NC contact", &["break", "normally closed", "contact"], "K", Kind::Contact { make: false }, def_id(3)),
-    st("power3", "Power contacts, 3-pole", &["main contacts", "contactor"], "K", PART, def_id(4)),
-    st("mcb1", "MCB 1-pole", &["breaker", "circuit breaker"], "Q", HEAD, def_id(5)),
-    st("mcb2", "MCB 2-pole", &["breaker", "circuit breaker"], "Q", HEAD, def_id(6)),
-    st("fuse", "Fuse", &["fuse"], "F", HEAD, def_id(7)),
-    st("psu", "Power supply", &["psu", "ac/dc"], "G", HEAD, def_id(8)),
-    st("pbno", "Push button, NO", &["push", "button", "start"], "S", Kind::Contact { make: true }, def_id(9)),
-    st("pbnc", "Push button, NC", &["push", "button", "stop"], "S", Kind::Contact { make: false }, def_id(10)),
-    st("sel", "Selector switch, 2-position", &["selector", "switch"], "S", Kind::Contact { make: true }, def_id(11)),
-    st("lamp", "Indicator lamp", &["lamp", "light", "pilot"], "H", HEAD, def_id(12)),
-    st("motor3", "Motor, 3-phase", &["motor"], "M", HEAD, def_id(13)),
-    st("motor1", "Motor, single-phase", &["motor"], "M", HEAD, def_id(14)),
-    st("trafo", "Transformer", &["control transformer"], "T", HEAD, def_id(15)),
-    st("terminal", "Terminal", &["terminal", "clamp"], "X", Kind::Terminal, def_id(16)),
+    st("coil", "Contactor / relay coil", &["coil", "relay", "contactor"], HEAD, def_id(1)),
+    st("no", "NO contact", &["make", "normally open", "contact"], Kind::Contact { make: true }, def_id(2)),
+    st("nc", "NC contact", &["break", "normally closed", "contact"], Kind::Contact { make: false }, def_id(3)),
+    st("power3", "Power contacts, 3-pole", &["main contacts", "contactor"], PART, def_id(4)),
+    st("mcb1", "MCB 1-pole", &["breaker", "circuit breaker"], HEAD, def_id(5)),
+    st("mcb2", "MCB 2-pole", &["breaker", "circuit breaker"], HEAD, def_id(6)),
+    st("fuse", "Fuse", &["fuse"], HEAD, def_id(7)),
+    st("psu", "Power supply", &["psu", "ac/dc"], HEAD, def_id(8)),
+    st("pbno", "Push button, NO", &["push", "button", "start"], Kind::Contact { make: true }, def_id(9)),
+    st("pbnc", "Push button, NC", &["push", "button", "stop"], Kind::Contact { make: false }, def_id(10)),
+    st("sel", "Selector switch, 2-position", &["selector", "switch"], Kind::Contact { make: true }, def_id(11)),
+    st("lamp", "Indicator lamp", &["lamp", "light", "pilot"], HEAD, def_id(12)),
+    st("motor3", "Motor, 3-phase", &["motor"], HEAD, def_id(13)),
+    st("motor1", "Motor, single-phase", &["motor"], HEAD, def_id(14)),
+    st("trafo", "Transformer", &["control transformer"], HEAD, def_id(15)),
+    st("terminal", "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    st("terminalpe", "PE terminal", &["pe terminal", "earth terminal"], "X", Kind::Terminal, def_id(21)),
-    st("di", "PLC digital input", &["plc", "input", "di"], "A", Kind::Plc { letter: 'I' }, def_id(17)),
-    st("do", "PLC digital output", &["plc", "output", "do"], "A", Kind::Plc { letter: 'Q' }, def_id(18)),
-    st("junction", "Junction", &["junction", "dot", "tee"], "", Kind::Tagless, def_id(19)),
-    st("continuation", "Continuation", &["continuation", "arrow", "potential", "link"], "", Kind::Tagless, def_id(20)),
+    st("terminalpe", "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
+    st("di", "PLC digital input", &["plc", "input", "di"], Kind::Plc { letter: 'I' }, def_id(17)),
+    st("do", "PLC digital output", &["plc", "output", "do"], Kind::Plc { letter: 'Q' }, def_id(18)),
+    st("junction", "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
+    st("continuation", "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
     // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
-    st("co", "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], "K", Kind::ChangeOver, cp(1))
-        .of(Family::Contacts),
-    st("swco", "Switch, change-over", &["change-over", "switch", "toggle"], "S", Kind::ChangeOver, cp(2)).of(Family::Contacts),
-    st("power4", "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], "K", PART, cp(3)).of(Family::Contacts),
-    st("rcbo2", "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], "Q", HEAD, cp(4)).of(Family::Protection),
-    st("rcd2", "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], "Q", HEAD, cp(5)).of(Family::Protection),
-    st("rcd4", "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], "Q", HEAD, cp(6)).of(Family::Protection),
-    st("ssrin", "SSR input", &["ssr", "solid state relay", "relay"], "K", HEAD, cp(7)).of(Family::Contacts),
-    st("ssrout", "SSR output", &["ssr", "solid state relay", "contact"], "K", PART, cp(8)).of(Family::Contacts),
-    st("fuseterm", "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], "F", HEAD, cp(9)).of(Family::Protection),
-    st("fusebank4", "Fuse bank, 4-way", FUSE_BANK, "F", HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank6", "Fuse bank, 6-way", FUSE_BANK, "F", HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank8", "Fuse bank, 8-way", FUSE_BANK, "F", HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank10", "Fuse bank, 10-way", FUSE_BANK, "F", HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank12", "Fuse bank, 12-way", FUSE_BANK, "F", HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("co", "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
+    st("swco", "Switch, change-over", &["change-over", "switch", "toggle"], Kind::ChangeOver, cp(2)).of(Family::Contacts),
+    st("power4", "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).of(Family::Contacts),
+    st("rcbo2", "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], HEAD, cp(4)).of(Family::Protection),
+    st("rcd2", "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(5)).of(Family::Protection),
+    st("rcd4", "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),
+    st("ssrin", "SSR input", &["ssr", "solid state relay", "relay"], HEAD, cp(7)).of(Family::Contacts),
+    st("ssrout", "SSR output", &["ssr", "solid state relay", "contact"], PART, cp(8)).of(Family::Contacts),
+    st("fuseterm", "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
+    st("fusebank4", "Fuse bank, 4-way", FUSE_BANK, HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank6", "Fuse bank, 6-way", FUSE_BANK, HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank8", "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank10", "Fuse bank, 10-way", FUSE_BANK, HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank12", "Fuse bank, 12-way", FUSE_BANK, HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     // ---- Brief 034 stage 2: sensors and field devices (design 034 §4).
-    st("prox3", "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], "B", HEAD, sa(1)).of(Family::Sensors),
-    st("floatno", "Float switch, NO", &["float", "level", "sensor"], "B", Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
-    st("floatnc", "Float switch, NC", &["float", "level", "sensor"], "B", Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
-    st("rollerno", "Position switch with roller, NO", &["roller", "limit", "position", "sensor"], "B", Kind::Contact { make: true }, sa(4))
+    st("prox3", "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], HEAD, sa(1)).of(Family::Sensors),
+    st("floatno", "Float switch, NO", &["float", "level", "sensor"], Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
+    st("floatnc", "Float switch, NC", &["float", "level", "sensor"], Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
+    st("rollerno", "Position switch with roller, NO", &["roller", "limit", "position", "sensor"], Kind::Contact { make: true }, sa(4))
         .of(Family::Sensors),
-    st("rollernc", "Position switch with roller, NC", &["roller", "limit", "position", "sensor"], "B", Kind::Contact { make: false }, sa(5))
+    st("rollernc", "Position switch with roller, NC", &["roller", "limit", "position", "sensor"], Kind::Contact { make: false }, sa(5))
         .of(Family::Sensors),
-    st("interlocknc", "Interlock switch, NC", &["interlock", "guard", "safety", "door switch", "sensor"], "B", Kind::Contact { make: false }, sa(6))
+    st("interlocknc", "Interlock switch, NC", &["interlock", "guard", "safety", "door switch", "sensor"], Kind::Contact { make: false }, sa(6))
         .of(Family::Sensors),
-    st("interlockno", "Interlock switch, NO", &["interlock", "guard", "safety", "sensor"], "B", Kind::Contact { make: true }, sa(7))
-        .of(Family::Sensors),
-    st("valve", "Solenoid valve", &["valve", "solenoid", "actuator"], "MB", HEAD, sa(8)).of(Family::Actuators),
-    st("valve2", "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], "MB", HEAD, sa(9)).of(Family::Actuators),
-    st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], "B", HEAD, sa(10)).of(Family::Sensors),
-    st("heater", "Heater", &["heater", "heating element", "heat"], "E", HEAD, sa(11)).of(Family::Actuators),
+    st("interlockno", "Interlock switch, NO", &["interlock", "guard", "safety", "sensor"], Kind::Contact { make: true }, sa(7)).of(Family::Sensors),
+    st("valve", "Solenoid valve", &["valve", "solenoid", "actuator"], HEAD, sa(8)).of(Family::Actuators),
+    st("valve2", "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], HEAD, sa(9)).of(Family::Actuators),
+    st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], HEAD, sa(10)).of(Family::Sensors),
+    st("heater", "Heater", &["heater", "heating element", "heat"], HEAD, sa(11)).of(Family::Actuators),
     // ---- Brief 034 stage 3a: connector bodies (design 034 §5); halves only, mating is M1 1.11.
     conn("socket2", "Socket, 2-pin", SOCKET, cn(1)),
     conn("socket3", "Socket, 3-pin", SOCKET, cn(2)),
@@ -352,23 +355,15 @@ pub fn search(query: &str) -> Vec<&'static Starter> {
                 || s.name.to_lowercase().contains(&q)
                 || (!s.family.word().is_empty() && s.family.word().contains(q.as_str()))
                 || s.aliases.iter().any(|a| a.contains(q.as_str()))
-                || (!bare.is_empty() && s.prefix.eq_ignore_ascii_case(bare))
+                || (!bare.is_empty() && s.prefix().eq_ignore_ascii_case(bare))
         })
         .collect()
 }
 
-// ---------------------------------------------------------------- defaults (design 034 §2.7)
+// ---------------------------------------------------------------- quiet points (design 034 §11)
 //
-// Overseer ruling (2026-11-12): only user-overridable values go in the defaults registry (the
-// prefix and ratings, `defaults/symbols.rs`). Labels, quiet points and anchors are catalogue code.
-// Until lane T's registry can read `settings.tag_prefixes` as the prefix's project level, the
-// catalogue's prefix is read only through this function.
-
-/// The built-in tag prefix of symbol `key` (letters, without `-`); a project's own
-/// `tag_prefixes` still wins over it ([`crate::devices::prefix_for`]).
-pub fn default_prefix(key: &str) -> Option<&'static str> {
-    by_key(key).map(|s| s.prefix)
-}
+// Overseer ruling (2026-11-12): labels, quiet points and anchors are catalogue code; only
+// user-overridable values (the prefix) are in the defaults registry, `defaults/symbols.rs`.
 
 /// Whether point `point` (a definition key) of `s` is quiet: left unwired, it raises no
 /// `Unconnected` check.
@@ -1281,7 +1276,6 @@ mod tests {
             let (sw, sh) = s.size();
             assert!((sw - w).abs() < 1e-6 && (sh - h).abs() < 1e-6, "{key}: box {sw}×{sh}, want {w}×{h}");
             assert_eq!(s.labels().join("/"), *labels, "{key}");
-            assert_eq!(default_prefix(key), Some(s.prefix));
         }
         assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());
     }

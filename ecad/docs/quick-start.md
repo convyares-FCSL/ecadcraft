@@ -1469,6 +1469,10 @@ Brief 034, design `ecad/docs/design/034.md`. Any project; open the **ECAD** tab 
    points `L+`, `M`, `1`…`8`. Typed: `setprop {"component":"<its id>","key":"rating.3","value":"2A"}`
    stores fuse 3's rating; `rating.13` is refused with `-F01 has no fuse 13.` Checks does not list
    its unwired `M` and outputs, only `L+`.
+4. **Prefixes are registered defaults.** Typed: `defaults {"group":"Tag prefixes"}` lists every
+   symbol's built-in prefix (`symbol.fusebank8.prefix` = `F`, from `builtin`). Set the fuse bank's
+   prefix to `FB` in **Project settings ▸ Tags** (or `tagsettings {"prefixes":{"fusebank8":"FB"}}`).
+   Expected: `defaults` now says `FB`, from `project`, and the next fuse bank placed is `-FB01`.
 
 ## 5Q. Text styles (by clicking)
 

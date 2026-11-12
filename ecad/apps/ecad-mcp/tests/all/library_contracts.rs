@@ -49,9 +49,9 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
         assert_eq!(e.len(), 1, "{}", s.key);
         let o = e[0].origin.clone().unwrap();
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);
-        let k = next.entry(s.prefix).or_insert(0);
+        let k = next.entry(s.prefix()).or_insert(0);
         *k += 1;
-        let tag = format!("-{}{:02}", s.prefix, k);
+        let tag = format!("-{}{:02}", s.prefix(), k);
         assert_eq!(r["tag"], json!(tag), "{}", s.key);
         assert_eq!(labels(&r), s.labels(), "{}", s.key);
         let cid: ecad_model::ComponentId = u128::from_str_radix(r["component"].as_str().unwrap(), 16).unwrap().into();
@@ -60,7 +60,7 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
         // Again: no embed.
         let n = c.log().len();
         c.exec("place", json!({"symbol": s.key, "at": [at[0].as_f64().unwrap(), at[1].as_f64().unwrap() - 40.0]}));
-        *next.get_mut(s.prefix).unwrap() += 1;
+        *next.get_mut(s.prefix()).unwrap() += 1;
         let tx = one_by_agent(&mut c, n);
         assert!(embeds(&tx.ops).is_empty(), "{}: reused by origin", s.key);
     }

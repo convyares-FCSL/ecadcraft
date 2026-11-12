@@ -60,7 +60,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
     for s in new_keys() {
         let mut h = new_h();
         let r = place(&mut h, s.key, [0.0, 0.0]);
-        assert_eq!(r["tag"], json!(format!("-{}01", s.prefix)), "{}", s.key);
+        assert_eq!(r["tag"], json!(format!("-{}01", s.prefix())), "{}", s.key);
         assert_eq!(r["joined"], json!(false), "{}", s.key);
         assert_eq!(labels(&r), s.labels(), "{}", s.key);
         let c: ComponentId = id(&r, "component");
@@ -78,7 +78,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);
         // A second placement reuses the embedded definition and takes the next number.
         let again = place(&mut h, s.key, [0.0, -60.0]);
-        assert_eq!(again["tag"], json!(format!("-{}02", s.prefix)), "{}", s.key);
+        assert_eq!(again["tag"], json!(format!("-{}02", s.prefix())), "{}", s.key);
         assert_eq!(again["definition"], r["definition"], "{}", s.key);
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
         assert_eq!(embeds(&ops), 0, "{}: reused by origin", s.key);
@@ -265,4 +265,26 @@ fn a_card_body_takes_its_channels_as_one_device() {
     let cpu = place(&mut h, "plccpu", [100.0, 0.0]);
     let doc = h.doc();
     assert!(checks::terminal_checks(&doc, terminal(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+}
+
+/// Brief 034 criterion 11: a symbol's prefix is a registered default (`symbol.<key>.prefix`),
+/// overridden at the project level through Tag Settings (`settings.tag_prefixes`), and a newly
+/// placed device follows it.
+#[test]
+fn a_changed_registered_prefix_is_followed_by_the_next_device() {
+    let mut h = new_h();
+    let entry = |h: &mut H| h.run("defaults", json!({"key": "symbol.fusebank8.prefix"})).unwrap()["defaults"][0].clone();
+    let e = entry(&mut h);
+    assert_eq!((e["value"].as_str(), e["from"].as_str()), (Some("F"), Some("builtin")), "{e}");
+    assert_eq!(place(&mut h, "fusebank8", [0.0, 0.0])["tag"], "-F01");
+    h.run("tagsettings", json!({"prefixes": {"fusebank8": "FB"}})).unwrap();
+    let e = entry(&mut h);
+    assert_eq!((e["value"].as_str(), e["from"].as_str()), (Some("FB"), Some("project")), "{e}");
+    assert_eq!(place(&mut h, "fusebank8", [0.0, -60.0])["tag"], "-FB01");
+    // Other symbols keep their built-in.
+    assert_eq!(place(&mut h, "fuseterm", [100.0, 0.0])["tag"], "-F02");
+    // Back to the built-in.
+    h.run("tagsettings", json!({"prefixes": {"fusebank8": null}})).unwrap();
+    assert_eq!(entry(&mut h)["from"], "builtin");
+    assert_eq!(place(&mut h, "fusebank8", [100.0, -60.0])["tag"], "-F03");
 }
