@@ -32,7 +32,7 @@ use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, Ter
 pub const TAB: &str = "ECAD";
 
 /// The tab's groups, in order.
-pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit"];
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit", "Text"];
 
 /// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
 /// in Tool Sets (owner, 2026-11-08).
@@ -317,6 +317,21 @@ pub const TOOLS: &[Tool] = &[
         label: "JSON Command",
         tooltip: "Open the ECAD command field: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
         kind: Kind::Trial,
+    },
+    // Brief 031 (design §5.5, §5.7): the Text group (`ecad.toolset.text`).
+    Tool {
+        id: "ecad.tool.showtext",
+        group: "Text",
+        label: "Show/Hide Text",
+        tooltip: "Click a tag or label to hide it, or a symbol to show its hidden tag (Device, Page or Project: wider)",
+        kind: Kind::Start("showtext"),
+    },
+    Tool {
+        id: "ecad.view.hiddentext",
+        group: "Text",
+        label: "Show Hidden Text",
+        tooltip: "Draw hidden tags and labels dimmed, or stop drawing them (display only; never printed)",
+        kind: Kind::Run("hiddentext"),
     },
 ];
 

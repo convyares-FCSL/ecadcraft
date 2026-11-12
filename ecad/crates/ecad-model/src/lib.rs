@@ -42,7 +42,7 @@ pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
     Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING, Definition, Document,
     End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation,
-    Style, Subject, SymbolInstance, Terminal, TerminalDef,
+    Style, Subject, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextVAlign,
 };
 pub use error::{ModelError, Result};
 pub use geom::{Placement, Pt};

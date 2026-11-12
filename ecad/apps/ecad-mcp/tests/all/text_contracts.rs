@@ -150,3 +150,61 @@ fn defaults_lists_the_registry_with_writes_off() {
     let one = c.exec("defaults", json!({"key": "text.tag.height"}));
     assert_eq!((one["defaults"][0]["value"].as_f64(), one["defaults"][0]["from"].as_str()), (Some(3.0), Some("project")));
 }
+
+#[test]
+fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
+    let mut c = writer();
+    let page = c.doc().page_order[0].hex();
+    let v = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}));
+    let comp = v["component"].as_str().unwrap().to_string();
+    let rep = c
+        .doc()
+        .representations
+        .iter()
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .map(|(id, _)| id.hex())
+        .unwrap();
+    for (p, level) in [
+        (json!({"kind": "tag", "show": "off"}), "project"),
+        (json!({"kind": "tag", "show": "on", "page": page}), "page"),
+        (json!({"kind": "tag", "show": "off", "component": comp}), "device"),
+        (json!({"kind": "tag", "show": "on", "representation": rep}), "symbol"),
+    ] {
+        let r = one_by_agent(&mut c, "showtext", p.clone());
+        assert_eq!((r["level"].as_str(), r["changed"].as_bool()), (Some(level), Some(true)), "{p}: {r}");
+        let mut w = reader();
+        let m = w.refused("execute", json!({"command": "showtext", "params": {"kind": "tag", "show": "off"}}));
+        assert!(!m.is_empty());
+    }
+    // Reads with writes off: the page's texts and the display toggle record nothing.
+    let mut r = reader();
+    let n = r.log().len();
+    let t = r.exec("pagetexts", json!({}));
+    assert!(t["texts"].is_array(), "{t}");
+    let h = r.exec("hiddentext", json!({"on": true}));
+    assert_eq!(h["on"], json!(true));
+    assert_eq!(r.log().len(), n);
+    // The writer's page lists its tag as shown on the one symbol.
+    let t = c.exec("pagetexts", json!({}));
+    let tag = t["texts"].as_array().unwrap().iter().find(|x| x["kind"] == "tag").unwrap().clone();
+    assert_eq!((tag["shown"].as_bool(), tag["weight"].as_str(), tag["height"].as_f64()), (Some(true), Some("bold"), Some(2.5)), "{tag}");
+}
+
+#[test]
+fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
+    let mut c = writer();
+    one_by_agent(&mut c, "text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}));
+    let found = c.doc().items.values().any(|i| {
+        matches!(
+            &i.kind,
+            ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text {
+                halign: ecad_model::TextHAlign::Center,
+                valign: ecad_model::TextVAlign::Middle,
+                ..
+            })
+        )
+    });
+    assert!(found);
+    let mut r = reader();
+    r.refused("execute", json!({"command": "text", "params": {"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}}));
+}

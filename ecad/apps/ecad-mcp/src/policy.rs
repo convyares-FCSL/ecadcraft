@@ -67,8 +67,11 @@ pub const READ_COMMANDS: &[&str] = &[
     "cablecores",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
-    // Brief 031: the defaults registry's list reads the project and records nothing.
+    // Brief 031: the defaults registry's list and a page's derived texts read the project; Show
+    // Hidden Text is a display state (like a cable view) and records nothing.
     "defaults",
+    "pagetexts",
+    "hiddentext",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
