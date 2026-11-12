@@ -1535,8 +1535,8 @@ page and devices without part numbers).
    ECR column and no Checked or Approved. In the Revisions window the pending row has an ECR
    input. A wrong list says why under the field and is not written.
 8. **Pending changes.** Issue Rev A, then draw a line: the Rev box reads `A*`, the cover
-   `Revision A, … (changed since)`, and Print Book notes `The drawing has changed since Rev A;
-   the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
+   `Revision A, … (changed since)`, and the Print Book dialog (and its result) notes `The drawing
+   has changed since Rev A; the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
    does not count. **Pending changes ▸ E (draft)** shows `B (draft)`; **Off** shows `A`.
 
 Typed instead: `projectprops {"tag_dash":false}`, `projectprops {"tag_case":"typed"}`,

@@ -2981,6 +2981,12 @@ impl Trial {
             d.unknown = unknown;
             d.flagged = flagged;
         }
+        if let Some(p) = self.project.clone()
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_cadcraft::printbook::notes(p, &scope))
+            && let Some(d) = &mut self.print_book
+        {
+            d.notes = notes;
+        }
         let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(true) => {

@@ -154,7 +154,7 @@ impl TagHigh {
         let in_use = tag::provisional(&ecad_model::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
         let n = in_use.max(self.prov.get(&p).map_or(0, |g| g.saturating_add(1)));
         self.prov.insert(p.clone(), n);
-        tag::format_provisional(&p, n)
+        crate::defaults::print::tag_style(doc).provisional(&p, n)
     }
 
     /// The automatic tag a new device of `prefix` would get, without using it up (prompts).

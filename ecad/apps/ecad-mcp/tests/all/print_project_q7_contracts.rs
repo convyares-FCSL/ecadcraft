@@ -79,6 +79,10 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     // Print Book says so.
     let p = c.exec("printbook", json!({}));
     assert!(p["notes"].as_array().unwrap().iter().any(|n| n == "The drawing has changed since Rev A; the title block shows A*."), "{p}");
+    // The dialog shows the same note before printing.
+    let notes =
+        c.s.with_session(|s, h| h.configure(s, |p| ecad_cadcraft::printbook::notes(p, &ecad_cadcraft::printbook::Scope::All)).unwrap()).unwrap();
+    assert_eq!(notes, ["The drawing has changed since Rev A; the title block shows A*."]);
     // The cover says so too.
     let cover = c.exec("newpage", json!({"generated": "cover"}));
     let page = PageId::parse(cover["page"].as_str().unwrap()).unwrap();
@@ -258,4 +262,18 @@ fn ac9_the_pending_marker_survives_save_and_reopen() {
     let mut c = Client::new(s);
     let (_, shown) = frame_texts(&mut c);
     assert_eq!(shown, "A*", "reopened: the same state");
+}
+
+#[test]
+fn a_placed_provisional_tag_follows_the_dash() {
+    let mut c = writer();
+    c.exec("projectprops", json!({"tag_dash": false, "provisional": true}));
+    c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
+    assert_eq!(tags(&mut c), ["K?1"], "no leading - on an automatic provisional tag");
+    c.exec("projectprops", json!({"tag_dash": true}));
+    assert_eq!(tags(&mut c), ["-K?1"], "rewritten with the dash");
+    c.exec("place", json!({"symbol": "coil", "at": [80, 150]}));
+    let mut t = tags(&mut c);
+    t.sort();
+    assert_eq!(t, ["-K?1", "-K?2"]);
 }
