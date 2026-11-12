@@ -144,3 +144,10 @@ colours) and this is a known limitation.
 | `ecad.generated` | ACI 7, layer `ECAD-GENERATED` (locked) | Tables and text of generated pages |
 | `ecad.table-row` / `ecad.table-header` | 5 mm / 7 mm | Generated table rows |
 | `ecad.flagged` | `ecad.check-warning` | `?` values on screen and in Reports |
+
+## Multi-level terminals (036, `design/036.md` §7.5)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.level-box` | `cad.text_dim`, 1 px on screen; 0.25 mm on generated pages | The position box spanning a position's level rows in the terminal plan |
+| `ecad.field-editable` | `cad.border` 1 px, square corners, CADCraft's text-edit fill | A plan cell that edits in place; derived cells have no border |
