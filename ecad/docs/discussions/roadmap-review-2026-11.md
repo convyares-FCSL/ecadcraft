@@ -173,6 +173,12 @@ term that is not generic electrical practice.
    not after. Otherwise every manager is restyled twice.
 4. **Format changes are batched** behind one owner decision per milestone, and **v1 freezes the
    format with migration**.
+5. **Every default is registered, never hard-coded where it is used** (from v0.15 on). Text sizes,
+   tag style, wire label rules, revision columns, jumper bar sizes and the rest each have one entry
+   in a **defaults registry**: a key, a type, the built-in value, which levels may override it,
+   and where it shows in Settings. Code asks the registry for the value that applies. The owner's
+   concern is that v0.15 adds many defaults and fixed values; this keeps them in one place, so the
+   Standards screen (1.13) lists them later with no rework.
 
 ### 3.2 Milestones to v1
 
@@ -221,6 +227,10 @@ before M1 adds features. Its items are numbered Q1–Q9.
 - **Q6 is split by file**: the wire join is lane W's first job, the `table` refusal is lane P's.
 - **Lane S runs beside the text work.** It draws definitions; lane T decides how their text is
   sized and placed. Lane S's definitions carry text anchors only, so the two never edit one file.
+- **The defaults registry (principle 5)** is created by 031 as its first commit, with the text
+  styles as its first entries. 032, 033 and 034 add their defaults (wire label rule, tag style,
+  revision columns, pending marker, symbol ratings and labels) as entries, append-only, and never
+  as a constant at the point of use. Until 1.13, the values live in today's project settings.
 
 **v0.15 is done** when each item's tests pass, including a regression test for every defect in
 Q6. Its result is judged at the end of M1 (below), not on its own.
@@ -230,7 +240,7 @@ Q6. Its result is judged at the end of M1 (below), not on its own.
 | # | Feature | Purpose | Depends on | Size | Format change |
 |---|---|---|---|---|---|
 | 1.0 | **Live MCP bridge** (first, see below) | An agent drives the **running** app and the owner watches the drawing appear, as SolidCraft does; the server is registered for Claude so it is always available | 011 | M | No |
-| 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
+| 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1). It also edits **the symbol's defaults** (ratings, labels, text slots) as registry entries at the symbol level (1.13) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
 | 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals. A **fuse or disconnect terminal breaks the net**: its two sides are different nets, as for any fuse. **Relabelling a strip terminal** (labels such as `1.L`, `1.N`, `1.PE`), shown on the page, the plan and the strip pages | 030 | M | No (definitions and properties) |
 | 1.3 | **PLC racks and cards** | A rack or CPU with slots, and cards in them (DI, DQ, AI, AO, RTD, IO-Link, power) as devices. Each card's channels are drawn on any page, with channel numbers, addresses (`%I0.0`, `I0.0`, free text), labels that may be rotated, and spare channels listed. Automatic addressing by slot and channel. A generated **I/O list** page and CSV | 018, 025 | XL. Split it: (a) rack, slot and card model; (b) channel symbols and addressing; (c) I/O list | No if slots and channels are connection points and properties; FP to confirm in design |
 | 1.4 | **Wire types** | Named conductor types per potential, overridable per wire, on wire reports and the BOM. Conductors already store their own `cross_section` and `colour` (022 FP3). The gap the pack shows is setting them quickly and showing them, which this item covers | 022 | M | Additive: project setting `wire_types` |
@@ -241,6 +251,7 @@ Q6. Its result is judged at the end of M1 (below), not on its own.
 | 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. | 022, 025 | M | No: derived; a caption is a continuation property |
 | 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages. The connector bodies come from Q9; this item adds the mating | Q9 | M | Probably no (properties); FP to confirm in design |
 | 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. | 024, 030 | M | No (properties) |
+| 1.13 | **Standards and defaults** (house style) | All defaults in one model: text styles and sizes, tag prefixes and style, wire label rules, revision columns and the pending marker, jumper bar sizes, accessory part defaults, and the symbol families' ratings and labels. Each value resolves in one order: **built-in → standard → project → page → object**, where a **standard** is a named, shareable house style. One **Settings ▸ Standards** screen lists every default, shows where its value comes from, and overrides it at the level chosen; no scattered dialogs. Later, `.ecadlib` (2.1) carries standards beside symbols and parts, so a company shares one house style | v0.15's registry, 1.7 | L. Split: (a) the resolution model and standards (lane D); (b) the Standards screen (lane U) | Additive: a standard is a set of properties, and a project records which standard it uses |
 
 **Order within M1, by lane.** Each lane's order follows the ranking in §6.
 
@@ -248,7 +259,11 @@ Q6. Its result is judged at the end of M1 (below), not on its own.
 - **Lane D:** 1.2 multi-level terminals, then 1.3 PLC racks and cards, then 1.9 continuation
   cross-references, then 1.4 wire types.
 - **Lane U:** 1.0 live bridge, then 1.8 graphical strip pages, then 1.12 BOM completeness, then
-  1.5 UI shell, then 1.6 wheel, then 1.7 table.
+  1.5 UI shell, then 1.6 wheel, then 1.7 table, then 1.13(b) the Standards screen.
+- **Lane D** adds 1.13(a), the resolution model and standards, after 1.4 wire types.
+- **Lane S, design only, during M1:** the designs for 2.1 `.ecadlib` and 2.2 library viewer
+  (question 24), so the library, the symbol editor and the standards share one model before more
+  defaults pile up.
 
 1.8's strip pages use v0.15's text styles and visibility rules from the start.
 
@@ -315,8 +330,8 @@ seconds, and it is mostly composition.
 
 | # | Feature | Purpose | Depends on | Size | Format change |
 |---|---|---|---|---|---|
-| 2.1 | **`.ecadlib` stage 3** | The library file: definitions, parts and snippets, with identity and history. Embedding by copy (LIB-01 to LIB-05), and "update available" | brief 006 contract (approve first), 1.1 | XL (split into 3 briefs as 006 proposes) | **Yes**: new container; `.ecad` unchanged apart from origins, which already exist |
-| 2.2 | **Symbol library viewer** | Browse and search libraries and the project's embedded symbols, preview, place, update to a newer version | 2.1, 1.7 | M | No |
+| 2.1 | **`.ecadlib` stage 3** | The library file: definitions, parts, **standards** and snippets, with identity and history. Its design is done during M1 (question 24). Embedding by copy (LIB-01 to LIB-05), and "update available" | brief 006 contract (approve first), 1.1 | XL (split into 3 briefs as 006 proposes) | **Yes**: new container; `.ecad` unchanged apart from origins, which already exist |
+| 2.2 | **Symbol library viewer** | Browse and search libraries and the project's embedded symbols and standards, preview, place, update to a newer version. Designed with 2.1 during M1 | 2.1, 1.7 | M | No |
 | 2.3 | **Parts catalogue** | Parts (maker, number, description, dimensions, connection-point map, accessories, losses) in a library. A device points at a part, and the BOM reads the part | 2.1 | L | Additive: device `part` reference (origin + content hash, as for definitions) |
 | 2.4 | **Device manager** (device list) | Every device, placed or **unplaced**, in one live table. Create devices here and place them later (P6, DOC-06 already allow it) | 1.7 | M | No |
 | 2.5 | **List-driven design** | Import a device list or I/O list (CSV/XLSX) as a proposal, review it, accept it; unplaced devices then appear in the device manager to draw from. Re-import shows differences, never overwrites silently | 2.4, 1.3 | L | No |
@@ -347,9 +362,9 @@ name the lane's files in their §0, so the overseer can see an overlap before a 
 
 | Lane | Owns | M1 | M2 | M3 |
 |---|---|---|---|---|
-| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.11 connectors → 1.1 symbol builder (Q9 in v0.15 before them) | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
-| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.4 wire types | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
-| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.8 graphical strip pages → 1.12 BOM completeness → 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
+| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.11 connectors → 1.1 symbol builder (Q9 in v0.15 before them); design-only 2.1 and 2.2 with standards | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
+| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.4 wire types → 1.13(a) standards model | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
+| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.8 graphical strip pages → 1.12 BOM completeness → 1.5 UI shell → 1.6 wheel → 1.7 table → 1.13(b) Standards screen | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
 
 The known collisions, and how to avoid them:
 
@@ -399,14 +414,15 @@ wheel, command line, MCP), never a second editor.
 | **Commands** | Every action is a command reachable from the command line and MCP; the wheel, menus and toolbar call the same command | The house rule "everything is a command"; agents and people do the same thing |
 | **Navigation** | Every table row and Checks row goes to the object on the page; every object's hover lens offers its table row | One link in each direction instead of separate "find" tools |
 | **Panel layout** | The footprint is another representation of the same device, placed from the "not in panel yet" list | I14 already allows it; no second device, no sync step |
+| **Defaults and house style** | One registry; one resolution order (built-in, standard, project, page, object); one Settings ▸ Standards screen. The symbol editor edits a symbol's defaults; a library carries symbols, parts and standards | A value is found in one place and changed in one place, and a company shares its house style as a file |
 | **Standards** | IEC 81346 tags, IEC 60617-style symbols and IEC 60757 colours as defaults; project settings change them; nothing refuses a non-IEC choice | The owner's rule: IEC is the default, never the law |
 
 ---
 
 ## 5. Questions for the owner
 
-**Decided (2026-11-12): the owner answered "as recommended" to all 23 questions.** Each
-question below is marked so.
+**Decided (2026-11-12): the owner answered "as recommended" to questions 1–23.** Each is marked
+so. Questions 24–26 came later and are open.
 
 1. **Order of M1.** Is M1 as ranked by the drawing-pack test (§3.2, "Order within M1") the right
    next milestone? **Recommend yes.** **Decided: as recommended.**
@@ -469,6 +485,18 @@ question below is marked so.
     pending. **Recommend showing it as pending** (for example `D*` or `E (draft)`), derived from
     history (edits after the last issue), with the style a project setting. It is S and is part
     of v0.15's Q7. **Decided: as recommended.**
+24. **Design 2.1 `.ecadlib` and 2.2 library viewer during M1, as design-only work in lane S**,
+    with standards in the library beside symbols and parts? This widens question 3 (the 006
+    contract) to the viewer and the standards. **Recommend yes.** The symbol editor (1.1), the
+    library and the Standards screen (1.13) then share one model, decided before more defaults are
+    added; building 2.1 and 2.2 stays in M2.
+25. **A project takes a standard by copy**, with its origin, as a library symbol is embedded
+    (LIB-01 to LIB-05), and a newer version shows as "update available"? **Recommend yes.** The
+    project stays self-contained (P8) and never changes because a shared standard did.
+26. **Not every default may be overridden at every level.** Each registry entry says which of the
+    five levels apply (for example revision columns: standard and project only; tag text size:
+    every level). **Recommend yes.** It keeps the Standards screen honest and stops a page from
+    quietly differing on a setting that must be the same across the book.
 
 ---
 
