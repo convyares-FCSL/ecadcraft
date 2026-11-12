@@ -1,11 +1,7 @@
 //! Tester 034: the catalogue API that brief 034 adds (design 034 §2.2, §2.3, §10, §11), written
-//! from the design only. **Not compiled until the build is merged**: its `mod` line is added to
-//! `main.rs` in phase 2, because `anchors`, `Family`, `Kind::ChangeOver` and the quiet lists do
-//! not exist before it. Names follow the design text; if the build names them differently, the
-//! difference is reported, not silently adapted.
-//!
-//! AC 11's registry test (a registered prefix changed, a new device follows it) is written in
-//! phase 2 against lane T's published registry API, which design 034 §2.7 does not name.
+//! from the design, then adapted in phase 2 where the build's API differs from the design's
+//! text (reported): `Starter::quiet` is a `Quiet` enum read through `is_quiet`, `changeover_labels`
+//! takes a set, and the prefix is `Starter::prefix()`, read from the defaults registry.
 
 use ecad_cadcraft::symbols::{self, Anchor, Family, HAlign, Kind, STARTERS, TextRole, VAlign};
 
@@ -96,12 +92,13 @@ fn kinds() {
     }
 }
 
-/// §2.2, §11: quiet points per the design's Quiet lists; empty for every other entry.
+/// §2.2, §11: quiet points per the design's Quiet lists; none for every other entry.
 #[test]
 fn quiet_lists() {
     let cat = catalogue();
     for st in STARTERS {
-        let mut got: Vec<String> = st.quiet.iter().map(|q| (*q).to_string()).collect();
+        let Ok(d) = st.definition() else { panic!("{}", st.key) };
+        let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key)).map(|t| t.key.clone()).collect();
         got.sort();
         let mut want: Vec<String> = cat.iter().find(|e| e.key == st.key).map(|e| e.quiet.clone()).unwrap_or_default();
         want.sort();
@@ -109,16 +106,42 @@ fn quiet_lists() {
     }
 }
 
+/// AC 11 (rulings: prefixes per symbol key, the project level is `settings.tag_prefixes`; ratings
+/// have no registry default): every new symbol has a registered prefix entry with the design's
+/// built-in value; a project value changes what resolves; a hostile stored value falls back.
+#[test]
+fn prefixes_are_registered_defaults() {
+    use ecad_cadcraft::defaults;
+    for e in catalogue() {
+        let entry = defaults::symbols::prefix_entry(&e.key).unwrap_or_else(|| panic!("{}: no registry entry", e.key));
+        assert_eq!(entry.key, format!("symbol.{}.prefix", e.key));
+        assert!(defaults::find(entry.key).is_some_and(|x| std::ptr::eq(x, entry)), "{}: listed in the registry", e.key);
+        assert_eq!(defaults::symbols::builtin_prefix(entry), e.prefix, "{}", e.key);
+        assert_eq!(s(&e.key).prefix(), e.prefix, "{}: Starter::prefix reads the registry", e.key);
+    }
+    let mut doc = ecad_model::Document::default();
+    assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB");
+    doc.settings.tag_prefixes.insert("valve".into(), "Y".into());
+    assert_eq!(defaults::symbols::prefix(&doc, "valve"), "Y");
+    assert_eq!(defaults::symbols::prefix(&doc, "valve2"), "MB", "only that key");
+    for bad in ["", "1", "K\u{0}", "TOOLONGPREFIXX", "\u{1F642}"] {
+        doc.settings.tag_prefixes.insert("valve".into(), bad.into());
+        assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB", "{bad:?} falls back");
+    }
+    assert!(defaults::all().all(|x| !x.key.contains("rating")), "ratings have no registry default (ruling)");
+}
+
 /// §2.3: the change-over rule itself: s = 1 + the highest sequence digit; refused after 9.
 #[test]
 fn changeover_rule() {
+    let set = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<std::collections::BTreeSet<String>>();
     let used = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<Vec<String>>();
-    assert_eq!(symbols::changeover_labels(&used(&["A1", "A2"]), "-K01"), Ok(used(&["11", "12", "14"])));
-    assert_eq!(symbols::changeover_labels(&used(&["A1", "A2", "13", "14"]), "-K01"), Ok(used(&["21", "22", "24"])));
-    assert_eq!(symbols::changeover_labels(&used(&["81", "82", "84"]), "-K01"), Ok(used(&["91", "92", "94"])));
-    assert_eq!(symbols::changeover_labels(&used(&["93", "94"]), "-K01"), Err("-K01 already has 9 contacts.".to_string()));
+    assert_eq!(symbols::changeover_labels(&set(&["A1", "A2"]), "-K01"), Ok(used(&["11", "12", "14"])));
+    assert_eq!(symbols::changeover_labels(&set(&["A1", "A2", "13", "14"]), "-K01"), Ok(used(&["21", "22", "24"])));
+    assert_eq!(symbols::changeover_labels(&set(&["81", "82", "84"]), "-K01"), Ok(used(&["91", "92", "94"])));
+    assert_eq!(symbols::changeover_labels(&set(&["93", "94"]), "-K01"), Err("-K01 already has 9 contacts.".to_string()));
     // Only `[1-9][1-4]` counts: odd labels never overflow or count.
-    assert_eq!(symbols::changeover_labels(&used(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
+    assert_eq!(symbols::changeover_labels(&set(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
 }
 
 /// §10: the default rule for the 21 starters (none for junction and continuation) and every

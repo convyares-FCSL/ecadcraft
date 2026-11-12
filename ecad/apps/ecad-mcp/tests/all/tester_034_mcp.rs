@@ -99,7 +99,6 @@ fn sets(ops: &[Op], key: &str, value: &str) -> bool {
 
 /// AC 7, §12 items 1–4.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn every_family_places_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t034 Bibliothek mit Leerzeichen");
     let path = dir.file("Bauteile -F01 (\u{e4}).ecad");

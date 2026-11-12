@@ -3,7 +3,6 @@
 //! (`place`, `symbols`, `setprop`, `tagsettings`, `wire`, `bom`, `checks`) and the catalogue API
 //! that 018 already had (`symbols::STARTERS`, `by_key`, `Starter::definition`, `bounds`), so the
 //! file compiles before the worker's code lands. Tests of behaviour not built yet are
-//! `#[ignore = "tester 034: awaiting build"]`.
 //!
 //! The new API (`anchors`, `Family`, `Kind::ChangeOver`, quiet lists, the defaults registry) is
 //! checked in `tester_034_api.rs`, which is added to `main.rs` once the build is merged.
@@ -337,21 +336,20 @@ fn a0_the_21_old_starters_keep_their_ids_and_prefixes() {
     for (key, n, prefix) in OLD {
         let s = symbols::by_key(key).unwrap_or_else(|| panic!("{key} missing"));
         assert_eq!(s.id.0, DEF_BASE + n, "{key}: definition ID unchanged");
-        assert_eq!(s.prefix, prefix, "{key}: built-in prefix unchanged");
+        assert_eq!(s.prefix(), prefix, "{key}: built-in prefix unchanged");
     }
 }
 
 /// AC 1: every new key is in the catalogue with the design's prefix, points in order, positions on
 /// the 5 mm grid, box, ID block, unique ID and content hash = its origin's.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
     let cat = catalogue();
     assert_eq!(cat.len(), 60, "the test table");
     let mut h = H::new(0x7034_0001);
     for e in &cat {
         let s = symbols::by_key(&e.key).unwrap_or_else(|| panic!("{} is not in the catalogue", e.key));
-        assert_eq!(s.prefix, e.prefix, "{}: prefix", e.key);
+        assert_eq!(s.prefix(), e.prefix, "{}: prefix", e.key);
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
         // Points: keys in definition order at the design's positions, on the grid.
@@ -397,7 +395,6 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn a2_find_symbol_by_family_prefix_and_alias() {
     let mut h = H::new(0x7034_0002);
     let head = h.head();
@@ -444,7 +441,6 @@ fn a2_find_symbol_by_family_prefix_and_alias() {
 /// symbol's name as description, one transaction, and one embedded definition found by origin;
 /// a second placement reuses it.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
     let mut h = H::new(0x7034_0003);
     let page = h.first_page();
@@ -481,7 +477,6 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
 
 /// AC 2: the embed is undone with the first placement and made again (once) on the next.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn b2_undo_takes_the_embed_back_and_redo_restores_it() {
     let mut h = H::new(0x7034_0004);
     let before = h.doc();
@@ -502,7 +497,6 @@ fn b2_undo_takes_the_embed_back_and_redo_restores_it() {
 /// AC 3, §13 check 3: `-K01` coil + `co` → 11/12/14; + `no` → 23/24; + `co` → 31/32/34, each one
 /// transaction; `u` takes back one at a time.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn c_change_over_takes_the_next_sequence_digit() {
     let mut h = H::new(0x7034_0005);
     let k1: ComponentId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
@@ -534,7 +528,6 @@ fn c_change_over_takes_the_next_sequence_digit() {
 /// §3 note: `-K01` after a `no` (13/14) gives a `co` 21/22/24; a manual change-over on `-S01`
 /// follows the same rule; a `co` placed alone makes a new `-K` device with 11/12/14.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn c2_change_over_after_a_make_contact_and_on_a_switch() {
     let mut h = H::new(0x7034_0006);
     let k1: ComponentId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
@@ -555,7 +548,6 @@ fn c2_change_over_after_a_make_contact_and_on_a_switch() {
 /// AC 3, §13 check 4: a ninth contact as a `co` is 91/92/94; a tenth is refused with
 /// `-K01 already has 9 contacts.` and nothing is written.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn d_after_the_ninth_contact_a_change_over_is_refused() {
     let mut h = H::new(0x7034_0007);
     let k1: ComponentId = id(&place(&mut h, "coil", (20.0, 150.0)), "component");
@@ -580,7 +572,6 @@ fn d_after_the_ninth_contact_a_change_over_is_refused() {
 /// output is refused; `power4` joins a coil (1…8) once; heads are exclusive; field contacts take
 /// the next sequence digit; a PLC card takes `di` channels.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn e_fixed_symbols_join_by_the_018_rules() {
     let mut h = H::new(0x7034_0008);
     let ssr = place(&mut h, "ssrin", (50.0, 150.0));
@@ -629,7 +620,6 @@ fn e_fixed_symbols_join_by_the_018_rules() {
 /// §13 check 6: a fuse bank fed at `L+` with loads on outputs 1 and 2 gives three nets; the
 /// fuses break them.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn f_fuse_bank_breaks_the_net_per_fuse() {
     let mut h = H::new(0x7034_0009);
     let v = place(&mut h, "fusebank8", (100.0, 150.0));
@@ -649,7 +639,6 @@ fn f_fuse_bank_breaks_the_net_per_fuse() {
 
 /// §3 notes, question 1: a fuse terminal is two points, so the nets on either side differ.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn g_fuse_terminal_breaks_the_net() {
     let mut h = H::new(0x7034_000a);
     let v = place(&mut h, "fuseterm", (100.0, 150.0));
@@ -667,7 +656,6 @@ fn g_fuse_terminal_breaks_the_net() {
 
 /// §5, §13 check 7: a bulkhead pin is one point; wires from above and below are one net.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn h_bulkhead_pin_joins_both_sides() {
     let mut h = H::new(0x7034_000b);
     let v = place(&mut h, "rj45", (100.0, 150.0));
@@ -689,7 +677,6 @@ fn h_bulkhead_pin_joins_both_sides() {
 /// AC 4, §7.3, §13 check 9: `rating` on any device; `rating.<n>` only on a fuse bank's fuse
 /// outputs; 018 §6.1's value rules.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn i_ratings_set_and_refused_as_designed() {
     let mut h = H::new(0x7034_000c);
     let q1: ComponentId = id(&place(&mut h, "rcbo2", (50.0, 150.0)), "component");
@@ -753,7 +740,6 @@ fn i_ratings_set_and_refused_as_designed() {
 /// points are not flagged `Unconnected`; a fuse bank's `L+`, a CPU's and a power card's points and
 /// every non-quiet point still are.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn j_quiet_spare_points_are_not_flagged() {
     let mut h = H::new(0x7034_000d);
     let cat = catalogue();
@@ -788,7 +774,6 @@ fn j_quiet_spare_points_are_not_flagged() {
 /// AC 5, §9, §13 check 10: one BOM row entry per device; contacts, `power4` and `ssrout` add none;
 /// no new column; the rating is not in the BOM.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
@@ -797,7 +782,7 @@ fn k_bom_one_row_per_device() {
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
-    let allowed = ["location", "qty", "tags", "description", "maker", "part_number", "devices", "accessory", "strip"];
+    let allowed = ["flags", "location", "qty", "tags", "description", "maker", "part_number", "devices", "accessory", "strip"];
     for r in &rows {
         for k in r.as_object().unwrap().keys() {
             assert!(allowed.contains(&k.as_str()), "new BOM column {k}: {r}");
@@ -869,7 +854,6 @@ fn fixture_all(seed: u64) -> H {
 /// §13 check 11: every device, label, rating and embedded definition is unchanged after save,
 /// close and reopen at a path with spaces and `ä`; opening adds no transaction.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn l_save_and_reopen_keeps_everything() {
     let dir = tmp_dir("l");
     let mut h = fixture_all(0x7034_000f);
@@ -900,7 +884,6 @@ fn l_save_and_reopen_keeps_everything() {
 /// Question 5, AC 11: the new keys list their built-in prefixes in Tag Settings, and a project's
 /// own prefix still wins over the built-in one for a newly placed device.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn n_default_prefixes_and_a_project_override() {
     let mut h = H::new(0x7034_0011);
     let v = h.run("tagsettings", json!({})).unwrap();
@@ -921,7 +904,6 @@ fn n_default_prefixes_and_a_project_override() {
 /// AC 9, §12 item 5: unknown keys, oversized or control-character ratings, `rating.<n>` with a huge
 /// or non-numeric `<n>`: each an error, never a panic, nothing written.
 #[test]
-#[ignore = "tester 034: awaiting build"]
 fn o_hostile_input_never_panics() {
     let mut h = H::new(0x7034_0012);
     let f1: ComponentId = id(&place(&mut h, "fusebank4", (100.0, 150.0)), "component");
@@ -972,15 +954,37 @@ fn o_hostile_input_never_panics() {
 // §13 check 12: the 21 starters are unchanged
 
 /// §13 check 12: no content hash of an existing starter changes. The hashes are the ones the
-/// starters have on `dev` `6729c8f1`; they are filled in when the build is tested (phase 2).
+/// starters have on `daeb0652` (= `dev` `6729c8f1` plus docs), computed by compiling that
+/// commit's `symbols.rs` beside the build, not copied from the worker's unit test.
 #[test]
-#[ignore = "tester 034: awaiting build (hashes from dev 6729c8f1 pinned in phase 2)"]
 fn p_old_starters_keep_their_content_hash() {
-    const PINNED: &[(&str, &str)] = &[];
+    const PINNED: &[(&str, &str)] = &[
+        ("coil", "a38469fe64864a4a602f678c8bb2fae900c64b75c555a3b58b65b98029437db3"),
+        ("no", "82317c626ba389fa1deb1ecbefc1457e0b958da637780813198b4969e6d4cc31"),
+        ("nc", "8861d1f37368786878b2c860ce0bec1e98f4b8fb4b264fdf6b897cd01a38717c"),
+        ("power3", "7554cf8d849ccf964912b5ceef2248e342c00351cd386f88bd00f27aff9c599b"),
+        ("mcb1", "60a708b75ab297e22e8ee0e3e5b99163660dbf7f941ca0eba4d7009095042ecb"),
+        ("mcb2", "907da0b24254cc9520f359285988b9706420730a46e626c73abf20a3434ddd73"),
+        ("fuse", "92a1eb42f8036488fa6e127903f9381488777bb1314c272c97c7fb6c565f0f93"),
+        ("psu", "7ab24232dfdaa94a6b28556544b3be0b128146f6cd314f7a2e4fef86df03bc6c"),
+        ("pbno", "6fcb99af92cd7290c81fb4e05291bef164c4354e358a959490d4b1dece901148"),
+        ("pbnc", "eb97ba69342ae1de571c128a9086531e499581436fb5cc8c0f223c98d881479f"),
+        ("sel", "ee747f4614ce340e0500223ec3f23a1463c80ef9ec42f5e425be6449dedf3023"),
+        ("lamp", "654a895a70d7a93b61a1dfd279243afcd45628a7835bc7ca7baf3419e6af3e5a"),
+        ("motor3", "74fba3648ea65faed6d0f2d6122333c8ddbe82593551300b8b39b84e2783db94"),
+        ("motor1", "97d78f1600e761449dda417ba7a0d8818d1fc0a7576bd56f5a68bd2665714dcb"),
+        ("trafo", "7546ea16e7c4b9d68527ee6e022ad642a825844ab7441c699c2200015d736016"),
+        ("terminal", "140b3e17fdb18a4889a5816b1f3aa34f9c9714643d25f518470cd800310290a7"),
+        ("terminalpe", "950f2596fe76913d2ac50cc894697b3ca80e10cfb3bcbe136dccbc61af844a3c"),
+        ("di", "691b84067c9c64dd0ab9de2a9a6bef23fb05c71a485264cf463f245ef39fc1eb"),
+        ("do", "736535bf22162769b6420f790efd350383060df36447dcee6d29cf1f86f1ff92"),
+        ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
+        ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
+    ];
     assert_eq!(PINNED.len(), 21, "pin every old starter");
     for (key, want) in PINNED {
         let s = symbols::by_key(key).unwrap();
         let o = s.definition().unwrap().origin.clone().unwrap();
-        assert_eq!(format!("{:?}", o.content_hash), *want, "{key}");
+        assert_eq!(o.content_hash.hex(), *want, "{key}");
     }
 }
