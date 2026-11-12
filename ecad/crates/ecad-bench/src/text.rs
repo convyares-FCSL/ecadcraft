@@ -37,6 +37,8 @@ pub struct MeasuredText {
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText, String> {
+    // The ECAD commands (textstyle, setprop) must be in the registry; a second call does nothing.
+    let _ = ecad_cadcraft::install();
     let copy = scratch.join("text.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
@@ -51,7 +53,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText,
                 Subject::Component(c) => Some(c),
                 _ => None,
             });
-            (page, doc.representations_on(page).count(), device)
+            let symbols = doc.representations_on(page).filter(|(_, r)| r.form == ecad_model::Form::Symbol).count();
+            (page, symbols, device)
         })?;
         let mut place = Vec::new();
         let mut texts = 0;
