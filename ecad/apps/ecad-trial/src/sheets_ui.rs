@@ -97,6 +97,18 @@ pub struct ProjectProps {
     provisional_orig: bool,
     /// Brief 026: Provisional tags until Finalise.
     pub provisional: bool,
+    tag_dash_orig: bool,
+    /// Brief 033 (design 033 §8.1): tags written with a leading `-`.
+    pub tag_dash: bool,
+    tag_case_orig: String,
+    /// `upper` or `typed`.
+    pub tag_case: String,
+    pending_orig: String,
+    /// Brief 033 (design 033 §6.2): `star`, `draft` or `off`.
+    pub pending: String,
+    rev_columns_orig: String,
+    /// Brief 033 (design 033 §7.1): the revision columns as written.
+    pub rev_columns: String,
     /// Brief 031: the Text section (Project settings only), filled from `textstyle {}`.
     pub text: Option<crate::text_ui::TextSection>,
     pub read_only: bool,
@@ -147,6 +159,13 @@ impl ProjectProps {
             None => "Current: none issued".into(),
         };
         let style = v.get("reference_style").and_then(Value::as_str).unwrap_or("page-column-row").to_string();
+        // Brief 033: the stored column list, else the columns as the project draws them.
+        let rev_columns = v.get("revision_columns_stored").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
+            v.get("revision_columns")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|c| c["field"].as_str()).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default()
+        });
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
@@ -171,6 +190,14 @@ impl ProjectProps {
             colour_style,
             label_height_orig: label_height.clone(),
             label_height,
+            tag_dash_orig: v.get("tag_dash").and_then(Value::as_bool).unwrap_or(true),
+            tag_dash: v.get("tag_dash").and_then(Value::as_bool).unwrap_or(true),
+            tag_case_orig: text("tag_case"),
+            tag_case: text("tag_case"),
+            pending_orig: text("revision_pending"),
+            pending: text("revision_pending"),
+            rev_columns_orig: rev_columns.clone(),
+            rev_columns,
             provisional_orig: v.get("provisional").and_then(Value::as_bool).unwrap_or(false),
             provisional: v.get("provisional").and_then(Value::as_bool).unwrap_or(false),
             orig: fields.clone(),
@@ -254,6 +281,24 @@ impl ProjectProps {
         }
         if self.provisional != self.provisional_orig {
             m.insert("provisional".into(), json!(self.provisional));
+        }
+        // Brief 033: the tag style (the command rewrites the tags in the same transaction), the
+        // pending marker and the revision columns.
+        if self.tag_dash != self.tag_dash_orig {
+            m.insert("tag_dash".into(), json!(self.tag_dash));
+        }
+        if self.tag_case != self.tag_case_orig {
+            m.insert("tag_case".into(), Value::String(self.tag_case.clone()));
+        }
+        if self.pending != self.pending_orig {
+            m.insert("revision_pending".into(), Value::String(self.pending.clone()));
+        }
+        if self.rev_columns.trim() != self.rev_columns_orig.trim() {
+            let t = self.rev_columns.trim();
+            if !t.is_empty() {
+                ecad_cadcraft::revisions::parse_columns(t)?;
+            }
+            m.insert("revision_columns".into(), if t.is_empty() { Value::Null } else { Value::String(t.to_string()) });
         }
         if self.label_height.trim() != self.label_height_orig {
             let h: f64 = self
@@ -432,6 +477,24 @@ impl ProjectProps {
                             ui.label("Digits");
                             ui.add(egui::TextEdit::singleline(&mut self.padding).desired_width(30.0)).accessible_name("ecad.projectsettings.padding");
                         });
+                        // Brief 033 (design 033 §8.1): the leading - and the case, a writing rule.
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.tag_dash, "Leading - on tags").accessible_name("ecad.project.props.tag_dash");
+                            ui.label("Case");
+                            let shown = if self.tag_case == "typed" { "As typed" } else { "Upper case" };
+                            egui::ComboBox::from_id_salt("ecad.project.props.tag_case").selected_text(shown).show_ui(ui, |ui| {
+                                for (w, label) in [("upper", "Upper case"), ("typed", "As typed")] {
+                                    if ui.selectable_label(self.tag_case == w, label).clicked() {
+                                        self.tag_case = w.to_string();
+                                    }
+                                }
+                            });
+                        });
+                        let case = if self.tag_case == "typed" { ecad_model::tag::Case::Typed } else { ecad_model::tag::Case::Upper };
+                        let pad = self.padding.trim().parse::<u8>().unwrap_or(2);
+                        let example =
+                            ecad_model::tag::normalise("k5", ecad_model::tag::Style { padding: pad, dash: self.tag_dash, case }).unwrap_or_default();
+                        ui.label(RichText::new(format!("k5 is written {example}")).small()).accessible_name("ecad.project.props.tag_example");
                         egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
                             for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
                                 ui.label(RichText::new(k.as_str()).small());
@@ -441,6 +504,38 @@ impl ProjectProps {
                                 }
                             }
                         });
+                    });
+                    // Brief 033 (design 033 §6.2, §7.1): the pending marker and the revision columns.
+                    ui.separator();
+                    ui.label(RichText::new("Revisions").small().strong());
+                    ui.add_enabled_ui(!ro, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Pending changes");
+                            let shown = match self.pending.as_str() {
+                                "draft" => "E (draft)",
+                                "off" => "Off",
+                                _ => "D*",
+                            };
+                            egui::ComboBox::from_id_salt("ecad.project.props.revision_pending").selected_text(shown).show_ui(ui, |ui| {
+                                for (w, label) in [("star", "D*"), ("draft", "E (draft)"), ("off", "Off")] {
+                                    if ui.selectable_label(self.pending == w, label).clicked() {
+                                        self.pending = w.to_string();
+                                    }
+                                }
+                            });
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Columns");
+                            ui.add(egui::TextEdit::singleline(&mut self.rev_columns).desired_width(260.0))
+                                .accessible_name("ecad.project.props.revision_columns")
+                                .on_hover_text("field[:Header][@width], … e.g. rev, date, ecr:ECR, description, drawn");
+                        });
+                        let t = self.rev_columns.trim();
+                        if !t.is_empty()
+                            && let Err(e) = ecad_cadcraft::revisions::parse_columns(t)
+                        {
+                            ui.label(RichText::new(e).small().color(RED));
+                        }
                     });
                     // Brief 026 (design §5.1): numbering.
                     ui.separator();
@@ -509,6 +604,8 @@ impl ProjectProps {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevRow {
     pub fields: [String; 6],
+    /// Brief 033: the values of the project's custom columns ([`Revisions::custom`] order).
+    pub extra: Vec<String>,
     pub issued: bool,
     /// Brief 027 (FP1): the release folder as recorded, and the folder it names once resolved
     /// against the project (read from disk when the window opens and after a change).
@@ -524,6 +621,11 @@ pub struct Revisions {
     pub issued: Vec<RevRow>,
     pub pending: [String; 6],
     orig: [String; 6],
+    /// Brief 033 (design 033 §7.3): the project's custom columns, (field, header), after the
+    /// built-in six; the pending row's values and what was last sent.
+    pub custom: Vec<(String, String)>,
+    pub custom_pending: Vec<String>,
+    custom_orig: Vec<String>,
     pub read_only: bool,
     /// The question of Issue Rev B… is open.
     pub confirming: bool,
@@ -536,6 +638,14 @@ pub struct Revisions {
 impl Revisions {
     /// Filled from `projectprops {}`'s result.
     pub fn from_json(v: &Value, read_only: bool) -> Self {
+        let custom: Vec<(String, String)> = v
+            .get("revision_columns")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|c| Some((c["field"].as_str()?.to_string(), c["header"].as_str()?.to_string())))
+            .filter(|(f, _)| !ecad_cadcraft::revisions::FIELDS.contains(&f.as_str()))
+            .collect();
         let rows: Vec<RevRow> = v
             .get("revisions")
             .and_then(Value::as_array)
@@ -543,6 +653,7 @@ impl Revisions {
             .flatten()
             .map(|r| RevRow {
                 fields: ecad_cadcraft::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
+                extra: custom.iter().map(|(f, _)| r[f.as_str()].as_str().unwrap_or_default().to_string()).collect(),
                 issued: !r["issued"].is_null(),
                 released: r.get("released").and_then(Value::as_str).map(str::to_string),
                 folder: None,
@@ -550,22 +661,49 @@ impl Revisions {
             })
             .collect();
         let mut pending = rows.iter().rev().find(|r| !r.issued).map(|r| r.fields.clone()).unwrap_or_default();
+        let custom_pending: Vec<String> =
+            rows.iter().rev().find(|r| !r.issued).map(|r| r.extra.clone()).unwrap_or_else(|| vec![String::new(); custom.len()]);
         if pending[0].is_empty() {
             pending[0] = v.get("pending_rev").and_then(Value::as_str).unwrap_or("A").to_string();
         }
         let mut issued: Vec<RevRow> = rows.into_iter().filter(|r| r.issued).collect();
         issued.reverse();
-        Revisions { issued, orig: pending.clone(), pending, read_only, confirming: false, error: None, off_main: None }
+        Revisions {
+            issued,
+            orig: pending.clone(),
+            pending,
+            custom_orig: custom_pending.clone(),
+            custom_pending,
+            custom,
+            read_only,
+            confirming: false,
+            error: None,
+            off_main: None,
+        }
     }
 
     /// Take `fresh` (the project now), keeping what the user typed in the pending row and has not
     /// sent yet.
     pub fn refresh(&mut self, fresh: Revisions) {
         let typed: Vec<Option<String>> = self.pending.iter().zip(self.orig.iter()).map(|(p, o)| (p != o).then(|| p.clone())).collect();
+        let typed_custom: Vec<(String, String)> = self
+            .custom
+            .iter()
+            .zip(self.custom_pending.iter().zip(self.custom_orig.iter()))
+            .filter(|(_, (p, o))| p != o)
+            .map(|((f, _), (p, _))| (f.clone(), p.clone()))
+            .collect();
         let (error, confirming) = (self.error.take(), self.confirming);
         *self = fresh;
         for (i, t) in typed.into_iter().enumerate() {
             if let (Some(t), Some(slot)) = (t, self.pending.get_mut(i)) {
+                *slot = t;
+            }
+        }
+        for (f, t) in typed_custom {
+            if let Some(i) = self.custom.iter().position(|(g, _)| *g == f)
+                && let Some(slot) = self.custom_pending.get_mut(i)
+            {
                 *slot = t;
             }
         }
@@ -581,7 +719,10 @@ impl Revisions {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let mut out = None;
         let mut open = true;
-        let headers = ["Rev", "Date", "Description", "Drawn", "Checked", "Approved", "Folder"];
+        let mut headers: Vec<String> = ["Rev", "Date", "Description", "Drawn", "Checked", "Approved"].map(String::from).to_vec();
+        headers.extend(self.custom.iter().map(|(_, h)| h.clone()));
+        headers.push("Folder".into());
+        let columns = headers.len() + 1;
         egui::Window::new("REVISIONS")
             .id(egui::Id::unique(REVISIONS_ID))
             .collapsible(false)
@@ -589,8 +730,8 @@ impl Revisions {
             .min_width(620.0)
             .open(&mut open)
             .show(ctx, |ui| {
-                egui::Grid::new("ecad.revisions.grid").num_columns(8).striped(true).show(ui, |ui| {
-                    for h in headers {
+                egui::Grid::new("ecad.revisions.grid").num_columns(columns).striped(true).show(ui, |ui| {
+                    for h in &headers {
                         ui.label(RichText::new(h).small().strong());
                     }
                     ui.label("");
@@ -615,12 +756,24 @@ impl Revisions {
                                 }
                             }
                         }
+                        // Brief 033: the custom columns' inputs (`revision {fields}`).
+                        for (i, (f, _)) in self.custom.iter().enumerate() {
+                            let Some(v) = self.custom_pending.get_mut(i) else { continue };
+                            let r = ui.add(egui::TextEdit::singleline(v).desired_width(60.0)).accessible_name(format!("ecad.revisions.pending.{f}"));
+                            if r.lost_focus() && self.custom_orig.get(i) != Some(v) {
+                                let value = if v.trim().is_empty() { Value::Null } else { Value::String(v.clone()) };
+                                out = Some(Out::Run(format!("revision {}", json!({"fields": {f.as_str(): value}}))));
+                                if let Some(o) = self.custom_orig.get_mut(i) {
+                                    *o = v.clone();
+                                }
+                            }
+                        }
                         ui.label("");
                         ui.label(RichText::new("pending").small());
                         ui.end_row();
                     }
                     for r in &self.issued {
-                        for v in &r.fields {
+                        for v in r.fields.iter().chain(r.extra.iter()) {
                             ui.label(v);
                         }
                         let rev = r.fields[0].clone();

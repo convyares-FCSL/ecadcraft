@@ -243,6 +243,9 @@ pub fn print_project(
     if crate::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
+    // Brief 033: the book shows the pending marker as the screen does.
+    p.refresh_pending();
+    let o = Options { pending: p.pending, ..o };
     let doc = p.ledger.document();
     let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref())?;
     let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress)?;
@@ -283,7 +286,7 @@ fn run_printbook(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     };
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     let path = opt_typed(params, "path", "a file path", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    let v = with_any_page(s, |p, _| print_project(p, &scope, Options { mono, lineweights }, path.as_deref(), &mut |_, _| true))?;
+    let v = with_any_page(s, |p, _| print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true))?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
         s.echo(m.to_string());
     }

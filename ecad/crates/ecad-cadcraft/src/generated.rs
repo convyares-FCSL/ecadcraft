@@ -455,7 +455,46 @@ struct Marks {
 }
 
 /// What a generated page shows: (columns with A3 widths, rows).
-fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
+fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(String, f64)>, Vec<TRow>) {
+    if kind == GenKind::Revisions {
+        return revision_list(doc);
+    }
+    let (cols, rows) = table_static(doc, kind, outputs);
+    (cols.into_iter().map(|(n, w)| (n.to_string(), w)).collect(), rows)
+}
+
+/// The revision list (design 033 §7.3): the project's revision columns, then Version, across
+/// the A3 area (Version keeps 60 mm).
+fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
+    const VERSION_MM: f64 = 60.0;
+    let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
+    let columns = crate::revisions::columns(doc);
+    let (widths, _) = crate::revisions::widths(&columns, A3_AREA - VERSION_MM);
+    let mut cols: Vec<(String, f64)> = columns.iter().zip(&widths).map(|(c, w)| (c.header.clone(), *w)).collect();
+    cols.push(("Version".into(), VERSION_MM));
+    let issued = crate::revisions::issued(doc);
+    let rows = if issued.is_empty() {
+        let mut cells = vec![String::new(); columns.len()];
+        if let Some(i) = columns.iter().position(|c| c.field == "description")
+            && let Some(c) = cells.get_mut(i)
+        {
+            *c = "No revisions issued yet.".into();
+        }
+        vec![row(cells)]
+    } else {
+        issued
+            .iter()
+            .map(|r| {
+                let mut c: Vec<String> = columns.iter().map(|col| r.get(&col.field).to_string()).collect();
+                c.push(r.issued.clone().unwrap_or_default());
+                row(c)
+            })
+            .collect()
+    };
+    (cols, rows)
+}
+
+fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
     let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
     match kind {
         GenKind::Cover => (Vec::new(), Vec::new()),
@@ -687,7 +726,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
 
 /// The cover's lines: (text, height as a share of the Cover kind's height: 10, 7, 5, 5, 5, 3.5
 /// of 10, design 033 §1.2).
-fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
+fn cover_lines(doc: &Document, total: usize, pending: bool) -> Vec<(String, f64)> {
     let prop = |k: &str| doc.properties.get(k).cloned().filter(|v| !v.trim().is_empty());
     let mut out = Vec::new();
     for (k, h) in [(crate::frame::TITLE, 1.0), (crate::frame::DRAWING_NUMBER, 0.7), (crate::frame::CUSTOMER, 0.5), (crate::frame::STATUS, 0.5)] {
@@ -695,10 +734,16 @@ fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
             out.push((v, h));
         }
     }
+    let style = crate::revisions::PendingStyle::of(doc);
     let rev = match crate::revisions::issued(doc).first() {
+        // Design 033 §6.2: the cover says when the drawing changed since the newest issue.
+        Some(_) if pending && style == crate::revisions::PendingStyle::Draft => {
+            format!("Revision {} (draft)", crate::revisions::pending_rev(doc))
+        }
         Some(r) => {
             let date = r.get("date");
-            if date.is_empty() { format!("Revision {}", r.rev()) } else { format!("Revision {}, {date}", r.rev()) }
+            let shown = if date.is_empty() { format!("Revision {}", r.rev()) } else { format!("Revision {}, {date}", r.rev()) };
+            if pending && style == crate::revisions::PendingStyle::Star { format!("{shown} (changed since)") } else { shown }
         }
         None => "Not issued".into(),
     };
@@ -718,7 +763,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let (header, cell_look, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
     if kind == GenKind::Cover {
         let cover = look(TextKind::Cover);
-        let lines: Vec<(String, f64)> = cover_lines(doc, total).into_iter().map(|(t, share)| (t, share * cover.mm)).collect();
+        let lines: Vec<(String, f64)> = cover_lines(doc, total, input.pending).into_iter().map(|(t, share)| (t, share * cover.mm)).collect();
         let gap = 6.0;
         let height: f64 = lines.iter().map(|(_, h)| h + gap).sum();
         let mut y = (b + t) / 2.0 + height / 2.0;
@@ -874,6 +919,12 @@ pub fn input_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> (Fra
 /// Every frame and content part of `page`, building the report models only when the project has a
 /// BOM page and none are given (debugger, verification, tests).
 pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<Part> {
+    parts_of_pending(doc, page, outputs, false)
+}
+
+/// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
+/// when the drawing has changed since the newest issue.
+pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&Outputs>, pending: bool) -> Vec<Part> {
     let built;
     let outputs = match outputs {
         Some(o) => Some(o),
@@ -884,5 +935,6 @@ pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<
         None => None,
     };
     let (input, total) = input_of(doc, page, outputs);
+    let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, outputs, total)
 }

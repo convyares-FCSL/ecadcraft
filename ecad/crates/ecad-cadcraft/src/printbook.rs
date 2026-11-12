@@ -151,6 +151,17 @@ pub struct Sheet {
 pub fn build(
     doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
+    build_pending(doc, pages, fan, tol, outputs, false)
+}
+
+/// [`build`] with the project's pending flag (design 033 §6): the title blocks and the cover
+/// show the pending marker.
+///
+/// # Errors
+/// A page that cannot be projected.
+pub fn build_pending(
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool,
+) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
     // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
     crate::text_style::install(&mut scratch, doc);
@@ -159,7 +170,7 @@ pub fn build(
     let mut sheets = Vec::new();
     let mut x = 0.0;
     for page in pages {
-        let parts = crate::generated::parts_of(doc, *page, outputs);
+        let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
         let (d, _) = project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts)?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
@@ -228,11 +239,14 @@ pub struct Options {
     /// Black on white (`monochrome.ctb`), else as on screen.
     pub mono: bool,
     pub lineweights: bool,
+    /// Brief 033 (design 033 §6.2): the drawing changed since the newest issue, so the title
+    /// blocks and cover show the pending marker and the notes say so.
+    pub pending: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { mono: true, lineweights: true }
+        Options { mono: true, lineweights: true, pending: false }
     }
 }
 
@@ -303,8 +317,16 @@ pub fn print(
     if pages.is_empty() {
         return Err("No page matches.".into());
     }
-    let (scratch, sheets) = build(doc, pages, fan, tol, outputs)?;
+    let (scratch, sheets) = build_pending(doc, pages, fan, tol, outputs, o.pending)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
+    // Design 033 §6.2: nobody prints a pending book by mistake.
+    if o.pending
+        && let Some(newest) = crate::revisions::issued(doc).first()
+        && crate::revisions::PendingStyle::of(doc) != crate::revisions::PendingStyle::Off
+    {
+        let shown = crate::revisions::rev_box(doc, true);
+        done.notes.push(format!("The drawing has changed since Rev {}; the title block shows {shown}.", newest.rev()));
+    }
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
     done.flagged = crate::generated::flagged(doc, &generated, outputs);

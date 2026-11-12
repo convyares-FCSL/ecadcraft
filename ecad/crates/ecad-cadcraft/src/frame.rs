@@ -89,9 +89,14 @@ pub struct FrameInput {
     pub next_page: Option<PageId>,
     pub next: String,
     pub total: String,
-    /// Newest issued first, at most [`TABLE_ROWS`]: rev, date, description, drawn, checked,
-    /// approved.
-    pub revisions: Vec<[String; 6]>,
+    /// Newest issued first, at most [`TABLE_ROWS`]: each row's values in [`Self::rev_columns`]
+    /// order (brief 033).
+    pub revisions: Vec<Vec<String>>,
+    /// The project's revision columns (design 033 §7).
+    pub rev_columns: Vec<crate::revisions::Column>,
+    /// Whether the drawing changed since the newest issue (design 033 §6): set by the project,
+    /// which keeps the flag; `of` leaves it off.
+    pub pending: bool,
     /// The frame's text looks, from lane T's getter (design 033 §1.2).
     pub text: FrameText,
 }
@@ -155,6 +160,7 @@ impl FrameInput {
         let pprops = doc.pages.get(&page).map(|p| &p.properties);
         let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
+        let rev_columns = crate::revisions::columns(doc);
         let next_page = book.next(page);
         // Checked there, so the frame and the references always use the same sheet.
         let sheet = ecad_model::sheet::sheet_of(doc, page);
@@ -169,13 +175,25 @@ impl FrameInput {
             function: inherited(FUNCTION_KEY),
             location: inherited(LOCATION_KEY),
             page: book.number(doc, page),
-            rev: issued.first().map_or_else(|| "-".to_string(), |r| r.rev().to_string()),
+            rev: crate::revisions::rev_box(doc, false),
             next_page,
             next: next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n)),
             total: book.order.len().to_string(),
-            revisions: issued.iter().take(TABLE_ROWS).map(|r| r.fields.clone()).collect(),
+            revisions: issued.iter().take(TABLE_ROWS).map(|r| rev_columns.iter().map(|c| r.get(&c.field).to_string()).collect()).collect(),
+            rev_columns,
+            pending: false,
             text: FrameText::of(doc),
         }
+    }
+}
+
+impl FrameInput {
+    /// This input with the project's pending flag (design 033 §6): the Rev box marked as the
+    /// project's `revisions.pending` says.
+    pub fn with_pending(mut self, doc: &Document, pending: bool) -> FrameInput {
+        self.pending = pending;
+        self.rev = crate::revisions::rev_box(doc, pending);
+        self
     }
 }
 
@@ -194,6 +212,9 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::text_style::is_reserved_key(key) => true,
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
+                // Brief 033 (design 033 §9.1).
+                || key == crate::revisions::COLUMNS_KEY
+                || key == crate::revisions::PENDING_KEY
                 || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
         Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
@@ -386,7 +407,13 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     let x_r = a - 110.0;
     let x_m = a - 230.0;
     let t = x_m;
-    let cols = [0.0, 12.0, 36.0, t - 64.0, t - 42.0, t - 20.0, t];
+    // Brief 033 (design 033 §7.3): the project's revision columns across the table.
+    let (widths, _) = crate::revisions::widths(&input.rev_columns, t);
+    let mut cols = vec![0.0];
+    for w in &widths {
+        let last = cols.last().copied().unwrap_or(0.0);
+        cols.push(last + w);
+    }
     let thin = THIN_WEIGHT;
     for x in cols.iter().skip(1) {
         d.line((*x, -TITLE_BLOCK_MM), (*x, 0.0), thin, None);
@@ -395,9 +422,10 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         let y = -5.0 * i as f64;
         d.line((0.0, y), (t, y), thin, None);
     }
-    for (i, name) in ["Rev", "Date", "Description", "Drawn", "Checked", "Approved"].iter().enumerate() {
+    for (i, c) in input.rev_columns.iter().enumerate() {
         let x = cols.get(i).copied().unwrap_or_default();
-        d.text((x + 1.0, -1.0), input.text.caption, name, tl, Some(LABEL_ACI), None);
+        let w = widths.get(i).copied().unwrap_or_default();
+        d.text((x + 1.0, -1.0), input.text.caption, &c.header, tl, Some(LABEL_ACI), Some(w - 2.0));
     }
     for (row, rev) in input.revisions.iter().enumerate() {
         let y = -5.0 * (row + 2) as f64 + 1.25;

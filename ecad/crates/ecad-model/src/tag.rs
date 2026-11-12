@@ -223,6 +223,17 @@ pub fn key(tag: &str) -> String {
     }
 }
 
+/// The project property of the tag style's leading `-` (brief 033, FP1): `yes` or `no`.
+pub const DASH_KEY: &str = "tags.dash";
+/// The project property of the tag style's case (brief 033, FP1): `upper` or `typed`.
+pub const CASE_KEY: &str = "tags.case";
+/// The values of [`DASH_KEY`], and its default (the registry's built-in, overseer ruling 2).
+pub const DASH_WORDS: &[&str] = &["yes", "no"];
+pub const DEFAULT_DASH: &str = "yes";
+/// The values of [`CASE_KEY`], and its default.
+pub const CASE_WORDS: &[&str] = &["upper", "typed"];
+pub const DEFAULT_CASE: &str = "upper";
+
 /// The case tags are written in (brief 033, project property `tags.case`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Case {
@@ -251,6 +262,31 @@ impl From<u8> for Style {
 }
 
 impl Style {
+    /// The project's tag style: its padding, and [`DASH_KEY`] and [`CASE_KEY`] read as the
+    /// defaults registry reads them (a word compared without case; anything else is the default).
+    /// `ecad-cadcraft` registers the same keys and defaults.
+    pub fn of(doc: &crate::Document) -> Style {
+        let word = |key: &str, words: &[&str], default: &'static str| -> String {
+            doc.properties
+                .get(key)
+                .map(|v| v.trim())
+                .and_then(|v| words.iter().find(|w| w.eq_ignore_ascii_case(v)))
+                .map_or(default, |w| w)
+                .to_string()
+        };
+        Style {
+            padding: doc.settings.tag_padding.min(MAX_PADDING),
+            dash: word(DASH_KEY, DASH_WORDS, DEFAULT_DASH) == "yes",
+            case: if word(CASE_KEY, CASE_WORDS, DEFAULT_CASE) == "typed" { Case::Typed } else { Case::Upper },
+        }
+    }
+
+    /// A provisional tag `-K?3` in this style (never padded): the dash as set, the letters in
+    /// this style's case.
+    pub fn provisional(&self, prefix: &str, n: u64) -> String {
+        format!("{}{}?{n}", self.dash(), self.letters(prefix.trim_start_matches('-')))
+    }
+
     /// `letters` as this style writes them.
     fn letters(&self, letters: &str) -> String {
         match self.case {

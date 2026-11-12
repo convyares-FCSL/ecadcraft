@@ -311,7 +311,7 @@ impl Place {
                     let sym = self.symbol();
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                         let holder = devices::holder_of(doc, &normal, None);
                         if let Some(c) = holder {
                             devices::join_labels(doc, c, sym, &Default::default())?;
@@ -338,7 +338,7 @@ impl Place {
                 Input::Text(t) => {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                         Ok((devices::holder_of(doc, &normal, None), normal))
                     })
                     .map_err(other)?;
@@ -623,7 +623,7 @@ impl Props {
                     if key == "tag" {
                         let holder = read(s, |p, _| {
                             let doc = p.ledger.document();
-                            let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                            let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                             Ok(devices::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
                         })
                         .map_err(other)?;

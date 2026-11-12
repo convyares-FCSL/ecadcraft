@@ -63,7 +63,8 @@ clears; no fields: the current values, read only)",
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
 page_number_step?: n, reference_style?: \"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
 tag_prefixes?: {symbol: prefix|null}, colour_style?: \"iec\"|\"three-letter\", label_height?: mm, \
-props?: {key: value|null}} (one transaction; no fields: everything, read only)",
+tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date, ecr:ECR@20, description\"|null, \
+revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             )
             .noundo(),
         CommandSpec::new("newfolder", "New Folder", run_newfolder).params("{name, parent?: id|null}").noundo(),
@@ -75,7 +76,10 @@ props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             .params("{folder: id} (its pages and sub-folders move to its parent)")
             .noundo(),
         CommandSpec::new("revision", "Revision", run_revision)
-            .params("{rev?, date?, description?, drawn?, checked?, approved?} (the pending revision's fields)")
+            .params(
+                "{rev?, date?, description?, drawn?, checked?, approved?, fields?: {field: text|null}, n?} (the pending revision's \
+fields, custom fields by name; an issued row is refused)",
+            )
             .noundo(),
         CommandSpec::new("issuerevision", "Issue Revision", run_issuerevision)
             .params(
@@ -657,7 +661,13 @@ pub fn project_json(doc: &Document) -> Value {
     let free: Map<String, Value> = doc
         .properties
         .iter()
-        .filter(|(k, _)| !PROJECT_KEYS.contains(&k.as_str()) && !k.starts_with(revisions::PREFIX) && !k.starts_with("numbering."))
+        .filter(|(k, _)| {
+            !PROJECT_KEYS.contains(&k.as_str())
+                && !k.starts_with(revisions::PREFIX)
+                && !k.starts_with("numbering.")
+                && !k.starts_with("tags.")
+                && !k.starts_with("revisions.")
+        })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
     let revs: Vec<Value> = revisions::list(doc)
@@ -666,6 +676,10 @@ pub fn project_json(doc: &Document) -> Value {
             let mut m = Map::new();
             for (f, v) in FIELDS.iter().zip(r.fields.iter()) {
                 m.insert((*f).into(), Value::String(v.clone()));
+            }
+            // Brief 033: custom fields.
+            for (f, v) in &r.extra {
+                m.insert(f.clone(), Value::String(v.clone()));
             }
             m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
             // Brief 027 (FP1): where it was released, when it was.
@@ -684,6 +698,18 @@ pub fn project_json(doc: &Document) -> Value {
     // Brief 025 (FP3): where contact tables go by default.
     v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
     v["tag_padding"] = json!(crate::devices::padding(doc));
+    // Brief 033: the tag style, the revision columns and the pending marker.
+    let style = crate::defaults::print::tag_style(doc);
+    v["tag_dash"] = json!(style.dash);
+    v["tag_case"] = json!(if style.case == ecad_model::tag::Case::Typed { "typed" } else { "upper" });
+    let cols = revisions::columns(doc);
+    v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
+    v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
+    v["revision_pending"] = json!(match revisions::PendingStyle::of(doc) {
+        revisions::PendingStyle::Star => "star",
+        revisions::PendingStyle::Draft => "draft",
+        revisions::PendingStyle::Off => "off",
+    });
     v["tag_prefixes"] = Value::Object(crate::device_cmds::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
     v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
@@ -693,6 +719,77 @@ pub fn project_json(doc: &Document) -> Value {
     v["revisions"] = Value::Array(revs);
     v["pending_rev"] = json!(revisions::pending_rev(doc));
     v
+}
+
+/// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
+/// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
+/// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
+/// dash and the case, so no index changes key; each rewrite is an ordinary tag op that every
+/// tag-showing view already maps. Merging two branches with different dash settings: the merged
+/// `tags.dash` is the branch that changed it, its rewrites come with it, and tags the other branch
+/// added keep their own form until the style is set again.
+///
+/// # Errors
+/// A bad value, or (never expected: the key ignores what changes) two different tags rewritten to
+/// the same text.
+fn tag_style_ops(doc: &Document, params: &Value) -> Result<(Vec<Op>, Option<String>), String> {
+    use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
+    let dash = match params.get("tag_dash").filter(|v| !v.is_null()) {
+        Some(v) => Some(v.as_bool().ok_or("`tag_dash` must be true or false")?),
+        None => None,
+    };
+    let case = match params.get("tag_case").filter(|v| !v.is_null()) {
+        Some(v) => Some(match v.as_str().map(str::trim) {
+            Some("upper") => Case::Upper,
+            Some("typed") => Case::Typed,
+            _ => return Err("`tag_case` must be \"upper\" or \"typed\"".into()),
+        }),
+        None => None,
+    };
+    let before = crate::defaults::print::tag_style(doc);
+    let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
+    let mut ops = Vec::new();
+    if let Some(d) = dash {
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(if d { "yes" } else { "no" }.to_string())));
+    }
+    if let Some(c) = case {
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(if c == Case::Typed { "typed" } else { "upper" }.to_string())));
+    }
+    let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
+    let mut n = 0usize;
+    if rewrite {
+        let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let objects = doc
+            .components
+            .iter()
+            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Component(*id), t)))
+            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
+        for (object, old) in objects {
+            let new = tag::restyle(old, after);
+            if let Some(k) = seen.get(&new)
+                && *k != tag::key(old)
+            {
+                return Err(format!("Changing the tag style would make two tags {new}; nothing was changed."));
+            }
+            seen.insert(new.clone(), tag::key(old));
+            if new != *old {
+                ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.clone()), after: Some(new) });
+                n += 1;
+            }
+        }
+    }
+    let rewritten = if n == 1 { "1 tag rewritten".to_string() } else { format!("{n} tags rewritten") };
+    let words = if after.dash != before.dash {
+        Some(format!("Tag style: {}. {rewritten}.", if after.dash { "leading -" } else { "no leading -" }))
+    } else if after.case != before.case {
+        Some(match after.case {
+            Case::Typed => "Tags typed from now on keep their case; existing tags are unchanged.".to_string(),
+            Case::Upper => format!("Tag style: upper case. {rewritten}."),
+        })
+    } else {
+        None
+    };
+    Ok((ops, words))
 }
 
 fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
@@ -765,14 +862,46 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         if settings != doc.settings {
             ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
         }
+        // Brief 033: the revision table's columns and the pending marker.
+        if let Some(v) = params.get("revision_columns") {
+            let t = match v {
+                Value::Null => None,
+                Value::String(t) if t.trim().is_empty() => None,
+                Value::String(t) => {
+                    revisions::parse_columns(t)?;
+                    Some(t.trim().to_string())
+                }
+                _ => return Err("`revision_columns` must be text such as \"rev, date, ecr:ECR, description\", or null".into()),
+            };
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::COLUMNS_KEY, t));
+        }
+        if let Some(v) = params.get("revision_pending").filter(|v| !v.is_null()) {
+            let w = v.as_str().map(str::trim).filter(|w| ["star", "draft", "off"].contains(w));
+            let w = w.ok_or("`revision_pending` must be \"star\", \"draft\" or \"off\"")?;
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
+        }
+        // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
+        let mut message = None;
+        let (tag_ops, words) = tag_style_ops(doc, params)?;
+        ops.extend(tag_ops);
+        if let Some(w) = words {
+            message = Some(w);
+        }
         if ops.is_empty() {
             let mut v = project_json(doc);
             v["changed"] = json!(false);
             return Ok(v);
         }
         p.apply_edit(pg, "projectprops", "Project properties", ops)?;
-        let mut v = project_json(p.ledger.document());
+        let doc = p.ledger.document();
+        let mut v = project_json(doc);
         v["changed"] = json!(true);
+        if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
+            v["narrowed"] = json!(revisions::NARROWED);
+        }
+        if let Some(m) = message {
+            v["message"] = json!(m);
+        }
         Ok(v)
     })
 }
@@ -795,6 +924,43 @@ fn revision_ops(doc: &Document, params: &Value) -> Result<Vec<Op>, String> {
             other => value(doc, f, other)?,
         };
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, f), v));
+    }
+    // Brief 033 (design 033 §7.2): custom fields, `fields: {ecr: "ECR-114"}`, on the pending row
+    // only; an issued row never changes.
+    if let Some(n_given) = params.get("n").filter(|v| !v.is_null()) {
+        let m = n_given.as_u64().and_then(|m| u32::try_from(m).ok()).ok_or("`n` must be a revision row number")?;
+        if m != n {
+            return Err(match revisions::list(doc).into_iter().find(|r| r.n == m) {
+                Some(r) if r.issued.is_some() => format!("Rev {} is issued and cannot change.", r.rev()),
+                _ => format!("There is no pending revision row {m}."),
+            });
+        }
+    }
+    if let Some(f) = params.get("fields").filter(|v| !v.is_null()) {
+        let m = f.as_object().ok_or("`fields` must be an object of field: text|null")?;
+        for (field, v) in m {
+            if !FIELDS.contains(&field.as_str()) && !revisions::is_custom_field(field) {
+                return Err(if field == revisions::ISSUED || field == revisions::RELEASED {
+                    format!("\"{field}\" is set by issuing.")
+                } else {
+                    format!("\"{field}\" is not a field name. Use 1 to 20 letters, digits or _.")
+                });
+            }
+            let t = match v {
+                Value::Null => None,
+                Value::String(t) => Some(t.trim().to_string()).filter(|t| !t.is_empty()),
+                _ => return Err(format!("`fields.{field}` must be text, or null to clear it")),
+            };
+            let t = match t {
+                Some(t) if field == "rev" => {
+                    revisions::check_rev(doc, &t)?;
+                    Some(t)
+                }
+                other => value(doc, field, other.as_deref())?,
+            };
+            given = true;
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), t));
+        }
     }
     // A new pending row gets the suggested rev with its first field.
     let row_exists = revisions::pending(doc).is_some();

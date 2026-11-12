@@ -14,6 +14,7 @@ mod merge_tester_contracts;
 mod numbering_contracts;
 mod outputs_contracts;
 mod print_project_contracts;
+mod print_project_q7_contracts;
 mod release_contracts;
 mod review_026_merge;
 mod strips_contracts;

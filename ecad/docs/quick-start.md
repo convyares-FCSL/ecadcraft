@@ -28,12 +28,19 @@ block goes right of its coil, else is lifted above the title block; a table plac
 and Checks lists `Contact table over the title block` with **Move table…**. `table` on an ECAD
 page is refused, nothing written: `Tables can't be placed on ECAD pages yet. Draw it with lines
 and text, or add a generated page for lists (New Page ▸ Generated).` Generated pages number their
-continuation sheets in sequence (`400, 401`). Section 5-033 describes it.
+continuation sheets in sequence (`400, 401`). Project settings gain **Tags** (leading `-`, case
+as typed; changing the dash rewrites every tag in one undoable step) and **Revisions** (pending
+changes marker `D*` / `E (draft)` / off, and the revision table's columns with custom fields such
+as ECR). The Rev box shows `D*` when the drawing changed after the newest issue. Section 5-033
+describes it.
 - *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
   20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
   `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
   colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
-  `table`, the Checks row, `table` refused, writes off).
+  `table`, the Checks row, `table` refused, writes off), `print_project_q7_contracts.rs` (pending
+  marker with undo and save/reopen, revision columns and custom fields, tag style and its
+  rewrite, renumber under `typed`, writes off), unit tests in `revisions.rs` (column grammar,
+  hostile settings) and `ecad-model/src/tag.rs` (the tag style table).
 - *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
 - *Owner-tried:* not yet.
 
@@ -1519,7 +1526,23 @@ page and devices without part numbers).
    ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸
    Generated).` Nothing is added.
 
-Typed instead: `contacts {"component":"<id>"}` (its `table` says where the table went and why),
+6. **Tag style.** Project settings ▸ Tags: untick **Leading - on tags** (the line under it reads
+   `k5 is written K05`), **OK**. Every device and cable tag loses its `-` in one step (`Tag style:
+   no leading -. n tags rewritten.`); one **u** puts them all back. **Case ▸ As typed**: tags
+   typed from then on keep their letters (`M02a`); existing tags stay upper case.
+7. **Revision columns.** Project settings ▸ Revisions ▸ **Columns**: type
+   `rev, date, ecr:ECR, description, drawn`, **OK**. The title block's revision table now has an
+   ECR column and no Checked or Approved. In the Revisions window the pending row has an ECR
+   input. A wrong list says why under the field and is not written.
+8. **Pending changes.** Issue Rev A, then draw a line: the Rev box reads `A*`, the cover
+   `Revision A, … (changed since)`, and Print Book notes `The drawing has changed since Rev A;
+   the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
+   does not count. **Pending changes ▸ E (draft)** shows `B (draft)`; **Off** shows `A`.
+
+Typed instead: `projectprops {"tag_dash":false}`, `projectprops {"tag_case":"typed"}`,
+`projectprops {"revision_columns":"rev, date, ecr:ECR, description, drawn"}`,
+`revision {"fields":{"ecr":"ECR-114"}}`, `projectprops {"revision_pending":"draft"}`,
+`contacts {"component":"<id>"}` (its `table` says where the table went and why),
 `pageprops {"page":"<id>"}` (`sheet_numbers`), `printbook {"scope":{"pages":"401"}}` (`notes`).
 
 ## 6. Check connected movement, undo/redo and pages
