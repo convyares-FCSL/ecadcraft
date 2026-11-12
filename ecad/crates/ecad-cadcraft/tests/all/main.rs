@@ -35,6 +35,7 @@ mod tester_024_probe;
 mod tester_025_xref_probe;
 mod tester_026_numbering;
 mod tester_028_strips;
+mod tester_030_accessories;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
 mod wiring_contracts;

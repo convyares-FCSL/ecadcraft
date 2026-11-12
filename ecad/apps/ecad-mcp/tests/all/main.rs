@@ -17,4 +17,5 @@ mod strips_contracts;
 mod tester_024_mcp;
 mod tester_026_mcp;
 mod tester_028_mcp;
+mod tester_030_mcp;
 mod xref_contracts;
