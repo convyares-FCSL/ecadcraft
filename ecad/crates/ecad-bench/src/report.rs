@@ -339,6 +339,12 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             t.trenum_ms,
             t.work
         ));
+        // Brief 030 (design 030 §11.3).
+        out.push_str(&format!(
+            "Strip accessories: accset {:.2} ms (< 2 beyond edit), accmany {:.2} ms (< 16), accproj {:.2} ms (< 16; {} strips recomputed), \
+             linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
+            t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -528,6 +534,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "stripupd_ms": t.stripupd_ms, "attach_ms": t.attach_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
                     "trenum_ms": t.trenum_ms, "strips": t.strips, "terminals": t.terminals, "cables": t.cables,
                     "work": t.work,
+                    // Brief 030.
+                    "acc": acc_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
@@ -594,4 +602,13 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
         out.push('\n');
     }
     Ok(out)
+}
+
+/// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
+/// limit.
+fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
+    serde_json::json!({
+        "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
+        "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+    })
 }
