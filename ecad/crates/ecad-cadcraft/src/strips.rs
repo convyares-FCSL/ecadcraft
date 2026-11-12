@@ -521,6 +521,9 @@ pub struct Strips {
     by_cable: BTreeMap<CableId, BTreeSet<ComponentId>>,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
+    /// The strips whose data the last update changed (added, removed or different): what a shown
+    /// terminal plan page depends on (tester 028, defect 2).
+    pub last_changed: BTreeSet<ComponentId>,
 }
 
 fn add_to<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
@@ -590,8 +593,13 @@ impl Strips {
 
     /// Recompute `which` on `doc`.
     pub fn recompute(&mut self, doc: &Document, which: &BTreeSet<ComponentId>, o: &Outputs, cx: &PageCx) {
+        self.last_changed.clear();
         for c in which {
+            let before = self.strips.get(c).cloned();
             self.set(doc, *c, o, cx);
+            if self.strips.get(c) != before.as_ref() {
+                self.last_changed.insert(*c);
+            }
         }
         self.last_work = which.len();
     }

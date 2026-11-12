@@ -2,8 +2,8 @@
 //! brief 028 and design 028 §12 only. Save, reopen and replay with every new property (Windows
 //! path with spaces and non-ASCII letters), undo and redo of every new write, terminal numbering
 //! with fixed and provisional strip tags, the generated pages' update maps, an old file, and
-//! hostile input. A probe that found a bug is `#[ignore = "tester 028: <bug>"]` and fails until it
-//! is fixed.
+//! hostile input. A probe that found a bug was `#[ignore = "tester 028: <bug>"]` and failed until it
+//! was fixed (all three are fixed and run now).
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::outputs::{Group, Outputs};
@@ -272,7 +272,6 @@ fn terminal_renumber_with_fixed_and_provisional_strip_tags() {
 /// gets a provisional tag like any new device (Place on a wire does); its terminals renumber;
 /// Finalise gives the strip a final tag and leaves the labels alone; undo and redo of both.
 #[test]
-#[ignore = "tester 028: Place Terminals gives a new strip a final tag (-X03) with provisional tags on"]
 fn provisional_strip_tags_from_place_terminals_and_finalise() {
     let mut t = fixture(0x7028_000c);
     fence(&mut t.h, 170.0);
@@ -343,7 +342,6 @@ fn a_swap_by_renumber_keeps_wires_and_cores() {
 /// edit to the strip (its offer) does both, once. A cable change touches only the strips its
 /// members land on.
 #[test]
-#[ignore = "tester 028: an edit that touches no strip rebuilds a shown terminal plan page"]
 fn generated_pages_and_strips_follow_only_related_edits() {
     let mut t = fixture(0x7028_0006);
     let (x1, _) = fence(&mut t.h, 170.0);
@@ -391,7 +389,6 @@ fn generated_pages_and_strips_follow_only_related_edits() {
 /// The same for the cable schedule page: an edit away from cables leaves it; a core change on
 /// `-W01` rebuilds it once.
 #[test]
-#[ignore = "tester 028: an edit that touches no cable rebuilds a shown cable schedule page"]
 fn the_cable_schedule_page_follows_only_cable_edits() {
     let mut t = fixture(0x7028_0007);
     let far: ComponentId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");

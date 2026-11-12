@@ -359,7 +359,8 @@ pub fn plan_fence(
         }
         None => {
             let c: ComponentId = ids.fresh();
-            let tag = high.next(ledger, &crate::devices::prefix_for(doc, starter))?;
+            // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
+            let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             let mut properties = ecad_model::Properties::new();
             properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
             properties.insert("description".into(), "Terminal".into());

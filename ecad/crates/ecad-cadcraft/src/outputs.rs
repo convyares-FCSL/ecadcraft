@@ -470,6 +470,9 @@ pub struct Outputs {
     no_location: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
     pub strips: crate::strips::Strips,
+    /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
+    /// depends on; tester 028, defect 2).
+    pub last_cables_changed: bool,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -512,6 +515,9 @@ impl Outputs {
     /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
     /// committed transaction) name in this state.
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
+        // What this update changes, for the generated pages that depend on it (brief 028).
+        self.last_cables_changed = false;
+        self.strips.last_changed.clear();
         scope.collect(doc, ops);
         if scope.is_empty() {
             return;
@@ -575,6 +581,7 @@ impl Outputs {
         );
         if which.is_empty() {
             strips.last_work = 0;
+            strips.last_changed.clear();
         } else {
             // The page positions worked out for the wires, if they were (O(pages) once). Counted
             // in the strips' own `last_work`, not in the rows'.
@@ -798,6 +805,14 @@ impl Outputs {
     }
 
     fn set_cable(&mut self, doc: &Document, k: CableId) {
+        let before = self.cables.get(&k).cloned();
+        self.set_cable_row(doc, k);
+        if self.cables.get(&k) != before.as_ref() {
+            self.last_cables_changed = true;
+        }
+    }
+
+    fn set_cable_row(&mut self, doc: &Document, k: CableId) {
         let Some(cab) = doc.cables.get(&k) else {
             self.cables.remove(&k);
             return;

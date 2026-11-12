@@ -1989,9 +1989,19 @@ impl Project {
         {
             self.events.record(EventKind::IndexRebuilt, None, ledger.head(), None, line);
         }
-        let bom_shown =
-            self.frame.as_ref().is_some_and(|(p, _, _)| crate::generated::kind_of(doc, *p).is_some_and(crate::generated::GenKind::needs_outputs));
-        if sheets(&o) != before || (bom_shown && o.revision != revision) {
+        // The shown generated page redraws only when what it shows changed (tester 028, defect
+        // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
+        // a cable schedule when a cable row changed.
+        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| match crate::generated::kind_of(doc, *p) {
+            Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
+            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, *p) {
+                Some(c) => o.strips.last_changed.contains(&c),
+                None => !o.strips.last_changed.is_empty(),
+            },
+            Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
+            _ => false,
+        });
+        if sheets(&o) != before || shown_changed {
             self.frame_stale = true;
         }
         self.outputs = Some(o);
