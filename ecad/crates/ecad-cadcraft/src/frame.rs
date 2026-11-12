@@ -22,6 +22,7 @@ use ecad_model::sheet::{Grid, MARGIN_MM, SheetSpec, TITLE_BLOCK_MM, TOP_MARGIN_M
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
+use crate::text_style::{Look, TextKind, Weight};
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
 pub const LAYER: &str = "ECAD-FRAME";
@@ -88,9 +89,68 @@ pub struct FrameInput {
     pub next_page: Option<PageId>,
     pub next: String,
     pub total: String,
-    /// Newest issued first, at most [`TABLE_ROWS`]: rev, date, description, drawn, checked,
-    /// approved.
-    pub revisions: Vec<[String; 6]>,
+    /// Newest issued first, at most [`TABLE_ROWS`]: each row's values in [`Self::rev_columns`]
+    /// order (brief 033).
+    pub revisions: Vec<Vec<String>>,
+    /// The project's revision columns (design 033 §7).
+    pub rev_columns: Vec<crate::revisions::Column>,
+    /// Whether the drawing changed since the newest issue (design 033 §6): set by the project,
+    /// which keeps the flag; `of` leaves it off.
+    pub pending: bool,
+    /// The frame's text looks, from lane T's getter (design 033 §1.2).
+    pub text: FrameText,
+}
+
+/// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
+/// in millimetres, its style name, and the lineweight of bold drawn in the stroke font.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextLook {
+    pub mm: f64,
+    pub style: &'static str,
+    pub weight: Option<u16>,
+}
+
+impl TextLook {
+    /// `kind`'s look in a project of length unit `unit`, from its resolved `look`.
+    pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextLook {
+        let s = look.style(kind);
+        let k = unit_scale(unit);
+        let mm = if k.is_finite() && k > 0.0 { s.height / k } else { s.height };
+        let weight = match s.weight {
+            Weight::Bold => look.fonts.bold_lineweight,
+            Weight::Regular => None,
+        };
+        TextLook { mm, style: s.style_name, weight }
+    }
+}
+
+/// The frame's text looks (design 033 §1.2): grid labels, box captions, values and revision rows,
+/// Project and Page title, the Page number box, the Rev box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrameText {
+    pub grid: TextLook,
+    pub caption: TextLook,
+    pub value: TextLook,
+    pub main: TextLook,
+    pub page: TextLook,
+    pub rev: TextLook,
+}
+
+impl FrameText {
+    /// The looks of `doc`'s frame.
+    pub fn of(doc: &Document) -> FrameText {
+        let look = Look::new(doc);
+        let u = doc.settings.length_unit;
+        let t = |k| TextLook::of(&look, k, u);
+        FrameText {
+            grid: t(TextKind::Grid),
+            caption: t(TextKind::TitleCaption),
+            value: t(TextKind::TitleValue),
+            main: t(TextKind::TitleMain),
+            page: t(TextKind::TitlePage),
+            rev: t(TextKind::TitleRev),
+        }
+    }
 }
 
 impl FrameInput {
@@ -100,6 +160,7 @@ impl FrameInput {
         let pprops = doc.pages.get(&page).map(|p| &p.properties);
         let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
+        let rev_columns = crate::revisions::columns(doc);
         let next_page = book.next(page);
         // Checked there, so the frame and the references always use the same sheet.
         let sheet = ecad_model::sheet::sheet_of(doc, page);
@@ -114,12 +175,25 @@ impl FrameInput {
             function: inherited(FUNCTION_KEY),
             location: inherited(LOCATION_KEY),
             page: book.number(doc, page),
-            rev: issued.first().map_or_else(|| "-".to_string(), |r| r.rev().to_string()),
+            rev: crate::revisions::rev_box(doc, false),
             next_page,
             next: next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n)),
             total: book.order.len().to_string(),
-            revisions: issued.iter().take(TABLE_ROWS).map(|r| r.fields.clone()).collect(),
+            revisions: issued.iter().take(TABLE_ROWS).map(|r| rev_columns.iter().map(|c| r.get(&c.field).to_string()).collect()).collect(),
+            rev_columns,
+            pending: false,
+            text: FrameText::of(doc),
         }
+    }
+}
+
+impl FrameInput {
+    /// This input with the project's pending flag (design 033 §6): the Rev box marked as the
+    /// project's `revisions.pending` says.
+    pub fn with_pending(mut self, doc: &Document, pending: bool) -> FrameInput {
+        self.pending = pending;
+        self.rev = crate::revisions::rev_box(doc, pending);
+        self
     }
 }
 
@@ -134,8 +208,13 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
     ops.iter().any(|op| match op {
         Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
+        // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).
+        Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::text_style::is_reserved_key(key) => true,
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
+                // Brief 033 (design 033 §9.1).
+                || key == crate::revisions::COLUMNS_KEY
+                || key == crate::revisions::PENDING_KEY
                 || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
         Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
@@ -207,10 +286,11 @@ impl Draw {
         self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
     /// Text at `at` (millimetres), `height` mm, aligned; fitted into `room` mm when given.
-    fn text(&mut self, at: (f64, f64), height: f64, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) {
+    fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
+        let height = look.mm;
         let (shown, wf) = fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -223,11 +303,11 @@ impl Draw {
             rotation: 0.0,
             width_factor: wf,
             oblique: 0.0,
-            style: "Standard".into(),
+            style: look.style.into(),
             halign: align.0,
             valign: align.1,
         });
-        self.out.push(Part { kind, weight: None, aci, layer: LAYER });
+        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
     }
 }
 
@@ -307,8 +387,8 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
             d.line((x0, bottom), (x0, bottom - 3.0), THIN_WEIGHT, None);
         }
         let label = grid.column_label(c);
-        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
-        d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), 3.0, &label, ml, None, None);
+        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
+        d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
     }
     for ri in 0..s.rows {
         let y1 = top - f64::from(ri) * rh;
@@ -318,8 +398,8 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
             d.line((a, y1), (a + 3.0, y1), THIN_WEIGHT, None);
         }
         let label = grid.row_label(r);
-        d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), 3.5, &label, ml, None, None);
-        d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), 3.5, &label, ml, None, None);
+        d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
+        d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
     }
 
     // Title block (design 019 §4): the revision table stretches; the middle and right blocks keep
@@ -327,7 +407,13 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     let x_r = a - 110.0;
     let x_m = a - 230.0;
     let t = x_m;
-    let cols = [0.0, 12.0, 36.0, t - 64.0, t - 42.0, t - 20.0, t];
+    // Brief 033 (design 033 §7.3): the project's revision columns across the table.
+    let (widths, _) = crate::revisions::widths(&input.rev_columns, t);
+    let mut cols = vec![0.0];
+    for w in &widths {
+        let last = cols.last().copied().unwrap_or(0.0);
+        cols.push(last + w);
+    }
     let thin = THIN_WEIGHT;
     for x in cols.iter().skip(1) {
         d.line((*x, -TITLE_BLOCK_MM), (*x, 0.0), thin, None);
@@ -336,15 +422,16 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         let y = -5.0 * i as f64;
         d.line((0.0, y), (t, y), thin, None);
     }
-    for (i, name) in ["Rev", "Date", "Description", "Drawn", "Checked", "Approved"].iter().enumerate() {
+    for (i, c) in input.rev_columns.iter().enumerate() {
         let x = cols.get(i).copied().unwrap_or_default();
-        d.text((x + 1.0, -1.0), 1.8, name, tl, Some(LABEL_ACI), None);
+        let w = widths.get(i).copied().unwrap_or_default();
+        d.text((x + 1.0, -1.0), input.text.caption, &c.header, tl, Some(LABEL_ACI), Some(w - 2.0));
     }
     for (row, rev) in input.revisions.iter().enumerate() {
         let y = -5.0 * (row + 2) as f64 + 1.25;
         for (i, value) in rev.iter().enumerate() {
             let (x0, x1) = (cols.get(i).copied().unwrap_or_default(), cols.get(i + 1).copied().unwrap_or_default());
-            d.text((x0 + 1.0, y), 2.5, value, left, None, Some(x1 - x0 - 2.0));
+            d.text((x0 + 1.0, y), input.text.value, value, left, None, Some(x1 - x0 - 2.0));
         }
     }
     // Middle block.
@@ -353,15 +440,15 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         d.line((x_m, y), (x_r, y), thin, None);
     }
     let boxes = [
-        ((x_m, -10.0), (x_r, 0.0), "Project", input.project_title.as_str(), 3.5),
-        ((x_m, -20.0), (x_r, -10.0), "Customer", input.customer.as_str(), 2.5),
-        ((x_m, -30.0), (x_r, -20.0), "Drawing no.", input.drawing_number.as_str(), 2.5),
-        ((x_m, -40.0), (x_r, -30.0), "Status", input.status.as_str(), 2.5),
-        ((x_r, -10.0), (a, 0.0), "Page title", input.page_title.as_str(), 3.5),
-        ((x_r, -20.0), (x_r + 55.0, -10.0), "Function", input.function.as_str(), 2.5),
-        ((x_r + 55.0, -20.0), (a, -10.0), "Location", input.location.as_str(), 2.5),
-        ((x_r + 65.0, -30.0), (a, -20.0), "Next", input.next.as_str(), 2.5),
-        ((x_r + 65.0, -40.0), (a, -30.0), "Total", input.total.as_str(), 2.5),
+        ((x_m, -10.0), (x_r, 0.0), "Project", input.project_title.as_str(), input.text.main),
+        ((x_m, -20.0), (x_r, -10.0), "Customer", input.customer.as_str(), input.text.value),
+        ((x_m, -30.0), (x_r, -20.0), "Drawing no.", input.drawing_number.as_str(), input.text.value),
+        ((x_m, -40.0), (x_r, -30.0), "Status", input.status.as_str(), input.text.value),
+        ((x_r, -10.0), (a, 0.0), "Page title", input.page_title.as_str(), input.text.main),
+        ((x_r, -20.0), (x_r + 55.0, -10.0), "Function", input.function.as_str(), input.text.value),
+        ((x_r + 55.0, -20.0), (a, -10.0), "Location", input.location.as_str(), input.text.value),
+        ((x_r + 65.0, -30.0), (a, -20.0), "Next", input.next.as_str(), input.text.value),
+        ((x_r + 65.0, -40.0), (a, -30.0), "Total", input.total.as_str(), input.text.value),
     ];
     // Right block lines.
     d.line((x_r, -10.0), (a, -10.0), thin, None);
@@ -371,13 +458,13 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     d.line((x_r + 40.0, -40.0), (x_r + 40.0, -20.0), thin, None);
     d.line((x_r + 65.0, -40.0), (x_r + 65.0, -20.0), thin, None);
     for (lo, hi, label, value, height) in boxes {
-        d.text((lo.0 + 1.0, hi.1 - 1.0), 1.8, label, tl, Some(LABEL_ACI), None);
+        d.text((lo.0 + 1.0, hi.1 - 1.0), input.text.caption, label, tl, Some(LABEL_ACI), None);
         d.text((lo.0 + 1.0, lo.1 + 1.5), height, value, left, None, Some(hi.0 - lo.0 - 2.0));
     }
     for ((x0, x1), label, value, height) in
-        [((x_r, x_r + 40.0), "Page", input.page.as_str(), 7.0), ((x_r + 40.0, x_r + 65.0), "Rev", input.rev.as_str(), 5.0)]
+        [((x_r, x_r + 40.0), "Page", input.page.as_str(), input.text.page), ((x_r + 40.0, x_r + 65.0), "Rev", input.rev.as_str(), input.text.rev)]
     {
-        d.text((x0 + 1.0, -21.0), 1.8, label, tl, Some(LABEL_ACI), None);
+        d.text((x0 + 1.0, -21.0), input.text.caption, label, tl, Some(LABEL_ACI), None);
         d.text(((x0 + x1) / 2.0, -31.0), height, value, ml, None, Some(x1 - x0 - 2.0));
     }
     d.out

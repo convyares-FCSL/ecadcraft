@@ -19,6 +19,54 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 033 (design `ecad/docs/design/033.md`), on `feature/print-project`, not yet in `dev`:**
+Print Book's PDF holds on each page only what lies on that page (an approved upstream patch to
+CADCraft's PDF writer), so a book grows in step with its sheets: the 25-page bench book went from
+7,897 KB to 335 KB. A missing value in a generated table is `?` in a thin box, yellow on screen and
+black when printed in either colour mode. An automatic contact table that would run into the title
+block goes right of its coil, else is lifted above the title block; a table placed by hand stays
+and Checks lists `Contact table over the title block` with **Move table…**. `table` on an ECAD
+page is refused, nothing written: `Tables can't be placed on ECAD pages yet. Draw it with lines
+and text, or add a generated page for lists (New Page ▸ Generated).` Generated pages number their
+continuation sheets in sequence (`400, 401`). Project settings gain **Tags** (leading `-`, case
+as typed; changing the dash rewrites every tag in one undoable step) and **Revisions** (pending
+changes marker `D*` / `E (draft)` / off, and the revision table's columns with custom fields such
+as ECR). The Rev box shows `D*` when the drawing changed after the newest issue. Section 5-033
+describes it.
+- *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
+  20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
+  `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
+  colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
+  `table`, the Checks row, `table` refused, writes off), `print_project_q7_contracts.rs` (pending
+  marker with undo and save/reopen, revision columns and custom fields, tag style and its
+  rewrite, renumber under `typed`, writes off), unit tests in `revisions.rs` (column grammar,
+  hostile settings) and `ecad-model/src/tag.rs` (the tag style table).
+- *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
+- *Owner-tried:* not yet.
+
+**Brief 031 (design `ecad/docs/design/031.md`), on `feature/text-styles`, not yet in `dev`,
+steps Q1 (text styles) and Q3 (show and hide):** every derived text takes its size and weight from one style table per
+project: tags 2.5 mm bold, connection point labels 1.5 mm, location labels 1.6 mm, continuation
+names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BIZ UDPGothic` by
+default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
+font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
+height, bold and shown state in one transaction; `textstyle` does the same typed, and the
+read-only `defaults` lists every registered default and where its value comes from. Section 5Q.
+Tags, connection point labels, descriptions and part numbers (new, hidden by default) can be
+hidden or shown per symbol, device, page or project (**Show/Hide Text**, Properties ▸ Texts,
+`showtext`); a strip's tag prints once per run of adjacent terminals and a PLC device's once per
+run of its channels; continuation names are hidden by default. **Show Hidden Text** draws hidden
+texts dimmed, never printed. The cable look's texts (core labels, label box) keep their 2.5 mm in
+this step.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
+  registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
+  (drawn sizes and styles, redraw, a font change then an edit),
+  `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
+  refusals, writes off) and `ecad/apps/ecad-trial/tests/all/text_ui.rs` (the Text section).
+- *Agent-observed:* the worker looked at the headless screenshot `031-text-section.png`; no agent
+  has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
 numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
 group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
@@ -993,7 +1041,7 @@ shows the same facts.
    `0V-01 0.5 BU` on both; the cable cores below the contactor show their number only
    (`L1-02`). Page 1 shows `L-01 2.5 BN`, `N-01 2.5 BU`, `PE 2.5 GNYE`,
    `24V-01 0.5 BU`, `0V-01 0.5 BU`. Colours are IEC 60757 codes (`BN`, `BU`, `BK`, `GY`,
-   `GNYE`…); labels are small (1.8 mm) and no two touch. Switch cable `-W01` to fan view
+   `GNYE`…); labels are small (1.6 mm, brief 031) and no two touch. Switch cable `-W01` to fan view
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
@@ -1038,7 +1086,7 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.6 mm since brief 031). By clicking, both are in
 **Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
 GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
@@ -1189,7 +1237,8 @@ by location**. The trial has no file dialogs: where a file is asked for, type it
    **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
    cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
    its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
-   number is listed under the field and left out.
+   number is listed under the field and left out. A device without a part number shows `?` in a
+   box in the BOM, black in the PDF (brief 033); the file is a few hundred KB, not megabytes.
 
 Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
 `setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
@@ -1413,6 +1462,88 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
+
+## 5Q. Text styles (by clicking)
+
+Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
+
+**The font.** The default font, BIZ UDPGothic, comes from the craft-fonts repository and is built
+in only when the build is told where it is. To see it, clone `storytold/craft-fonts` next to this
+checkout and build with `CRAFT_FONTS_DIR` set to that folder (PowerShell:
+`$env:CRAFT_FONTS_DIR = "C:\dev\craft-fonts"`; bash: `export CRAFT_FONTS_DIR=~/craft-fonts`).
+Without it, texts are drawn in CADCraft's stroke font and bold tags are drawn with a heavier line;
+nothing else changes, and the project's stored font is kept.
+
+1. Place a `coil` (5F). Expected: its tag `-K01` is small and bold (2.5 mm) and its `A1`/`A2`
+   are smaller still (1.5 mm).
+2. **Project panel ▸ Project settings**, scroll to **Text**. The line under **Font** says `drawn
+   with BIZ UDPGothic`, or, in yellow, why another font draws.
+3. Set **Tag** to `3`, untick its **Bold**, OK. Expected: the tag redraws at once, larger and
+   regular; one `u` puts both back. A height of `11` shows `A text height is 0.5 to 10 mm.` and
+   OK is disabled. **Defaults** puts every row back (written only on OK).
+4. **Once per run.** Place a `terminal`, then nine more of the same strip in a row 10 mm apart
+   (**Place**, answer the device prompt with the strip). Expected: `-X01` is drawn once, over the
+   leftmost terminal. A group of the same strip further along the line (more than 15 mm between
+   boxes) prints it once more.
+5. **Show/Hide Text** (ECAD tab ▸ **Text**): click a coil's tag. Expected: it disappears and the
+   command line says `Tag -K01 hidden on this symbol.`; type `D` (Device), `P` (Page) or `PR`
+   (Project) first to hide it wider. Click the symbol to show its hidden tag again. Hover the
+   symbol: the lens lists `Tag -K01 (hidden here)`. Esc or Enter ends the tool.
+6. **Show Hidden Text** (ECAD tab ▸ **Text**): hidden tags and labels are drawn dimmed (grey);
+   click it again to stop. It records nothing and is never printed. Properties of a device, a
+   symbol or a page has a **Texts** group (`Default (shown)`, Shown, Hidden, Once per run).
+
+Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
+`textstyle {"kind":"tag","height":3,"weight":"regular"}`, `textstyle {"font":"Arial"}`,
+`textstyle {"kind":"wire_label","height":2}` (the same value as **Wires ▸ Label height**),
+`defaults {"group":"Text"}` (every registered default, its value and where it comes from).
+`showtext {"kind":"tag","show":"off"}` (the project; add `"page"`, `"component"` or
+`"representation"` for narrower), `showtext {"kind":"description","show":"on","component":"<id>"}`,
+`hiddentext {}` (toggles), `pagetexts {}` (every derived text on the page, hidden ones too).
+`projectprops`, `pageprops` and `setprop` refuse `text.` keys.
+
+## 5-033. Print and project (by clicking)
+
+Brief 033, on `feature/print-project`. Start from the demo project of section 5K (it has a BOM
+page and devices without part numbers).
+
+1. **Book size.** Click **Print Book**, keep **All pages**, check **File**, **Print**. Expected:
+   `Printed n sheets (… generated) to … (… KB).`: a few hundred KB, not megabytes. Each PDF page
+   looks as before.
+2. **Missing values.** Show the BOM page: a missing part number is `?` in a thin yellow box. Print
+   Book with **Colour: Screen**: in the PDF the `?` and its box are black.
+3. **Contact table and the title block.** On a drawing page place a coil low on the sheet (just
+   above the title block) with two contacts on another page. Expected: its contact table sits to
+   the right of the coil, or is lifted above the title block; never over it. Move the table into
+   the title block with **Move Mirror Table**: it stays there, and Checks lists `Contact table over
+   the title block` with **Move table…**.
+4. **Continuation numbers.** Number the BOM page `400` (Pages list, double-click its number). With
+   enough devices for two sheets, the second sheet's Page box reads `401` and the first sheet's
+   Next reads `401`; Contents lists `400–401`. Typing `401` as another page's number is refused:
+   `Number 401 is sheet 2 of page 400 (BOM by location).` Print Book **Pages** `401` prints the
+   whole BOM page and says why.
+5. **`table`.** Type `table` on a drawing page and place it: refused, `Tables can't be placed on
+   ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸
+   Generated).` Nothing is added.
+
+6. **Tag style.** Project settings ▸ Tags: untick **Leading - on tags** (the line under it reads
+   `k5 is written K05`), **OK**. Every device and cable tag loses its `-` in one step (`Tag style:
+   no leading -. n tags rewritten.`); one **u** puts them all back. **Case ▸ As typed**: tags
+   typed from then on keep their letters (`M02a`); existing tags stay upper case.
+7. **Revision columns.** Project settings ▸ Revisions ▸ **Columns**: type
+   `rev, date, ecr:ECR, description, drawn`, **OK**. The title block's revision table now has an
+   ECR column and no Checked or Approved. In the Revisions window the pending row has an ECR
+   input. A wrong list says why under the field and is not written.
+8. **Pending changes.** Issue Rev A, then draw a line: the Rev box reads `A*`, the cover
+   `Revision A, … (changed since)`, and the Print Book dialog (and its result) notes `The drawing
+   has changed since Rev A; the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
+   does not count. **Pending changes ▸ E (draft)** shows `B (draft)`; **Off** shows `A`.
+
+Typed instead: `projectprops {"tag_dash":false}`, `projectprops {"tag_case":"typed"}`,
+`projectprops {"revision_columns":"rev, date, ecr:ECR, description, drawn"}`,
+`revision {"fields":{"ecr":"ECR-114"}}`, `projectprops {"revision_pending":"draft"}`,
+`contacts {"component":"<id>"}` (its `table` says where the table went and why),
+`pageprops {"page":"<id>"}` (`sheet_numbers`), `printbook {"scope":{"pages":"401"}}` (`notes`).
 
 ## 6. Check connected movement, undo/redo and pages
 

@@ -60,6 +60,7 @@ pub mod renumber_dialog;
 pub mod search;
 pub mod sheets_ui;
 pub mod startup;
+pub mod text_ui;
 pub mod tools;
 pub mod window;
 
@@ -1748,6 +1749,23 @@ impl Trial {
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
             }
+            A::RenumberPage(page) => {
+                if self.show_page(page).is_ok() {
+                    self.panel.tab = project_panel::Tab::Pages;
+                    self.panel.start_number_edit(page);
+                }
+            }
+            A::MoveTable(check) => {
+                if self.goto_check(&check).is_ok() {
+                    if self.cad.session.running.is_some() {
+                        self.cad.session.cancel();
+                    }
+                    if let Err(e) = self.cad.session.start("mirrormove") {
+                        self.cad.session.echo(e.to_string());
+                    }
+                    self.after_logic();
+                }
+            }
             A::AddJunction(page, at) => {
                 if self.show_page(page).is_ok() {
                     let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
@@ -2417,7 +2435,14 @@ impl Trial {
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
+            Ok(v) => {
+                let mut d = sheets_ui::ProjectProps::from_json(&v, read_only, popout);
+                // Brief 031: the Text section reads `textstyle {}` (reads only).
+                if popout == sheets_ui::Popout::Settings {
+                    d.text = self.run_value("textstyle", json!({})).ok().map(|t| text_ui::TextSection::from_json(&t));
+                }
+                self.project_props = Some(d);
+            }
             Err(e) => self.cad.session.echo(e),
         }
     }
@@ -2956,6 +2981,12 @@ impl Trial {
             d.unknown = unknown;
             d.flagged = flagged;
         }
+        if let Some(p) = self.project.clone()
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_cadcraft::printbook::notes(p, &scope))
+            && let Some(d) = &mut self.print_book
+        {
+            d.notes = notes;
+        }
         let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(true) => {
@@ -2971,7 +3002,9 @@ impl Trial {
     fn sheet_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.project_props {
             match d.show(ctx) {
-                Some(sheets_ui::Out::Run(line)) => match self.run_line(&line) {
+                // Brief 031: OK may write two lines (`projectprops`, `textstyle`); the first refusal
+                // stops and is shown.
+                Some(sheets_ui::Out::Run(lines)) => match lines.lines().find_map(|l| self.run_line(l)) {
                     None => self.project_props = None,
                     Some(e) => {
                         if let Some(d) = &mut self.project_props {

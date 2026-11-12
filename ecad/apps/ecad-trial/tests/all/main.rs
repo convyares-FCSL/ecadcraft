@@ -29,6 +29,7 @@ mod sheets_ui;
 mod startup_contracts;
 mod startup_tester;
 mod strips_ui;
+mod text_ui;
 mod tools;
 mod trial;
 mod windows_trial_contracts;

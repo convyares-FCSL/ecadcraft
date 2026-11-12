@@ -127,10 +127,14 @@ pub enum Kind {
     LinkOrphan,
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
     LinkOnNonStrip,
+    /// Brief 033: a contact table the user placed overlaps the title block.
+    TableOverTitle,
+    /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
+    ContinuationClash,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 34] = [
+    pub const ALL: [Kind; 36] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -165,6 +169,8 @@ impl Kind {
         Kind::LinkAcrossPartition,
         Kind::LinkOrphan,
         Kind::LinkOnNonStrip,
+        Kind::TableOverTitle,
+        Kind::ContinuationClash,
     ];
 
     /// The JSON name.
@@ -204,6 +210,8 @@ impl Kind {
             Kind::LinkAcrossPartition => "link-across-partition",
             Kind::LinkOrphan => "link-orphan",
             Kind::LinkOnNonStrip => "link-on-non-strip",
+            Kind::TableOverTitle => "table-over-title",
+            Kind::ContinuationClash => "continuation-clash",
         }
     }
 
@@ -249,6 +257,8 @@ impl Kind {
             Kind::LinkAcrossPartition => "Link crosses a partition",
             Kind::LinkOrphan => "Link names positions the strip lacks",
             Kind::LinkOnNonStrip => "Link on a device that is not a strip",
+            Kind::TableOverTitle => "Contact table over the title block",
+            Kind::ContinuationClash => "Continuation sheet has another page's number",
         }
     }
 
@@ -273,7 +283,9 @@ impl Kind {
             | Kind::AccessoryOrphan
             | Kind::LinkAcrossPartition
             | Kind::LinkOrphan
-            | Kind::LinkOnNonStrip => Severity::Warning,
+            | Kind::LinkOnNonStrip
+            | Kind::TableOverTitle
+            | Kind::ContinuationClash => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -324,6 +336,10 @@ pub enum Fix {
     LinkOrphan(ComponentId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
     LinkOnNonStrip(ComponentId),
+    /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
+    MoveTable(ComponentId),
+    /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
+    RenumberPage(PageId),
 }
 
 /// One row of the Checks list.
@@ -820,6 +836,17 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
+    }
+    // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
+    if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
+        out.push(Check {
+            kind: Kind::TableOverTitle,
+            page: Some(page),
+            at: Some(at),
+            object: Object::Component(c),
+            which,
+            fix: Some(Fix::MoveTable(c)),
+        });
     }
     out
 }
@@ -1328,5 +1355,6 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
     let mut rows: Vec<Check> = Checks::build(doc, tol).rows().cloned().collect();
     rows.extend(outputs.checks());
+    rows.extend(crate::generated::continuation_checks(doc, Some(outputs)));
     sort(doc, rows)
 }

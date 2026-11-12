@@ -111,6 +111,11 @@ pub enum Action {
     NumberThem,
     /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
     Finalise,
+    /// Checks tab (brief 033): show this row (a table over the title block), then start Move
+    /// Mirror Table.
+    MoveTable(Box<ecad_cadcraft::checks::Check>),
+    /// Checks tab (brief 033): open this page's number field in the Pages list.
+    RenumberPage(PageId),
     /// Devices tab (brief 026): open the Renumber dialog.
     Renumber,
     /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
@@ -441,6 +446,16 @@ impl ProjectPanel {
     }
 
     /// Open the rename field on `page` with its title selected.
+    /// Open `page`'s number field in place (brief 033: a Checks row's **Renumber…**).
+    pub fn start_number_edit(&mut self, page: PageId) {
+        if let Some(i) = self.index_of(page) {
+            let number = self.rows.get(i).map(|r| r.number.clone()).unwrap_or_default();
+            self.number_edit = Some(InPlace { of: page, text: number.clone(), error: None, old: number });
+            self.cursor = Some(i);
+            self.reveal = Some(i);
+        }
+    }
+
     pub fn start_rename(&mut self, page: PageId) {
         if let Some(i) = self.index_of(page) {
             let title = self.rows.get(i).map(|r| r.title.clone()).unwrap_or_default();
