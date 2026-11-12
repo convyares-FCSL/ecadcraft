@@ -248,3 +248,21 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     assert_eq!(place(&mut h, "socket4", [0.0, -60.0])["tag"], "-X02");
     assert_eq!(place(&mut h, "plug4", [0.0, -80.0])["tag"], "-X03");
 }
+
+#[test]
+fn a_card_body_takes_its_channels_as_one_device() {
+    let mut h = new_h();
+    let card = place(&mut h, "plcdi", [0.0, 0.0]);
+    assert_eq!((card["tag"].as_str(), labels(&card)), (Some("-A01"), vec!["L+".to_string(), "M".into()]));
+    let a: ComponentId = id(&card, "component");
+    assert_eq!(labels(&join(&mut h, "di", a, [40.0, 0.0]).unwrap()), ["I0.0"]);
+    assert_eq!(labels(&join(&mut h, "di", a, [50.0, 0.0]).unwrap()), ["I0.1"]);
+    let doc = h.doc();
+    let all: std::collections::BTreeSet<String> = ecad_cadcraft::devices::labels_of(&doc, a);
+    assert_eq!(all.into_iter().collect::<Vec<_>>(), ["I0.0", "I0.1", "L+", "M"]);
+    // A card's supply points are quiet; a CPU's are not.
+    assert!(checks::terminal_checks(&doc, terminal(&card, "L+")).is_empty());
+    let cpu = place(&mut h, "plccpu", [100.0, 0.0]);
+    let doc = h.doc();
+    assert!(checks::terminal_checks(&doc, terminal(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+}

@@ -205,6 +205,16 @@ const fn cn(n: u128) -> DefinitionId {
     def_id(0x300 + n)
 }
 
+/// PLC card bodies (stage 3b): `0x400 + n`.
+const fn pc(n: u128) -> DefinitionId {
+    def_id(0x400 + n)
+}
+
+/// A PLC card body (stage 3b): prefix `A`, a head.
+const fn card(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+    st(key, name, aliases, "A", HEAD, id).of(Family::Plc)
+}
+
 /// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
 /// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
@@ -290,6 +300,15 @@ pub const STARTERS: &[Starter] = &[
     conn("rj45", "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
     conn("usba", "USB-A bulkhead", USB, cn(26)),
     conn("usbb", "USB-B bulkhead", USB, cn(27)),
+    // ---- Brief 034 stage 3b: PLC card bodies (design 034 §6); channels join as `di`/`do`.
+    card("plccpu", "PLC CPU", &["plc", "cpu", "controller", "card"], pc(1)),
+    card("plcps", "PLC power supply", &["plc", "power", "card"], pc(2)),
+    card("plcdi", "PLC digital input card", &["plc", "di", "input", "card"], pc(3)).quiet_at(Quiet::All),
+    card("plcdq", "PLC digital output card", &["plc", "dq", "do", "output", "card"], pc(4)).quiet_at(Quiet::All),
+    card("plcai", "PLC analogue input card", &["plc", "ai", "analogue", "card"], pc(5)).quiet_at(Quiet::All),
+    card("plcao", "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
+    card("plcrtd", "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
+    card("plciol", "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
 ];
 
 /// The starter symbol with key `key` (case-insensitive).
@@ -763,6 +782,29 @@ impl Connector {
     }
 }
 
+/// A PLC card body (design 034 §6): its type text and its supply points, each with a lead to the
+/// body's edge.
+fn card_body(type_text: &str, points: &[(f64, f64)]) -> Vec<Primitive> {
+    let mut g = vec![rect((-15.0, -20.0), (15.0, 20.0)), line((-15.0, 15.0), (15.0, 15.0)), text((-13.0, 16.5), 2.5, type_text)];
+    g.extend(points.iter().map(|&(x, y)| line((x, y), (x, 20.0_f64.copysign(y)))));
+    g
+}
+
+/// The type text of a card key.
+fn card_type(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "plccpu" => "CPU",
+        "plcps" => "PS",
+        "plcdi" => "DI",
+        "plcdq" => "DQ",
+        "plcai" => "AI",
+        "plcao" => "AO",
+        "plcrtd" => "RTD",
+        "plciol" => "IOL",
+        _ => return None,
+    })
+}
+
 /// The most ways or pins a sized symbol key may name (guards the loops below; the catalogue's
 /// largest is 25).
 const MAX_WAYS: usize = 32;
@@ -1029,6 +1071,9 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((0.0, 6.0), (0.0, 10.0)),
             line((0.0, -6.0), (0.0, -10.0)),
         ],
+        // ---- Brief 034 stage 3b (design 034 §6).
+        "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
+        k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
         _ => sized_graphics(key),
     }
 }
@@ -1084,6 +1129,9 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         "valve" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         "valve2" => vec![t("A1", -10.0, 10.0), t("A2", -10.0, -10.0), t("B1", 10.0, 10.0), t("B2", 10.0, -10.0)],
         "tc" => vec![t("+", -5.0, 10.0), t("-", 5.0, 10.0)],
+        // ---- Brief 034 stage 3b.
+        "plcps" => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
+        "plccpu" | "plcdi" | "plcdq" | "plcai" | "plcao" | "plcrtd" | "plciol" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
         _ => sized_terminals(key, &t),
     }
 }
@@ -1150,8 +1198,8 @@ mod tests {
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
-        // brief 034's stage 1 (14), stage 2 (11) and stage 3a (27).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27);
+        // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1220,6 +1268,14 @@ mod tests {
         ("rj45", 50.0, 10.0, "1/2/3/4/5/6/7/8/SH"),
         ("usba", 30.0, 10.0, "1/2/3/4/SH"),
         ("usbb", 30.0, 10.0, "1/2/3/4/SH"),
+        ("plccpu", 30.0, 45.0, "L+/M"),
+        ("plcps", 30.0, 50.0, "L/N/PE/L+/M"),
+        ("plcdi", 30.0, 45.0, "L+/M"),
+        ("plcdq", 30.0, 45.0, "L+/M"),
+        ("plcai", 30.0, 45.0, "L+/M"),
+        ("plcao", 30.0, 45.0, "L+/M"),
+        ("plcrtd", 30.0, 45.0, "L+/M"),
+        ("plciol", 30.0, 45.0, "L+/M"),
     ];
 
     #[test]
@@ -1281,7 +1337,9 @@ mod tests {
     fn search_table() {
         let keys = |q: &str| search(q).into_iter().map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("-Q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
-        assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
+        // A bare letter is also a substring of an alias (`dq`).
+        assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq"]);
+        assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol"]);
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
         assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
         assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
