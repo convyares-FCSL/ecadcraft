@@ -2,7 +2,7 @@
 
 Status: Draft, revision 3 (designer, 2026-11-12; decisions in design §17: every accessory is
 placed by the user; jumpers are strip-owned links (model D); FP1–FP4 approved. The hybrid Jumper
-tool is confirmed. Open: design §15 Q2–Q3 (owner) and FP5–FP7 (overseer))
+tool is confirmed. FP5–FP7 approved. Open: design §15 Q2–Q3 (owner))
 Branch: `feature/terminal-accessories`, from `origin/feature/terminal-strips` `81139aaf` (028, in
 review as PR #55). The worker starts after 028 merges into `dev`, then merges `dev` into this
 branch first.
@@ -67,8 +67,7 @@ No new op and no new record field. Everything is an ordinary optional property (
 **the overseer decides FP1–FP4**): strip keys `acc.start`, `acc.end`, `acc.after.<label>`,
 `acc.on.<label>`; accessory part keys `<item>.part_number|maker|description` and
 `marker.per_card`; project keys `strip_<item>_<field>` (FP1–FP4, approved). Renumbering terminals
-moves the `acc.*` keys in the same transaction (FP4). For jumpers (**FP5–FP7, the overseer
-decides**): strip keys `link.<n>` and `link.<n>.part_number|maker|description`; strip `jumper.bar`
+moves the `acc.*` keys in the same transaction (FP4). For jumpers (FP5–FP7, approved): strip keys `link.<n>` and `link.<n>.part_number|maker|description`; strip `jumper.bar`
 and `jumper.part_number|maker|description` with project `strip_jumper_*`; a link edit records the
 numbering pass's wire-number ops in its transaction, and renumber rewrites `link.<n>` values.
 022's connectivity reads strip links as a bridge source (code, not format).
