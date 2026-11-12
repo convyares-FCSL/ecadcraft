@@ -338,6 +338,14 @@ fn default_label_height() -> f64 {
     m::wiring::DEFAULT_LABEL_HEIGHT
 }
 
+fn default_label_rule() -> String {
+    m::wiring::DEFAULT_LABEL_RULE.to_string()
+}
+
+fn default_label_min_length() -> f64 {
+    m::wiring::DEFAULT_LABEL_MIN_LENGTH
+}
+
 fn is_default_label_height(h: &f64) -> bool {
     *h == m::wiring::DEFAULT_LABEL_HEIGHT
 }
@@ -355,6 +363,12 @@ pub struct WiringSettings {
     pub colour_style: ColourStyle,
     #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
     pub label_height: f64,
+    /// Brief 032 (FP-W1); a file without it reads with the default.
+    #[serde(default = "default_label_rule")]
+    pub label_rule: String,
+    /// Brief 032 (FP-W1); a file without it reads with the default.
+    #[serde(default = "default_label_min_length")]
+    pub label_min_length: f64,
 }
 
 impl Default for WiringSettings {
@@ -389,6 +403,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                 m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule.clone(),
+            label_min_length: w.label_min_length,
         }
     }
 }
@@ -470,6 +486,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                 ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule,
+            label_min_length: w.label_min_length,
         }
     }
 }
