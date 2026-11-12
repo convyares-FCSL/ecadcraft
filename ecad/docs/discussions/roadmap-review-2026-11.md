@@ -120,6 +120,9 @@ term that is not generic electrical practice.
 10. **Format stability for v1**: migration and upcasting (E4), so a v1 file opens in every later
     build. Today newer additions are refused by older builds, which is acceptable pre-alpha but not
     at v1.
+11. **Graphical terminal-strip pages, continuation cross-references, connectors and a complete
+    BOM.** The drawing-pack test (§6) showed each of these in a real pack. The competitors all have
+    the first two.
 
 **Nice-to-have** (adds real value; can follow v1 or slot in if cheap):
 
@@ -151,8 +154,16 @@ term that is not generic electrical practice.
 
 ### 3.1 Principles for the order
 
-1. **What unblocks real drawings comes first.** The drawing-pack test (§6) will rank the details.
-   On reading the code, the first walls are **symbols, PLC cards and multi-level terminals**.
+1. **What unblocks real drawings comes first.** The drawing-pack test (§6) ranked the gaps by how
+   much of a real 43-page pack each one blocks. In order, the first walls are:
+   - **graphical terminal-strip pages** (about a third of that pack);
+   - **multi-level terminals**;
+   - **PLC racks and cards**;
+   - **continuation cross-references**;
+   - **connectors**;
+   - **more symbols**.
+
+   M1 below follows that order within each lane.
 2. **Data entry before data output.** ECAD already produces good outputs. It needs to take data
    in (symbols, parts, lists) and to edit it in tables.
 3. **The UI shell goes early.** The look-and-feel pass touches every panel, so its foundation
@@ -169,7 +180,7 @@ runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
 | # | Feature | Purpose (one line) | Depends on | Size | Format change |
 |---|---|---|---|---|---|
 | 0.1 | 030 accessories and jumpers | Strips as built, links that join nets | 028 | (in progress) | No (properties) |
-| 0.2 | Drawing-pack fixes | Close the gaps the 43-page test finds that block a real pack | 030 | S–M each | Unknown until triaged |
+| 0.2 | Drawing-pack quick fixes | Two small gaps from §6. **Revision table columns** the project chooses (for example change request, validated, verified), stored as `rev.<n>.<field>` properties as today. **Tag display without the leading `-`**, as a project choice: input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. Every bigger gap is an M1 item | 030 | S each | Additive: an optional project setting for the tag style |
 | 0.3 | Stale slow tests | Make `cargo xtask ci` pass for the QA gate | none | S | No |
 | 0.4 | v0.1 QA gate | `dev` → `main`, owner trial | 0.1–0.3 | S | No |
 
@@ -180,11 +191,28 @@ runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
 | 1.0 | **Live MCP bridge** (first, see below) | An agent drives the **running** app and the owner watches the drawing appear, as SolidCraft does; the server is registered for Claude so it is always available | 011 | M | No |
 | 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
 | 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals | 030 | M | No (definitions and properties) |
-| 1.3 | **PLC cards** | One PLC device with channels (DI, DO, AI, AO, power) drawn on any page, addresses (`%I0.0`, `I0.0`, free text), automatic addressing, and a generated **I/O list** page and CSV | 018, 025 | L | No if channels are connection points with properties; FP to confirm in design |
-| 1.4 | **Wire types** | Named conductor types per potential, overridable per wire, on wire reports and the BOM | 022 | M | Additive: project setting `wire_types` |
+| 1.3 | **PLC racks and cards** | A rack or CPU with slots, and cards in them (DI, DQ, AI, AO, RTD, IO-Link, power) as devices. Each card's channels are drawn on any page, with channel numbers, addresses (`%I0.0`, `I0.0`, free text), labels that may be rotated, and spare channels listed. Automatic addressing by slot and channel. A generated **I/O list** page and CSV | 018, 025 | XL. Split it: (a) rack, slot and card model; (b) channel symbols and addressing; (c) I/O list | No if slots and channels are connection points and properties; FP to confirm in design |
+| 1.4 | **Wire types** | Named conductor types per potential, overridable per wire, on wire reports and the BOM. Conductors already store their own `cross_section` and `colour` (022 FP3). The gap the pack shows is setting them quickly and showing them, which this item covers | 022 | M | Additive: project setting `wire_types` |
 | 1.5 | **UI shell** (look-and-feel, part 1) | Tokens, type, panel layout, the History polish from 020b, a calm modern frame. Never a copy of another product | none | L | No |
 | 1.6 | **Radial wheel** | Right-click quick-use wheel: the eight most likely actions for what is under the cursor | 1.5 | M | No |
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
+| 1.8 | **Graphical terminal-strip pages** | A generated page per strip, drawn as the strip is built. Each terminal shows its inside target above and outside target below, with wire numbers, page references, cable boxes with core colours, levels, links and accessories (end plates). It is the same derived data as 028's tabular plan, in a second page style; it is not a second model | 1.2, 030 | L | No (derived) |
+| 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand | 022, 025 | M | No: derived; a caption is a continuation property |
+| 1.10 | **Symbol pack** | More built-in starters, available before the builder: change-over contacts (11/12/14), 4-pole contactor, RCBO, residual-current device, SSR, proximity and float sensors, valve, thermocouple, heater, interlock, fuse terminal with a rating. All are our own definitions | 018 | M | No (built-in definitions, embedded on use as today) |
+| 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages | 1.1 | M | Probably no (properties); FP to confirm in design |
+| 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030 | 024, 030 | M | No (properties) |
+
+**Order within M1, by lane.** Each lane's order follows the ranking in §6.
+
+- **Lane S:** 1.10 symbol pack, then 1.1 symbol builder, then 1.11 connectors.
+- **Lane D:** 1.2 multi-level terminals, then 1.3 PLC racks and cards, then 1.9 continuation
+  cross-references, then 1.4 wire types.
+- **Lane U:** 1.0 live bridge, then 1.8 graphical strip pages, then 1.12 BOM completeness, then
+  1.5 UI shell, then 1.6 wheel, then 1.7 table.
+
+Lane U is the longest. 1.6 and 1.7 may slip to the start of M2, but the managers wait for them
+(principle 3). 1.8 starts only after 1.2 lands, because it reads lane D's strip data; it writes
+only `generated.rs` and the page styles.
 
 **1.0 Live MCP bridge, in detail.** Why first: every later brief is tested, demonstrated and
 increasingly drafted by agents, and the drawing-pack test is an agent building a real pack. Today
@@ -240,9 +268,9 @@ seconds, and it is mostly composition.
 | 2.4 | **Device manager** (device list) | Every device, placed or **unplaced**, in one live table. Create devices here and place them later (P6, DOC-06 already allow it) | 1.7 | M | No |
 | 2.5 | **List-driven design** | Import a device list or I/O list (CSV/XLSX) as a proposal, review it, accept it; unplaced devices then appear in the device manager to draw from. Re-import shows differences, never overwrites silently | 2.4, 1.3 | L | No |
 | 2.6 | **Terminal manager** | The terminal plan made editable: positions, levels, accessories, links, targets, reorder by drag, renumber. It **replaces** Reports ▸ Terminals; it is not built beside it | 1.2, 1.7 | L | No |
-| 2.7 | **Cable manager** | Cables, cores, types, lengths, from and to, spare cores; assign cores in the table; the cable-type list | 1.4, 1.7 | L | Additive if cable types become typed like wire types |
+| 2.7 | **Cable manager** | Cables, cores, types, lengths, from and to, spare cores; assign cores in the table. A cable-type summary (used length and count per type). Cable structure: shields and twisted pairs, and a cable referenced from more than two places (today a cable has at most two references, `references.rs`) | 1.4, 1.7 | L (split: structure, then manager) | Additive: cable types typed like wire types; pair and shield membership as properties, FP to confirm |
 | 2.8 | **PLC manager** | Channels, addresses, symbols, descriptions and the connected wire in one table; export and import of the assignment list | 1.3, 1.7 | M | No |
-| 2.9 | **Report generator** | Report definitions: data source (devices, wires, cables, terminals, PLC, parts) × columns × filter × sort × group, out to a generated page, CSV or XLSX, live | 1.7 | L | Additive: project `reports` definitions |
+| 2.9 | **Report generator** | Report definitions: data source (devices, wires, cables, terminals, PLC, parts) × columns × filter × sort × group, out to a generated page, CSV or XLSX, live. It ships a **fuse list** (each fuse and the circuit it supplies) as one of its built-in definitions | 1.7 | L | Additive: project `reports` definitions |
 
 **M3: v1.0.** A panel shop can run a real job from quote to build in ECAD, and files are safe for
 years.
@@ -266,9 +294,9 @@ name the lane's files in their §0, so the overseer can see an overlap before a 
 
 | Lane | Owns | M1 | M2 | M3 |
 |---|---|---|---|---|
-| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.1 symbol builder | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
-| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `ecad-model` property rules | 1.2 multi-level → 1.3 PLC cards → 1.4 wire types | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
-| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
+| **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.10 symbol pack → 1.1 symbol builder → 1.11 connectors | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
+| **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `references.rs` and `xref.rs`, `ecad-model` property rules | 1.2 multi-level → 1.3 PLC racks and cards → 1.9 continuation references → 1.4 wire types | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
+| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.8 graphical strip pages → 1.12 BOM completeness → 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
 
 The known collisions, and how to avoid them:
 
@@ -326,9 +354,8 @@ wheel, command line, MCP), never a second editor.
 
 Each has a recommendation. Answer "as recommended" to accept them all.
 
-1. **Order of M1.** Is the M1 set (live MCP bridge, symbol builder, multi-level terminals, PLC cards, wire types, UI
-   shell, wheel, table component) the right next milestone? **Recommend yes**, adjusted by the
-   drawing-pack findings in §6.
+1. **Order of M1.** Is M1 as ranked by the drawing-pack test (§3.2, "Order within M1") the right
+   next milestone? **Recommend yes.**
 2. **Symbols before libraries.** Build the symbol builder first, saving into the project, with
    `.ecadlib` after it? **Recommend yes.** It unblocks drawings weeks before the library container
    is designed, approved and built. The definitions it makes are the same ones a library will hold.
@@ -371,21 +398,64 @@ Each has a recommendation. Answer "as recommended" to accept them all.
 18. **Control port off by default**, switched on per run with `--control PORT` or by a preference
     the owner sets once? **Recommend the preference, off by default.** "Always available" then needs
     one setting, and a machine that never opts in never listens.
+19. **Graphical strip pages as a second page style of the one terminal plan** (1.8), not a separate
+    report? **Recommend yes.** One derived plan, two styles (table and graphical), and the project
+    chooses which goes in the book.
+20. **A symbol pack (1.10) before the symbol builder?** It is about a week of lane S that unblocks
+    most of the pack's missing symbols while the builder is designed. **Recommend yes.**
+21. **Continuation captions** (1.9): a caption is a property of the continuation, and the arrows
+    that share it are grouped under it? **Recommend yes.** No new object is needed.
+22. **Cables with more than two references and with pairs and shields go in M2** (2.7), not M1?
+    They ranked last of the ten blocking gaps. **Recommend M2**, unless the owner's next real job
+    needs them sooner.
 
 ---
 
-## 6. Findings from the drawing-pack test (to merge)
+## 6. Findings from the drawing-pack test
 
-*Placeholder.* A separate session is recreating one of the owner's real drawing packs (43 pages,
-confidential) to find gaps. When its **generic** gap list arrives (no project names, customers,
-tags or drawing content), each gap is merged here as a row:
+A separate session reviewed one of the owner's real control-panel packs (43 pages, confidential)
+against ECAD. This is stage 1, a desk review: it compares the pack with what ECAD can draw, and
+nothing has been redrawn yet. Only general gaps are recorded here, with no names, tags, pages or
+company details. The table is ranked by how much of the pack each gap blocks. The "ECAD today"
+column was checked against `dev` where the code could settle it.
 
-| Gap (generic) | Blocks a real pack? | Roadmap item it falls under | New item needed? |
-|---|---|---|---|
-| *(to merge)* | | | |
+| # | Gap (generic) | ECAD today | Roadmap item | Effect on the order |
+|---|---|---|---|---|
+| 1 | **Graphical terminal-strip pages**, about a third of the pack. Each terminal shows its inside target above and outside target below, wire numbers, page references, cable boxes with core colours, and end plates | Tabular terminal plan only (028), with accessories and links coming in 030 | **1.8** (new) | New M1 item, second in lane U after the bridge |
+| 2 | **Multi-level terminals**: L/N/PE, 3-level sensor terminals, stacked and double-deck | One connection point per terminal (§1 status review) | **1.2** | Confirmed as the first item in lane D |
+| 3 | **PLC racks and cards**: CPU with slots; DI, DQ, AI, RTD and IO-Link cards with channel numbers, addresses, rotated labels and spare channels | Single-channel DI and DO symbols only | **1.3**, widened from "PLC cards" to racks, slots and card types; resized to XL and split | Second in lane D |
+| 4 | **Off-page continuation arrows with derived cross-references**, grouped under captions, 10–20 per page | Continuations join nets (022) but are not on the reference index (025), so their references would be typed by hand | **1.9** (new) | New M1 item in lane D |
+| 5 | **Connector devices**: male and female halves, D-sub, fieldbus, RJ45/USB bulkheads | None | **1.11** (new) | New M1 item in lane S, after the builder |
+| 6 | **A reusable user symbol library**: float switches, interlocks, proximity sensors, valves, thermocouples, heaters, SSRs, RCBO with RCD, 4-pole contactors | 21 starters; no builder, no library | **1.10** symbol pack (new), then **1.1** builder, then **2.1** `.ecadlib` | Symbol pack added first in lane S as quick relief |
+| 7 | **Change-over contacts** (C/NO/NC, 11/12/14) on relays and switches | NO and NC only | **1.10** | In the symbol pack |
+| 8 | **BOM completeness**: accessory and assembly rows (contactor + aux block, CPU + memory card); untagged rows (trunking and DIN rail in metres, end plates, jumper bars, fuse inserts, crimps); an internal article-number column | Devices and strip terminals (024, 028); end plates and jumper bars arrive with 030 | **1.12** (new); assemblies move to **2.3** parts later | New M1 item in lane U |
+| 9 | **Cross-section and colour per conductor**, not only per potential | Partly there: conductors already store `cross_section` and `colour` (022 FP3); what is missing is setting them quickly and showing them | **1.4** wire types | No change; 1.4's purpose now names it |
+| 10 | **Shielded and twisted-pair cables**, and cables referenced from more than two places | A cable has at most two references (`references.rs`); no pairs or shields | **2.7** cable manager, widened | Stays M2 (question 22) |
 
-The ranking in §3.2 is then re-checked: any gap that blocks a pack and is not covered by M0 or M1
-moves into M0 as a drawing-pack fix (item 0.2).
+Smaller gaps:
+
+| Gap | Where it goes |
+|---|---|
+| Panel layout | **3.1**, unchanged (M3) |
+| Cable-type summary (used length and count per type) | **2.7** |
+| Fuse list (each fuse and the circuit it supplies) | **2.9**, as a built-in report definition |
+| Revision table columns (change request, validated, verified) | **0.2** quick fix |
+| Fuse terminals with ratings | **1.10** symbol pack and **1.2** multi-level terminals |
+| Tags without the leading `-` | **0.2** quick fix (display only; input already accepts both) |
+
+**What changed in the roadmap because of these findings:**
+
+- **Five new M1 items:** 1.8 graphical strip pages, 1.9 continuation cross-references, 1.10 symbol
+  pack, 1.11 connectors and 1.12 BOM completeness.
+- **PLC (1.3) widened** to racks, slots and card types, and resized to XL.
+- **The cable manager (2.7) widened** to pairs, shields and more than two references.
+- **0.2 made concrete:** two small quick fixes.
+- **Lane order re-ranked** (§3.2, "Order within M1").
+- **The UI shell moves later in lane U.** It now comes after the gaps that block drawings, and still
+  before the managers.
+
+Stage 2 of the test (redrawing pages in ECAD) may re-rank this table; its findings are merged the
+same way.
 
 ---
 
