@@ -51,6 +51,12 @@ pub const ROW_MM: f64 = 5.0;
 const A3_AREA: f64 = 390.0;
 /// `ecad.flagged` (`ecad.check-warning`, ACI 2): `?` values on screen.
 pub const FLAGGED_ACI: u8 = 2;
+/// `ecad.flagged-print` (ACI 7): a missing value's `?` and box when printed (design 033 §3.1).
+pub const FLAGGED_PRINT_ACI: u8 = 7;
+/// The text of a missing value.
+pub const MISSING: &str = "?";
+/// `ecad.missing-box`: the box round a missing value is inset this far into its cell (mm).
+pub const MISSING_INSET_MM: f64 = 0.5;
 /// Refusal of `pageprops` changing the kind.
 pub const KIND_FIXED: &str = "A page's kind is set when it is made; add a new page instead.";
 
@@ -272,6 +278,12 @@ impl Draw {
             self.out.push(Part { kind, weight: Some(THIN_WEIGHT), aci: None, layer: LAYER });
         }
     }
+    /// A closed rectangle from `a` to `b` (paper millimetres), weight `weight`, colour `aci`.
+    fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
+        let v = vec![self.p(a.0, a.1), self.p(b.0, a.1), self.p(b.0, b.1), self.p(a.0, b.1)];
+        let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
+        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
+    }
     fn text(&mut self, at: (f64, f64), height: f64, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
@@ -293,6 +305,22 @@ impl Draw {
         });
         self.out.push(Part { kind, weight: None, aci, layer: LAYER });
     }
+}
+
+/// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset
+/// [`MISSING_INSET_MM`] into the cell from `lo` to `hi` (model coordinates, `k` drawing units per
+/// millimetre), the text `height` millimetres high. Both parts are [`FLAGGED_ACI`] on [`LAYER`]:
+/// yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
+pub fn missing_mark(lo: Pt, hi: Pt, k: f64, height: f64) -> Vec<Part> {
+    if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
+        return Vec::new();
+    }
+    let mut d = Draw { k, x0: 0.0, out: Vec::new() };
+    let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
+    let inset = MISSING_INSET_MM.min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
+    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::look::WIRE_WEIGHT, Some(FLAGGED_ACI));
+    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), height, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
+    d.out
 }
 
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
@@ -628,8 +656,10 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
             let mut x = l;
             let mid = y - ROW_MM / 2.0;
             for (c, (cell, w)) in row.cells.iter().zip(&widths).enumerate() {
-                let aci = (cell == "?").then_some(FLAGGED_ACI);
-                if row.marks.terminal_box == Some(c) {
+                let aci = (cell == MISSING).then_some(FLAGGED_ACI);
+                if cell == MISSING && row.marks.terminal_box != Some(c) {
+                    d.out.extend(missing_mark(d.p(x, y - ROW_MM), d.p(x + w, y), d.k, 2.5));
+                } else if row.marks.terminal_box == Some(c) {
                     let cx = x + w / 2.0;
                     d.line((cx - 3.0, mid - 2.0), (cx + 3.0, mid - 2.0));
                     d.line((cx + 3.0, mid - 2.0), (cx + 3.0, mid + 2.0));

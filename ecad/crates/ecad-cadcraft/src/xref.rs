@@ -751,6 +751,107 @@ pub struct Table {
     pub placement: Placement,
     pub rows: Vec<Row>,
     pub parts: Vec<Part>,
+    /// Which step of design 033 §4.1 placed it.
+    pub shown: TableShown,
+    /// The y of its box's bottom (drawing units).
+    pub bottom: f64,
+}
+
+/// Where a contact table went (design 033 §4.1): where its placement puts it, right of its head
+/// (no room below), or lifted above the title block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableShown {
+    AsPlaced,
+    Right,
+    Lifted,
+}
+
+impl TableShown {
+    /// The `contacts` reply's word.
+    pub fn word(self) -> &'static str {
+        match self {
+            TableShown::AsPlaced => "as placed",
+            TableShown::Right => "right",
+            TableShown::Lifted => "lifted",
+        }
+    }
+}
+
+/// Room kept between a contact table and the title block's top line, in millimetres.
+pub const TITLE_CLEARANCE_MM: f64 = 2.0;
+
+/// The box of a table at `top` with `rows` (design 033 §4.1): from −10 mm to 12 mm plus the widest
+/// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
+pub fn table_box(doc: &Document, top: Pt, rows: &[Row]) -> (Pt, Pt) {
+    let k = unit(doc);
+    let widest = rows.iter().map(|r| r.place.chars().count()).max().unwrap_or(0);
+    // The stroke font is 0.8 × the height per character (`frame::fit`).
+    let width = 12.0 + 0.8 * XREF_TEXT_MM * widest as f64;
+    let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
+    let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
+    (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + width * k, top.y))
+}
+
+/// The page's free area for tables (design 033 §4.1): the frame's drawing area above the title
+/// block, [`TITLE_CLEARANCE_MM`] clear of its top line. (lo, hi), drawing units.
+pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
+    let g = ecad_model::sheet::Grid::of(doc, page);
+    let k = unit(doc);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + (ecad_model::sheet::TITLE_BLOCK_MM + TITLE_CLEARANCE_MM) * k);
+    let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
+    (lo, hi)
+}
+
+/// Whether the box `b` lies in the free area `free`.
+fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
+    b.0.x >= free.0.x - 1e-9 && b.0.y >= free.0.y - 1e-9 && b.1.x <= free.1.x + 1e-9 && b.1.y <= free.1.y + 1e-9
+}
+
+/// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
+pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
+    let g = ecad_model::sheet::Grid::of(doc, page);
+    let line = g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * unit(doc);
+    let (left, right) = (g.frame_left(), g.frame_left() + g.area_width());
+    b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
+}
+
+/// Where an automatic table goes (design 033 §4.1), from where `placement` puts it (`top`): there
+/// when its box lies in the free area; else right of the head (`auto`, `below`) when that fits;
+/// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
+/// the free area starts at its top. A table the user placed (`at`) is never moved.
+pub fn settle(doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row]) -> (Pt, TableShown) {
+    if matches!(placement, Placement::At(_) | Placement::Off) {
+        return (top, TableShown::AsPlaced);
+    }
+    let Some(page) = doc.representations.get(&head).map(|r| r.page) else { return (top, TableShown::AsPlaced) };
+    let free = free_area(doc, page);
+    if inside(table_box(doc, top, rows), free) {
+        return (top, TableShown::AsPlaced);
+    }
+    if matches!(placement, Placement::Auto | Placement::Below)
+        && let Some(right) = table_top(doc, c, head, Placement::Right)
+        && inside(table_box(doc, right, rows), free)
+    {
+        return (right, TableShown::Right);
+    }
+    let (lo, hi) = table_box(doc, top, rows);
+    let mut at = top;
+    if lo.y < free.0.y {
+        at.y += free.0.y - lo.y;
+    }
+    if at.y > free.1.y {
+        at.y = free.1.y;
+    }
+    if hi.x > free.1.x {
+        at.x -= hi.x - free.1.x;
+    }
+    if at.x - (top.x - lo.x) < free.0.x {
+        at.x = free.0.x + (top.x - lo.x);
+    }
+    if at == top || !at.is_finite() {
+        return (top, TableShown::AsPlaced);
+    }
+    (at, TableShown::Lifted)
 }
 
 /// The straight vertical run of a conductor route leaving `from` (one of its ends): the y of the
@@ -826,8 +927,10 @@ pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Ta
     let top = table_top(doc, dev.component, head, placement)?;
     let page = doc.representations.get(&head)?.page;
     let rows = rows(places, dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+    let (top, shown) = settle(doc, dev.component, head, placement, top, &rows);
     let parts = table_parts(doc, head, top, &rows);
-    Some(Table { head, page, top, placement, rows, parts })
+    let bottom = table_box(doc, top, &rows).0.y;
+    Some(Table { head, page, top, placement, rows, parts, shown, bottom })
 }
 
 /// The lines and texts of a table at `top` (design 025 §4.2's geometry).
@@ -1514,7 +1617,20 @@ pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
             "representation": r.rep.map(|x| x.hex()), "place": (r.state != State::Spare).then(|| r.place.clone()),
         })).collect::<Vec<_>>(),
         "over": over,
+        "table": table_json(doc, &mut places, &dev),
     }))
+}
+
+/// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
+fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Value {
+    let Some(t) = table(doc, places, dev) else { return Value::Null };
+    let k = unit(doc);
+    json!({
+        "top": [t.top.x / k, t.top.y / k],
+        "bottom": t.bottom / k,
+        "placement": t.placement.word(),
+        "shown": t.shown.word(),
+    })
 }
 
 /// The target `refgoto` goes to from `source` (design 025 §5.3): a cable end's partner, a
@@ -1634,6 +1750,27 @@ pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageI
             )
         })
         .collect()
+}
+
+/// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
+/// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
+pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt)> {
+    let (placement, _) = placement_of(doc, c);
+    if !matches!(placement, Placement::At(_)) {
+        return None;
+    }
+    let dev = device(doc, c);
+    let mut places = Places::new(doc);
+    let t = table(doc, &mut places, &dev)?;
+    if !enters_title_block(doc, t.page, table_box(doc, t.top, &t.rows)) {
+        return None;
+    }
+    let which = format!(
+        "The contact table of {} overlaps the title block on {}.",
+        crate::devices::tag_words(doc, c),
+        crate::references::page_number_words(doc, t.page)
+    );
+    Some((which, t.page, t.top))
 }
 
 #[cfg(test)]

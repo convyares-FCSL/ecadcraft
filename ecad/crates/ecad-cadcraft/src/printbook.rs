@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use cadcraft_engine::doc::{Drawing, EntityStore};
+use cadcraft_engine::doc::{Drawing, EntityStore, color::Color};
 use cadcraft_engine::geom::{Mat3, Vec2};
 use ecad_model::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
@@ -157,6 +157,10 @@ pub fn build(
         for e in d.model.iter() {
             let mut e = (**e).clone();
             e.kind.transform(&m);
+            // Design 033 §3.1: a missing value prints black in either colour mode.
+            if e.common.layer == crate::generated::LAYER && e.common.color == Color::Index(crate::generated::FLAGGED_ACI) {
+                e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
+            }
             e.handle = scratch.new_handle();
             store.push(e);
         }

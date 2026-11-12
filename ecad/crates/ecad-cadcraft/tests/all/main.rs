@@ -24,6 +24,7 @@ mod interactive_contracts;
 mod mouse_tools_contracts;
 mod numbering_contracts;
 mod outputs_contracts;
+mod print_project_contracts;
 mod project_pages;
 mod recovery;
 mod refusals;

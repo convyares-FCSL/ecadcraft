@@ -1748,6 +1748,17 @@ impl Trial {
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
             }
+            A::MoveTable(check) => {
+                if self.goto_check(&check).is_ok() {
+                    if self.cad.session.running.is_some() {
+                        self.cad.session.cancel();
+                    }
+                    if let Err(e) = self.cad.session.start("mirrormove") {
+                        self.cad.session.echo(e.to_string());
+                    }
+                    self.after_logic();
+                }
+            }
             A::AddJunction(page, at) => {
                 if self.show_page(page).is_ok() {
                     let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));

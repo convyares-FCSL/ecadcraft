@@ -2223,6 +2223,9 @@ impl DocumentOwner for Project {
             Start::Lisp => Some(LISP_REFUSED.into()),
             Start::Command("appload" | "lisp") => Some(LISP_REFUSED.into()),
             Start::Command("oops") => self.page_of(uid).and_then(|page| self.oops.refuse_start(uid, page)),
+            // Brief 033 (design 033 §11.1): a CADCraft table would be many ECAD items; refused
+            // before it prompts, with a way out. `convert::not_placeable` says the same at commit.
+            Start::Command("table") => Some(crate::convert::TABLE_REFUSED.into()),
             Start::Command(id) if REFUSED_COMMANDS.contains(&id) => {
                 Some(format!("{} is not available on ECAD pages: it edits blocks outside the commands ECAD records", id.to_ascii_uppercase()))
             }

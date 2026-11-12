@@ -165,6 +165,22 @@ pub fn kind_name(kind: &EntityKind) -> &'static str {
     }
 }
 
+/// Refusal of a CADCraft `table` on an ECAD page (brief 033, design 033 §11.1).
+pub const TABLE_REFUSED: &str =
+    "Tables can't be placed on ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸ Generated).";
+
+/// Why an entity of `kind` cannot be placed on an ECAD page (design 033 §11.2): each kind has its
+/// own plural phrase, never a name with `s` added ("hatchs", "object of this kinds").
+pub fn not_placeable(kind: &EntityKind) -> String {
+    match kind {
+        EntityKind::Table(_) => TABLE_REFUSED.into(),
+        EntityKind::Hatch(_) => "Hatches can't be placed on ECAD pages yet. Draw the outline with lines.".into(),
+        EntityKind::Dimension(_) => "Dimensions can't be placed on ECAD pages yet.".into(),
+        EntityKind::MText(_) => "Multiline text can't be placed on ECAD pages yet. Use single-line text.".into(),
+        _ => "Objects of this kind can't be placed on ECAD pages yet.".into(),
+    }
+}
+
 /// The ECAD item for an entity on `page`, or why it cannot be recorded.
 ///
 /// # Semantics
@@ -189,7 +205,7 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     let kind = match (primitive_from(&e.kind), symbol_from(&e.kind)) {
         (Some(p), _) => ItemKind::Primitive(p),
         (_, Some(s)) => ItemKind::Symbol(s),
-        _ => return Err(format!("{}s are not supported on ECAD pages yet", kind_name(&e.kind))),
+        _ => return Err(not_placeable(&e.kind)),
     };
     let item = Item { page, style, kind };
     match entity_for(doc, &item, e.handle) {

@@ -111,6 +111,9 @@ pub enum Action {
     NumberThem,
     /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
     Finalise,
+    /// Checks tab (brief 033): show this row (a table over the title block), then start Move
+    /// Mirror Table.
+    MoveTable(Box<ecad_cadcraft::checks::Check>),
     /// Devices tab (brief 026): open the Renumber dialog.
     Renumber,
     /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`

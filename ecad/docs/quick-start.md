@@ -19,6 +19,23 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 033 (design `ecad/docs/design/033.md`), on `feature/print-project`, not yet in `dev`:**
+Print Book's PDF holds on each page only what lies on that page (an approved upstream patch to
+CADCraft's PDF writer), so a book grows in step with its sheets: the 25-page bench book went from
+7,897 KB to 335 KB. A missing value in a generated table is `?` in a thin box, yellow on screen and
+black when printed in either colour mode. An automatic contact table that would run into the title
+block goes right of its coil, else is lifted above the title block; a table placed by hand stays
+and Checks lists `Contact table over the title block` with **Move table…**. `table` on an ECAD
+page is refused before it starts: `Tables can't be placed on ECAD pages yet. Draw it with lines and
+text, or add a generated page for lists (New Page ▸ Generated).`
+- *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
+  20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
+  `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
+  colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
+  `table`, the Checks row, `table` refused, writes off).
+- *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
+- *Owner-tried:* not yet.
+
 **Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
 numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
 group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
@@ -1189,7 +1206,8 @@ by location**. The trial has no file dialogs: where a file is asked for, type it
    **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
    cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
    its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
-   number is listed under the field and left out.
+   number is listed under the field and left out. A device without a part number shows `?` in a
+   box in the BOM, black in the PDF (brief 033); the file is a few hundred KB, not megabytes.
 
 Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
 `setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
