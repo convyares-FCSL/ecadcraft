@@ -88,6 +88,28 @@ pub fn drawn_terminals(doc: &Document, c: ComponentId) -> Vec<(TerminalId, Repre
     out
 }
 
+/// [`drawn_terminals`] with where each sits on its page, worked out from its own representation
+/// (O(the strip's symbols), never a search per terminal).
+fn drawn_at(doc: &Document, c: ComponentId) -> Vec<(TerminalId, RepresentationId, bool, Option<Pt>)> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (rid, r) in doc.representations_of(Subject::Component(c)) {
+        let pe = rep_is_pe(doc, r);
+        let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
+        for (t, p) in crate::devices::shown_terminals(doc, c, r) {
+            let at = match (r.form, placement) {
+                (ecad_model::Form::Symbol, Some(pl)) => Some(pl.apply(p)),
+                (ecad_model::Form::Symbol, None) => None,
+                (ecad_model::Form::Drawn, _) => Some(p),
+            };
+            if seen.insert(t) {
+                out.push((t, rid, pe, at));
+            }
+        }
+    }
+    out
+}
+
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<ComponentId> {
     let c = doc.terminals.get(&t)?.component;
@@ -647,13 +669,19 @@ fn geometric_inside(doc: &Document, w: ConductorId, end: End, page: PageId) -> O
 fn far_cell(doc: &Document, o: &Outputs, w: ConductorId, far: End, cx: &PageCx) -> (Option<String>, Option<ComponentId>) {
     let Some(cond) = doc.conductors.get(&w) else { return (None, None) };
     let t = cond.end(far);
-    let [a, b] = crate::outputs::end_points(doc, w, cx);
-    let at = match far {
-        End::A => a,
-        End::B => b,
+    let comp = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component);
+    // Only a junction's cell needs where the end is drawn (its place); the rest are named.
+    let at = match comp.and_then(|c| crate::wires::kind_of(doc, c)) {
+        Some(ecad_model::connectivity::JUNCTION) => {
+            let [a, b] = crate::outputs::end_points(doc, w, cx);
+            match far {
+                End::A => a,
+                End::B => b,
+            }
+        }
+        _ => None,
     };
     let cell = o.end_cell_of(doc, t, at, cx);
-    let comp = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component);
     (cell.text(doc.settings.reference_style), comp)
 }
 
@@ -690,8 +718,9 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         pages: BTreeSet::new(),
         cables: BTreeSet::new(),
     };
-    let drawn = drawn_terminals(doc, c);
-    let mine: BTreeSet<TerminalId> = drawn.iter().map(|(t, _, _)| *t).collect();
+    let drawn = drawn_at(doc, c);
+    let mine: BTreeSet<TerminalId> = drawn.iter().map(|(t, _, _, _)| *t).collect();
+    let mut grids: BTreeMap<PageId, ecad_model::sheet::Grid> = BTreeMap::new();
     let mut rows: Vec<TermRow> = Vec::new();
     // Bridges, for groups: union of terminals joined by a bridge.
     let mut parent: BTreeMap<TerminalId, TerminalId> = mine.iter().map(|t| (*t, *t)).collect();
@@ -707,10 +736,10 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         x
     }
     let mut bridged: BTreeSet<TerminalId> = BTreeSet::new();
-    for (t, rid, pe) in &drawn {
+    for (t, rid, pe, at) in &drawn {
         let r = doc.representations.get(rid);
         let page = r.map(|r| r.page);
-        let at = page.and_then(|p| ecad_model::derive::terminal_position(doc, p, *t));
+        let at = *at;
         if let Some(p) = page {
             d.pages.insert(p);
         }
@@ -722,7 +751,10 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
             inside: Vec::new(),
             outside: Vec::new(),
             bridge_group: None,
-            place: page.zip(at).and_then(|(p, a)| cx.place_at(doc, p, a)),
+            place: page.zip(at).and_then(|(p, a)| {
+                let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
+                ecad_model::derive::place_on(grid, cx.number(p)?, a)
+            }),
             go: page.zip(at),
         };
         for (w, end) in doc.ends_at(*t) {

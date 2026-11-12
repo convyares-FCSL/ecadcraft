@@ -310,7 +310,7 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         let Some(t) = &r.strips else { continue };
         out.push_str(&format!(
             "\nTerminal strips on {} {} ({} strips, {} terminals, {} cables): stripbuild {:.1} ms (target < 50), \
-             tplace {:.2} ms (< 16), tfence {:.2} ms (< 16), stripupd {:.2} ms (< 2 beyond edit), relocate {:.2} ms (< 16), \
+             tplace {:.2} ms (< 16), tfence {:.2} ms (< 16), stripupd {:.2} ms (< 2 beyond attach {:.2} ms), relocate {:.2} ms (< 16), \
              tplan {:.1} ms (< 100), trenum {:.2} ms (< 16); most strips one edit recomputed: {}\n",
             r.tier,
             r.variant,
@@ -321,6 +321,7 @@ pub fn table(rows: &[Row], runs: usize) -> String {
             t.tplace_ms,
             t.tfence_ms,
             t.stripupd_ms,
+            t.attach_ms,
             t.relocate_ms,
             t.tplan_ms,
             t.trenum_ms,
@@ -469,7 +470,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 })),
                 "strips": r.strips.as_ref().map(|t| json!({
                     "stripbuild_ms": t.stripbuild_ms, "tplace_ms": t.tplace_ms, "tfence_ms": t.tfence_ms,
-                    "stripupd_ms": t.stripupd_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
+                    "stripupd_ms": t.stripupd_ms, "attach_ms": t.attach_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
                     "trenum_ms": t.trenum_ms, "strips": t.strips, "terminals": t.terminals, "cables": t.cables,
                     "work": t.work,
                 })),

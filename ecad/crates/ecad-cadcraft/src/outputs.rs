@@ -66,9 +66,10 @@ impl PageCx {
         ecad_model::derive::place_on(&ecad_model::sheet::Grid::of(doc, p), number, at)
     }
 
-    /// Where `at` lies on page `p` (brief 028: a terminal's Place).
-    pub(crate) fn place_at(&self, doc: &Document, p: PageId, at: Pt) -> Option<ecad_model::derive::Place> {
-        self.place(doc, p, at)
+    /// The number page `p` is shown with (brief 028: a terminal's Place, with its grid kept by
+    /// the caller).
+    pub(crate) fn number(&self, p: PageId) -> Option<&str> {
+        self.pages.get(&p).map(|x| x.1.as_str())
     }
 }
 
@@ -549,7 +550,7 @@ impl Outputs {
             }
         }
         // Page positions and numbers only when a wire is in scope (review of PR #51, finding 3).
-        let cx = if scope.conductors.is_empty() { None } else { Some(PageCx::of(doc)) };
+        let mut cx = if scope.conductors.is_empty() { None } else { Some(PageCx::of(doc)) };
         for (w, cx) in scope.conductors.iter().zip(std::iter::repeat_with(|| cx.as_ref()).flatten()) {
             self.set_wire(doc, *w, cx);
             work += 1;
@@ -573,9 +574,10 @@ impl Outputs {
         if which.is_empty() {
             strips.last_work = 0;
         } else {
-            let cx = PageCx::of(doc);
-            // Counted in the strips' own `last_work`, not in the rows'.
-            strips.recompute(doc, &which, self, &cx);
+            // The page positions worked out for the wires, if they were (O(pages) once). Counted
+            // in the strips' own `last_work`, not in the rows'.
+            let cx = cx.get_or_insert_with(|| PageCx::of(doc));
+            strips.recompute(doc, &which, self, cx);
         }
         self.strips = strips;
         self.last_work = work;

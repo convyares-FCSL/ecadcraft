@@ -46,6 +46,8 @@ pub struct MeasuredStrips {
     pub tplace_ms: f64,
     pub tfence_ms: f64,
     pub stripupd_ms: f64,
+    /// The same wire drawn onto a coil's connection point instead: the baseline of `stripupd`.
+    pub attach_ms: f64,
     pub relocate_ms: f64,
     pub tplan_ms: f64,
     pub trenum_ms: f64,
@@ -252,6 +254,28 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             run(&mut s, "undo", json!({}))?;
         }
         out.stripupd_ms = median(&mut upd);
+        // The baseline: the same wire onto a device's connection point on page 1 (no strip).
+        let point = project.read(&mut s, |p, _| {
+            let doc = p.ledger.document();
+            doc.representations_on(page1).find_map(|(_, r)| {
+                let Subject::Component(c) = r.subject else { return None };
+                if ecad_cadcraft::strips::is_strip(doc, c) || !ecad_cadcraft::locations::is_device(doc, c) {
+                    return None;
+                }
+                let t = doc.terminals_of(c).map(|(t, _)| t).next()?;
+                ecad_model::derive::terminal_position(doc, page1, t)
+            })
+        })?;
+        if let Some(at) = point {
+            let mut base = Vec::new();
+            for _ in 0..runs {
+                let t = Instant::now();
+                run(&mut s, "wire", json!({"points": [[at.x + 30.0, at.y + 30.0], [at.x + 5.0, at.y], [at.x, at.y]]}))?;
+                base.push(ms(t));
+                run(&mut s, "undo", json!({}))?;
+            }
+            out.attach_ms = median(&mut base);
+        }
         // A far device: a lamp at the top end of the first wire, connected, in +FIELD; the strip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;
