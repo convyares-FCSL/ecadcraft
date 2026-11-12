@@ -177,6 +177,7 @@ runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
 
 | # | Feature | Purpose | Depends on | Size | Format change |
 |---|---|---|---|---|---|
+| 1.0 | **Live MCP bridge** (first, see below) | An agent drives the **running** app and the owner watches the drawing appear, as SolidCraft does; the server is registered for Claude so it is always available | 011 | M | No |
 | 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
 | 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals | 030 | M | No (definitions and properties) |
 | 1.3 | **PLC cards** | One PLC device with channels (DI, DO, AI, AO, power) drawn on any page, addresses (`%I0.0`, `I0.0`, free text), automatic addressing, and a generated **I/O list** page and CSV | 018, 025 | L | No if channels are connection points with properties; FP to confirm in design |
@@ -184,6 +185,50 @@ runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
 | 1.5 | **UI shell** (look-and-feel, part 1) | Tokens, type, panel layout, the History polish from 020b, a calm modern frame. Never a copy of another product | none | L | No |
 | 1.6 | **Radial wheel** | Right-click quick-use wheel: the eight most likely actions for what is under the cursor | 1.5 | M | No |
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
+
+**1.0 Live MCP bridge, in detail.** Why first: every later brief is tested, demonstrated and
+increasingly drafted by agents, and the drawing-pack test is an agent building a real pack. Today
+that work is invisible until a file is opened. Watching it happen catches wrong-looking output in
+seconds, and it is mostly composition.
+
+- **Today.** `ecad-mcp` is headless only. Brief 011 excluded "the bridged mode (an agent driving
+  the running trial; a later brief)" (`ecad/apps/ecad-mcp/src/lib.rs:20`). `deferred-work.md`
+  ("Bridged agent access") holds the owner's condition for picking it up: authorship **per call**.
+  The trial's crate doc lists "the control channel" as excluded on purpose
+  (`ecad/apps/ecad-trial/src/lib.rs:37`).
+- **Already upstream (CADCraft, used as is):**
+  - the loopback control server and its JSON-lines protocol (`docs/control-protocol.md`);
+  - the per-session control token in an owner-only file (`crates/mcp/src/control_token.rs`, CWE-306);
+  - `cadcraft-mcp`'s `Remote` backend (`crates/mcp/src/backend.rs`), with reply-size caps and
+    reconnect;
+  - `Remote::lazy`, which serves tools before the app is open and connects at the first call.
+- **New in ECAD:**
+  1. The trial opens the control port behind an opt-in (`--control PORT`, off by default) and serves
+     **ECAD's own tool set** over it: `ecad-mcp`'s `execute`, reads, reports and screenshot. It does
+     not offer CADCraft's raw `cmdline.input` or `script`, for the same reasons brief 011 left them
+     out of the headless server.
+  2. ECAD's write gate, `Author::Agent(<client>)` and the per-call caps (`MAX_TRANSACTIONS_PER_CALL`)
+     applied on the app side. Authorship is set **per call** and restored to `Author::User`
+     afterwards, also when the call fails or panics (the deferred-work condition). A person's edit
+     is never recorded as the agent's, and the agent's never as the person's.
+  3. A visible banner while an agent is connected, showing when it last wrote. Every agent
+     transaction shows its author in History.
+  4. Calls run on the UI thread between frames, like a typed command. An agent call never
+     interleaves with a person's half-finished interactive command; it waits, or it is refused with
+     the reason ("the designer is in the middle of Place; try again").
+  5. `ecad-mcp --connect PORT` selects the remote backend through `Remote::lazy`. **Launching is new
+     work on Windows and Linux**: upstream's lazy launch opens the app on macOS only. Without a
+     launch, a call that finds no app says how to start it, which is not a dead end.
+  6. **Registering the server for Claude**, documented in `quick-start.md` with the exact
+     `claude mcp add` line for Windows and Linux, so ECAD is always available in Claude Code. One
+     server: headless when no app is open, bridged when one is.
+  7. MCP contract tests over the bridge, matching brief 011's: the transaction, its author, refusal
+     with writes off, and a person's edit between two agent calls keeping `Author::User`.
+- **Format:** none. Authorship is already recorded per transaction (FILE-07), and the bridge adds
+  no op and no field.
+- **Size: M**, with about two thirds of it in the trial's side (the port, the author scope, the
+  banner, queueing) and the rest in `ecad-mcp` (the backend switch, launch, docs, tests). It runs in
+  lane U before the UI shell, because both edit the trial's frame.
 
 **M2: lists and libraries (v0.3).** Reuse across projects, design from lists, and edit in tables.
 
@@ -223,7 +268,7 @@ name the lane's files in their §0, so the overseer can see an overlap before a 
 |---|---|---|---|---|
 | **S: symbols and libraries** | `symbols.rs`, `convert.rs`, a new `ecad-lib` crate, `ecad-file`'s library reader and writer, the symbol editor window | 1.1 symbol builder | 2.1 `.ecadlib` → 2.2 viewer → 2.3 parts | 3.1 panel layout (needs parts), 3.5 format freeze |
 | **D: devices and data** | `devices.rs`, `strips.rs`, `terminal_cmds.rs`, a new `plc.rs`, `wires.rs` (wire types), `ecad-model` property rules | 1.2 multi-level → 1.3 PLC cards → 1.4 wire types | 2.4 device manager → 2.5 list-driven → 2.8 PLC manager | 3.3 labels |
-| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs` | 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
+| **U: experience and outputs** | `ecad-trial` shell and panels, `look.rs`, the design tokens, `outputs.rs`, `generated.rs`, `printbook.rs`, `ecad-mcp` | 1.0 live MCP bridge → 1.5 UI shell → 1.6 wheel → 1.7 table | 2.6 terminal manager, 2.7 cable manager, 2.9 report generator | 3.2 revision compare, 3.4 XLSX, 3.7 polish |
 
 The known collisions, and how to avoid them:
 
@@ -247,7 +292,6 @@ The known collisions, and how to avoid them:
 | **Exchange formats** | AutomationML-style PLC exchange; terminal-maker exports | 2.6, 2.8 | M each | No |
 | **Panel thermal estimate** | Heat loss from part data against the enclosure | 2.3, 3.1 | M | No |
 | **Circuit snippets** | Reusable circuits in `.ecadlib`, placed with renumbering | 2.1 | M | Additive in `.ecadlib` |
-| **Bridged agent access** | An agent works in the running app with per-call authorship | 011 deferral note | M | No |
 | **Translation of texts** | Project texts in more than one language | — | L | Additive |
 
 ---
@@ -282,7 +326,7 @@ wheel, command line, MCP), never a second editor.
 
 Each has a recommendation. Answer "as recommended" to accept them all.
 
-1. **Order of M1.** Is the M1 set (symbol builder, multi-level terminals, PLC cards, wire types, UI
+1. **Order of M1.** Is the M1 set (live MCP bridge, symbol builder, multi-level terminals, PLC cards, wire types, UI
    shell, wheel, table component) the right next milestone? **Recommend yes**, adjusted by the
    drawing-pack findings in §6.
 2. **Symbols before libraries.** Build the symbol builder first, saving into the project, with
@@ -320,6 +364,13 @@ Each has a recommendation. Answer "as recommended" to accept them all.
     keeps three lanes from colliding in `ecad-trial`.
 16. **Wire types in M1, not after v0.1 as previously listed.** **Recommend yes.** Real wire reports
     and the cable manager need them, and the change is small (a project setting).
+17. **Live MCP bridge (1.0) first in M1**, with the deferred-work condition (per-call authorship)
+    as an acceptance criterion and ECAD's own tool set only over the port (no raw command line)?
+    **Recommend yes.** It makes every later agent-built brief visible as it happens. Picking it up
+    removes the "Bridged agent access" entry from `deferred-work.md` when its brief is approved.
+18. **Control port off by default**, switched on per run with `--control PORT` or by a preference
+    the owner sets once? **Recommend the preference, off by default.** "Always available" then needs
+    one setting, and a machine that never opts in never listens.
 
 ---
 
