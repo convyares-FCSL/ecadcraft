@@ -67,3 +67,15 @@ are.
 | **location box** | A dashed rectangle or closed polyline labelled `+…` on a page; every device symbol inside it takes its location, live. Innermost wins. |
 | **report** | A table derived from the project (BOM, wire report, cable report), shown and exported as CSV, never stored. Wires are never on the BOM. |
 | **Print Book** | One PDF of every page (or a folder, or a page list) in book order, generated pages included. |
+
+## Terminal strips and cables (brief 028)
+
+| Word | Means |
+| --- | --- |
+| **bridge** | A wire whose two ends are on two terminals of one strip (`-X01:3–4`). Derived: nothing says "bridge" in the file. The wire report shows it as `Bridge -X01`. |
+| **inside / outside** | The two sides of a terminal: inside faces the panel's own devices, outside faces the field. Derived: a cable core is outside; else the far device's location against the strip's; else the wire's direction (up or left is inside). |
+| **spare terminal** | A position the strip offers (**Terminals offered**, `12` or `12+2PE`) that no terminal symbol draws yet. |
+| **core offer** | The cores a cable has: its **Cores** (`7`, `7G`, `5X`, `BN,BK,GY,BU,GNYE`), else read from its type (`7G1.5` → `7G`: cores 1–6 and green-yellow). |
+| **used / spare / over core** | A core a wire of the cable takes / offered and not taken / a wire beyond the offer. A new wire added to a cable takes the next spare core. |
+| **terminal plan** | Per strip, one row per position (drawn and spare): inside and outside target, wire numbers, cable and core, bridges and place. Derived, shown in Reports ▸ Terminals and on a generated **Terminal plan** page. |
+| **cable schedule** | The cable report completed with Used, Spare and the devices at each end, and per cable its core list. Also a generated **Cable schedule** page. |

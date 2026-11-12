@@ -19,6 +19,21 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 028 (design `ecad/docs/design/028.md`), on `feature/terminal-strips`, not yet in `dev`:**
+a terminal clicked on a wire splits it and both halves land on it; **Place Terminals** puts one
+terminal on every wire a line crosses; **Draw Bridge** links two terminals of a strip. A strip's
+**Terminals offered** (`12+2PE`) gives spare positions; a cable's **Cores** (or its type, `7G1.5`)
+gives used, spare and over cores, and a new member takes the next free core. The terminal plan
+and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
+type; five Checks rows have fixes. Section 5M describes it.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
+  A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
+  and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
+  brief 011 rule), unit tests of the offer and core grammars in
+  `ecad/crates/ecad-cadcraft/src/strips.rs`.
+- *Agent-observed:* none yet; no agent has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 024 (design `ecad/docs/design/024.md`), on `feature/outputs`, not yet in `dev`:** a
 device's **location** (`+CP1`) is its own value, else the **location box** its main symbol sits
 in, else its page's, else the project's; Properties says where it comes from (`+JB1 (from box on
@@ -1215,6 +1230,54 @@ Typed instead, in the ECAD command field: `setprop {"component":"<id>","key":"co
 `page`), `refgoto {"source":"<representation id>"}` (a contact goes to its coil; from a coil add
 `"target"`), `projectprops {"contact_mirror":"off"}`.
 
+## 5M. Terminal strips and cables (by clicking)
+
+A terminal strip `-X01` is one device whose terminals `-X01:1…n` are placed on wires; a cable
+knows its cores. The terminal plan and the cable schedule are read off the drawing, live, and
+never stored. Brief 028, design `ecad/docs/design/028.md`. Use any project (the demo after 5L, or
+a new one); the steps make their own page so its numbers do not matter.
+
+1. **Some wires.** Add a page with **+**. Place two `coil`s (`-K..`) near the top and a `motor3`
+   near the bottom, then draw three vertical wires with **Wire** from the coils' `A2` and from a
+   free point down to the motor's `U1`, `V1`, `W1`. With **Cable Slash**, cut the three wires low
+   down, near the motor.
+2. **One terminal.** **Find Symbol**, type `terminal`, and click on the first wire, between the
+   coil and the slash. Expected: the wire is cut and both halves land on `-X01:1`
+   (`Placed -X01:1 on wire … (split in two).`); both halves keep one wire number. Hover the
+   terminal: `-X01:1  feed-through  …`, an `inside  -K..:A2` line and an
+   `outside  -W.. core … → -M..:U1` line. Type `u`: one wire again and no `-X01`; place it again.
+   Clicking the wire's end at the coil is refused: `That is the end of the wire at -K..:A2. Click
+   along the wire, away from its ends, or on empty space.`
+3. **A row of terminals.** Click **Place Terminals** (ECAD tab, Components), press Enter (the last
+   strip, `-X01`), and draw a line across the other two wires at the height of terminal 1.
+   Expected: a ring and its label at each crossing while you draw; then `Placed -X01:2…3 on
+   2 wires.`, one `u`.
+4. **A bridge.** Click **Draw Bridge**, click terminal 2, then terminal 3: a staple 4 mm above
+   them (`Bridged -X01:2–3.`). The next click would continue from 3; press Enter to end.
+5. **Spares.** Click a terminal; in Properties set **Terminals offered** to `8+1PE`. Expected:
+   **Terminals** reads `3 drawn, 5 spare`. Typing `8X` is refused under the field:
+   `"8X" is not a terminal count. Write 12, or 12+2PE.`
+6. **Cores.** Click the cable slash; set its **type** to `7G1.5`. Expected: **Cores** shows
+   `from type: 7G`, **Used / Spare** `3 / 4 (4, 5, 6, GNYE)`. Hover the slash:
+   `-W..  7G1.5: 3 used, 4 spare (4, 5, 6, GNYE)`.
+7. **Reports.** Open **Reports**. **Terminals**: every position of `-X01` (pick `-X01` or `All`
+   above the table), with the spare ones; click a row to go to its terminal. **Cables**: Cores 7,
+   Used 3, Spare `4 (4, 5, 6, GNYE)`, From `… -X01`, To `… -M..`; double-click it for its core
+   list. **Show plan** in Properties (strip) and **Show cores** (cable) open the same tabs.
+8. **Pages.** **v** beside **+** ▸ **Terminal plan** and **Cable schedule**: generated pages with
+   the plan (terminal boxes, bridge dots and line, the cable written once per run of its cores)
+   and the schedule.
+9. **Checks.** Set **Terminals offered** to `2`: the Checks tab lists `More terminals than the
+   strip offers` (`-X01: 3 terminals drawn, strip offers 2`) with **Offer drawn**, which sets it
+   back to `3`.
+
+Typed instead, in the ECAD command field: `place {"symbol":"terminal","at":[x,y]}` (on a wire: it
+is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":true`),
+`bridge {"from":"<terminal id>","to":"<terminal id>"}`,
+`setprop {"component":"<strip id>","key":"terminals","value":"12+2PE"}`,
+`setprop {"cable":"<id>","key":"cores","value":"7G"}`, `stripplan {}`, `cablecores {"cable":"<id>"}`,
+`newpage {"generated":"terminals","strip":"<strip id>"}`, `newpage {"generated":"cables"}`.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1726,10 +1789,17 @@ Your table of three clean runs goes here once you have run it.
 ## 9. Current limitations
 
 - **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
-  custom sheets print fitted on the smallest ISO A paper; no XLSX; the cable report's Used and
-  Spare stay `—` until terminal strips (brief 028) count cores. The trial has no file dialogs, so
+  custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Terminal strips (brief 028):** no multi-level, disconnect or fuse terminals; no bridge parts
+  (end plates, markers) on the BOM; no reference texts under terminals; cable lengths are typed,
+  not measured. A terminal on a wire drawn on several pages is refused (place it where the wire
+  is on one page). Draw Bridge continues from the second terminal by default (the engine passes
+  no Shift state); bridges get no end dots yet. **Set cores…** selects the cable's slash rather
+  than putting the cursor in the Cores field. A new cable member takes the next free core when
+  added with `cableadd` to a cable with an offer; a new slash always makes a new cable.
+  New Page ▸ **Terminal plan** shows every strip (one strip: `newpage` with `strip`).
 - **Cross-references (brief 025).** No PLC card symbol yet (a card with channels is a later step);
   no change-over (`CO`) contacts; a contact's text sits at a fixed place under it and only a
   device's whole table can be moved (Move Mirror Table); continuations are not on the reference
