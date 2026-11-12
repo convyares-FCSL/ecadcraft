@@ -93,14 +93,14 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     // Kept from here on.
     assert!(orphans(&mut h).is_empty());
     h.run("cableref", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
-    assert_eq!(orphans(&mut h), ["C1 /?"]);
+    assert_eq!(orphans(&mut h), ["-C01 /?"]);
     kept_is_built(&mut h);
     let row = h.cfg(|p| p.checks().rows().find(|c| c.kind == Kind::OrphanReference).cloned()).unwrap();
     assert_eq!(row.page, Some(supply));
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
     let v = h.run("checks", json!({"kinds": ["orphan-reference"]})).unwrap();
     assert_eq!(v["total"], 1, "{v}");
-    assert_eq!(v["checks"][0]["which"], "C1 /?");
+    assert_eq!(v["checks"][0]["which"], "-C01 /?");
     assert!(v["checks"][0]["object"]["reference"].is_string(), "{v}");
     // Continued on another page: the end has a partner.
     h.run("newpage", json!({"title": "Field"})).unwrap();
@@ -108,11 +108,11 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     assert!(orphans(&mut h).is_empty());
     kept_is_built(&mut h);
     h.cmdline("u");
-    assert_eq!(orphans(&mut h), ["C1 /?"]);
+    assert_eq!(orphans(&mut h), ["-C01 /?"]);
     kept_is_built(&mut h);
     // The tag is part of the row's words.
     h.run("setprop", json!({"cable": c1.hex(), "key": "tag", "value": "W01"})).unwrap();
-    assert_eq!(orphans(&mut h), ["W01 /?"]);
+    assert_eq!(orphans(&mut h), ["-W01 /?"]);
     kept_is_built(&mut h);
 }
 
@@ -129,7 +129,7 @@ fn prerelease_groups_the_check_and_records_nothing() {
     assert!(v.get("refusal").is_none(), "{v}");
     let group = |g: &str| v["groups"].as_array().unwrap().iter().find(|x| x["group"] == g).cloned().unwrap_or(Value::Null);
     assert_eq!(group("orphans")["rows"][0]["kind"], "orphan-reference", "{v}");
-    assert_eq!(group("orphans")["rows"][0]["which"], "C1 /?");
+    assert_eq!(group("orphans")["rows"][0]["which"], "-C01 /?");
     assert!(group("open-ends")["count"].as_u64().unwrap() >= 3, "three loose wires: {v}");
     assert!(group("errors").is_null());
     assert_eq!(v["writes"][0]["file"], "D-1001 Rev B.pdf");
@@ -198,7 +198,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     let checks = std::fs::read_to_string(out.join("D-1001 Rev B checks.csv")).unwrap();
     assert!(checks.starts_with("\u{feff}Severity,Group,Kind,Where,What,Accepted\r\n"), "{checks}");
     assert!(checks.contains("warning,Orphans,Cable reference with no other end,"), "{checks}");
-    assert!(checks.contains("C1 /?"), "{checks}");
+    assert!(checks.contains("-C01 /?"), "{checks}");
     // What was printed is the state as issued: its title block and revision list read Rev B.
     let issued = f.h.p(|p| ecad_cadcraft::history::issued_state(p, "B").unwrap().2);
     assert_eq!(ecad_cadcraft::revisions::issued(&issued).first().map(|r| r.rev().to_string()).as_deref(), Some("B"));
@@ -255,7 +255,9 @@ fn provisional_items_follow_026s_choice() {
         let e = f.h.run("release", json!({})).unwrap_err();
         assert_eq!(e, refusal);
         assert_eq!(f.h.head(), head, "nothing recorded");
-        let v = f.h.run("release", json!({"provisional": way})).unwrap();
+        // `"finalise"` records two transactions (Finalise, then the issue): past the harness's
+        // one-per-command check.
+        let v = f.h.s.execute("release", &json!({"provisional": way})).unwrap();
         let log: Vec<String> = f.h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| t.label.clone()).collect());
         match way {
             "finalise" => {
