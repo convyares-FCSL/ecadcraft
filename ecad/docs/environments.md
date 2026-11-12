@@ -66,7 +66,7 @@ Do not assume:
 | Rust stable ≥ 1.90 via `rustup` (tested with 1.97.0) | both workspaces declare `rust-version = "1.90"` | install from <https://rustup.rs>; the distribution's packaged Rust may be too old |
 | C compiler and linker (`build-essential` on Debian/Ubuntu) | some crates compile C | |
 | `git` and network access to github.com and crates.io | `craft-ui` is a git dependency on `storytold/craft-libs` | first build only |
-| About 6-8 GB free disk | build output | build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0`; with debug info a full build passed 25 GB |
+| About 6-8 GB free disk | build output | build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`; with debug info a full build passed 25 GB; `cargo xtask clean-builds` frees old build folders |
 | 8 GB RAM or more | linking the engine and UI | 4 cores take about 10 minutes for the full CADCraft test suite |
 | Optional: `rustup target add wasm32-unknown-unknown` | `cargo xtask wasm` gates | |
 
@@ -82,13 +82,13 @@ Share one target directory between the two workspaces to save disk and time:
 
    ```sh
    cd ecad
-   export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
+   export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
    cargo test -p ecad-cadcraft --all-features             # scenario S1-S16, refusal cases, census
    cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
    ```
 
-4. Inspector: open `ecad/tools/inspector/index.html` in a Windows browser. From WSL,
-   `explorer.exe "$(wslpath -w ecad/tools/inspector)"` opens the folder. Load the files from
+4. Inspector: open `ecad/dev/ecad-inspector/page/index.html` in a Windows browser. From WSL,
+   `explorer.exe "$(wslpath -w ecad/dev/ecad-inspector/page)"` opens the folder. Load the files from
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
 5. GUI: the **ECAD trial harness**. Follow [`quick-start.md`](quick-start.md) for the build,

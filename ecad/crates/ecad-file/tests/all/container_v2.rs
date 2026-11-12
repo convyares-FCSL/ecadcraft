@@ -480,7 +480,8 @@ fn crafted_stack_records_open_read_only_from_the_root() {
 }
 
 /// A crafted file with a stored row at `u64::MAX`: appending after it is refused (no overflow),
-/// the export reports the gap instead of walking 2^52 empty ranges, and the project still opens.
+/// and the project still opens. (The export's refusal of the gap is tested with `ecadinspect`, in
+/// `dev/ecad-inspector`.)
 #[test]
 fn a_row_at_the_largest_sequence_number_is_refused_not_overflowed() {
     let dir = TempDir::new("max-seq");
@@ -504,8 +505,6 @@ fn a_row_at_the_largest_sequence_number_is_refused_not_overflowed() {
         assert!(matches!(w.append_tx(branch, seq, &[0; 32], b"{}"), Err(StoreError::Refused(_))), "seq {seq}");
     }
     drop(w);
-    let mut out = Vec::new();
-    assert!(ecad_file::v2::inspect::export_jsonl(&store, false, &mut out).is_err());
     drop(store);
     let o = open(&p);
     assert_eq!(o.ledger.document(), f.ledger.document());

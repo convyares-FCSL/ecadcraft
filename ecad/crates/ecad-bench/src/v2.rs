@@ -42,6 +42,48 @@ pub struct MeasuredV2 {
     pub undo_past_cap_ms: f64,
     /// The undos before it, median.
     pub undo_ms: f64,
+    /// Verify's chain part alone (brief 029, target 3 s on large), one run.
+    pub verify_chain_ms: f64,
+    /// The whole Verify (brief 029: target 10 s on large, goal 5 s), one run.
+    pub verify_ms: f64,
+    /// The full document checks Verify ran (snapshot points and branch ends).
+    pub verify_full_checks: usize,
+}
+
+/// Write `tier`'s lean project as a version 2 file at `path` (through the converter, as the bench
+/// does), for timing Verify on it alone: `ecad-bench --write-v2 large <file>`.
+///
+/// # Errors
+/// Generating, writing or converting failed.
+pub fn write_lean(tier: crate::Tier, path: &Path) -> Result<(), String> {
+    let g = crate::generate(tier, crate::Variant::Lean)?;
+    let v1 = path.with_extension("v1.ecad");
+    std::fs::write(&v1, g.file_bytes()?).map_err(|e| format!("{}: {e}", v1.display()))?;
+    let r = convert(&v1, path).map(|_| ());
+    crate::measure::remove(&v1);
+    r
+}
+
+/// Verify `path` (brief 029): the chain part alone, then the whole Verify, each timed once.
+/// Returns (chain ms, verify ms, full checks).
+///
+/// # Errors
+/// The file did not open, or either part failed (the report's failures).
+pub fn verify_timed(path: &Path) -> Result<(f64, f64, usize), String> {
+    let store = ecad_file::v2::Store::open(path, false).map_err(|e| format!("{}: {e}", path.display()))?;
+    let t = Instant::now();
+    let chain = ecad_file::v2::verify::verify_chain(&store);
+    let chain_ms = ms(t);
+    if !chain.ok {
+        return Err(format!("verify_chain failed: {:?}", chain.failures));
+    }
+    let t = Instant::now();
+    let full = ecad_file::v2::verify::verify(&store);
+    let verify_ms = ms(t);
+    if !full.ok {
+        return Err(format!("verify failed: {:?}", full.failures));
+    }
+    Ok((chain_ms, verify_ms, full.full_checks))
 }
 
 fn ms(since: Instant) -> f64 {
@@ -85,6 +127,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         drop(o);
     }
     crate::measure::release_lock_file(path);
+    let (verify_chain_ms, verify_ms, verify_full_checks) = verify_timed(path)?;
 
     // Save per edit.
     let copy = scratch.join("v2-save.ecad");
@@ -204,6 +247,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
         compacted_x10,
         undo_past_cap_ms,
         undo_ms,
+        verify_chain_ms,
+        verify_ms,
+        verify_full_checks,
     })
 }
 

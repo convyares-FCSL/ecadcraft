@@ -787,10 +787,19 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
     assert_eq!(history_of(&path), history_before, "nobody saved");
 }
 
-/// The whole history a version 2 file holds, as `ecadinspect export-jsonl` writes it.
+/// The whole history a version 2 file holds: every branch's stored rows, in order.
 fn history_of(path: &str) -> Vec<u8> {
     let store = ecad_file::v2::Store::open(std::path::Path::new(path), false).unwrap();
+    let r = store.reader().unwrap();
     let mut out = Vec::new();
-    ecad_file::v2::inspect::export_jsonl(&store, false, &mut out).unwrap();
+    for (id, _) in r.branches().unwrap() {
+        let last = r.last_seq(id).unwrap().unwrap_or(0);
+        for (seq, flag, chain, body) in r.tx_range(id, 1..=last).unwrap() {
+            out.extend_from_slice(&seq.to_be_bytes());
+            out.push(flag);
+            out.extend_from_slice(&chain);
+            out.extend_from_slice(&body);
+        }
+    }
     out
 }

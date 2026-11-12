@@ -139,7 +139,8 @@ history as version 1 JSON Lines. The debugger gains **Storage** and **Branches**
   `ecad/crates/ecad-file/tests/all/container_crash.rs` (power loss, torn writes and process kills,
   in the slow set), `ecad/crates/ecad-model/tests/all/ledger_base.rs` (a project opened from a
   snapshot undoes and rebuilds exactly as a replayed one), `ecad/apps/ecad-cli/tests/all/cli_contracts.rs`
-  (`ecad upgrade`, every `ecadinspect` view, `export-jsonl` read back by version 1), and the
+  (`ecad upgrade`), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
+  view, `export-jsonl` read back by version 1; moved there by brief 029), and the
   debugger checks in `ecad/crates/ecad-cadcraft/tests/all/debugger.rs` and
   `ecad/apps/ecad-trial/tests/all/debugger.rs`.
 - *Agent-observed:* the worker ran the crash suite and the benchmark; no agent has clicked through
@@ -1514,20 +1515,23 @@ cargo run --release -p ecad-cli --bin ecad -- upgrade ~/ecad-projects/demo.ecad
 `--out <file>` chooses another name. It refuses a damaged version 1 file (rescue it first with
 Save As in a build before brief 021) and an output that exists.
 
-## 7C. Look inside a version 2 file: `ecadinspect` (brief 021)
+## 7C. Look inside a version 2 file: `ecadinspect` (brief 021, moved by brief 029)
 
-Read-only; run it on a saved file (the app may have it open).
+A developer tool: it is in `ecad/dev/ecad-inspector` and never ships (`ecad inspect` now only
+says where it went). Read-only; run it on a saved file (the app may have it open). The page that
+shows the same file in a browser is under "The inspector" below.
 
 ```sh
-cargo run --release -p ecad-cli --bin ecadinspect -- ~/ecad-projects/demo.v2.ecad tables
+cargo run --release -p ecad-inspector --bin ecadinspect -- ~/ecad-projects/demo.v2.ecad tables
 ```
 
 Views: `tables` (rows and bytes per table, and `meta`), `branches` (each branch, its head and
 fork point; only `main` exists for now), `log main --last 20` (the newest transactions,
 decompressed, one JSON record each with its stored size), `versions` (named versions, issued
 revisions and the automatic snapshots taken every 2 000 transactions), `chunk <hash>` (one
-snapshot chunk, decompressed), `verify` (replays the whole history and checks every snapshot;
-reads everything), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
+snapshot chunk, decompressed), `verify` (the chain, then the replay with the commit-time check,
+then the full check at every snapshot and branch end; reads everything, about 2 s on the large
+bench file), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
 Lines file: the HTML inspector and any version 1 reader open it). `export-jsonl --with-raw
 --out <file>` writes every stored row instead, with its raw bytes (hex) beside the readable form;
 that file is not a version 1 project.
@@ -1721,16 +1725,58 @@ Developer). Type commands in the ECAD command field at the top of the Developer 
    In **Checks**, press **Verify replay**, **Verify projection** and **Verify file**: each shows
    `PASS … at seq 5` and the time.
 
-### Inspector snapshots
+### The inspector (brief 029)
+
+A developer and test tool in `ecad/dev/ecad-inspector`; it never ships. One page, two modes.
+
+**Server mode: look inside a `.ecad` file.** From `ecad/`:
+
+```sh
+cargo run -p ecad-inspector --bin ecadinspect -- serve C:\dev\ecad-projects\demo.v2.ecad
+```
+
+1. Expected: `ecadinspect: serving demo.v2.ecad (324 KB) read-only` and
+   `open http://127.0.0.1:<port>/?t=<token>`. The server listens on 127.0.0.1 only, and the
+   address carries a token: the page and its WebSocket refuse requests without it. Ctrl+C stops
+   it. `--port N` picks the port; without a file, drop one on the page.
+2. Open the printed address. Expected: the file name, size, `container 2 · schema 1 · json/1`
+   and the writer; pills `local only`, **chain PASS** and **verifying…**, then **verified** (or
+   **Verify FAIL**); the Project tab with the pages.
+3. Visit Devices, Wires and nets, History (branches, log with **Export JSONL**, versions) and
+   Tables (pick a table, expand a row, then **Raw**, then **Readable**). Lists show 200 rows at a
+   time with a search box. Times are UTC.
+4. **Checks**: the open report, the chain, the invariants of the opened state, and Verify's
+   result with its time.
+5. Drop `demo.v2.ecad.lock` (it says it is the lock file), then `demo-old.ecad` (version 1: it
+   offers `ecad upgrade`). Drop `demo.v2.ecad` again to go back. A dropped file is held in memory
+   only; **Reload** re-opens the file named on the command line (also after the app saved it:
+   the page then says the file changed).
+6. If the server stops, the page says so and offers **Reconnect**.
+
+The page talks to the server through a versioned JSON protocol (design 029 §2); the same views
+are available to tests and scripts. Nothing on the page writes, and the protocol has no op that
+writes.
+
+- *Automated checks:* `ecad/dev/ecad-inspector/tests/all/protocol_contracts.rs` (every op, every
+  mismatch message, hostile files, never writes) and `serve_contracts.rs` (token, `Host`,
+  `Origin`, one page at a time, dropped files, limits).
+- *Agent-observed (worker, 2026-11-12, `feature/inspector`):* `serve` on a copy of
+  `demo.v2.ecad`; every tab answered, Readable/Raw on a transaction row, no console errors. On
+  that file (written 2026-11-10, before brief 026), Verify reports that the tag numbers of its
+  three snapshots differ from the history's: brief 026 made cable tags count towards the tag
+  numbers, so snapshots written before it carry the older numbers.
+- *Owner-tried:* not yet.
+
+**Snapshots mode: exported snapshots.**
 
 - **Exporting.** Start with `--snapshots <folder>`, then click **Export Inspector Snapshot** in
   the PROJECT panel's Developer section (shown only with `--snapshots`). Snapshots are also written before a project is discarded, and at exit. They are
   diagnostic files, not saved projects, and cannot be reopened. Their format is
   `ecad-inspect/2`: the design, its history and, new in stage 2b, the file's persistence facts
   (path, header, record offsets, lock).
-- **Viewing them.** Open `ecad/tools/inspector/index.html` in a browser (on native Windows,
-  double-click `C:\dev\ecadcraft\ecad\tools\inspector\index.html`, or type that path in the
-  address bar) and load the files from the folder given to `--snapshots`, for example
+- **Viewing them.** Open `ecad/dev/ecad-inspector/page/index.html` in a browser (on native
+  Windows, double-click `C:\dev\ecadcraft\ecad\dev\ecad-inspector\page\index.html`, or type
+  that path in the address bar; it was `ecad/tools/inspector/index.html`) and load the files from the folder given to `--snapshots`, for example
   `C:\dev\ecad-trial-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
   whether each transaction was saved, and where.
 

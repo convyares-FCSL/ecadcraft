@@ -62,6 +62,9 @@ pub const TABLES: [&str; 6] = ["meta", "branches", "transactions", "versions", "
 
 enum Db {
     Writable(Database),
+    /// A file opened read-only. Only [`Store::open`] makes one, and wasm has no `open` (it reads
+    /// from bytes), so the variant is never built there.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     ReadOnly(ReadOnlyDatabase),
 }
 

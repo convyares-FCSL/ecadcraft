@@ -156,6 +156,14 @@ pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenError
     read_facts(r).map(|f| (f.project, f.cache))
 }
 
+/// The project ID of a file, after checking its container facts as opening does.
+///
+/// # Errors
+/// Not a version 2 project file this build reads, or its facts are damaged.
+pub fn project_id(r: &Reader) -> Result<ProjectId, OpenErrorV2> {
+    read_facts(r).map(|f| f.project)
+}
+
 pub(crate) use decode_row as decode_row_pub;
 
 /// A transaction row decoded and checked: its record against its stored chain value, its `seq`,
@@ -346,9 +354,10 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
         Some(v) => {
             let (mut doc, meta) = load_snapshot(r, &v)?;
             doc.rebuild_index();
+            // Cached marks of an older rule are recomputed from the history (brief 029, FP1).
             let high = match meta {
-                Some(m) => m.tag_high,
-                None => line_high(r, lineage, i, v.point.seq)?,
+                Some(m) if v.tag_marks_current() => m.tag_high,
+                _ => line_high(r, lineage, i, v.point.seq)?,
             };
             (doc, high, v.point.seq, v.point.hash()?)
         }
@@ -388,6 +397,8 @@ fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWat
     let line = lineage.get(i).ok_or("a lineage index is out of range")?;
     let snap = nearest_snapshot(r, line.branch, seq)?;
     let meta = match &snap {
+        // Marks of an older rule are not used: the rows from the branch's start are scanned.
+        Some(v) if !v.tag_marks_current() => None,
         Some(v) => {
             let set = ChunkSet::from_record(&v.chunks)?;
             match set.chunks.get(chunks::META_KEY) {
@@ -950,9 +961,11 @@ fn load_branch(
                     // The tag high-water mark at the snapshot: carried by `model:meta`; a
                     // snapshot written without it is scanned once (a cache, rebuilt from the
                     // history).
+                    // Marks of an older rule (written before brief 026 counted cable tags) are
+                    // recomputed once, the same way (brief 029, FP1).
                     let high = match meta {
-                        Some(m) => m.tag_high,
-                        None => line_high(&r, &lineage, 0, v.point.seq)?,
+                        Some(m) if v.tag_marks_current() => m.tag_high,
+                        _ => line_high(&r, &lineage, 0, v.point.seq)?,
                     };
                     (v.point.seq, chain, doc, stacks, Some(set), high)
                 }
@@ -1171,6 +1184,7 @@ impl ProjectV2 {
                     stack_cap: STACK_CAP,
                     description: None,
                     merge: None,
+                    tag_rule: Some(ecad_model::tag::TAG_RULE),
                     extra: BTreeMap::new(),
                 },
             )?;
@@ -1635,6 +1649,7 @@ impl ProjectV2 {
                 stack_cap: STACK_CAP,
                 description: None,
                 merge: None,
+                tag_rule: Some(ecad_model::tag::TAG_RULE),
                 extra: BTreeMap::new(),
             },
         )?;
@@ -2125,6 +2140,7 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
         stack_cap: 0,
         description: None,
         merge: Some(row.clone()),
+        tag_rule: None,
         extra: BTreeMap::new(),
     }
 }

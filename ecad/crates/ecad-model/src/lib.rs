@@ -21,6 +21,7 @@
 pub mod book;
 pub mod connectivity;
 pub mod derive;
+mod dev;
 pub mod diff;
 pub mod doc;
 pub mod error;
@@ -50,7 +51,7 @@ pub use id::{
     TerminalId, TxId,
 };
 pub use invariant::Touched;
-pub use ledger::{Author, Base, BranchPoint, History, Ledger, StepPoint, Transaction, TxKind};
+pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use sheet::{GridLabels, SheetSpec};
 
