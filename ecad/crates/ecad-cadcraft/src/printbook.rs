@@ -152,6 +152,8 @@ pub fn build(
     doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
+    // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
+    crate::text_style::install(&mut scratch, doc);
     crate::locations::add_linetype(&mut scratch);
     let mut store = EntityStore::new();
     let mut sheets = Vec::new();

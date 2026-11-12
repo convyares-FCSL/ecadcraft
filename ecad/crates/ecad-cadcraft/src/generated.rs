@@ -31,8 +31,9 @@ use ecad_model::sheet::{MARGIN_MM, TITLE_BLOCK_MM, TOP_MARGIN_MM, unit_scale};
 use ecad_model::{Document, ObjectRef, Op, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT};
+use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextLook};
 use crate::outputs::{Group, Outputs};
+use crate::text_style::{Look, TextKind};
 
 /// The page property that names a generated page's kind.
 pub const KEY: &str = "generated";
@@ -55,8 +56,6 @@ pub const FLAGGED_ACI: u8 = 2;
 pub const FLAGGED_PRINT_ACI: u8 = 7;
 /// The text of a missing value.
 pub const MISSING: &str = "?";
-/// `ecad.missing-box`: the box round a missing value is inset this far into its cell (mm).
-pub const MISSING_INSET_MM: f64 = 0.5;
 /// Refusal of `pageprops` changing the kind.
 pub const KIND_FIXED: &str = "A page's kind is set when it is made; add a new page instead.";
 
@@ -388,10 +387,11 @@ impl Draw {
         let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
         self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
-    fn text(&mut self, at: (f64, f64), height: f64, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
+    fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
+        let height = look.mm;
         let (shown, wf) = crate::frame::fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -403,27 +403,28 @@ impl Draw {
             rotation: 0.0,
             width_factor: wf,
             oblique: 0.0,
-            style: "Standard".into(),
+            style: look.style.into(),
             halign: h,
             valign: VAlign::Middle,
         });
-        self.out.push(Part { kind, weight: None, aci, layer: LAYER });
+        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
     }
 }
 
-/// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset
-/// [`MISSING_INSET_MM`] into the cell from `lo` to `hi` (model coordinates, `k` drawing units per
-/// millimetre), the text `height` millimetres high. Both parts are [`FLAGGED_ACI`] on [`LAYER`]:
-/// yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
-pub fn missing_mark(lo: Pt, hi: Pt, k: f64, height: f64) -> Vec<Part> {
+/// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset by the
+/// registry's `print.missing_box_inset` into the cell from `lo` to `hi` (model coordinates, `k`
+/// drawing units per millimetre), the text in `look`. Both parts are [`FLAGGED_ACI`] on
+/// [`LAYER`]: yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
+pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextLook) -> Vec<Part> {
     if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
         return Vec::new();
     }
+    let inset_mm = crate::defaults::resolve(doc, &crate::defaults::print::MISSING_BOX_INSET, crate::defaults::Scope::project()).number();
     let mut d = Draw { k, x0: 0.0, out: Vec::new() };
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
-    let inset = MISSING_INSET_MM.min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
+    let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
     d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::look::WIRE_WEIGHT, Some(FLAGGED_ACI));
-    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), height, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
+    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), look, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
     d.out
 }
 
@@ -684,11 +685,12 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
     rows
 }
 
-/// The cover's lines: (text, height).
+/// The cover's lines: (text, height as a share of the Cover kind's height: 10, 7, 5, 5, 5, 3.5
+/// of 10, design 033 §1.2).
 fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
     let prop = |k: &str| doc.properties.get(k).cloned().filter(|v| !v.trim().is_empty());
     let mut out = Vec::new();
-    for (k, h) in [(crate::frame::TITLE, 10.0), (crate::frame::DRAWING_NUMBER, 7.0), (crate::frame::CUSTOMER, 5.0), (crate::frame::STATUS, 5.0)] {
+    for (k, h) in [(crate::frame::TITLE, 1.0), (crate::frame::DRAWING_NUMBER, 0.7), (crate::frame::CUSTOMER, 0.5), (crate::frame::STATUS, 0.5)] {
         if let Some(v) = prop(k) {
             out.push((v, h));
         }
@@ -700,8 +702,8 @@ fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
         }
         None => "Not issued".into(),
     };
-    out.push((rev, 5.0));
-    out.push((if total == 1 { "1 sheet".into() } else { format!("{total} sheets") }, 3.5));
+    out.push((rev, 0.5));
+    out.push((if total == 1 { "1 sheet".into() } else { format!("{total} sheets") }, 0.35));
     out
 }
 
@@ -711,14 +713,18 @@ fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
 fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, total: usize) -> Vec<Part> {
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
+    let looks = Look::new(doc);
+    let look = |kind| TextLook::of(&looks, kind, input.unit);
+    let (header, cell_look, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
     if kind == GenKind::Cover {
-        let lines = cover_lines(doc, total);
+        let cover = look(TextKind::Cover);
+        let lines: Vec<(String, f64)> = cover_lines(doc, total).into_iter().map(|(t, share)| (t, share * cover.mm)).collect();
         let gap = 6.0;
         let height: f64 = lines.iter().map(|(_, h)| h + gap).sum();
         let mut y = (b + t) / 2.0 + height / 2.0;
         for (text, h) in lines {
             y -= h / 2.0 + gap / 2.0;
-            d.text(((l + r) / 2.0, y), h, &text, HAlign::Center, None, Some(r - l));
+            d.text(((l + r) / 2.0, y), TextLook { mm: h, ..cover }, &text, HAlign::Center, None, Some(r - l));
             y -= h / 2.0 + gap / 2.0;
         }
         return d.out;
@@ -735,7 +741,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     // Header.
     let mut x = l;
     for ((name, _), w) in cols.iter().zip(&widths) {
-        d.text((x + 1.0, y - HEADER_MM / 2.0), 2.5, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+        d.text((x + 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
         x += w;
     }
     y -= HEADER_MM;
@@ -746,7 +752,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let (start, end, prev_heading) = paginate_with(&heads, kind == GenKind::Terminals).get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
-        d.text((l + 1.0, y - ROW_MM / 2.0), 3.5, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
+        d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
         y -= ROW_MM;
         d.line((l, y), (r, y));
     }
@@ -754,7 +760,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let mut last_dot: Option<(usize, f64)> = None;
     for row in page_rows {
         if row.heading {
-            d.text((l + 1.0, y - ROW_MM / 2.0), 3.5, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
+            d.text((l + 1.0, y - ROW_MM / 2.0), heading, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
             last_dot = None;
         } else {
             let mut x = l;
@@ -762,16 +768,16 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
             for (c, (cell, w)) in row.cells.iter().zip(&widths).enumerate() {
                 let aci = (cell == MISSING).then_some(FLAGGED_ACI);
                 if cell == MISSING && row.marks.terminal_box != Some(c) {
-                    d.out.extend(missing_mark(d.p(x, y - ROW_MM), d.p(x + w, y), d.k, 2.5));
+                    d.out.extend(missing_mark(doc, d.p(x, y - ROW_MM), d.p(x + w, y), d.k, cell_look));
                 } else if row.marks.terminal_box == Some(c) {
                     let cx = x + w / 2.0;
                     d.line((cx - 3.0, mid - 2.0), (cx + 3.0, mid - 2.0));
                     d.line((cx + 3.0, mid - 2.0), (cx + 3.0, mid + 2.0));
                     d.line((cx + 3.0, mid + 2.0), (cx - 3.0, mid + 2.0));
                     d.line((cx - 3.0, mid + 2.0), (cx - 3.0, mid - 2.0));
-                    d.text((cx, mid), 2.5, cell, HAlign::Center, aci, Some(*w - 2.0));
+                    d.text((cx, mid), cell_look, cell, HAlign::Center, aci, Some(*w - 2.0));
                 } else {
-                    d.text((x + 1.0, mid), 2.5, cell, HAlign::Left, aci, Some(w - 2.0));
+                    d.text((x + 1.0, mid), cell_look, cell, HAlign::Left, aci, Some(w - 2.0));
                 }
                 x += w;
             }

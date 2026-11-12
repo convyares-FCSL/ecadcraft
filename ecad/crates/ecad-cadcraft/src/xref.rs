@@ -777,27 +777,25 @@ impl TableShown {
     }
 }
 
-/// Room kept between a contact table and the title block's top line, in millimetres.
-pub const TITLE_CLEARANCE_MM: f64 = 2.0;
-
 /// The box of a table at `top` with `rows` (design 033 §4.1): from −10 mm to 12 mm plus the widest
 /// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
 pub fn table_box(doc: &Document, top: Pt, rows: &[Row]) -> (Pt, Pt) {
     let k = unit(doc);
-    let widest = rows.iter().map(|r| r.place.chars().count()).max().unwrap_or(0);
-    // The stroke font is 0.8 × the height per character (`frame::fit`).
-    let width = 12.0 + 0.8 * XREF_TEXT_MM * widest as f64;
+    // The widest place text in the font and size it is drawn with (drawing units).
+    let widest = rows.iter().map(|r| crate::text_style::text_width(doc, crate::text_style::TextKind::Table, &r.place)).fold(0.0, f64::max);
     let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
     let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
-    (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + width * k, top.y))
+    (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
 }
 
 /// The page's free area for tables (design 033 §4.1): the frame's drawing area above the title
-/// block, [`TITLE_CLEARANCE_MM`] clear of its top line. (lo, hi), drawing units.
+/// block, the registry's `print.contact_table_clearance` clear of its top line. (lo, hi),
+/// drawing units.
 pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
     let g = ecad_model::sheet::Grid::of(doc, page);
     let k = unit(doc);
-    let lo = Pt::new(g.frame_left(), g.frame_bottom() + (ecad_model::sheet::TITLE_BLOCK_MM + TITLE_CLEARANCE_MM) * k);
+    let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * k + gap);
     let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
     (lo, hi)
 }
@@ -943,7 +941,8 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
         parts.push(Part { rep: head, index, shape, aci, row, bar });
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
-    let h = XREF_TEXT_MM * k;
+    // Design 033 §1.2: contact-table rows are table text.
+    let h = crate::text_style::text_style(doc, crate::text_style::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
     for (i, r) in rows.iter().enumerate() {
@@ -1344,6 +1343,12 @@ impl Scope {
                 }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     self.devices.extend(doc.components_using(*id));
+                }
+                // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
+                Op::SetProperty { object: ObjectRef::Project, key, .. }
+                    if key == crate::defaults::text::TABLE_HEIGHT.key || key == crate::defaults::text::FONT.key =>
+                {
+                    self.wide = true;
                 }
                 Op::SetProjectSettings { before, after }
                     if before.reference_style != after.reference_style
