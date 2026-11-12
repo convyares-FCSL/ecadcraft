@@ -1,6 +1,6 @@
 # Roadmap review, November 2026: from v0.1 to v1 and beyond
 
-Status: **Proposal** (draft for the owner, 2026-11-12). Nothing here is approved. Sizes use the
+Status: **Proposal; §5 decided as recommended** (owner, 2026-11-12). Sizes use the
 scale of `roadmap-v0.1.md`: agent working days, not counting reviews. **S** is 1–2 days, **M** is
 3–5 days, **L** is 1–2 weeks and **XL** is more than 2 weeks, which means the feature should be
 split into briefs.
@@ -205,12 +205,12 @@ before M1 adds features. Its items are numbered Q1–Q9.
 
 **v0.15 lanes.** Four lanes that do not touch the same files:
 
-| Lane | Owns | Order |
-|---|---|---|
-| **T: text** | `look.rs`, a new text-style module, the font loading, tag and label placement in `devices.rs`, `strips.rs` and `locations.rs`, the visibility properties | Q1 → Q3 → Q2 |
-| **W: wires and nets** | `wires.rs`, `wire_cmds.rs`, `references.rs` | Q6 wire join (first) → Q8 → Q4 |
-| **P: print and project** | `printbook.rs`, `frame.rs`, `generated.rs`, `xref.rs` (contact tables), `revisions.rs`, the tag display in `ecad-model`, the `table` command | Q5 → Q7 → Q6 `table` |
-| **S: symbols** | `symbols.rs`, `convert.rs`, the starter registration (append-only in `commands.rs`) | Q9, by family in the order of the pack's ranking: contacts and protection first, then sensors and field devices, then connectors and PLC card bodies |
+| Lane | Brief and branch | Owns | Order |
+|---|---|---|---|
+| **T: text** | 031, `feature/text-styles` | `look.rs`, a new text-style module, the font loading, tag and label placement in `devices.rs`, `strips.rs` and `locations.rs`, the visibility properties | Q1 → Q3 → Q2 |
+| **W: wires and nets** | 032, `feature/wires-nets` | `wires.rs`, `wire_cmds.rs`, `references.rs` | Q6 wire join (first) → Q8 → Q4 |
+| **P: print and project** | 033, `feature/print-project` | `printbook.rs`, `frame.rs`, `generated.rs`, `xref.rs` (contact tables), `revisions.rs`, the tag display in `ecad-model`, the `table` command | Q5 → Q7 → Q6 `table` |
+| **S: symbols** | 034, `feature/component-library` | `symbols.rs`, `convert.rs`, the starter registration (append-only in `commands.rs`) | Q9, by family in the order of the pack's ranking: contacts and protection first, then sensors and field devices, then connectors and PLC card bodies |
 
 - **Q3 before Q2** in lane T: once repeated tags are hidden there is far less to place, and the
   placement rules are written against the drawing as it will look.
@@ -405,69 +405,70 @@ wheel, command line, MCP), never a second editor.
 
 ## 5. Questions for the owner
 
-Each has a recommendation. Answer "as recommended" to accept them all.
+**Decided (2026-11-12): the owner answered "as recommended" to all 23 questions.** Each
+question below is marked so.
 
 1. **Order of M1.** Is M1 as ranked by the drawing-pack test (§3.2, "Order within M1") the right
-   next milestone? **Recommend yes.**
+   next milestone? **Recommend yes.** **Decided: as recommended.**
 2. **Symbols before libraries.** Build the symbol builder first, saving into the project, with
    `.ecadlib` after it? **Recommend yes.** It unblocks drawings weeks before the library container
-   is designed, approved and built. The definitions it makes are the same ones a library will hold.
+   is designed, approved and built. The definitions it makes are the same ones a library will hold. **Decided: as recommended.**
 3. **Approve brief 006 (stage 3 contract) now, as a design-only task** in lane S beside the symbol
    builder? **Recommend yes.** The contract has been waiting since 2026-10-31, and 2.1 cannot start
-   without it.
+   without it. **Decided: as recommended.**
 4. **Parts and symbols in one `.ecadlib` container?** **Recommend yes**, as separate tables in the
    same redb container. One file to share, one identity and history scheme. A part references the
-   symbols it uses.
+   symbols it uses. **Decided: as recommended.**
 5. **Multi-level terminals: a link without a level means level 1.** **Recommend yes.** Old files
-   read the same, and a link across levels is written explicitly (`1.1-1.2`).
+   read the same, and a link across levels is written explicitly (`1.1-1.2`). **Decided: as recommended.**
 6. **PLC addresses.** A free-text address per channel, with an automatic-addressing command that
    fills them by card and channel in a chosen style (`I0.0`, `%IX0.0`, `0:I/00`)? **Recommend
-   yes.** No PLC vendor is built in.
+   yes.** No PLC vendor is built in. **Decided: as recommended.**
 7. **The radial wheel: fixed or configurable?** **Recommend fixed and context-aware for M1** (eight
    slots per object kind, chosen by the designer), with configuration only if the owner misses it
-   after a month of use. Configuration surfaces are where bloat starts.
+   after a month of use. Configuration surfaces are where bloat starts. **Decided: as recommended.**
 8. **Managers replace the read-only Reports tabs** (Terminals, Cables) rather than sitting beside
-   them? **Recommend yes**, with a read-only toggle for checking without editing.
+   them? **Recommend yes**, with a read-only toggle for checking without editing. **Decided: as recommended.**
 9. **List import: CSV and XLSX in, as a proposal.** **Recommend yes**, with re-import showing a
-   difference and never overwriting a value the designer changed in ECAD without asking.
+   difference and never overwriting a value the designer changed in ECAD without asking. **Decided: as recommended.**
 10. **Report generator scope: no free-form page designer.** Fixed page styles (table, grouped
-    table, graphical strip), with column, filter, sort and group choices? **Recommend yes.**
+    table, graphical strip), with column, filter, sort and group choices? **Recommend yes.** **Decided: as recommended.**
 11. **Panel layout in 2D for v1, 3D through SolidCraft after v1?** **Recommend yes.** 2D answers
-    rail fill, duct sizing and the mounting drawing, which is what a panel shop needs at v1.
+    rail fill, duct sizing and the mounting drawing, which is what a panel shop needs at v1. **Decided: as recommended.**
 12. **v1 means a format promise.** v1 files open in every later build (migration and upcasting,
-    3.5), and pre-v1 files are converted once with `ecad upgrade`. **Recommend yes.**
+    3.5), and pre-v1 files are converted once with `ecad upgrade`. **Recommend yes.** **Decided: as recommended.**
 13. **Revision compare in v1** (3.2)? **Recommend yes.** It is cheap on ECAD's history, customers
-    ask for clouded changes, and few tools do it well.
+    ask for clouded changes, and few tools do it well. **Decided: as recommended.**
 14. **KiCad: only the two directions in §3.4** (a PCB as a device; symbol import), and only after
-    v1? **Recommend yes.**
+    v1? **Recommend yes.** **Decided: as recommended.**
 15. **Lane U owns the managers' UI; lane D owns their data and commands.** **Recommend yes.** This
-    keeps three lanes from colliding in `ecad-trial`.
+    keeps three lanes from colliding in `ecad-trial`. **Decided: as recommended.**
 16. **Wire types in M1, not after v0.1 as previously listed.** **Recommend yes.** Real wire reports
-    and the cable manager need them, and the change is small (a project setting).
+    and the cable manager need them, and the change is small (a project setting). **Decided: as recommended.**
 17. **Live MCP bridge (1.0) first in M1**, with the deferred-work condition (per-call authorship)
     as an acceptance criterion and ECAD's own tool set only over the port (no raw command line)?
     **Recommend yes.** It makes every later agent-built brief visible as it happens. Picking it up
-    removes the "Bridged agent access" entry from `deferred-work.md` when its brief is approved.
+    removes the "Bridged agent access" entry from `deferred-work.md` when its brief is approved. **Decided: as recommended.**
 18. **Control port off by default**, switched on per run with `--control PORT` or by a preference
     the owner sets once? **Recommend the preference, off by default.** "Always available" then needs
-    one setting, and a machine that never opts in never listens.
+    one setting, and a machine that never opts in never listens. **Decided: as recommended.**
 19. **Graphical strip pages as a second page style of the one terminal plan** (1.8), not a separate
     report? **Recommend yes.** One derived plan, two styles (table and graphical), and the project
-    chooses which goes in the book.
+    chooses which goes in the book. **Decided: as recommended.**
 20. **Built-in components (Q9) before the symbol builder?** The owner asked to build up the
     component library in v0.15. It unblocks most of the pack's missing symbols while the builder is
     designed, and the builder later lets users add their own. **Recommend yes**, with Q9 limited to
-    the families the pack needed.
+    the families the pack needed. **Decided: as recommended.**
 21. **Continuation captions** (1.9): a caption is a property of the continuation, and the arrows
-    that share it are grouped under it? **Recommend yes.** No new object is needed.
+    that share it are grouped under it? **Recommend yes.** No new object is needed. **Decided: as recommended.**
 22. **Cables with more than two references and with pairs and shields go in M2** (2.7), not M1?
     They ranked last of the ten blocking gaps. **Recommend M2**, unless the owner's next real job
-    needs them sooner.
+    needs them sooner. **Decided: as recommended.**
 23. **A pending revision in the title block.** After a revision is issued and the design is edited
     again, the title block still shows the issued revision, and nothing marks that changes are
     pending. **Recommend showing it as pending** (for example `D*` or `E (draft)`), derived from
     history (edits after the last issue), with the style a project setting. It is S and is part
-    of v0.15's Q7.
+    of v0.15's Q7. **Decided: as recommended.**
 
 ---
 
