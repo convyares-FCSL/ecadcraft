@@ -1,5 +1,5 @@
 //! Brief 022 headless in the trial (design 022 §15 checks F and I): the demo project's labels,
-//! the Checks tab with its go-to, a T without a junction fixed by **Add junction**, and labels at
+//! the Checks tab with its go-to, a T without a junction fixed by **Join**, and labels at
 //! 0, 90, 45 and 135°. Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu
 //! adapter exists; they are for the owner's approval, never committed.
 
@@ -190,7 +190,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.run_steps(3);
     click(&mut h, &checks_panel::row_label(&pe));
 
-    // A T without a junction on a new page: its row, then Add junction.
+    // A T without a junction on a new page: its row, then Join (brief 032: a junction there).
     ok(&mut h, r#"newpage {"title":"Tee"}"#);
     ok(&mut h, r#"wire {"points":[[0,0],[60,0]]}"#);
     ok(&mut h, r#"wire {"points":[[30,30],[30,0]],"junction":false}"#);
@@ -200,7 +200,13 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let tee = rows.iter().find(|r| r.check.kind == Kind::LooksConnected).expect("a looks-connected row").clone();
     click(&mut h, &checks_panel::row_label(&tee));
     save(&h, &deltas, "022-tee.png");
-    click(&mut h, checks_panel::ADD_JUNCTION);
+    // Brief 032: the row's Join (a menu item is called Join too: the Checks button comes first).
+    let before = h.query_all_by_label(checks_panel::JOIN).count();
+    assert!(before >= 1);
+    if let Some(n) = h.query_all_by_label(checks_panel::JOIN).next() {
+        n.click();
+    }
+    h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
     assert!(rows.iter().all(|r| r.check.kind != Kind::LooksConnected), "{rows:?}");
     let d = doc(&mut h);

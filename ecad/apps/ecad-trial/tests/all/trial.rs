@@ -39,7 +39,8 @@ impl Drop for TempDir {
 }
 
 fn edit(t: &mut Trial) {
-    t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
+    // Brief 032: the same wire again stays a wire of its own (else its ends would close a loop).
+    t.cad.run("wire", json!({"points": [[0, 0], [40, 0]], "join": false})).unwrap();
 }
 
 fn doc(t: &mut Trial) -> ecad_model::Document {

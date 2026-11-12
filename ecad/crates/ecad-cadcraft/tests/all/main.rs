@@ -43,5 +43,6 @@ mod tester_029_tag_rule;
 mod tester_030_accessories;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
+mod wires_nets_contracts;
 mod wiring_contracts;
 mod xref_contracts;

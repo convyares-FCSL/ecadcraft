@@ -335,7 +335,7 @@ fn ctrl_z_during_wire_removes_the_last_point_and_space_is_enter() {
     let after = (head(&mut h), doc(&mut h));
     assert!(after == before, "Ctrl+Z during Wire changed the project (it undid a committed object)");
     assert_eq!(still.as_deref(), Some("wire"), "Ctrl+Z ended the Wire command");
-    assert_eq!(prompt(&h), "Specify next point or [Undo]:", "one point is left");
+    assert_eq!(prompt(&h), "Specify next point or [Undo/Join]:", "one point is left");
     h.key_press(Key::Escape);
     h.run_steps(2);
     // Space as Enter ends Add Connection Point at its point prompt.
