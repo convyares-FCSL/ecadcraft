@@ -319,9 +319,12 @@ fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
 }
 
 /// Whether a merge into `target` writes this project property: revision fields are never
-/// merged into the release line (owner answer 10); an update brings them unchanged.
+/// merged into the release line (owner answer 10); an update brings them unchanged. The tag
+/// high-water resets (`numbering.high.<P>`, brief 026) are internal and never merged: the
+/// target's stays, so its mark is never lowered, and the merge's own tag ops raise it to every
+/// tag brought in (reviewer 026, 4: no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
-    move |k: &str| update || !k.starts_with("rev.")
+    move |k: &str| !k.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
 }
 
 /// Check a value typed in a conflict's Edit field as an ordinary property edit of that object
@@ -362,6 +365,12 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             None => p.ledger.document(),
         };
         let rule = |obj: Obj, key: &str, v: &str| edit_rule(target, obj, key, v);
+        // Brief 026, Make them one: 018's device merge, with fresh IDs from the project.
+        let ids = std::cell::RefCell::new(&mut p.ids);
+        let join = |d: &Document, from: ecad_model::ComponentId, into: ecad_model::ComponentId| {
+            let mut ids = ids.borrow_mut();
+            crate::devices::plan_merge(d, &mut ids, from, into)
+        };
         let inp = Inputs {
             ancestor: &prep.ancestor_doc,
             target,
@@ -372,6 +381,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             keep_project_key: &keep,
             high: &prep.high,
             edit_rule: &rule,
+            join: &join,
         };
         merge::plan(&inp, choices)
     };
@@ -456,9 +466,10 @@ pub fn parse_choices(s: &Sides, v: Option<&Value>) -> Result<BTreeMap<String, Ch
                 "bringback" => Choice::BringBack,
                 "renumber_branch" | "rename_branch" => renumber_child.clone(),
                 "renumber_main" | "rename_main" => renumber_parent.clone(),
+                "one" => Choice::MakeOne,
                 other => {
                     return Err(format!(
-                        "\"{other}\" is not a choice for {id}: use main, branch, loose, bringback, renumber_branch or renumber_main."
+                        "\"{other}\" is not a choice for {id}: use main, branch, loose, bringback, renumber_branch, renumber_main or one."
                     ));
                 }
             },
@@ -484,6 +495,7 @@ pub fn choice_word(s: &Sides, c: &Choice) -> Value {
         Choice::Drop => json!("loose"),
         Choice::RenumberSource => json!(if pt { "renumber_branch" } else { "renumber_main" }),
         Choice::RenumberTarget => json!(if pt { "renumber_main" } else { "renumber_branch" }),
+        Choice::MakeOne => json!("one"),
     }
 }
 
@@ -544,6 +556,7 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
                 "choices": c.choices.iter().map(|x| choice_word(s, x)).collect::<Vec<_>>(),
                 "editable": c.choices.iter().any(|x| matches!(x, Choice::Value(_))),
                 "chosen": c.chosen.as_ref().map(|x| choice_word(s, x)),
+                "unavailable": plan.unavailable.get(&c.id).map(|why| json!({"choice": "one", "why": why})),
                 "object": merge::name_of(&docs, c.object),
             })
         })
@@ -567,8 +580,14 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
             (None, true) if !plan.ignored.is_empty() => {
                 format!("Ignored: {}. The Checks tab lists what the merge leaves to check.", plan.ignored.join("; "))
             }
+            (None, true) if plan.provisional_renumbered > 0 => format!(
+                "{} provisional tag{} renumbered. The Checks tab lists what the merge leaves to check.",
+                plan.provisional_renumbered,
+                if plan.provisional_renumbered == 1 { "" } else { "s" }
+            ),
             (None, true) => "The Checks tab lists what the merge leaves to check.".to_string(),
         },
+        "provisional_renumbered": plan.provisional_renumbered,
     })
 }
 

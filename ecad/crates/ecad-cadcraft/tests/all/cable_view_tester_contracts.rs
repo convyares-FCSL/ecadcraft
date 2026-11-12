@@ -711,8 +711,8 @@ fn ac2_bom_and_folder_that_is_a_file() {
     h.cmdline("cableview");
     click(&mut h, 40.0, 5.0);
     let _ = h.s.input(Input::Enter);
-    let line = h.s.log.iter().rev().find(|l| l.starts_with("Cable C1 now shown")).cloned().unwrap_or_default();
-    assert!(line.starts_with("Cable C1 now shown in traditional view (not remembered: "), "{line}");
+    let line = h.s.log.iter().rev().find(|l| l.starts_with("Cable -C01 now shown")).cloned().unwrap_or_default();
+    assert!(line.starts_with("Cable -C01 now shown in traditional view (not remembered: "), "{line}");
     assert_eq!(std::fs::read(&blocker).unwrap(), b"x", "the blocking file is untouched");
     h.run("qsave", Value::Null).unwrap();
 }
@@ -1149,7 +1149,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
     // Hover a fan line: the cable with `View: fan` after `id …`.
     let uid = g.h.p(|p| p.pages[&g.page].uid).unwrap();
     let lines = g.h.p(|p| hover_lines(p, uid, trunk)).unwrap_or_default();
-    assert!(lines.first().is_some_and(|l| l == "Cable C1"), "{lines:?}");
+    assert!(lines.first().is_some_and(|l| l == "Cable -C01"), "{lines:?}");
     let at = lines.iter().position(|l| l == "View: fan").expect("View: fan");
     assert!(lines.get(at - 1).is_some_and(|l| l.starts_with("id ")), "after the id line: {lines:?}");
     // Programmatic calls ignore the view (O4).
@@ -1264,7 +1264,7 @@ fn round2_m1_a_locked_file_is_left_alone() {
     g.h.cmdline("cableview");
     click(&mut g.h, 40.0, 5.0);
     let _ = g.h.s.input(Input::Enter);
-    let line = g.h.s.log.iter().rev().find(|l| l.starts_with("Cable C1 now shown")).cloned().unwrap_or_default();
+    let line = g.h.s.log.iter().rev().find(|l| l.starts_with("Cable -C01 now shown")).cloned().unwrap_or_default();
     assert!(line.contains("(not remembered: "), "{line}");
     // A read-only second window opened while the file is locked: never fails, says so.
     let mut s = Session::empty();

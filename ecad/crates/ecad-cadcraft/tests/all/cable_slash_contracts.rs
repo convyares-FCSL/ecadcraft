@@ -96,7 +96,8 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     let cable = &d.cables[&k];
     assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10], "crossing order from the first point");
     assert!(cable.members.iter().all(|m| m.core.is_none()), "no core designations");
-    assert!(cable.properties.is_empty(), "no tag unless given");
+    // Brief 026: an automatic tag when none is given, and nothing else.
+    assert!(cable.properties.keys().all(|k| k == "tag") && cable.properties["tag"].starts_with("-W"), "an automatic tag");
     assert_eq!(r["conductors"], json!([f.w0.hex(), f.w5.hex(), f.w10.hex()]));
     assert_eq!(r["ignored"], json!([f.plain.hex()]), "the plain line is ignored and reported");
     assert_eq!(r["touched"], json!([]));
@@ -136,7 +137,7 @@ fn a_tag_is_stored_as_the_cable_tag() {
     let mut f = fixture();
     let r = f.h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "-W1"})).unwrap();
     let k: CableId = id(&r, "cable");
-    assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("-W1"));
+    assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("-W01"));
 }
 
 /// AC7 (design check D): two clicks record exactly the JSON form's transaction; before the second
@@ -299,12 +300,13 @@ fn refusals_write_nothing_and_say_why() {
     let mut f = fixture();
     let first = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     let cable: CableId = id(&first, "cable");
-    let cable_short = &cable.hex()[..8];
+    // Brief 026: the cable has an automatic tag, which the message names.
+    let cable_tag = f.h.doc().cables[&cable].properties["tag"].clone();
     let cases: Vec<(&str, Value, String)> = vec![
         (
             "a wire already in a cable",
             json!({"from": [40, 3], "to": [40, 7]}),
-            format!("Wire W5 is already in cable {cable_short}…; a wire can be in only one cable. Nothing was created."),
+            format!("Wire W5 is already in cable {cable_tag}; a wire can be in only one cable. Nothing was created."),
         ),
         ("empty space", json!({"from": [100, 100], "to": [110, 110]}), "The slash crosses no wires; nothing was created.".into()),
         (
@@ -443,13 +445,13 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     }
     let slash_handle = f.h.handle_of(f.page, item);
     let lines = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
-    assert_eq!(lines[0], "Cable (no tag)");
+    assert!(lines[0].starts_with("Cable -W"), "{lines:?}");
     assert_eq!(lines[1], format!("id {}", k.hex()));
     // Design 005 §4.2: the view follows the `id` line.
     assert_eq!(lines[2..], ["View: traditional", "Wires: 3", "  W0", "  W5", "  W10"]);
     let w5 = f.h.route_handle(f.page, f.w5);
     let lines = f.h.p(|p| hover_lines(p, uid, w5)).unwrap();
-    assert!(lines.contains(&format!("In cable {}…", &k.hex()[..8])), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("In cable -W")), "{lines:?}");
     // Move W5 away: membership stays, its dot goes.
     f.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
     assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10]);

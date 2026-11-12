@@ -30,6 +30,7 @@ mod index;
 pub mod invariant;
 pub mod ledger;
 pub mod merge;
+pub mod numbering;
 pub mod op;
 pub mod sheet;
 pub mod tag;

@@ -32,7 +32,7 @@ use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, Ter
 pub const TAB: &str = "ECAD";
 
 /// The tab's groups, in order.
-pub const GROUPS: &[&str] = &["Components", "Wiring", "Edit"];
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit"];
 
 /// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
 /// in Tool Sets (owner, 2026-11-08).
@@ -141,8 +141,23 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.renumberwires",
         group: "Wiring",
         label: "Renumber Wires",
-        tooltip: "Number the nets that have no number, or renumber every automatic one (fixed numbers stay)",
-        kind: Kind::Start("renumberwires"),
+        tooltip: "Open Renumber with Wires chosen: preview, then Apply (fixed numbers stay)",
+        kind: Kind::Trial,
+    },
+    // Brief 026 (design §3, §5.3): the Numbering group.
+    Tool {
+        id: "ecad.renumber",
+        group: "Numbering",
+        label: "Renumber…",
+        tooltip: "Renumber devices, cables or wires in drawing order: preview, then Apply (one undo)",
+        kind: Kind::Trial,
+    },
+    Tool {
+        id: "ecad.finalise",
+        group: "Numbering",
+        label: "Finalise numbering",
+        tooltip: "Give the provisional tags and wire numbers real numbers, in drawing order",
+        kind: Kind::Trial,
     },
     Tool {
         id: "ecad.connect",

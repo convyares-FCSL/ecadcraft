@@ -46,6 +46,8 @@ pub struct DeviceEntry {
     pub properties: Vec<Option<String>>,
     /// Its symbols, in page order, then column.
     pub symbols: Vec<SymbolEntry>,
+    /// Its tag is fixed (brief 026): `F` after the tag.
+    pub fixed: bool,
 }
 
 /// What a change could change in the Devices list (owner, 2026-11-08: act only on the ops that
@@ -152,7 +154,7 @@ pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
         return None;
     }
     let prefix = match comp.properties.get(ecad_model::tag::TAG_KEY) {
-        Some(t) => Some(ecad_model::tag::parse(t).map_or_else(|| ecad_model::tag::key(t), |(p, _)| p)),
+        Some(t) => Some(group_and_number(t).0),
         None if doc.representations_of(Subject::Component(c)).next().is_none() => return None,
         None => None,
     };
@@ -163,7 +165,7 @@ pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
 pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, ComponentId) {
     match e.tag.as_deref() {
         Some(t) => {
-            let (p, n) = ecad_model::tag::parse(t).unwrap_or_else(|| (ecad_model::tag::key(t), 0));
+            let (p, n) = group_and_number(t);
             (false, p, n, t.to_string(), e.id)
         }
         None => (true, String::new(), 0, String::new(), e.id),
@@ -233,7 +235,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .tagged()
         .filter_map(|(_, c)| {
             let t = devices::tag_of(doc, c)?;
-            let (p, n) = ecad_model::tag::parse(t).unwrap_or_else(|| (ecad_model::tag::key(t), 0));
+            let (p, n) = group_and_number(t);
             Some(((p, n, t.to_string()), c))
         })
         .collect();
@@ -253,6 +255,16 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .map(|(prefix, c)| entry(doc, c, prefix, &book))
         .filter(|e| matches(e, filter))
         .collect()
+}
+
+/// A tag's group (its prefix, or the whole tag when it has none) and its place in the group: its
+/// number; a provisional tag after every numbered one of its prefix (brief 026, design §9).
+pub fn group_and_number(t: &str) -> (String, u64) {
+    match (ecad_model::tag::parse(t), ecad_model::tag::provisional(t)) {
+        (Some((p, n)), _) => (p, n),
+        (None, Some((p, n))) => (p, ecad_model::tag::MAX_TAG_NUMBER.saturating_add(n)),
+        _ => (ecad_model::tag::key(t), 0),
+    }
 }
 
 fn entry(doc: &Document, c: ComponentId, prefix: Option<String>, book: &Book) -> DeviceEntry {
@@ -282,6 +294,7 @@ fn entry(doc: &Document, c: ComponentId, prefix: Option<String>, book: &Book) ->
         description: devices::description(doc, c),
         properties: PROPERTIES.iter().map(|(k, _)| props.and_then(|p| p.get(*k).cloned())).collect(),
         symbols: symbols.into_iter().map(|(_, _, s)| s).collect(),
+        fixed: props.is_some_and(ecad_model::numbering::is_fixed),
     }
 }
 

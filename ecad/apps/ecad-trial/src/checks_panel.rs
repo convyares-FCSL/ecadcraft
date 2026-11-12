@@ -22,6 +22,8 @@ pub const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
 pub const ADD_JUNCTION: &str = "Add junction";
 pub const NUMBER_THEM: &str = "Number them";
+/// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
+pub const FINALISE: &str = "Finalise";
 /// Brief 024's fix buttons.
 pub const USE_BOX_LOCATION: &str = "Use the box's location";
 pub const SHOW: &str = "Show";
@@ -205,7 +207,7 @@ impl ChecksPanel {
                 let sev = r.check.severity();
                 let font = egui::FontId::monospace(12.0);
                 p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let count_row = matches!(r.check.kind, Kind::Unnumbered | Kind::NoPartNumber | Kind::NoLocation);
+                let count_row = matches!(r.check.kind, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation);
                 let what = if count_row { r.check.which.clone() } else { r.check.what() };
                 let colour = if selected { t.text } else { t.text_dim };
                 // Where and which, on the right; a fix button beside them when it has one. The
@@ -228,6 +230,7 @@ impl ChecksPanel {
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
                         Fix::NumberThem => NUMBER_THEM,
+                        Fix::Finalise => FINALISE,
                         Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
                         Fix::ShowReports => SHOW,
                     };
@@ -235,6 +238,7 @@ impl ChecksPanel {
                         match (f, r.check.page) {
                             (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
                             (Fix::NumberThem, _) => out.push(Action::NumberThem),
+                            (Fix::Finalise, _) => out.push(Action::Finalise),
                             (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),
                             (Fix::ShowReports, _) => out.push(Action::ShowReports),
                             _ => {}

@@ -197,6 +197,8 @@ impl State {
                 // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
                 TxKind::Merge { .. } => "undomerge",
                 TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
+                // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
+                TxKind::Edit | TxKind::Redo { .. } if ecad_cadcraft::revisions::issue_in(&t.ops).is_some() => "undoissue",
                 TxKind::Edit | TxKind::Redo { .. } => "u",
             };
             if let Err(e) = self.session().execute(step, &json!({})) {
@@ -220,7 +222,12 @@ impl State {
         let new =
             self.log_since(&before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
         let used = self.line_transactions;
-        if used.saturating_add(new.len()) > MAX_TRANSACTIONS_PER_CALL {
+        // Brief 026 (design §5.5): `issuerevision {provisional: "finalise"}` records Finalise, then
+        // the issue: two transactions by design (the revision point holds the finalised tags).
+        // Only when this call is the line's first write and it really recorded Finalise, then the
+        // issue (reviewer 026, 3); anything else keeps the cap of one.
+        let allowed = if used == 0 && finalised_then_issued(&new) { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
+        if used.saturating_add(new.len()) > allowed {
             let what = if used > 0 {
                 format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
             } else {
@@ -231,13 +238,13 @@ impl State {
             return Err(match self.roll_back(&new) {
                 Ok(n) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). They were taken back by {n} \
+                     {allowed} transaction(s); {what} ({seqs}). They were taken back by {n} \
                      undo/redo transaction(s) recorded after them, so the design is as before {name}; the history \
                      keeps both."
                 ),
                 Err((done, e)) => format!(
                     "Refused: one call (one request line, batches included) may record at most \
-                     {MAX_TRANSACTIONS_PER_CALL} transaction; {what} ({seqs}). Taking them back stopped after {done} \
+                     {allowed} transaction(s); {what} ({seqs}). Taking them back stopped after {done} \
                      of {}: {e}. The project is NOT as before {name}; check ecad_history.",
                     new.len()
                 ),
@@ -270,6 +277,19 @@ impl State {
             }
             _ => self.headless.call(method, p),
         }
+    }
+}
+
+/// Whether `txs` is exactly a Finalise edit followed by an issue (brief 026, design §5.5).
+fn finalised_then_issued(txs: &[Transaction]) -> bool {
+    match txs {
+        [f, i] => {
+            matches!(f.kind, TxKind::Edit)
+                && f.label == "Finalise numbering"
+                && matches!(i.kind, TxKind::Edit)
+                && ecad_cadcraft::revisions::issue_in(&i.ops).is_some()
+        }
+        _ => false,
     }
 }
 

@@ -703,6 +703,33 @@ impl Document {
         self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 
+    /// Cables whose tag is the same tag as `tag` (brief 026), in ID order, through the tag index.
+    pub fn cables_tagged(&self, tag: &str) -> Vec<CableId> {
+        referrers(&self.index.cable_tags, &crate::tag::key(tag)).collect()
+    }
+
+    /// Every tagged cable through the tag index (brief 026), by tag key, then ID.
+    pub fn tagged_cables(&self) -> impl Iterator<Item = (&str, CableId)> {
+        self.index.cable_tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    }
+
+    /// Tag keys starting with `start` held by devices or cables (brief 026), through a range of
+    /// the tag indexes: the cost follows the keys with that start, not the project.
+    pub fn tag_keys_starting(&self, start: &str) -> impl Iterator<Item = &str> {
+        let from = start.to_string();
+        let a = self.index.tags.range(from.clone()..).map(|(k, _)| k.as_str());
+        let b = self.index.cable_tags.range(from..).map(|(k, _)| k.as_str());
+        let s1 = start.to_string();
+        let s2 = start.to_string();
+        a.take_while(move |k| k.starts_with(s1.as_str())).chain(b.take_while(move |k| k.starts_with(s2.as_str())))
+    }
+
+    /// Whether a device or a cable holds `tag` (brief 026: one namespace).
+    pub fn tag_taken(&self, tag: &str) -> bool {
+        let k = crate::tag::key(tag);
+        self.index.tags.get(&k).is_some_and(|m| !m.is_empty()) || self.index.cable_tags.get(&k).is_some_and(|m| !m.is_empty())
+    }
+
     /// Pages whose `folder` property names `folder`, in ID order (through the folder index).
     pub fn pages_in_folder(&self, folder: FolderId) -> Vec<PageId> {
         referrers(&self.index.folder_pages, &folder).collect()

@@ -38,8 +38,11 @@ are.
 | **continuation** | An arrow with a name (`24V`) where a net leaves a page. All continuations with one name are one net. |
 | **potential** | What a wire carries for numbering and defaults: `L`, `L1`…`L3`, `N`, `PE`, `24V`, `0V`. It sets the number prefix, colour and cross-section. Several nets share one potential (`24V-01`, `24V-02`). |
 | **wire number** | The number a net carries and every one of its conductors shows (`24V-07`). Automatic, or **fixed** by hand. Stored on the conductors once issued, so adding a wire never renumbers others. |
-| **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. |
+| **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. Cable and device tags share one namespace (brief 026). |
 | **core** | One conductor of a cable, with its core number or colour (`1`, `BK`). |
+| **drawing order** | Page in book order, then column, then row of the sheet grid, then top to bottom and left to right inside a cell (brief 026). Renumber and Finalise number in it. |
+| **fixed** | A tag or wire number chosen by hand that Renumber and Finalise never change (`F`). Typing a tag fixes it. |
+| **provisional tag** | A placeholder tag (`-K?3`, `-W?1`, wire `24V-?`) that **Finalise numbering** replaces. Not issued. |
 | **cable reference** | Where a cable leaves one page and continues on another, shown as the other end's page, column and row on its sheet (`105-C-4`, brief 019). An end with no other end is an **orphan** (`?`). |
 
 ## Pages

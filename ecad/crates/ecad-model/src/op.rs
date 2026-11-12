@@ -477,6 +477,16 @@ impl Op {
                         doc.index.tag(*id, new, Delta::Add);
                     }
                 }
+                if let ObjectRef::Cable(id) = object
+                    && key == crate::tag::TAG_KEY
+                {
+                    if let Some(old) = &old {
+                        doc.index.cable_tag(*id, old, Delta::Remove);
+                    }
+                    if let Some(new) = after {
+                        doc.index.cable_tag(*id, new, Delta::Add);
+                    }
+                }
                 // A page's folder is indexed (brief 019).
                 if let ObjectRef::Page(id) = object
                     && key == crate::book::FOLDER_KEY
