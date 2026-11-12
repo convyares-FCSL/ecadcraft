@@ -9,14 +9,20 @@
 //! - Labels use the project's label height and colour style (wiring settings) and are placed so
 //!   none touches another label or another wire ([`labels_on_page_with`]).
 //!
-//! # Update map of the labels
+//! # Update map of the labels (design 032 §8.1)
 //! | Change | Labels |
 //! | --- | --- |
-//! | a route added, moved or removed | that page's labels, when it is projected |
+//! | a route added, moved or removed (incl. a merge's `ModifyItem` and a fold's removal) | that page's labels, when it is projected |
+//! | `AttachEnd`, `CreateConductor`, `DeleteConductor` (nets join or split) | with the `net` rule, the pages where those nets have routes: their routes' pages are touched, marked stale, the page on screen re-projects |
 //! | a wire number, potential, cross-section or colour | the pages of the conductors it was written on (the numbering pass's included) |
-//! | wiring settings (colour style, label height, defaults) | every page, when it is projected next |
+//! | wiring settings (label rule, shortest labelled wire, colour style, label height, potentials) | every page, when it is projected next |
+//! | lane T's wire-label text style or show setting (031) | as lane T's map says; here the pages of the conductors concerned |
 //! | a cable switched to fan or traditional view | that cable's members' labels hide or show on the page on screen (display only, nothing recorded) |
 //! | anything else | nothing |
+//!
+//! # Update map of the looks-connected marks (design 032 §8.2)
+//! Route ops, `AttachEnd` of an end routed on P, and cable reference ops on P change P's marks,
+//! computed when P is projected ([`looks_connected_on_page`]); anything else changes nothing.
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
@@ -238,7 +244,8 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    let h = doc.settings.wiring.label_height();
+    // Brief 032 §4.3: the wire label height through lane T's text-style getter.
+    let h = crate::text_style::text_style(doc, crate::text_style::TextKind::WireLabel).height;
     // Every route on the page: (representation, conductor, vertices).
     let mut routes: Vec<(RepresentationId, ConductorId, Vec<Pt>)> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
@@ -253,11 +260,28 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             routes.push((rid, c, v));
         }
     }
-    let mut placed: Vec<Bbox> = Vec::new();
-    let mut out = Vec::new();
-    for (rid, c, v) in &routes {
+    // Brief 032 §4.2: which routes get a label (the project's rule; a wire whose label lane T's
+    // getter hides is left out, so its net's next route takes the label).
+    let conn = doc.connectivity();
+    let mut routes_in: Vec<LabelCandidate> = Vec::new();
+    let mut texts: Vec<(usize, ecad_model::wiring::Label)> = Vec::new();
+    for (i, (rid, c, v)) in routes.iter().enumerate() {
         let Some((a, b)) = longest_segment(v) else { continue };
         let Some(label) = ecad_model::wiring::label(doc, *c) else { continue };
+        let target = crate::text_style::TextTarget::conductor(*c, Some(page));
+        if crate::text_style::text_shown(doc, target, crate::text_style::TextKind::WireLabel) == crate::text_style::Shown::Off {
+            continue;
+        }
+        routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
+        texts.push((i, label));
+    }
+    let chosen: Vec<(usize, ecad_model::wiring::Label)> =
+        labelled(&routes_in, label_rule(doc)).into_iter().filter_map(|k| texts.get(k).cloned()).collect();
+    let mut placed: Vec<Bbox> = Vec::new();
+    let mut out = Vec::new();
+    for (i, label) in chosen {
+        let Some((rid, c, v)) = routes.get(i) else { continue };
+        let Some((a, b)) = longest_segment(v) else { continue };
         let theta = reading_angle(a, b);
         if !theta.is_finite() {
             continue;
@@ -875,6 +899,26 @@ pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), 
     Ok(())
 }
 
+/// The ops that carry folded wire `o`'s own properties onto survivor `s` (overseer ruling on
+/// design 032 §2.2: never lose them silently). Net-wide numbering keys are left to the numbering
+/// pass. A value both wires store differently is refused by [`fold_sense`] (cross-section,
+/// colour) or here (any other key), with words.
+fn fold_properties(doc: &Document, s: ConductorId, o: ConductorId) -> Result<Vec<Op>, String> {
+    let (Some(sc), Some(oc)) = (doc.conductors.get(&s), doc.conductors.get(&o)) else { return Ok(Vec::new()) };
+    let mut ops = Vec::new();
+    for (k, v) in &oc.properties {
+        if k == ecad_model::wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED {
+            continue;
+        }
+        match sc.properties.get(k) {
+            Some(x) if x == v => {}
+            Some(x) => return Err(format!("The two wires have different values of {k} ({x} and {v}). {JOIN_WAY_OUT}")),
+            None => ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Conductor(s), key: k.clone(), before: None, after: Some(v.clone()) }),
+        }
+    }
+    Ok(ops)
+}
+
 /// Whether a wire's net has a fixed number.
 pub fn has_fixed_number(doc: &Document, c: ConductorId) -> bool {
     let conn = doc.connectivity();
@@ -937,6 +981,29 @@ fn meet_at(doc: &Document, ids: &mut IdAllocator, page: PageId, style: &Style, a
 /// point.
 fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(usize, f64, Pt)> {
     let (Some(first), Some(last)) = (v.first().copied(), v.last().copied()) else { return Vec::new() };
+    // A grid of the new wire's segments (overseer ruling: no segment-by-segment test of every end
+    // on the page): an end is tested only against the segments in its cell.
+    let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    let mut long: Vec<usize> = Vec::new();
+    for (i, w) in v.windows(2).enumerate() {
+        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+        let (Some(lo), Some(hi)) = (
+            looks_cell(Pt::new(a.x.min(b.x) - ON_WIRE, a.y.min(b.y) - ON_WIRE)),
+            looks_cell(Pt::new(a.x.max(b.x) + ON_WIRE, a.y.max(b.y) + ON_WIRE)),
+        ) else {
+            continue;
+        };
+        let n = (hi.0.saturating_sub(lo.0).saturating_add(1)).saturating_mul(hi.1.saturating_sub(lo.1).saturating_add(1));
+        if usize::try_from(n).map_or(true, |n| n > LOOKS_MAX_CELLS) {
+            long.push(i);
+            continue;
+        }
+        for x in lo.0..=hi.0 {
+            for y in lo.1..=hi.1 {
+                grid.entry((x, y)).or_default().push(i);
+            }
+        }
+    }
     let mut out: Vec<(usize, f64, Pt)> = Vec::new();
     for (_, r) in doc.representations_on(page) {
         let Subject::Conductor(c) = r.subject else { continue };
@@ -952,8 +1019,12 @@ fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(us
             if out.iter().any(|(_, _, x)| x.near(q, ON_WIRE)) {
                 continue;
             }
-            let hit = v.windows(2).enumerate().find_map(|(i, w)| {
-                let (s, e) = (*w.first()?, *w.get(1)?);
+            let Some(cell) = looks_cell(q) else { continue };
+            let mut segs: Vec<usize> = grid.get(&cell).into_iter().flatten().chain(long.iter()).copied().collect();
+            segs.sort_unstable();
+            segs.dedup();
+            let hit = segs.into_iter().find_map(|i| {
+                let (s, e) = (*v.get(i)?, *v.get(i + 1)?);
                 let (on, d) = on_segment(q, s, e);
                 (d <= ON_WIRE && on.is_finite()).then(|| (i, s.dist(on)))
             });
@@ -1168,7 +1239,12 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
         let mut after = rs.1.clone();
         after.kind = ItemKind::Primitive(path_of(route));
         ops.push(Op::ModifyItem { id: rs.0, before: rs.1.clone(), after });
-        give_potential(s, &mut ops);
+        let folded = fold_properties(doc, s, o)?;
+        let carries_potential = folded.iter().any(|op| matches!(op, Op::SetProperty { key, .. } if key == ecad_model::wiring::POTENTIAL_KEY));
+        ops.extend(folded);
+        if !carries_potential {
+            give_potential(s, &mut ops);
+        }
         let oc = doc.conductors.get(&o).ok_or("No such wire.")?;
         let far = other_end(eo);
         let mut gone = oc.clone();
@@ -1299,6 +1375,7 @@ pub fn plan_end_join(
     let mut after = rs.1.clone();
     after.kind = ItemKind::Primitive(path_of(route));
     ops.push(Op::ModifyItem { id: rs.0, before: rs.1.clone(), after });
+    ops.extend(fold_properties(doc, s, o)?);
     let oc = doc.conductors.get(&o).ok_or("No such wire.")?;
     let far = other_end(eo);
     let mut gone = oc.clone();
@@ -1436,4 +1513,106 @@ pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Ve
         }
     }
     out
+}
+
+// ---------------------------------------------------------------- the label rule (brief 032 §4)
+
+/// Which routes on a page get a label (design 032 §4.1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LabelRule {
+    /// One label per net (and label text) per page.
+    Net,
+    /// Every wire whose longest segment is at least this long, millimetres.
+    Each(f64),
+}
+
+/// One route as the label rule sees it.
+#[derive(Debug, Clone)]
+pub struct LabelCandidate {
+    pub rep: RepresentationId,
+    pub conductor: ConductorId,
+    /// The route's net, if it has one.
+    pub net: Option<ecad_model::NetId>,
+    pub text: String,
+    /// Length of its longest segment.
+    pub longest: f64,
+}
+
+/// The candidates (by index) that get a label under `rule` (design 032 §4.2): with
+/// [`LabelRule::Net`] one per (net, label text), on the route whose longest segment is longest
+/// (ties: lower conductor ID, then lower representation ID); with [`LabelRule::Each`] every route
+/// long enough. In both, every net drawn on the page is labelled at least once. The result keeps
+/// the candidates' order.
+pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
+    // The better of two candidates for one label.
+    let better =
+        |a: &LabelCandidate, b: &LabelCandidate| a.longest > b.longest || (a.longest == b.longest && (a.conductor, a.rep) < (b.conductor, b.rep));
+    let mut chosen = vec![false; candidates.len()];
+    match rule {
+        LabelRule::Net => {
+            let mut best: BTreeMap<(Option<ecad_model::NetId>, Option<ConductorId>, &str), usize> = BTreeMap::new();
+            for (i, c) in candidates.iter().enumerate() {
+                // A wire without a net is its own group.
+                let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None }, c.text.as_str());
+                match best.get(&key).and_then(|j| candidates.get(*j)) {
+                    Some(b) if !better(c, b) => {}
+                    _ => {
+                        best.insert(key, i);
+                    }
+                }
+            }
+            for i in best.into_values() {
+                if let Some(x) = chosen.get_mut(i) {
+                    *x = true;
+                }
+            }
+        }
+        LabelRule::Each(min) => {
+            for (i, c) in candidates.iter().enumerate() {
+                if c.longest >= min
+                    && let Some(x) = chosen.get_mut(i)
+                {
+                    *x = true;
+                }
+            }
+        }
+    }
+    // Every net drawn on the page is labelled at least once: on its best route.
+    let mut nets: BTreeMap<(Option<ecad_model::NetId>, Option<ConductorId>), (bool, usize)> = BTreeMap::new();
+    for (i, c) in candidates.iter().enumerate() {
+        let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None });
+        let on = chosen.get(i).copied().unwrap_or(false);
+        let e = nets.entry(key).or_insert((on, i));
+        e.0 |= on;
+        if candidates.get(e.1).is_some_and(|b| better(c, b)) {
+            e.1 = i;
+        }
+    }
+    for (labelled, best) in nets.into_values() {
+        if !labelled && let Some(x) = chosen.get_mut(best) {
+            *x = true;
+        }
+    }
+    chosen.iter().enumerate().filter(|(_, on)| **on).map(|(i, _)| i).collect()
+}
+
+/// The project's label rule word (`net` or `each`; anything else reads as the default).
+pub fn label_rule_word(w: &ecad_model::wiring::WiringSettings) -> &'static str {
+    match w.label_rule.trim().to_ascii_lowercase().as_str() {
+        x if x == ecad_model::wiring::LABEL_RULE_EACH => ecad_model::wiring::LABEL_RULE_EACH,
+        x if x == ecad_model::wiring::LABEL_RULE_NET => ecad_model::wiring::LABEL_RULE_NET,
+        _ => ecad_model::wiring::DEFAULT_LABEL_RULE,
+    }
+}
+
+/// The project's shortest labelled wire, millimetres, in range (the default when out of it).
+pub fn label_min_length(w: &ecad_model::wiring::WiringSettings) -> f64 {
+    let v = w.label_min_length;
+    if ecad_model::wiring::LABEL_MIN_LENGTHS.contains(&v) { v } else { ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH }
+}
+
+/// The project's label rule (design 032 §4.1).
+pub fn label_rule(doc: &Document) -> LabelRule {
+    let w = &doc.settings.wiring;
+    if label_rule_word(w) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(w)) } else { LabelRule::Net }
 }

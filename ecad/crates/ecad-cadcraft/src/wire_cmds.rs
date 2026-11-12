@@ -392,6 +392,8 @@ fn settings_json(w: &wiring::WiringSettings) -> Value {
         "scheme": w.scheme.name(),
         "colour_style": w.colour_style.name(),
         "label_height": w.label_height(),
+        "label_rule": wires::label_rule_word(w),
+        "label_min_length": wires::label_min_length(w),
         "digits": w.digits,
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
@@ -402,7 +404,7 @@ fn settings_json(w: &wiring::WiringSettings) -> Value {
 
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?}`: no parameters reads.
 pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let given = ["scheme", "digits", "unclassified_prefix", "potentials", "colour_style", "label_height"]
+    let given = ["scheme", "digits", "unclassified_prefix", "potentials", "colour_style", "label_height", "label_rule", "label_min_length"]
         .iter()
         .any(|k| params.get(*k).is_some_and(|v| !v.is_null()));
     with_project(s, |p, pg, _| {
@@ -426,6 +428,18 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
         if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
             let hv = hv.as_f64().filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
             w.label_height = hv;
+        }
+        // Brief 032 §4: the label rule and the shortest labelled wire.
+        if let Some(r) = opt_str(params, "label_rule")? {
+            let r = r.trim().to_ascii_lowercase();
+            if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
+                return Err("`label_rule` must be \"net\" (one label per net per page) or \"each\" (every wire)".into());
+            }
+            w.label_rule = r;
+        }
+        if let Some(lv) = params.get("label_min_length").filter(|v| !v.is_null()) {
+            let lv = lv.as_f64().filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?;
+            w.label_min_length = lv;
         }
         if let Some(u) = opt_str(params, "unclassified_prefix")? {
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();
@@ -640,11 +654,10 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
 
 // ---------------------------------------------------------------- wire (brief 032 §2)
 
-/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5).
-///
-/// 032: read from lane T's defaults registry (`wire.join`) once it lands on this branch.
-pub(crate) fn join_by_default(_doc: &Document) -> bool {
-    true
+/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
+/// the registered default `wire.join`.
+pub(crate) fn join_by_default(doc: &Document) -> bool {
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).word() == "on"
 }
 
 /// `join` (or its old name `junction`) of `wire`: `None` when neither is given.

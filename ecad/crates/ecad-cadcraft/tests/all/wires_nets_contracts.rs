@@ -439,3 +439,109 @@ fn cablecontinue_says_to_slash_where_the_cores_continue() {
     assert!(m.contains("-W04's cores end on continuations. To show -W04 where they continue, slash the wires there with tag -W04."), "{m}");
     assert_eq!(f.h.head(), head);
 }
+
+// ---------------------------------------------------------------- Q4: the wire label rule
+
+/// §12 item 15: a 24V bus of 100 mm with four 5 mm drops to `-X01:1…4` (the drops' junctions
+/// split the bus into five wires).
+fn bus() -> (H, PageId) {
+    let mut h = H::new(0x32_40);
+    let page = h.first_page();
+    wire(&mut h, &[(0.0, 0.0), (100.0, 0.0)], json!({"potential": "24V"}));
+    for x in [20.0, 40.0, 60.0, 80.0] {
+        terminal(&mut h, (x, -5.0), "X01");
+        wire(&mut h, &[(x, 0.0), (x, -5.0)], json!({}));
+    }
+    (h, page)
+}
+
+fn labels(h: &mut H, page: PageId) -> Vec<ecad_cadcraft::wires::WireLabel> {
+    h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page))
+}
+
+#[test]
+fn the_label_rule_labels_a_net_once_or_every_wire() {
+    let (mut h, page) = bus();
+    let doc = h.doc();
+    assert_eq!(doc.connectivity().nets().count(), 1, "one net");
+    assert_eq!(labels(&mut h, page).len(), 1, "net: one label");
+    h.run("wiresettings", json!({"label_rule": "each", "label_min_length": 0})).unwrap();
+    // The drops' junctions split the bus: five bus pieces and four drops.
+    assert_eq!(h.doc().conductors.len(), 9);
+    assert_eq!(labels(&mut h, page).len(), 9, "each, 0: every wire");
+    h.run("wiresettings", json!({"label_min_length": 10})).unwrap();
+    let l = labels(&mut h, page);
+    assert_eq!(l.len(), 5, "each, 10: the bus pieces, no 5 mm drop");
+    // A drop of the net with its own cross-section is labelled too (owner Q7).
+    h.run("wiresettings", json!({"label_rule": "net"})).unwrap();
+    let drop = h.doc().conductors.keys().copied().find(|c| {
+        let d = h.doc();
+        ecad_cadcraft::wires::route_vertices(&d, *c, page).is_some_and(|(_, _, v)| v.len() == 2 && v[0].x == 20.0 && v[0].y == 0.0)
+    });
+    let drop = drop.expect("the first drop");
+    h.run("setprop", json!({"conductor": drop.hex(), "key": "cross_section", "value": "2.5"})).unwrap();
+    let l = labels(&mut h, page);
+    assert_eq!(l.len(), 2, "{l:?}");
+    for (i, a) in l.iter().enumerate() {
+        for b in l.iter().skip(i + 1) {
+            let (x, y) = (ecad_cadcraft::wires::label_box(a), ecad_cadcraft::wires::label_box(b));
+            assert!(x.1.x < y.0.x || y.1.x < x.0.x || x.1.y < y.0.y || y.1.y < x.0.y, "labels touch: {a:?} {b:?}");
+        }
+    }
+    let m = h.run("wiresettings", json!({"label_min_length": 101})).unwrap_err();
+    assert!(m.contains("Shortest labelled wire is 0 to 100 mm."), "{m}");
+    let m = h.run("wiresettings", json!({"label_rule": "some"})).unwrap_err();
+    assert!(m.contains("`label_rule` must be"), "{m}");
+}
+
+/// §12 item 21: `wire.join` is registered, and the project's value of it is what `wire` uses.
+#[test]
+fn the_join_default_comes_from_the_registry() {
+    let keys: Vec<&str> = ecad_cadcraft::defaults::all().map(|e| e.key).collect();
+    assert!(keys.contains(&"wire.join"), "{keys:?}");
+    let mut h = H::new(0x32_41);
+    wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
+    h.cfg(|p| {
+        let before = p.ledger.document().properties.get("wire.join").cloned();
+        p.ledger
+            .commit(
+                ecad_model::Author::User,
+                "test default",
+                vec![ecad_model::Op::SetProperty {
+                    object: ecad_model::ObjectRef::Project,
+                    key: "wire.join".into(),
+                    before,
+                    after: Some("off".into()),
+                }],
+            )
+            .unwrap();
+    });
+    wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
+    assert_eq!(h.doc().conductors.len(), 2, "wire.join off: the ends stay open");
+}
+
+/// Overseer ruling on §2.2: a fold carries the folded wire's own properties onto the survivor
+/// (never lost), refuses a value both store differently, and leaves one number on the joined net
+/// in the same transaction.
+#[test]
+fn a_fold_keeps_the_folded_wires_properties() {
+    let mut h = H::new(0x32_15);
+    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
+    let c: ConductorId = id(&wire(&mut h, &[(60.0, 0.0), (100.0, 0.0)], json!({})), "conductor");
+    h.run("setprop", json!({"conductor": c.hex(), "key": "cross_section", "value": "2.5"})).unwrap();
+    let head = h.head();
+    let r = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
+    assert_eq!(h.head(), head + 1, "one transaction, numbering included");
+    assert_eq!(r["removed"], json!([c.hex()]));
+    let doc = h.doc();
+    assert_eq!(doc.conductors[&a].properties.get("cross_section").map(String::as_str), Some("2.5"));
+    let numbers: std::collections::BTreeSet<_> = doc.conductors.values().filter_map(|x| x.properties.get("wire_number")).collect();
+    assert!(numbers.len() <= 1, "{numbers:?}");
+    // Both store a value of one key, differently: refused with words.
+    let d: ConductorId = id(&wire(&mut h, &[(200.0, 0.0), (240.0, 0.0)], json!({})), "conductor");
+    h.run("setprop", json!({"conductor": d.hex(), "key": "cross_section", "value": "1.5"})).unwrap();
+    let head = h.head();
+    let m = wire_r(&mut h, &[(100.0, 0.0), (200.0, 0.0)], json!({})).unwrap_err();
+    assert!(m.contains("different cross-sections (2.5 and 1.5)"), "{m}");
+    assert_eq!(h.head(), head);
+}

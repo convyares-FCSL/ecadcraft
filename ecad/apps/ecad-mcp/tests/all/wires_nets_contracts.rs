@@ -105,3 +105,14 @@ fn cableslash_continuing_and_cablecontinue_through_execute() {
     assert!(t.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })));
 }
+/// `wiresettings {label_rule: "each", label_min_length: 10}`: one `SetProjectSettings`
+/// transaction by the agent.
+#[test]
+fn wiresettings_label_rule_through_execute() {
+    let mut c = writer();
+    let r = c.exec("wiresettings", json!({"label_rule": "each", "label_min_length": 10}));
+    assert_eq!(r["label_rule"], json!("each"), "{r}");
+    assert_eq!(r["label_min_length"], json!(10.0));
+    let t = last(&mut c);
+    assert!(matches!(&t.ops[..], [Op::SetProjectSettings { .. }]), "{:?}", t.ops);
+}

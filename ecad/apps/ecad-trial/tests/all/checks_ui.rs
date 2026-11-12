@@ -86,11 +86,16 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
 
-    // Pages 2 and 1: every wire labelled.
+    // Pages 2 and 1: every net labelled (brief 032: once per net per page by default).
     let (p1, p2, p3) = (page(&mut h, 0), page(&mut h, 1), page(&mut h, 2));
     show(&mut h, p2);
     let labels = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::LABEL_LAYER).count();
-    assert!(labels >= 12, "{labels} labels on page 2");
+    let d = doc(&mut h);
+    let nets: std::collections::BTreeSet<_> = d
+        .representations_on(p2)
+        .filter_map(|(_, r)| if let ecad_model::Subject::Conductor(c) = r.subject { d.connectivity().net_of_conductor(c) } else { None })
+        .collect();
+    assert!(nets.len() > 1 && labels >= nets.len(), "{labels} labels for {} nets on page 2", nets.len());
     // The circuit, not the whole sheet: labels are small (owner, 2026-11-09).
     view(&mut h, 10.0, 35.0, 160.0, 195.0);
     save(&h, &deltas, "022-demo-page2.png");
@@ -251,5 +256,24 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     ok(&mut h, "u");
     let d = doc(&mut h);
     assert_eq!(d.settings.wiring.colour_style, ecad_model::wiring::ColourStyle::Iec);
+
+    // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
+    // `wiresettings` line.
+    click(&mut h, project_panel::PROJECT_SETTINGS);
+    h.get_by_label("ecad.projectsettings.label_rule.each").scroll_to_me();
+    h.run_steps(3);
+    assert!(h.query_by_label("ecad.projectsettings.label_rule.net").is_some());
+    click(&mut h, "ecad.projectsettings.label_rule.each");
+    h.state_mut().project_props.as_mut().unwrap().labels.as_mut().unwrap().min_length = "10".into();
+    h.run_steps(2);
+    assert!(h.query_by_label("ecad.projectsettings.label_min_length").is_some());
+    let line = h.state().project_props.as_ref().unwrap().line().unwrap().unwrap();
+    assert_eq!(line, r#"wiresettings {"label_min_length":10.0,"label_rule":"each"}"#);
+    let before = crate::mouse_tester::head(&mut h);
+    click(&mut h, "ecad.projectprops.ok");
+    assert_eq!(crate::mouse_tester::head(&mut h), before + 1, "one transaction");
+    let d = doc(&mut h);
+    assert_eq!(d.settings.wiring.label_rule, "each");
+    assert!((d.settings.wiring.label_min_length - 10.0).abs() < 1e-9);
     let _ = std::fs::remove_dir_all(&dir);
 }
