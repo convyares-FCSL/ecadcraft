@@ -1,8 +1,8 @@
 # Brief 030: Terminal strip accessories
 
 Status: Draft, revision 3 (designer, 2026-11-12; decisions in design §17: every accessory is
-placed by the user; jumpers are strip-owned links (model D); FP1–FP4 approved. Open: the Jumper
-tool (owner to confirm, design §15 Q1–Q3) and FP5–FP7 (overseer))
+placed by the user; jumpers are strip-owned links (model D); FP1–FP4 approved. The hybrid Jumper
+tool is confirmed. Open: design §15 Q2–Q3 (owner) and FP5–FP7 (overseer))
 Branch: `feature/terminal-accessories`, from `origin/feature/terminal-strips` `81139aaf` (028, in
 review as PR #55). The worker starts after 028 merges into `dev`, then merges `dev` into this
 branch first.
@@ -43,7 +43,7 @@ added that the user did not place.
    continuation stub where it goes on elsewhere; overlapping and skip links run in lanes and never
    cross. One link set per strip. Links are made with a **Jumper tool** that feels like drawing a
    wire, and the line can be selected to extend, shorten, split or delete the link (the hybrid,
-   **owner to confirm**; the pure automatic alternative is design §5.7). On the BOM, each link
+   confirmed by the owner; pure automatic links, design §5.7, were rejected). On the BOM, each link
    needs `ceil(span / bar size)` jumper bars; bar size per strip, project default, else 10.
 5. **Checks** rows with a way out: an accessory after a position that no longer exists, accessories
    with no part number, a link across a partition (a warning, never a refusal), a link naming
@@ -104,6 +104,6 @@ numbering pass's wire-number ops in its transaction, and renumber rewrites `link
 
 ## Needs owner check
 
-- Confirm the hybrid Jumper tool or choose pure automatic links (design §15 Q1), and answer Q2–Q3.
+- Answer design §15 Q2–Q3.
 - Approve the rest of the design.
 - A click-only trial: quick start 5O.
