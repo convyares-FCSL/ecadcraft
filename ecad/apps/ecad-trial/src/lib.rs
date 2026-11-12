@@ -60,6 +60,7 @@ pub mod renumber_dialog;
 pub mod search;
 pub mod sheets_ui;
 pub mod startup;
+pub mod text_ui;
 pub mod tools;
 pub mod window;
 
@@ -2417,7 +2418,14 @@ impl Trial {
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
+            Ok(v) => {
+                let mut d = sheets_ui::ProjectProps::from_json(&v, read_only, popout);
+                // Brief 031: the Text section reads `textstyle {}` (reads only).
+                if popout == sheets_ui::Popout::Settings {
+                    d.text = self.run_value("textstyle", json!({})).ok().map(|t| text_ui::TextSection::from_json(&t));
+                }
+                self.project_props = Some(d);
+            }
             Err(e) => self.cad.session.echo(e),
         }
     }
@@ -2971,7 +2979,9 @@ impl Trial {
     fn sheet_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.project_props {
             match d.show(ctx) {
-                Some(sheets_ui::Out::Run(line)) => match self.run_line(&line) {
+                // Brief 031: OK may write two lines (`projectprops`, `textstyle`); the first refusal
+                // stops and is shown.
+                Some(sheets_ui::Out::Run(lines)) => match lines.lines().find_map(|l| self.run_line(l)) {
                     None => self.project_props = None,
                     Some(e) => {
                         if let Some(d) = &mut self.project_props {

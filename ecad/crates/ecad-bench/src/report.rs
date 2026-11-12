@@ -25,6 +25,8 @@ pub struct Row {
     pub strips: Option<crate::strips::MeasuredStrips>,
     /// The pre-release check and the release on that file (brief 027).
     pub release: Option<crate::release::MeasuredRelease>,
+    /// Text placement and styles on that file (brief 031).
+    pub text: Option<crate::text::MeasuredText>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -332,6 +334,15 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         ));
     }
     for r in rows {
+        let Some(t) = &r.text else { continue };
+        out.push_str(&format!(
+            "
+Texts on {} {} (densest page: {} symbols, {} texts): textplace {:.2} ms (large: < 25), textstyle {:.1} ms              (large: < 1.2 x propredraw {:.1} ms)
+",
+            r.tier, r.variant, t.symbols, t.texts, t.textplace_ms, t.textstyle_ms, t.propredraw_ms
+        ));
+    }
+    for r in rows {
         let Some(t) = &r.strips else { continue };
         out.push_str(&format!(
             "\nTerminal strips on {} {} ({} strips, {} terminals, {} cables): stripbuild {:.1} ms (target < 50), \
@@ -569,6 +580,10 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     })).collect::<Vec<_>>(),
                 })),
             });
+            // Brief 031: added here, as the macro above is at its recursion limit.
+            if let Some(o) = row.as_object_mut() {
+                o.insert("text".into(), r.text.as_ref().map_or(Value::Null, text_json));
+            }
             if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
                 o.extend(extra);
             }
@@ -622,6 +637,14 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
 
 /// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
 /// limit.
+/// Brief 031's row as JSON.
+fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
+    json!({
+        "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
+        "symbols": t.symbols, "texts": t.texts,
+    })
+}
+
 fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     serde_json::json!({
         "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,

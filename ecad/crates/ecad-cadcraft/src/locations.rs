@@ -36,8 +36,6 @@ pub const LAYER: &str = "ECAD-LOCATIONS";
 pub const LINETYPE: &str = "DASHED";
 /// The representation role of a box outline.
 pub const ROLE: &str = "box";
-/// `ecad.location-label-height`.
-pub const LABEL_HEIGHT: f64 = 3.5;
 /// How far the label sits inside the top-left vertex.
 pub const LABEL_INSET: f64 = 1.5;
 /// Smallest outline area (mm²): 10 x 10 mm.
@@ -614,10 +612,15 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<(RepresentationId, St
         .collect()
 }
 
-/// A box label as an entity on [`LAYER`], top-left aligned.
-pub fn label_entity(value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
+/// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `look`
+/// (design 031 §3.2).
+pub fn label_entity(look: &crate::text_style::Look, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
+    use crate::text_style::TextKind;
     use cadcraft_engine::doc::{HAlign, VAlign};
-    crate::devices::text_entity_with(value, at, LABEL_HEIGHT, HAlign::Left, VAlign::Top, handle, LAYER)
+    let h = look.style(TextKind::LocationLabel).height;
+    let mut e = crate::devices::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
+    look.apply(&mut e, TextKind::LocationLabel);
+    e
 }
 
 /// Load [`LINETYPE`] into `d` from CADCraft's standard linetypes when it is missing, so box
