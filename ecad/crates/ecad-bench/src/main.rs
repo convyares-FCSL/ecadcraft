@@ -41,6 +41,29 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 031: only the text rows (textplace, textstyle, propredraw) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--text"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-text-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::text::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "textplace {:.2} ms, textstyle {:.1} ms, propredraw {:.1} ms (densest page: {} symbols, {} texts)",
+                    t.textplace_ms, t.textstyle_ms, t.propredraw_ms, t.symbols, t.texts
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 029: time Verify on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--verify"

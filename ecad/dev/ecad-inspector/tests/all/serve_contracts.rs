@@ -231,16 +231,16 @@ fn a_slow_head_times_out() {
     let (port, _) = start(Some(&rich(&dir, "Main")));
     let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
     c.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
-    // A byte every second: never idle long enough for a read timeout alone.
+    // A byte every 0.8 s: never idle long enough for a read timeout alone. The trickle stops a
+    // second before the head time limit: a byte arriving after the server answered and closed
+    // makes it reset the connection, and on Windows a reset discards the 408 before it is read.
     let started = std::time::Instant::now();
+    let last_write = ecad_inspector::serve::HEAD_TIME.saturating_sub(Duration::from_secs(1));
     for b in b"GET / HTTP/1.1\r\nHost: x".iter() {
-        if c.write_all(&[*b]).is_err() {
+        if started.elapsed() > last_write || c.write_all(&[*b]).is_err() {
             break;
         }
         std::thread::sleep(Duration::from_millis(800));
-        if started.elapsed() > Duration::from_secs(12) {
-            break;
-        }
     }
     let mut out = String::new();
     let _ = c.read_to_string(&mut out);
