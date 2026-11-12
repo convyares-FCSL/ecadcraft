@@ -1,7 +1,8 @@
 # Brief 032: Wires and nets
 
-Status: Draft (designer, 2026-11-12; FP-W1 to FP-W4 decided by the overseer, design §13; waiting
-for the owner's answers to design 032 §14)
+Status: Approved (owner, 2026-11-12: design 032 §14's nine questions as recommended; FP-W1 to
+FP-W4 decided by the overseer, design §13; every default this lane adds is registered in lane T's
+defaults registry, design §4.5)
 Branch: `feature/wires-nets`, from `origin/dev` `6729c8f1`.
 Designer: **yes** (`docs/design/032.md`) · Size: M in all (Q6 S–M, Q8 M, Q4 M)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` §3.2, v0.15 lane **W**: Q6 (wire join) →
