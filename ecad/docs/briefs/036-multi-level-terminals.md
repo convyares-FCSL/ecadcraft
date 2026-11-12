@@ -1,7 +1,7 @@
 # Brief 036: Multi-level terminals
 
-Status: Draft (designer, 2026-11-12; design `docs/design/036.md`, owner questions §15, format
-proposals FP1–FP8 in §14 for the overseer)
+Status: Draft (designer, 2026-11-12; design `docs/design/036.md`; FP1–FP8 approved by the overseer,
+2026-11-12, design §14; owner questions §15 with the owner)
 Branch: `feature/multi-level-terminals`, from `origin/dev` `1e605e33`.
 Designer: **yes** (`docs/design/036.md`) · Size: M (the roadmap's estimate; the design's §0 file
 list makes it a large M)
@@ -69,7 +69,8 @@ one part with several levels.
 
 ## Format and ops
 
-No new op and no new record field. The overseer decides FP1–FP8 (design §14): the offer grammar
+No new op and no new record field. FP1–FP8 (design §14), **approved by the overseer
+(2026-11-12)**, including FP8's `ecad-model` changes and their update scope: the offer grammar
 gains type codes; level terminals use definition keys `.n` (`.ni`/`.no` for two-point levels); link
 values gain levels; strip keys `term_label.<pos>.<n>` and `rating.<pos>`; BOM part keys per type;
 renumber and `termlabel` move these keys in their transaction; three `ecad-model` code changes
