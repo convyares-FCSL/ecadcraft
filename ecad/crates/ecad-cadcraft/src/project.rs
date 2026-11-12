@@ -2539,6 +2539,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
+            // symbols only: their pages.
+            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                out.extend(doc.representations_of(Subject::Component(terminal.component)).map(|(_, r)| r.page));
+            }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.
