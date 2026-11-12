@@ -30,7 +30,7 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.check-warning` | 2 (yellow) | `#FFFF00` | Checks warning glyph and go-to ring (022) |
 | `ecad.continuation` | ByLayer | — | Continuation arrow (022), drawn on its symbol's layer |
 | `ecad.provisional` | 30 (orange) | `#FF7F00` | Provisional tags on the sheet, provisional wire labels (`24V-?`), provisional text in lists, fields and the Renumber preview (026) |
-| `ecad.jumper-mark` | 4 (cyan) | `#00FFFF` | Filled square at each end of a jumper's route, `ecad.dot-size` wide (030); derived, never stored |
+| `ecad.jumper-mark` | 4 (cyan) | `#00FFFF` | A jumper's derived mark on the schematic (030 §5, options A and C, pending the owner's choice); derived, never stored |
 | `ecad.fixed-mark` | `cad.text_dim`, small text | — | The `F` after a fixed tag in the Devices tab and the Renumber preview (026); not drawn on the sheet |
 
 Drawn geometry (rectangles, wires, symbol graphics, cable slashes) keeps its own layer colour: ECAD
