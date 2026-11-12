@@ -211,3 +211,21 @@ fn bom_has_one_row_per_device_and_contacts_add_none() {
         assert_eq!(tags.iter().filter(|r| r.split([',', ' ']).any(|x| x == t)).count(), 1, "{t} in {tags:?}");
     }
 }
+
+#[test]
+fn a_limit_switch_is_two_symbols_of_one_device_and_sensors_take_their_prefixes() {
+    let mut h = new_h();
+    let b = place(&mut h, "rollerno", [0.0, 0.0]);
+    assert_eq!((b["tag"].as_str(), labels(&b)), (Some("-B01"), vec!["13".to_string(), "14".into()]));
+    let b1: ComponentId = id(&b, "component");
+    assert_eq!(labels(&join(&mut h, "rollernc", b1, [30.0, 0.0]).unwrap()), ["21", "22"]);
+    assert_eq!(place(&mut h, "valve", [0.0, -60.0])["tag"], "-MB01");
+    assert_eq!(place(&mut h, "valve2", [60.0, -60.0])["tag"], "-MB02");
+    assert_eq!(place(&mut h, "heater", [120.0, -60.0])["tag"], "-E01");
+    let tc: ComponentId = id(&place(&mut h, "tc", [180.0, -60.0]), "component");
+    setprop(&mut h, tc, "rating", json!("K")).unwrap();
+    assert_eq!(prop(&mut h, tc, "rating").as_deref(), Some("K"));
+    // A second head on a sensor is refused with its name.
+    let p: ComponentId = id(&place(&mut h, "prox3", [0.0, -120.0]), "component");
+    assert_eq!(join(&mut h, "tc", p, [40.0, -120.0]).unwrap_err(), "-B03 already has a Proximity switch, 3-wire PNP.");
+}

@@ -183,6 +183,11 @@ const fn cp(n: u128) -> DefinitionId {
     def_id(0x100 + n)
 }
 
+/// Sensors and actuators (stage 2): `0x200 + n`.
+const fn sa(n: u128) -> DefinitionId {
+    def_id(0x200 + n)
+}
+
 /// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
 /// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
@@ -224,6 +229,22 @@ pub const STARTERS: &[Starter] = &[
     st("fusebank8", "Fuse bank, 8-way", FUSE_BANK, "F", HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st("fusebank10", "Fuse bank, 10-way", FUSE_BANK, "F", HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st("fusebank12", "Fuse bank, 12-way", FUSE_BANK, "F", HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    // ---- Brief 034 stage 2: sensors and field devices (design 034 §4).
+    st("prox3", "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], "B", HEAD, sa(1)).of(Family::Sensors),
+    st("floatno", "Float switch, NO", &["float", "level", "sensor"], "B", Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
+    st("floatnc", "Float switch, NC", &["float", "level", "sensor"], "B", Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
+    st("rollerno", "Position switch with roller, NO", &["roller", "limit", "position", "sensor"], "B", Kind::Contact { make: true }, sa(4))
+        .of(Family::Sensors),
+    st("rollernc", "Position switch with roller, NC", &["roller", "limit", "position", "sensor"], "B", Kind::Contact { make: false }, sa(5))
+        .of(Family::Sensors),
+    st("interlocknc", "Interlock switch, NC", &["interlock", "guard", "safety", "door switch", "sensor"], "B", Kind::Contact { make: false }, sa(6))
+        .of(Family::Sensors),
+    st("interlockno", "Interlock switch, NO", &["interlock", "guard", "safety", "sensor"], "B", Kind::Contact { make: true }, sa(7))
+        .of(Family::Sensors),
+    st("valve", "Solenoid valve", &["valve", "solenoid", "actuator"], "MB", HEAD, sa(8)).of(Family::Actuators),
+    st("valve2", "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], "MB", HEAD, sa(9)).of(Family::Actuators),
+    st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], "B", HEAD, sa(10)).of(Family::Sensors),
+    st("heater", "Heater", &["heater", "heating element", "heat"], "E", HEAD, sa(11)).of(Family::Actuators),
 ];
 
 /// The starter symbol with key `key` (case-insensitive).
@@ -568,6 +589,22 @@ fn rcd_release(toroid_x: f64, half_width: f64, dx: f64, link_from: f64) -> Vec<P
     g
 }
 
+/// A key for an interlock switch, at the left of its dashed link (design 034 §4).
+fn key_mark() -> Vec<Primitive> {
+    vec![circle((-12.0, 0.5), 1.0), line((-11.0, 0.5), (-8.0, 0.5)), line((-9.0, 0.5), (-9.0, -0.5))]
+}
+
+/// A contact (`make`: NO) operated through a dashed link by a lever ending at `lever_to` with a
+/// circle of radius `r` at `mark_y` (float and roller switches, design 034 §4).
+fn levered(make: bool, lever_to: f64, r: f64, mark_y: f64) -> Vec<Primitive> {
+    let x = if make { -8.0 } else { -6.0 };
+    let mut g = if make { contact_no() } else { contact_nc() };
+    g.extend(if make { dashed(-8.0, -2.0, 0.5) } else { dashed(-6.0, 1.9, 0.5) });
+    g.push(line((x, 0.5), (x, lever_to)));
+    g.push(circle((x, mark_y), r));
+    g
+}
+
 /// The most ways or pins a sized symbol key may name (guards the loops below; the catalogue's
 /// largest is 25).
 const MAX_WAYS: usize = 32;
@@ -770,6 +807,70 @@ fn graphics(key: &str) -> Vec<Primitive> {
             g
         }
         "fuseterm" => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
+        // ---- Brief 034 stage 2 (design 034 §4).
+        "prox3" => vec![
+            rect((-10.0, -5.0), (10.0, 5.0)),
+            poly(&[(-7.0, 0.0), (-5.0, 2.0), (-3.0, 0.0), (-5.0, -2.0)], true),
+            line((3.0, 2.5), (3.0, 1.5)),
+            line((3.0, -2.5), (3.0, -1.5)),
+            line((3.0, -1.5), (1.5, 2.0)),
+            line((-5.0, 10.0), (-5.0, 5.0)),
+            line((-5.0, -10.0), (-5.0, -5.0)),
+            line((5.0, -10.0), (5.0, -5.0)),
+        ],
+        "floatno" => levered(true, -4.0, 1.5, -5.5),
+        "floatnc" => levered(false, -4.0, 1.5, -5.5),
+        "rollerno" => levered(true, 3.0, 1.2, 4.2),
+        "rollernc" => levered(false, 3.0, 1.2, 4.2),
+        "interlocknc" => {
+            let mut g = contact_nc();
+            g.extend(dashed(-8.0, 1.9, 0.5));
+            g.push(circle((-4.0, 0.5), 1.5));
+            g.push(line((-5.0, 0.5), (-3.0, 0.5)));
+            g.push(poly(&[(-3.6, 1.1), (-3.0, 0.5), (-3.6, -0.1)], false));
+            g.extend(key_mark());
+            g
+        }
+        "interlockno" => {
+            let mut g = contact_no();
+            g.extend(dashed(-8.0, -2.0, 0.5));
+            g.extend(key_mark());
+            g
+        }
+        "valve" => vec![
+            rect((-6.0, -3.0), (6.0, 3.0)),
+            line((0.0, 3.0), (0.0, 10.0)),
+            line((0.0, -3.0), (0.0, -10.0)),
+            line((6.0, 0.0), (8.0, 0.0)),
+            poly(&[(8.0, 3.0), (14.0, -3.0), (14.0, 3.0), (8.0, -3.0)], true),
+        ],
+        "valve2" => vec![
+            rect((-16.0, -3.0), (-4.0, 3.0)),
+            rect((4.0, -3.0), (16.0, 3.0)),
+            line((-10.0, 3.0), (-10.0, 10.0)),
+            line((-10.0, -3.0), (-10.0, -10.0)),
+            line((10.0, 3.0), (10.0, 10.0)),
+            line((10.0, -3.0), (10.0, -10.0)),
+            poly(&[(-3.0, 3.0), (3.0, -3.0), (3.0, 3.0), (-3.0, -3.0)], true),
+            line((-4.0, 0.0), (-3.0, 0.0)),
+            line((3.0, 0.0), (4.0, 0.0)),
+        ],
+        "tc" => vec![
+            poly(&[(-5.0, 10.0), (-5.0, 0.0), (0.0, -5.0)], false),
+            poly(&[(5.0, 10.0), (5.0, 0.0), (0.0, -5.0)], false),
+            line((5.5, 9.0), (5.5, 0.5)),
+            circle((0.0, -5.0), 0.5),
+            circle((0.0, -5.0), 0.33),
+            circle((0.0, -5.0), 0.17),
+        ],
+        "heater" => vec![
+            rect((-2.5, -6.0), (2.5, 6.0)),
+            line((-2.5, -3.0), (2.5, -3.0)),
+            line((-2.5, 0.0), (2.5, 0.0)),
+            line((-2.5, 3.0), (2.5, 3.0)),
+            line((0.0, 6.0), (0.0, 10.0)),
+            line((0.0, -6.0), (0.0, -10.0)),
+        ],
         _ => sized_graphics(key),
     }
 }
@@ -778,8 +879,8 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
     let t = |k: &str, x: f64, y: f64| TerminalDef { key: k.into(), label: Some(k.into()), at: p(x, y) };
     match key {
         "coil" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        "no" | "pbno" | "sel" => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
-        "nc" | "pbnc" => vec![t("11", 0.0, 10.0), t("12", 0.0, -10.0)],
+        "no" | "pbno" | "sel" | "floatno" | "rollerno" | "interlockno" => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
+        "nc" | "pbnc" | "floatnc" | "rollernc" | "interlocknc" => vec![t("11", 0.0, 10.0), t("12", 0.0, -10.0)],
         "power3" => vec![t("1", -10.0, 10.0), t("2", -10.0, -10.0), t("3", 0.0, 10.0), t("4", 0.0, -10.0), t("5", 10.0, 10.0), t("6", 10.0, -10.0)],
         "mcb1" | "fuse" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
         "mcb2" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("3", 10.0, 10.0), t("4", 10.0, -10.0)],
@@ -819,7 +920,12 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
             t("N2", 30.0, -10.0),
         ],
         "ssrin" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        "ssrout" | "fuseterm" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        "ssrout" | "fuseterm" | "heater" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        // ---- Brief 034 stage 2: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
+        "prox3" => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
+        "valve" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
+        "valve2" => vec![t("A1", -10.0, 10.0), t("A2", -10.0, -10.0), t("B1", 10.0, 10.0), t("B2", 10.0, -10.0)],
+        "tc" => vec![t("+", -5.0, 10.0), t("-", 5.0, 10.0)],
         _ => sized_terminals(key, &t),
     }
 }
@@ -886,8 +992,8 @@ mod tests {
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
-        // brief 034's stage 1 (14).
-        assert_eq!(STARTERS.len(), 21 + 14);
+        // brief 034's stage 1 (14) and stage 2 (11).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -918,6 +1024,17 @@ mod tests {
         ("fusebank8", 90.0, 35.0, "L+/M/1/2/3/4/5/6/7/8"),
         ("fusebank10", 110.0, 35.0, "L+/M/1/2/3/4/5/6/7/8/9/10"),
         ("fusebank12", 130.0, 35.0, "L+/M/1/2/3/4/5/6/7/8/9/10/11/12"),
+        ("prox3", 20.0, 20.0, "1/3/4"),
+        ("floatno", 9.5, 20.0, "13/14"),
+        ("floatnc", 11.5, 20.0, "11/12"),
+        ("rollerno", 9.2, 20.0, "13/14"),
+        ("rollernc", 11.2, 20.0, "11/12"),
+        ("interlocknc", 17.0, 20.0, "11/12"),
+        ("interlockno", 13.0, 20.0, "13/14"),
+        ("valve", 20.0, 20.0, "A1/A2"),
+        ("valve2", 32.0, 20.0, "A1/A2/B1/B2"),
+        ("tc", 10.5, 15.5, "+/-"),
+        ("heater", 5.0, 20.0, "1/2"),
     ];
 
     #[test]
