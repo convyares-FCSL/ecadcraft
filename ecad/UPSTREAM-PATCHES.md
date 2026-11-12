@@ -20,6 +20,14 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | `docs/document-architecture-proposal.md` | architecture proposal (PR #1) |
 | `docs/ecad-architecture-foundations.md` | owner's foundations note |
 
+## Upstream fixes taken ahead of the next sync
+
+Already merged upstream; each entry goes away at the next upstream sync, which brings the same change.
+
+| File | Upstream change | Why now |
+| --- | --- | --- |
+| `crates/fonts/src/mtext.rs` | CADCraft #2954 (`6f0f1fe`): `strips_formatting` expects a short `\U+` escape to keep its digits, as `unicode_escapes_are_decoded_in_every_parser` already did (test only) | After CADCraft 0.19.0 the two tests contradicted each other, so the root workspace's tests failed at the v0.1 QA gate |
+
 ## Code patches to upstream crates: the generic extension interface
 
 Proposal §14, capabilities X1-X7, X8 (Tool Sets tabs supplied by the embedder, approved

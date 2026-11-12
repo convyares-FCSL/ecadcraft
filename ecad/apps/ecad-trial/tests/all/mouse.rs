@@ -199,7 +199,16 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     assert!(h.state_mut().submit_command(r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#).is_none());
     // Nothing selected, nothing running: hovering shows the tooltip after the delay (0 here).
     let (head0, sel0) = (head(&mut h), h.state().cad.session.selection());
-    let coil_edge = screen(&h, 110.0, 3.0);
+    // The middle of the coil body's top edge (the body spans 97..103 by -6..6), well away from
+    // A1 (90,0) and A2 (110,0). A connection point within APERTURE pixels wins over the symbol
+    // around it, and the canvas's pixel scale depends on the panels' text widths, so a point a
+    // few drawing units from A2 named A2 on Linux CI (10.2 px away on Windows, against 10 px).
+    let coil_edge = screen(&h, 100.0, 6.0);
+    let aperture = h.state().cad.session.settings.aperture as f32;
+    for (x, y) in [(90.0, 0.0), (110.0, 0.0)] {
+        let px = (coil_edge - screen(&h, x, y)).length();
+        assert!(px > 2.0 * aperture, "the hover point is {px} px from the connection point at {x},{y}");
+    }
     pointer_to(&mut h, coil_edge);
     h.run_steps(2);
     // The coil placed by Place Symbol is a device (brief 018): its lens names its tag.
