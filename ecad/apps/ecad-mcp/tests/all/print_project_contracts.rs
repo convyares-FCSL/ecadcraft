@@ -91,3 +91,51 @@ fn with_writes_off_the_move_is_refused_and_contacts_reads() {
     assert_eq!(m, policy::WRITES_OFF);
     assert_eq!(c.log(), before);
 }
+
+#[test]
+fn continuation_sheets_are_numbered_taken_and_printed_whole() {
+    let mut c = writer();
+    let contents = c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
+    let page = hex(&contents, "page");
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    for _ in 0..45 {
+        c.exec("newpage", json!({}));
+    }
+    let v = c.exec("pageprops", json!({"page": page}));
+    assert_eq!(v["sheet_numbers"], json!(["C10", "C11"]), "{v}");
+    // Typing a continuation number is refused in words, and nothing is recorded.
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "newpage", "params": {"number": "c11"}}));
+    assert!(m.contains("Number c11 is sheet 2 of page C10 (Contents)."), "{m}");
+    let first = c.doc().page_order[0].hex();
+    let m = c.refused("execute", json!({"command": "pageprops", "params": {"page": first, "number": "C11"}}));
+    assert!(m.contains("Number C11 is sheet 2 of page C10 (Contents)."), "{m}");
+    assert_eq!(c.log().len(), before);
+    // Print Book's Pages: the continuation number prints its whole page, with a note.
+    let p = c.exec("printbook", json!({"scope": {"pages": "C11"}}));
+    assert_eq!(p["sheets"], json!(2), "{p}");
+    assert!(p["notes"].as_array().unwrap().iter().any(|n| n == "C11 is sheet 2 of page C10; the whole page is printed."), "{p}");
+    // A page numbered C12 while it is free; the contents then grows onto it: a warning, not a refusal.
+    c.exec("pageprops", json!({"page": first, "number": "C12"}));
+    for _ in 0..44 {
+        c.exec("newpage", json!({}));
+    }
+    let v = c.exec("pageprops", json!({"page": page}));
+    assert_eq!(v["sheet_numbers"], json!(["C10", "C11", "C12"]), "{v}");
+    let checks = c.exec("checks", json!({"kinds": ["continuation-clash"]}));
+    let rows = checks["checks"].as_array().cloned().unwrap_or_default();
+    assert_eq!(rows.len(), 1, "{checks}");
+    assert_eq!(rows[0]["which"], json!("Page C10 (Contents) now runs to C12, and page C12 has that number."), "{checks}");
+}
+
+#[test]
+fn with_writes_off_newpage_and_pageprops_are_refused() {
+    let mut c = reader();
+    let before = c.log();
+    for (cmd, params) in [("newpage", json!({"number": "401"})), ("pageprops", json!({"number": "401"}))] {
+        let m = c.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+    }
+    assert_eq!(c.log(), before);
+}

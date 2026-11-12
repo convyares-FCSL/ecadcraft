@@ -129,10 +129,12 @@ pub enum Kind {
     LinkOnNonStrip,
     /// Brief 033: a contact table the user placed overlaps the title block.
     TableOverTitle,
+    /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
+    ContinuationClash,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 35] = [
+    pub const ALL: [Kind; 36] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -168,6 +170,7 @@ impl Kind {
         Kind::LinkOrphan,
         Kind::LinkOnNonStrip,
         Kind::TableOverTitle,
+        Kind::ContinuationClash,
     ];
 
     /// The JSON name.
@@ -208,6 +211,7 @@ impl Kind {
             Kind::LinkOrphan => "link-orphan",
             Kind::LinkOnNonStrip => "link-on-non-strip",
             Kind::TableOverTitle => "table-over-title",
+            Kind::ContinuationClash => "continuation-clash",
         }
     }
 
@@ -254,6 +258,7 @@ impl Kind {
             Kind::LinkOrphan => "Link names positions the strip lacks",
             Kind::LinkOnNonStrip => "Link on a device that is not a strip",
             Kind::TableOverTitle => "Contact table over the title block",
+            Kind::ContinuationClash => "Continuation sheet has another page's number",
         }
     }
 
@@ -279,7 +284,8 @@ impl Kind {
             | Kind::LinkAcrossPartition
             | Kind::LinkOrphan
             | Kind::LinkOnNonStrip
-            | Kind::TableOverTitle => Severity::Warning,
+            | Kind::TableOverTitle
+            | Kind::ContinuationClash => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -332,6 +338,8 @@ pub enum Fix {
     LinkOnNonStrip(ComponentId),
     /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
     MoveTable(ComponentId),
+    /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
+    RenumberPage(PageId),
 }
 
 /// One row of the Checks list.
@@ -1347,5 +1355,6 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
     let mut rows: Vec<Check> = Checks::build(doc, tol).rows().cloned().collect();
     rows.extend(outputs.checks());
+    rows.extend(crate::generated::continuation_checks(doc, Some(outputs)));
     sort(doc, rows)
 }

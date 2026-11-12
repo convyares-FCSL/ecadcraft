@@ -1748,6 +1748,12 @@ impl Trial {
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
             }
+            A::RenumberPage(page) => {
+                if self.show_page(page).is_ok() {
+                    self.panel.tab = project_panel::Tab::Pages;
+                    self.panel.start_number_edit(page);
+                }
+            }
             A::MoveTable(check) => {
                 if self.goto_check(&check).is_ok() {
                     if self.cad.session.running.is_some() {

@@ -48,6 +48,8 @@ pub enum Scope {
 pub struct Resolved {
     pub pages: Vec<PageId>,
     pub unknown: Vec<String>,
+    /// Brief 033: notes on what was chosen (a continuation sheet's number prints its whole page).
+    pub notes: Vec<String>,
 }
 
 fn folder_pages(doc: &Document, f: FolderId, out: &mut BTreeSet<PageId>) {
@@ -62,25 +64,42 @@ fn folder_pages(doc: &Document, f: FolderId, out: &mut BTreeSet<PageId>) {
 /// # Errors
 /// An unknown folder.
 pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
+    resolve_with(doc, scope, None)
+}
+
+/// [`resolve`] knowing the generated pages' sheets (`outputs`): a continuation sheet's number
+/// (`401`, sheet 2 of page `400`) chooses its whole page, with a note (design 033 §5.2).
+///
+/// # Errors
+/// An unknown folder.
+pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&Outputs>) -> Result<Resolved, String> {
     let b = Book::of(doc);
     match scope {
-        Scope::All => Ok(Resolved { pages: b.order.clone(), unknown: Vec::new() }),
+        Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
         Scope::Folder(f) => {
             if !doc.folders.contains_key(f) {
                 return Err("no such folder".into());
             }
             let mut set = BTreeSet::new();
             folder_pages(doc, *f, &mut set);
-            Ok(Resolved { pages: b.order.iter().copied().filter(|p| set.contains(p)).collect(), unknown: Vec::new() })
+            Ok(Resolved { pages: b.order.iter().copied().filter(|p| set.contains(p)).collect(), ..Resolved::default() })
         }
         Scope::Pages(text) => {
             let numbers: Vec<String> = b.order.iter().map(|p| b.number(doc, *p)).collect();
             let find = |n: &str| numbers.iter().position(|x| x.eq_ignore_ascii_case(n.trim()));
             let mut keep = BTreeSet::new();
             let mut unknown = Vec::new();
+            let mut notes = Vec::new();
             for token in text.split(',').map(str::trim).filter(|t| !t.is_empty()) {
                 if let Some(i) = find(token) {
                     keep.insert(i);
+                    continue;
+                }
+                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, outputs)
+                    && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
+                {
+                    keep.insert(at);
+                    notes.push(format!("{token} is sheet {} of page {}; the whole page is printed.", i + 1, b.number(doc, owner)));
                     continue;
                 }
                 match token.split_once('-').map(|(a, z)| (find(a), find(z), a, z)) {
@@ -96,7 +115,7 @@ pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
                     None => unknown.push(token.to_string()),
                 }
             }
-            Ok(Resolved { pages: keep.into_iter().filter_map(|i| b.order.get(i).copied()).collect(), unknown })
+            Ok(Resolved { pages: keep.into_iter().filter_map(|i| b.order.get(i).copied()).collect(), unknown, notes })
         }
     }
 }
@@ -337,7 +356,7 @@ pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usiz
         p.outputs();
     }
     let doc = p.ledger.document();
-    let Ok(r) = resolve(doc, scope) else { return (0, Vec::new(), 0) };
+    let Ok(r) = resolve_with(doc, scope, p.outputs.as_ref()) else { return (0, Vec::new(), 0) };
     let sheets = r.pages.iter().map(|pg| crate::generated::sheets(doc, *pg, p.outputs.as_ref())).sum();
     let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
     (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.outputs.as_ref()))

@@ -188,6 +188,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn continuation_sheets_are_numbered_in_sequence() {
+        for (n, i, want) in [
+            ("400", 0, "400"),
+            ("400", 1, "401"),
+            ("400", 2, "402"),
+            ("0090", 1, "0091"),
+            ("B10", 1, "B11"),
+            ("099", 1, "100"),
+            ("BOM", 1, "BOM2"),
+            ("BOM", 2, "BOM3"),
+            ("18446744073709551615", 1, "184467440737095516152"),
+        ] {
+            assert_eq!(sheet_number(n, i), want, "{n} sheet {i}");
+        }
+    }
+
+    #[test]
     fn a_continued_heading_takes_a_row_of_its_sheet() {
         let mut heads = vec![Some("+CP1".to_string())];
         heads.extend(std::iter::repeat_n(None, 88));
@@ -212,6 +229,93 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
+}
+
+/// The number of sheet `i` (0-based) of a generated page numbered `number` (design 033 §5.1):
+/// its trailing digits plus `i`, keeping their width (`400` → `401`, `0090` → `0091`, `B10` →
+/// `B11`); without trailing digits, `N`, `N2`, `N3`… Sheet 0 is the number itself.
+pub fn sheet_number(number: &str, i: usize) -> String {
+    if i == 0 {
+        return number.to_string();
+    }
+    let head = number.trim_end_matches(|c: char| c.is_ascii_digit());
+    let digits = number.get(head.len()..).unwrap_or_default();
+    if !digits.is_empty()
+        && let Ok(n) = digits.parse::<u64>()
+        && let Some(m) = u64::try_from(i).ok().and_then(|i| n.checked_add(i))
+    {
+        let width = digits.len();
+        return format!("{head}{m:0width$}");
+    }
+    format!("{number}{}", i.saturating_add(1))
+}
+
+/// The numbers of every sheet of `page` (one for an ordinary page), its shown number first.
+pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> Vec<String> {
+    let n = book.number(doc, page);
+    (0..sheets(doc, page, outputs)).map(|i| sheet_number(&n, i)).collect()
+}
+
+/// The number column of `page` where pages are listed (contents): `400`, or `400–402` for a
+/// generated page of several sheets.
+pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> String {
+    let n = book.number(doc, page);
+    match sheets(doc, page, outputs) {
+        0 | 1 => n,
+        k => format!("{n}\u{2013}{}", sheet_number(&n, k - 1)),
+    }
+}
+
+/// The page whose continuation sheet (2nd or later) is numbered `number`, and that sheet's index:
+/// continuation numbers count as taken (design 033 §5.3). O(generated pages × their sheets).
+pub fn continuation_of(doc: &Document, book: &Book, number: &str, outputs: Option<&Outputs>) -> Option<(PageId, usize)> {
+    book.order.iter().filter(|p| kind_of(doc, **p).is_some()).find_map(|p| {
+        let n = book.number(doc, *p);
+        (1..sheets(doc, *p, outputs)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
+    })
+}
+
+/// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
+pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
+    let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
+    let owner = ecad_model::book::page_number(doc, page);
+    format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
+}
+
+/// The Checks rows of continuation sheets that took another page's number (design 033 §5.3): a
+/// table grew, so the book still prints and the two sheets share the number until the user
+/// renumbers. Each row is on the other page. O(pages + generated pages × their sheets).
+pub fn continuation_checks(doc: &Document, outputs: Option<&Outputs>) -> Vec<crate::checks::Check> {
+    use crate::checks::{Check, Fix, Kind, Object};
+    let book = Book::of(doc);
+    let mut by_number: std::collections::HashMap<String, PageId> = std::collections::HashMap::new();
+    for p in &book.order {
+        by_number.entry(book.number(doc, *p).to_ascii_lowercase()).or_insert(*p);
+    }
+    let mut out = Vec::new();
+    for p in book.order.iter().filter(|p| kind_of(doc, **p).is_some()) {
+        let n = sheets(doc, *p, outputs);
+        if n < 2 {
+            continue;
+        }
+        let number = book.number(doc, *p);
+        let last = sheet_number(&number, n - 1);
+        let title = doc.pages.get(p).map(|x| x.title.as_str()).unwrap_or_default();
+        for i in 1..n {
+            let taken = sheet_number(&number, i);
+            if let Some(other) = by_number.get(&taken.to_ascii_lowercase()).filter(|o| *o != p) {
+                out.push(Check {
+                    kind: Kind::ContinuationClash,
+                    page: Some(*other),
+                    at: None,
+                    object: Object::None,
+                    which: format!("Page {number} ({title}) now runs to {last}, and page {taken} has that number."),
+                    fix: Some(Fix::RenumberPage(*other)),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// How many sheets the whole book has (Total).
@@ -362,7 +466,7 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
                     let title = doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default();
-                    row(vec![b.number(doc, *p), title, crate::sheet_cmds::folder_path(doc, folder)])
+                    row(vec![number_range(doc, &b, *p, outputs), title, crate::sheet_cmds::folder_path(doc, folder)])
                 })
                 .collect();
             (vec![("Page", 25.0), ("Title", 220.0), ("Folder", 145.0)], rows)
@@ -708,8 +812,10 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
         let mut inp = input.clone();
         if n > 1 {
             inp.page_title = format!("{} ({}/{n})", input.page_title, i + 1);
+            // Design 033 §5.2: each sheet its own number; Next is the next sheet's.
+            inp.page = sheet_number(&input.page, i);
             if i + 1 < n {
-                inp.next = input.page.clone();
+                inp.next = sheet_number(&input.page, i + 1);
             }
         }
         let x0 = width * i as f64;

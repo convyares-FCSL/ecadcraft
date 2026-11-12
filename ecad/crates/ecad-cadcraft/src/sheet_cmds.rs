@@ -126,7 +126,9 @@ pub const MAX_NUMBER_CHARS: usize = 12;
 ///
 /// # Errors
 /// In words.
-pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &str) -> Result<(), String> {
+pub fn check_number(
+    doc: &Document, book: &Book, page: Option<PageId>, number: &str, outputs: Option<&crate::outputs::Outputs>,
+) -> Result<(), String> {
     let n = number.chars().count();
     if !(1..=MAX_NUMBER_CHARS).contains(&n) || !number.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err("A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`).".into());
@@ -137,14 +139,22 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
             return Err(format!("Page {number} already exists (\"{title}\")."));
         }
     }
+    // Brief 033 (design 033 §5.3): a generated page's continuation numbers are taken too.
+    if let Some((owner, i)) = crate::generated::continuation_of(doc, book, number, outputs)
+        && Some(owner) != page
+    {
+        return Err(crate::generated::continuation_taken(doc, number, owner, i));
+    }
     Ok(())
 }
 
 /// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
 /// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
 /// book position `position`.
-pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize) -> String {
-    let used: BTreeSet<String> = book.order.iter().map(|p| book.number(doc, *p).to_ascii_lowercase()).collect();
+pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>) -> String {
+    // Brief 033: every sheet's number, continuation sheets included, is in use.
+    let used: BTreeSet<String> =
+        book.order.iter().flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
     let step = u64::from(doc.settings.page_number_step.max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let start = digits.as_deref().and_then(|d| d.parse::<u64>().ok());
@@ -439,17 +449,21 @@ pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_e
 pub(crate) fn new_page_ops(
     p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>,
 ) -> Result<(PageId, String, Vec<Op>), String> {
+    if crate::generated::has_bom_page(p.ledger.document()) {
+        p.outputs();
+    }
     let doc = p.ledger.document();
+    let outputs = p.outputs.as_ref();
     existing(doc, folder)?;
     let book = Book::of(doc);
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
-            check_number(doc, &book, None, &n)?;
+            check_number(doc, &book, None, &n, outputs)?;
             n
         }
         None => {
             let (before, position) = new_page_place(doc, &book, folder);
-            default_number(doc, &book, before, position)
+            default_number(doc, &book, before, position, outputs)
         }
     };
     let mut page = Page::new(title);
@@ -463,7 +477,7 @@ pub(crate) fn new_page_ops(
 }
 
 /// The page's properties as `pageprops` reports them.
-pub fn page_json(doc: &Document, book: &Book, page: PageId) -> Value {
+pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&crate::outputs::Outputs>) -> Value {
     let pg = doc.pages.get(&page);
     let prop = |k: &str| pg.and_then(|x| x.properties.get(k)).cloned();
     let project = |k: &str| doc.properties.get(k).cloned();
@@ -483,7 +497,8 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId) -> Value {
         "folder": folder.map(FolderId::hex),
         "folder_path": folder_path(doc, folder),
         "generated": prop(crate::generated::KEY),
-        "sheets": crate::generated::sheets(doc, page, None),
+        "sheets": crate::generated::sheets(doc, page, outputs),
+        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, outputs),
     })
 }
 
@@ -503,17 +518,24 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     let write = number.is_some() || title.is_some() || function.is_some() || location.is_some() || sheet.is_some();
     if !write {
         return with_any_page(s, |p, _| {
+            if crate::generated::has_bom_page(p.ledger.document()) {
+                p.outputs();
+            }
             let doc = p.ledger.document();
             let page = page.or(p.active_page()).ok_or("`page` (hex id) is required: no page is shown")?;
             if !doc.pages.contains_key(&page) {
                 return Err("no such page".into());
             }
-            Ok(page_json(doc, &Book::of(doc), page))
+            Ok(page_json(doc, &Book::of(doc), page, p.outputs.as_ref()))
         });
     }
     with_project(s, |p, pg, active| {
         let page = page.unwrap_or(active);
+        if crate::generated::has_bom_page(p.ledger.document()) {
+            p.outputs();
+        }
         let doc = p.ledger.document();
+        let outputs = p.outputs.as_ref();
         let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
         let book = Book::of(doc);
         let object = ObjectRef::Page(page);
@@ -531,7 +553,7 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         if let Some(n) = number {
             let n = n.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
             if let Some(t) = &n {
-                check_number(doc, &book, Some(page), t)?;
+                check_number(doc, &book, Some(page), t, outputs)?;
             }
             put(NUMBER_KEY, n, &mut ops);
         }
@@ -558,13 +580,13 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             ops.push(Op::AddPage { id: page, page: renamed, index });
         }
         if ops.is_empty() {
-            let mut v = page_json(doc, &book, page);
+            let mut v = page_json(doc, &book, page, outputs);
             v["changed"] = json!(false);
             return Ok(v);
         }
         p.apply_edit(pg, "pageprops", "Page properties", ops)?;
         let doc = p.ledger.document();
-        let mut v = page_json(doc, &Book::of(doc), page);
+        let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
         v["changed"] = json!(true);
         Ok(v)
     })

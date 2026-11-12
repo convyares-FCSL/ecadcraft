@@ -244,7 +244,7 @@ pub fn print_project(
         p.outputs();
     }
     let doc = p.ledger.document();
-    let resolved = printbook::resolve(doc, scope)?;
+    let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref())?;
     let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress)?;
     let files: Vec<Value> = done
         .files
@@ -270,7 +270,7 @@ pub fn print_project(
     };
     Ok(json!({
         "files": files, "sheets": done.sheets, "generated": done.generated, "flagged": done.flagged,
-        "unknown": resolved.unknown, "notes": done.notes, "message": message,
+        "unknown": resolved.unknown, "notes": resolved.notes.iter().chain(done.notes.iter()).collect::<Vec<_>>(), "message": message,
     }))
 }
 
