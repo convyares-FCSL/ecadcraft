@@ -11,7 +11,7 @@
 //!
 //! The snapshot reuses the model's own serialisation (`Document`, `Transaction`) instead of a
 //! second model, adding only an index of readable labels and the results of consistency checks.
-//! The static viewer in `ecad/tools/inspector/` reads these files.
+//! The inspector page (`ecad/dev/ecad-inspector/page/`, Snapshots mode) reads these files.
 //!
 //! This crate intentionally has **no** mutation API, no network server and no CADCraft dependency.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]

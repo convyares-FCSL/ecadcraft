@@ -87,8 +87,8 @@ Share one target directory between the two workspaces to save disk and time:
    cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
    ```
 
-4. Inspector: open `ecad/tools/inspector/index.html` in a Windows browser. From WSL,
-   `explorer.exe "$(wslpath -w ecad/tools/inspector)"` opens the folder. Load the files from
+4. Inspector: open `ecad/dev/ecad-inspector/page/index.html` in a Windows browser. From WSL,
+   `explorer.exe "$(wslpath -w ecad/dev/ecad-inspector/page)"` opens the folder. Load the files from
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
 5. GUI: the **ECAD trial harness**. Follow [`quick-start.md`](quick-start.md) for the build,

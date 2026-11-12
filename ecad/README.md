@@ -39,7 +39,7 @@ cargo xtask ci                                         # all gates, slow tests i
 cargo xtask test-changed                               # fast tests of what this branch changed
 cargo test -p ecad-cadcraft --all-features                            # the integration experiment
 cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
-# then open tools/inspector/index.html and load the snapshots
+# then open dev/ecad-inspector/page/index.html and load the snapshots
 ```
 
 Docs: [`docs/quick-start.md`](docs/quick-start.md) (run and try the app),
