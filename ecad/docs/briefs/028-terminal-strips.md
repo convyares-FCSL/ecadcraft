@@ -1,7 +1,7 @@
 # Brief 028: Terminal strips and cable schedule
 
-Status: Draft (designer, 2026-11-12; owner questions in design 028 §14, FP items in §13 for the
-overseer)
+Status: Approved (owner, 2026-11-12; design 028 §14 Q1–Q15 answered as recommended, FP1–FP4
+approved by the overseer, FP5 only if it proves needed; see design §16)
 Branch: `feature/terminal-strips` (worktree `C:\dev\ecad-features\connectivity`, folder name
 historical), from `dev` `dc2472c6` (025 merged).
 Designer: **yes** (`docs/design/028.md`) · Size: M
