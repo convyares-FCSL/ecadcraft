@@ -347,6 +347,50 @@ pub struct ProjectSettings {
     pub page_number_step: u32,
     /// How cross-references name a place (owner answer Q1, 2026-11-08): `105-C-4` by default.
     pub reference_style: ReferenceStyle,
+    /// Where a device's contact mirror table goes unless the device says otherwise (brief 025,
+    /// FP3): `auto` by default, and then left out of every file.
+    #[serde(skip_serializing_if = "ContactMirror::is_auto")]
+    pub contact_mirror: ContactMirror,
+}
+
+/// Where the contact mirror table under a coil goes by default (brief 025, FP3). A device's own
+/// `mirror` property overrides it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContactMirror {
+    /// Under the rail the coil's lower wire meets, else under the coil.
+    #[default]
+    Auto,
+    /// Under the coil.
+    Below,
+    /// Right of the coil.
+    Right,
+    /// No tables (texts under contacts remain).
+    Off,
+}
+
+impl ContactMirror {
+    /// Whether it is the default (`auto`), which files leave out.
+    pub fn is_auto(&self) -> bool {
+        *self == ContactMirror::Auto
+    }
+
+    /// Its word: `auto`, `below`, `right` or `off`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ContactMirror::Auto => "auto",
+            ContactMirror::Below => "below",
+            ContactMirror::Right => "right",
+            ContactMirror::Off => "off",
+        }
+    }
+
+    /// The placement a word names (case-insensitive), if any.
+    pub fn parse(word: &str) -> Option<ContactMirror> {
+        [ContactMirror::Auto, ContactMirror::Below, ContactMirror::Right, ContactMirror::Off]
+            .into_iter()
+            .find(|m| m.word().eq_ignore_ascii_case(word.trim()))
+    }
 }
 
 /// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08). Other
@@ -376,6 +420,7 @@ impl Default for ProjectSettings {
             sheet: crate::sheet::SheetSpec::default(),
             page_number_step: DEFAULT_PAGE_NUMBER_STEP,
             reference_style: ReferenceStyle::default(),
+            contact_mirror: ContactMirror::default(),
         }
     }
 }

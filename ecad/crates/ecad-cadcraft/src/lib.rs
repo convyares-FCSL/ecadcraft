@@ -66,6 +66,8 @@ pub mod verify;
 pub mod views;
 mod wire_cmds;
 pub mod wires;
+pub mod xref;
+mod xref_cmds;
 
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};

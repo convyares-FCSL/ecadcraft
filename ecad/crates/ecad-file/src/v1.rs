@@ -269,6 +269,26 @@ pub struct ProjectSettings {
     /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
     #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
     pub reference_style: ReferenceStyle,
+    /// Brief 025 (FP3): left out at the default `auto`.
+    #[serde(default, skip_serializing_if = "ContactMirror::is_auto")]
+    pub contact_mirror: ContactMirror,
+}
+
+/// Where contact mirror tables go by default (brief 025, FP3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContactMirror {
+    #[default]
+    Auto,
+    Below,
+    Right,
+    Off,
+}
+
+impl ContactMirror {
+    fn is_auto(&self) -> bool {
+        *self == ContactMirror::Auto
+    }
 }
 
 fn is_default_wiring(w: &WiringSettings) -> bool {
@@ -875,6 +895,12 @@ impl From<&m::ProjectSettings> for ProjectSettings {
                 m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
                 m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
             },
+            contact_mirror: match s.contact_mirror {
+                m::ContactMirror::Auto => ContactMirror::Auto,
+                m::ContactMirror::Below => ContactMirror::Below,
+                m::ContactMirror::Right => ContactMirror::Right,
+                m::ContactMirror::Off => ContactMirror::Off,
+            },
         }
     }
 }
@@ -1100,6 +1126,12 @@ impl From<ProjectSettings> for m::ProjectSettings {
             reference_style: match s.reference_style {
                 ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
                 ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
+            },
+            contact_mirror: match s.contact_mirror {
+                ContactMirror::Auto => m::ContactMirror::Auto,
+                ContactMirror::Below => m::ContactMirror::Below,
+                ContactMirror::Right => m::ContactMirror::Right,
+                ContactMirror::Off => m::ContactMirror::Off,
             },
         }
     }

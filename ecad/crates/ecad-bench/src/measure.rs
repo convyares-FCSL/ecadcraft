@@ -110,6 +110,15 @@ pub struct Measured {
     pub gridchange_ms: f64,
     /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
     pub revopen_ms: f64,
+    /// Brief 025 (design 025 §7), on a copy with [`XREF_COILS`] coils added: the reference index
+    /// built from scratch, as on open.
+    pub xbuild_ms: f64,
+    /// Move such a coil (its contacts on other pages): commit, reference update and redraw.
+    pub xmove_ms: f64,
+    /// Renumber a page with 40 contact targets: the commit and the rows naming it.
+    pub xrenum_ms: f64,
+    /// Bring a page with 10 contact tables to the front (`openpage`, projected with its tables).
+    pub xmirror_ms: f64,
 }
 
 /// Most pages the switch-page timings visit, spread evenly over the page order.
@@ -224,6 +233,7 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
     // A debug build (the tests) uses a small rail: the release benchmark measures the real one.
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
     let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
+    let mut xr = xref_edits(path, &scratch.join("xref.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -256,6 +266,10 @@ pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Res
         tbupd_ms: median(&mut sheet.tbupd),
         gridchange_ms: median(&mut sheet.gridchange),
         revopen_ms: median(&mut sheet.revopen),
+        xbuild_ms: median(&mut xr.build),
+        xmove_ms: median(&mut xr.moves),
+        xrenum_ms: median(&mut xr.renum),
+        xmirror_ms: median(&mut xr.mirror),
     };
     Ok((m, doc))
 }
@@ -587,6 +601,151 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
     })();
     remove(copy);
     result
+}
+
+/// Coils the cross-reference timings add to their copy of the project (design 025 §7).
+pub const XREF_COILS: usize = 1_000;
+
+/// Brief 025's timings, one sample per run each.
+#[derive(Debug, Default)]
+struct XrefTimes {
+    build: Vec<f64>,
+    moves: Vec<f64>,
+    renum: Vec<f64>,
+    mirror: Vec<f64>,
+}
+
+/// Brief 025 (design 025 §7) on a copy: [`XREF_COILS`] coils are
+/// added and saved (not timed; then opened once in a headless session), each with a `power3` on its own page and a NO and an NC
+/// on the next page, half of them with an offer (`3P+1NO+1NC`); the first 20 coils' contacts are
+/// all on page 2 (40 targets) and coils 20 to 29 on page 3 (10 tables). Then per run:
+/// - **xbuild**: the reference index built from scratch, as on open;
+/// - **xmove**: a coil moved on its page (MOVE on its symbol: the commit, the reference update and
+///   the redraw), alternately down and back up;
+/// - **xrenum**: page 2 renumbered (its 40 contacts' rows on other pages), then back (not timed);
+/// - **xmirror**: page 3 brought to the front (projected with its 10 tables), then page 1 again
+///   (not timed).
+fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String> {
+    use serde_json::json;
+
+    let v1 = copy.with_extension("v1.ecad");
+    remove(&v1);
+    remove(copy);
+    std::fs::copy(path, &v1).map_err(|e| format!("copying {} to {}: {e}", path.display(), v1.display()))?;
+    let result = (|| {
+        // The coils, committed to a version 1 copy and saved (not timed), then converted to the
+        // version 2 file the app opens.
+        let (coils, order) = {
+            let mut o = open(&v1)?;
+            let r = add_coils(&mut o.ledger)?;
+            o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
+            r
+        };
+        crate::v2::convert(&v1, copy)?;
+        ecad_cadcraft::install();
+        let mut s = cadcraft_engine::Session::empty();
+        let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
+        let mut out = XrefTimes::default();
+        for _ in 0..runs {
+            let t = project.read(&mut s, |p, _| {
+                let t = Instant::now();
+                let idx = ecad_cadcraft::xref::RefIndex::build(p.ledger.document());
+                let took = ms(t);
+                std::hint::black_box(idx);
+                took
+            })?;
+            out.build.push(t);
+        }
+        // A coil on page 4 (none of the special pages), its page in front.
+        let coil = *coils.get(35).or(coils.last()).ok_or("no coil")?;
+        let page = project.read(&mut s, |p, _| p.ledger.document().representations.get(&coil).map(|r| r.page))?.ok_or("coil missing")?;
+        s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| e.to_string())?;
+        for run in 0..runs {
+            let h = project
+                .read(&mut s, |p, _| {
+                    let item = p.ledger.document().representations.get(&coil)?.items.first().copied()?;
+                    p.pages.get(&page)?.map.item(item)
+                })?
+                .ok_or("the coil is not drawn")?;
+            let dy = if run % 2 == 0 { -5.0 } else { 5.0 };
+            let before = head(&mut s)?;
+            let t = Instant::now();
+            s.execute("move", &json!({"handles": [h.hex()], "delta": [0.0, dy]})).map_err(|e| format!("move: {e}"))?;
+            out.moves.push(ms(t));
+            if head(&mut s)? != before + 1 {
+                return Err("the coil move was not recorded as one transaction".into());
+            }
+        }
+        let p2 = order[1 % order.len()];
+        let number = project.read(&mut s, |p, _| ecad_model::book::page_number(p.ledger.document(), p2))?;
+        for _ in 0..runs {
+            let t = Instant::now();
+            s.execute("pageprops", &json!({"page": p2.hex(), "number": "9002"})).map_err(|e| e.to_string())?;
+            out.renum.push(ms(t));
+            s.execute("pageprops", &json!({"page": p2.hex(), "number": number})).map_err(|e| e.to_string())?;
+        }
+        let (p1, p3) = (order[0], order[2 % order.len()]);
+        for _ in 0..runs {
+            s.execute("openpage", &json!({"page": p1.hex()})).map_err(|e| e.to_string())?;
+            let t = Instant::now();
+            s.execute("openpage", &json!({"page": p3.hex()})).map_err(|e| e.to_string())?;
+            out.mirror.push(ms(t));
+        }
+        drop(project);
+        drop(s);
+        Ok(out)
+    })();
+    release_lock_file(copy);
+    remove(copy);
+    remove(&v1);
+    result
+}
+
+/// The coils of [`xref_edits`], committed to `ledger` one placement at a time: their head
+/// representations and the page order.
+fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
+    use ecad_cadcraft::devices::{TagHigh, Target, plan_place};
+    use ecad_model::{Color, ObjectRef, Op, Placement, Pt, Style};
+    let order = ledger.document().page_order.clone();
+    let n = order.len();
+    if n == 0 {
+        return Err("the cross-reference timings need a page".into());
+    }
+    let layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+    // A debug build (the tests) adds fewer coils: the release benchmark adds them all.
+    let wanted = if cfg!(debug_assertions) { 40 } else { XREF_COILS };
+    let at = |k: usize| order[k % n];
+    let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
+    let mut high = TagHigh::default();
+    let starter = |k: &str| ecad_cadcraft::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
+    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: 0.0, mirror: false, scale: 1.0 };
+    let mut coils = Vec::with_capacity(wanted);
+    for i in 0..wanted {
+        let ka = match i {
+            20..=29 => 2,
+            _ => (i % n.saturating_sub(1).max(1)) + 1,
+        };
+        let (a, b) = (at(ka), if i < 20 { at(1) } else { at(ka + 1) });
+        let x = 30.0 + 35.0 * (i % 10) as f64;
+        let mut step = |ledger: &mut ecad_model::Ledger, page, key: &str, pt, target| -> Result<ecad_cadcraft::devices::Placed, String> {
+            let plan = plan_place(ledger, &mut ids, &mut high, page, style.clone(), starter(key)?, place(pt), target)?;
+            ledger.commit(Author::User, "Bench coils", plan.ops.clone()).map_err(|e| e.to_string())?;
+            Ok(plan)
+        };
+        let coil = step(ledger, a, "coil", (x, 260.0), Target::New(Some(format!("-KX{:04}", i + 1))))?;
+        let c = coil.component;
+        coils.push(coil.representation);
+        step(ledger, a, "power3", (x + 15.0, 230.0), Target::Join(c))?;
+        step(ledger, b, "no", (x, 60.0), Target::Join(c))?;
+        step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
+        if i % 2 == 0 {
+            let op = Op::SetProperty { object: ObjectRef::Component(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
+            ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok((coils, order))
 }
 
 /// Brief 019's timings, one sample per run each.

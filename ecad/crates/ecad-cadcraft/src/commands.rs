@@ -36,6 +36,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::sheet_cmds::specs());
     v.extend(crate::history::specs());
     v.extend(crate::merging::specs());
+    v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
     v
 }
@@ -618,6 +619,12 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             Some(v) => v,
             None => value,
         };
+        // Brief 025 (FP1, FP2): a part's contacts and its table's placement are checked.
+        let value = match (object, key.as_str()) {
+            (ObjectRef::Component(_), crate::xref::CONTACTS_KEY) => crate::xref::offer_value(value.as_deref())?,
+            (ObjectRef::Component(_), crate::xref::MIRROR_KEY) => crate::xref::mirror_value(value.as_deref())?,
+            _ => value,
+        };
         let props = match object {
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
             ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
@@ -642,7 +649,11 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
     }
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
-        let after = crate::devices::property_value(doc, &key, value.as_deref())?;
+        let after = match key.as_str() {
+            crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
+            crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
+            _ => crate::devices::property_value(doc, &key, value.as_deref())?,
+        };
         let mut ops = Vec::new();
         for c in &cs {
             let comp = doc.components.get(c).ok_or("no such object")?;

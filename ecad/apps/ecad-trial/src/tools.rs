@@ -102,6 +102,13 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("deviceprops"),
     },
     Tool {
+        id: "ecad.mirrormove",
+        group: "Components",
+        label: "Move Mirror Table",
+        tooltip: "Click a coil or its contact table, then where the table goes (or Auto, Below, Right, Off)",
+        kind: Kind::Start("mirrormove"),
+    },
+    Tool {
         id: "ecad.devicedelete",
         group: "Components",
         label: "Delete Device",
@@ -340,7 +347,7 @@ impl Picked {
                 }
                 // A cable reference's text names its cable (brief 010); a device's tag text or
                 // terminal label names its device (brief 018).
-                Some(Mapped::RefText(r) | Mapped::Tag(r)) => {
+                Some(Mapped::RefText(r) | Mapped::Tag(r) | Mapped::Xref(r)) => {
                     if let Some(r) = doc.representations.get(&r) {
                         subjects.insert(r.subject);
                     }

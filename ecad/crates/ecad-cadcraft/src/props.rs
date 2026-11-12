@@ -179,7 +179,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
     for h in selection.iter().take(MAX_LOOKED_AT) {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
-            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r)) => Some(r),
+            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::Xref(r)) => Some(r),
             Some(Mapped::Fan(k)) => {
                 match map.reference_of(*h) {
                     Some(r) => {
@@ -268,6 +268,10 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     if !k.devices.is_empty() {
         v.deps.extend(k.devices.iter().map(|c| ObjectRef::Component(*c)));
         v.deps.insert(ObjectRef::Page(page));
+        // Brief 025: the Coil and Contacts rows name places on the device's pages.
+        for c in &k.devices {
+            v.deps.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
+        }
         // An inherited location (brief 024) reads the main symbol's page (its boxes and
         // `location`) and the project's.
         v.deps.insert(ObjectRef::Project);
@@ -446,13 +450,78 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
     } else {
         format!("ECAD · {} DEVICES", devices.len())
     };
+    let mut buttons = Vec::new();
+    if let (true, Some(c)) = (one, devices.iter().next().copied()) {
+        xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+    }
     Section {
         title,
         kind: "device",
         target: Some(Target::Devices(devices.iter().copied().collect())),
         rows,
         note: if one { None } else { Some("Tags are one per device.".into()) },
-        buttons: Vec::new(),
+        buttons,
+    }
+}
+
+/// Brief 025's rows of the device section (design 025 §5.2): Contacts offered, Contact table,
+/// and read-only Coil (a contact selected) or Contacts (its coil selected), each with Go to
+/// (`refgoto:<source>:<target>:<label>` buttons).
+fn xref_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
+    use crate::xref;
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    rows.push(Row::rw(xref::CONTACTS_KEY, "Contacts offered", props.and_then(|p| p.get(xref::CONTACTS_KEY)).cloned().unwrap_or_default()));
+    let dev = xref::device(doc, c);
+    if dev.head.is_some() {
+        let project = doc.settings.contact_mirror.word();
+        let default = format!("Project default ({project})");
+        let value = match props.and_then(|p| p.get(xref::MIRROR_KEY)) {
+            None => default.clone(),
+            Some(w) => match xref::parse_mirror(w) {
+                Ok(xref::Placement::At(_)) => "Moved".into(),
+                Ok(p) => {
+                    let w = p.word();
+                    let mut ch = w.chars();
+                    ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
+                }
+                Err(_) => default.clone(),
+            },
+        };
+        let mut r = Row::rw(xref::MIRROR_KEY, "Contact table", value);
+        r.choices = vec![default, "Auto".into(), "Below".into(), "Right".into(), "Off".into()];
+        rows.push(r);
+    }
+    let Some(sym) = symbol else { return };
+    let mut places = xref::Places::new(doc);
+    if dev.head == Some(sym) {
+        let offer = xref::offer_of(doc, c);
+        let list = xref::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+        let text: Vec<String> = list
+            .iter()
+            .map(|r| {
+                let state = match r.state {
+                    xref::State::Drawn => "",
+                    xref::State::Spare => " (spare)",
+                    xref::State::Over => " (beyond the part)",
+                };
+                format!("{} {} {}{state}", r.label_pair(), r.kind.word(), r.place)
+            })
+            .collect();
+        rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
+        for r in list.iter().filter(|r| r.state != xref::State::Spare) {
+            if let Some(t) = r.rep {
+                buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), t.hex(), r.label_pair()));
+            }
+        }
+    } else if dev.children.contains(&sym) {
+        let value = match dev.head.and_then(|h| doc.representations.get(&h)) {
+            Some(h) => places.text(h.page, xref::anchor(doc, h)),
+            None => "not drawn".into(),
+        };
+        rows.push(Row::ro("coil", "Coil", value));
+        if dev.head.is_some() {
+            buttons.push(format!("refgoto:{}::Go to coil", sym.hex()));
+        }
     }
 }
 

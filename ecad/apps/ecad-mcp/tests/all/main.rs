@@ -12,3 +12,4 @@ mod merge_contracts;
 mod merge_tester_contracts;
 mod outputs_contracts;
 mod tester_024_mcp;
+mod xref_contracts;

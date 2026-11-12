@@ -485,7 +485,7 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 
 /// The cables whose references, or whose drawing at a reference end on any page, `ops` could
 /// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
-/// page, layer, cable, property or settings ops), which means the whole document, as before
+/// layer, cable property or settings ops), which means the whole document, as before
 /// brief 014. Worked out on the document before the ops.
 ///
 /// # Semantics
@@ -545,6 +545,14 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
                 moved_cables(doc, ops, &mut moved, &mut out)
             }
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+            // Brief 025 (design 025 §6): a cable op changes that cable's members only, so only its
+            // reference ends may be drawn differently (before, every cable).
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+                out.insert(*id);
+            }
+            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
+                out.insert(*cable);
+            }
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
             _ => return None,

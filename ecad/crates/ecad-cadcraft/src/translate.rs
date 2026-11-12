@@ -284,8 +284,10 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // the document. An edit of nothing but such parts is refused (brief 009 review S2).
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
     // Conductor labels (brief 022) are left out the same way: drawn again from the document.
-    let drawn =
-        |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_)));
+    // Device cross-references (brief 025) too.
+    let drawn = |map: &HandleMap, h: Handle| {
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
+    };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
     let tag_text = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Tag(_)));
@@ -325,10 +327,22 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
         let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
         let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
+        let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Xref(_)));
+        let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
         return Err(if tags_only {
             crate::devices::TAG_DERIVED
         } else if labels_only {
             crate::wires::LABEL_DERIVED
+        } else if xrefs_only {
+            {
+                // A copy's handle is not mapped: its source says whether it is a table (brief 025).
+                let source = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
+                    Some(Source::Entity(s)) => cx.map.get(*s),
+                    Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).and_then(|c| c.map.get(*handle)),
+                    None => None,
+                };
+                crate::xref::refusal(cx.ledger.document(), skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
+            }
         } else {
             crate::views::DRAWN_REFUSED
         }
@@ -351,8 +365,9 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_) | Mapped::Label(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
@@ -408,8 +423,9 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_) | Mapped::Label(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}

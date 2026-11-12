@@ -30,6 +30,8 @@ mod terminal_name_contracts;
 mod tester_014_r3_scope_probe;
 mod tester_023_contracts;
 mod tester_024_probe;
+mod tester_025_xref_probe;
 mod upstream_sync_019_contracts;
 mod upstream_sync_contracts;
 mod wiring_contracts;
+mod xref_contracts;
