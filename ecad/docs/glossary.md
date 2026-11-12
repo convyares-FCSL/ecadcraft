@@ -86,3 +86,18 @@ are.
 | **used / spare / over core** | A core a wire of the cable takes / offered and not taken / a wire beyond the offer. A new wire added to a cable takes the next spare core. |
 | **terminal plan** | Per strip, one row per position (drawn and spare): inside and outside target, wire numbers, cable and core, bridges and place. Derived, shown in Reports ▸ Terminals and on a generated **Terminal plan** page. |
 | **cable schedule** | The cable report completed with Used, Spare and the devices at each end, and per cable its core list. Also a generated **Cable schedule** page. |
+
+## Terminal accessories (brief 030)
+
+| Word | Means |
+| --- | --- |
+| **accessory** | A part on the rail that is not a terminal: end stop, end plate, partition plate, marker, strip label, jumper. Placed by you; nothing is added by a rule. |
+| **end stop** | The clamp that holds a strip on the rail (an "end clamp"). |
+| **end plate** | The cover on a terminal's open side. |
+| **partition** | A partition plate between two positions: separates groups and stops a jumper. |
+| **marker** | The label clipped onto one terminal, bought as cards of several. |
+| **strip label** | The marker that carries the strip's tag, usually on an end stop. |
+| **gap** | Where a plate or stop sits: start, after a position, or end. |
+| **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
+| **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
+| **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |
