@@ -37,14 +37,14 @@ fn refused(c: &mut Client, cmd: &str, params: Value) -> String {
 /// A coil low on page 1 (its automatic table would cross the title block) with four NO contacts
 /// on page 2; a BOM page numbered 400 that runs to three sheets.
 fn build(c: &mut Client) -> (String, String) {
-    let k1 = hex(&c.exec("place", json!({"symbol": "coil", "at": [100, 20]})), "component");
+    let k1 = hex(&c.exec("place", json!({"symbol": "coil", "at": [100, 70]})), "component");
     c.exec("newpage", json!({"title": "Contacts"}));
     for i in 0..4 {
         c.exec("place", json!({"symbol": "no", "at": [60 + 40 * i, 150], "device": k1}));
     }
     c.exec("newpage", json!({"title": "Many"}));
     for i in 0..100 {
-        c.exec("place", json!({"symbol": "coil", "at": [20 + (i % 12) * 30, 30 + (i / 12) * 25]}));
+        c.exec("place", json!({"symbol": "coil", "at": [20 + (i % 12) * 30, 70 + (i / 12) * 22]}));
     }
     let bom = hex(&c.exec("newpage", json!({"generated": "bom-location", "number": "400"})), "page");
     (k1, bom)
@@ -52,7 +52,6 @@ fn build(c: &mut Client) -> (String, String) {
 
 /// AC5, AC7–AC11, AC13 through MCP, then writes off.
 #[test]
-#[ignore = "tester 033: awaiting build"]
 fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t033 Schaltpl\u{e4}ne mit Leerzeichen");
     let path = dir.file("Druck (P).ecad");
@@ -62,7 +61,7 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         // AC5: the contacts reply's table.
         let v = c.exec("contacts", json!({"component": k1}));
         assert_eq!(v["table"]["shown"], json!("right"), "{v}");
-        assert!(v["table"]["bottom"].as_f64().unwrap() >= 2.0 - 1e-9, "{v}");
+        assert!(v["table"]["bottom"].as_f64().unwrap() >= 52.0 - 1e-9, "{v}");
         assert!(v["table"]["top"].as_array().is_some_and(|a| a.len() == 2), "{v}");
         // AC7: sheet numbers of the BOM.
         let v = c.exec("pageprops", json!({"page": bom}));
@@ -130,7 +129,7 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         ("revision", json!({"fields": {"ecr": "ECR-2"}})),
         ("newpage", json!({"title": "X", "number": "401"})),
         ("pageprops", json!({"page": bom, "number": "500"})),
-        ("mirrormove", json!({"component": k1, "at": [100, -10]})),
+        ("mirrormove", json!({"component": k1, "at": [100, 30]})),
         ("table", json!({"at": [50, 50], "rows": 2, "cols": 2})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
