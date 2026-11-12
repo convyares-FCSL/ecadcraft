@@ -84,7 +84,10 @@ const READ_WITH_REV: &[&str] = &["release"];
 pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
         || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
-        || (READ_WITH_REV.contains(&id) && params.get("rev").is_some_and(Value::is_string))
+        || (READ_WITH_REV.contains(&id)
+            && params.get("rev").is_some_and(Value::is_string)
+            // Replace moves a folder on disk aside: a write, never with writes off (review of PR #54, 1).
+            && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
 }
 
 /// How many transactions one call of `id` with `params` may record: one
@@ -295,6 +298,9 @@ mod tests {
         assert!(check("release", &json!({"rev": "A"}), false, Some("locked")).is_ok());
         assert_eq!(check("release", &none, false, None), Err(WRITES_OFF.into()));
         assert_eq!(check("release", &json!({"rev": null}), false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": "A", "existing": "replace"}), false, None), Err(WRITES_OFF.into()));
+        assert!(check("release", &json!({"rev": "A", "existing": "keep-both"}), false, None).is_ok());
+        assert!(check("release", &json!({"rev": "A", "existing": "replace"}), true, None).is_ok());
         assert!(check("release", &none, true, None).is_ok());
         assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
         // Tester 027, 2: release of the pending revision with Finalise may record two, and no more.

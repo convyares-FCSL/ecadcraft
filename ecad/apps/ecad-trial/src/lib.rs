@@ -355,8 +355,7 @@ pub struct Trial {
     pub print_book: Option<outputs_ui::PrintBook>,
     /// Brief 027: the Release dialog.
     pub release: Option<release_ui::ReleaseDialog>,
-    /// The Release badge, with the (Checks, report models) revisions it was counted at.
-    release_badge: Option<((u64, u64), Option<(usize, usize)>)>,
+
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: sheets_ui::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
@@ -508,7 +507,7 @@ impl Trial {
             reports: None,
             print_book: None,
             release: None,
-            release_badge: None,
+
             props,
             props_seen: None,
             props_rebuilds: 0,
@@ -2677,19 +2676,7 @@ impl Trial {
     /// The Release badge: counted again only when the kept Checks or report models change.
     fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
         let p = self.project.clone()?;
-        let seen = self.release_badge;
-        let (rev, badge) = p
-            .read(&mut self.cad.session, |p, _| {
-                let key = (p.checks.as_ref().map_or(u64::MAX, |c| c.revision), p.outputs.as_ref().map_or(u64::MAX, |o| o.revision));
-                let counts = match seen {
-                    Some((k, c)) if k == key => c,
-                    _ => release_ui::badge(p),
-                };
-                (ecad_cadcraft::revisions::pending_rev(p.ledger.document()), (key, counts))
-            })
-            .ok()?;
-        self.release_badge = Some(badge);
-        Some((rev, badge.1))
+        p.read(&mut self.cad.session, |p, _| (ecad_cadcraft::revisions::pending_rev(p.ledger.document()), release_ui::badge(p))).ok()
     }
 
     /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.
@@ -2705,16 +2692,15 @@ impl Trial {
         let Some(d) = &self.release else { return };
         let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
         let r = p.configure(&mut self.cad.session, |p| {
-            let now = |p: &ecad_cadcraft::Project| {
-                (p.ledger.head(), p.checks.as_ref().map_or(0, |c| c.revision), p.outputs.as_ref().map_or(0, |o| o.revision), accept)
-            };
-            // An issued revision's view is built once (its state never changes).
-            if key.is_some_and(|old| old == now(p) || (rev.is_some() && old.3 == accept)) {
+            // An issued revision's view is built once (its state never changes); the pending one
+            // again only when what it shows can differ (`release::dialog_key`).
+            if key.is_some() && (rev.is_some() || key == ecad_cadcraft::release::dialog_key(p, accept)) {
                 return Ok(None);
             }
             let v = ecad_cadcraft::release::view(p, rev.as_deref(), accept, ecad_cadcraft::release::MAX_ROWS)?;
             // The kept lists exist now: the key is read after the view built them.
-            Ok::<_, String>(Some((v, now(p))))
+            let k = if rev.is_some() { 0 } else { ecad_cadcraft::release::dialog_key(p, accept).unwrap_or(0) };
+            Ok::<_, String>(Some((v, k)))
         });
         match r {
             Ok(Ok(Some((v, k)))) => {

@@ -51,7 +51,7 @@ pub struct ReleaseDialog {
     /// The engine's view, taken again when [`ReleaseDialog::key`] changes.
     pub view: Option<View>,
     /// (head, Checks revision, report models revision, accept) the view was taken at.
-    pub key: Option<(u64, u64, u64, bool)>,
+    pub key: Option<u64>,
     /// `Release with 1 error` is ticked.
     pub accept: bool,
     /// The folder typed or browsed to; empty: the default.
@@ -74,7 +74,7 @@ impl ReleaseDialog {
     }
 
     /// Take a fresh view, keeping what the user typed in a field and has not sent.
-    pub fn set_view(&mut self, v: View, key: (u64, u64, u64, bool)) {
+    pub fn set_view(&mut self, v: View, key: u64) {
         let typed: Vec<Option<String>> = self.fields.iter().zip(self.orig.iter()).map(|(f, o)| (f != o).then(|| f.clone())).collect();
         self.fields = v.fields.clone();
         self.orig = v.fields.clone();
@@ -345,13 +345,10 @@ pub fn fill_folders(rows: &mut [crate::sheets_ui::RevRow], p: &ecad_cadcraft::Pr
 }
 
 /// The badge of the Project panel's Release button (design 027 §3): errors (red), else warnings,
-/// from the kept rows; `None` when the Checks have not been kept yet (nothing is built for it).
+/// from the counts the kept Checks and report models keep (O(1); no row is counted again);
+/// `None` when the Checks have not been kept yet (nothing is built for it).
 pub fn badge(p: &ecad_cadcraft::Project) -> Option<(usize, usize)> {
-    let list = p.checks.as_ref()?;
-    let mut rows: Vec<&Check> = list.rows().collect();
-    let extra = p.outputs.as_ref().map(ecad_cadcraft::outputs::Outputs::checks).unwrap_or_default();
-    rows.extend(extra.iter());
-    let e = rows.iter().filter(|c| c.severity() == Severity::Error).count();
-    let w = rows.iter().filter(|c| c.severity() == Severity::Warning).count();
-    Some((e, w))
+    let (e, w, _) = p.checks.as_ref()?.counts();
+    let (oe, ow, _) = p.outputs.as_ref().map_or((0, 0, 0), ecad_cadcraft::outputs::Outputs::check_counts);
+    Some((e + oe, w + ow))
 }

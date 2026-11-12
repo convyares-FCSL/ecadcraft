@@ -428,3 +428,152 @@ fn reopening_a_revision_shows_it_in_its_title_block() {
     }
     let _ = (f.c1, std::fs::remove_dir_all(&f.dir));
 }
+
+/// Review of PR #54, 1: a hostile or odd FP1 value (`""`, `"."`, `"release"`, `".."`, an
+/// absolute folder that no release wrote) is never used as the folder: re-writing falls back to
+/// `release/Rev A`, so Replace and Keep both can never move or write beside the project's own
+/// folder or a foreign one. A `folder` that is the project's folder, holds it or lies above it is
+/// refused before anything is written.
+#[test]
+fn a_release_never_lands_on_the_project_or_a_foreign_folder() {
+    let mut f = fixture("land");
+    let foreign = tmp("land-foreign");
+    std::fs::write(foreign.join("keep.txt"), "mine").unwrap();
+    let project_file = f.dir.join("demo.ecad");
+    std::fs::write(&project_file, "stands in for the project file").unwrap();
+    let foreign_text = foreign.to_string_lossy().into_owned();
+    let head = f.h.head();
+    for (i, v) in ["", ".", "release", "..", "release/replaced", foreign_text.as_str()].into_iter().enumerate() {
+        // Write FP1 past the commands, as a hostile file could hold it.
+        f.h.cfg(|p| {
+            let doc = p.ledger.document();
+            let before = doc.properties.get("rev.1.released").cloned();
+            p.ledger
+                .commit(
+                    ecad_model::Author::User,
+                    "hostile",
+                    vec![Op::SetProperty { object: ObjectRef::Project, key: "rev.1.released".into(), before, after: Some(v.into()) }],
+                )
+                .unwrap();
+        });
+        let pre = f.h.run("prerelease", json!({"rev": "A"})).unwrap();
+        assert_eq!(pre["folder"], json!(folder(&f, "A").to_string_lossy()), "FP1 {v:?}");
+        let r = f.h.run("release", json!({"rev": "A", "existing": if i == 0 { "keep-both" } else { "replace" }}));
+        let r = r.unwrap_or_else(|e| panic!("FP1 {v:?}: {e}"));
+        assert_eq!(r["folder"].as_str().map(|s| s.contains("Rev A")), Some(true), "FP1 {v:?}: {r}");
+        assert_eq!(std::fs::read_to_string(&project_file).unwrap(), "stands in for the project file", "FP1 {v:?}");
+        assert_eq!(std::fs::read_to_string(foreign.join("keep.txt")).unwrap(), "mine", "FP1 {v:?}");
+        assert!(!foreign.join("release.json").exists(), "FP1 {v:?}");
+    }
+    // `folder` naming the project's folder, a folder above it, or release/ itself: refused.
+    let above = f.dir.parent().unwrap().to_string_lossy().into_owned();
+    for (folder_arg, existing) in
+        [(".", "replace"), ("", "replace"), (above.as_str(), "replace"), ("release", "keep-both"), ("release/replaced", "replace")]
+    {
+        if folder_arg.is_empty() {
+            continue; // empty means the default folder
+        }
+        for rev in [Some("A"), None] {
+            let mut params = json!({"folder": folder_arg, "existing": existing});
+            if let Some(r) = rev {
+                params["rev"] = json!(r);
+            }
+            let heads = f.h.head();
+            let e = f.h.run("release", params).unwrap_err();
+            assert!(e.contains("cannot be a release folder"), "{folder_arg:?}: {e}");
+            assert_eq!(f.h.head(), heads, "nothing recorded");
+        }
+        assert_eq!(std::fs::read_to_string(&project_file).unwrap(), "stands in for the project file");
+    }
+    assert!(f.h.head() >= head);
+    let _ = std::fs::remove_dir_all(&foreign);
+    let _ = std::fs::remove_dir_all(&f.dir);
+}
+
+/// Review of PR #54, 2: with Finalise chosen, the Release anyway gate looks at the rows the
+/// folder ships, those after Finalise. Two cables holding one provisional tag are an error before
+/// Finalise and none after: the release goes on without `accept`, and `checks.csv` has no error.
+#[test]
+fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
+    let mut f = fixture("gate");
+    for y in [30.0, 35.0] {
+        f.h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
+    }
+    let c2: CableId = id(&f.h.run("cableslash", json!({"from": [88, 27], "to": [92, 38]})).unwrap(), "cable");
+    let c1 = f.c1;
+    // Both hold `-W?1`, as a hostile or older file could.
+    f.h.cfg(|p| {
+        let doc = p.ledger.document();
+        let ops: Vec<Op> = [c1, c2]
+            .iter()
+            .map(|k| Op::SetProperty {
+                object: ObjectRef::Cable(*k),
+                key: "tag".into(),
+                before: doc.cables[k].properties.get("tag").cloned(),
+                after: Some("-W?1".into()),
+            })
+            .collect();
+        p.ledger.commit(ecad_model::Author::User, "shared provisional tag", ops).unwrap();
+    });
+    let pre = f.h.run("prerelease", json!({})).unwrap();
+    assert!(pre["errors"].as_u64().unwrap() >= 1, "an error before Finalise: {pre}");
+    let head = f.h.head();
+    let v = f.h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
+    assert_eq!(v["transactions"], json!([head + 1, head + 2]), "{v}");
+    let checks = std::fs::read_to_string(folder(&f, "B").join("D-1001 Rev B checks.csv")).unwrap();
+    assert!(!checks.contains("\r\nerror,"), "{checks}");
+    assert_eq!(manifest(&folder(&f, "B"))["checks"]["errors"], 0);
+    let _ = std::fs::remove_dir_all(&f.dir);
+}
+
+/// Review of PR #54, 3: the badge's counts are kept by the update map, never recounted: after
+/// each edit they equal a count of the rows; an edit that changes no row (a page renamed, the
+/// project's title) moves neither `Checks::changed`, the report models' check key nor the
+/// Release dialog's key, so nothing is recounted or rebuilt.
+#[test]
+fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
+    let mut f = fixture("badge");
+    let counted = |h: &mut H| {
+        h.cfg(|p| {
+            p.checks();
+            p.outputs();
+            let tally = |rows: &[ecad_cadcraft::checks::Check]| {
+                let n = |s| rows.iter().filter(|c| c.severity() == s).count();
+                use ecad_cadcraft::checks::Severity::*;
+                (n(Error), n(Warning), n(Info))
+            };
+            let rows: Vec<_> = p.checks.as_ref().unwrap().rows().cloned().collect();
+            let o = p.outputs.as_ref().unwrap();
+            (p.checks.as_ref().unwrap().counts(), tally(&rows), o.check_counts(), tally(&o.checks()))
+        })
+    };
+    let edits = [
+        ("wire", json!({"points": [[60, 60], [120, 60]]})),
+        ("place", json!({"symbol": "coil", "at": [250, 150]})),
+        ("place", json!({"symbol": "continuation", "at": [300, 100], "name": "24V"})),
+        ("place", json!({"symbol": "continuation", "at": [300, 140], "rotation": 180, "name": "0V"})),
+        ("wire", json!({"points": [[300, 100], [300, 140]]})),
+        ("projectprops", json!({"location": "+CP1"})),
+    ];
+    for (cmd, params) in edits {
+        f.h.run(cmd, params.clone()).unwrap();
+        let (kept, rows, okept, orows) = counted(&mut f.h);
+        assert_eq!(kept, rows, "{cmd} {params}");
+        assert_eq!(okept, orows, "{cmd} {params}");
+    }
+    f.h.cmdline("u");
+    let (kept, rows, _, _) = counted(&mut f.h);
+    assert_eq!(kept, rows, "after undo");
+    assert!(kept.0 + kept.1 > 0, "something to count: {kept:?}");
+    // Unrelated edits: nothing changes in the rows, so nothing is recounted or rebuilt.
+    let key = |h: &mut H| h.p(|p| (p.checks.as_ref().unwrap().changed, p.outputs.as_ref().unwrap().checks_key(), release::dialog_key(p, false)));
+    let before = key(&mut f.h);
+    let page = f.supply;
+    f.h.run("renamepage", json!({"page": page.hex(), "title": "Supply renamed"})).unwrap();
+    f.h.run("projectprops", json!({"title": "Another title"})).unwrap();
+    assert_eq!(key(&mut f.h), before, "an unrelated edit");
+    // A related one does.
+    f.h.run("wire", json!({"points": [[60, 80], [120, 80]]})).unwrap();
+    assert_ne!(key(&mut f.h).0, before.0, "a loose wire is a new row");
+    let _ = std::fs::remove_dir_all(&f.dir);
+}

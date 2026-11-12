@@ -331,14 +331,82 @@ pub fn recorded(p: &Project, folder: &Path) -> String {
     folder.to_string_lossy().into_owned()
 }
 
-/// FP1's value read back as a folder.
+/// FP1's value read back as a folder, only when it is safe to write there again (review of
+/// PR #54, 1): a relative value must name a folder inside `<project folder>/release/`; an
+/// absolute one must hold a `release.json` (a folder a release wrote). Anything else (`""`, `"."`,
+/// a foreign folder, a hostile file) gives `None`, and callers fall back to [`default_folder`].
 pub fn from_recorded(p: &Project, v: &str) -> Option<PathBuf> {
     let path = Path::new(v);
     if path.is_absolute() {
-        return Some(path.to_path_buf());
+        return (path.join(MANIFEST).is_file() && check_target(p, path).is_ok()).then(|| path.to_path_buf());
     }
     // Recorded with `/` on every platform; joined part by part, so the path reads natively.
-    Some(v.split('/').filter(|c| !c.is_empty() && *c != "." && *c != "..").fold(project_dir(p)?, |d, c| d.join(c)))
+    let dir = project_dir(p)?;
+    let folder = v.split('/').filter(|c| !c.is_empty() && *c != "." && *c != "..").fold(dir.clone(), |d, c| d.join(c));
+    let releases = lexical(&dir.join(RELEASE_DIR));
+    let f = lexical(&folder);
+    (same_or_below(&f, &releases) && !same_path(&f, &releases) && check_target(p, &folder).is_ok()).then_some(folder)
+}
+
+/// `path` with `.` dropped and `..` taken back, without touching the disk.
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// The parts of a path to compare: case-insensitive where the file system is (Windows, macOS).
+fn parts(path: &Path) -> Vec<String> {
+    let fold = cfg!(any(target_os = "windows", target_os = "macos"));
+    path.components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(|c| {
+            let t = c.as_os_str().to_string_lossy().replace('\\', "/");
+            if fold { t.to_lowercase() } else { t }
+        })
+        .collect()
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    parts(a) == parts(b)
+}
+
+/// Whether `a` is `b` or lies inside it.
+fn same_or_below(a: &Path, b: &Path) -> bool {
+    let (a, b) = (parts(a), parts(b));
+    a.len() >= b.len() && a.iter().zip(&b).all(|(x, y)| x == y)
+}
+
+/// Refuse a release folder that is the project's own folder, holds the project file, lies above
+/// it, or is `release/` itself or `release/replaced/` (review of PR #54, 1): Replace moves the
+/// target aside and Keep both writes beside it, so such a target would move the project.
+///
+/// # Errors
+/// In words, with the way out.
+pub fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
+    let f = lexical(folder);
+    let bad = match project_dir(p) {
+        Some(dir) => {
+            let dir = lexical(&dir);
+            same_or_below(&dir, &f) || same_path(&f, &dir.join(RELEASE_DIR)) || same_path(&f, &dir.join(RELEASE_DIR).join(REPLACED_DIR))
+        }
+        None => false,
+    };
+    if bad || f.parent().is_none() {
+        return Err(format!(
+            "{} cannot be a release folder: it holds the project or other releases. Choose a folder inside release, or another folder.",
+            shown(folder)
+        ));
+    }
+    Ok(())
 }
 
 /// `<folder>.partial`.
@@ -815,15 +883,33 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
     if let Err(e) = crate::sheet_cmds::plan_issue(p, &json!({})) {
         return Some(e);
     }
-    let (errors, _, _) = counts(rows);
-    if errors > 0 && params.get("accept").and_then(Value::as_str) != Some("errors") {
-        let first = rows.iter().find(|c| c.severity() == Severity::Error);
-        let what = first.map(|c| format!(" ({}, {})", c.kind.words(), c.locator(p.ledger.document()))).unwrap_or_default();
-        let open = if errors == 1 { "1 error is open".to_string() } else { format!("{errors} errors are open") };
-        let it = if errors == 1 { "it" } else { "them" };
-        return Some(format!("{open}{what}. Fix {it}, or give accept: \"errors\" to release with {it}; checks.csv lists {it}."));
+    // With Finalise chosen, the errors that count are those of the finalised state, the rows the
+    // folder ships (review of PR #54, 2): checked by `release_pending` once it has them.
+    if !finalising(params)
+        && params.get("accept").and_then(Value::as_str) != Some("errors")
+        && let Some(r) = errors_refusal(p.ledger.document(), rows)
+    {
+        return Some(r);
     }
     numbering_seam::refusal(p, rows, params)
+}
+
+/// Whether `params` choose 026's Finalise numbering.
+fn finalising(params: &Value) -> bool {
+    params.get("provisional").and_then(Value::as_str).is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"))
+}
+
+/// The refusal for errors in `rows` without `accept: "errors"` (design 027 §4.3), placed in `doc`.
+fn errors_refusal(doc: &Document, rows: &[Check]) -> Option<String> {
+    let (errors, _, _) = counts(rows);
+    if errors == 0 {
+        return None;
+    }
+    let first = rows.iter().find(|c| c.severity() == Severity::Error);
+    let what = first.map(|c| format!(" ({}, {})", c.kind.words(), c.locator(doc))).unwrap_or_default();
+    let open = if errors == 1 { "1 error is open".to_string() } else { format!("{errors} errors are open") };
+    let it = if errors == 1 { "it" } else { "them" };
+    Some(format!("{open}{what}. Fix {it}, or give accept: \"errors\" to release with {it}; checks.csv lists {it}."))
 }
 
 /// Why the project cannot be written, if it cannot.
@@ -1001,6 +1087,24 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
     Ok(view(p, want.as_deref(), accept, limit)?.json())
 }
 
+/// What the Release dialog's view of the pending revision depends on (design 027 §11.1, review of
+/// PR #54, 3): the rows (only when some row changed, `Checks::changed` and the report models'
+/// check key), the pending revision's fields, the refusal's inputs (file, read-only, branch,
+/// provisional items) and the nothing-changed warning, with the tick. An edit that changes none of
+/// these leaves it, and the dialog takes no new view. `None` until the Checks are kept.
+pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let checks = p.checks.as_ref()?;
+    let outputs = p.outputs.as_ref()?;
+    let doc = p.ledger.document();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (checks.changed, outputs.checks_key(), accept).hash(&mut h);
+    revisions::pending(doc).map(|r| r.fields).hash(&mut h);
+    revisions::issued(doc).len().hash(&mut h);
+    (&p.path, read_only(p), crate::sheet_cmds::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
+    Some(h.finish())
+}
+
 /// The issued row `rev` names.
 ///
 /// # Errors
@@ -1057,6 +1161,7 @@ fn folder_param(p: &Project, params: &Value, default: Option<PathBuf>) -> Result
         }
         _ => default.ok_or_else(|| SAVE_FIRST.to_string()),
     }
+    .and_then(|f| check_target(p, &f).map(|()| f))
 }
 
 /// `release` of the pending revision (design 027 §5.2).
@@ -1127,6 +1232,13 @@ pub(crate) fn release_pending(
         (o, r)
     });
     let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
+    // The errors gate on the rows the folder ships: after Finalise, when chosen.
+    if finalised.is_some()
+        && !accepted
+        && let Some(r) = errors_refusal(&issued_doc, &rows)
+    {
+        return Err(r);
+    }
     let stem = stem(p);
     let staged = {
         let fail = injected(p, Step::Partial);

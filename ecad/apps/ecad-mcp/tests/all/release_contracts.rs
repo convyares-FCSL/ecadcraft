@@ -127,9 +127,12 @@ fn with_writes_off_release_of_the_pending_revision_is_refused_and_an_issued_one_
     assert_eq!(manifest(&a)["rev"], "A");
     // Again: the same CSVs, byte for byte.
     let csv = std::fs::read(a.join("D-1001 Rev A wires.csv")).unwrap();
-    let v = r.exec("release", json!({"rev": "A", "existing": "replace"}));
+    // Replace moves a folder aside: a write, refused with writes off (review of PR #54, 1).
+    let m = r.refused("execute", json!({"command": "release", "params": {"rev": "A", "existing": "replace"}}));
+    assert!(m.contains("read-only"), "{m}");
+    let v = r.exec("release", json!({"rev": "A", "existing": "keep-both"}));
     assert_eq!(v["compare"]["different"], json!([]), "{v}");
-    assert_eq!(std::fs::read(a.join("D-1001 Rev A wires.csv")).unwrap(), csv);
+    assert_eq!(std::fs::read(root(&dir).join("release").join("Rev A (2)").join("D-1001 Rev A wires.csv")).unwrap(), csv);
     // The pending one cannot be named.
     let m = r.refused("execute", json!({"command": "release", "params": {"rev": "B"}}));
     assert!(m.contains("Rev B is not issued yet"), "{m}");

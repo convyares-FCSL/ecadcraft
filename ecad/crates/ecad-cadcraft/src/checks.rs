@@ -790,6 +790,12 @@ pub struct Checks {
     provisional: bool,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
+    /// Rows by severity (errors, warnings, info), kept by [`Checks::set`] (brief 027's badge reads
+    /// them; nothing recounts the rows).
+    counts: [usize; 3],
+    /// Bumped only when some row actually changed (an update that re-checked subjects and found
+    /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
+    pub changed: u64,
 }
 
 impl Checks {
@@ -826,11 +832,30 @@ impl Checks {
     }
 
     fn set(&mut self, key: Key, v: Vec<Check>) {
-        if v.is_empty() {
-            self.by_key.remove(&key);
-        } else {
-            self.by_key.insert(key, v);
+        let same = match self.by_key.get(&key) {
+            Some(old) => *old == v,
+            None => v.is_empty(),
+        };
+        if same {
+            return;
         }
+        for c in &v {
+            if let Some(n) = self.counts.get_mut(c.severity() as usize) {
+                *n += 1;
+            }
+        }
+        let old = if v.is_empty() { self.by_key.remove(&key) } else { self.by_key.insert(key, v) };
+        for c in old.iter().flatten() {
+            if let Some(n) = self.counts.get_mut(c.severity() as usize) {
+                *n = n.saturating_sub(1);
+            }
+        }
+        self.changed += 1;
+    }
+
+    /// Rows by severity: (errors, warnings, info). O(1): kept by every change.
+    pub fn counts(&self) -> (usize, usize, usize) {
+        (self.counts[0], self.counts[1], self.counts[2])
     }
 
     fn set_unnumbered(&mut self) {
@@ -891,7 +916,7 @@ impl Checks {
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64) {
         scope.collect(doc, ops, &self.grid);
         if scope.all {
-            *self = Checks { revision: self.revision + 1, ..Checks::build(doc, tol) };
+            *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build(doc, tol) };
             return;
         }
         // Geometry first: the grid must hold the new routes before any conductor is re-checked.
@@ -935,7 +960,7 @@ impl Checks {
                     }
                 }
                 None => {
-                    self.by_key.remove(&Key::Net(*id));
+                    self.set(Key::Net(*id), Vec::new());
                     self.unnumbered.remove(id);
                 }
             }
