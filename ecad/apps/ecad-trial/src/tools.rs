@@ -327,6 +327,13 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("showtext"),
     },
     Tool {
+        id: "ecad.tool.movetext",
+        group: "Text",
+        label: "Move Text",
+        tooltip: "Click a tag or label, then where it goes (Justify: its alignment; Reset: back to automatic)",
+        kind: Kind::Start("movetext"),
+    },
+    Tool {
         id: "ecad.view.hiddentext",
         group: "Text",
         label: "Show Hidden Text",

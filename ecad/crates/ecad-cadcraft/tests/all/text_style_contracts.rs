@@ -130,3 +130,28 @@ fn text_with_justify_is_recorded_with_its_alignment() {
     assert_eq!((t.halign, t.valign), (cadcraft_engine::doc::HAlign::Center, cadcraft_engine::doc::VAlign::Middle));
     h.check();
 }
+
+#[test]
+fn a_kind_may_have_its_own_font() {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
+    let c: ComponentId = id(&r, "component");
+    let tag = h.p(|p| ecad_cadcraft::devices::tag_words(p.ledger.document(), c));
+    let head = h.head();
+    h.run("textstyle", json!({"kind": "tag", "font": "Kind Font 031"})).unwrap();
+    assert_eq!(h.head(), head + 1);
+    let doc = h.doc();
+    assert_eq!(doc.properties.get("text.tag.font").map(String::as_str), Some("Kind Font 031"));
+    assert!(!doc.properties.contains_key("text.font"), "the project font is unchanged");
+    let s = text_style::text_style(&doc, TextKind::Tag);
+    assert_eq!(s.style_name, "ECAD-TAG-BOLD");
+    assert_eq!(text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);
+    assert_eq!(drawn(&mut h, page, &tag)[0].1, "ECAD-TAG-BOLD");
+    let d = h.pv(|p, pg| pg.drawing_of(p, page)).unwrap();
+    assert!(d.text_style("ECAD-TAG-BOLD").is_some() && d.text_style("ECAD-TAG").is_some());
+    // `null` goes back to the project font.
+    h.run("textstyle", json!({"kind": "tag", "font": null})).unwrap();
+    assert_eq!(text_style::text_style(&h.doc(), TextKind::Tag).style_name, STYLE_BOLD);
+    h.check();
+}

@@ -44,7 +44,7 @@ pub const DEFAULT_PADDING: u8 = ecad_model::DEFAULT_TAG_PADDING;
 /// Most letters in a tag prefix a project may set.
 pub const MAX_PREFIX_LETTERS: usize = 10;
 /// Refusal of an edit of a derived tag text or terminal label.
-pub const TAG_DERIVED: &str = "The tag text is derived; change the tag with Device Properties.";
+pub const TAG_DERIVED: &str = "The tag text is derived: change the tag with Device Properties, or move it with Move Text.";
 /// Most characters in a property value (design 018 §6.1).
 pub const MAX_PROPERTY_CHARS: usize = 200;
 /// Most devices a JSON list returns.
@@ -944,6 +944,21 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
 pub struct PageText {
     pub text: DerivedText,
     pub shown: bool,
+    /// Its place is stored (Move Text, design 031 §6.4).
+    pub moved: bool,
+    /// Its tag block found no free candidate (§6.3).
+    pub overlaps: bool,
+}
+
+thread_local! {
+    /// How many times [`all_texts_on_page`] ran per page on this thread: the update-map tests
+    /// count it (a change elsewhere must not work a page's texts out again).
+    static TEXT_PASSES: std::cell::RefCell<BTreeMap<PageId, u64>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+/// How many times this thread has worked out `page`'s derived texts (see `TEXT_PASSES`).
+pub fn text_passes(page: PageId) -> u64 {
+    TEXT_PASSES.with(|c| c.borrow().get(&page).copied().unwrap_or(0))
 }
 
 /// The run rule of a symbol (design 031 §5.3), from its starter kind.
@@ -963,7 +978,8 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
-    use crate::text_style::{Shown, TextKind, TextTarget, text_shown, text_style};
+    TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
+    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
         if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
@@ -972,10 +988,18 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
+    let look = crate::text_style::Look::new(doc);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
     let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
+    // Tag blocks wait for placement (design 031 §6), after every fixed text is known.
+    struct Pending {
+        block: Block,
+        lines: Vec<(TextOf, String, f64, bool, Option<u8>)>,
+    }
+    let mut pending: Vec<Pending> = Vec::new();
+    let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -998,42 +1022,102 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
             out.extend(texts.into_iter().map(|mut t| {
                 t.height = text_style(doc, kind_of(t.of)).height;
                 let shown = shown(kind_of(t.of));
-                PageText { text: t, shown }
+                PageText { text: t, shown, moved: false, overlaps: false }
             }));
             continue;
         }
+        // Connection point labels keep their fixed rule (or a stored place, §6.4) and are obstacles.
+        let labels_shown = shown(TextKind::PointLabel);
+        let label_style = text_style(doc, TextKind::PointLabel);
+        let props = doc.components.get(&c).map(|x| &x.properties);
+        for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
+            let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
+            if let TextOf::Terminal(t) = of
+                && let Some((p, h, v)) = props
+                    .and_then(|p| p.get(&point_label_key(doc, rid, t)))
+                    .and_then(|s| crate::text_style::parse_at(s))
+                    .map(|(p, h, v)| (pl.apply(p), h, v))
+                    .filter(|(p, _, _)| p.is_finite())
+            {
+                (at, halign, valign, moved) = (p, h, v, true);
+            }
+            if labels_shown {
+                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value);
+                fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
+            }
+            out.push(PageText {
+                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None },
+                shown: labels_shown,
+                moved,
+                overlaps: false,
+            });
+        }
+        // The tag block (design 031 §6.1): the tag, then the description and part number.
+        let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
         let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
-        let tag = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes));
-        let (tag_shown, labels_shown) = (shown(TextKind::Tag), shown(TextKind::PointLabel));
-        for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag.as_deref(), &labels, sizes) {
-            let aci = (prov && of == TextOf::Tag).then_some(PROVISIONAL_ACI);
-            let is_tag = of == TextOf::Tag;
+        let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
+        if let Some(t) = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes)) {
+            lines.push((TextOf::Tag, t, sizes.tag, shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
+        }
+        for (of, key, kind) in
+            [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
+        {
+            if let Some(v) = props.and_then(|p| p.get(key)).map(|v| v.trim()).filter(|v| !v.is_empty()) {
+                lines.push((of, v.to_string(), text_style(doc, kind).height, shown(kind), None));
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        // Shown lines first; the size is theirs (all of them when none is shown, for Show Hidden
+        // Text).
+        lines.sort_by_key(|l| !l.3);
+        let any = lines.iter().any(|l| l.3);
+        let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
+        let w = sized
+            .iter()
+            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
+            .fold(0.0, f64::max);
+        // Line tops are `text.line_pitch` × each line's height apart.
+        let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
+        pending.push(Pending { block: Block { rep: rid, component: c, lo, hi, vertical: vertical(&pl), placement: pl, w, h }, lines });
+    }
+    let placed = crate::text_style::place_blocks(
+        doc,
+        page,
+        &pending.iter().filter(|p| p.lines.iter().any(|l| l.3)).map(|p| p.block.clone()).collect::<Vec<_>>(),
+        &fixed,
+    );
+    for p in pending {
+        let place = placed.get(&p.block.rep).copied().unwrap_or_else(|| {
+            // Nothing shown: the first candidate, for Show Hidden Text only.
+            let gap = sizes.gap;
+            let (rect, halign) = crate::text_style::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
+            crate::text_style::BlockPlace { rect, halign, moved: false, overlaps: false }
+        });
+        let mut top = place.rect.1.y;
+        for (of, value, height, shown, aci) in p.lines {
+            let at = place.line_at(top);
             out.push(PageText {
-                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci },
-                shown: if is_tag { tag_shown } else { labels_shown },
+                text: DerivedText { rep: p.block.rep, of, value, at, height, halign: place.halign, valign: VAlign::Top, aci },
+                shown,
+                moved: place.moved,
+                overlaps: place.overlaps && shown,
             });
-            if !is_tag {
-                continue;
-            }
-            // The tag block's further lines (design 031 §6.1), under the tag with its justification.
-            let mut y = at.y - pitch * height;
-            for (of, key, kind) in
-                [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
-            {
-                let Some(v) = doc.components.get(&c).and_then(|x| x.properties.get(key)).map(|v| v.trim()).filter(|v| !v.is_empty()) else {
-                    continue;
-                };
-                let h = text_style(doc, kind).height;
-                out.push(PageText {
-                    text: DerivedText { rep: rid, of, value: v.to_string(), at: Pt::new(at.x, y), height: h, halign, valign, aci: None },
-                    shown: shown(kind),
-                });
-                y -= pitch * h;
-            }
+            top -= pitch * height;
         }
     }
     out
+}
+
+/// The key a connection point label's stored place is kept under (design 031 §6.4):
+/// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
+/// label.
+pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
+    let term = doc.terminals.get(&t);
+    let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
+    format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
 }
 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).

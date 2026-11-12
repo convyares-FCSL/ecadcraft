@@ -22,6 +22,7 @@ pub mod outputs;
 pub mod release;
 pub mod report;
 pub mod strips;
+pub mod text;
 pub mod v2;
 pub mod wires_nets;
 
@@ -150,6 +151,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         measure::release_lock_file(&v2_path);
         eprintln!("{} {}: measuring terminal strips and cable cores…", tier.name, variant.name());
         let strips = strips::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring text placement and styles…", tier.name, variant.name());
+        let text = text::measure(&v2_path, runs, scratch);
         eprintln!("{} {}: measuring the pre-release check and the release…", tier.name, variant.name());
         let rel = release::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
@@ -166,6 +170,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             outputs: Some(outs?),
             strips: Some(strips?),
             release: Some(rel?),
+            text: Some(text?),
             wires: Some(wires?),
         });
     }

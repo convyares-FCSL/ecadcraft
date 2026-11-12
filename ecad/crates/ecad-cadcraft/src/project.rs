@@ -666,9 +666,13 @@ fn cables_layer() -> CLayer {
 
 /// One computed part of a cable's drawing (briefs 005, 009) as an entity on the reserved layer:
 /// a line for two points, else a polyline; an arc; a text. Trunk and spine carry the cable
-/// lineweight, bends, tails and frames the wire lineweight, text the layer's.
-pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
-    use crate::look::{LABEL_HEIGHT, Shape, Weight};
+/// lineweight, bends, tails and frames the wire lineweight, text the layer's. A text takes its
+/// height and style from `look` (brief 031): a reference end's text is a reference, every other
+/// one cable text.
+pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Part, handle: Handle) -> Entity {
+    use crate::look::{Role, Shape, Weight};
+    use crate::text_style::TextKind;
+    let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
         Shape::Path { points, closed: false } if points.len() == 2 => match points.as_slice() {
@@ -681,7 +685,7 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
         }
         Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
             at: *at,
-            height: LABEL_HEIGHT,
+            height: look.style(text_kind).height,
             rotation: *rotation,
             value: value.clone(),
             halign: Default::default(),
@@ -694,7 +698,11 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
         Weight::Text => Lineweight::ByLayer,
     };
     let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
-    Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind }
+    let mut e = Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind };
+    if matches!(part.shape, Shape::Text { .. }) {
+        look.apply(&mut e, text_kind);
+    }
+    e
 }
 
 /// One part of a device cross-reference (brief 025) as an entity on the tags layer: a text, or a
@@ -922,6 +930,8 @@ pub fn project_page_shown(
             groups.push(Group { name: format!("{ECAD_PREFIX}{:032x}", rid.0), description: String::new(), selectable: true, members });
         }
     }
+    // The project's text styles (brief 031), for every derived text of the page.
+    let look = crate::text_style::Look::new(doc);
     for (k, f) in &fans {
         map.quiet.extend(f.quiet.iter().copied());
         for (i, part) in f.parts.iter().enumerate() {
@@ -931,20 +941,19 @@ pub fn project_page_shown(
                 && let Some(r) = part.reference
             {
                 let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());
-                ents.push(part_entity(part, h));
+                ents.push(part_entity(&look, part, h));
                 map.insert_ref_text(r, h);
                 continue;
             }
             let index = u32::try_from(i).map_err(|_| "a cable drawing has too many parts")?;
             let h = prev.fan(*k, index).unwrap_or_else(|| d.new_handle());
-            ents.push(part_entity(part, h));
+            ents.push(part_entity(&look, part, h));
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
     // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
     // project's text styles (brief 031).
-    let look = crate::text_style::Look::new(doc);
-    crate::text_style::install_fonts(&mut d, &look.fonts);
+    crate::text_style::install_look(&mut d, &look);
     if hidden_text {
         crate::text_style::add_hidden_layer(&mut d);
     }

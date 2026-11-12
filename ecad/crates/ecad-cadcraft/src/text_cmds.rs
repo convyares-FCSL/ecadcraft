@@ -1,5 +1,5 @@
 //! Brief 031's commands (design 031 §10): `textstyle` (Q1), `showtext`, `hiddentext` and
-//! `pagetexts` (Q3), and `defaults` (§10.8, the defaults registry's read-only list). Writes commit through [`crate::project::Project::apply_edit`] as
+//! `pagetexts` (Q3), `movetext` (Q2), and `defaults` (§10.8, the defaults registry's read-only list). Writes commit through [`crate::project::Project::apply_edit`] as
 //! one transaction; reads change nothing and run with writes off.
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -32,6 +32,13 @@ show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields ar
 (at most one target; none = the project; null: inherit)",
             )
             .interactive(crate::interact::text_tools::showtext)
+            .noundo(),
+        CommandSpec::new("movetext", "Move Text", run_movetext)
+            .params(
+                "{representation: id, kind?: \"tag\"|\"point_label\", terminal?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, terminal?, reset: true} \
+(to is a page point; stored in the symbol's frame)",
+            )
+            .interactive(crate::interact::text_tools::movetext)
             .noundo(),
         CommandSpec::new("hiddentext", "Show Hidden Text", run_hiddentext).params("{on?: bool} (display only; no field toggles)").noundo(),
         CommandSpec::new("pagetexts", "Page Texts", run_pagetexts)
@@ -92,6 +99,8 @@ fn number_text(x: f64) -> String {
 /// One kind's changes in a `textstyle` call.
 struct KindChange {
     kind: TextKind,
+    /// The kind's own font (owner, 2026-11-12); `null` goes back to the project font.
+    font: Field<String>,
     height: Field<f64>,
     weight: Field<String>,
     show: Field<String>,
@@ -114,13 +123,20 @@ fn kind_change(params: &Value) -> Result<Option<KindChange>, String> {
     let Some(kind) = kind else {
         return if changes { Err(NEEDS_KIND.into()) } else { Ok(None) };
     };
+    // With a kind, `font` is that kind's own font.
+    let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT)?;
+    if let Field::Set(f) = &font
+        && kind.font_entry().parse(f).is_none()
+    {
+        return Err(BAD_FONT.into());
+    }
     if let Field::Set(w) = &show {
         let entry = kind.show_entry().ok_or_else(|| format!("{} has no Shown setting.", kind.word()))?;
         if entry.parse(w).is_none() {
             return Err(BAD_SHOW.into());
         }
     }
-    Ok(Some(KindChange { kind, height, weight, show }))
+    Ok(Some(KindChange { kind, font, height, weight, show }))
 }
 
 /// The ops of one kind's changes.
@@ -146,6 +162,11 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>) {
             set_project(doc, k.height_entry().key, h.map(number_text), ops);
         }
     }
+    match &c.font {
+        Field::Absent => {}
+        Field::Clear => set_project(doc, k.font_entry().key, None, ops),
+        Field::Set(f) => set_project(doc, k.font_entry().key, Some(f.clone()), ops),
+    }
     match &c.weight {
         Field::Absent => {}
         Field::Clear => set_project(doc, k.weight_entry().key, None, ops),
@@ -170,7 +191,12 @@ fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     if !given {
         return with_any_page(s, |p, _| Ok(textstyle_json(p.ledger.document(), false)));
     }
-    let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT).map_err(err)?;
+    // The project font: `font` with no `kind` (with a kind it is that kind's font).
+    let font = if params.get("kind").is_some_and(|k| !k.is_null()) {
+        Field::Absent
+    } else {
+        field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT).map_err(err)?
+    };
     if let Field::Set(f) = &font
         && defaults::text::FONT.parse(f).is_none()
     {
@@ -236,6 +262,7 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
                 "kind": k.word(),
                 "height": h.number(),
                 "weight": w.word(),
+                "font": crate::text_style::kind_font(doc, *k),
                 "show": sh.map(|r| r.word()),
                 "default": default,
                 "builtin": {
@@ -542,7 +569,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
             let d = &t.text;
             let kind = crate::devices::kind_of(d.of);
             let style = look.style(kind);
-            let w = width_in(&look.fonts, TextStyle { height: d.height, ..style }, &d.value);
+            let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
             let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
                 ecad_model::Subject::Component(c) => Some(c.hex()),
@@ -562,8 +589,8 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
                 "height": d.height,
                 "weight": weight,
                 "shown": t.shown,
-                "moved": false,
-                "overlaps": false,
+                "moved": t.moved,
+                "overlaps": t.overlaps,
                 "box": [[lo.x, lo.y], [hi.x, hi.y]],
             });
             if let crate::devices::TextOf::Terminal(id) = d.of {
@@ -577,4 +604,90 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
         v["more"] = json!(more);
     }
     v
+}
+
+// ---------------------------------------------------------------- movetext (§10.3)
+
+pub const BAD_POINT: &str = "A text position must be a finite point.";
+pub const BAD_JUSTIFY: &str = "Justify is two letters: L, C or R, then T, M or B.";
+pub const NEEDS_TERMINAL: &str = "point_label needs the connection point's key.";
+
+/// The key and current text of a movable derived text: a symbol's tag block, or one of its
+/// connection point labels.
+pub fn move_target(
+    doc: &Document, rep: RepresentationId, kind: TextKind, terminal: Option<ecad_model::TerminalId>,
+) -> Result<(ComponentId, String, Option<crate::devices::PageText>), String> {
+    let r = doc.representations.get(&rep).ok_or_else(|| format!("No representation {}.", rep.hex()))?;
+    let c = match r.subject {
+        ecad_model::Subject::Component(c) if r.form == ecad_model::Form::Symbol => c,
+        _ => return Err("That representation is not a symbol.".into()),
+    };
+    let (key, of) = match kind {
+        TextKind::Tag => (format!("{}tag.at", crate::text_style::symbol_prefix(rep)), crate::devices::TextOf::Tag),
+        TextKind::PointLabel => {
+            let t = terminal.ok_or(NEEDS_TERMINAL)?;
+            if doc.terminals.get(&t).is_none_or(|x| x.component != c) {
+                return Err(format!("No connection point {} on that symbol.", t.hex()));
+            }
+            (crate::devices::point_label_key(doc, rep, t), crate::devices::TextOf::Terminal(t))
+        }
+        _ => return Err("Only a tag or a connection point label can be moved.".into()),
+    };
+    let current = crate::devices::all_texts_on_page(doc, r.page).into_iter().find(|t| t.text.rep == rep && t.text.of == of);
+    Ok((c, key, current))
+}
+
+/// `movetext {representation, kind, terminal?, to, justify?}` or `{…, reset: true}` (§10.3).
+fn run_movetext(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let rep: RepresentationId = opt_id(params, "representation").map_err(err)?.ok_or_else(|| err("`representation` (hex id) is required."))?;
+    let kind = kind_param(params).map_err(err)?.unwrap_or(TextKind::Tag);
+    let terminal: Option<ecad_model::TerminalId> = opt_id(params, "terminal").map_err(err)?;
+    let reset = params.get("reset").and_then(Value::as_bool) == Some(true);
+    let to = match params.get("to") {
+        _ if reset => None,
+        Some(Value::Array(a)) => match (a.first().and_then(Value::as_f64), a.get(1).and_then(Value::as_f64), a.len()) {
+            (Some(x), Some(y), 2) if x.is_finite() && y.is_finite() => Some(ecad_model::Pt::new(x, y)),
+            _ => return Err(err(BAD_POINT)),
+        },
+        _ => return Err(err(BAD_POINT)),
+    };
+    let justify = match params.get("justify") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_str().and_then(crate::text_style::parse_justify).ok_or_else(|| err(BAD_JUSTIFY))?),
+    };
+    with_project(s, |p, pg, _| {
+        let doc = p.ledger.document();
+        let (c, key, current) = move_target(doc, rep, kind, terminal)?;
+        let r = doc.representations.get(&rep).ok_or("No such representation.")?;
+        let (_, pl) = crate::devices::rep_definition(doc, r).ok_or("That symbol cannot be drawn.")?;
+        let after = match to {
+            None => None,
+            Some(to) => {
+                let (h, v) = justify
+                    .or_else(|| current.as_ref().map(|t| (t.text.halign, t.text.valign)))
+                    .unwrap_or((cadcraft_engine::doc::HAlign::Left, cadcraft_engine::doc::VAlign::Top));
+                let local = crate::text_style::to_local(&pl, to).ok_or(BAD_POINT)?;
+                Some(crate::text_style::at_text(local, h, v))
+            }
+        };
+        let before = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let changed = before != after;
+        if changed {
+            let what = match kind {
+                TextKind::Tag => format!("tag {}", crate::devices::tag_words(doc, c)),
+                _ => "label".to_string(),
+            };
+            let label = if after.is_some() { format!("Move {what}") } else { format!("Reset {what}") };
+            p.apply_edit(pg, "movetext", &label, vec![Op::SetProperty { object: ObjectRef::Component(c), key, before, after: after.clone() }])?;
+        }
+        let doc = p.ledger.document();
+        let now = move_target(doc, rep, kind, terminal).ok().and_then(|(_, _, t)| t);
+        Ok(json!({
+            "representation": rep.hex(),
+            "kind": kind.word(),
+            "at": if after.is_some() { now.as_ref().map(|t| json!([t.text.at.x, t.text.at.y])) } else { None },
+            "justify": now.as_ref().map(|t| crate::text_style::justify_code(t.text.halign, t.text.valign)),
+            "changed": changed,
+        }))
+    })
 }
