@@ -22,7 +22,9 @@ use ecad_model::{CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, 
 
 // ---------------------------------------------------------------- tokens (design §12)
 
-/// `ecad.label-height`: core labels, wire numbers, label box lines, reference text.
+/// The height the cable look is laid out for (label spacing, box pitch and padding, and the width
+/// [`font_width`] measures). The texts themselves are drawn at the project's cable text and
+/// reference heights (brief 031, `text_style`), never larger than this by default, so they fit.
 pub const LABEL_HEIGHT: f64 = 2.5;
 /// `ecad.label-gap`: between the bend and the first label, between labels, after the last.
 pub const LABEL_GAP: f64 = 1.0;

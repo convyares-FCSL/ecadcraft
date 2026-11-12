@@ -96,12 +96,18 @@ pub enum Primitive {
         center: Pt,
         radius: f64,
     },
-    /// Single-line text, left-baseline aligned, standard style.
+    /// Single-line text in the standard style. `at` is its alignment point: the left end of the
+    /// baseline unless `halign`/`valign` say otherwise (brief 031, FP4; both are left out of the
+    /// file at left/baseline, so older files read and save the same).
     Text {
         at: Pt,
         height: f64,
         rotation: f64,
         value: String,
+        #[serde(default, skip_serializing_if = "is_default")]
+        halign: TextHAlign,
+        #[serde(default, skip_serializing_if = "is_default")]
+        valign: TextVAlign,
     },
     Point {
         at: Pt,
@@ -142,6 +148,31 @@ impl Primitive {
             Primitive::Point { at } => at.is_finite(),
         }
     }
+}
+
+/// A text's horizontal alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextHAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// A text's vertical alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextVAlign {
+    #[default]
+    Baseline,
+    Bottom,
+    Middle,
+    Top,
+}
+
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    *t == T::default()
 }
 
 /// A placed instance of an embedded definition (symbol form, proposal §4.1).

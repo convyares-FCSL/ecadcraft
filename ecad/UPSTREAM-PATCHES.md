@@ -12,13 +12,21 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | --- | --- |
 | `README.md` | ECAD repository front page |
 | `.git-blame-ignore-revs` | Commits `git blame` skips: the ECAD workspace reformat (PR #46) |
-| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
+| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy, fast tests of changed crates and their dependents) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
 | `docs/decisions.md` | ECAD decision log |
 | `docs/cadcraft-assessment.md` | Phase 0 assessment |
 | `docs/document-architecture-proposal.md` | architecture proposal (PR #1) |
 | `docs/ecad-architecture-foundations.md` | owner's foundations note |
+
+## Upstream fixes taken ahead of the next sync
+
+Already merged upstream; each entry goes away at the next upstream sync, which brings the same change.
+
+| File | Upstream change | Why now |
+| --- | --- | --- |
+| `crates/fonts/src/mtext.rs` | CADCraft #2954 (`6f0f1fe`): `strips_formatting` expects a short `\U+` escape to keep its digits, as `unicode_escapes_are_decoded_in_every_parser` already did (test only) | After CADCraft 0.19.0 the two tests contradicted each other, so the root workspace's tests failed at the v0.1 QA gate |
 
 ## Code patches to upstream crates: the generic extension interface
 

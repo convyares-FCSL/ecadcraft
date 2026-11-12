@@ -45,19 +45,21 @@ describes it.
 - *Owner-tried:* not yet.
 
 **Brief 031 (design `ecad/docs/design/031.md`), on `feature/text-styles`, not yet in `dev`,
-steps Q1 (text styles) and Q3 (show and hide):** every derived text takes its size and weight from one style table per
+steps Q1 (text styles), Q3 (show and hide) and Q2 (placement):** every derived text takes its size and weight from one style table per
 project: tags 2.5 mm bold, connection point labels 1.5 mm, location labels 1.6 mm, continuation
 names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BIZ UDPGothic` by
 default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
 font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
 height, bold and shown state in one transaction; `textstyle` does the same typed, and the
-read-only `defaults` lists every registered default and where its value comes from. Section 5Q.
+read-only `defaults` lists every registered default and where its value comes from. Section 5-031.
 Tags, connection point labels, descriptions and part numbers (new, hidden by default) can be
 hidden or shown per symbol, device, page or project (**Show/Hide Text**, Properties ▸ Texts,
 `showtext`); a strip's tag prints once per run of adjacent terminals and a PLC device's once per
 run of its channels; continuation names are hidden by default. **Show Hidden Text** draws hidden
-texts dimmed, never printed. The cable look's texts (core labels, label box) keep their 2.5 mm in
-this step.
+texts dimmed, never printed. Tags (with any shown description and part number under them) are
+placed beside their symbol where they cross no wire, symbol or other text; **Move Text** and
+`movetext` store a place that follows the symbol; `text` with `justify` is recorded. The cable look's texts (core labels, label box) are drawn at the cable text height (1.6 mm) and
+reference ends at the reference height (2.0 mm); a copied symbol keeps its own text settings.
 - *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
   registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
   (drawn sizes and styles, redraw, a font change then an edit),
@@ -1463,7 +1465,7 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
 
-## 5Q. Text styles (by clicking)
+## 5-031. Text styles (by clicking)
 
 Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
 
@@ -1492,6 +1494,14 @@ nothing else changes, and the project's stored font is kept.
 6. **Show Hidden Text** (ECAD tab ▸ **Text**): hidden tags and labels are drawn dimmed (grey);
    click it again to stop. It records nothing and is never printed. Properties of a device, a
    symbol or a page has a **Texts** group (`Default (shown)`, Shown, Hidden, Once per run).
+7. **Placement.** Place two `no` contacts 10 mm apart and draw a wire through where a tag sits:
+   the tags move to the next free place (left top, left middle, right, above, below) and never
+   overlap each other while a free place exists.
+8. **Move Text** (ECAD tab ▸ **Text**): click a tag, then click where it goes (`J` first to type
+   its alignment, e.g. `LT`). Expected: `Tag -K01 moved. Reset puts it back.` Move the symbol: the
+   tag follows. Start Move Text again, type `R` (Reset) and click the tag: placed automatically
+   again. `text {"at":[100,100],"text":"X","justify":"MC"}` now draws X centred (older builds
+   cannot open a project with such a text).
 
 Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
 `textstyle {"kind":"tag","height":3,"weight":"regular"}`, `textstyle {"font":"Arial"}`,
@@ -1499,7 +1509,9 @@ Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
 `defaults {"group":"Text"}` (every registered default, its value and where it comes from).
 `showtext {"kind":"tag","show":"off"}` (the project; add `"page"`, `"component"` or
 `"representation"` for narrower), `showtext {"kind":"description","show":"on","component":"<id>"}`,
-`hiddentext {}` (toggles), `pagetexts {}` (every derived text on the page, hidden ones too).
+`hiddentext {}` (toggles), `pagetexts {}` (every derived text on the page, hidden ones too, with
+`moved` and `overlaps`), `movetext {"representation":"<id>","kind":"tag","to":[130,170],"justify":"LT"}`
+(`"reset":true` instead of `to` puts it back).
 `projectprops`, `pageprops` and `setprop` refuse `text.` keys.
 
 ## 5-033. Print and project (by clicking)

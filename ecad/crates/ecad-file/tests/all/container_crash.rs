@@ -178,7 +178,7 @@ fn child_v2_writer() {
     };
     let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(acks_path(&file)).unwrap();
     let mut rng = Rng::new(u64::from(std::process::id()) ^ 0x5EED);
-    writeln!(acks, "s {} {}", ledger.head(), digest(ledger.document())).unwrap();
+    ack(&mut acks, &format!("s {} {}", ledger.head(), digest(ledger.document())));
     loop {
         let r = rng.below(100);
         if r == 0 {
@@ -188,7 +188,7 @@ fn child_v2_writer() {
             let mut w = store.writer().unwrap();
             let h = w.put_asset("application/octet-stream", &bytes).unwrap();
             w.commit().unwrap();
-            writeln!(acks, "a {}", ecad_file::chain::hex(&h)).unwrap();
+            ack(&mut acks, &format!("a {}", ecad_file::chain::hex(&h)));
             continue;
         }
         let (n, version) = match r {
@@ -200,9 +200,9 @@ fn child_v2_writer() {
         disk.save(&mut ledger).unwrap();
         if version {
             let seq = ledger.head() - 1;
-            writeln!(acks, "v V{seq} {seq}").unwrap();
+            ack(&mut acks, &format!("v V{seq} {seq}"));
         }
-        writeln!(acks, "s {} {}", ledger.head(), digest(ledger.document())).unwrap();
+        ack(&mut acks, &format!("s {} {}", ledger.head(), digest(ledger.document())));
     }
 }
 
@@ -213,6 +213,49 @@ fn digest(doc: &Document) -> String {
 
 fn ack_lines(file: &Path) -> Vec<String> {
     std::fs::read_to_string(acks_path(file)).unwrap_or_default().lines().map(String::from).collect()
+}
+
+/// Appends one acknowledgement line in a single write. `writeln!` on a `File` writes each piece
+/// of the format separately, so a kill between them left a torn line (`s 1316 ` and no
+/// fingerprint) that the next child's first line was appended to.
+fn ack(acks: &mut std::fs::File, line: &str) {
+    acks.write_all(format!("{line}\n").as_bytes()).unwrap();
+}
+
+/// A whole fingerprint or asset hash (SHA-256, 64 hex digits), not one torn by a kill.
+fn whole_hash(h: &str) -> bool {
+    h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// One acknowledgement line of the kill test.
+enum Ack {
+    Save(u64, String),
+    Version(String, u64),
+    Asset(String),
+}
+
+/// `line` as an acknowledgement, or `None` for a line a kill tore (the child died before the
+/// acknowledgement was whole, so it acknowledged nothing).
+fn parse_ack(line: &str) -> Option<Ack> {
+    let mut it = line.split(' ');
+    let ack = match (it.next()?, it.next()?) {
+        ("s", head) => {
+            let d = it.next()?;
+            whole_hash(d).then_some(())?;
+            Ack::Save(head.parse().ok()?, d.to_string())
+        }
+        ("v", name) => {
+            let seq: u64 = it.next()?.parse().ok()?;
+            (name == format!("V{seq}")).then_some(())?;
+            Ack::Version(name.to_string(), seq)
+        }
+        ("a", h) => {
+            whole_hash(h).then_some(())?;
+            Ack::Asset(h.to_string())
+        }
+        _ => return None,
+    };
+    it.next().is_none().then_some(ack)
 }
 
 #[test]
@@ -227,6 +270,7 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
     let mut failures = Vec::new();
     let mut reopen_ms = Vec::new();
     let mut acked_total = 0usize;
+    let mut torn = 0usize;
     for round in 0..n {
         let before = ack_lines(&file).len();
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
@@ -249,14 +293,16 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         std::thread::sleep(Duration::from_millis(rng.below(250)));
         let _ = child.kill();
         let _ = child.wait();
-        let acks = ack_lines(&file);
-        acked_total += acks.len().saturating_sub(before);
+        let lines = ack_lines(&file);
+        acked_total += lines.len().saturating_sub(before);
+        let acks: Vec<Ack> = lines.iter().filter_map(|l| parse_ack(l)).collect();
+        torn = lines.len() - acks.len();
         // Acknowledged saves: head → the document's fingerprint.
         let saves: std::collections::BTreeMap<u64, String> = acks
             .iter()
-            .filter_map(|l| {
-                let mut it = l.strip_prefix("s ")?.split(' ');
-                Some((it.next()?.parse().ok()?, it.next()?.to_string()))
+            .filter_map(|a| match a {
+                Ack::Save(head, d) => Some((*head, d.clone())),
+                _ => None,
             })
             .collect();
         let last_save = saves.keys().next_back().copied().unwrap_or(0);
@@ -288,19 +334,19 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         let store = o.project.project().store().clone();
         let r = store.reader().unwrap();
         let branch = o.project.project().branch();
-        for l in &acks {
-            if let Some(rest) = l.strip_prefix("v ") {
-                let mut it = rest.split(' ');
-                let (name, seq) = (it.next().unwrap(), it.next().unwrap().parse::<u64>().unwrap());
-                match r.version(branch, VersionKind::User, name).unwrap() {
-                    Some(v) if v.point.seq == seq => {}
+        for a in &acks {
+            match a {
+                Ack::Version(name, seq) => match r.version(branch, VersionKind::User, name).unwrap() {
+                    Some(v) if v.point.seq == *seq => {}
                     other => failures.push(format!("round {round}: acknowledged version {name} is {other:?}")),
+                },
+                Ack::Asset(h) => {
+                    let hash = ecad_file::chain::parse_hex(h).unwrap();
+                    if r.asset(&hash).unwrap().is_none() {
+                        failures.push(format!("round {round}: acknowledged asset {h} is missing"));
+                    }
                 }
-            } else if let Some(h) = l.strip_prefix("a ") {
-                let hash = ecad_file::chain::parse_hex(h).unwrap();
-                if r.asset(&hash).unwrap().is_none() {
-                    failures.push(format!("round {round}: acknowledged asset {h} is missing"));
-                }
+                Ack::Save(..) => {}
             }
         }
         drop(r);
@@ -321,7 +367,7 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
     let pick = |q: f64| reopen_ms.get(((reopen_ms.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0.0);
     let size = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
     eprintln!(
-        "process kill: {n} rounds, {acked_total} acknowledgements, {} failures; reopen after kill median {:.1} ms, \
+        "process kill: {n} rounds, {acked_total} acknowledgements ({torn} torn by a kill, skipped), {} failures; reopen after kill median {:.1} ms, \
          p95 {:.1} ms, worst {:.1} ms; file {size} bytes",
         failures.len(),
         pick(0.5),
@@ -348,16 +394,16 @@ fn child_v2_save_as_writer() {
     let first = dir.join("p0.ecad");
     let (mut disk, _) = ecad_file::v2::disk::DiskProjectV2::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
     let mut ledger = f.ledger;
-    writeln!(acks, "f {} {} {}", first.display(), ledger.head(), digest(ledger.document())).unwrap();
+    ack(&mut acks, &format!("f {} {} {}", first.display(), ledger.head(), digest(ledger.document())));
     for i in 1..u32::MAX {
         let (n, v) = (1 + rng.below(30), rng.below(4) == 0);
         edit(&mut ledger, &mut rng, n, v);
         disk.save(&mut ledger).unwrap();
-        writeln!(acks, "f {} {} {}", disk.path().display(), ledger.head(), digest(ledger.document())).unwrap();
+        ack(&mut acks, &format!("f {} {} {}", disk.path().display(), ledger.head(), digest(ledger.document())));
         if rng.below(2) == 0 {
             let target = dir.join(format!("p{i}.ecad"));
             disk.save_as(&target, &mut ledger, None, "crash child").unwrap();
-            writeln!(acks, "f {} {} {}", target.display(), ledger.head(), digest(ledger.document())).unwrap();
+            ack(&mut acks, &format!("f {} {} {}", target.display(), ledger.head(), digest(ledger.document())));
         } else {
             // The first save of another new project.
             let mut g = fixture();
@@ -366,7 +412,7 @@ fn child_v2_save_as_writer() {
             let target = dir.join(format!("n{i}.ecad"));
             let (d, _) = ecad_file::v2::disk::DiskProjectV2::create(&target, PROJECT, &mut g.ledger, None, None, "crash child").unwrap();
             drop(d);
-            writeln!(acks, "f {} {} {}", target.display(), g.ledger.head(), digest(g.ledger.document())).unwrap();
+            ack(&mut acks, &format!("f {} {} {}", target.display(), g.ledger.head(), digest(g.ledger.document())));
         }
     }
 }
@@ -408,8 +454,11 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
         let mut acked: std::collections::BTreeMap<String, (u64, String)> = std::collections::BTreeMap::new();
         for l in std::fs::read_to_string(&acks_file).unwrap_or_default().lines() {
             let mut it = l.strip_prefix("f ").unwrap_or_default().rsplitn(3, ' ');
-            let (Some(d), Some(h), Some(p)) = (it.next(), it.next(), it.next()) else { continue };
-            acked.insert(p.to_string(), (h.parse().unwrap_or(0), d.to_string()));
+            let (Some(d), Some(Ok(h)), Some(p)) = (it.next(), it.next().map(str::parse), it.next()) else { continue };
+            // A line torn by the kill acknowledged nothing.
+            if whole_hash(d) {
+                acked.insert(p.to_string(), (h, d.to_string()));
+            }
         }
         for entry in std::fs::read_dir(&dir).unwrap().flatten() {
             let path = entry.path();

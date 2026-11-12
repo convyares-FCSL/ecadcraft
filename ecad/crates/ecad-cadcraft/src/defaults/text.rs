@@ -27,6 +27,11 @@ const fn height(key: &'static str, label: &'static str, mm: f64) -> Entry {
 const fn regular(key: &'static str, label: &'static str) -> Entry {
     entry(key, label, WEIGHT, Value::Choice("regular"), SP)
 }
+/// A kind's own font (owner, 2026-11-12): its built-in is the project font's, and a kind with no
+/// value of its own uses the project font (`text.font`).
+const fn font(key: &'static str, label: &'static str) -> Entry {
+    entry(key, label, Kind::Text { max_chars: 64 }, Value::Text("BIZ UDPGothic"), SP)
+}
 const fn bold(key: &'static str, label: &'static str) -> Entry {
     entry(key, label, WEIGHT, Value::Choice("bold"), SP)
 }
@@ -99,6 +104,29 @@ pub static TABLE_HEADER_WEIGHT: Entry = bold("text.table_header.weight", "Table 
 pub static TABLE_HEADING_WEIGHT: Entry = regular("text.table_heading.weight", "Table heading weight");
 pub static COVER_WEIGHT: Entry = regular("text.cover.weight", "Cover title weight");
 pub static FREE_WEIGHT: Entry = regular("text.free.weight", "Free text weight");
+
+// --- Fonts per kind (owner, 2026-11-12) -----------------------------------------------------
+
+pub static TAG_FONT: Entry = font("text.tag.font", "Tag font");
+pub static POINT_LABEL_FONT: Entry = font("text.point_label.font", "Connection point label font");
+pub static DESCRIPTION_FONT: Entry = font("text.description.font", "Description font");
+pub static PART_NUMBER_FONT: Entry = font("text.part_number.font", "Part number font");
+pub static CONTINUATION_NAME_FONT: Entry = font("text.continuation_name.font", "Continuation name font");
+pub static REFERENCE_FONT: Entry = font("text.reference.font", "Reference font");
+pub static WIRE_LABEL_FONT: Entry = font("text.wire_label.font", "Wire label font");
+pub static CABLE_TEXT_FONT: Entry = font("text.cable_text.font", "Cable text font");
+pub static LOCATION_FONT: Entry = font("text.location.font", "Location label font");
+pub static TITLE_VALUE_FONT: Entry = font("text.title_value.font", "Title block value font");
+pub static TITLE_CAPTION_FONT: Entry = font("text.title_caption.font", "Title block caption font");
+pub static TITLE_MAIN_FONT: Entry = font("text.title_main.font", "Title font");
+pub static GRID_FONT: Entry = font("text.grid.font", "Grid label font");
+pub static TABLE_FONT: Entry = font("text.table.font", "Table text font");
+pub static TABLE_HEADER_FONT: Entry = font("text.table_header.font", "Table header font");
+pub static FREE_FONT: Entry = font("text.free.font", "Free text font");
+pub static TITLE_PAGE_FONT: Entry = font("text.title_page.font", "Title block page number font");
+pub static TITLE_REV_FONT: Entry = font("text.title_rev.font", "Title block revision font");
+pub static TABLE_HEADING_FONT: Entry = font("text.table_heading.font", "Table heading font");
+pub static COVER_FONT: Entry = font("text.cover.font", "Cover title font");
 
 // --- Shown (§5.1, §5.3) ----------------------------------------------------------------------
 
@@ -176,6 +204,26 @@ pub static ENTRIES: &[&Entry] = &[
     &TABLE_HEADING_WEIGHT,
     &COVER_WEIGHT,
     &FREE_WEIGHT,
+    &TAG_FONT,
+    &POINT_LABEL_FONT,
+    &DESCRIPTION_FONT,
+    &PART_NUMBER_FONT,
+    &CONTINUATION_NAME_FONT,
+    &REFERENCE_FONT,
+    &WIRE_LABEL_FONT,
+    &CABLE_TEXT_FONT,
+    &LOCATION_FONT,
+    &TITLE_VALUE_FONT,
+    &TITLE_CAPTION_FONT,
+    &TITLE_MAIN_FONT,
+    &GRID_FONT,
+    &TABLE_FONT,
+    &TABLE_HEADER_FONT,
+    &FREE_FONT,
+    &TITLE_PAGE_FONT,
+    &TITLE_REV_FONT,
+    &TABLE_HEADING_FONT,
+    &COVER_FONT,
     &TAG_SHOW,
     &TAG_SHOW_STRIP,
     &TAG_SHOW_PLC,

@@ -1,4 +1,4 @@
-//! Brief 031's text tools (design 031 §5.5): Show/Hide Text. Like every ECAD form it only collects
+//! Brief 031's text tools (design 031 §5.5, §6.5): Show/Hide Text and Move Text. Like every ECAD form it only collects
 //! and resolves values; each click commits the command's JSON form (`showtext`).
 
 use cadcraft_engine::doc::Handle;
@@ -182,5 +182,138 @@ impl Interactive for ShowText {
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
         safely(s, "showtext", |s| self.step(s, i))
+    }
+}
+
+// ---------------------------------------------------------------- Move Text (design 031 §6.5)
+
+const PICK_TO_MOVE: &str = "Pick a tag or label to move.";
+const FREE_TEXT_MOVE: &str = "That is free text; use MOVE.";
+const SHOW_FIRST: &str = "Show it first (Show/Hide Text, or Show Hidden Text).";
+
+/// `movetext`: pick a tag or label, then click where it goes (or Reset it).
+pub(crate) fn movetext(s: &Session) -> R<Box<dyn Interactive>> {
+    can_start(s)?;
+    Ok(Box::new(Safe(MoveText::default())))
+}
+
+#[derive(Default)]
+struct MoveText {
+    /// Reset (keyword before the pick): the next pick removes the stored place.
+    reset: bool,
+    picked: Option<(RepresentationId, TextOf, String)>,
+    /// A justification typed after **Justify**.
+    justify: Option<String>,
+    asking_justify: bool,
+}
+
+impl MoveText {
+    fn pick_text(s: &Session, h: Handle) -> Result<(RepresentationId, TextOf, String), String> {
+        read(s, |p, page| {
+            let doc = p.ledger.document();
+            let map = &p.pages.get(&page).ok_or(PICK_TO_MOVE)?.map;
+            match map.tag_text_of(h) {
+                Some((rep, of)) => {
+                    let r = doc.representations.get(&rep).ok_or(PICK_TO_MOVE)?;
+                    if r.form != Form::Symbol {
+                        return Err(PICK_TO_MOVE.into());
+                    }
+                    let t = crate::devices::all_texts_on_page(doc, page).into_iter().find(|t| t.text.rep == rep && t.text.of == of);
+                    if t.as_ref().is_some_and(|t| !t.shown) {
+                        return Err(SHOW_FIRST.into());
+                    }
+                    let what = match of {
+                        TextOf::Terminal(_) => "Label".to_string(),
+                        _ => match r.subject {
+                            Subject::Component(c) => format!("Tag {}", crate::devices::tag_words(doc, c)),
+                            _ => "Tag".to_string(),
+                        },
+                    };
+                    Ok((rep, of, what))
+                }
+                None => match map.get(h) {
+                    Some(Mapped::Item(i)) if doc.representation_of_item(i).is_none() => Err(FREE_TEXT_MOVE.into()),
+                    _ => Err(PICK_TO_MOVE.into()),
+                },
+            }
+        })
+    }
+
+    fn params(rep: RepresentationId, of: TextOf) -> serde_json::Value {
+        match of {
+            TextOf::Terminal(t) => json!({"representation": rep.hex(), "kind": "point_label", "terminal": t.hex()}),
+            _ => json!({"representation": rep.hex(), "kind": "tag"}),
+        }
+    }
+
+    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        match (i, self.picked.clone()) {
+            (Input::Point(p), _) if !in_range(p) => Err(other(OUT_OF_RANGE)),
+            (Input::Point(p), None) => {
+                let h = pick(s, p).ok_or_else(|| other(PICK_TO_MOVE))?;
+                let (rep, of, what) = Self::pick_text(s, h).map_err(other)?;
+                if self.reset {
+                    let mut q = Self::params(rep, of);
+                    q["reset"] = json!(true);
+                    commit(s, "movetext", &q)?;
+                    s.echo(format!("{what} is placed automatically again."));
+                    return Ok(Step::Done);
+                }
+                self.picked = Some((rep, of, what));
+                Ok(Step::Continue)
+            }
+            (Input::Point(p), Some((rep, of, what))) => {
+                let mut q = Self::params(rep, of);
+                q["to"] = json!([p.x, p.y]);
+                if let Some(j) = &self.justify {
+                    q["justify"] = json!(j);
+                }
+                commit(s, "movetext", &q)?;
+                s.echo(format!("{what} moved. Reset puts it back."));
+                Ok(Step::Done)
+            }
+            (Input::Keyword(k) | Input::Text(k), picked) => {
+                let w = k.trim().to_ascii_lowercase();
+                if self.asking_justify {
+                    if crate::text_style::parse_justify(&w).is_none() {
+                        return Err(other(crate::text_cmds::BAD_JUSTIFY));
+                    }
+                    self.justify = Some(w.to_ascii_uppercase());
+                    self.asking_justify = false;
+                    return Ok(Step::Continue);
+                }
+                match (w.as_str(), picked.is_some()) {
+                    ("r" | "reset", false) => {
+                        self.reset = true;
+                        Ok(Step::Continue)
+                    }
+                    ("j" | "justify", true) => {
+                        self.asking_justify = true;
+                        Ok(Step::Continue)
+                    }
+                    _ => Err(not_a_point(&k)),
+                }
+            }
+            (Input::Enter, _) => Ok(Step::Done),
+            _ => Ok(Step::Continue),
+        }
+    }
+}
+
+impl Interactive for MoveText {
+    fn name(&self) -> &'static str {
+        "MOVETEXT"
+    }
+    fn prompt(&self, _s: &Session) -> Prompt {
+        match (&self.picked, self.asking_justify) {
+            (_, true) => Prompt::new("Justify (two letters: L, C or R, then T, M or B)", Accept::TEXT),
+            (None, _) if self.reset => Prompt::new("Pick a tag or label to place automatically again", Accept::POINT),
+            (None, _) => Prompt::new("Pick a tag or label to move", Accept::POINT).kw(&["Reset"]),
+            (Some(_), _) => Prompt::new("Place the text", Accept::POINT).kw(&["Justify"]),
+        }
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
+        safely(s, "movetext", |s| self.step(s, i))
     }
 }

@@ -26,7 +26,10 @@ pub struct TextStyle {
     /// Height in drawing units (mm, or inches in an inch project); always finite and in range.
     pub height: f64,
     pub weight: Weight,
-    /// The CADCraft text style an entity of this kind names: [`STYLE_REGULAR`] or [`STYLE_BOLD`].
+    /// The CADCraft text style an entity of this kind names: [`STYLE_REGULAR`] or [`STYLE_BOLD`],
+    /// or, for a kind with a font of its own (`text.<kind>.font`), `ECAD-<KIND>` /
+    /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
+    /// for bold in the stroke-font fallback: use [`apply`].
     pub style_name: &'static str,
 }
 
@@ -200,6 +203,32 @@ impl TextKind {
         }
     }
 
+    /// The registry entry of this kind's own font (owner, 2026-11-12).
+    pub fn font_entry(self) -> &'static Entry {
+        match self {
+            TextKind::Tag => &d::TAG_FONT,
+            TextKind::PointLabel => &d::POINT_LABEL_FONT,
+            TextKind::Description => &d::DESCRIPTION_FONT,
+            TextKind::PartNumber => &d::PART_NUMBER_FONT,
+            TextKind::ContinuationName => &d::CONTINUATION_NAME_FONT,
+            TextKind::Reference => &d::REFERENCE_FONT,
+            TextKind::WireLabel => &d::WIRE_LABEL_FONT,
+            TextKind::CableText => &d::CABLE_TEXT_FONT,
+            TextKind::LocationLabel => &d::LOCATION_FONT,
+            TextKind::TitleValue => &d::TITLE_VALUE_FONT,
+            TextKind::TitleCaption => &d::TITLE_CAPTION_FONT,
+            TextKind::TitleMain => &d::TITLE_MAIN_FONT,
+            TextKind::Grid => &d::GRID_FONT,
+            TextKind::Table => &d::TABLE_FONT,
+            TextKind::TableHeader => &d::TABLE_HEADER_FONT,
+            TextKind::Free => &d::FREE_FONT,
+            TextKind::TitlePage => &d::TITLE_PAGE_FONT,
+            TextKind::TitleRev => &d::TITLE_REV_FONT,
+            TextKind::TableHeading => &d::TABLE_HEADING_FONT,
+            TextKind::Cover => &d::COVER_FONT,
+        }
+    }
+
     /// The registry entry of this kind's visibility, for the kinds that have one (design 031
     /// §5.1); `None` for kinds that are always shown.
     pub fn show_entry(self) -> Option<&'static Entry> {
@@ -244,7 +273,86 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
         "bold" => Weight::Bold,
         _ => Weight::Regular,
     };
-    TextStyle { height, weight, style_name: weight.style_name() }
+    let style_name = match kind_font(doc, kind) {
+        Some(_) => kind_style_name(kind, weight),
+        None => weight.style_name(),
+    };
+    TextStyle { height, weight, style_name }
+}
+
+/// Style a text entity of `kind` as this project draws it (the one entry point for other lanes,
+/// design 031 §3.3): its height, its style name (the project font, or the kind's own font), and
+/// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
+/// styles: [`install`] (or [`install_look`]) writes them. A caller styling many entities holds a
+/// [`Look`] and calls [`Look::apply`] instead (one resolution per page, not per entity).
+pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
+    let s = text_style(doc, kind);
+    if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+        t.height = s.height;
+    }
+    let bold_lineweight = match kind_font(doc, kind) {
+        Some(f) => Fonts::for_family(doc, f.to_string()).bold_lineweight,
+        None => Fonts::resolve(doc).bold_lineweight,
+    };
+    style_entity(e, s, bold_lineweight);
+}
+
+/// Set `s`'s style name on a text entity, and the bold lineweight when bold is drawn in the
+/// stroke font.
+fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_lineweight: Option<u16>) {
+    if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+        t.style = s.style_name.to_string();
+    }
+    if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {
+        e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
+    }
+}
+
+/// The CADCraft text styles of kinds with a font of their own: `ECAD-TAG`, `ECAD-TAG-BOLD`…, in
+/// the order of [`TextKind::ALL`].
+const KIND_STYLES: [(&str, &str); TextKind::ALL.len()] = [
+    ("ECAD-TAG", "ECAD-TAG-BOLD"),
+    ("ECAD-POINT-LABEL", "ECAD-POINT-LABEL-BOLD"),
+    ("ECAD-DESCRIPTION", "ECAD-DESCRIPTION-BOLD"),
+    ("ECAD-PART-NUMBER", "ECAD-PART-NUMBER-BOLD"),
+    ("ECAD-CONTINUATION-NAME", "ECAD-CONTINUATION-NAME-BOLD"),
+    ("ECAD-REFERENCE", "ECAD-REFERENCE-BOLD"),
+    ("ECAD-WIRE-LABEL", "ECAD-WIRE-LABEL-BOLD"),
+    ("ECAD-CABLE-TEXT", "ECAD-CABLE-TEXT-BOLD"),
+    ("ECAD-LOCATION", "ECAD-LOCATION-BOLD"),
+    ("ECAD-TITLE-VALUE", "ECAD-TITLE-VALUE-BOLD"),
+    ("ECAD-TITLE-CAPTION", "ECAD-TITLE-CAPTION-BOLD"),
+    ("ECAD-TITLE-MAIN", "ECAD-TITLE-MAIN-BOLD"),
+    ("ECAD-GRID", "ECAD-GRID-BOLD"),
+    ("ECAD-TABLE", "ECAD-TABLE-BOLD"),
+    ("ECAD-TABLE-HEADER", "ECAD-TABLE-HEADER-BOLD"),
+    ("ECAD-FREE", "ECAD-FREE-BOLD"),
+    ("ECAD-TITLE-PAGE", "ECAD-TITLE-PAGE-BOLD"),
+    ("ECAD-TITLE-REV", "ECAD-TITLE-REV-BOLD"),
+    ("ECAD-TABLE-HEADING", "ECAD-TABLE-HEADING-BOLD"),
+    ("ECAD-COVER", "ECAD-COVER-BOLD"),
+];
+
+/// The style a kind with its own font names, for `weight`.
+pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
+    let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    let (regular, bold) = KIND_STYLES.get(i).copied().unwrap_or((STYLE_REGULAR, STYLE_BOLD));
+    match weight {
+        Weight::Regular => regular,
+        Weight::Bold => bold,
+    }
+}
+
+/// A kind's own font family (`text.<kind>.font`), when the project sets one that differs from the
+/// project font; `None` when the kind uses the project font.
+pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
+    let r = defaults::resolve(doc, kind.font_entry(), Scope::project());
+    let defaults::Value::Text(f) = r.value else { return None };
+    let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
+        defaults::Value::Text(t) => t,
+        _ => default_family(),
+    };
+    (r.from != defaults::Source::Builtin && !f.eq_ignore_ascii_case(project)).then_some(f)
 }
 
 /// Whether a text is shown (design 031 §5.2).
@@ -383,6 +491,11 @@ impl Fonts {
             defaults::Value::Text(t) => t.to_string(),
             _ => default_family().to_string(),
         };
+        Fonts::for_family(doc, wanted)
+    }
+
+    /// Resolve the family `wanted` on this machine, with the fallbacks of §2.2.
+    pub fn for_family(doc: &Document, wanted: String) -> Fonts {
         let found = |name: &str| cadcraft_engine::fonts::ttf::find(name).is_some();
         let family = if found(&wanted) {
             Some(wanted.clone())
@@ -424,28 +537,43 @@ impl Fonts {
     }
 }
 
-/// Write ECAD's two text styles into `d` (design 031 §2.3): `Standard` (the project family,
-/// regular) and `ECAD-BOLD` (bold, or as §2.2). Any drawing ECAD builds calls it; a drawing that
-/// already has the same styles is unchanged.
+/// Write ECAD's text styles into `d` (design 031 §2.3): `Standard` (the project family, regular)
+/// and `ECAD-BOLD` (bold, or as §2.2), and the two styles of every kind with a font of its own
+/// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
+/// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
-    install_fonts(d, &Fonts::resolve(doc));
+    install_look(d, &Look::new(doc));
 }
 
-/// [`install`] with fonts already resolved.
-pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
-    for (name, font) in [(STYLE_REGULAR, &fonts.regular), (STYLE_BOLD, &fonts.bold)] {
-        match d.text_styles.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
-            Some(s) => {
-                if s.font != *font {
-                    s.font.clone_from(font);
-                }
-            }
-            None => d.text_styles.push(cadcraft_engine::doc::TextStyle {
-                name: name.to_string(),
-                font: font.clone(),
-                ..cadcraft_engine::doc::TextStyle::default()
-            }),
+/// [`install`] with the look already resolved.
+pub fn install_look(d: &mut cadcraft_engine::doc::Drawing, look: &Look) {
+    install_fonts(d, &look.fonts);
+    for (kind, fonts) in TextKind::ALL.iter().zip(look.kind_fonts.iter()) {
+        if let Some(f) = fonts {
+            put_style(d, kind_style_name(*kind, Weight::Regular), &f.regular);
+            put_style(d, kind_style_name(*kind, Weight::Bold), &f.bold);
         }
+    }
+}
+
+/// Write `Standard` and `ECAD-BOLD` with `fonts` into `d`.
+pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
+    put_style(d, STYLE_REGULAR, &fonts.regular);
+    put_style(d, STYLE_BOLD, &fonts.bold);
+}
+
+fn put_style(d: &mut cadcraft_engine::doc::Drawing, name: &str, font: &String) {
+    match d.text_styles.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
+        Some(s) => {
+            if s.font != *font {
+                s.font.clone_from(font);
+            }
+        }
+        None => d.text_styles.push(cadcraft_engine::doc::TextStyle {
+            name: name.to_string(),
+            font: font.clone(),
+            ..cadcraft_engine::doc::TextStyle::default()
+        }),
     }
 }
 
@@ -454,12 +582,24 @@ pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
 pub struct Look {
     styles: [TextStyle; TextKind::ALL.len()],
     pub fonts: Fonts,
+    /// The fonts of kinds with a font of their own, in the order of [`TextKind::ALL`].
+    pub kind_fonts: [Option<Fonts>; TextKind::ALL.len()],
 }
 
 impl Look {
     /// Resolve every kind's style and the fonts of `doc`.
     pub fn new(doc: &Document) -> Look {
-        Look { styles: TextKind::ALL.map(|k| text_style(doc, k)), fonts: Fonts::resolve(doc) }
+        Look {
+            styles: TextKind::ALL.map(|k| text_style(doc, k)),
+            fonts: Fonts::resolve(doc),
+            kind_fonts: TextKind::ALL.map(|k| kind_font(doc, k).map(|f| Fonts::for_family(doc, f.to_string()))),
+        }
+    }
+
+    /// The fonts `kind` is drawn with: its own, else the project's.
+    pub fn fonts_for(&self, kind: TextKind) -> &Fonts {
+        let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+        self.kind_fonts.get(i).and_then(Option::as_ref).unwrap_or(&self.fonts)
     }
 
     /// The style of `kind`.
@@ -468,28 +608,28 @@ impl Look {
         self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: STYLE_REGULAR })
     }
 
-    /// Give a text entity `kind`'s style name, and, for bold in the stroke font, its lineweight
-    /// (§2.2). Its height is left as it is.
+    /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
+    /// in the stroke font, its lineweight (§2.2), as [`apply`] does from a page's resolved look.
+    /// Its height is left as it is (derived texts set their own).
     pub fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
-        let s = self.style(kind);
-        if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
-            t.style = s.style_name.to_string();
-        }
-        if let (Weight::Bold, Some(lw)) = (s.weight, self.fonts.bold_lineweight) {
-            e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
-        }
+        style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
     }
 }
 
 /// The width of `value` at `kind`'s height in the font it is drawn with (§2.4), falling back to
 /// the stroke font's width; a non-finite or negative result counts as `chars × height × 0.8`.
+/// Resolves only `kind`'s style and font. A caller measuring many texts holds a [`Look`] and calls
+/// [`width_in`] with [`Look::style`] and [`Look::fonts_for`] instead.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
     let s = text_style(doc, kind);
-    let fonts = Fonts::resolve(doc);
+    let fonts = match kind_font(doc, kind) {
+        Some(f) => Fonts::for_family(doc, f.to_string()),
+        None => Fonts::resolve(doc),
+    };
     width_in(&fonts, s, value)
 }
 
-/// [`text_width`] with the style and fonts already resolved.
+/// [`text_width`] with the style and fonts already resolved (from a [`Look`] the caller holds).
 pub fn width_in(fonts: &Fonts, s: TextStyle, value: &str) -> f64 {
     let name = match s.weight {
         Weight::Bold => &fonts.bold,
@@ -595,12 +735,328 @@ pub fn symbol_text_keys(props: &ecad_model::Properties, rep: RepresentationId) -
     props.range(prefix.clone()..).take_while(|(k, _)| k.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
+/// Whether `key` is a symbol's own text key (`text.<32 hex digits>.…`).
+pub fn is_symbol_key(key: &str) -> bool {
+    key.strip_prefix("text.").and_then(|r| r.split_once('.')).is_some_and(|(id, _)| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// The properties of a copy of symbol `old` that is now symbol `new` (FP5): every symbol key of the
+/// source component is dropped, and `old`'s own keys come back under `new`.
+pub fn copy_symbol_keys(props: &mut ecad_model::Properties, old: RepresentationId, new: RepresentationId) {
+    let mine = symbol_text_keys(props, old);
+    props.retain(|k, _| !is_symbol_key(k));
+    for (k, v) in mine {
+        props.insert(rename_symbol_key(&k, old, new), v);
+    }
+}
+
 /// `key` of symbol `old` as the same key of symbol `new`.
 pub fn rename_symbol_key(key: &str, old: RepresentationId, new: RepresentationId) -> String {
     match key.strip_prefix(&symbol_prefix(old)) {
         Some(rest) => format!("{}{rest}", symbol_prefix(new)),
         None => key.to_string(),
     }
+}
+
+// ---------------------------------------------------------------- Placement (§6)
+
+/// Most tag blocks on a page that search for a free place; beyond it a block takes its first
+/// candidate (a guard on hostile pages).
+const MAX_PLACED_BLOCKS: usize = 5_000;
+/// Most obstacles on a page that are looked at; beyond it blocks take their first candidate.
+const MAX_OBSTACLES: usize = 50_000;
+/// The side of a cell of the obstacle grid, millimetres (a performance guard, not a preference).
+const CELL: f64 = 20.0;
+/// Most cells one box is filed under (a guard: a huge box is filed under none and never collides).
+const MAX_CELLS_PER_BOX: i64 = 400;
+
+/// An axis-aligned box `(lo, hi)`.
+pub type TextBox = (ecad_model::Pt, ecad_model::Pt);
+
+fn finite_box(b: &TextBox) -> bool {
+    b.0.is_finite() && b.1.is_finite()
+}
+
+fn overlap_area(a: &TextBox, b: &TextBox) -> f64 {
+    let w = a.1.x.min(b.1.x) - a.0.x.max(b.0.x);
+    let h = a.1.y.min(b.1.y) - a.0.y.max(b.0.y);
+    if w > 0.0 && h > 0.0 { w * h } else { 0.0 }
+}
+
+/// Obstacles filed in a uniform grid of [`CELL`] cells.
+#[derive(Default)]
+struct Obstacles {
+    boxes: Vec<TextBox>,
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+}
+
+impl Obstacles {
+    fn cell_range(b: &TextBox) -> Option<(i64, i64, i64, i64)> {
+        let c = |v: f64| (v / CELL).floor();
+        let (x0, y0, x1, y1) = (c(b.0.x), c(b.0.y), c(b.1.x), c(b.1.y));
+        if ![x0, y0, x1, y1].iter().all(|v| v.is_finite() && v.abs() < 1e12) {
+            return None;
+        }
+        let (x0, y0, x1, y1) = (x0 as i64, y0 as i64, x1 as i64, y1 as i64);
+        ((x1 - x0 + 1).saturating_mul(y1 - y0 + 1) <= MAX_CELLS_PER_BOX).then_some((x0, y0, x1, y1))
+    }
+
+    fn add(&mut self, b: TextBox) {
+        if !finite_box(&b) || self.boxes.len() >= MAX_OBSTACLES {
+            return;
+        }
+        let i = self.boxes.len();
+        self.boxes.push(b);
+        if let Some((x0, y0, x1, y1)) = Self::cell_range(&b) {
+            for x in x0..=x1 {
+                for y in y0..=y1 {
+                    self.cells.entry((x, y)).or_default().push(i);
+                }
+            }
+        }
+    }
+
+    /// The area of `b` that obstacles cover (overlaps counted per obstacle).
+    fn overlap(&self, b: &TextBox) -> f64 {
+        let Some((x0, y0, x1, y1)) = Self::cell_range(b) else { return 0.0 };
+        let mut seen = std::collections::BTreeSet::new();
+        let mut area = 0.0;
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                for i in self.cells.get(&(x, y)).into_iter().flatten() {
+                    if seen.insert(*i)
+                        && let Some(o) = self.boxes.get(*i)
+                    {
+                        area += overlap_area(b, o);
+                    }
+                }
+            }
+        }
+        area
+    }
+}
+
+/// Where a symbol's tag block goes: its box and its horizontal justification (the lines are
+/// stacked down from the box's top).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlockPlace {
+    pub rect: TextBox,
+    pub halign: cadcraft_engine::doc::HAlign,
+    /// Stored by Move Text (§6.4).
+    pub moved: bool,
+    /// No candidate was free (§6.3): the block overlaps something.
+    pub overlaps: bool,
+}
+
+impl BlockPlace {
+    /// The alignment point of a line whose top is at `top`: left, centre or right of the box.
+    pub fn line_at(&self, top: f64) -> ecad_model::Pt {
+        use cadcraft_engine::doc::HAlign;
+        let x = match self.halign {
+            HAlign::Right => self.rect.1.x,
+            HAlign::Center | HAlign::Middle => (self.rect.0.x + self.rect.1.x) / 2.0,
+            _ => self.rect.0.x,
+        };
+        ecad_model::Pt::new(x, top)
+    }
+
+    /// The justification code of the block (its halign and the vertical anchor `v`).
+    pub fn code(&self, v: char) -> String {
+        let h = match self.halign {
+            cadcraft_engine::doc::HAlign::Right => 'R',
+            cadcraft_engine::doc::HAlign::Center | cadcraft_engine::doc::HAlign::Middle => 'C',
+            _ => 'L',
+        };
+        format!("{h}{v}")
+    }
+}
+
+/// The box of a block `w` × `h` anchored at `at` with a two-letter justification.
+pub fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> TextBox {
+    use cadcraft_engine::doc::{HAlign, VAlign};
+    let x0 = match halign {
+        HAlign::Right => at.x - w,
+        HAlign::Center | HAlign::Middle => at.x - w / 2.0,
+        _ => at.x,
+    };
+    let y1 = match v {
+        VAlign::Top => at.y,
+        VAlign::Middle => at.y + h / 2.0,
+        VAlign::Bottom | VAlign::Baseline => at.y + h,
+    };
+    (ecad_model::Pt::new(x0, y1 - h), ecad_model::Pt::new(x0 + w, y1))
+}
+
+/// The candidates of design 031 §6.2 for a block `w` × `h` beside a symbol box `(lo, hi)`, in
+/// order: (box, halign).
+pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64, h: f64, gap: f64) -> [(TextBox, cadcraft_engine::doc::HAlign); 5] {
+    use cadcraft_engine::doc::HAlign;
+    use ecad_model::Pt;
+    let cx = (lo.x + hi.x) / 2.0;
+    let cy = (lo.y + hi.y) / 2.0;
+    let r = |x0: f64, y0: f64| (Pt::new(x0, y0), Pt::new(x0 + w, y0 + h));
+    let left_top = (r(lo.x - gap - w, hi.y - h), HAlign::Right);
+    let left_mid = (r(lo.x - gap - w, cy - h / 2.0), HAlign::Right);
+    let right_top = (r(hi.x + gap, hi.y - h), HAlign::Left);
+    let right_mid = (r(hi.x + gap, cy - h / 2.0), HAlign::Left);
+    let above = (r(cx - w / 2.0, hi.y + gap), HAlign::Center);
+    let above_left = (r(lo.x, hi.y + gap), HAlign::Left);
+    let below = (r(cx - w / 2.0, lo.y - gap - h), HAlign::Center);
+    if vertical { [left_top, left_mid, right_top, above, below] } else { [above, above_left, below, left_mid, right_mid] }
+}
+
+/// A stored text place (`"x,y,J"`, design 031 §6.4): the point in the symbol's own frame and the
+/// justification. `None` for anything that does not parse.
+pub fn parse_at(v: &str) -> Option<(ecad_model::Pt, cadcraft_engine::doc::HAlign, cadcraft_engine::doc::VAlign)> {
+    let mut it = v.split(',');
+    let x: f64 = it.next()?.trim().parse().ok()?;
+    let y: f64 = it.next()?.trim().parse().ok()?;
+    let (h, v) = parse_justify(it.next()?)?;
+    if it.next().is_some() || !x.is_finite() || !y.is_finite() {
+        return None;
+    }
+    Some((ecad_model::Pt::new(x, y), h, v))
+}
+
+/// The stored form of a text place.
+pub fn at_text(p: ecad_model::Pt, h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> String {
+    let r = |x: f64| (x * 1e6).round() / 1e6;
+    format!("{},{},{}", r(p.x), r(p.y), justify_code(h, v))
+}
+
+/// A page point in a placement's local frame (the inverse of `Placement::apply`).
+pub fn to_local(pl: &ecad_model::Placement, p: ecad_model::Pt) -> Option<ecad_model::Pt> {
+    if !pl.is_valid() || !p.is_finite() {
+        return None;
+    }
+    let (dx, dy) = (p.x - pl.origin.x, p.y - pl.origin.y);
+    let (s, c) = pl.rotation.sin_cos();
+    let (x, y) = ((c * dx + s * dy) / pl.scale, (-s * dx + c * dy) / pl.scale);
+    let x = if pl.mirror { -x } else { x };
+    let q = ecad_model::Pt::new(x, y);
+    q.is_finite().then_some(q)
+}
+
+/// One tag block to place: its symbol, the symbol's box, orientation and placement, and the
+/// block's size.
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub rep: RepresentationId,
+    pub component: ComponentId,
+    pub lo: ecad_model::Pt,
+    pub hi: ecad_model::Pt,
+    pub vertical: bool,
+    pub placement: ecad_model::Placement,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// The obstacles of `page` that never move (§6.3 step 1): symbol boxes, conductor routes inflated
+/// by `text.wire_clearance`, and the boxes of `fixed` texts (connection point labels, location
+/// labels). The frame's inside edge is checked separately ([`place_blocks`]).
+fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles {
+    let mut obs = Obstacles::default();
+    let clear = defaults::resolve(doc, &d::WIRE_CLEARANCE, Scope::project()).length(doc);
+    for (_, r) in doc.representations_on(page) {
+        match r.subject {
+            ecad_model::Subject::Component(_) if r.form == ecad_model::Form::Symbol => {
+                if let Some((def, pl)) = crate::devices::rep_definition(doc, r)
+                    && let Some(b) = crate::devices::placed_box(def, &pl)
+                {
+                    obs.add(b);
+                }
+            }
+            ecad_model::Subject::Conductor(_) => {
+                for item in r.items.iter().filter_map(|i| doc.items.get(i)) {
+                    let pts: Vec<ecad_model::Pt> = match &item.kind {
+                        ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => vec![*a, *b],
+                        ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => vertices.clone(),
+                        _ => Vec::new(),
+                    };
+                    for s in pts.windows(2) {
+                        if let [a, b] = s {
+                            obs.add((
+                                ecad_model::Pt::new(a.x.min(b.x) - clear, a.y.min(b.y) - clear),
+                                ecad_model::Pt::new(a.x.max(b.x) + clear, a.y.max(b.y) + clear),
+                            ));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for b in fixed {
+        obs.add(*b);
+    }
+    obs
+}
+
+/// Place every tag block of `page` (design 031 §6.3): moved blocks at their stored places, then
+/// the others in reading order, each at its first free candidate (else the one with the least
+/// overlap), never crossing the frame's inside edge when a candidate inside it exists. Each placed
+/// block becomes an obstacle. Deterministic: the result does not depend on op order.
+pub fn place_blocks(doc: &Document, page: PageId, blocks: &[Block], fixed: &[TextBox]) -> std::collections::BTreeMap<RepresentationId, BlockPlace> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut obs = page_obstacles(doc, page, fixed);
+    let grid = ecad_model::sheet::Grid::of(doc, page);
+    let frame =
+        (ecad_model::Pt::new(grid.frame_left(), grid.frame_bottom()), ecad_model::Pt::new(grid.frame_left() + grid.area_width(), grid.frame_top()));
+    let inside = |b: &TextBox| !finite_box(&frame) || (b.0.x >= frame.0.x && b.0.y >= frame.0.y && b.1.x <= frame.1.x && b.1.y <= frame.1.y);
+    let gap_factor = defaults::resolve(doc, &d::TAG_GAP, Scope::project()).number();
+    let tag_height = text_style(doc, TextKind::Tag).height;
+    let mut free: Vec<&Block> = Vec::new();
+    // Moved blocks first (§6.4).
+    for b in blocks {
+        let stored = doc
+            .components
+            .get(&b.component)
+            .and_then(|c| c.properties.get(&format!("{}tag.at", symbol_prefix(b.rep))))
+            .and_then(|v| parse_at(v))
+            .and_then(|(p, h, v)| {
+                let at = b.placement.apply(p);
+                at.is_finite().then(|| (block_rect(at, b.w, b.h, h, v), h))
+            })
+            .filter(|(r, _)| finite_box(r));
+        match stored {
+            Some((rect, halign)) => {
+                obs.add(rect);
+                out.insert(b.rep, BlockPlace { rect, halign, moved: true, overlaps: false });
+            }
+            None => free.push(b),
+        }
+    }
+    // Reading order: box top (highest first), then box left, then representation ID.
+    free.sort_by(|a, b| b.hi.y.total_cmp(&a.hi.y).then(a.lo.x.total_cmp(&b.lo.x)).then(a.rep.cmp(&b.rep)));
+    for (i, b) in free.into_iter().enumerate() {
+        let gap = gap_factor * tag_height;
+        let cands = candidates(b.lo, b.hi, b.vertical, b.w, b.h, gap);
+        let search = i < MAX_PLACED_BLOCKS && obs.boxes.len() < MAX_OBSTACLES;
+        let mut best: Option<(f64, usize)> = None;
+        if search {
+            for (k, (rect, _)) in cands.iter().enumerate() {
+                if !finite_box(rect) {
+                    continue;
+                }
+                // Outside the frame counts as fully covered: used only when nothing inside is.
+                let area = if inside(rect) { obs.overlap(rect) } else { f64::MAX };
+                if best.is_none_or(|(a, _)| area < a) {
+                    best = Some((area, k));
+                }
+                if area == 0.0 {
+                    break;
+                }
+            }
+        }
+        let (area, k) = best.unwrap_or((0.0, 0));
+        let Some((rect, halign)) = cands.get(k).copied() else { continue };
+        if !finite_box(&rect) {
+            continue;
+        }
+        obs.add(rect);
+        out.insert(b.rep, BlockPlace { rect, halign, moved: false, overlaps: search && area > 0.0 });
+    }
+    out
 }
 
 // ---------------------------------------------------------------- Runs (§5.3)

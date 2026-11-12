@@ -26,6 +26,10 @@ that new briefs know which branch they belong to. The owner corrects it when a g
 | Outputs: locations, PDF book, generated pages, BOM, wire and cable reports (lane A) | `feature/outputs` | 024; then 027 release | Designing |
 | Device cross-references (lane B) | `feature/cross-references` | 025; then 028 terminal strips | Designing |
 | Numbering: renumber, fixed, swap, provisional (lane C) | `feature/numbering` | 026; then inspector wasm, look-and-feel | Designing |
+| v0.15 drawing quality, lane T: text styles, show and hide, text placement | `feature/text-styles` | 031 (Q1, Q3, Q2) | Next |
+| v0.15 drawing quality, lane W: wires and nets (wire join, cable across continuations, wire labels) | `feature/wires-nets` | 032 (Q6 wire join, Q8, Q4) | Next |
+| v0.15 drawing quality, lane P: print and project (print quality, quick fixes, `table`) | `feature/print-project` | 033 (Q5, Q7, Q6 `table`) | Next |
+| v0.15 drawing quality, lane S: component library | `feature/component-library` | 034 (Q9) | Next |
 
 A feature branch stays open while the feature is being shaped. When a later brief extends a feature
 that already reached `dev`, branch `feature/<name>` again from `dev`.
