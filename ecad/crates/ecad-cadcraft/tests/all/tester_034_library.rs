@@ -441,6 +441,7 @@ fn a2_find_symbol_by_family_prefix_and_alias() {
 /// symbol's name as description, one transaction, and one embedded definition found by origin;
 /// a second placement reuses it.
 #[test]
+#[ignore = "slow: places all 60 new symbols in one project (about 20 s at opt-level 0); library_contracts covers placement fast"]
 fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
     let mut h = H::new(0x7034_0003);
     let page = h.first_page();
@@ -740,6 +741,7 @@ fn i_ratings_set_and_refused_as_designed() {
 /// points are not flagged `Unconnected`; a fuse bank's `L+`, a CPU's and a power card's points and
 /// every non-quiet point still are.
 #[test]
+#[ignore = "slow: places every quiet family in one project (about 4 s at opt-level 0); library_contracts covers quiet points fast"]
 fn j_quiet_spare_points_are_not_flagged() {
     let mut h = H::new(0x7034_000d);
     let cat = catalogue();
