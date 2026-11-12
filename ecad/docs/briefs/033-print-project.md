@@ -1,7 +1,8 @@
 # Brief 033: Print and project
 
-Status: Draft (designer, 2026-11-12; FP1–FP3 approved by the overseer, 2026-11-12; waiting
-on the owner's answers to design 033 §12, Q1 included)
+Status: Approved (owner, 2026-11-12: design 033 §12 Q1–Q9 as recommended, Q1 approving the
+upstream PDF culling patch; FP1–FP3 approved by the overseer, 2026-11-12; decisions in design
+§17)
 Branch: `feature/print-project`, from `origin/dev` `6729c8f1`
 Designer: **yes** (`docs/design/033.md`) · Size: M–L (three S–M parts)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` §3.2, v0.15 lane **P**: Q5 print quality,
@@ -35,8 +36,8 @@ pack is numbered, tagged and revised.
 
 1. **Print quality (Q5).**
    a. **PDF size:** each PDF page holds only what lies in its window. This is a small generic
-      culling patch in CADCraft's plotter (`crates/io/src/pdf.rs`, possibly `crates/render`) and
-      needs owner approval (design Q1). Targets: bytes grow linearly with sheets, and the 30-sheet
+      culling patch in CADCraft's plotter (`crates/io/src/pdf.rs`, possibly `crates/render`),
+      approved by the owner (design Q1, 2026-11-12). Targets: bytes grow linearly with sheets, and the 30-sheet
       pack prints under 5 MB. Pages look identical.
    b. **Missing data:** `?` in a thin box; yellow on screen, black when printed in either colour
       mode (design §3).
@@ -60,7 +61,8 @@ pack is numbered, tagged and revised.
    broken plural is fixed for every refused kind (design §11).
 4. **Text sizes** for the frame, title block, generated tables and contact tables are read
    through lane T's text-style getter (brief 031). Until it lands, a local stub returns today's
-   sizes (design §1.2).
+   sizes (design §1.2). **Every default this lane adds is registered in lane T's defaults
+   registry**, not hard-coded (design §1.3).
 5. **Update maps** for every changed view (design §9); **MCP contract tests** for every new or
    changed command; the `print25` bench before and after.
 
@@ -93,12 +95,15 @@ of the crates the change touched. The print bench uses the 25-page project, rele
 upstream patch also needs the root CADCraft build and clippy, and the tests of `cadcraft-io` (and
 `cadcraft-render` if touched).
 
-## Open before approval
+## Coordination before the worker starts
 
-- Owner answers to design §12 Q1–Q9 (Q1, the upstream patch, is a gate).
-- Lane T's names for the text kinds in design §1.2.
-- Order with lane T for the three tag call sites in `devices.rs`, and with lane S for the two
-  hunks in `convert.rs` (design §0).
+- Lane T adds the four kinds design §1.2 requests (`TitlePage`, `TitleRev`, `TableHeading`,
+  `Cover`) and the defaults registry (031 §3). This lane's defaults are registered there, never
+  hard-coded (design §1.3, owner, 2026-11-12).
+- The overseer sets the order with lane T for the three tag call sites in `devices.rs`, and with
+  lane S for the two hunks in `convert.rs` (design §0).
+- The upstream patch is listed in `UPSTREAM-PATCHES.md` and marked `// ECAD-SEAM(owner):` in the
+  same commit.
 
 ## Later (not in this brief)
 
