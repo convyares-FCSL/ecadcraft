@@ -62,6 +62,8 @@ pub const READ_COMMANDS: &[&str] = &[
     "cablelist",
     "printbook",
     "reports",
+    // Brief 027: the pre-release check reads the project and records nothing.
+    "prerelease",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
@@ -71,10 +73,17 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("pr
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview).
 const READ_WITH_PREVIEW: &[&str] = &["merge"];
 
-/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`]).
+/// Commands whose form naming an issued revision records nothing (brief 027: `release {rev}`
+/// writes that revision's folder again, beside the project, and never issues; it refuses a `rev`
+/// that is not issued). Its `folder` is a file key, refused in every mode.
+const READ_WITH_REV: &[&str] = &["release"];
+
+/// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
+/// [`READ_WITH_REV`]).
 pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
         || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
+        || (READ_WITH_REV.contains(&id) && params.get("rev").is_some_and(Value::is_string))
 }
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
@@ -266,5 +275,12 @@ mod tests {
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());
+        // Brief 027: the check reads; `release` issues only without `rev`; no folder of its own.
+        assert!(check("prerelease", &none, false, Some("locked")).is_ok());
+        assert!(check("release", &json!({"rev": "A"}), false, Some("locked")).is_ok());
+        assert_eq!(check("release", &none, false, None), Err(WRITES_OFF.into()));
+        assert_eq!(check("release", &json!({"rev": null}), false, None), Err(WRITES_OFF.into()));
+        assert!(check("release", &none, true, None).is_ok());
+        assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
     }
 }
