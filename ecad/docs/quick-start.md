@@ -26,7 +26,7 @@ names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BI
 default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
 font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
 height, bold and shown state in one transaction; `textstyle` does the same typed, and the
-read-only `defaults` lists every registered default and where its value comes from. Section 5Q.
+read-only `defaults` lists every registered default and where its value comes from. Section 5-031.
 Tags, connection point labels, descriptions and part numbers (new, hidden by default) can be
 hidden or shown per symbol, device, page or project (**Show/Hide Text**, Properties ▸ Texts,
 `showtext`); a strip's tag prints once per run of adjacent terminals and a PLC device's once per
@@ -1437,7 +1437,7 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
 
-## 5Q. Text styles (by clicking)
+## 5-031. Text styles (by clicking)
 
 Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
 
