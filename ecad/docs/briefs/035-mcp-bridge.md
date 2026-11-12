@@ -1,6 +1,7 @@
 # Brief 035: Live MCP bridge
 
-Status: Draft
+Status: Approved (owner, 2026-11-13; design 035 §15 questions 1–10 answered as recommended,
+decisions in design §17; no format proposals)
 Branch: `feature/mcp-bridge`, from `origin/dev` `1e605e33`.
 Designer: **yes** (`docs/design/035.md`) · Size: M
 Roadmap: M1 item **1.0**, lane U, first (`docs/discussions/roadmap-review-2026-11.md` §3.2,
@@ -101,6 +102,6 @@ per-user settings file (`agent-access.json`), never in a project. **FP items: no
 
 ## Needs owner check
 
-- Design §15 questions.
+- Design §15 questions: answered as recommended (owner, 2026-11-13; design §17).
 - Quick start 7B on Windows with Claude Code (the tester cannot run Claude Code itself).
 - The banner's look against the UI redesign spec when it is shared.
