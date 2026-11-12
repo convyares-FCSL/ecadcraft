@@ -481,10 +481,15 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId) -> Value {
         "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
         "folder": folder.map(FolderId::hex),
         "folder_path": folder_path(doc, folder),
+        "generated": prop(crate::generated::KEY),
+        "sheets": crate::generated::sheets(doc, page, None),
     })
 }
 
 fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get(crate::generated::KEY).is_some() {
+        return Err(err(crate::generated::KIND_FIXED));
+    }
     let page = opt_id::<PageId>(params, "page").map_err(err)?;
     let number = text_field(params, "number").map_err(err)?;
     let title = match params.get("title") {

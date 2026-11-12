@@ -547,8 +547,12 @@ pub(crate) fn run_checks(s: &mut Session, params: &Value) -> cadcraft_engine::Re
     };
     let after = params.get("after").and_then(Value::as_u64).map(|n| n as usize).unwrap_or(0);
     with_any_page(s, |p, _| {
+        // The project's kept report models (built on first use, then kept from each change).
+        p.outputs();
         let doc = p.ledger.document();
-        let rows: Vec<_> = crate::checks::all(doc, p.tolerance).into_iter().filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind))).collect();
+        let outputs = p.outputs.as_ref().ok_or("the report models could not be built")?;
+        let rows: Vec<_> =
+            crate::checks::all_with(doc, p.tolerance, outputs).into_iter().filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind))).collect();
         let shown: Vec<Value> = rows.iter().skip(after).take(limit).map(|c| c.to_json(doc)).collect();
         let mut r = json!({"checks": shown, "total": rows.len()});
         if rows.len() > after + limit {

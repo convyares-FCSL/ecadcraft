@@ -1293,6 +1293,7 @@ name = "ecad-cadcraft"
 version = "0.1.0-dev"
 dependencies = [
  "cadcraft-engine",
+ "cadcraft-io",
  "cadcraft-ui-egui",
  "chrono",
  "ecad-cadcraft",

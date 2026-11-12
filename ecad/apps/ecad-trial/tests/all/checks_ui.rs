@@ -153,7 +153,9 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     click(&mut h, checks_panel::CHECKS_TAB);
     assert_eq!(h.state().panel.tab, project_panel::Tab::Checks);
     let rows = h.state().panel.checks.rows().to_vec();
-    assert_eq!(rows.len(), 4, "{rows:?}");
+    // Four rows of brief 022, and brief 024's count of devices without a part number.
+    assert_eq!(rows.len(), 5, "{rows:?}");
+    assert!(rows.iter().any(|r| r.check.kind == Kind::NoPartNumber), "{rows:?}");
     let pe = rows.iter().find(|r| r.check.which == "-M01:PE").unwrap().clone();
     assert_eq!(pe.locator, "3-C-5");
     click(&mut h, &checks_panel::row_label(&pe));

@@ -85,12 +85,22 @@ pub enum Kind {
     MixedPotentials,
     Unnumbered,
     UnknownName,
+    /// Brief 024 (design 024 §8.3): a device's own location differs from its box's.
+    OwnLocation,
+    /// A location box outline crosses itself.
+    BoxCrosses,
+    /// Two location boxes overlap without nesting.
+    BoxesOverlap,
+    /// Devices without a part number (one count row).
+    NoPartNumber,
+    /// Devices without a location (one count row).
+    NoLocation,
     /// A device with more contacts of a kind drawn than its part offers (brief 025).
     TooManyContacts,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [
+    pub const ALL: [Kind; 20] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -105,6 +115,11 @@ impl Kind {
         Kind::MixedPotentials,
         Kind::Unnumbered,
         Kind::UnknownName,
+        Kind::OwnLocation,
+        Kind::BoxCrosses,
+        Kind::BoxesOverlap,
+        Kind::NoPartNumber,
+        Kind::NoLocation,
         Kind::TooManyContacts,
     ];
 
@@ -125,6 +140,11 @@ impl Kind {
             Kind::MixedPotentials => "mixed-potentials",
             Kind::Unnumbered => "unnumbered",
             Kind::UnknownName => "unknown-name",
+            Kind::OwnLocation => "own-location",
+            Kind::BoxCrosses => "box-crosses",
+            Kind::BoxesOverlap => "boxes-overlap",
+            Kind::NoPartNumber => "no-part-number",
+            Kind::NoLocation => "no-location",
             Kind::TooManyContacts => "too-many-contacts",
         }
     }
@@ -151,6 +171,11 @@ impl Kind {
             Kind::MixedPotentials => "Mixed potentials in one net",
             Kind::Unnumbered => "Unnumbered nets",
             Kind::UnknownName => "Continuation name not a potential",
+            Kind::OwnLocation => "Own location differs from its box",
+            Kind::BoxCrosses => "Location box outline crosses itself",
+            Kind::BoxesOverlap => "Location boxes overlap without nesting",
+            Kind::NoPartNumber => "Devices without a part number",
+            Kind::NoLocation => "Devices without a location",
             Kind::TooManyContacts => "More contacts than the part offers",
         }
     }
@@ -164,7 +189,9 @@ impl Kind {
             | Kind::DrawnAway
             | Kind::SinglePoint
             | Kind::UnknownName
-            | Kind::TooManyContacts => Severity::Warning,
+            | Kind::TooManyContacts
+            | Kind::OwnLocation
+            | Kind::BoxCrosses => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -186,6 +213,10 @@ pub enum Fix {
     AddJunction(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
+    /// Brief 024: clear the device's own location (`setprop … value: null`): Use the box's location.
+    UseBoxLocation(ComponentId),
+    /// Brief 024: open Reports on the BOM tab with Only ? on.
+    ShowReports,
 }
 
 /// One row of the Checks list.
@@ -1015,5 +1046,12 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
 pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
-    Checks::build(doc, tol).sorted(doc)
+    all_with(doc, tol, &crate::outputs::Outputs::build(doc))
+}
+
+/// [`all`] with the report models already kept (brief 024: the project's, reused by `checks`).
+pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
+    let mut rows: Vec<Check> = Checks::build(doc, tol).rows().cloned().collect();
+    rows.extend(outputs.checks());
+    sort(doc, rows)
 }

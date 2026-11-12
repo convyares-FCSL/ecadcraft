@@ -113,13 +113,17 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     for part in crate::xref::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
     }
+    // Location box labels (brief 024), derived the same way.
+    for (_, value, at) in crate::locations::labels_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
+    }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.
-    let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
-    for part in crate::frame::parts(&input) {
+    // Generated pages and Total in sheets (brief 024) come from the same function.
+    for part in crate::generated::parts_of(doc, page, None) {
         *fan_expected.entry(computed_key(&crate::frame::entity(&part, Handle(0)))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();

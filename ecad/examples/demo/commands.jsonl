@@ -6,6 +6,9 @@
 // (placed before their wire, so it attaches) carry 24V and 0V across pages, and one T on page 2
 // is a junction.
 
+// Brief 024: the project is in control panel +CP1; page 3 is in the field (+FIELD).
+{"command":"projectprops","params":{"location":"+CP1"}}
+
 // ---------------------------------------------------------------- page 1: Supply
 {"command":"renamepage","params":{"page":"$page1","title":"Supply"}}
 {"command":"place","params":{"symbol":"terminal","at":[30,150],"tag":"X01"},"as":"x1"}
@@ -29,7 +32,6 @@
 {"command":"setprop","params":{"component":"$g1.component","key":"description","value":"Power supply 24 V DC"}}
 {"command":"setprop","params":{"component":"$g1.component","key":"maker","value":"Generic"}}
 {"command":"setprop","params":{"component":"$g1.component","key":"part_number","value":"PSU-24V-5A"}}
-{"command":"setprop","params":{"component":"$g1.component","key":"location","value":"CP1"}}
 
 // ---------------------------------------------------------------- page 2: Motor control
 {"command":"newpage","params":{"title":"Motor control"}}
@@ -77,6 +79,7 @@
 
 // ---------------------------------------------------------------- page 3: Field
 {"command":"newpage","params":{"title":"Field"}}
+{"command":"pageprops","params":{"location":"+FIELD"}}
 {"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]},"as":"cont"}
 {"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
 {"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}
@@ -97,9 +100,14 @@
 {"command":"wire","params":{"points":[[50,100],[50,85]],"potential":"24V"}}
 {"command":"wire","params":{"points":[[50,65],[50,57.5]]}}
 {"command":"setprop","params":{"component":"$x2a.component","key":"description","value":"Motor terminals"}}
-{"command":"setprop","params":{"component":"$x2a.component","key":"location","value":"FIELD"}}
 {"command":"setprop","params":{"component":"$m1.component","key":"description","value":"Pump motor 0.75 kW"}}
 {"command":"setprop","params":{"component":"$m1.component","key":"maker","value":"Generic"}}
 {"command":"setprop","params":{"component":"$m1.component","key":"part_number","value":"MOT-075-4P"}}
-{"command":"setprop","params":{"component":"$m1.component","key":"location","value":"FIELD"}}
 {"command":"setprop","params":{"component":"$h2.component","key":"description","value":"Pump stopped"}}
+// Brief 024: the motor terminals sit in junction box +JB1 (a location box); -W01 is a 4G1.5;
+// -S01 is left without maker and part number, so the BOM shows ?. Generated pages close the book
+// (the quick start adds a cover and contents at the front by clicking).
+{"command":"locationbox","params":{"location":"+JB1","corners":[[100,100],[160,122]]}}
+{"command":"setprop","params":{"cable":"$w1.cable","key":"type","value":"4G1.5"}}
+{"command":"newpage","params":{"generated":"revisions"}}
+{"command":"newpage","params":{"generated":"bom-location"}}

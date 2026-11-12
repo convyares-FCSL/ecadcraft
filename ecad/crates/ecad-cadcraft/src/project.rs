@@ -534,6 +534,11 @@ pub struct Project {
     /// The Checks list (design 022 §8), built on its first show and then kept from each change's
     /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
     pub checks: Option<crate::checks::Checks>,
+    /// The report models (brief 024, [`crate::outputs`]): built on first show (Reports, a BOM
+    /// page, Checks) and then kept from each change's ops; `None` until then.
+    pub outputs: Option<crate::outputs::Outputs>,
+    /// `reports` asked for the Reports window (the trial opens it and clears this).
+    pub open_reports: bool,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
@@ -738,8 +743,7 @@ pub fn project_page(doc: &Document, page: PageId, base: &Drawing, prev: &HandleM
 pub fn project_page_with(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64,
 ) -> Result<(Drawing, HandleMap), String> {
-    let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
-    project_page_framed(doc, page, base, prev, fan, tol, &crate::frame::parts(&input))
+    project_page_framed(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, None))
 }
 
 /// [`project_page_with`] with the sheet frame's parts already worked out (the project keeps them
@@ -774,6 +778,12 @@ pub fn project_page_framed(
     }
     if d.layer(crate::frame::LAYER).is_none() {
         d.layers.push(crate::frame::layer());
+    }
+    crate::locations::add_linetype(&mut d);
+    if d.layer(crate::generated::LAYER).is_none() {
+        let mut l = CLayer::new(crate::generated::LAYER);
+        l.locked = true;
+        d.layers.push(l);
     }
     for h in prev.handles() {
         d.bump_handseed(h);
@@ -861,6 +871,12 @@ pub fn project_page_framed(
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
         ents.push(xref_entity(&part, h));
         map.insert_xref(part.rep, part.index, h);
+    }
+    // Location box labels (brief 024): derived on every draw, never stored.
+    for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
+        let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
+        ents.push(crate::locations::label_entity(&value, at, h));
+        map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
@@ -965,6 +981,8 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            outputs: None,
+            open_reports: false,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -1045,6 +1063,8 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            outputs: None,
+            open_reports: false,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -1166,6 +1186,8 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            outputs: None,
+            open_reports: false,
             goto_ring: None,
             frame: None,
             frame_stale: false,
@@ -1230,6 +1252,7 @@ impl Project {
         self.catch_up_tags();
         self.views.retain(|c| cables.contains(c));
         self.checks = None;
+        self.outputs = None;
         self.goto_ring = None;
         self.frame = None;
         self.frame_stale = false;
@@ -1373,17 +1396,23 @@ impl Project {
         {
             return parts.clone();
         }
+        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024).
+        if crate::generated::has_bom_page(self.ledger.document()) {
+            self.outputs();
+        }
         let doc = self.ledger.document();
-        let input = crate::frame::FrameInput::of(doc, page, &ecad_model::book::Book::of(doc));
+        let (input, total) = crate::generated::input_of(doc, page, self.outputs.as_ref());
         self.frame_stale = false;
+        let generated = crate::generated::kind_of(doc, page).is_some();
         if let Some((p, old, parts)) = &self.frame
             && *p == page
             && *old == input
+            && !generated
         {
             return parts.clone();
         }
         self.frame_builds += 1;
-        let parts = Arc::new(crate::frame::parts(&input));
+        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.outputs.as_ref(), total));
         self.frame = Some((page, input, parts.clone()));
         parts
     }
@@ -1392,6 +1421,13 @@ impl Project {
     pub(crate) fn note_frame_ops(&mut self, ops: &[Op]) {
         if let Some((p, input, _)) = &self.frame
             && crate::frame::touches(ops, *p, input)
+        {
+            self.frame_stale = true;
+        }
+        // A generated page's content (brief 024) has its own map.
+        if let Some((p, _, _)) = &self.frame
+            && let Some(kind) = crate::generated::kind_of(self.ledger.document(), *p)
+            && crate::generated::touches(ops, kind)
         {
             self.frame_stale = true;
         }
@@ -1848,6 +1884,10 @@ impl Project {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
+        // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
+        if let Some(m) = crate::generated::refusal(self.ledger.document(), &ops) {
+            return Err(m);
+        }
         #[cfg(feature = "fault-injection")]
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
@@ -1861,6 +1901,7 @@ impl Project {
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
+        let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         let n = ops.len();
         let frame_before = self.frame_stale;
         self.note_frame_ops(&ops);
@@ -1880,6 +1921,7 @@ impl Project {
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
+        self.update_outputs(outputs);
         self.record_change(touched(touched(pages, refs.pages), numbered), devices, props, tree);
         self.redraw_window(pg, Some(command));
         if let Some(line) = refs.orphaned {
@@ -1925,6 +1967,31 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         checks.update(ledger.document(), ops, scope, self.tolerance);
         self.checks = Some(checks);
+    }
+
+    /// Bring the kept report models (if shown once) in line with the last transaction, from its
+    /// ops only (design 024 §9); `scope` was worked out before it. A change of a generated page's
+    /// sheet count marks the frame (its Total) stale.
+    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) {
+        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return };
+        let ledger = &self.ledger;
+        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        let (before, revision) = (crate::generated::bom_sheets(&o), o.revision);
+        o.update(ledger.document(), ops, scope);
+        let bom_shown = self
+            .frame
+            .as_ref()
+            .is_some_and(|(p, _, _)| crate::generated::kind_of(ledger.document(), *p) == Some(crate::generated::GenKind::BomLocation));
+        if crate::generated::bom_sheets(&o) != before || (bom_shown && o.revision != revision) {
+            self.frame_stale = true;
+        }
+        self.outputs = Some(o);
+    }
+
+    /// The report models, built whole on their first show (design 024 §8.1) and kept after that.
+    pub fn outputs(&mut self) -> &crate::outputs::Outputs {
+        let doc = self.ledger.document();
+        self.outputs.get_or_insert_with(|| crate::outputs::Outputs::build(doc))
     }
 
     /// The Checks list, built whole on its first show (design 022 §8) and kept after that.
@@ -2147,6 +2214,12 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
+        // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
+        if let Some(m) = crate::generated::refusal(self.ledger.document(), &t.ops) {
+            self.restore(pg, c.uid, page);
+            self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
+            return Verdict::Refuse(m);
+        }
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
         let reuse = self.xref_reuse();
@@ -2155,6 +2228,7 @@ impl DocumentOwner for Project {
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
+        let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &t.ops));
         let n = t.ops.len();
         // The numbering pass (brief 022) extends the same transaction.
         if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign) {
@@ -2179,6 +2253,7 @@ impl DocumentOwner for Project {
         // for a preview of one of them.
         let refs = self.finish_watch(watch);
         self.update_checks(checks);
+        self.update_outputs(outputs);
         let changed = touched(refs.pages, self.numbered_pages(n)).map(|mut c| {
             c.insert(page);
             c
@@ -2363,6 +2438,7 @@ impl Project {
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
+        let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
             && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
@@ -2392,6 +2468,7 @@ impl Project {
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs = self.finish_watch(watch);
                 self.update_checks(checks);
+                self.update_outputs(outputs);
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
                 self.record_change(touched(pages, refs.pages), devices, props, tree);

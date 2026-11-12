@@ -47,7 +47,7 @@ parts all use the same machinery.
 4. **Parent and child.** MCB with an auxiliary contact works through the same rule in this brief.
    A PLC card with channels needs a card symbol and is a later step (design §8 says why).
 5. **Read it everywhere.** Hover, the Properties panel, Go to Reference and MCP (`xrefs`,
-   `contacts`) show references. Quick start section "5K. Cross-references".
+   `contacts`) show references. Quick start section "5L. Cross-references".
 
 Out of scope: terminal strips (028), tag numbering and renumbering (026; tag assignment is not
 touched), outputs and printing (024), continuations on the index (design Q9), a PLC card symbol.
@@ -89,4 +89,4 @@ on first draw.
 ## Needs owner check
 
 - Approve the design (`docs/design/025.md`) and answer its questions (§12).
-- A click-only trial: quick start 5K.
+- A click-only trial: quick start 5L.

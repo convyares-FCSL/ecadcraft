@@ -414,6 +414,10 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
                 if item != old {
+                    // A location box stays a closed outline of three points or more (tester 024).
+                    if let Some(m) = crate::locations::reshape_refusal(cx.ledger.document(), id, &item) {
+                        return Err(m);
+                    }
                     linked_changed |= cx.ledger.document().representation_of_item(id).is_some();
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     counts[1] += 1;
