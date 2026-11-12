@@ -148,7 +148,19 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_any_page(s, |p, _| {
         let o = p.outputs();
         let t = o.bom_table(group);
-        let ids: Vec<Value> = o.bom(group).iter().map(|r| json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()})).collect();
+        let ids: Vec<Value> = o
+            .bom(group)
+            .iter()
+            .map(|r| {
+                let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
+                // Brief 030 (design 030 §10): an accessory row names its item and its strip.
+                if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
+                    v["accessory"] = json!(a);
+                    v["strip"] = json!(c.hex());
+                }
+                v
+            })
+            .collect();
         report_result(&t, &["location", "qty", "tags", "description", "maker", "part_number"], &ids, &pg, "BOM")
     })
 }

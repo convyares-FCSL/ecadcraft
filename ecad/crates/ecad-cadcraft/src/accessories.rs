@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::links::{self, Positions};
-use ecad_model::{ComponentId, Document, Properties};
+use ecad_model::{ComponentId, Document, ObjectRef, Op, Properties};
 
 use crate::strips::TermRow;
 
@@ -89,6 +89,17 @@ impl Acc {
             Acc::Partition => "Partition plate",
             Acc::StripLabel => "Strip label",
             Acc::Marker => "Marker",
+        }
+    }
+
+    /// The mark in a plan's Terminal cell (design 030 §7.3, as text).
+    pub fn mark(self) -> &'static str {
+        match self {
+            Acc::EndStop => "\u{2016}",
+            Acc::EndPlate => "\u{2502}",
+            Acc::Partition => "\u{2501}",
+            Acc::StripLabel => "\u{25a1}",
+            Acc::Marker => "\u{25ad}",
         }
     }
 
@@ -189,7 +200,7 @@ pub fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, String> {
             (Some(Acc::Marker), false) => {
                 return Err("A marker goes on a position, not in a gap. Write end_stop, end_plate, partition or strip_label.".into());
             }
-            (Some(a), true) => return Err(format!("{} goes in a gap, not on a position. Only marker goes on a position.", a.key())),
+            (Some(a), true) => return Err(format!("{} goes in a gap, not on a position. Only marker goes on a position.", a.description())),
             (Some(a), false) => out.push(a),
             (None, false) => return Err(format!("\"{}\" is not an accessory. Write end_stop, end_plate, partition or strip_label.", shown(w))),
             (None, true) => return Err(format!("\"{}\" is not an accessory. Only marker goes on a position.", shown(w))),
@@ -406,6 +417,23 @@ pub struct StripAcc {
     pub inherits: BTreeSet<String>,
     /// Bar size in use.
     pub bar: usize,
+    /// The part number each placed gap item shows (`end_plate_pe` when an end plate follows a PE
+    /// position and that part is known).
+    pub parts: BTreeMap<&'static str, String>,
+}
+
+impl StripAcc {
+    /// The part number of a gap row: `acc` in a gap, `pe_before` when the position before it is
+    /// PE.
+    pub fn gap_part(&self, acc: Acc, pe_before: bool) -> Option<&String> {
+        if acc == Acc::EndPlate
+            && pe_before
+            && let Some(p) = self.parts.get("end_plate_pe")
+        {
+            return Some(p);
+        }
+        self.parts.get(acc.key())
+    }
 }
 
 impl StripAcc {
@@ -498,6 +526,18 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
         }
     }
     let mut parts = Parts { strip: props, project: &doc.properties, inherits: BTreeSet::new() };
+    for g in Acc::GAP {
+        if a.count(g) > 0 {
+            if let Some(pn) = parts.get(&format!("{}.part_number", g.key())) {
+                a.parts.insert(g.key(), pn);
+            }
+            if g == Acc::EndPlate
+                && let Some(pn) = parts.get("end_plate_pe.part_number")
+            {
+                a.parts.insert("end_plate_pe", pn);
+            }
+        }
+    }
     // Links, lanes and bars.
     a.bar =
         parts.get(BAR_KEY).and_then(|v| v.parse::<usize>().ok()).filter(|n| (MIN_BAR as usize..=MAX_BAR as usize).contains(n)).unwrap_or(DEFAULT_BAR);
@@ -654,6 +694,92 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     a.no_part = no_part;
     a.inherits = parts.inherits;
     a
+}
+
+// ---------------------------------------------------------------- renumbering (§6, FP4, FP7)
+
+/// The ops that keep a strip's accessories and links on their terminals when `ops` (a renumber
+/// plan: `RemoveTerminal` + `AddTerminal` of one ID) relabel them, and the preview lines
+/// (`-X01: partition after 4 → after 6`, `-X01: link 1-4 → 3-6`). Moves are worked out on the end
+/// state, so `4 ↔ 5` swaps cleanly; keys on labels no terminal had stay.
+pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
+    let mut removed: BTreeMap<ecad_model::TerminalId, (ComponentId, Option<String>)> = BTreeMap::new();
+    let mut maps: BTreeMap<ComponentId, BTreeMap<String, String>> = BTreeMap::new();
+    for op in ops {
+        match op {
+            Op::RemoveTerminal { id, terminal } => {
+                removed.insert(*id, (terminal.component, terminal.label.clone()));
+            }
+            Op::AddTerminal { id, terminal } => {
+                if let Some((c, Some(old))) = removed.get(id)
+                    && *c == terminal.component
+                    && let Some(new) = &terminal.label
+                    && old != new
+                {
+                    maps.entry(*c).or_default().insert(old.clone(), new.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    let mut lines = Vec::new();
+    for (c, map) in maps {
+        if !crate::strips::is_strip(doc, c) {
+            continue;
+        }
+        let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { continue };
+        let tag = crate::devices::tag_words(doc, c);
+        let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
+        // Placement keys: the end state, then the difference.
+        let mut now: BTreeMap<String, String> = BTreeMap::new();
+        let mut was: BTreeMap<String, String> = BTreeMap::new();
+        for (k, v) in props.range(ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(ACC_PREFIX)) {
+            was.insert(k.clone(), v.clone());
+            let nk = match spot_of(k) {
+                Some(Spot::After(l)) => Spot::After(moved(&l)).key(),
+                Some(Spot::On(l)) => Spot::On(moved(&l)).key(),
+                _ => k.clone(),
+            };
+            if nk != *k {
+                let how = if k.starts_with(ON_PREFIX) { "on" } else { "after" };
+                let (a, b) = (spot_of(k).and_then(|x| x.label().map(str::to_string)), spot_of(&nk).and_then(|x| x.label().map(str::to_string)));
+                lines.push(format!(
+                    "{tag}: {} {how} {} \u{2192} {how} {}",
+                    v.replace(',', ", ").replace('_', " "),
+                    a.unwrap_or_default(),
+                    b.unwrap_or_default()
+                ));
+            }
+            now.insert(nk, v.clone());
+        }
+        for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
+            let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
+            if b != a {
+                out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: b, after: a });
+            }
+        }
+        // Links: labels rewritten, re-collapsed in the new plan order.
+        let old_order = positions(doc, c);
+        let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
+        new_order.sort_by_key(|l| links::natural_key(l));
+        new_order.dedup();
+        for (n, p) in links::of(props) {
+            let key = links::key(n);
+            let Some(before) = props.get(&key).cloned() else { continue };
+            let mut labels: Vec<String> = p.select(&old_order).iter().map(|l| moved(l)).collect();
+            labels.extend(p.missing(&old_order));
+            let mut refs: Vec<&String> = labels.iter().collect();
+            refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+            refs.dedup();
+            let after = links::canonical(&refs, &new_order);
+            if after != before {
+                lines.push(format!("{tag}: link {before} \u{2192} {after}"));
+                out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
+            }
+        }
+    }
+    (out, lines)
 }
 
 #[cfg(test)]

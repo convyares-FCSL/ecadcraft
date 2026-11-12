@@ -117,10 +117,18 @@ pub enum Kind {
     NoCoreCount,
     /// A cable reference end with no other end (brief 027, design 027 §4.2).
     OrphanReference,
+    /// Brief 030 (design 030 §8): an accessory placed after or on a position the strip lacks.
+    AccessoryOrphan,
+    /// Placed strip accessories without a part number (one count row).
+    NoAccessoryPart,
+    /// A link spanning a partition.
+    LinkAcrossPartition,
+    /// A link naming positions the strip does not have.
+    LinkOrphan,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 29] = [
+    pub const ALL: [Kind; 33] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -150,6 +158,10 @@ impl Kind {
         Kind::CoreTwice,
         Kind::NoCoreCount,
         Kind::OrphanReference,
+        Kind::AccessoryOrphan,
+        Kind::NoAccessoryPart,
+        Kind::LinkAcrossPartition,
+        Kind::LinkOrphan,
     ];
 
     /// The JSON name.
@@ -184,6 +196,10 @@ impl Kind {
             Kind::CoreTwice => "core-twice",
             Kind::NoCoreCount => "no-core-count",
             Kind::OrphanReference => "orphan-reference",
+            Kind::AccessoryOrphan => "accessory-orphan",
+            Kind::NoAccessoryPart => "no-accessory-part",
+            Kind::LinkAcrossPartition => "link-across-partition",
+            Kind::LinkOrphan => "link-orphan",
         }
     }
 
@@ -224,6 +240,10 @@ impl Kind {
             Kind::CoreTwice => "Core used by two wires",
             Kind::NoCoreCount => "Cables without a core count",
             Kind::OrphanReference => "Cable reference with no other end",
+            Kind::AccessoryOrphan => "Accessory at a position the strip lacks",
+            Kind::NoAccessoryPart => "Strip accessories without a part number",
+            Kind::LinkAcrossPartition => "Link crosses a partition",
+            Kind::LinkOrphan => "Link names positions the strip lacks",
         }
     }
 
@@ -244,7 +264,10 @@ impl Kind {
             | Kind::CoreTwice
             | Kind::OwnLocation
             | Kind::BoxCrosses
-            | Kind::OrphanReference => Severity::Warning,
+            | Kind::OrphanReference
+            | Kind::AccessoryOrphan
+            | Kind::LinkAcrossPartition
+            | Kind::LinkOrphan => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -285,6 +308,14 @@ pub enum Fix {
     NextFreeCore(ConductorId),
     /// Brief 028: open Reports on the Cables tab with Only ? on.
     ShowCables,
+    /// Brief 030: the strip's orphan key (index into its kept orphans): **Move to end** (items
+    /// appended to `acc.end`, key cleared) or **Remove** (key cleared).
+    AccessoryOrphan(ComponentId, u16),
+    /// Brief 030: link `n` crossing the partition after position index `at`: **Split link at**
+    /// (`jumper split_at`) or **Remove partition** (`accessory remove [partition]`).
+    LinkAcrossPartition(ComponentId, u16, u16),
+    /// Brief 030: link `n` names missing positions: **Drop missing positions** or **Delete link**.
+    LinkOrphan(ComponentId, u16),
 }
 
 /// One row of the Checks list.

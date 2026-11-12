@@ -19,6 +19,7 @@
 //! This module adds no ECAD meaning: no numbering beyond the default terminal name, no new
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
+mod accessories;
 mod devices;
 mod forms;
 mod location_form;
@@ -42,6 +43,7 @@ use crate::project::{Mapped, Project};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
+pub(crate) use accessories::{accessory, jumper};
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use location_form::locationbox;

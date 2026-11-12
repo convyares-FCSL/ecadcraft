@@ -1803,6 +1803,19 @@ impl Trial {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
+            A::AccessoryFix(fix, i) => {
+                let cmd: Option<String> = self.project.clone().and_then(|p| {
+                    p.configure(&mut self.cad.session, |p| {
+                        let o = p.outputs();
+                        ecad_cadcraft::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
+                    })
+                    .ok()
+                    .flatten()
+                });
+                if let Some(line) = cmd {
+                    let _ = self.run_line(&line);
+                }
+            }
             A::ShowCables => {
                 self.open_reports();
                 if let Some(r) = &mut self.reports {

@@ -40,6 +40,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
     v.extend(crate::terminal_cmds::specs());
+    v.extend(crate::accessory_cmds::specs());
     v.extend(crate::release::specs());
     v
 }

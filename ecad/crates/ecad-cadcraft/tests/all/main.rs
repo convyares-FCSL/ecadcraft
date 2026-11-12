@@ -5,6 +5,7 @@
 
 mod common;
 
+mod accessories_contracts;
 mod cable_look_contracts;
 mod cable_look_tester_contracts;
 mod cable_reference_contracts;

@@ -635,6 +635,68 @@ impl StripData {
     pub fn row_of(&self, t: TerminalId) -> Option<&TermRow> {
         self.rows.iter().find(|r| r.terminal == Some(t))
     }
+
+    /// The plan in physical order (design 030 §7.1): `acc.start`'s items, each position followed
+    /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, 028's rows only.
+    pub fn plan(&self, accessories: bool) -> Vec<PlanItem<'_>> {
+        let mut out = Vec::with_capacity(self.rows.len() + self.acc.gap_rows());
+        fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::accessories::Acc]) {
+            if on {
+                out.extend(items.iter().map(|a| PlanItem::Gap { gap: g, acc: *a }));
+            }
+        }
+        gap(&mut out, accessories, "start", &self.acc.start);
+        for (i, r) in self.rows.iter().enumerate() {
+            out.push(PlanItem::Term(i, r));
+            let last_of_label = self.rows.get(i + 1).is_none_or(|n| n.label != r.label);
+            if last_of_label && let Some(items) = self.acc.after.get(&r.label) {
+                gap(&mut out, accessories, &r.label, items);
+            }
+        }
+        gap(&mut out, accessories, "end", &self.acc.end);
+        out
+    }
+
+    /// The links through plan position `i`: (link, whether `i` is one of its positions).
+    pub fn links_at(&self, i: usize) -> Vec<(&crate::accessories::LinkInfo, bool)> {
+        let label = self.rows.get(i).map(|r| r.label.as_str());
+        self.acc
+            .links
+            .iter()
+            .filter(|l| l.span > 0 && l.first <= i && i <= l.last)
+            .map(|l| (l, label.is_some_and(|x| l.labels.iter().any(|y| y == x))))
+            .collect()
+    }
+
+    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per link
+    /// lane: `●` on a linked position, `┆` past a skipped one.
+    pub fn bridge_cell(&self, i: usize) -> String {
+        let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
+        let at = self.links_at(i);
+        let lanes = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
+        if lanes > 0 {
+            let mut marks = vec![' '; lanes];
+            for (l, on) in &at {
+                if let Some(m) = marks.get_mut(l.lane) {
+                    *m = if *on { '\u{25cf}' } else { '\u{2506}' };
+                }
+            }
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.extend(marks);
+        }
+        text
+    }
+}
+
+/// One row of a strip's plan in physical order.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PlanItem<'a> {
+    /// An accessory in a gap: `start`, `end` or the label it follows.
+    Gap { gap: &'a str, acc: crate::accessories::Acc },
+    /// A position (its index in [`StripData::rows`]).
+    Term(usize, &'a TermRow),
 }
 
 /// The strips of a project (see the module's update map).

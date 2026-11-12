@@ -32,6 +32,7 @@
 
 mod access;
 pub mod accessories;
+pub mod accessory_cmds;
 pub mod checks;
 pub mod commands;
 pub mod convert;
