@@ -259,7 +259,7 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
 fn value_json(r: &Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
-        defaults::Value::Word(w) => json!(w),
+        defaults::Value::Choice(w) => json!(w),
         defaults::Value::Text(t) => json!(t),
     }
 }
