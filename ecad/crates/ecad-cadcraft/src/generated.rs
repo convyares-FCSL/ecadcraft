@@ -451,6 +451,11 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
         if let Some(pn) = &s.part_number {
             head.push_str(&format!("  (part: {pn})"));
         }
+        // Brief 030 (design 030 §7.1): the accessory totals.
+        let acc = s.acc.summary();
+        if !acc.is_empty() {
+            head.push_str(&format!(" \u{b7} {acc}"));
+        }
         rows.push(TRow { cells: vec![head], heading: true, ..TRow::default() });
         let mut last_cable: Option<ecad_model::CableId> = None;
         for item in s.plan(true) {
