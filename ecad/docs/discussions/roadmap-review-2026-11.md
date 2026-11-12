@@ -174,15 +174,17 @@ term that is not generic electrical practice.
 
 ### 3.2 Milestones to v1
 
-**M0: close v0.1 (now).** 030 lands, the drawing-pack findings are triaged, and the v0.1 QA gate
-runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
+**M0: close v0.1 (now).** 030 has landed, the drawing-pack findings are triaged, the bugs the
+stage 2 redraw found are fixed, and the v0.1 QA gate runs (with the three stale slow tests from the
+2026-11-11 QA pass fixed first).
 
 | # | Feature | Purpose (one line) | Depends on | Size | Format change |
 |---|---|---|---|---|---|
-| 0.1 | 030 accessories and jumpers | Strips as built, links that join nets | 028 | (in progress) | No (properties) |
-| 0.2 | Drawing-pack quick fixes | Two small gaps from §6. **Revision table columns** the project chooses (for example change request, validated, verified), stored as `rev.<n>.<field>` properties as today. **Tag display without the leading `-`**, as a project choice: input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. Every bigger gap is an M1 item | 030 | S each | Additive: an optional project setting for the tag style |
+| 0.1 | 030 accessories and jumpers | Strips as built, links that join nets | 028 | Done (merged to `dev`) | No (properties) |
+| 0.2 | Drawing-pack quick fixes | Small gaps from §6. **Revision table columns** the project chooses (for example change request, validated, verified), stored as `rev.<n>.<field>` properties as today. **Tag display style**, as a project choice: no forced leading `-`, and the case kept as typed. Input already accepts either (`ecad-model/src/tag.rs`), so only the display changes. If the owner accepts question 23, the **pending-revision marker** in the title block goes here too. Every bigger gap is an M1 item | 030 | S each | Additive: optional project settings for the tag style and the pending marker |
 | 0.3 | Stale slow tests | Make `cargo xtask ci` pass for the QA gate | none | S | No |
-| 0.4 | v0.1 QA gate | `dev` → `main`, owner trial | 0.1–0.3 | S | No |
+| 0.4 | **Bug sweep** (stage 2 of the drawing-pack test) | Fix the seven defects in §6.2, each with a test that fails before the fix. The first, wires drawn end to end that do not join, is a correctness bug and goes first | none | S–M | No |
+| 0.5 | v0.1 QA gate | `dev` → `main`, owner trial | 0.1–0.4 | S | No |
 
 **M1: real drawings (v0.2).** Draw a real panel's schematics without workarounds.
 
@@ -190,17 +192,17 @@ runs (with the three stale slow tests from the 2026-11-11 QA pass fixed first).
 |---|---|---|---|---|---|
 | 1.0 | **Live MCP bridge** (first, see below) | An agent drives the **running** app and the owner watches the drawing appear, as SolidCraft does; the server is registered for Claude so it is always available | 011 | M | No |
 | 1.1 | **Symbol builder** | Draw a symbol with connection points and text slots, save it into the project as an embedded definition, and "promote" a drawn component to a symbol (proposal §4.1) | 018 | L | Additive: definition text slots (proposal §4.2, deferred so far). Optional and absent by default |
-| 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals | 030 | M | No (definitions and properties) |
+| 1.2 | **Multi-level terminals** | Levels per position, links per level, internal bridges, disconnect, fuse and sensor terminals. A **fuse or disconnect terminal breaks the net**: its two sides are different nets, as for any fuse. **Relabelling a strip terminal** (labels such as `1.L`, `1.N`, `1.PE`), shown on the page, the plan and the strip pages | 030 | M | No (definitions and properties) |
 | 1.3 | **PLC racks and cards** | A rack or CPU with slots, and cards in them (DI, DQ, AI, AO, RTD, IO-Link, power) as devices. Each card's channels are drawn on any page, with channel numbers, addresses (`%I0.0`, `I0.0`, free text), labels that may be rotated, and spare channels listed. Automatic addressing by slot and channel. A generated **I/O list** page and CSV | 018, 025 | XL. Split it: (a) rack, slot and card model; (b) channel symbols and addressing; (c) I/O list | No if slots and channels are connection points and properties; FP to confirm in design |
 | 1.4 | **Wire types** | Named conductor types per potential, overridable per wire, on wire reports and the BOM. Conductors already store their own `cross_section` and `colour` (022 FP3). The gap the pack shows is setting them quickly and showing them, which this item covers | 022 | M | Additive: project setting `wire_types` |
 | 1.5 | **UI shell** (look-and-feel, part 1) | Tokens, type, panel layout, the History polish from 020b, a calm modern frame. Never a copy of another product | none | L | No |
 | 1.6 | **Radial wheel** | Right-click quick-use wheel: the eight most likely actions for what is under the cursor | 1.5 | M | No |
 | 1.7 | **Table component** | One editable, virtualised, live table (sort, filter, multi-select, inline edit, go-to on the page) that every manager uses | 1.5 | M | No |
 | 1.8 | **Graphical terminal-strip pages** | A generated page per strip, drawn as the strip is built. Each terminal shows its inside target above and outside target below, with wire numbers, page references, cable boxes with core colours, levels, links and accessories (end plates). It is the same derived data as 028's tabular plan, in a second page style; it is not a second model | 1.2, 030 | L | No (derived) |
-| 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand | 022, 025 | M | No: derived; a caption is a continuation property |
-| 1.10 | **Symbol pack** | More built-in starters, available before the builder: change-over contacts (11/12/14), 4-pole contactor, RCBO, residual-current device, SSR, proximity and float sensors, valve, thermocouple, heater, interlock, fuse terminal with a rating. All are our own definitions | 018 | M | No (built-in definitions, embedded on use as today) |
+| 1.9 | **Continuation cross-references** | Continuation arrows on 025's general reference index, each showing where its other ends are (`page-column-row`), grouped under captions. Live, never typed by hand. **A cable that crosses pages through continuations** can be drawn on the second page as well: today neither a second cable slash nor `cablecontinue` does it, so the cable stops at the page edge | 022, 025 | M | No: derived; a caption is a continuation property. The cable case reuses the existing cable references |
+| 1.10 | **Symbol pack** | More built-in starters, available before the builder: change-over contacts (11/12/14), 4-pole contactor, RCBO, residual-current device, SSR, proximity and float sensors, valve, thermocouple, heater, interlock, fuse terminal with a rating, and a **fuse bank**: one device holding several fuses, with connection points per fuse. All are our own definitions | 018 | M | No (built-in definitions, embedded on use as today) |
 | 1.11 | **Connector devices** | Plug and socket halves as one device that mate, plus D-sub, fieldbus and RJ45/USB bulkhead connectors. One connection point per pin, and the halves can be on different pages | 1.1 | M | Probably no (properties); FP to confirm in design |
-| 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030 | 024, 030 | M | No (properties) |
+| 1.12 | **BOM completeness** | An internal article-number column. Untagged project rows (trunking and DIN rail in metres, crimps, fuse inserts). Assembly rows for a device's add-on parts (aux block, memory card), kept as `part.<n>.*` properties until the parts catalogue (2.3) takes them over. The jumper bars and end plates already come from 030. **Continuation sheets numbered in sequence** (400, 401, …) rather than all printing the first sheet's number; the rule applies to every generated report, not only the BOM | 024, 030 | M | No (properties) |
 
 **Order within M1, by lane.** Each lane's order follows the ranking in §6.
 
@@ -408,10 +410,16 @@ Each has a recommendation. Answer "as recommended" to accept them all.
 22. **Cables with more than two references and with pairs and shields go in M2** (2.7), not M1?
     They ranked last of the ten blocking gaps. **Recommend M2**, unless the owner's next real job
     needs them sooner.
+23. **A pending revision in the title block.** After a revision is issued and the design is edited
+    again, the title block still shows the issued revision, and nothing marks that changes are
+    pending. **Recommend showing it as pending** (for example `D*` or `E (draft)`), derived from
+    history (edits after the last issue), with the style a project setting. It is S and fits 0.2.
 
 ---
 
 ## 6. Findings from the drawing-pack test
+
+### 6.1 Stage 1: desk review
 
 A separate session reviewed one of the owner's real control-panel packs (43 pages, confidential)
 against ECAD. This is stage 1, a desk review: it compares the pack with what ECAD can draw, and
@@ -454,8 +462,46 @@ Smaller gaps:
 - **The UI shell moves later in lane U.** It now comes after the gaps that block drawings, and still
   before the managers.
 
-Stage 2 of the test (redrawing pages in ECAD) may re-rank this table; its findings are merged the
-same way.
+### 6.2 Stage 2: redrawing the pack through MCP
+
+An agent then redrew the whole pack in ECAD through the headless MCP server: about 1,900 calls, of
+which 18 were refused. Again only general results are recorded here.
+
+- **No page was faithful.** 28% of pages were recognisable, 40% partly reproduced and 33% not
+  reproduced.
+- **Of 47 kinds of element** in the pack, 34% work fully and 77% at least partly.
+- **030** (strip accessories and links) and the existing continuation references behaved as
+  designed.
+
+The redraw confirms the stage 1 ranking. It adds these gaps:
+
+| Gap | Where it goes |
+|---|---|
+| Relabelling a strip terminal (labels such as `1.L`) | **1.2**, with multi-level terminals |
+| A cable that crosses pages through continuations cannot be drawn on the second page (neither a second slash nor `cablecontinue` works) | **1.9**, with continuation cross-references (M1) |
+| A fuse bank: one device holding several fuses | **1.10** symbol pack |
+| Fuse terminals that break the net | **1.2** |
+| BOM continuation sheets numbered in sequence, not all with the first sheet's number | **1.12**, as a rule for every generated report |
+| Tag display style: no forced leading `-`, case kept | **0.2** (already there) |
+
+It also found seven defects, which become **0.4 bug sweep** before the QA gate:
+
+1. **High: wires drawn end to end do not join.** The second wire's start floats (no `from`), it gets
+   a new net, and nothing on screen shows it. Starting on the middle of a wire adds a junction, and
+   `junction` repairs it afterwards. A silent disconnection is a correctness bug, so it goes first:
+   an end that lands on another wire's end joins it, or the page shows that it is open.
+2. `text` with `justify` is refused, although the command's documentation lists it.
+3. `table` is refused, with a message whose grammar is broken.
+4. Automatic contact tables under a coil low on the page overlap the title block.
+5. Repeated tags overlap: strip terminals repeat the strip's tag, PLC channels repeat the card's
+   tag, and continuation names overlap one another.
+6. Missing data prints as a yellow `?`, which cannot be seen on white paper.
+7. The PDF is about ten times too large (32 MB for 30 sheets).
+
+**What stage 2 changed in the roadmap:** M0 gains 0.4 bug sweep (the QA gate becomes 0.5); 1.2
+gains relabelling and net-breaking fuse terminals; 1.9 gains cables across continuations; 1.10
+gains the fuse bank; 1.12 gains sequential sheet numbers; and question 23 asks about a pending
+revision in the title block. The M1 order does not change.
 
 ---
 
