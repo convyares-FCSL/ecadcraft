@@ -1976,13 +1976,22 @@ impl Project {
         let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return };
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let (before, revision) = (crate::generated::bom_sheets(&o), o.revision);
-        o.update(ledger.document(), ops, scope);
-        let bom_shown = self
-            .frame
-            .as_ref()
-            .is_some_and(|(p, _, _)| crate::generated::kind_of(ledger.document(), *p) == Some(crate::generated::GenKind::BomLocation));
-        if crate::generated::bom_sheets(&o) != before || (bom_shown && o.revision != revision) {
+        // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
+        // and cable rows, so the book's Total is compared whenever such a page exists.
+        let doc = ledger.document();
+        let generated = crate::generated::has_bom_page(doc);
+        let sheets =
+            |o: &crate::outputs::Outputs| if generated { crate::generated::book_sheets(doc, Some(o)) } else { crate::generated::bom_sheets(o) };
+        let (before, revision) = (sheets(&o), o.revision);
+        o.update(doc, ops, scope);
+        if ecad_model::ledger::verify_mode()
+            && let Some(line) = o.verify_strips(doc)
+        {
+            self.events.record(EventKind::IndexRebuilt, None, ledger.head(), None, line);
+        }
+        let bom_shown =
+            self.frame.as_ref().is_some_and(|(p, _, _)| crate::generated::kind_of(doc, *p).is_some_and(crate::generated::GenKind::needs_outputs));
+        if sheets(&o) != before || (bom_shown && o.revision != revision) {
             self.frame_stale = true;
         }
         self.outputs = Some(o);

@@ -707,6 +707,9 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
                         "revisions" => "Revisions…".to_string(),
                         "more" => "More…".to_string(),
                         g if g.starts_with("goto:") => "Go to".to_string(),
+                        // Brief 028: a strip's plan, a cable's cores.
+                        g if g.starts_with("showplan:") => "Show plan".to_string(),
+                        g if g.starts_with("showcores:") => "Show cores".to_string(),
                         // Brief 025: `refgoto:<source>:<target>:<label>`.
                         g if g.starts_with("refgoto:") => g.splitn(4, ':').nth(3).unwrap_or("Go to").to_string(),
                         other => other.to_string(),

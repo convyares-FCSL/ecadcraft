@@ -94,6 +94,21 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Type a symbol (coil, no, nc, mcb1…) or Enter for the last one, then click to place devices; R rotates, D adds to a device, T sets the tag; Enter to finish",
         kind: Kind::Start("place"),
     },
+    // Brief 028 (design 028 §3.2, §4): beside Place Symbol.
+    Tool {
+        id: "ecad.terminals",
+        group: "Components",
+        label: "Place Terminals",
+        tooltip: "Enter for the last strip (or New, PE, a strip's tag), then draw a line across the wires: one terminal on each, numbered in order",
+        kind: Kind::Start("terminals"),
+    },
+    Tool {
+        id: "ecad.bridge",
+        group: "Components",
+        label: "Draw Bridge",
+        tooltip: "Click a terminal, then another of the same strip: a bridge; the next click continues from it, Enter ends",
+        kind: Kind::Start("bridge"),
+    },
     Tool {
         id: "ecad.deviceprops",
         group: "Components",

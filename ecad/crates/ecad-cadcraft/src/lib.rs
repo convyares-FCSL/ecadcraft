@@ -57,7 +57,9 @@ pub mod references;
 pub mod revisions;
 pub mod sheet_cmds;
 pub mod slash;
+pub mod strips;
 pub mod symbols;
+pub mod terminal_cmds;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]

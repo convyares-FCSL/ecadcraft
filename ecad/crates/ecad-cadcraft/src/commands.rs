@@ -38,6 +38,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::merging::specs());
     v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
+    v.extend(crate::terminal_cmds::specs());
     v
 }
 
@@ -169,7 +170,9 @@ end's spine; null: the middle)",
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage)
-            .params("{title, number?, folder?: id} (number: default the next after the page before it)")
+            .params(
+                "{title, number?, folder?: id, generated?: kind, strip?: id} (number: default the next after the page before it; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip) or \"cables\")",
+            )
             .noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
         CommandSpec::new("renamepage", "Rename Page", run_renamepage).params("{page: id, title}").noundo(),
@@ -623,6 +626,12 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         let value = match (object, key.as_str()) {
             (ObjectRef::Component(_), crate::xref::CONTACTS_KEY) => crate::xref::offer_value(value.as_deref())?,
             (ObjectRef::Component(_), crate::xref::MIRROR_KEY) => crate::xref::mirror_value(value.as_deref())?,
+            // Brief 028 (FP1, FP2, FP4): a strip's offer, a cable's cores, the PE row's part.
+            (ObjectRef::Component(_), crate::strips::OFFER_KEY) => crate::strips::offer_value(value.as_deref())?,
+            (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
+            (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
+                crate::devices::property_value(doc, &key, value.as_deref())?
+            }
             _ => value,
         };
         let props = match object {
@@ -652,6 +661,7 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
         let after = match key.as_str() {
             crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
             crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
+            crate::strips::OFFER_KEY => crate::strips::offer_value(value.as_deref())?,
             _ => crate::devices::property_value(doc, &key, value.as_deref())?,
         };
         let mut ops = Vec::new();
@@ -930,8 +940,12 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
                 (c, 0)
             }
         };
+        // Brief 028 (design 028 §6.2, Q10): a cable with a core offer gives each new member the
+        // next free core, in the order given.
+        let mut spare: std::collections::VecDeque<String> =
+            existing.and_then(|k| crate::strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
         for w in conductors {
-            ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: w, core: None } });
+            ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: w, core: spare.pop_front() } });
             index += 1;
         }
         p.apply_edit(pg, "cableadd", "Add to cable", ops)?;
@@ -1134,7 +1148,8 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     let generated = match params.get("generated") {
         None | Some(Value::Null) => None,
         Some(Value::String(t)) => Some(
-            crate::generated::GenKind::parse(t).ok_or_else(|| err("`generated` is \"cover\", \"contents\", \"revisions\" or \"bom-location\""))?,
+            crate::generated::GenKind::parse(t)
+                .ok_or_else(|| err("`generated` is \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" or \"cables\""))?,
         ),
         Some(_) => return Err(err("`generated` must be a string")),
     };
@@ -1145,12 +1160,25 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`number` must be a string such as \"105\", or null for the next number")),
     };
     let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
+    // Brief 028 (FP3): a terminal plan page may show one strip.
+    let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
+    if strip.is_some() && generated != Some(crate::generated::GenKind::Terminals) {
+        return Err(err("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
+    }
     let (page, number) = with_project(s, |p, pg, _| {
+        if let Some(c) = strip
+            && !crate::strips::is_strip(p.ledger.document(), c)
+        {
+            return Err("That device is not a terminal strip; leave `strip` out to show every strip.".into());
+        }
         let (id, number, mut ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
         if let Some(g) = generated {
             for op in &mut ops {
                 if let Op::AddPage { page, .. } = op {
                     page.properties.insert(crate::generated::KEY.into(), g.value().into());
+                    if let Some(c) = strip {
+                        page.properties.insert(crate::generated::STRIP_KEY.into(), c.hex());
+                    }
                 }
             }
         }

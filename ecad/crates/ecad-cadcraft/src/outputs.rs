@@ -65,6 +65,29 @@ impl PageCx {
         let number = self.pages.get(&p)?.1.as_str();
         ecad_model::derive::place_on(&ecad_model::sheet::Grid::of(doc, p), number, at)
     }
+
+    /// Where `at` lies on page `p` (brief 028: a terminal's Place).
+    pub(crate) fn place_at(&self, doc: &Document, p: PageId, at: Pt) -> Option<ecad_model::derive::Place> {
+        self.place(doc, p, at)
+    }
+}
+
+/// Where conductor `w`'s two ends are drawn: end A at its first route's first vertex, end B at
+/// its last route's last vertex, routes in book order.
+pub fn end_points(doc: &Document, w: ConductorId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
+    let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
+        .representations_of(Subject::Conductor(w))
+        .filter_map(|(_, r)| {
+            let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
+                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
+                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
+                _ => None,
+            })?;
+            Some((cx.pos(r.page), pts, r.page))
+        })
+        .collect();
+    routes.sort_by_key(|(pos, _, _)| *pos);
+    [routes.first().and_then(|(_, v, p)| v.first().map(|x| (*p, *x))), routes.last().and_then(|(_, v, p)| v.last().map(|x| (*p, *x)))]
 }
 
 /// One device as the reports see it.
@@ -174,6 +197,22 @@ pub struct CableRow {
     pub length: Option<String>,
     pub designation: Option<String>,
     pub go: Option<(PageId, Pt)>,
+    /// Brief 028: how its members meet its core offer (design 028 §6.2).
+    pub count: crate::strips::CoreCount,
+    /// The members (in member order), for the over and twice go-tos.
+    pub members: Vec<ConductorId>,
+    /// Their stored core labels, in member order.
+    pub member_cores: Vec<Option<String>>,
+    /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
+    pub from_devices: Vec<String>,
+    pub to_devices: Vec<String>,
+}
+
+impl CableRow {
+    /// The Cores cell: the offered count, else the member count.
+    pub fn core_total(&self) -> usize {
+        self.count.offer.as_ref().map_or(self.cores, Vec::len)
+    }
 }
 
 /// BOM grouping (design 024 §6.1).
@@ -426,6 +465,8 @@ pub struct Outputs {
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
     no_location: usize,
+    /// Brief 028: the terminal strips (design 028 §11.1).
+    pub strips: crate::strips::Strips,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -450,6 +491,7 @@ impl Outputs {
         for p in &doc.page_order {
             o.set_box_checks(doc, *p);
         }
+        o.strips = crate::strips::Strips::build(doc, &o, &cx);
         o
     }
 
@@ -520,8 +562,37 @@ impl Outputs {
         for p in &scope.pages {
             self.set_box_checks(doc, *p);
         }
+        // Brief 028: the strips these rows touch (design 028 §11.1).
+        let mut pages = scope.route_pages.clone();
+        pages.extend(ecad_model::book::positions_changed(doc, ops));
+        let mut strips = std::mem::take(&mut self.strips);
+        let which = strips.touched(
+            doc,
+            &crate::strips::StripScope { devices: &scope.devices, conductors: &scope.conductors, cables: &scope.cables, pages: &pages },
+        );
+        if which.is_empty() {
+            strips.last_work = 0;
+        } else {
+            let cx = PageCx::of(doc);
+            // Counted in the strips' own `last_work`, not in the rows'.
+            strips.recompute(doc, &which, self, &cx);
+        }
+        self.strips = strips;
         self.last_work = work;
         self.revision += 1;
+    }
+
+    /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
+    /// difference is put right and described (a bug, for the event log).
+    pub fn verify_strips(&mut self, doc: &Document) -> Option<String> {
+        let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
+        if self.strips.same_as(&built) {
+            return None;
+        }
+        let work = self.strips.last_work;
+        self.strips = built;
+        self.strips.last_work = work;
+        Some("the terminal strip model was out of step; rebuilt".into())
     }
 
     fn remove_device(&mut self, c: ComponentId) {
@@ -594,12 +665,15 @@ impl Outputs {
             _ => {}
         }
         let tk = (tag_key(&row.tag), c);
-        let group = self.by_location.entry((row.loc_key(), row.part_key())).or_default();
-        if group.is_empty() {
-            *self.loc_rows.entry(row.loc_key()).or_default() += 1;
+        // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model.
+        if !crate::strips::is_strip(doc, c) {
+            let group = self.by_location.entry((row.loc_key(), row.part_key())).or_default();
+            if group.is_empty() {
+                *self.loc_rows.entry(row.loc_key()).or_default() += 1;
+            }
+            group.insert(tk.clone());
+            self.by_part.entry(row.part_key()).or_default().insert(tk);
         }
-        group.insert(tk.clone());
-        self.by_part.entry(row.part_key()).or_default().insert(tk);
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
         self.devices.insert(c, row);
@@ -633,6 +707,11 @@ impl Outputs {
                 EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None }
             }
         }
+    }
+
+    /// The cell of conductor end `t` drawn at `at` (brief 028: a terminal's far end).
+    pub(crate) fn end_cell_of(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
+        self.end_cell(doc, t, at, cx)
     }
 
     fn set_wire(&mut self, doc: &Document, w: ConductorId, cx: &PageCx) {
@@ -689,6 +768,11 @@ impl Outputs {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        // Brief 028 (design 028 §9.2): a wire between two terminals of one strip is a bridge.
+        let cable = match crate::strips::bridge_of(doc, w) {
+            Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tag_of(doc, strip).unwrap_or("?")),
+            _ => cable,
+        };
         let page = mid.and_then(|(p, a)| cx.place(doc, p, a));
         let potential = pot.and_then(|p| p.name);
         self.by_potential.entry(potential.as_deref().unwrap_or("").trim().to_lowercase()).or_default().insert(w);
@@ -717,6 +801,8 @@ impl Outputs {
         let p = |key: &str| clean(cab.properties.get(key));
         let mut locs: BTreeSet<(LocKey, String)> = BTreeSet::new();
         let mut missing = false;
+        // Brief 028: the devices at the cores' ends, per location.
+        let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), ComponentId)>> = BTreeMap::new();
         for m in &cab.members {
             let Some(cond) = doc.conductors.get(&m.conductor) else { continue };
             for t in cond.ends.iter().flatten() {
@@ -724,18 +810,28 @@ impl Outputs {
                 if crate::wires::kind_of(doc, c).is_some() {
                     continue;
                 }
-                let loc = match self.devices.get(&c) {
-                    Some(d) => d.location.value.clone(),
-                    None => locations::resolve(doc, c).value,
+                let (loc, tag) = match self.devices.get(&c) {
+                    Some(d) => (d.location.value.clone(), d.tag.clone()),
+                    None => (locations::resolve(doc, c).value, crate::devices::tag_of(doc, c).unwrap_or("?").to_string()),
                 };
                 match loc {
                     Some(l) => {
+                        at_loc.entry(l.clone()).or_default().insert((tag_key(&tag), c));
                         locs.insert((loc_key(Some(&l)), l));
                     }
                     None => missing = true,
                 }
             }
         }
+        let tags_at = |l: &Option<String>| -> Vec<String> {
+            let mut seen = BTreeSet::new();
+            l.iter()
+                .flat_map(|l| l.split(", "))
+                .flat_map(|l| at_loc.get(l).into_iter().flatten())
+                .filter(|(_, c)| seen.insert(*c))
+                .map(|((_, _, t), _)| t.clone())
+                .collect()
+        };
         let list: Vec<String> = locs.into_iter().map(|(_, l)| l).collect();
         let (from, to, reason) = match (missing, list.as_slice()) {
             (true, _) => (None, None, Some("A device at one of its cores' ends has no location.".to_string())),
@@ -743,6 +839,7 @@ impl Outputs {
             (false, [one]) => (Some(one.clone()), Some(one.clone()), None),
             (false, [a, rest @ ..]) => (Some(a.clone()), Some(rest.join(", ")), None),
         };
+        let (from_devices, to_devices) = (tags_at(&from), tags_at(&to));
         let go = doc.representations_of(Subject::Cable(k)).find_map(|(_, r)| {
             let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, .. }) => Some(*a),
@@ -765,6 +862,11 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
+                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &cab.members),
+                members: cab.members.iter().map(|m| m.conductor).collect(),
+                member_cores: cab.members.iter().map(|m| m.core.clone()).collect(),
+                from_devices,
+                to_devices,
             },
         );
     }
@@ -834,7 +936,89 @@ impl Outputs {
             let which = if n == 1 { "1 device has no location".to_string() } else { format!("{n} devices have no location") };
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
+        out.extend(self.strip_checks());
         out
+    }
+
+    /// The Checks rows of brief 028 (design 028 §8), from the kept strip and cable rows.
+    pub fn strip_checks(&self) -> Vec<Check> {
+        let mut out = Vec::new();
+        for s in self.strips.strips.values() {
+            if let Some(off) = s.offer
+                && s.drawn > off.positions as usize
+            {
+                let hi = s.highest();
+                out.push(Check {
+                    kind: Kind::TooManyTerminals,
+                    page: hi.and_then(|r| r.go).map(|(p, _)| p),
+                    at: hi.and_then(|r| r.go).map(|(_, a)| a),
+                    object: hi.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal),
+                    which: format!("{}: {} terminals drawn, strip offers {}", s.tag, s.drawn, off.positions),
+                    fix: Some(Fix::OfferDrawn(s.component)),
+                });
+            }
+            for (label, t) in &s.twice {
+                let go = s.row_of(*t).and_then(|r| r.go);
+                out.push(Check {
+                    kind: Kind::TerminalTwice,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Terminal(*t),
+                    which: format!("{}:{label} is drawn twice", s.tag),
+                    fix: Some(Fix::RenumberStrip(s.component)),
+                });
+            }
+        }
+        let mut unknown = 0;
+        for r in self.cables.values() {
+            let tag = r.tag.clone().unwrap_or_else(|| "?".into());
+            let Some(offer) = &r.count.offer else {
+                unknown += 1;
+                for i in &r.count.twice {
+                    out.push(self.core_twice(r, &tag, *i));
+                }
+                continue;
+            };
+            if let Some(first) = r.count.over.first().and_then(|i| r.members.get(*i)) {
+                let go = self.wire(*first).and_then(|w| w.go);
+                let named = match (&r.kind, &r.count.offer_text) {
+                    (Some(k), _) => k.clone(),
+                    (None, Some(t)) => t.clone(),
+                    (None, None) => String::new(),
+                };
+                out.push(Check {
+                    kind: Kind::TooManyCores,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Conductor(*first),
+                    which: format!("{tag}: {} cores used, cable offers {} ({named})", r.members.len(), offer.len()),
+                    fix: Some(Fix::SetCores(r.cable)),
+                });
+            }
+            for i in &r.count.twice {
+                out.push(self.core_twice(r, &tag, *i));
+            }
+        }
+        if unknown > 0 {
+            let which = if unknown == 1 { "1 cable has no core count".to_string() } else { format!("{unknown} cables have no core count") };
+            out.push(Check { kind: Kind::NoCoreCount, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowCables) });
+        }
+        out
+    }
+
+    fn core_twice(&self, r: &CableRow, tag: &str, i: usize) -> Check {
+        let w = r.members.get(i).copied();
+        let go = w.and_then(|w| self.wire(w)).and_then(|x| x.go);
+        let label = w.and_then(|w| self.wire(w)).map(|x| x.cable.clone()).unwrap_or_default();
+        let core = label.rsplit(" core ").next().unwrap_or("?").to_string();
+        Check {
+            kind: Kind::CoreTwice,
+            page: go.map(|(p, _)| p),
+            at: go.map(|(_, a)| a),
+            object: w.map_or(Object::None, Object::Conductor),
+            which: format!("{tag}: core {core} is used by two wires"),
+            fix: w.map(Fix::NextFreeCore),
+        }
     }
 
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
@@ -842,7 +1026,12 @@ impl Outputs {
     pub fn bom_sheets(&self) -> usize {
         let per = crate::generated::ROWS_PER_SHEET;
         let (mut sheets, mut used) = (1, 0);
-        for n in self.loc_rows.values() {
+        // Brief 028: each strip adds one row per terminal type it has (O(strips)).
+        let mut rows = self.loc_rows.clone();
+        for (loc, n) in self.strip_rows() {
+            *rows.entry(loc).or_default() += n;
+        }
+        for n in rows.values() {
             if used == per {
                 sheets += 1;
                 used = 0;
@@ -872,7 +1061,48 @@ impl Outputs {
         self.devices.len()
     }
 
-    /// The BOM rows (design 024 §6.1), devices only.
+    /// The strips' BOM rows per location key: one per terminal type with a quantity.
+    fn strip_rows(&self) -> Vec<(LocKey, usize)> {
+        self.strips
+            .strips
+            .values()
+            .map(|s| {
+                let (ft, pe) = s.quantities();
+                (loc_key(s.location.as_deref()), usize::from(ft > 0) + usize::from(pe > 0))
+            })
+            .collect()
+    }
+
+    /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
+    fn strip_bom(&self, s: &crate::strips::StripData, location: Option<String>) -> Vec<BomRow> {
+        let (ft, pe) = s.quantities();
+        let mut out = Vec::new();
+        if ft > 0 {
+            out.push(BomRow {
+                location: location.clone(),
+                qty: ft,
+                tags: vec![s.tag.clone()],
+                devices: vec![s.component],
+                description: s.description.clone(),
+                maker: s.maker.clone(),
+                part_number: s.part_number.clone(),
+            });
+        }
+        if pe > 0 {
+            out.push(BomRow {
+                location,
+                qty: pe,
+                tags: vec![s.tag.clone()],
+                devices: vec![s.component],
+                description: Some("PE terminal".into()),
+                maker: s.maker_pe.clone(),
+                part_number: s.part_number_pe.clone(),
+            });
+        }
+        out
+    }
+
+    /// The BOM rows (design 024 §6.1): devices, and each strip per terminal type (brief 028).
     pub fn bom(&self, group: Group) -> Vec<BomRow> {
         let row = |set: &BTreeSet<((String, u64, String), ComponentId)>, location: Option<String>| {
             let devices: Vec<ComponentId> = set.iter().map(|(_, c)| *c).collect();
@@ -898,6 +1128,11 @@ impl Outputs {
                         Some((lk.clone(), first, row(set, loc)))
                     })
                     .collect();
+                for s in self.strips.strips.values() {
+                    for r in self.strip_bom(s, s.location.clone()) {
+                        v.push((loc_key(s.location.as_deref()), tag_key(&s.tag), r));
+                    }
+                }
                 v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
                 v.into_iter().map(|(_, _, r)| r).collect()
             }
@@ -918,6 +1153,12 @@ impl Outputs {
                         Some((first, row(set, Some(locs.join(", ")))))
                     })
                     .collect();
+                for s in self.strips.strips.values() {
+                    let loc = s.location.clone().unwrap_or_else(|| "?".into());
+                    for r in self.strip_bom(s, Some(format!("{loc} \u{d7}1"))) {
+                        v.push((tag_key(&s.tag), r));
+                    }
+                }
                 v.sort_by(|a, b| a.0.cmp(&b.0));
                 v.into_iter().map(|(_, r)| r).collect()
             }
@@ -1009,7 +1250,7 @@ impl Outputs {
         .into_iter()
         .filter(|(_, f)| any(*f))
         .collect();
-        let mut t = Table { headers: vec!["Tag", "Type", "Cores", "From location", "To location", "Used", "Spare"], rows: Vec::new() };
+        let mut t = Table { headers: vec!["Tag", "Type", "Cores", "From location", "To location", "Used", "Spare", "From", "To"], rows: Vec::new() };
         t.headers.extend(extra.iter().map(|(h, _)| *h));
         for r in rows {
             let why = r.location_reason.clone();
@@ -1020,11 +1261,13 @@ impl Outputs {
             let mut row = vec![
                 Cell::opt(&r.tag, || "The cable has no tag.".into()),
                 Cell::opt(&r.kind, || "The cable has no type.".into()),
-                Cell::ok(r.cores.to_string()),
+                Cell::ok(r.core_total().to_string()),
                 loc(&r.from_location),
                 loc(&r.to_location),
-                Cell::ok("\u{2014}"),
-                Cell::ok("\u{2014}"),
+                Cell::ok(r.count.used().to_string()),
+                Cell::opt(&r.count.spare_text(), || "Set the cable's cores or type (7G1.5) to count spares.".into()),
+                Cell::ok(ends_text(&r.from_location, &r.from_devices)),
+                Cell::ok(ends_text(&r.to_location, &r.to_devices)),
             ];
             for (_, f) in &extra {
                 row.push(Cell::ok(f(r).clone().unwrap_or_default()));
@@ -1033,6 +1276,106 @@ impl Outputs {
         }
         t
     }
+}
+
+impl Outputs {
+    /// The terminal plan as a table (Reports ▸ Terminals, CSV): every strip, or `strip` only;
+    /// one line per position and conductor (design 028 §5.1), with where each line goes.
+    pub fn terminal_table(&self, strip: Option<ComponentId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
+        let style = self.style;
+        let mut t = Table {
+            headers: vec!["Strip", "Inside target", "Inside wire", "Terminal", "Bridge", "Outside wire", "Cable", "Core", "Outside target", "Place"],
+            rows: Vec::new(),
+        };
+        let mut go = Vec::new();
+        let strips: Vec<&crate::strips::StripData> = match strip {
+            Some(c) => self.strips.get(c).into_iter().collect(),
+            None => self.strips.sorted(),
+        };
+        for s in strips {
+            for r in &s.rows {
+                if r.spare() {
+                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok("spare"), Cell::default()];
+                    row.push(Cell::ok(if r.pe { format!("{} PE", r.label) } else { r.label.clone() }));
+                    row.extend(std::iter::repeat_n(Cell::default(), 6));
+                    t.rows.push(row);
+                    go.push(None);
+                    continue;
+                }
+                let lines = r.inside.len().max(r.outside.len()).max(1);
+                for i in 0..lines {
+                    let (inside, outside) = (r.inside.get(i), r.outside.get(i));
+                    let side = |c: Option<&crate::strips::SideCell>, f: fn(&crate::strips::SideCell) -> Option<String>, why: &str| match c {
+                        None => Cell::default(),
+                        Some(c) => Cell::opt(&f(c), || why.to_string()),
+                    };
+                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    let cable = outside.and_then(|c| c.cable.as_ref());
+                    t.rows.push(vec![
+                        Cell::ok(s.tag.clone()),
+                        side(inside, |c| c.target.clone(), "A loose far end."),
+                        side(inside, |c| c.wire.clone(), "The wire has no number."),
+                        Cell::ok(if r.pe { format!("{label} PE") } else { label }),
+                        Cell::ok(r.bridge_group.filter(|_| i == 0).map_or_else(String::new, |g| format!("\u{25cf} {g}"))),
+                        side(outside, |c| c.wire.clone(), "The wire has no number."),
+                        Cell::ok(cable.map_or_else(String::new, |(_, t)| t.clone().unwrap_or_else(|| "?".into()))),
+                        match (cable, outside) {
+                            (Some(_), Some(c)) => Cell::opt(&c.core, || "The core has no label.".into()),
+                            _ => Cell::default(),
+                        },
+                        side(outside, |c| c.target.clone(), "A loose far end."),
+                        Cell::ok(if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() }),
+                    ]);
+                    go.push(r.go);
+                }
+            }
+        }
+        (t, go)
+    }
+
+    /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
+    /// show `spare` in From.
+    pub fn core_table(&self, k: CableId) -> Table {
+        let mut t = Table { headers: vec!["Core", "Wire number", "From", "To", "State"], rows: Vec::new() };
+        let Some(r) = self.cables.get(&k) else { return t };
+        let style = self.style;
+        let member = |i: usize, label: Option<String>, state: &str| {
+            let w = r.members.get(i).and_then(|w| self.wires.get(w));
+            vec![
+                Cell::opt(&label, || "The core has no label.".into()),
+                Cell::ok(w.and_then(|w| w.wire_number.clone()).unwrap_or_default()),
+                Cell::ok(w.and_then(|w| w.from.text(style)).unwrap_or_default()),
+                Cell::ok(w.and_then(|w| w.to.text(style)).unwrap_or_default()),
+                Cell::ok(state),
+            ]
+        };
+        match &r.count.offer {
+            Some(offer) => {
+                for label in offer {
+                    match r.count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
+                        Some(i) => t.rows.push(member(i, Some(label.clone()), "used")),
+                        None => t.rows.push(vec![Cell::ok(label.clone()), Cell::default(), Cell::ok("spare"), Cell::default(), Cell::ok("spare")]),
+                    }
+                }
+                for i in &r.count.over {
+                    t.rows.push(member(*i, r.member_cores.get(*i).cloned().flatten(), "over"));
+                }
+            }
+            None => {
+                for i in 0..r.members.len() {
+                    t.rows.push(member(i, r.member_cores.get(i).cloned().flatten(), "used"));
+                }
+            }
+        }
+        t
+    }
+}
+
+/// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).
+fn ends_text(location: &Option<String>, devices: &[String]) -> String {
+    let mut parts: Vec<String> = location.iter().cloned().collect();
+    parts.extend(devices.iter().cloned());
+    parts.join(" ")
 }
 
 /// A point where two outlines' segments cross, if they do.

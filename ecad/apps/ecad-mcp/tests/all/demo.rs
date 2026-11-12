@@ -151,10 +151,13 @@ fn the_demo_locations_reports_and_generated_pages() {
     // Reports: no wire on the BOM; the cable row.
     let o = ecad_cadcraft::outputs::Outputs::build(&doc);
     let bom = o.bom(ecad_cadcraft::outputs::Group::Location);
-    assert_eq!(bom.iter().map(|r| r.qty).sum::<usize>(), 11, "the eleven devices, nothing else");
+    // Brief 028 (Q13): a strip counts its terminals, so -X01 and -X02 add their other terminals.
+    let terminals: usize = o.strips.strips.values().map(|s| s.drawn).sum();
+    assert_eq!(bom.iter().map(|r| r.qty).sum::<usize>(), 11 - o.strips.len() + terminals, "the devices and terminals, nothing else");
     let cables = o.cable_table();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    assert_eq!(row[..5], ["-W01", "4G1.5", "3", "+CP1", "+JB1"], "{row:?}");
+    // Brief 028: Cores is the offer read from the type (4G), Used the three members.
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
     let s01 = o.bom_table(ecad_cadcraft::outputs::Group::Location);
     assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
     // The generated pages.

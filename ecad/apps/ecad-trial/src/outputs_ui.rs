@@ -1,5 +1,7 @@
 //! Brief 024's windows (design 024 §4.1, §6.2): **Reports** (BOM, wires, cables, each exported to
-//! CSV) and **Print Book**. Both read the project and record nothing.
+//! CSV) and **Print Book**. Both read the project and record nothing. Brief 028 adds the
+//! **Terminals** tab (the terminal plan, per strip or all) and a cable's core list on the Cables
+//! tab (double-click a cable).
 //!
 //! The Reports window shows a copy of a table of the project's kept report models
 //! ([`ecad_cadcraft::outputs::Outputs`], built on first show and then kept from each change's
@@ -10,13 +12,15 @@ use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::outputs::{Group, Table};
 use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
 
-/// The three tabs.
+/// The tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
     #[default]
     Bom,
     Wires,
     Cables,
+    /// Brief 028: the terminal plan.
+    Terminals,
 }
 
 impl Tab {
@@ -25,6 +29,7 @@ impl Tab {
             Tab::Bom => "bom",
             Tab::Wires => "wires",
             Tab::Cables => "cables",
+            Tab::Terminals => "terminals",
         }
     }
     fn label(self) -> &'static str {
@@ -32,6 +37,7 @@ impl Tab {
             Tab::Bom => "BOM",
             Tab::Wires => "Wires",
             Tab::Cables => "Cables",
+            Tab::Terminals => "Terminals",
         }
     }
     fn empty(self) -> &'static str {
@@ -39,6 +45,7 @@ impl Tab {
             Tab::Bom => "No devices yet.",
             Tab::Wires => "No wires yet.",
             Tab::Cables => "No cables yet.",
+            Tab::Terminals => "No terminal strips yet.",
         }
     }
     fn file(self) -> &'static str {
@@ -46,9 +53,13 @@ impl Tab {
             Tab::Bom => "bom",
             Tab::Wires => "wires",
             Tab::Cables => "cables",
+            Tab::Terminals => "terminals",
         }
     }
 }
+
+/// The tabs in order.
+const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::Terminals];
 
 /// `ecad.check-warning`.
 const WARNING: Color32 = Color32::from_rgb(0xFF, 0xFF, 0x00);
@@ -78,8 +89,15 @@ pub struct Reports {
     pub sort: Option<(usize, bool)>,
     /// The project's table copy and the (serial, revision, tab, group) it was taken at.
     table: Table,
-    counts: [usize; 3],
-    seen: Option<(u64, u64, Tab, Group)>,
+    counts: [usize; 4],
+    seen: Option<(u64, u64, Tab, Group, Option<ecad_model::ComponentId>, Option<ecad_model::CableId>)>,
+    /// Brief 028: the strip the Terminals tab shows (`None`: all), and the strips to pick from.
+    pub strip: Option<ecad_model::ComponentId>,
+    pub strips: Vec<(ecad_model::ComponentId, String)>,
+    /// Brief 028: the cable whose core list the Cables tab shows instead of the schedule.
+    pub cores_of: Option<ecad_model::CableId>,
+    /// Where each Terminals row goes.
+    pub gos: Vec<Option<(ecad_model::PageId, ecad_model::Pt)>>,
     /// The rows shown after Find, Only ? and sort: indexes into `table.rows`.
     pub shown: Vec<usize>,
     /// The Export path box, when open.
@@ -102,17 +120,25 @@ impl Reports {
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
         let o = p.outputs();
-        let key = (serial, o.revision, self.tab, self.group);
+        let key = (serial, o.revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
             self.filter();
             return;
         }
-        self.table = match self.tab {
-            Tab::Bom => o.bom_table(self.group),
-            Tab::Wires => o.wire_table(),
-            Tab::Cables => o.cable_table(),
+        self.gos.clear();
+        self.table = match (self.tab, self.cores_of) {
+            (Tab::Bom, _) => o.bom_table(self.group),
+            (Tab::Wires, _) => o.wire_table(),
+            (Tab::Cables, Some(k)) => o.core_table(k),
+            (Tab::Cables, None) => o.cable_table(),
+            (Tab::Terminals, _) => {
+                let (t, gos) = o.terminal_table(self.strip);
+                self.gos = gos;
+                t
+            }
         };
-        self.counts = [o.bom(self.group).len(), o.wires().len(), o.cables().len()];
+        self.strips = o.strips.sorted().iter().map(|s| (s.component, s.tag.clone())).collect();
+        self.counts = [o.bom(self.group).len(), o.wires().len(), o.cables().len(), o.strips.len()];
         self.seen = Some(key);
         self.copies += 1;
         self.filter();
@@ -164,20 +190,45 @@ impl Reports {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    for (i, tab) in [Tab::Bom, Tab::Wires, Tab::Cables].into_iter().enumerate() {
+                    for (i, tab) in TABS.into_iter().enumerate() {
                         let n = self.counts.get(i).copied().unwrap_or(0);
                         let b = ui
                             .selectable_label(self.tab == tab, format!("{} ({n})", tab.label()))
                             .on_hover_text(format!("ecad.reports.{}", tab.name()));
                         let b = b.accessible_name(format!("ecad.reports.{}", tab.name()));
-                        if b.clicked() && self.tab != tab {
+                        if b.clicked() && (self.tab != tab || self.cores_of.is_some()) {
                             self.tab = tab;
                             self.sort = None;
                             self.export = None;
+                            self.cores_of = None;
                         }
                     }
                 });
                 ui.horizontal(|ui| {
+                    // Brief 028: which strip, or all.
+                    if self.tab == Tab::Terminals {
+                        let shown = self.strip.and_then(|c| self.strips.iter().find(|(x, _)| *x == c)).map_or("All", |(_, t)| t.as_str()).to_string();
+                        ui.menu_button(RichText::new(format!("{shown} v")).small(), |ui| {
+                            if ui.button("All").clicked() {
+                                self.strip = None;
+                                ui.close();
+                            }
+                            for (c, tag) in self.strips.clone() {
+                                if ui.button(tag).clicked() {
+                                    self.strip = Some(c);
+                                    ui.close();
+                                }
+                            }
+                        })
+                        .response
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.strip"));
+                    }
+                    if self.tab == Tab::Cables
+                        && self.cores_of.is_some()
+                        && ui.button("\u{2190} All cables").accessible_name("ecad.reports.cables.back").clicked()
+                    {
+                        self.cores_of = None;
+                    }
                     if self.tab == Tab::Bom {
                         ui.label(RichText::new("Group").small());
                         let words = if self.group == Group::Location { "By location" } else { "By part" };
@@ -311,11 +362,13 @@ impl Reports {
         let weights: Vec<f32> = match self.tab {
             Tab::Bom => vec![1.2, 0.5, 2.0, 2.5, 1.2, 1.6],
             Tab::Wires => vec![1.0, 1.4, 1.0, 1.4, 1.0, 0.9, 0.8, 0.8, 1.2, 0.9],
+            Tab::Cables if self.cores_of.is_some() => vec![0.6, 1.0, 1.4, 1.4, 0.6],
             Tab::Cables => {
-                let mut v = vec![1.0, 1.0, 0.6, 1.2, 1.4, 0.6, 0.6];
-                v.extend(std::iter::repeat_n(1.0, self.table.headers.len().saturating_sub(7)));
+                let mut v = vec![1.0, 1.0, 0.6, 1.2, 1.4, 0.6, 1.0, 1.4, 1.4];
+                v.extend(std::iter::repeat_n(1.0, self.table.headers.len().saturating_sub(9)));
                 v
             }
+            Tab::Terminals => vec![0.7, 1.6, 0.9, 0.6, 0.5, 0.9, 0.7, 0.6, 1.6, 0.9],
         };
         let sum: f32 = weights.iter().sum();
         weights.iter().map(|w| total * w / sum).collect()

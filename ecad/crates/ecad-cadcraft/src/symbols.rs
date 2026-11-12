@@ -198,6 +198,15 @@ pub const STARTERS: &[Starter] = &[
         id: def_id(15),
     },
     Starter { key: "terminal", name: "Terminal", aliases: &["terminal", "clamp"], prefix: "X", kind: Kind::Terminal, id: def_id(16) },
+    // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
+    Starter {
+        key: "terminalpe",
+        name: "PE terminal",
+        aliases: &["pe terminal", "earth terminal"],
+        prefix: "X",
+        kind: Kind::Terminal,
+        id: def_id(21),
+    },
     Starter { key: "di", name: "PLC digital input", aliases: &["plc", "input", "di"], prefix: "A", kind: Kind::Plc { letter: 'I' }, id: def_id(17) },
     Starter {
         key: "do",
@@ -412,6 +421,8 @@ fn graphics(key: &str) -> Vec<Primitive> {
             ]
         }
         "terminal" => vec![circle((0.0, 0.0), 1.5)],
+        // Our own earth mark to the right of the ring (design 028 §2).
+        "terminalpe" => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
         // A filled dot (`ecad.junction-size`): concentric circles, so it reads as filled at any
         // lineweight setting (design 022 §3.1).
         "junction" => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
@@ -439,7 +450,7 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         "motor3" => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
         "motor1" => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         "trafo" => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
-        "terminal" => vec![t("1", 0.0, 0.0)],
+        "terminal" | "terminalpe" => vec![t("1", 0.0, 0.0)],
         // No label: a junction or continuation shows no connection point name.
         "junction" | "continuation" => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
         "di" => vec![t("I0.0", 0.0, 10.0)],
@@ -509,8 +520,8 @@ mod tests {
             bare.origin = None;
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
-        // 18 symbols (brief 018) and the junction and continuation (brief 022).
-        assert_eq!(STARTERS.len(), 20);
+        // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028).
+        assert_eq!(STARTERS.len(), 21);
     }
 
     #[test]
@@ -521,7 +532,7 @@ mod tests {
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3"]);
         assert_eq!(keys("fuse"), ["fuse"]);
         assert!(keys("xyz").is_empty());
-        assert_eq!(keys("").len(), 20);
+        assert_eq!(keys("").len(), 21);
         assert!(keys(&"z".repeat(10_000)).is_empty());
     }
 }

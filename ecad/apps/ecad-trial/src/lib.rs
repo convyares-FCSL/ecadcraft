@@ -1735,6 +1735,48 @@ impl Trial {
                     r.invalidate();
                 }
             }
+            // Brief 028's Checks fixes (design 028 §8).
+            A::OfferDrawn(c) => {
+                let value = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| {
+                        let doc = p.ledger.document();
+                        let drawn = ecad_cadcraft::strips::drawn_terminals(doc, c);
+                        let pe = ecad_cadcraft::strips::offer_of(doc, c).map_or(0, |o| o.pe);
+                        let drawn_pe = drawn.iter().filter(|(_, _, pe)| *pe).count() as u32;
+                        ecad_cadcraft::strips::Offer { positions: drawn.len() as u32, pe: pe.max(drawn_pe).min(drawn.len() as u32) }.text()
+                    })
+                    .ok()
+                });
+                if let Some(v) = value {
+                    let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "terminals", "value": v})));
+                }
+            }
+            A::RenumberStrip(c) => {
+                let _ = self.run_line(&format!("renumber {}", json!({"kind": "terminals", "scope": "selection", "strips": [c.hex()]})));
+            }
+            A::SetCores(k) => self.focus_cable_cores(k),
+            A::NextFreeCore(w) => {
+                let label = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| {
+                        let doc = p.ledger.document();
+                        doc.cables_of(w).first().and_then(|k| ecad_cadcraft::strips::next_free_label(doc, *k))
+                    })
+                    .ok()
+                    .flatten()
+                });
+                if let Some(l) = label {
+                    let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
+                }
+            }
+            A::ShowCables => {
+                self.open_reports();
+                if let Some(r) = &mut self.reports {
+                    r.tab = outputs_ui::Tab::Cables;
+                    r.cores_of = None;
+                    r.only_flagged = true;
+                    r.invalidate();
+                }
+            }
             A::Reports => self.open_reports(),
             A::PrintBook(folder) => self.open_print_book(folder),
             A::NewGenerated(kind) => {
@@ -2336,6 +2378,11 @@ impl Trial {
                 g => {
                     if let Some(r) = g.strip_prefix("goto:") {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
+                    } else if let Some(c) = g.strip_prefix("showplan:") {
+                        // Brief 028: Reports ▸ Terminals on this strip.
+                        self.show_plan(ecad_model::ComponentId::parse(c));
+                    } else if let Some(k) = g.strip_prefix("showcores:").and_then(ecad_model::CableId::parse) {
+                        self.show_cores(k);
                     } else if let Some(rest) = g.strip_prefix("refgoto:") {
                         // Brief 025: a device reference's Go to.
                         let mut it = rest.splitn(3, ':');
@@ -2416,6 +2463,10 @@ impl Trial {
         match out {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
+            // Brief 028: double-clicking a cable shows its cores.
+            Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
+                self.show_cores_of_row(i)
+            }
             Some(outputs_ui::Out::Goto(tab, i) | outputs_ui::Out::Select(tab, i)) => self.goto_report_row(tab, i),
             None => {}
         }
@@ -2441,8 +2492,76 @@ impl Trial {
         }
     }
 
+    /// Brief 028: show the core list of the cable on shown row `i` of the Cables tab.
+    fn show_cores_of_row(&mut self, i: usize) {
+        let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(p) = self.project.clone() else { return };
+        let cable = p.configure(&mut self.cad.session, |p| p.outputs().cables().get(k).map(|c| c.cable)).ok().flatten();
+        if let (Some(r), Some(c)) = (&mut self.reports, cable) {
+            r.cores_of = Some(c);
+        }
+    }
+
+    /// Brief 028: Reports on the Terminals tab for `strip` (Properties' **Show plan**).
+    pub fn show_plan(&mut self, strip: Option<ecad_model::ComponentId>) {
+        self.open_reports();
+        if let Some(r) = &mut self.reports {
+            r.tab = outputs_ui::Tab::Terminals;
+            r.strip = strip;
+            r.cores_of = None;
+            r.invalidate();
+        }
+    }
+
+    /// Brief 028: Checks' **Set cores…**: the cable's slash is shown and selected, so Properties
+    /// shows its Cores field.
+    pub fn focus_cable_cores(&mut self, cable: ecad_model::CableId) {
+        let Some(p) = self.project.clone() else { return };
+        let found = p
+            .read(&mut self.cad.session, |p, _| {
+                let doc = p.ledger.document();
+                let (_, r) = doc.representations_of(ecad_model::Subject::Cable(cable)).find(|(_, r)| r.role == "slash")?;
+                let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => {
+                        Some(ecad_model::Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0))
+                    }
+                    _ => None,
+                });
+                Some((r.page, r.items.clone(), at))
+            })
+            .ok()
+            .flatten();
+        let Some((page, items, at)) = found else {
+            self.notice = Some("That cable has no slash drawn; set its cores in the Reports' Cables tab or with setprop.".into());
+            return;
+        };
+        if self.show_page(page).is_err() {
+            return;
+        }
+        let handles = p
+            .read(&mut self.cad.session, |p, _| {
+                p.pages.get(&page).map(|v| items.iter().filter_map(|i| v.map.item(*i)).collect::<Vec<_>>()).unwrap_or_default()
+            })
+            .unwrap_or_default();
+        if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+        }
+        self.cad.session.set_selection(handles);
+    }
+
+    /// Brief 028: Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
+    pub fn show_cores(&mut self, cable: ecad_model::CableId) {
+        self.open_reports();
+        if let Some(r) = &mut self.reports {
+            r.tab = outputs_ui::Tab::Cables;
+            r.cores_of = Some(cable);
+            r.invalidate();
+        }
+    }
+
     /// Go to a Reports row: a BOM row's first device's main symbol, a wire's first route, a
-    /// cable's label box (design 024 §6.2). Nothing is recorded.
+    /// cable's label box (design 024 §6.2), a terminal (brief 028). Nothing is recorded.
     pub fn goto_report_row(&mut self, tab: outputs_ui::Tab, i: usize) {
         enum To {
             Symbol(ecad_model::RepresentationId),
@@ -2451,6 +2570,8 @@ impl Trial {
         let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
         let group = self.reports.as_ref().map(|r| r.group).unwrap_or_default();
+        let terminal = self.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
+        let cores = self.reports.as_ref().is_some_and(|r| r.cores_of.is_some());
         let to = p
             .configure(&mut self.cad.session, |p| {
                 let o = p.outputs();
@@ -2461,7 +2582,9 @@ impl Trial {
                         o.device(c).and_then(|d| d.main).map(|(rep, _, _)| To::Symbol(rep))
                     }
                     outputs_ui::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
+                    outputs_ui::Tab::Cables if cores => None,
                     outputs_ui::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
+                    outputs_ui::Tab::Terminals => terminal.map(|(pg, at)| To::Place(pg, at)),
                 }
             })
             .ok()
