@@ -78,7 +78,7 @@ pub fn valid_prefix(text: &str) -> Option<String> {
 /// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
 /// stored that is not a valid prefix is ignored.
 pub fn prefix_for(doc: &Document, s: &Starter) -> String {
-    doc.settings.tag_prefixes.get(s.key).and_then(|p| valid_prefix(p)).unwrap_or_else(|| s.prefix.to_string())
+    crate::defaults::symbols::prefix(doc, s.key)
 }
 
 // ---------------------------------------------------------------- numbering
@@ -390,19 +390,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             if let Some(labels) = crate::xref::offer_labels(doc, c, make, &used) {
                 return Ok(labels);
             }
-            let highest = used
-                .iter()
-                .filter_map(|l| match l.as_bytes() {
-                    [s @ b'1'..=b'9', b'1'..=b'4'] => Some(u32::from(s - b'0')),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let next = highest + 1;
-            if next > 9 {
-                return Err(format!("{who} already has 9 contacts."));
-            }
-            Ok(if make { vec![format!("{next}3"), format!("{next}4")] } else { vec![format!("{next}1"), format!("{next}2")] })
+            // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
+            symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), if make { &['3', '4'] } else { &['1', '2'] }, &who)
         }
         Kind::Terminal => {
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
@@ -422,6 +411,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
         }
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
+        // Brief 034: the label rule lives in the catalogue.
+        Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
         Kind::Fixed { exclusive } => {
             if exclusive {
                 let has = doc

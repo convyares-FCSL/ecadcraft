@@ -651,6 +651,8 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
+            // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
+            (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,
             // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
             (ObjectRef::Component(c), _) => match crate::accessories::setprop_rule(doc, c, &key, value.as_deref())? {
                 Some(v) => v,
@@ -693,6 +695,14 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
                     if let Some(v) = crate::accessories::setprop_rule(doc, *c, k, value.as_deref())? {
                         out = v;
                     }
+                }
+                out
+            }
+            // Brief 034: `rating.<n>` only on fuse banks that have fuse `<n>`.
+            k if crate::symbols::is_rating_key(k) => {
+                let mut out = None;
+                for c in &cs {
+                    out = crate::symbols::setprop_rule(doc, ObjectRef::Component(*c), k, value.as_deref())?;
                 }
                 out
             }
