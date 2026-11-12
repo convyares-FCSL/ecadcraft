@@ -61,9 +61,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     keep their own `#[ignore = "run by … in a child process"]` reasons, and do nothing unless the
     test that starts them set `ECAD_TEST_CHILD`, so an `--include-ignored` run is always safe. A
     new one follows the same pattern.
-    When a change alters the ops a command records or a derived text format (reference texts,
-    wire numbers, tags), also run that crate's slow set: `cargo xtask test-changed --
-    --include-ignored`. The 2026-11-11 QA pass found three slow tests left stale by 019 and 022.
+    **Workers never run `--include-ignored`** (owner, 2026-11-12). The slow set runs only at the
+    dev→main QA gate (`cargo xtask ci`), or when the owner calls for it after massive changes.
   - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
     `translate.rs`, the store and locking, or anything the owner asks for. It runs only what the
     change can break. A re-test after a fix runs only what failed.
@@ -119,9 +118,9 @@ cargo xtask patches               # only when files outside ecad/ changed
   reload or first show. No refresh buttons: views stay live.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
   code with `// ECAD-SEAM(owner):`. Keep ECAD semantics out of upstream crates.
-- Rust only for product code. **Exception (owner decision, 2026-10-12):** developer tools under
-  `ecad/tools/` may be written in HTML, CSS and JavaScript (for example the read-only inspector,
-  `ecad/tools/inspector/index.html`). They ship with no product, run no server by default, never
+- Rust only for product code. **Exception (owner decisions, 2026-10-12 and 2026-11-12):** developer
+  tools under `ecad/dev/` may be written in HTML, CSS and JavaScript (for example the read-only
+  inspector page, `ecad/dev/ecad-inspector/page/index.html`). They ship with no product, run no server by default, never
   mutate a project, and escape every value they display. Anything an end user runs stays Rust.
 - Never-crash rules apply: no `unwrap`/`expect`/`panic!` in non-test code, no `unsafe`, errors
   through each crate's error type.
