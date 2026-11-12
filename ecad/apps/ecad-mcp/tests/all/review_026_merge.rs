@@ -143,6 +143,7 @@ fn numbering_high_is_not_merged_as_a_property() {
     let pv = c.exec("merge", json!({"from": "Option H", "preview": true}));
     let rows = pv["conflicts"].as_array().cloned().unwrap_or_default();
     assert!(!rows.iter().any(|k| k.to_string().contains("numbering.high")), "{pv}");
+    assert!(!pv["changes"].to_string().to_ascii_lowercase().contains("numbering.high"), "{pv}");
     let mut ch = serde_json::Map::new();
     for k in &rows {
         let first = k["choices"][0].clone();

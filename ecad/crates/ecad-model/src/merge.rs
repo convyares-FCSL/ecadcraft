@@ -1634,7 +1634,15 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
     }
     match (props(a), props(s)) {
         (Some(pa), Some(ps)) => {
-            let keys: Vec<&String> = pa.keys().chain(ps.keys()).collect::<BTreeSet<_>>().into_iter().filter(|k| pa.get(*k) != ps.get(*k)).collect();
+            let keys: Vec<&String> = pa
+                .keys()
+                .chain(ps.keys())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .filter(|k| pa.get(*k) != ps.get(*k))
+                .filter(|k| !k.starts_with(tag::HIGH_RESET_PREFIX))
+                .collect();
+            // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
             match keys.first() {
                 Some(k) => {
                     let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{v}\""));
