@@ -44,7 +44,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     base is the branch's upstream, so it tests what was not pushed yet; `--dry-run` names the
     crates; arguments after `--` go to the test executables, e.g. `-- cable_view` to filter). The
     crates that depend on them are not tested locally: CI runs their fast tests on the pull
-    request into `dev` (`--with-dependents`), and nobody waits on that locally. Before each
+    request into `dev` (`--with-dependents`). Before each
     **push** (not each commit): `cargo clippy --workspace --all-targets --all-features -- -D
     warnings`, which compiles every target, tests included. Never the whole workspace's tests.
     Documentation-only commits need no cargo at all.
@@ -68,14 +68,14 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     whole-workspace run, also when shared crates changed. A re-test runs only what failed.
   - **Reviewer:** once per feature, on the PR into `dev`, and on any brief the tester would cover.
     Reads; runs cargo only for `cargo xtask patches` or to confirm a specific finding.
-  - **CI:** pull requests into `dev` run the quick check: fmt and clippy with all targets on Linux,
-    so every test must still compile. The fast tests of the changed crates' dependents
-    (`cargo xtask test-changed --base origin/dev --with-dependents`) join that check in a small CI
-    pull request of their own (owner, 2026-11-12); until then they run at the QA gate. The
-    full suite (`cargo xtask ci` with the slow set and wasm, root CADCraft, Linux and Windows) runs on
-    pull requests into `main`, on pushes to `main`, and by hand (`workflow_dispatch`). Run wasm
-    locally only when a change could affect it (dependencies, `cfg(target_arch)`, platform code in
-    `ecad-model`/`ecad-store`/`ecad-file`).
+  - **CI:** pull requests into `dev` run the quick check on Linux: fmt, clippy with all targets
+    (so every test must still compile), and the fast tests of the crates the pull request changed
+    and of every crate that depends on them (`cargo xtask test-changed --base origin/dev
+    --with-dependents`; owner, 2026-11-12). The full suite (`cargo xtask ci` with the slow set and
+    wasm, root CADCraft, Linux and Windows) runs on pull requests into `main`, on pushes to `main`,
+    and by hand (`workflow_dispatch`). Run wasm locally (`cargo xtask wasm`, warnings as errors
+    like CI) only when a change could affect it (dependencies, `cfg(target_arch)`, code built
+    only off wasm, platform code in `ecad-model`/`ecad-store`/`ecad-file`/`ecad-cadcraft`).
 - **Builds (owner decision, 2026-11-08, replaces the shared folder of 2026-11-01):** each checkout
   builds into **its own** folder, so builds running at the same time never mix: leave
   `CARGO_TARGET_DIR` unset, and cargo uses that checkout's own `ecad/target` (git-ignored). The
