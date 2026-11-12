@@ -25,6 +25,8 @@ pub struct Row {
     pub strips: Option<crate::strips::MeasuredStrips>,
     /// The pre-release check and the release on that file (brief 027).
     pub release: Option<crate::release::MeasuredRelease>,
+    /// Wire joins, cable continuation and wire labels on that file (brief 032).
+    pub wires: Option<crate::wires_nets::MeasuredWires>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -332,6 +334,15 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         ));
     }
     for r in rows {
+        let Some(w) = &r.wires else { continue };
+        out.push_str(&format!(
+            "
+Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {:.2} ms (as junction {:.2} ms),              lnet {:.2} ms (within 10% of leach {:.2} ms; {} routes on the densest page), ccont {:.2} ms (50 cores, < 20)
+",
+            r.tier, r.variant, w.wmerge_ms, w.wopen_ms, w.jjoin_ms, w.junction_ms, w.lnet_ms, w.leach_ms, w.routes, w.ccont_ms
+        ));
+    }
+    for r in rows {
         let Some(t) = &r.strips else { continue };
         out.push_str(&format!(
             "\nTerminal strips on {} {} ({} strips, {} terminals, {} cables): stripbuild {:.1} ms (target < 50), \
@@ -572,6 +583,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
                 o.extend(extra);
             }
+            // Brief 032 (set apart, as brief 025's columns).
+            row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
             row
         }).collect::<Vec<_>>(),
     });
@@ -626,5 +639,13 @@ fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     serde_json::json!({
         "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
         "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+    })
+}
+
+/// Brief 032's row as JSON (outside the report's one `json!`, which is at the macro's depth).
+fn wires_json(w: &crate::wires_nets::MeasuredWires) -> serde_json::Value {
+    json!({
+        "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "junction_ms": w.junction_ms, "jjoin_ms": w.jjoin_ms,
+        "lnet_ms": w.lnet_ms, "leach_ms": w.leach_ms, "routes": w.routes, "ccont_ms": w.ccont_ms,
     })
 }

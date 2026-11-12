@@ -2639,6 +2639,9 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 return None;
             }
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
+            // same transaction (the invariant requires it), and those ops name its pages.
+            Op::DeleteConductor { .. } => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's

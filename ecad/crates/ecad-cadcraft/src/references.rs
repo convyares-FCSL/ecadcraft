@@ -525,6 +525,9 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             }
             Op::AttachEnd { conductor, .. } => out.extend(doc.cables_of(*conductor)),
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
+            // conductor's cables only, never every cable.
+            Op::DeleteConductor { id, .. } | Op::SetProperty { object: ecad_model::ObjectRef::Conductor(id), .. } => out.extend(doc.cables_of(*id)),
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
