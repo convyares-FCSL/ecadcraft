@@ -177,6 +177,18 @@ const PART: Kind = Kind::Fixed { exclusive: false };
 
 // Brief 034's aliases, shared by several entries.
 const FUSE_BANK: &[&str] = &["fuse bank", "fuse block", "distribution", "protection"];
+const SOCKET: &[&str] = &["socket", "female", "connector"];
+const PLUG: &[&str] = &["plug", "male", "connector"];
+const DSUB_S: &[&str] = &["d-sub", "dsub", "sub-d", "socket", "fieldbus", "profibus", "connector"];
+const DSUB_P: &[&str] = &["d-sub", "dsub", "sub-d", "plug", "fieldbus", "profibus", "connector"];
+const M12_S: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "socket", "connector"];
+const M12_P: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "plug", "connector"];
+const USB: &[&str] = &["usb", "bulkhead", "connector"];
+
+/// A connector body (stage 3a): prefix `X`, a head, every pin quiet.
+const fn conn(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+    st(key, name, aliases, "X", HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
+}
 
 /// Contacts and protection (brief 034 stage 1): definition IDs `0x100 + n`.
 const fn cp(n: u128) -> DefinitionId {
@@ -186,6 +198,11 @@ const fn cp(n: u128) -> DefinitionId {
 /// Sensors and actuators (stage 2): `0x200 + n`.
 const fn sa(n: u128) -> DefinitionId {
     def_id(0x200 + n)
+}
+
+/// Connectors (stage 3a): `0x300 + n`.
+const fn cn(n: u128) -> DefinitionId {
+    def_id(0x300 + n)
 }
 
 /// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
@@ -245,6 +262,34 @@ pub const STARTERS: &[Starter] = &[
     st("valve2", "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], "MB", HEAD, sa(9)).of(Family::Actuators),
     st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], "B", HEAD, sa(10)).of(Family::Sensors),
     st("heater", "Heater", &["heater", "heating element", "heat"], "E", HEAD, sa(11)).of(Family::Actuators),
+    // ---- Brief 034 stage 3a: connector bodies (design 034 §5); halves only, mating is M1 1.11.
+    conn("socket2", "Socket, 2-pin", SOCKET, cn(1)),
+    conn("socket3", "Socket, 3-pin", SOCKET, cn(2)),
+    conn("socket4", "Socket, 4-pin", SOCKET, cn(3)),
+    conn("socket6", "Socket, 6-pin", SOCKET, cn(4)),
+    conn("socket8", "Socket, 8-pin", SOCKET, cn(5)),
+    conn("socket12", "Socket, 12-pin", SOCKET, cn(6)),
+    conn("plug2", "Plug, 2-pin", PLUG, cn(7)),
+    conn("plug3", "Plug, 3-pin", PLUG, cn(8)),
+    conn("plug4", "Plug, 4-pin", PLUG, cn(9)),
+    conn("plug6", "Plug, 6-pin", PLUG, cn(10)),
+    conn("plug8", "Plug, 8-pin", PLUG, cn(11)),
+    conn("plug12", "Plug, 12-pin", PLUG, cn(12)),
+    conn("dsub9s", "D-sub socket, 9-way", DSUB_S, cn(13)),
+    conn("dsub15s", "D-sub socket, 15-way", DSUB_S, cn(14)),
+    conn("dsub25s", "D-sub socket, 25-way", DSUB_S, cn(15)),
+    conn("dsub9p", "D-sub plug, 9-way", DSUB_P, cn(16)),
+    conn("dsub15p", "D-sub plug, 15-way", DSUB_P, cn(17)),
+    conn("dsub25p", "D-sub plug, 25-way", DSUB_P, cn(18)),
+    conn("m12s4", "M12 socket, 4-pin", M12_S, cn(19)),
+    conn("m12s5", "M12 socket, 5-pin", M12_S, cn(20)),
+    conn("m12s8", "M12 socket, 8-pin", M12_S, cn(21)),
+    conn("m12p4", "M12 plug, 4-pin", M12_P, cn(22)),
+    conn("m12p5", "M12 plug, 5-pin", M12_P, cn(23)),
+    conn("m12p8", "M12 plug, 8-pin", M12_P, cn(24)),
+    conn("rj45", "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
+    conn("usba", "USB-A bulkhead", USB, cn(26)),
+    conn("usbb", "USB-B bulkhead", USB, cn(27)),
 ];
 
 /// The starter symbol with key `key` (case-insensitive).
@@ -605,6 +650,119 @@ fn levered(make: bool, lever_to: f64, r: f64, mark_y: f64) -> Vec<Primitive> {
     g
 }
 
+/// The upper half of a circle as `n` segments, from (c.x + r, c.y) over the top to (c.x − r, c.y)
+/// (a socket's cup, open downwards; no arcs in definitions).
+fn half_circle_up(c: (f64, f64), r: f64, n: usize) -> Primitive {
+    let v: Vec<(f64, f64)> = (0..=n)
+        .map(|k| {
+            let a = std::f64::consts::PI * k as f64 / n as f64;
+            (c.0 + r * a.cos(), c.1 + r * a.sin())
+        })
+        .collect();
+    poly(&v, false)
+}
+
+/// The pin pitch of connector bodies, in millimetres (design 034 §5).
+const PIN_PITCH: f64 = 5.0;
+
+/// What a connector key names: its pin count and form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Connector {
+    Socket(usize),
+    Plug(usize),
+    DsubSocket(usize),
+    DsubPlug(usize),
+    M12Socket(usize),
+    M12Plug(usize),
+    /// A feed-through with `n` pins and a shield point.
+    Bulkhead(usize),
+}
+
+impl Connector {
+    fn of(key: &str) -> Option<Connector> {
+        let dsub = |end: char| key.strip_prefix("dsub")?.strip_suffix(end)?.parse::<usize>().ok().filter(|n| (1..=MAX_WAYS).contains(n));
+        match key {
+            "rj45" => Some(Connector::Bulkhead(8)),
+            "usba" | "usbb" => Some(Connector::Bulkhead(4)),
+            _ => ways(key, "socket")
+                .map(Connector::Socket)
+                .or_else(|| ways(key, "plug").map(Connector::Plug))
+                .or_else(|| dsub('s').map(Connector::DsubSocket))
+                .or_else(|| dsub('p').map(Connector::DsubPlug))
+                .or_else(|| ways(key, "m12s").map(Connector::M12Socket))
+                .or_else(|| ways(key, "m12p").map(Connector::M12Plug)),
+        }
+    }
+
+    fn pins(self) -> usize {
+        match self {
+            Connector::Socket(n)
+            | Connector::Plug(n)
+            | Connector::DsubSocket(n)
+            | Connector::DsubPlug(n)
+            | Connector::M12Socket(n)
+            | Connector::M12Plug(n)
+            | Connector::Bulkhead(n) => n,
+        }
+    }
+
+    /// Whether its pins point up (a socket) or down (a plug); a bulkhead's are at y = 0.
+    fn socket(self) -> bool {
+        matches!(self, Connector::Socket(_) | Connector::DsubSocket(_) | Connector::M12Socket(_))
+    }
+
+    fn graphics(self) -> Vec<Primitive> {
+        let n = self.pins();
+        let xn = pin_x(n, PIN_PITCH);
+        let mut g = Vec::new();
+        if let Connector::Bulkhead(_) = self {
+            // Rings at every pin and the shield, one point each: a feed-through is one net.
+            let xl = pin_x(n + 1, PIN_PITCH);
+            g.extend((1..=n + 1).map(|i| circle((pin_x(i, PIN_PITCH), 0.0), 1.5)));
+            g.push(rect((-4.0, -4.0), (xl + 4.0, 4.0)));
+            g.push(line((-5.0, -5.0), (-5.0, 5.0)));
+            g.push(line((xl + 5.0, -5.0), (xl + 5.0, 5.0)));
+            return g;
+        }
+        for i in 1..=n {
+            let x = pin_x(i, PIN_PITCH);
+            if self.socket() {
+                g.push(line((x, 5.0), (x, 1.5)));
+                g.push(half_circle_up((x, 0.0), 1.5, 6));
+            } else {
+                g.push(line((x, -5.0), (x, -1.0)));
+                g.push(rect((x - 0.5, -1.0), (x + 0.5, 1.5)));
+            }
+        }
+        g.push(match self {
+            Connector::DsubSocket(_) => poly(&[(-3.5, 3.5), (xn + 3.5, 3.5), (xn + 2.5, -2.5), (-2.5, -2.5)], true),
+            Connector::DsubPlug(_) => poly(&[(-2.5, 2.5), (xn + 2.5, 2.5), (xn + 3.5, -3.5), (-3.5, -3.5)], true),
+            _ if self.socket() => rect((-3.5, -2.5), (xn + 3.5, 3.5)),
+            _ => rect((-3.5, -3.5), (xn + 3.5, 2.5)),
+        });
+        match self {
+            Connector::M12Socket(_) => g.push(circle((-6.5, 0.5), 2.0)),
+            Connector::M12Plug(_) => g.push(circle((-6.5, -0.5), 2.0)),
+            _ => {}
+        }
+        g
+    }
+
+    fn terminals(self, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
+        let n = self.pins();
+        let y = match self {
+            Connector::Bulkhead(_) => 0.0,
+            _ if self.socket() => 5.0,
+            _ => -5.0,
+        };
+        let mut v: Vec<TerminalDef> = (1..=n).map(|i| t(&i.to_string(), pin_x(i, PIN_PITCH), y)).collect();
+        if let Connector::Bulkhead(_) = self {
+            v.push(t("SH", pin_x(n + 1, PIN_PITCH), 0.0));
+        }
+        v
+    }
+}
+
 /// The most ways or pins a sized symbol key may name (guards the loops below; the catalogue's
 /// largest is 25).
 const MAX_WAYS: usize = 32;
@@ -642,7 +800,7 @@ fn sized_graphics(key: &str) -> Vec<Primitive> {
     if let Some(n) = ways(key, "fusebank") {
         return fuse_bank(n);
     }
-    Vec::new()
+    Connector::of(key).map(Connector::graphics).unwrap_or_default()
 }
 
 /// Terminals of the sized keys.
@@ -652,7 +810,7 @@ fn sized_terminals(key: &str, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<
         v.extend((1..=n).map(|i| t(&i.to_string(), pin_x(i, 10.0), -15.0)));
         return v;
     }
-    Vec::new()
+    Connector::of(key).map(|c| c.terminals(t)).unwrap_or_default()
 }
 
 fn contact_no() -> Vec<Primitive> {
@@ -992,8 +1150,8 @@ mod tests {
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
-        // brief 034's stage 1 (14) and stage 2 (11).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11);
+        // brief 034's stage 1 (14), stage 2 (11) and stage 3a (27).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1035,6 +1193,33 @@ mod tests {
         ("valve2", 32.0, 20.0, "A1/A2/B1/B2"),
         ("tc", 10.5, 15.5, "+/-"),
         ("heater", 5.0, 20.0, "1/2"),
+        ("socket2", 12.0, 7.5, "1/2"),
+        ("socket3", 17.0, 7.5, "1/2/3"),
+        ("socket4", 22.0, 7.5, "1/2/3/4"),
+        ("socket6", 32.0, 7.5, "1/2/3/4/5/6"),
+        ("socket8", 42.0, 7.5, "1/2/3/4/5/6/7/8"),
+        ("socket12", 62.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12"),
+        ("plug2", 12.0, 7.5, "1/2"),
+        ("plug3", 17.0, 7.5, "1/2/3"),
+        ("plug4", 22.0, 7.5, "1/2/3/4"),
+        ("plug6", 32.0, 7.5, "1/2/3/4/5/6"),
+        ("plug8", 42.0, 7.5, "1/2/3/4/5/6/7/8"),
+        ("plug12", 62.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12"),
+        ("dsub9s", 47.0, 7.5, "1/2/3/4/5/6/7/8/9"),
+        ("dsub15s", 77.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12/13/14/15"),
+        ("dsub25s", 127.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20/21/22/23/24/25"),
+        ("dsub9p", 47.0, 7.5, "1/2/3/4/5/6/7/8/9"),
+        ("dsub15p", 77.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12/13/14/15"),
+        ("dsub25p", 127.0, 7.5, "1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20/21/22/23/24/25"),
+        ("m12s4", 27.0, 7.5, "1/2/3/4"),
+        ("m12s5", 32.0, 7.5, "1/2/3/4/5"),
+        ("m12s8", 47.0, 7.5, "1/2/3/4/5/6/7/8"),
+        ("m12p4", 27.0, 7.5, "1/2/3/4"),
+        ("m12p5", 32.0, 7.5, "1/2/3/4/5"),
+        ("m12p8", 47.0, 7.5, "1/2/3/4/5/6/7/8"),
+        ("rj45", 50.0, 10.0, "1/2/3/4/5/6/7/8/SH"),
+        ("usba", 30.0, 10.0, "1/2/3/4/SH"),
+        ("usbb", 30.0, 10.0, "1/2/3/4/SH"),
     ];
 
     #[test]

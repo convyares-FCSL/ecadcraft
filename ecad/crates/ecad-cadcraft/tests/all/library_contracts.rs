@@ -55,14 +55,12 @@ fn new_keys() -> Vec<&'static symbols::Starter> {
 
 #[test]
 fn every_new_symbol_places_with_its_prefix_labels_and_description() {
-    let mut h = new_h();
-    let mut next: std::collections::BTreeMap<&str, u32> = Default::default();
-    for (i, s) in new_keys().into_iter().enumerate() {
-        let at = [80.0 * (i % 8) as f64, -80.0 * (i / 8) as f64];
-        let r = place(&mut h, s.key, at);
-        let n = next.entry(s.prefix).or_insert(0);
-        *n += 1;
-        assert_eq!(r["tag"], json!(format!("-{}{:02}", s.prefix, n)), "{}", s.key);
+    // A fresh project per symbol: the harness checks the whole page after each command, so one
+    // page of every symbol would leave the fast set.
+    for s in new_keys() {
+        let mut h = new_h();
+        let r = place(&mut h, s.key, [0.0, 0.0]);
+        assert_eq!(r["tag"], json!(format!("-{}01", s.prefix)), "{}", s.key);
         assert_eq!(r["joined"], json!(false), "{}", s.key);
         assert_eq!(labels(&r), symbols::default_labels(s.key), "{}", s.key);
         let c: ComponentId = id(&r, "component");
@@ -78,9 +76,9 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
             .unwrap();
         let o = d.origin.unwrap();
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);
-        // A second placement reuses the embedded definition.
-        let again = place(&mut h, s.key, [at[0], at[1] - 40.0]);
-        *next.get_mut(s.prefix).unwrap() += 1;
+        // A second placement reuses the embedded definition and takes the next number.
+        let again = place(&mut h, s.key, [0.0, -60.0]);
+        assert_eq!(again["tag"], json!(format!("-{}02", s.prefix)), "{}", s.key);
         assert_eq!(again["definition"], r["definition"], "{}", s.key);
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
         assert_eq!(embeds(&ops), 0, "{}: reused by origin", s.key);
@@ -228,4 +226,25 @@ fn a_limit_switch_is_two_symbols_of_one_device_and_sensors_take_their_prefixes()
     // A second head on a sensor is refused with its name.
     let p: ComponentId = id(&place(&mut h, "prox3", [0.0, -120.0]), "component");
     assert_eq!(join(&mut h, "tc", p, [40.0, -120.0]).unwrap_err(), "-B03 already has a Proximity switch, 3-wire PNP.");
+}
+
+#[test]
+fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
+    let mut h = new_h();
+    let page = h.first_page();
+    let rj = place(&mut h, "rj45", [0.0, 0.0]);
+    assert_eq!(rj["tag"], "-X01");
+    let (p1, p2, sh) = (terminal(&rj, "1"), terminal(&rj, "2"), terminal(&rj, "SH"));
+    let at = h.terminal_pos(page, p1);
+    let up: ecad_model::ConductorId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 30.0)])})).unwrap(), "conductor");
+    let down: ecad_model::ConductorId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 30.0)])})).unwrap(), "conductor");
+    let doc = h.doc();
+    let conn = doc.connectivity();
+    assert_eq!(conn.net_of_conductor(up), conn.net_of_conductor(down), "a feed-through is one net");
+    for t in [p2, sh] {
+        assert!(checks::terminal_checks(&doc, t).is_empty(), "spare pin flagged");
+    }
+    // Plugs and sockets are separate devices with their own tags in v0.15.
+    assert_eq!(place(&mut h, "socket4", [0.0, -60.0])["tag"], "-X02");
+    assert_eq!(place(&mut h, "plug4", [0.0, -80.0])["tag"], "-X03");
 }
