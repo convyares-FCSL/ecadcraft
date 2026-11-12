@@ -86,6 +86,8 @@ F4. It is about M in size, and 473 commits have built up so far.
 - AI changes as proposals, and AI-assisted drafting beyond today's MCP.
 - Named versions beyond one revision, and compaction and checkpoints (stage 4).
 - The 010 look pass and the owner's QA notes from 2026-11-08 (fitted into F1 or F6 where they touch).
+- Double-click a reference text to follow it (brief 025 deviation, owner accepted 2026-11-12; Go to
+  Reference and Properties ▸ Go to do it today).
 
 ## Owner decisions (2026-11-08)
 

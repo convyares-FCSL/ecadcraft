@@ -1894,6 +1894,10 @@ impl Project {
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
+        let head = ledger.head();
+        for line in std::mem::take(&mut out.problems) {
+            self.events.record(EventKind::IndexRebuilt, None, head, None, line);
+        }
         self.xref_shown = Some((self.state_key(), std::mem::take(&mut out.shown)));
         out
     }

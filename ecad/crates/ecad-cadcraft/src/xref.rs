@@ -1298,6 +1298,8 @@ pub struct Watch {
     /// The pages with a device member before (only in the wide case).
     wide_pages: BTreeSet<PageId>,
     groups: BTreeSet<Group>,
+    /// What verify mode found wrong (bugs), for the caller to record.
+    problems: Vec<String>,
 }
 
 /// What a finished [`Watch`] found.
@@ -1310,6 +1312,8 @@ pub struct Outcome {
     /// The texts and tables of the devices it looked at, after the commit: the next commit's
     /// "before" when nothing has changed in between ([`Watch::take`]).
     pub shown: Shown,
+    /// What verify mode found wrong and repaired (bugs): one line each, for the event log.
+    pub problems: Vec<String>,
 }
 
 /// Texts and tables derived for some devices, by page.
@@ -1325,6 +1329,7 @@ impl Watch {
         let mut scope = Scope::default();
         scope.collect(doc, idx, ops);
         let mut places = Places::new(doc);
+        let mut problems = Vec::new();
         let before = if scope.wide {
             BTreeMap::new()
         } else {
@@ -1333,17 +1338,22 @@ impl Watch {
                 .devices
                 .iter()
                 .map(|c| match reuse.remove(c) {
-                    Some(kept) => {
-                        // A stale reuse is a bug: say so loudly in tests.
-                        debug_assert!(!verify || kept == shown(doc, &mut places, *c), "stale xref reuse for {c:?}");
-                        (*c, kept)
+                    // Verify mode checks a reuse against a fresh derivation; a stale one (a bug) is
+                    // reported and the fresh one used.
+                    Some(kept) if verify => {
+                        let fresh = shown(doc, &mut places, *c);
+                        if kept != fresh {
+                            problems.push(format!("the texts kept for {} were stale; derived again", c.hex()));
+                        }
+                        (*c, fresh)
                     }
+                    Some(kept) => (*c, kept),
                     None => (*c, shown(doc, &mut places, *c)),
                 })
                 .collect()
         };
         let wide_pages = if scope.wide { idx.device_pages(doc) } else { BTreeSet::new() };
-        Watch { cable_scope, cables, scope, before, wide_pages, groups: RefIndex::groups_named(doc, ops) }
+        Watch { cable_scope, cables, scope, before, wide_pages, groups: RefIndex::groups_named(doc, ops), problems }
     }
 
     /// After the commit: `doc` is the state after it and `ops` its ops as recorded (with any pass
@@ -1354,8 +1364,8 @@ impl Watch {
         if ecad_model::ledger::verify_mode()
             && let Err(e) = idx.verify(doc)
         {
-            // A bug: say so loudly in tests, and keep the rebuilt index.
-            debug_assert!(false, "{e}");
+            // A bug: reported for the event log, and the index rebuilt so it is never left stale.
+            self.problems.push(format!("the reference index was out of step ({e}); rebuilt"));
             *idx = RefIndex::build(doc);
         }
         let after_cables = crate::references::Snapshot::take(doc, self.cable_scope.as_ref());
@@ -1385,7 +1395,7 @@ impl Watch {
         if let Some(p) = &mut pages {
             p.extend(device_pages);
         }
-        Outcome { pages, orphaned, shown: shown_after }
+        Outcome { pages, orphaned, shown: shown_after, problems: self.problems }
     }
 }
 

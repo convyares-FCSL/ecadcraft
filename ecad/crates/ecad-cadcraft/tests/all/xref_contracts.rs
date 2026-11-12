@@ -421,3 +421,23 @@ fn e_cable_groups_are_kept_on_the_index() {
     h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
     assert_eq!(h.p(|p| RefIndex::build(p.ledger.document()).members(Group::Cable(k)).count()), 1);
 }
+
+/// Review finding 2: a kept index out of step with the document (a bug, forced here by emptying
+/// it) is reported as an `IndexRebuilt` event and rebuilt in the same commit; the command still
+/// succeeds, nothing panics, and the next commit finds nothing wrong.
+#[test]
+fn a_stale_index_is_reported_and_rebuilt() {
+    use ecad_inspect::EventKind;
+    let mut x = fixture();
+    x.h.cfg(|p| p.xref = RefIndex::default());
+    let head = x.h.head();
+    x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+2NO+2NC"})).unwrap();
+    assert_eq!(x.h.head(), head + 1);
+    let events: Vec<_> = x.h.p(|p| p.events.events().filter(|e| e.kind == EventKind::IndexRebuilt).cloned().collect());
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert!(events[0].message.contains("reference index was out of step"), "{events:?}");
+    index_matches(&mut x.h);
+    x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+1NO+1NC"})).unwrap();
+    assert_eq!(x.h.p(|p| p.events.count(EventKind::IndexRebuilt)), 1, "nothing more to repair");
+    index_matches(&mut x.h);
+}
