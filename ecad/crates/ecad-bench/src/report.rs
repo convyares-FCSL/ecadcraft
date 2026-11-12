@@ -270,6 +270,19 @@ pub fn table(rows: &[Row], runs: usize) -> String {
          saved, durable. crash open: after a child saved and exited without closing the file (redb quick \
          repair). open x10: after the history grew tenfold.\n",
     );
+    out.push_str(&format!(
+        "\nVerify (brief 029):\n{:<8} {:<8} {:>16} {:>11} {:>12}\n",
+        "tier", "history", "verify_chain ms", "verify ms", "full checks"
+    ));
+    for r in rows {
+        let Some(v) = &r.v2 else { continue };
+        out.push_str(&format!("{:<8} {:<8} {:>16.0} {:>11.0} {:>12}\n", r.tier, r.variant, v.verify_chain_ms, v.verify_ms, v.verify_full_checks));
+    }
+    out.push_str(
+        "verify_chain: every row decoded and chain-checked, heads, version and merge rows, chunks (target on large \
+         lean: 3 s). verify: that, then the replay with the commit-time check and the full check at each snapshot \
+         and branch end (target on large lean: 10 s, goal 5 s).\n",
+    );
     for r in rows {
         let Some(h) = &r.history else { continue };
         out.push_str(&format!(
@@ -463,6 +476,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "v2_compacted_x10": r.v2.as_ref().map(|v| v.compacted_x10),
                 "v2_undo_ms": r.v2.as_ref().map(|v| v.undo_ms),
                 "v2_undo_past_cap_ms": r.v2.as_ref().map(|v| v.undo_past_cap_ms),
+                "verify_chain_ms": r.v2.as_ref().map(|v| v.verify_chain_ms),
+                "verify_ms": r.v2.as_ref().map(|v| v.verify_ms),
+                "verify_full_checks": r.v2.as_ref().map(|v| v.verify_full_checks),
                 "outputs": r.outputs.as_ref().map(|o| json!({
                     "reportfirst_ms": o.reportfirst_ms, "locset_ms": o.locset_ms, "boxmove_ms": o.boxmove_ms,
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,

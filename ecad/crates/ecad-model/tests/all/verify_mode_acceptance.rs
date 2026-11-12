@@ -148,3 +148,26 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
         assert_eq!(l.document().cables_of(w), vec![cable], "case {k}");
     }
 }
+
+/// Brief 029: [`Check::Commit`] runs exactly the commit-time check whatever the build's verify
+/// mode (every `cargo test` is in verify mode), so the file's Verify costs and decides the same in
+/// tests and in release; [`Check::Full`] runs the full check after every transaction.
+#[test]
+fn replay_checked_runs_exactly_the_check_asked_for_in_any_build() {
+    assert!(ecad_model::ledger::verify_mode(), "this test build is in verify mode");
+    let mut l = Ledger::new(9);
+    l.commit(Author::User, "p", vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }]).unwrap();
+    // On a valid start both agree.
+    for check in [Check::Commit, Check::Full] {
+        let r = Ledger::replay_checked_from(Document::default(), l.log().to_vec(), 9, check).unwrap();
+        assert_eq!(r.document(), l.document(), "{check:?}");
+    }
+    // On a start already invalid where the transaction does not touch, the commit check does not
+    // look there, although this build is in verify mode (where the full check would see it, and
+    // its disagreement with the scoped check is a debug assertion).
+    assert!(Ledger::replay_checked_from(invalid_checkpoint(), l.log().to_vec(), 9, Check::Commit).is_ok());
+    // The visitor sees each transaction once, in order, with the state after it.
+    let mut seen = Vec::new();
+    Ledger::replay_checked_visit(Document::default(), l.log().to_vec(), 9, Check::Commit, |tx, doc| seen.push((tx.seq, doc.pages.len()))).unwrap();
+    assert_eq!(seen, vec![(1, 1)]);
+}
