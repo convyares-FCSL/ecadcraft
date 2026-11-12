@@ -63,6 +63,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
         compression: None,
         history: None,
         outputs: None,
+        release: None,
         measured: Measured {
             bytes: 1000,
             transactions: 10,
@@ -105,7 +106,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
 
 #[test]
 fn compare_prints_the_change_per_row_and_refuses_a_foreign_file() {
-    let earlier = json(&[row("lean", 10.0)], 5, "abc1234", "2026-11-07T00:00:00Z");
+    let earlier = json(&[row("lean", 10.0)], 5, "abc1234", "2026-11-07T00:00:00Z", None);
     let text = compare(&[row("lean", 15.0), row("churned", 1.0)], &earlier).unwrap();
     assert!(text.contains("abc1234"), "{text}");
     assert!(text.contains("10.0 → 15.0 (+50%)"), "{text}");

@@ -19,6 +19,9 @@ pub const FIELDS: [&str; 6] = ["rev", "date", "description", "drawn", "checked",
 pub const PREFIX: &str = "rev.";
 /// The field set by issuing.
 pub const ISSUED: &str = "issued";
+/// The field set by issuing through a release (brief 027, FP1): the release folder, relative to
+/// the project file's folder (absolute on another drive). Unknown to older builds, which skip it.
+pub const RELEASED: &str = "released";
 /// Most revisions a project may hold (a bound on hostile files).
 pub const MAX_REVISIONS: u32 = 10_000;
 /// Rev text: 1 to 8 characters `0-9 A-Z a-z`.
@@ -36,6 +39,8 @@ pub struct Revision {
     pub fields: [String; 6],
     /// The version name, once issued.
     pub issued: Option<String>,
+    /// The release folder, when it was issued by a release (FP1).
+    pub released: Option<String>,
 }
 
 impl Revision {
@@ -70,6 +75,8 @@ pub fn list(doc: &Document) -> Vec<Revision> {
         let row = rows.entry(n).or_insert_with(|| Revision { n, ..Revision::default() });
         if field == ISSUED {
             row.issued = Some(v.clone());
+        } else if field == RELEASED {
+            row.released = Some(v.clone());
         } else if let Some(slot) = FIELDS.iter().position(|f| *f == field).and_then(|j| row.fields.get_mut(j)) {
             *slot = v.clone();
         }
@@ -195,20 +202,14 @@ pub fn issue_in(ops: &[Op]) -> Option<(String, u32)> {
 /// Today's date `YYYY-MM-DD` (UTC; the trial fills the local date in the dialog), or `None`
 /// where there is no clock.
 pub fn today() -> Option<String> {
-    let ms = crate::project::now_ms()?;
-    let days = i64::try_from(ms / 86_400_000).ok()?;
-    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    Some(format!("{y:04}-{m:02}-{d:02}"))
+    date_of_ms(crate::project::now_ms()?)
+}
+
+/// The UTC date `YYYY-MM-DD` of `ms` milliseconds since 1970-01-01, through `chrono` (house rule);
+/// `None` beyond what it represents.
+pub fn date_of_ms(ms: u64) -> Option<String> {
+    let t = chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)?;
+    Some(t.format("%Y-%m-%d").to_string())
 }
 
 #[cfg(test)]
@@ -220,5 +221,13 @@ mod tests {
         for (last, next) in [(None, "A"), (Some("A"), "B"), (Some("Z"), "AA"), (Some("AZ"), "BA"), (Some("0"), "1"), (Some("P3"), "P4")] {
             assert_eq!(next_rev(last), next, "{last:?}");
         }
+    }
+
+    #[test]
+    fn dates_go_through_chrono() {
+        for (ms, date) in [(0, "1970-01-01"), (951_782_400_000, "2000-02-29"), (1_794_441_600_000, "2026-11-12"), (4_107_542_399_999, "2100-02-28")] {
+            assert_eq!(date_of_ms(ms).as_deref(), Some(date), "{ms}");
+        }
+        assert_eq!(date_of_ms(u64::MAX), None);
     }
 }

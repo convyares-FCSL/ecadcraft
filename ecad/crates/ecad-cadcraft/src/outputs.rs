@@ -426,6 +426,12 @@ pub struct Outputs {
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
     no_location: usize,
+    /// Devices whose own location differs from their box's (one warning row each), and the
+    /// location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
+    own_box: usize,
+    box_counts: [usize; 2],
+    /// Bumped only when the check rows may read differently (brief 027's Release dialog).
+    pub checks_changed: u64,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -559,6 +565,10 @@ impl Outputs {
         }
         self.no_part_number -= usize::from(old.part_number.is_none());
         self.no_location -= usize::from(old.location.value.is_none());
+        self.own_box -= usize::from(old.own_box.is_some());
+        if old.own_box.is_some() {
+            self.checks_changed += 1;
+        }
     }
 
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
@@ -602,6 +612,10 @@ impl Outputs {
         self.by_part.entry(row.part_key()).or_default().insert(tk);
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
+        self.own_box += usize::from(row.own_box.is_some());
+        if row.own_box.is_some() {
+            self.checks_changed += 1;
+        }
         self.devices.insert(c, row);
     }
 
@@ -802,6 +816,22 @@ impl Outputs {
                 }
             }
         }
+        let old = self.box_checks.get(&page);
+        if old.map_or(out.is_empty(), |o| *o == out) {
+            return;
+        }
+        let tally = |v: &[Check]| {
+            let w = v.iter().filter(|c| c.severity() == crate::checks::Severity::Warning).count();
+            [w, v.len() - w]
+        };
+        let before = old.map_or([0, 0], |o| tally(o));
+        let now = tally(&out);
+        for i in 0..2 {
+            if let (Some(n), Some(b), Some(a)) = (self.box_counts.get_mut(i), before.get(i), now.get(i)) {
+                *n = n.saturating_sub(*b) + a;
+            }
+        }
+        self.checks_changed += 1;
         if out.is_empty() {
             self.box_checks.remove(&page);
         } else {
@@ -835,6 +865,19 @@ impl Outputs {
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         out
+    }
+
+    /// The check rows by severity: (errors, warnings, info), as [`Outputs::checks`] would give
+    /// them. O(1): kept by every change (brief 027's badge).
+    pub fn check_counts(&self) -> (usize, usize, usize) {
+        let info =
+            self.box_counts[1] + usize::from(self.no_part_number > 0) + usize::from(self.no_location > 0 && self.no_location < self.devices.len());
+        (0, self.own_box + self.box_counts[0], info)
+    }
+
+    /// What the check rows depend on besides [`Outputs::checks_changed`]: the two count rows.
+    pub fn checks_key(&self) -> (u64, usize, usize, usize) {
+        (self.checks_changed, self.no_part_number, self.no_location, self.devices.len())
     }
 
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per

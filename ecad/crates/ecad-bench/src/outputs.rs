@@ -14,7 +14,8 @@
 //!   location comes from the project).
 //! - **bomupd**: a part-number edit with the models kept (Reports and a BOM page open).
 //! - **wireupd**: a wire added between two connection points (then undone).
-//! - **print**: Print Book of the first 50 pages to memory (on request; reported, no limit).
+//!
+//! Print Book is timed on the 25-page project only (`crate::release::measure_print`).
 //! - **work**: the most rows any ordinary edit above recomputed (never the whole project).
 
 use std::path::Path;
@@ -40,8 +41,6 @@ pub struct MeasuredOutputs {
     pub projloc_ms: f64,
     pub bomupd_ms: f64,
     pub wireupd_ms: f64,
-    pub print_ms: f64,
-    pub print_sheets: usize,
     /// The most rows an ordinary edit recomputed, and the devices in the project.
     pub work: usize,
     pub devices: usize,
@@ -208,16 +207,6 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
             run(&mut s, "undo", json!({}))?;
         }
         out.wireupd_ms = median(&mut wireupd);
-        // Print Book of the first 50 pages, to memory.
-        let range = project.read(&mut s, |p, _| {
-            let doc = p.ledger.document();
-            let n = |i: usize| doc.page_order.get(i).map(|pg| ecad_model::book::page_number(doc, *pg)).unwrap_or_default();
-            format!("{}-{}", n(0), n(doc.page_order.len().min(50).saturating_sub(1)))
-        })?;
-        let t = Instant::now();
-        let v = run(&mut s, "printbook", json!({"scope": {"pages": range}}))?;
-        out.print_ms = ms(t);
-        out.print_sheets = v["sheets"].as_u64().unwrap_or(0) as usize;
         drop(project);
         drop(s);
         Ok(out)
