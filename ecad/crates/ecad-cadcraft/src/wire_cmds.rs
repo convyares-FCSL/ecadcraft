@@ -387,13 +387,15 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
     })
 }
 
-fn settings_json(w: &wiring::WiringSettings) -> Value {
+/// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
+fn settings_json(doc: &Document) -> Value {
+    let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
         "colour_style": w.colour_style.name(),
         "label_height": w.label_height(),
-        "label_rule": wires::label_rule_word(w),
-        "label_min_length": wires::label_min_length(w),
+        "label_rule": wires::label_rule_word(doc),
+        "label_min_length": wires::label_min_length(doc),
         "digits": w.digits,
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
@@ -410,7 +412,7 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
     with_project(s, |p, pg, _| {
         let before = p.ledger.document().settings.clone();
         if !given {
-            return Ok(settings_json(&before.wiring));
+            return Ok(settings_json(p.ledger.document()));
         }
         let mut after = before.clone();
         let w = &mut after.wiring;
@@ -468,11 +470,10 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             w.potentials = rows;
         }
         if after == before {
-            return Ok(settings_json(&after.wiring));
+            return Ok(settings_json(p.ledger.document()));
         }
-        let shown = settings_json(&after.wiring);
         p.apply_edit(pg, "wiresettings", "Wire settings", vec![Op::SetProjectSettings { before, after }])?;
-        Ok(shown)
+        Ok(settings_json(p.ledger.document()))
     })
 }
 

@@ -1596,23 +1596,19 @@ pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
     chosen.iter().enumerate().filter(|(_, on)| **on).map(|(i, _)| i).collect()
 }
 
-/// The project's label rule word (`net` or `each`; anything else reads as the default).
-pub fn label_rule_word(w: &ecad_model::wiring::WiringSettings) -> &'static str {
-    match w.label_rule.trim().to_ascii_lowercase().as_str() {
-        x if x == ecad_model::wiring::LABEL_RULE_EACH => ecad_model::wiring::LABEL_RULE_EACH,
-        x if x == ecad_model::wiring::LABEL_RULE_NET => ecad_model::wiring::LABEL_RULE_NET,
-        _ => ecad_model::wiring::DEFAULT_LABEL_RULE,
-    }
+/// The project's label rule word, `net` or `each` (the registered `wiring.label_rule`; a stored
+/// value it does not know resolves as the default).
+pub fn label_rule_word(doc: &Document) -> &'static str {
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRING_LABEL_RULE, crate::defaults::Scope::project()).word()
 }
 
-/// The project's shortest labelled wire, millimetres, in range (the default when out of it).
-pub fn label_min_length(w: &ecad_model::wiring::WiringSettings) -> f64 {
-    let v = w.label_min_length;
-    if ecad_model::wiring::LABEL_MIN_LENGTHS.contains(&v) { v } else { ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH }
+/// The project's shortest labelled wire, millimetres (the registered `wiring.label_min_length`;
+/// out of range resolves as the default).
+pub fn label_min_length(doc: &Document) -> f64 {
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRING_LABEL_MIN_LENGTH, crate::defaults::Scope::project()).number()
 }
 
 /// The project's label rule (design 032 §4.1).
 pub fn label_rule(doc: &Document) -> LabelRule {
-    let w = &doc.settings.wiring;
-    if label_rule_word(w) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(w)) } else { LabelRule::Net }
+    if label_rule_word(doc) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
 }

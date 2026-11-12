@@ -494,11 +494,17 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
     assert!(m.contains("`label_rule` must be"), "{m}");
 }
 
-/// §12 item 21: `wire.join` is registered, and the project's value of it is what `wire` uses.
+/// §12 item 21: lane W's three defaults are registered, and the project's value of `wire.join` is
+/// what `wire` uses (the label rule's project value is what the label pass uses: the bus test).
 #[test]
 fn the_join_default_comes_from_the_registry() {
     let keys: Vec<&str> = ecad_cadcraft::defaults::all().map(|e| e.key).collect();
-    assert!(keys.contains(&"wire.join"), "{keys:?}");
+    for k in ["wire.join", "wiring.label_rule", "wiring.label_min_length"] {
+        assert!(keys.contains(&k), "{k} not in {keys:?}");
+    }
+    // The label rule's built-ins are ecad-model's constants.
+    let rule = &ecad_cadcraft::defaults::wires::WIRING_LABEL_RULE;
+    assert_eq!(rule.builtin, ecad_cadcraft::defaults::Value::Choice(ecad_model::wiring::DEFAULT_LABEL_RULE));
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {
