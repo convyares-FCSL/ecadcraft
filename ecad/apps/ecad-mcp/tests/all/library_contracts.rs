@@ -3,7 +3,7 @@
 //! embedding its definition once; a change-over join and ratings are recorded the same way; every
 //! one is refused with writes off; hostile keys and ratings get an error, never a panic.
 
-use ecad_cadcraft::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
+use ecad_cadcraft::symbols::{Family, STARTER_LIBRARY, STARTERS};
 use ecad_mcp::policy;
 use ecad_model::{Author, Op, Transaction};
 use serde_json::{Value, json};
@@ -53,7 +53,7 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
         *k += 1;
         let tag = format!("-{}{:02}", s.prefix, k);
         assert_eq!(r["tag"], json!(tag), "{}", s.key);
-        assert_eq!(labels(&r), symbols::default_labels(s.key), "{}", s.key);
+        assert_eq!(labels(&r), s.labels(), "{}", s.key);
         let cid: ecad_model::ComponentId = u128::from_str_radix(r["component"].as_str().unwrap(), 16).unwrap().into();
         let doc = c.doc();
         assert_eq!(doc.components[&cid].properties.get("description").map(String::as_str), Some(s.name), "{}: description", s.key);

@@ -62,7 +62,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
         let r = place(&mut h, s.key, [0.0, 0.0]);
         assert_eq!(r["tag"], json!(format!("-{}01", s.prefix)), "{}", s.key);
         assert_eq!(r["joined"], json!(false), "{}", s.key);
-        assert_eq!(labels(&r), symbols::default_labels(s.key), "{}", s.key);
+        assert_eq!(labels(&r), s.labels(), "{}", s.key);
         let c: ComponentId = id(&r, "component");
         assert_eq!(prop(&mut h, c, "description").as_deref(), Some(s.name), "{}", s.key);
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());

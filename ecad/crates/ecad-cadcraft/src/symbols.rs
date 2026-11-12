@@ -359,25 +359,15 @@ pub fn search(query: &str) -> Vec<&'static Starter> {
 
 // ---------------------------------------------------------------- defaults (design 034 §2.7)
 //
-// Until lane T's defaults registry (design 031 §3.5) is on this branch, the catalogue above is the
-// one table of lane S's built-in defaults, read only through these functions, so moving them into
-// the registry is one change in one place.
+// Overseer ruling (2026-11-12): only user-overridable values go in the defaults registry (the
+// prefix and ratings, `defaults/symbols.rs`). Labels, quiet points and anchors are catalogue code.
+// Until lane T's registry can read `settings.tag_prefixes` as the prefix's project level, the
+// catalogue's prefix is read only through this function.
 
 /// The built-in tag prefix of symbol `key` (letters, without `-`); a project's own
 /// `tag_prefixes` still wins over it ([`crate::devices::prefix_for`]).
 pub fn default_prefix(key: &str) -> Option<&'static str> {
     by_key(key).map(|s| s.prefix)
-}
-
-/// The built-in connection-point labels a new device of symbol `key` gets, in definition order.
-/// Until the registry can change a label, label = the definition's key (design 034 §2.7).
-pub fn default_labels(key: &str) -> Vec<String> {
-    by_key(key).map(Starter::labels).unwrap_or_default()
-}
-
-/// The connection points of symbol `key` that are quiet (design 034 §11), in definition order.
-pub fn quiet_points(key: &str) -> Vec<String> {
-    by_key(key).map(|s| s.labels().into_iter().filter(|l| is_quiet(s, l)).collect()).unwrap_or_default()
 }
 
 /// Whether point `point` (a definition key) of `s` is quiet: left unwired, it raises no
@@ -1291,7 +1281,6 @@ mod tests {
             let (sw, sh) = s.size();
             assert!((sw - w).abs() < 1e-6 && (sh - h).abs() < 1e-6, "{key}: box {sw}×{sh}, want {w}×{h}");
             assert_eq!(s.labels().join("/"), *labels, "{key}");
-            assert_eq!(default_labels(key), s.labels());
             assert_eq!(default_prefix(key), Some(s.prefix));
         }
         assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());
@@ -1378,10 +1367,11 @@ mod tests {
 
     #[test]
     fn quiet_points_table() {
-        assert_eq!(quiet_points("fusebank4"), ["M", "1", "2", "3", "4"]);
-        assert!(quiet_points("co").is_empty());
-        assert!(quiet_points("coil").is_empty());
-        assert!(quiet_points("nonsense").is_empty());
+        let quiet = |key: &str| by_key(key).map(|s| s.labels().into_iter().filter(|l| is_quiet(s, l)).collect::<Vec<_>>()).unwrap_or_default();
+        assert_eq!(quiet("fusebank4"), ["M", "1", "2", "3", "4"]);
+        assert_eq!(quiet("rj45").len(), 9);
+        assert!(quiet("co").is_empty());
+        assert!(quiet("coil").is_empty());
     }
 
     #[test]
