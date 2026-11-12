@@ -20,14 +20,13 @@ Do:
 
 1. Read the brief and its acceptance criteria first, and write your test plan before reading the
    implementation.
-2. Run tests that suit the scope of the change (see "Checks are scoped to the change" in
-   `ecad/CLAUDE.md`): your own new acceptance tests first, then the changed crates' tests and their
-   dependents (`cargo xtask test-changed`, or `cargo test -p <crate>` with and without
-   `--all-features` where features matter); add `-- --include-ignored` for the slow set of the
-   crates the change can break (`#[ignore = "slow: …"]`); the whole workspace only when shared
-   code (`ecad-model`, `ecad-file`, `ecad-store`) or CADCraft changed. On a re-test after a fix round, run only what failed plus the crate that
-   changed. The full suite runs at the QA gate (the PR from `dev` into `main`). Build in your own
-   worktree's `target` (leave `CARGO_TARGET_DIR` unset; see "Builds" in `ecad/CLAUDE.md`).
+2. Run your own acceptance tests and the fast tests of the crates the change touched
+   (`cargo test -p <crate>`, with and without `--all-features` where features matter; see "Checks
+   are scoped to the change" in `ecad/CLAUDE.md`). Never the slow set (`--include-ignored`), and
+   never the whole workspace, also when shared crates changed: those run at the QA gate (the PR
+   from `dev` into `main`). A re-test after a fix round runs only what failed. Build in your own
+   worktree's `target` (leave `CARGO_TARGET_DIR` unset, `CARGO_PROFILE_DEV_DEBUG=0
+   CARGO_PROFILE_TEST_DEBUG=0`; see "Builds" in `ecad/CLAUDE.md`).
 3. Add tests that check the acceptance criteria from the outside: contract tests in
    `tests/<area>_contracts.rs`, and UI tests that drive the egui app by element names and compare
    screenshots against approved reference images where the brief has UI.
