@@ -1,7 +1,7 @@
 # Brief 036: Multi-level terminals
 
-Status: Draft (designer, 2026-11-12; design `docs/design/036.md`; FP1–FP8 approved by the overseer,
-2026-11-12, design §14; owner questions §15 with the owner)
+Status: Approved (owner, 2026-11-13: design 036 §15 Q1–Q12 answered "as recommended"; FP1–FP8
+approved by the overseer, 2026-11-12, design §14; decisions in design §17)
 Branch: `feature/multi-level-terminals`, from `origin/dev` `1e605e33`.
 Designer: **yes** (`docs/design/036.md`) · Size: M (the roadmap's estimate; the design's §0 file
 list makes it a large M)
@@ -103,5 +103,4 @@ The full table is design §13. In short:
 
 ## Needs owner check
 
-- Answer design §15 (Q1–Q12).
 - Reference screenshots (design §13) and a click-only trial (quick start 5P).
