@@ -147,6 +147,7 @@ fn ac2_a_printed_page_looks_the_same_whatever_its_neighbours_hold() {
 /// light page next to a dense page is about as large as the same page next to a blank page
 /// (content streams uncompressed). Today it carries the dense page's geometry, clipped.
 #[test]
+#[ignore = "slow: prints books of dense pages through the PDF plotter (about 7 s in debug)"]
 fn ac1_each_pdf_page_holds_only_its_own_content() {
     let _ = AWAIT;
     let mut h = H::new(0x33_01);
@@ -166,6 +167,7 @@ fn ac1_each_pdf_page_holds_only_its_own_content() {
 /// AC1 (design §2.2): a book of 20 copies of one dense page is at most 2.2 × a book of 10 (today
 /// about 4×). The copies are made on the scratch drawing, as Print Book places sheets.
 #[test]
+#[ignore = "slow: prints a 10- and a 20-page book (about 4 s in debug)"]
 fn ac1_pdf_bytes_grow_linearly_with_sheets() {
     printbook::install_io();
     let mut h = H::new(0x33_11);

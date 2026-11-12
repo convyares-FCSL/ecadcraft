@@ -116,8 +116,10 @@ impl TextLook {
         let s = look.style(kind);
         let k = unit_scale(unit);
         let mm = if k.is_finite() && k > 0.0 { s.height / k } else { s.height };
+        // Lane T's per-kind fonts decide whether bold is drawn as a heavier stroke (design 031
+        // §2.2), as `Look::apply` does.
         let weight = match s.weight {
-            Weight::Bold => look.fonts.bold_lineweight,
+            Weight::Bold => look.fonts_for(kind).bold_lineweight,
             Weight::Regular => None,
         };
         TextLook { mm, style: s.style_name, weight }
