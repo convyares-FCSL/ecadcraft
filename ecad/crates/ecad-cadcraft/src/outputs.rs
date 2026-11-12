@@ -295,6 +295,8 @@ pub struct Scope {
     sheet: bool,
     /// Colour or reference style changed (no row work).
     styles: bool,
+    /// Brief 030: project `strip_*` keys that changed (the strips inheriting them).
+    strip_keys: BTreeSet<String>,
 }
 
 impl Scope {
@@ -309,6 +311,7 @@ impl Scope {
             && self.potentials.is_empty()
             && !self.sheet
             && !self.styles
+            && self.strip_keys.is_empty()
     }
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
@@ -363,6 +366,9 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Project, key, .. } => {
                     if key == LOCATION_KEY {
                         self.project_location = true;
+                    }
+                    if key.starts_with("strip_") {
+                        self.strip_keys.insert(key.clone());
                     }
                 }
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
@@ -644,7 +650,13 @@ impl Outputs {
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
-            &crate::strips::StripScope { devices: &scope.devices, conductors: &scope.conductors, cables: &scope.cables, pages: &pages },
+            &crate::strips::StripScope {
+                devices: &scope.devices,
+                conductors: &scope.conductors,
+                cables: &scope.cables,
+                pages: &pages,
+                project_keys: &scope.strip_keys,
+            },
         );
         if which.is_empty() {
             strips.last_work = 0;

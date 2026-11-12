@@ -645,6 +645,11 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
+            // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
+            (ObjectRef::Component(c), _) => match crate::accessories::setprop_rule(doc, c, &key, value.as_deref())? {
+                Some(v) => v,
+                None => value,
+            },
             _ => value,
         };
         let props = match object {
@@ -675,6 +680,16 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
             crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
             crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
             crate::strips::OFFER_KEY if cs.iter().any(|c| crate::strips::is_strip(doc, *c)) => crate::strips::offer_value(value.as_deref())?,
+            // Brief 030: the same rule for every strip (a link's text depends on its strip).
+            k if k.starts_with(crate::accessories::ACC_PREFIX) || k.starts_with(ecad_model::links::PREFIX) || crate::accessories::is_part_key(k) => {
+                let mut out = None;
+                for c in &cs {
+                    if let Some(v) = crate::accessories::setprop_rule(doc, *c, k, value.as_deref())? {
+                        out = v;
+                    }
+                }
+                out
+            }
             _ => crate::devices::property_value(doc, &key, value.as_deref())?,
         };
         let mut ops = Vec::new();

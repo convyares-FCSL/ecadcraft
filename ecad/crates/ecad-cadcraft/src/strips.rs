@@ -597,6 +597,8 @@ pub struct StripData {
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
     pub bom_rows: usize,
+    /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
+    pub acc: crate::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     conductors: BTreeSet<ConductorId>,
     far: BTreeSet<ComponentId>,
@@ -621,7 +623,7 @@ impl StripData {
     /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` warnings).
     pub fn check_rows(&self) -> (usize, usize) {
         let over = self.offer.is_some_and(|o| self.drawn > o.positions as usize);
-        (self.twice.len(), usize::from(over))
+        (self.twice.len(), usize::from(over) + self.acc.warnings())
     }
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
@@ -643,6 +645,10 @@ pub struct Strips {
     by_far: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
     by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
     by_cable: BTreeMap<CableId, BTreeSet<ComponentId>>,
+    /// Brief 030: the strips reading each project `strip_*` key (no value of their own).
+    inherits: BTreeMap<String, BTreeSet<ComponentId>>,
+    /// Brief 030: placed accessories with no part number, over every strip (one info row).
+    pub acc_no_part: usize,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
     /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
@@ -662,13 +668,13 @@ pub struct Strips {
     pub last_changed: BTreeSet<ComponentId>,
 }
 
-fn add_to<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn add_to<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
-        map.entry(*k).or_default().insert(c);
+        map.entry(k.clone()).or_default().insert(c);
     }
 }
 
-fn remove_from<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn remove_from<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
     for k in keys {
         if let Some(set) = map.get_mut(k) {
             set.remove(&c);
@@ -685,6 +691,8 @@ pub struct StripScope<'a> {
     pub conductors: &'a BTreeSet<ConductorId>,
     pub cables: &'a BTreeSet<CableId>,
     pub pages: &'a BTreeSet<PageId>,
+    /// Brief 030: project `strip_*` keys that changed.
+    pub project_keys: &'a BTreeSet<String>,
 }
 
 impl Strips {
@@ -724,6 +732,9 @@ impl Strips {
         for p in scope.pages {
             out.extend(self.by_page.get(p).into_iter().flatten().copied());
         }
+        for k in scope.project_keys {
+            out.extend(self.inherits.get(k).into_iter().flatten().copied());
+        }
         out
     }
 
@@ -762,6 +773,8 @@ impl Strips {
         remove_from(&mut self.by_far, &old.far, c);
         remove_from(&mut self.by_page, &old.pages, c);
         remove_from(&mut self.by_cable, &old.cables, c);
+        remove_from(&mut self.inherits, &old.acc.inherits, c);
+        self.acc_no_part = self.acc_no_part.saturating_sub(old.acc.no_part);
     }
 
     fn set(&mut self, doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) {
@@ -774,6 +787,8 @@ impl Strips {
         add_to(&mut self.by_far, &d.far, c);
         add_to(&mut self.by_page, &d.pages, c);
         add_to(&mut self.by_cable, &d.cables, c);
+        add_to(&mut self.inherits, &d.acc.inherits, c);
+        self.acc_no_part += d.acc.no_part;
         self.sheets_total += d.sheets;
         let (er, wa) = d.check_rows();
         self.check_errors += er;
@@ -799,6 +814,8 @@ impl Strips {
             && self.by_far == other.by_far
             && self.by_page == other.by_page
             && self.by_cable == other.by_cable
+            && self.inherits == other.inherits
+            && self.acc_no_part == other.acc_no_part
             && self.sheets_total == other.sheets_total
             && self.check_errors == other.check_errors
             && self.check_warnings == other.check_warnings
@@ -895,6 +912,7 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         twice: Vec::new(),
         sheets: 1,
         bom_rows: 0,
+        acc: crate::accessories::StripAcc::default(),
         conductors: BTreeSet::new(),
         far: BTreeSet::new(),
         pages: BTreeSet::new(),
@@ -1045,9 +1063,10 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         rows.sort_by_key(label_key);
     }
     d.rows = rows;
+    d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
     d.sheets = (plan_lines(&d) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
     let (ft, pe) = d.quantities();
-    d.bom_rows = usize::from(ft > 0) + usize::from(pe > 0);
+    d.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + d.acc.bom.len();
     d
 }
 
@@ -1154,7 +1173,7 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
 /// The rows a generated `terminals` sheet needs for `strip` (`None`: every strip): one heading per
 /// strip and one per position's conductor line (at least one).
 pub fn plan_lines(s: &StripData) -> usize {
-    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>()
+    1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
 }
 
 #[cfg(test)]

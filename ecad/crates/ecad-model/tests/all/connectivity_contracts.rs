@@ -463,3 +463,49 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     assert_eq!(tx.ops.len(), ops.len(), "the pass added nothing");
     assert_eq!(p.doc().connectivity().differs_from(&before), None);
 }
+
+/// Brief 030 (design 030 §5.2, FP7): a strip's `link.<n>` joins the nets of the terminals it
+/// names, in the same transaction as the numbering pass; changing or clearing it splits them;
+/// relabelling a terminal keeps the link on its label; the kept nets match a rebuild.
+#[test]
+fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
+    let mut p = P::new();
+    let (strip, t) = p.device(6);
+    let w: Vec<ConductorId> = t.iter().map(|x| p.wire(Some(*x), None)).collect();
+    assert!(!p.same_net(w[0], w[3]));
+    let set = |p: &mut P, key: &str, value: Option<&str>| {
+        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: value.map(Into::into) }]);
+    };
+    set(&mut p, "link.1", Some("1-4"));
+    assert!(p.same_net(w[0], w[3]) && p.same_net(w[1], w[2]));
+    assert!(!p.same_net(w[0], w[4]));
+    assert_eq!(p.number(w[0]), p.number(w[3]), "one wire number for the linked net");
+    let ops = &p.ledger.log().last().unwrap().ops;
+    assert!(ops.len() > 1, "the numbering pass's ops are in the link's transaction");
+    p.check();
+    // A skip link beside it, then shortening link 1 splits 3-4 off.
+    set(&mut p, "link.2", Some("5, 6"));
+    assert!(p.same_net(w[4], w[5]) && !p.same_net(w[3], w[4]));
+    set(&mut p, "link.1", Some("1-2"));
+    assert!(p.same_net(w[0], w[1]) && !p.same_net(w[0], w[2]) && !p.same_net(w[2], w[3]));
+    assert_ne!(p.number(w[0]), p.number(w[2]));
+    p.check();
+    // Relabelling 1 as 9 (Remove + Add of the same ID, as the planner does) takes it out of 1-2.
+    let old = p.doc().terminals.get(&t[0]).unwrap().clone();
+    let mut new = old.clone();
+    new.label = Some("9".into());
+    p.commit(vec![Op::RemoveTerminal { id: t[0], terminal: old }, Op::AddTerminal { id: t[0], terminal: new }]);
+    assert!(!p.same_net(w[0], w[1]));
+    p.check();
+    // Undo of the link edit restores the joined net; clearing the key splits everything.
+    set(&mut p, "link.2", None);
+    assert!(!p.same_net(w[4], w[5]));
+    p.check();
+    // Unreadable or non-link keys join nothing.
+    set(&mut p, "link.0", Some("1-6"));
+    set(&mut p, "link.3", Some("1-x-6"));
+    set(&mut p, "link.4.part_number", Some("2-6"));
+    assert!(!p.same_net(w[4], w[5]));
+    p.check();
+}
