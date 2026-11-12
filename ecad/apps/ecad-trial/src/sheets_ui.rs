@@ -110,6 +110,11 @@ pub enum Out {
     SwitchToMain,
     /// Brief 020b: merge the branch shown into main (the merge dialog).
     MergeIntoMain,
+    /// Brief 027: the Release dialog, for the pending revision (`None`) or to write an issued
+    /// revision's folder again.
+    Release(Option<String>),
+    /// Brief 027: open a release folder in the system's file manager.
+    OpenFolder(std::path::PathBuf),
 }
 
 impl ProjectProps {
@@ -456,6 +461,11 @@ impl ProjectProps {
 pub struct RevRow {
     pub fields: [String; 6],
     pub issued: bool,
+    /// Brief 027 (FP1): the release folder as recorded, and the folder it names once resolved
+    /// against the project (read from disk when the window opens and after a change).
+    pub released: Option<String>,
+    pub folder: Option<std::path::PathBuf>,
+    pub folder_exists: bool,
 }
 
 /// The Revisions dialog (design 019 §7.2): issued rows read-only, newest first; the pending row's
@@ -485,6 +495,9 @@ impl Revisions {
             .map(|r| RevRow {
                 fields: ecad_cadcraft::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
                 issued: !r["issued"].is_null(),
+                released: r.get("released").and_then(Value::as_str).map(str::to_string),
+                folder: None,
+                folder_exists: false,
             })
             .collect();
         let mut pending = rows.iter().rev().find(|r| !r.issued).map(|r| r.fields.clone()).unwrap_or_default();
@@ -519,7 +532,7 @@ impl Revisions {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let mut out = None;
         let mut open = true;
-        let headers = ["Rev", "Date", "Description", "Drawn", "Checked", "Approved"];
+        let headers = ["Rev", "Date", "Description", "Drawn", "Checked", "Approved", "Folder"];
         egui::Window::new("REVISIONS")
             .id(egui::Id::unique(REVISIONS_ID))
             .collapsible(false)
@@ -527,7 +540,7 @@ impl Revisions {
             .min_width(620.0)
             .open(&mut open)
             .show(ctx, |ui| {
-                egui::Grid::new("ecad.revisions.grid").num_columns(7).striped(true).show(ui, |ui| {
+                egui::Grid::new("ecad.revisions.grid").num_columns(8).striped(true).show(ui, |ui| {
                     for h in headers {
                         ui.label(RichText::new(h).small().strong());
                     }
@@ -553,6 +566,7 @@ impl Revisions {
                                 }
                             }
                         }
+                        ui.label("");
                         ui.label(RichText::new("pending").small());
                         ui.end_row();
                     }
@@ -561,6 +575,29 @@ impl Revisions {
                             ui.label(v);
                         }
                         let rev = r.fields[0].clone();
+                        // Brief 027 (design 027 §3): Open the release folder, or Write… it.
+                        match (&r.folder, r.folder_exists) {
+                            (Some(f), true) => {
+                                if ui
+                                    .small_button("Open")
+                                    .on_hover_text(format!("Open {} in the file manager", f.display()))
+                                    .accessible_name(format!("ecad.revisions.folder.{rev}"))
+                                    .clicked()
+                                {
+                                    out = Some(Out::OpenFolder(f.clone()));
+                                }
+                            }
+                            _ => {
+                                if ui
+                                    .small_button("Write…")
+                                    .on_hover_text(format!("Write Rev {rev}'s release folder from Rev {rev} as issued; records nothing"))
+                                    .accessible_name(format!("ecad.revisions.folder.{rev}"))
+                                    .clicked()
+                                {
+                                    out = Some(Out::Release(Some(rev.clone())));
+                                }
+                            }
+                        }
                         if ui
                             .button("Reopen")
                             .on_hover_text("Reopen this revision, read-only")
@@ -594,6 +631,18 @@ impl Revisions {
                         let b = if self.can_issue() { b } else { b.on_disabled_hover_text(ecad_cadcraft::revisions::FILL_FIRST) };
                         if b.clicked() {
                             self.confirming = true;
+                        }
+                        // Brief 027: issue and write the folder in one step (design 027 §3, Q1).
+                        let r = ui
+                            .add_enabled(self.can_issue(), egui::Button::new(RichText::new(format!("Release Rev {rev}…")).strong()))
+                            .accessible_name("ecad.revisions.release");
+                        let r = if self.can_issue() {
+                            r.on_hover_text("Check, issue and write the release folder")
+                        } else {
+                            r.on_disabled_hover_text(ecad_cadcraft::revisions::FILL_FIRST)
+                        };
+                        if r.clicked() {
+                            out = Some(Out::Release(None));
                         }
                     }
                     if ui.button("Close").clicked() {

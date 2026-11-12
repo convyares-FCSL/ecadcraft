@@ -629,6 +629,10 @@ pub fn project_json(doc: &Document) -> Value {
                 m.insert((*f).into(), Value::String(v.clone()));
             }
             m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
+            // Brief 027 (FP1): where it was released, when it was.
+            if let Some(f) = &r.released {
+                m.insert("released".into(), Value::String(f.clone()));
+            }
             Value::Object(m)
         })
         .collect();

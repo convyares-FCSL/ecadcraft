@@ -328,7 +328,8 @@ pub fn from_recorded(p: &Project, v: &str) -> Option<PathBuf> {
     if path.is_absolute() {
         return Some(path.to_path_buf());
     }
-    Some(project_dir(p)?.join(path))
+    // Recorded with `/` on every platform; joined part by part, so the path reads natively.
+    Some(v.split('/').filter(|c| !c.is_empty() && *c != "." && *c != "..").fold(project_dir(p)?, |d, c| d.join(c)))
 }
 
 /// `<folder>.partial`.
@@ -830,6 +831,137 @@ pub fn nothing_changed(p: &Project) -> Option<String> {
 
 // ---------------------------------------------------------------- prerelease
 
+/// What the Release dialog and `prerelease` show (design 027 §4, §5.1, §8): the check of the
+/// state to be issued, grouped, with each row's place in words, and what a release would write
+/// or refuse.
+#[derive(Debug, Clone, Default)]
+pub struct View {
+    pub rev: String,
+    /// `None` for the pending revision; the issued rev written again otherwise.
+    pub issued: Option<String>,
+    /// Each group with rows, in [`Group::ALL`] order: its rows and their `where` texts.
+    pub groups: Vec<(Group, Vec<(Check, String)>)>,
+    pub errors: usize,
+    pub warnings: usize,
+    pub info: usize,
+    pub provisional: usize,
+    pub folder: Option<PathBuf>,
+    /// The folder exists: its manifest read back.
+    pub existing: Option<OldFolder>,
+    /// (slot, file) written.
+    pub writes: Vec<(String, String)>,
+    /// (slot, why) not written.
+    pub not_included: Vec<(String, String)>,
+    /// What `release` would refuse (with `accept` as given).
+    pub refusal: Option<String>,
+    pub warning: Option<String>,
+    /// The pending revision's fields (`revisions::FIELDS` order).
+    pub fields: [String; 6],
+    /// The rows as JSON (`checks`' form), for `prerelease`.
+    json_rows: Vec<Vec<Value>>,
+}
+
+/// The [`View`] of `rev` (an issued rev, or `None` for the pending one); `accept` as the dialog's
+/// tick. Reads the kept Checks and report models for the pending revision (no rescan); builds an
+/// issued revision's state and models on request.
+///
+/// # Errors
+/// An issued `rev` that is not on this line, or its state could not be read.
+pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> Result<View, String> {
+    let issued_rev = rev.map(|r| issued_row(p, r)).transpose()?;
+    let mut v = View::default();
+    let to_rows = |doc: &Document, rows: &[Check], v: &mut View| {
+        let groups = grouped(rows);
+        for g in Group::ALL {
+            if let Some(r) = groups.get(&g) {
+                v.groups.push((g, r.iter().map(|c| ((*c).clone(), c.locator(doc))).collect()));
+                v.json_rows.push(r.iter().take(limit).map(|c| c.to_json(doc)).collect());
+            }
+        }
+        (v.errors, v.warnings, v.info) = counts(rows);
+        v.provisional = numbering_seam::provisional_count(rows);
+    };
+    match &issued_rev {
+        Some(row) => {
+            let (_, _, then) = crate::history::issued_state(p, row.rev())?;
+            let o = Outputs::build(&then);
+            let rows = checks::all_with(&then, p.tolerance, &o);
+            to_rows(&then, &rows, &mut v);
+            v.rev = row.rev().to_string();
+            v.issued = Some(v.rev.clone());
+            v.fields = row.fields.clone();
+            v.folder = row.released.as_deref().and_then(|x| from_recorded(p, x)).or_else(|| default_folder(p, &v.rev));
+        }
+        None => {
+            let rows = check_rows(p);
+            let params = if accept { json!({"accept": "errors"}) } else { json!({}) };
+            v.refusal = pending_refusal(p, &rows, &params);
+            v.warning = nothing_changed(p);
+            let doc = p.ledger.document();
+            to_rows(doc, &rows, &mut v);
+            v.rev = revisions::pending_rev(doc);
+            v.fields = revisions::pending(doc).map(|r| r.fields).unwrap_or_default();
+            if v.fields[0].is_empty() {
+                v.fields[0] = v.rev.clone();
+            }
+            v.folder = default_folder(p, &v.rev);
+        }
+    }
+    let base = format!("{} Rev {}", stem(p), v.rev);
+    v.writes.push(("book".into(), format!("{base}.pdf")));
+    for s in &LISTS {
+        if s.missing_why.is_empty() {
+            v.writes.push((s.id.into(), format!("{base}{}", s.suffix)));
+        } else {
+            v.not_included.push((s.id.into(), s.missing_why.into()));
+        }
+    }
+    v.writes.push(("checks".into(), format!("{base} checks.csv")));
+    v.writes.push(("manifest".into(), MANIFEST.into()));
+    v.existing = v.folder.as_deref().filter(|f| f.exists()).map(read_old);
+    Ok(v)
+}
+
+impl View {
+    /// `prerelease`'s JSON.
+    pub fn json(&self) -> Value {
+        let mut v = json!({
+            "rev": self.rev, "state": if self.issued.is_some() { "issued" } else { "pending" },
+            "groups": self.groups.iter().zip(&self.json_rows).map(|((g, r), rows)| json!({
+                "group": g.id(), "words": g.words(), "count": r.len(), "rows": rows,
+            })).collect::<Vec<_>>(),
+            "errors": self.errors, "warnings": self.warnings, "info": self.info,
+            "provisional": self.provisional,
+            "folder": self.folder.as_deref().map(shown),
+            "exists": self.existing.is_some(),
+            "writes": self.writes.iter().map(|(s, f)| json!({"slot": s, "file": f})).collect::<Vec<_>>(),
+            "not_included": self.not_included.iter().map(|(s, w)| json!({"slot": s, "why": w})).collect::<Vec<_>>(),
+        });
+        if let Some(old) = &self.existing {
+            v["existing"] = json!({"manifest": old.manifest, "written": old.written, "app": old.app, "files": old.files.len()});
+        }
+        if let Some(r) = &self.refusal {
+            v["refusal"] = json!(r);
+        }
+        if let Some(w) = &self.warning {
+            v["warning"] = json!(w);
+        }
+        v
+    }
+
+    /// The dialog's line about an existing folder (design 027 §5.1).
+    pub fn exists_words(&self) -> Option<String> {
+        let old = self.existing.as_ref()?;
+        let rev = &self.rev;
+        Some(match (&old.written, old.manifest) {
+            (Some(w), true) => {
+                format!("Rev {rev}'s folder exists (written {}). Release asks what to do with it.", w.replacen('T', " ", 1).trim_end_matches('Z'))
+            }
+            _ => format!("Rev {rev}'s folder exists (not written by a release). Release asks what to do with it."),
+        })
+    }
+}
+
 /// `prerelease {rev?, limit?}` (design 027 §10): the check, grouped, and what `release` would
 /// write or refuse. Records nothing.
 ///
@@ -838,63 +970,8 @@ pub fn nothing_changed(p: &Project) -> Option<String> {
 pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
     let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)?.map_or(DEFAULT_ROWS, |n| n as usize).clamp(1, MAX_ROWS);
     let want = opt_typed(params, "rev", "text such as \"A\"", |v| v.as_str().map(str::to_string))?;
-    let issued_rev = want.as_deref().map(|r| issued_row(p, r)).transpose()?;
-    let (rows, rev, state, doc_for_where, refusal, warning) = match &issued_rev {
-        Some(row) => {
-            let (_, _, then) = crate::history::issued_state(p, row.rev())?;
-            let o = Outputs::build(&then);
-            let rows = checks::all_with(&then, p.tolerance, &o);
-            (rows, row.rev().to_string(), "issued", then, None, None)
-        }
-        None => {
-            let rows = check_rows(p);
-            let refusal = pending_refusal(p, &rows, params);
-            let warning = nothing_changed(p);
-            (rows, revisions::pending_rev(p.ledger.document()), "pending", p.ledger.document().clone(), refusal, warning)
-        }
-    };
-    let folder = match &issued_rev {
-        Some(r) => r.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev)),
-        None => default_folder(p, &rev),
-    };
-    let groups = grouped(&rows);
-    let (e, w, i) = counts(&rows);
-    let base = format!("{} Rev {rev}", stem(p));
-    let mut writes = vec![json!({"slot": "book", "file": format!("{base}.pdf")})];
-    let mut not_included = Vec::new();
-    for s in &LISTS {
-        if s.missing_why.is_empty() {
-            writes.push(json!({"slot": s.id, "file": format!("{base}{}", s.suffix)}));
-        } else {
-            not_included.push(json!({"slot": s.id, "why": s.missing_why}));
-        }
-    }
-    writes.push(json!({"slot": "checks", "file": format!("{base} checks.csv")}));
-    writes.push(json!({"slot": "manifest", "file": MANIFEST}));
-    let exists = folder.as_deref().is_some_and(Path::exists);
-    let mut v = json!({
-        "rev": rev, "state": state,
-        "groups": Group::ALL.iter().filter_map(|g| groups.get(g).map(|r| json!({
-            "group": g.id(), "words": g.words(), "count": r.len(),
-            "rows": r.iter().take(limit).map(|c| c.to_json(&doc_for_where)).collect::<Vec<_>>(),
-        }))).collect::<Vec<_>>(),
-        "errors": e, "warnings": w, "info": i,
-        "provisional": numbering_seam::provisional_count(&rows),
-        "folder": folder.as_deref().map(shown),
-        "exists": exists,
-        "writes": writes, "not_included": not_included,
-    });
-    if exists && let Some(f) = &folder {
-        let old = read_old(f);
-        v["existing"] = json!({"manifest": old.manifest, "written": old.written, "app": old.app, "files": old.files.len()});
-    }
-    if let Some(r) = refusal {
-        v["refusal"] = json!(r);
-    }
-    if let Some(wn) = warning {
-        v["warning"] = json!(wn);
-    }
-    Ok(v)
+    let accept = params.get("accept").and_then(Value::as_str) == Some("errors");
+    Ok(view(p, want.as_deref(), accept, limit)?.json())
 }
 
 /// The issued row `rev` names.

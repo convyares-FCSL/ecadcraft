@@ -23,6 +23,7 @@ mod mouse_tester;
 mod outputs_ui;
 mod paths_contracts;
 mod project_panel;
+mod release_ui;
 mod sheets_ui;
 mod startup_contracts;
 mod startup_tester;
