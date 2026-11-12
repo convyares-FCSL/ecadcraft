@@ -11,4 +11,5 @@ mod mcp_tester_contracts;
 mod merge_contracts;
 mod merge_tester_contracts;
 mod numbering_contracts;
+mod review_026_merge;
 mod tester_026_mcp;

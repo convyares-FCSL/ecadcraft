@@ -319,9 +319,12 @@ fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
 }
 
 /// Whether a merge into `target` writes this project property: revision fields are never
-/// merged into the release line (owner answer 10); an update brings them unchanged.
+/// merged into the release line (owner answer 10); an update brings them unchanged. The tag
+/// high-water resets (`numbering.high.<P>`, brief 026) are internal and never merged: the
+/// target's stays, so its mark is never lowered, and the merge's own tag ops raise it to every
+/// tag brought in (reviewer 026, 4: no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
-    move |k: &str| update || !k.starts_with("rev.")
+    move |k: &str| !k.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
 }
 
 /// Check a value typed in a conflict's Edit field as an ordinary property edit of that object

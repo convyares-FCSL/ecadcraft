@@ -1207,13 +1207,6 @@ impl Holder {
         }
     }
 
-    fn in_doc(self, d: &Document) -> bool {
-        match self {
-            Holder::Device(c) => d.components.contains_key(&c),
-            Holder::Cable(c) => d.cables.contains_key(&c),
-        }
-    }
-
     fn set_tag(self, m: &mut Document, t: String) {
         let props = match self {
             Holder::Device(c) => m.components.get_mut(&c).map(|x| &mut x.properties),
@@ -1275,7 +1268,7 @@ fn top_provisional(m: &Document, prefix: &str) -> u64 {
 /// answer 12) or the target's, or making them one (brief 026). Provisional tags added on both
 /// sides are renumbered silently (design 026 §8).
 fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
-    let (t, s) = (ctx.inp.target, ctx.inp.source);
+    let t = ctx.inp.target;
     let mut high = ctx.inp.high.clone();
     let present: Vec<String> = m
         .components
@@ -1322,12 +1315,16 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         others.extend(more);
         let Some(other) = others.first().copied() else { continue };
         done.insert(key.clone());
-        // The source's holder (the one the target does not have), and the target's.
-        let (src, tgt) = if !h.in_doc(t) && h.in_doc(s) { (h, other) } else { (other, h) };
+        // The source's holder and the target's: `h`'s tag came from the source (the loop skips
+        // every holder whose tag the target already had), also when the target has `h` itself
+        // under an older tag (reviewer 026, 1).
+        let (src, tgt) = (h, other);
         // Provisional duplicates were never issued: the source's takes the next one, silently.
         if let Some((p, _)) = tag::provisional(&tag_text) {
             let n = top_provisional(m, &p).saturating_add(1);
             src.set_tag(m, tag::format_provisional(&p, n));
+            // The indexed copy is stale now (reviewer 026, 5): rebuilt when next needed.
+            indexed = None;
             out.insert(src.obj());
             ctx.provisional += 1;
             continue;
@@ -1348,7 +1345,14 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
                 });
                 (ctx.inp.join)(d, a, b)
             }
-            (Holder::Cable(a), Holder::Cable(b)) => join_cables(m, a, b),
+            (Holder::Cable(a), Holder::Cable(b)) => {
+                let d = indexed.get_or_insert_with(|| {
+                    let mut x = m.clone();
+                    x.rebuild_index();
+                    x
+                });
+                join_cables(d, a, b)
+            }
             _ => Err(format!("{tag_text} is a cable on one side and a device on the other.")),
         };
         let mut choices = vec![Choice::RenumberSource, Choice::RenumberTarget];
@@ -1403,15 +1407,25 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         if let Some(d) = which {
             d.set_tag(m, fresh);
             out.insert(d.obj());
+            indexed = None;
         }
     }
     out
 }
 
-/// The ops making cable `from`'s members members of `into` (after its own), then deleting `from`.
-fn join_cables(m: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
-    let a = m.cables.get(&from).ok_or("No such cable.")?;
-    let b = m.cables.get(&into).ok_or("No such cable.")?;
+/// The ops making cable `from` part of cable `into` (brief 026, Make them one): its members join
+/// (after `into`'s own; a wire in both stays once), its drawings show `into`, and it is deleted.
+/// `doc` needs a current index (its drawings are found through it). Used by the merge and by
+/// `setprop`'s merge choice alike.
+///
+/// # Errors
+/// A missing cable, or `from == into`.
+pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
+    if from == into {
+        return Err("A cable cannot be merged with itself.".into());
+    }
+    let a = doc.cables.get(&from).ok_or("No such cable.")?;
+    let b = doc.cables.get(&into).ok_or("No such cable.")?;
     let mut ops = Vec::new();
     for (i, mem) in a.members.iter().enumerate().rev() {
         ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });
@@ -1423,6 +1437,10 @@ fn join_cables(m: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, St
         }
         ops.push(Op::AddCableMember { cable: into, index: n, member: mem.clone() });
         n += 1;
+    }
+    for (rid, r) in doc.representations_of(Subject::Cable(from)) {
+        ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
+        ops.push(Op::LinkRepresentation { id: rid, rep: crate::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
     }
     let mut empty = a.clone();
     empty.members.clear();

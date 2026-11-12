@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
 use ecad_model::tag::{self, FIXED_KEY, PROVISIONAL_SETTING, TAG_KEY};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, FolderId, ObjectRef, Op, PageId, Subject};
+use ecad_model::{CableId, ComponentId, ConductorId, Document, FolderId, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::commands::{opt_typed, with_any_page, with_project};
@@ -675,31 +675,8 @@ fn h_object(o: ObjectRef) -> Value {
 /// # Errors
 /// A missing cable.
 pub fn join_cable_ops(doc: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
-    if from == into {
-        return Err("A cable cannot be merged with itself.".into());
-    }
-    let a = doc.cables.get(&from).ok_or("No such cable.")?;
-    let b = doc.cables.get(&into).ok_or("No such cable.")?;
-    let mut ops = Vec::new();
-    for (i, m) in a.members.iter().enumerate().rev() {
-        ops.push(Op::RemoveCableMember { cable: from, index: i, member: m.clone() });
-    }
-    let mut n = b.members.len();
-    for m in &a.members {
-        if b.members.iter().any(|x| x.conductor == m.conductor) {
-            continue;
-        }
-        ops.push(Op::AddCableMember { cable: into, index: n, member: m.clone() });
-        n += 1;
-    }
-    for (rid, r) in doc.representations_of(Subject::Cable(from)) {
-        ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
-        ops.push(Op::LinkRepresentation { id: rid, rep: ecad_model::Representation { subject: Subject::Cable(into), ..r.clone() } });
-    }
-    let mut empty = a.clone();
-    empty.members.clear();
-    ops.push(Op::DeleteCable { id: from, cable: empty });
-    Ok(ops)
+    // One join for the merge and for setprop (reviewer 026, 2).
+    ecad_model::merge::join_cables(doc, from, into)
 }
 
 /// `setprop {component|cable, key: "tag_fixed", value: "yes"|null}` (design §4, FP1).

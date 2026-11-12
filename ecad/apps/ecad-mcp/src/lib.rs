@@ -224,7 +224,9 @@ impl State {
         let used = self.line_transactions;
         // Brief 026 (design §5.5): `issuerevision {provisional: "finalise"}` records Finalise, then
         // the issue: two transactions by design (the revision point holds the finalised tags).
-        let allowed = policy::transactions_allowed(&id, &params);
+        // Only when this call is the line's first write and it really recorded Finalise, then the
+        // issue (reviewer 026, 3); anything else keeps the cap of one.
+        let allowed = if used == 0 && finalised_then_issued(&new) { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
         if used.saturating_add(new.len()) > allowed {
             let what = if used > 0 {
                 format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
@@ -275,6 +277,19 @@ impl State {
             }
             _ => self.headless.call(method, p),
         }
+    }
+}
+
+/// Whether `txs` is exactly a Finalise edit followed by an issue (brief 026, design §5.5).
+fn finalised_then_issued(txs: &[Transaction]) -> bool {
+    match txs {
+        [f, i] => {
+            matches!(f.kind, TxKind::Edit)
+                && f.label == "Finalise numbering"
+                && matches!(i.kind, TxKind::Edit)
+                && ecad_cadcraft::revisions::issue_in(&i.ops).is_some()
+        }
+        _ => false,
     }
 }
 
