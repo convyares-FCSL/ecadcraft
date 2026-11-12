@@ -21,6 +21,8 @@ pub const CHECKS_TAB: &str = "Checks";
 pub const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
 pub const ADD_JUNCTION: &str = "Add junction";
+/// Brief 032: the Looks connected row's fix (`joinwires {at}`).
+pub const JOIN: &str = "Join";
 pub const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
@@ -275,6 +277,7 @@ impl ChecksPanel {
                     let b = egui::Rect::from_min_size(pos2(rect.right() - bw - 4.0, rect.top() + 2.0), vec2(bw, ROW_H - 4.0));
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
+                        Fix::Join(_) => JOIN,
                         Fix::NumberThem => NUMBER_THEM,
                         Fix::Finalise => FINALISE,
                         Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
@@ -288,6 +291,7 @@ impl ChecksPanel {
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
                             (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
+                            (Fix::Join(at), Some(page)) => out.push(Action::JoinWires(page, at)),
                             (Fix::NumberThem, _) => out.push(Action::NumberThem),
                             (Fix::Finalise, _) => out.push(Action::Finalise),
                             (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),

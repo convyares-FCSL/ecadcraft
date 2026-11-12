@@ -28,7 +28,7 @@ continuations, and wire labels stop piling up at junctions and on short drops.
   another page (010) and refuses members attached at both ends, which is every core that ends on a
   continuation arrow. `MAX_REFERENCES_PER_CABLE` is 2.
 - Wire labels: one per route per page, on its longest segment, placed clear of other labels and
-  wires (`wires.rs` `labels_on_page_with`). Height from `wiring.label_height` (default 1.8 mm).
+  wires (`wires.rs` `labels_on_page_with`). Height from `wiring.label_height` (default 1.6 mm since 031 FP6; 1.8 before).
 
 ## Scope (in order)
 

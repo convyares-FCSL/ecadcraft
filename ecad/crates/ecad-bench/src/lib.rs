@@ -23,6 +23,7 @@ pub mod release;
 pub mod report;
 pub mod strips;
 pub mod v2;
+pub mod wires_nets;
 
 use std::path::{Path, PathBuf};
 
@@ -152,6 +153,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         eprintln!("{} {}: measuring the pre-release check and the release…", tier.name, variant.name());
         let rel = release::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring wire joins, cable continuation and wire labels…", tier.name, variant.name());
+        let wires = wires_nets::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
             variant: variant.name().into(),
@@ -162,6 +166,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             outputs: Some(outs?),
             strips: Some(strips?),
             release: Some(rel?),
+            wires: Some(wires?),
         });
     }
     Ok(rows)

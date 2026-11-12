@@ -92,12 +92,45 @@ pub struct Style {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Primitive {
-    Line { a: Pt, b: Pt },
-    Polyline { vertices: Vec<Pt>, closed: bool },
-    Arc { center: Pt, radius: f64, start: f64, end: f64 },
-    Circle { center: Pt, radius: f64 },
-    Text { at: Pt, height: f64, rotation: f64, value: String },
-    Point { at: Pt },
+    Line {
+        a: Pt,
+        b: Pt,
+    },
+    Polyline {
+        vertices: Vec<Pt>,
+        closed: bool,
+    },
+    Arc {
+        center: Pt,
+        radius: f64,
+        start: f64,
+        end: f64,
+    },
+    Circle {
+        center: Pt,
+        radius: f64,
+    },
+    Text {
+        at: Pt,
+        height: f64,
+        rotation: f64,
+        value: String,
+        #[serde(default, skip_serializing_if = "is_left")]
+        halign: m::TextHAlign,
+        #[serde(default, skip_serializing_if = "is_baseline")]
+        valign: m::TextVAlign,
+    },
+    Point {
+        at: Pt,
+    },
+}
+
+fn is_left(h: &m::TextHAlign) -> bool {
+    *h == m::TextHAlign::Left
+}
+
+fn is_baseline(v: &m::TextVAlign) -> bool {
+    *v == m::TextVAlign::Baseline
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -338,6 +371,14 @@ fn default_label_height() -> f64 {
     m::wiring::DEFAULT_LABEL_HEIGHT
 }
 
+fn default_label_rule() -> String {
+    m::wiring::DEFAULT_LABEL_RULE.to_string()
+}
+
+fn default_label_min_length() -> f64 {
+    m::wiring::DEFAULT_LABEL_MIN_LENGTH
+}
+
 fn is_default_label_height(h: &f64) -> bool {
     *h == m::wiring::DEFAULT_LABEL_HEIGHT
 }
@@ -355,6 +396,12 @@ pub struct WiringSettings {
     pub colour_style: ColourStyle,
     #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
     pub label_height: f64,
+    /// Brief 032 (FP-W1); a file without it reads with the default.
+    #[serde(default = "default_label_rule")]
+    pub label_rule: String,
+    /// Brief 032 (FP-W1); a file without it reads with the default.
+    #[serde(default = "default_label_min_length")]
+    pub label_min_length: f64,
 }
 
 impl Default for WiringSettings {
@@ -389,6 +436,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                 m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule.clone(),
+            label_min_length: w.label_min_length,
         }
     }
 }
@@ -470,6 +519,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                 ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule,
+            label_min_length: w.label_min_length,
         }
     }
 }
@@ -755,8 +806,8 @@ impl From<&m::Primitive> for Primitive {
             }
             m::Primitive::Arc { center, radius, start, end } => Primitive::Arc { center: pt(*center), radius: *radius, start: *start, end: *end },
             m::Primitive::Circle { center, radius } => Primitive::Circle { center: pt(*center), radius: *radius },
-            m::Primitive::Text { at, height, rotation, value } => {
-                Primitive::Text { at: pt(*at), height: *height, rotation: *rotation, value: value.clone() }
+            m::Primitive::Text { at, height, rotation, value, halign, valign } => {
+                Primitive::Text { at: pt(*at), height: *height, rotation: *rotation, value: value.clone(), halign: *halign, valign: *valign }
             }
             m::Primitive::Point { at } => Primitive::Point { at: pt(*at) },
         }
@@ -1009,7 +1060,9 @@ impl From<Primitive> for m::Primitive {
             Primitive::Polyline { vertices, closed } => m::Primitive::Polyline { vertices: vertices.into_iter().map(mpt).collect(), closed },
             Primitive::Arc { center, radius, start, end } => m::Primitive::Arc { center: mpt(center), radius, start, end },
             Primitive::Circle { center, radius } => m::Primitive::Circle { center: mpt(center), radius },
-            Primitive::Text { at, height, rotation, value } => m::Primitive::Text { at: mpt(at), height, rotation, value },
+            Primitive::Text { at, height, rotation, value, halign, valign } => {
+                m::Primitive::Text { at: mpt(at), height, rotation, value, halign, valign }
+            }
             Primitive::Point { at } => m::Primitive::Point { at: mpt(at) },
         }
     }

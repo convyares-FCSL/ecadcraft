@@ -671,6 +671,7 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let wire = |w: ConductorId| o.wire(w).cloned();
         let doc = p.ledger.document();
         let style = doc.settings.reference_style;
+        let o_chain = |i: usize| o.chain_ends(&row, i, style);
         let count = &row.count;
         let member_json = |i: usize, label: Option<String>, state: &str| {
             let w = row.members.get(i).copied();
@@ -680,11 +681,14 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             o.insert("state".into(), json!(state));
             put(&mut o, "conductor", w.map(|w| w.hex()));
             put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
-            put(&mut o, "from", r.as_ref().and_then(|r| r.from.text(style)));
-            put(&mut o, "to", r.as_ref().and_then(|r| r.to.text(style)));
+            // Brief 032: a core is a chain of members through continuations, From to To.
+            let (from, to) = o_chain(i);
+            put(&mut o, "from", from);
+            put(&mut o, "to", to);
             Value::Object(o)
         };
-        let stored = |i: usize| doc.cables.get(&k).and_then(|c| c.members.get(i)).and_then(|m| m.core.clone());
+        // Brief 032: the rows are the cable's core chains, each with its stored label.
+        let stored = |i: usize| row.member_cores.get(i).cloned().flatten();
         let mut cores = Vec::new();
         match &count.offer {
             Some(offer) => {
