@@ -14,9 +14,9 @@ const SPG: &[Level] = &[Level::Standard, Level::Project, Level::Page];
 const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Object];
 /// The heights a project may set, millimetres.
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
-const WEIGHT: Kind = Kind::Word(&["regular", "bold"]);
-const SHOW: Kind = Kind::Word(&["on", "off"]);
-const SHOW_RUN: Kind = Kind::Word(&["on", "off", "first"]);
+const WEIGHT: Kind = Kind::Choice(&["regular", "bold"]);
+const SHOW: Kind = Kind::Choice(&["on", "off"]);
+const SHOW_RUN: Kind = Kind::Choice(&["on", "off", "first"]);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, builtin: Value<'static>, levels: &'static [Level]) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, builtin, levels, project: ProjectSource::Property }
@@ -25,17 +25,17 @@ const fn height(key: &'static str, label: &'static str, mm: f64) -> Entry {
     entry(key, label, HEIGHT, Value::Length(mm), SP)
 }
 const fn regular(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, WEIGHT, Value::Word("regular"), SP)
+    entry(key, label, WEIGHT, Value::Choice("regular"), SP)
 }
 const fn bold(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, WEIGHT, Value::Word("bold"), SP)
+    entry(key, label, WEIGHT, Value::Choice("bold"), SP)
 }
 
 /// The wire label height as the project stores it (`settings.wiring.label_height`), or `None`
 /// while it is the default.
-fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<f64> {
+fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
     let h = s.wiring.label_height;
-    ((h - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() > f64::EPSILON).then_some(h)
+    ((h - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() > f64::EPSILON).then_some(Value::Length(h))
 }
 
 // --- Font ------------------------------------------------------------------------------------
@@ -102,19 +102,19 @@ pub static FREE_WEIGHT: Entry = regular("text.free.weight", "Free text weight");
 
 // --- Shown (§5.1, §5.3) ----------------------------------------------------------------------
 
-pub static TAG_SHOW: Entry = entry("text.tag.show", "Tag shown", SHOW_RUN, Value::Word("on"), SPGO);
+pub static TAG_SHOW: Entry = entry("text.tag.show", "Tag shown", SHOW_RUN, Value::Choice("on"), SPGO);
 /// The run rule for strip terminals (§5.3), used where `text.tag.show` is not set.
-pub static TAG_SHOW_STRIP: Entry = entry("text.tag.show.strip", "Strip terminal tag shown", SHOW_RUN, Value::Word("first"), SP);
+pub static TAG_SHOW_STRIP: Entry = entry("text.tag.show.strip", "Strip terminal tag shown", SHOW_RUN, Value::Choice("first"), SP);
 /// The run rule for PLC channels (§5.3), used where `text.tag.show` is not set.
-pub static TAG_SHOW_PLC: Entry = entry("text.tag.show.plc", "PLC channel tag shown", SHOW_RUN, Value::Word("first"), SP);
-pub static POINT_LABEL_SHOW: Entry = entry("text.point_label.show", "Connection point labels shown", SHOW, Value::Word("on"), SPGO);
-pub static DESCRIPTION_SHOW: Entry = entry("text.description.show", "Description shown", SHOW, Value::Word("off"), SPGO);
-pub static PART_NUMBER_SHOW: Entry = entry("text.part_number.show", "Part number shown", SHOW, Value::Word("off"), SPGO);
-pub static CONTINUATION_NAME_SHOW: Entry = entry("text.continuation_name.show", "Continuation name shown", SHOW, Value::Word("off"), SPGO);
-pub static REFERENCE_SHOW: Entry = entry("text.reference.show", "References shown", SHOW, Value::Word("on"), SPG);
-pub static LOCATION_SHOW: Entry = entry("text.location.show", "Location labels shown", SHOW, Value::Word("on"), SPG);
+pub static TAG_SHOW_PLC: Entry = entry("text.tag.show.plc", "PLC channel tag shown", SHOW_RUN, Value::Choice("first"), SP);
+pub static POINT_LABEL_SHOW: Entry = entry("text.point_label.show", "Connection point labels shown", SHOW, Value::Choice("on"), SPGO);
+pub static DESCRIPTION_SHOW: Entry = entry("text.description.show", "Description shown", SHOW, Value::Choice("off"), SPGO);
+pub static PART_NUMBER_SHOW: Entry = entry("text.part_number.show", "Part number shown", SHOW, Value::Choice("off"), SPGO);
+pub static CONTINUATION_NAME_SHOW: Entry = entry("text.continuation_name.show", "Continuation name shown", SHOW, Value::Choice("off"), SPGO);
+pub static REFERENCE_SHOW: Entry = entry("text.reference.show", "References shown", SHOW, Value::Choice("on"), SPG);
+pub static LOCATION_SHOW: Entry = entry("text.location.show", "Location labels shown", SHOW, Value::Choice("on"), SPG);
 /// Read by lane W (conductor, page, project).
-pub static WIRE_LABEL_SHOW: Entry = entry("text.wire_label.show", "Wire labels shown", SHOW, Value::Word("on"), SPGO);
+pub static WIRE_LABEL_SHOW: Entry = entry("text.wire_label.show", "Wire labels shown", SHOW, Value::Choice("on"), SPGO);
 
 // --- Runs and placement (§5.3, §6) -----------------------------------------------------------
 

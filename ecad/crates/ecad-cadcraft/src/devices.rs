@@ -624,6 +624,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     };
     let reps: Vec<(RepresentationId, Representation)> = doc.representations_of(Subject::Component(from)).map(|(id, r)| (id, r.clone())).collect();
     let from_words = tag_words(doc, from);
+    // Brief 031 (FP5): each symbol's own text keys move with it to its new representation.
+    let mut renamed: Vec<(RepresentationId, RepresentationId)> = Vec::new();
     for (rid, r) in &reps {
         let shown = shown_terminals(doc, from, r);
         // A symbol whose device's connection points do not match its definition (an old or
@@ -670,6 +672,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         }
         let role = if r.role == "main" { starter.map_or_else(|| r.role.clone(), |s| s.key.to_string()) } else { r.role.clone() };
         let nr: RepresentationId = ids.fresh();
+        renamed.push((*rid, nr));
         ops_reps.push((
             Op::UnlinkRepresentation { id: *rid, rep: r.clone() },
             Op::LinkRepresentation { id: nr, rep: Representation { subject: Subject::Component(into), role, connection_points: cps, ..r.clone() } },
@@ -698,6 +701,16 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     }
     for (t, term) in doc.terminals_of(from) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+    }
+    let into_props = doc.components.get(&into).map(|c| &c.properties);
+    for (old, new) in renamed {
+        for (key, value) in crate::text_style::symbol_text_keys(&from_c.properties, old) {
+            let moved = crate::text_style::rename_symbol_key(&key, old, new);
+            let before = into_props.and_then(|p| p.get(&moved)).cloned();
+            if before.as_ref() != Some(&value) {
+                ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(into), key: moved, before, after: Some(value) });
+            }
+        }
     }
     ops.push(Op::DeleteComponent { id: from, component: from_c });
     Ok(ops)
@@ -769,6 +782,12 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
+            // Brief 031 (FP5): an erased symbol's own text keys go with it.
+            for (rid, _) in &reps {
+                for (key, value) in crate::text_style::symbol_text_keys(&component.properties, *rid) {
+                    ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, before: Some(value), after: None });
+                }
+            }
             for (_, r) in &reps {
                 let name = rep_starter(doc, r).map_or("symbol", |s| s.name);
                 let labels: Vec<String> = shown_terminals(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
@@ -809,6 +828,10 @@ pub enum TextOf {
     Name,
     /// A continuation's other places (brief 022).
     Places,
+    /// A device's description under its tag (brief 031, hidden by default).
+    Description,
+    /// A device's part number under its tag (brief 031, hidden by default).
+    PartNumber,
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -871,6 +894,8 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
+        TextOf::Description => TextKind::Description,
+        TextOf::PartNumber => TextKind::PartNumber,
     }
 }
 
@@ -907,10 +932,38 @@ pub fn texts_for(
     out
 }
 
-/// Every derived text on `page`: for each symbol representation of a component, its device's tag
-/// (when it has one) and its terminals' labels. Hostile values (non-finite placements) draw
-/// nothing for that representation.
+/// Every derived text shown on `page` (what the page draws and prints): [`all_texts_on_page`]'s
+/// shown ones.
 pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
+    all_texts_on_page(doc, page).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
+}
+
+/// A derived text and whether it is shown (design 031 §5): hidden texts are still data, listed by
+/// `pagetexts` and drawn dimmed by Show Hidden Text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageText {
+    pub text: DerivedText,
+    pub shown: bool,
+}
+
+/// The run rule of a symbol (design 031 §5.3), from its starter kind.
+pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRule {
+    use crate::text_style::RunRule;
+    match rep_starter(doc, r).map(|s| s.kind) {
+        Some(Kind::Terminal) => RunRule::Strip,
+        Some(Kind::Plc { .. }) => RunRule::Plc,
+        _ => RunRule::None,
+    }
+}
+
+/// Every derived text on `page`, shown or hidden: for each symbol representation of a component,
+/// its device's tag block (the tag, then its description and part number when they have values)
+/// and its terminals' labels; a continuation's name and other places. Visibility follows design
+/// 031 §5.2 (symbol, device, page, project, built-in) and a tag set to once per run is shown on
+/// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
+/// for that representation.
+pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
+    use crate::text_style::{Shown, TextKind, TextTarget, text_shown, text_style};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
         if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
@@ -919,6 +972,8 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
+    let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
+    let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
     for (rid, r) in doc.representations_on(page) {
@@ -931,21 +986,51 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
             continue;
         }
         let labels = by_rep.remove(&rid).unwrap_or_default();
-        // A continuation shows its name and its other places instead (brief 022).
-        // Their sizes come from the style table (design 031 §7.1): restyled here, by kind.
+        let target = TextTarget { page: Some(page), component: Some(c), representation: Some(rid), conductor: None, run: run_rule(doc, r) };
+        let shown = |kind: TextKind| match text_shown(doc, target, kind) {
+            Shown::On => true,
+            Shown::Off => false,
+            Shown::First => firsts.contains(&rid),
+        };
+        // A continuation shows its name and its other places instead (brief 022). Their sizes
+        // and visibility come from the style table (design 031 §7.1): restyled here, by kind.
         if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
             out.extend(texts.into_iter().map(|mut t| {
-                t.height = crate::text_style::text_style(doc, kind_of(t.of)).height;
-                t
+                t.height = text_style(doc, kind_of(t.of)).height;
+                let shown = shown(kind_of(t.of));
+                PageText { text: t, shown }
             }));
             continue;
         }
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
         let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
         let tag = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes));
+        let (tag_shown, labels_shown) = (shown(TextKind::Tag), shown(TextKind::PointLabel));
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag.as_deref(), &labels, sizes) {
             let aci = (prov && of == TextOf::Tag).then_some(PROVISIONAL_ACI);
-            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci });
+            let is_tag = of == TextOf::Tag;
+            out.push(PageText {
+                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci },
+                shown: if is_tag { tag_shown } else { labels_shown },
+            });
+            if !is_tag {
+                continue;
+            }
+            // The tag block's further lines (design 031 §6.1), under the tag with its justification.
+            let mut y = at.y - pitch * height;
+            for (of, key, kind) in
+                [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
+            {
+                let Some(v) = doc.components.get(&c).and_then(|x| x.properties.get(key)).map(|v| v.trim()).filter(|v| !v.is_empty()) else {
+                    continue;
+                };
+                let h = text_style(doc, kind).height;
+                out.push(PageText {
+                    text: DerivedText { rep: rid, of, value: v.to_string(), at: Pt::new(at.x, y), height: h, halign, valign, aci: None },
+                    shown: shown(kind),
+                });
+                y -= pitch * h;
+            }
         }
     }
     out
@@ -1192,6 +1277,16 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
         lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)));
+        // Brief 031 (design §5.4): a tag hidden here is still data; the lens names it. (Descriptions
+        // and part numbers are hidden by default, so naming them would add a line to every lens.)
+        let hidden: Vec<String> = all_texts_on_page(doc, r.page)
+            .into_iter()
+            .filter(|t| t.text.rep == here && !t.shown && t.text.of == TextOf::Tag)
+            .map(|t| format!("Tag {} (hidden here)", t.text.value))
+            .collect();
+        if !hidden.is_empty() {
+            lines.push(hidden.join("; "));
+        }
     }
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let mut others: Vec<(usize, RepresentationId, String)> = doc

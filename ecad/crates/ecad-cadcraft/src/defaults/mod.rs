@@ -23,6 +23,11 @@
 
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
+/// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
+/// `tags.`, `revisions.`, `print.`, `symbol.`. Keys already approved before the registry keep their
+/// names; the key-rule test reads this one list.
+pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol"];
+
 pub mod print;
 pub mod symbols;
 pub mod text;
@@ -50,7 +55,7 @@ pub struct Entry {
 }
 
 /// What an entry holds, and the check a stored value must pass.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum Kind {
     /// A length in millimetres (divided by 25.4 in an inch project, see [`Resolved::length`]), in
     /// this range.
@@ -58,9 +63,12 @@ pub enum Kind {
     /// A plain number (a factor), in this range.
     Number { min: f64, max: f64 },
     /// One of these words (compared without case; the registered spelling is returned).
-    Word(&'static [&'static str]),
+    Choice(&'static [&'static str]),
     /// Free text of 1 to this many characters, no control characters.
     Text { max_chars: usize },
+    /// Text of 1 to `max_chars` characters, no control characters, that `parse` accepts (a
+    /// declared parser, e.g. a tag prefix or a revision pattern).
+    Parsed { max_chars: usize, parse: fn(&str) -> bool },
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.
@@ -69,7 +77,9 @@ pub enum Value<'a> {
     /// Millimetres.
     Length(f64),
     Number(f64),
-    Word(&'static str),
+    /// One of a [`Kind::Choice`] entry's words.
+    Choice(&'static str),
+    /// A [`Kind::Text`] or [`Kind::Parsed`] value.
     Text(&'a str),
 }
 
@@ -111,14 +121,16 @@ impl Source {
     }
 }
 
-/// Where the project level of an entry is stored.
+/// Where the project level of an entry is stored. One path only: an entry backed by a setting
+/// never also reads a project property (overseer ruling, 2026-11-12).
 #[derive(Clone, Copy)]
 pub enum ProjectSource {
     /// The project property named by the entry's key.
     Property,
-    /// A project setting, in millimetres; `None` when the project leaves it at its default (so it
-    /// resolves as the built-in).
-    Settings(fn(&ProjectSettings) -> Option<f64>),
+    /// A project setting: its value (a length in millimetres, a number, a word of the entry's
+    /// choices, or text), or `None` when the project leaves it at its default, so it resolves as
+    /// the built-in. The value is checked against the entry's kind like a stored one.
+    Settings(for<'a> fn(&'a ProjectSettings) -> Option<Value<'a>>),
 }
 
 impl std::fmt::Debug for ProjectSource {
@@ -195,10 +207,10 @@ impl Resolved<'_> {
         }
     }
 
-    /// A word (a [`Kind::Word`] entry); `""` otherwise.
+    /// A word (a [`Kind::Choice`] entry); `""` otherwise.
     pub fn word(&self) -> &'static str {
         match self.value {
-            Value::Word(w) => w,
+            Value::Choice(w) => w,
             _ => "",
         }
     }
@@ -207,7 +219,7 @@ impl Resolved<'_> {
     pub fn text(&self) -> String {
         match self.value {
             Value::Length(x) | Value::Number(x) => format!("{x}"),
-            Value::Word(w) => w.to_string(),
+            Value::Choice(w) => w.to_string(),
             Value::Text(t) => t.to_string(),
         }
     }
@@ -221,11 +233,9 @@ impl Entry {
         match self.kind {
             Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
             Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
-            Kind::Word(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Word(w)),
-            Kind::Text { max_chars } => {
-                let ok = !s.is_empty() && s.chars().count() <= max_chars && !s.chars().any(char::is_control);
-                ok.then_some(Value::Text(s))
-            }
+            Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
+            Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
+            Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
         }
     }
 
@@ -234,8 +244,8 @@ impl Entry {
     pub fn accepts(&self, value: &Value<'_>) -> bool {
         match (self.kind, value) {
             (Kind::Length { min, max }, Value::Length(x)) | (Kind::Number { min, max }, Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
-            (Kind::Word(words), Value::Word(w)) => words.contains(w),
-            (Kind::Text { .. }, Value::Text(t)) => self.parse(t) == Some(Value::Text(t)),
+            (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
+            (Kind::Text { .. } | Kind::Parsed { .. }, Value::Text(t)) => self.parse(t) == Some(Value::Text(t)),
             _ => false,
         }
     }
@@ -250,10 +260,15 @@ impl Entry {
         match self.kind {
             Kind::Length { .. } => "length",
             Kind::Number { .. } => "number",
-            Kind::Word(_) => "word",
-            Kind::Text { .. } => "text",
+            Kind::Choice(_) => "choice",
+            Kind::Text { .. } | Kind::Parsed { .. } => "text",
         }
     }
+}
+
+/// 1 to `max_chars` characters, no control characters.
+fn plain_text(s: &str, max_chars: usize) -> bool {
+    !s.is_empty() && s.chars().count() <= max_chars && !s.chars().any(char::is_control)
 }
 
 fn number_in(s: &str, min: f64, max: f64) -> Option<f64> {
@@ -304,7 +319,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     if entry.allows(Level::Project) {
         let value = match entry.project {
             ProjectSource::Property => stored(&doc.properties, entry.key),
-            ProjectSource::Settings(read) => read(&doc.settings).and_then(|mm| entry.parse_number(mm)),
+            ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
         };
         if let Some(value) = value {
             return Resolved { value, from: Source::Project };
@@ -312,17 +327,6 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     }
     // Level::Standard: reserved, no source until the Standards brief.
     Resolved { value: entry.builtin, from: Source::Builtin }
-}
-
-impl Entry {
-    /// A number read from a setting, checked like a stored value.
-    fn parse_number(&self, x: f64) -> Option<Value<'static>> {
-        match self.kind {
-            Kind::Length { min, max } if x.is_finite() && (min..=max).contains(&x) => Some(Value::Length(x)),
-            Kind::Number { min, max } if x.is_finite() && (min..=max).contains(&x) => Some(Value::Number(x)),
-            _ => None,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -333,7 +337,7 @@ mod tests {
     fn key_ok(key: &str) -> bool {
         let parts: Vec<&str> = key.split('.').collect();
         parts.len() >= 2
-            && ["text", "wire", "print", "symbol"].contains(&parts[0])
+            && AREAS.contains(&parts[0])
             && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
     }
 
@@ -348,10 +352,10 @@ mod tests {
     }
 
     #[test]
-    fn every_builtin_is_valid_and_every_entry_allows_the_project() {
+    fn every_builtin_is_valid_for_its_kind() {
+        // Levels are per entry (an entry may declare fewer); only the built-in is always there.
         for e in all() {
             assert!(e.accepts(&e.builtin), "{}: built-in {:?} is not a valid {:?}", e.key, e.builtin, e.kind);
-            assert!(e.allows(Level::Project), "{} does not allow the project level", e.key);
             // The built-in, written as text, parses back to itself.
             let r = Resolved { value: e.builtin, from: Source::Builtin };
             assert_eq!(e.parse(&r.text()), Some(e.builtin), "{}", e.key);
@@ -376,7 +380,7 @@ mod tests {
         for bad in ["maybe", "first ", "1", ""] {
             if bad == "first " {
                 // trimmed: a valid word
-                assert_eq!(show.parse(bad), Some(Value::Word("first")));
+                assert_eq!(show.parse(bad), Some(Value::Choice("first")));
             } else {
                 assert_eq!(show.parse(bad), None, "show {bad:?}");
             }
@@ -389,7 +393,7 @@ mod tests {
         if let Some(p) = doc.pages.get_mut(&page) {
             p.properties.insert(show.key.into(), "sideways".into());
         }
-        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Word("off"), from: Source::Project });
+        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("off"), from: Source::Project });
     }
 
     #[test]
@@ -404,13 +408,13 @@ mod tests {
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
         doc.properties.insert(show.key.into(), "off".into());
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Word("off"), from: Source::Project });
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Project });
         doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "on".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Word("on"), from: Source::Page });
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("on"), from: Source::Page });
         doc.components.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "off".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Word("off"), from: Source::Object });
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Object });
         doc.components.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Word("first"), from: Source::Symbol });
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("first"), from: Source::Symbol });
         // The project-only scope still sees only the project.
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);
         // An entry that does not allow the page level ignores a page value.
@@ -434,5 +438,90 @@ mod tests {
         assert_eq!(resolve(&doc, e, Scope::project()), Resolved { value: Value::Length(2.0), from: Source::Project });
         doc.settings.wiring.label_height = f64::NAN;
         assert_eq!(resolve(&doc, e, Scope::project()).from, Source::Builtin);
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+
+    fn prefix(s: &str) -> bool {
+        s.chars().all(|c| c.is_ascii_uppercase())
+    }
+
+    static PARSED: Entry = Entry {
+        key: "tags.test.prefix",
+        label: "Test prefix",
+        group: "Test",
+        brief: "031",
+        kind: Kind::Parsed { max_chars: 3, parse: prefix },
+        builtin: Value::Text("K"),
+        levels: &[Level::Project],
+        project: ProjectSource::Property,
+    };
+
+    fn rule(s: &ProjectSettings) -> Option<Value<'_>> {
+        (s.tag_padding == 3).then_some(Value::Choice("each"))
+    }
+
+    static CHOICE: Entry = Entry {
+        key: "wiring.test.rule",
+        label: "Test rule",
+        group: "Test",
+        brief: "031",
+        kind: Kind::Choice(&["net", "each"]),
+        builtin: Value::Choice("net"),
+        levels: &[Level::Standard, Level::Project],
+        project: ProjectSource::Settings(rule),
+    };
+
+    /// An entry with no project level ignores a project value.
+    static PAGE_ONLY: Entry = Entry {
+        key: "print.test.page",
+        label: "Test page only",
+        group: "Test",
+        brief: "031",
+        kind: Kind::Length { min: 0.0, max: 10.0 },
+        builtin: Value::Length(1.0),
+        levels: &[Level::Page],
+        project: ProjectSource::Property,
+    };
+
+    #[test]
+    fn a_parsed_text_kind_checks_its_parser() {
+        assert_eq!(PARSED.parse("KA"), Some(Value::Text("KA")));
+        assert_eq!(PARSED.parse("ka"), None);
+        assert_eq!(PARSED.parse("KAAA"), None);
+        assert!(PARSED.accepts(&PARSED.builtin));
+        let mut doc = Document::default();
+        doc.properties.insert(PARSED.key.into(), "x1".into());
+        assert_eq!(resolve(&doc, &PARSED, Scope::project()).from, Source::Builtin);
+    }
+
+    #[test]
+    fn a_word_valued_setting_is_the_project_level() {
+        let mut doc = Document::default();
+        assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("net"), from: Source::Builtin });
+        // A property of the same key is never a second project path.
+        doc.properties.insert(CHOICE.key.into(), "each".into());
+        assert_eq!(resolve(&doc, &CHOICE, Scope::project()).from, Source::Builtin);
+        doc.settings.tag_padding = 3;
+        assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("each"), from: Source::Project });
+    }
+
+    #[test]
+    fn an_entry_may_declare_fewer_levels() {
+        let mut doc = Document::default();
+        doc.properties.insert(PAGE_ONLY.key.into(), "5".into());
+        assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::project()).from, Source::Builtin);
+        let page = PageId(9);
+        doc.pages.insert(page, ecad_model::Page::new("p"));
+        doc.pages.get_mut(&page).map(|p| p.properties.insert(PAGE_ONLY.key.into(), "5".into()));
+        assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::page(page)), Resolved { value: Value::Length(5.0), from: Source::Page });
+    }
+
+    #[test]
+    fn a_default_used_below_this_crate_is_its_model_constant() {
+        assert_eq!(text::WIRE_LABEL_HEIGHT.builtin, Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT));
     }
 }
