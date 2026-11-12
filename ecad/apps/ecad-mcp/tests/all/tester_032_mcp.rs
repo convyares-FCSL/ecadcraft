@@ -58,7 +58,6 @@ fn w04(c: &mut Client) -> (String, String) {
 }
 
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t032 Leitungen ä");
     let path = dir.file("Netze (W).ecad");
@@ -161,8 +160,11 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");
     }
     // Reads still work and record nothing.
-    let s = c.exec("wiresettings", json!({}));
-    assert_eq!(s["label_rule"], "each", "{s}");
+    // `wiresettings {}` is not a read-only form in the MCP policy (true since brief 022, not 032),
+    // so the stored settings are read from the document.
+    let w = serde_json::to_value(&c.doc().settings.wiring).unwrap();
+    assert_eq!(w["label_rule"], "each", "{w}");
+    assert_eq!(w["label_min_length"], json!(10.0), "{w}");
     assert_eq!(c.exec("checks", json!({})), reads_before);
     let _ = c.exec("net", json!({"conductor": survivor}));
     let _ = c.exec("cablecores", json!({"cable": cable}));

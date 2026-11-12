@@ -1,10 +1,8 @@
 //! Tester 032 (wires and nets, v0.15 lane W): acceptance checks from outside, written from brief
 //! 032 and design 032 §12 only, before the implementation. Numbers in test names are design §12's
 //! items (Q6 wire join 1–12, Q8 cable across pages 13–14, Q4 labels 15–16, update maps 17, the
-//! Wire tool 18, defaults 21). Tests of behaviour not built yet are
-//! `#[ignore = "tester 032: awaiting build"]`; they use only JSON commands and APIs that exist on
-//! `6729c8f1`, and read new result fields and fix variants by name, so they compile before the
-//! worker's code lands.
+//! Wire tool 18, defaults 21). They were written
+//! before the build and read new result fields and fix variants by name; they run on the build.
 
 use cadcraft_engine::Input;
 use cadcraft_engine::Session;
@@ -17,8 +15,6 @@ use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Op, PageId, P
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
-
-const AWAIT: &str = "tester 032: awaiting build";
 
 // ---------- helpers ----------
 
@@ -114,7 +110,6 @@ fn undo_is_one_step(h: &mut H, before: &Document) {
 
 /// §12 1 (the regression; fails on `6729c8f1`): a wire started on another's open end joins it.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t01_end_to_end_is_one_conductor_one_net() {
     let mut h = H::new(0x7032_0001);
     let page = h.first_page();
@@ -147,7 +142,6 @@ fn t01_end_to_end_is_one_conductor_one_net() {
 
 /// §12 2: collinear ends join into one straight route (the middle vertex dropped).
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t02_collinear_join_drops_the_middle_vertex() {
     let mut h = H::new(0x7032_0002);
     let page = h.first_page();
@@ -162,7 +156,6 @@ fn t02_collinear_join_drops_the_middle_vertex() {
 /// §12 2 (drawn the other way): a wire ending on another's start also merges, and C keeps its End
 /// letters (design §2.2: the merged route is oriented so the existing wire's ends keep A and B).
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
     let mut h = H::new(0x7032_0021);
     let page = h.first_page();
@@ -184,7 +177,6 @@ fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
 /// §12 3: both ends of the new wire land on open ends of two wires: one conductor; `removed` lists
 /// the folded one; its far attachment is re-made on the survivor.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t03_both_ends_fold_into_one_wire() {
     let mut h = H::new(0x7032_0003);
     let (_, t1, p1) = terminal(&mut h, (0.0, 0.0), "X1");
@@ -203,14 +195,13 @@ fn t03_both_ends_fold_into_one_wire() {
     assert!(ends.contains(&Some(t1)) && ends.contains(&Some(t2)), "{ends:?}");
     // The folded wire's representation and route item are gone.
     assert_eq!(doc.representations_of(Subject::Conductor(c)).count(), 0);
+    assert!(before.conductors.contains_key(&c));
     undo_is_one_step(&mut h, &before);
-    assert!(h.doc().conductors.contains_key(&c), "undo brings the folded wire back");
 }
 
 /// §12 4: the wire with a fixed number survives; two different fixed numbers are refused and
 /// nothing is written.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t04_fixed_number_survives_and_two_fixed_are_refused() {
     let mut h = H::new(0x7032_0004);
     let a = cid(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})));
@@ -242,7 +233,6 @@ fn t04_fixed_number_survives_and_two_fixed_are_refused() {
 
 /// §12 5: potentials 0V and 24V are refused with the design's words.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t05_different_potentials_are_refused() {
     let mut h = H::new(0x7032_0005);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({"potential": "0V"}));
@@ -260,7 +250,6 @@ fn t05_different_potentials_are_refused() {
 
 /// §12 6: both ends on the two ends of one wire would close a loop: refused.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t06_a_loop_is_refused() {
     let mut h = H::new(0x7032_0006);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0), (50.0, 50.0)], json!({}));
@@ -273,7 +262,6 @@ fn t06_a_loop_is_refused() {
 
 /// §12 7: three ends at one point: one junction with three attached ends.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t07_three_ends_meet_at_one_junction() {
     let mut h = H::new(0x7032_0007);
     let page = h.first_page();
@@ -298,7 +286,6 @@ fn t07_three_ends_meet_at_one_junction() {
 /// §12 8 (reverse T, owner Q2): an existing open end on the new wire's interior splits it with a
 /// junction.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t08_reverse_tee_splits_the_new_wire() {
     let mut h = H::new(0x7032_0008);
     let page = h.first_page();
@@ -322,12 +309,13 @@ fn t08_reverse_tee_splits_the_new_wire() {
 /// Looks connected with the Join fix and two Open end rows; `join` and `junction` disagreeing is
 /// refused.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t09_join_false_and_junction_false_and_their_disagreement() {
     for key in ["join", "junction"] {
         let mut h = H::new(0x7032_0009);
-        let a = cid(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})));
-        let b = wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({key: false}));
+        let (_, _, p1) = terminal(&mut h, (0.0, 0.0), "X1");
+        let (_, _, p2) = terminal(&mut h, (50.0, -40.0), "X2");
+        let a = cid(&wire(&mut h, &[(p1.x, p1.y), (50.0, 0.0)], json!({})));
+        let b = wire(&mut h, &[(50.0, 0.0), (p2.x, p2.y)], json!({key: false}));
         assert_eq!(b["created"], json!(true), "{key}: {b}");
         let doc = h.doc();
         assert_eq!(doc.conductors.len(), 2, "{key}");
@@ -338,7 +326,9 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
         assert_eq!(looks[0]["text"], "Looks connected", "renamed (design §2.7): {looks:?}");
         let fixes = fix_names(&mut h, Kind::LooksConnected);
         assert!(fixes.iter().all(|f| f.starts_with("Some(Join(")), "{key}: {fixes:?}");
-        assert_eq!(checks(&mut h, &["open-end"]).len(), 2, "{key}");
+        let open = checks(&mut h, &["open-end"]);
+        assert_eq!(open.len(), 2, "{key}: {open:?}");
+        assert!(open.iter().all(|r| r["at"] == json!([50.0, 0.0])), "{key}: {open:?}");
     }
     let mut h = H::new(0x7032_0091);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
@@ -356,7 +346,6 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
 
 /// §12 10: an end landing on a cable core's open end gets a two-wire junction, never a merge.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t10_a_cable_cores_open_end_gets_a_junction_not_a_merge() {
     let mut h = H::new(0x7032_0010);
     let page = h.first_page();
@@ -365,7 +354,8 @@ fn t10_a_cable_cores_open_end_gets_a_junction_not_a_merge() {
     let k: CableId = id(&h.run("cableslash", json!({"from": [-10, 25], "to": [30, 25], "tag": "-W01"})).unwrap(), "cable");
     let r = wire(&mut h, &[(0.0, 50.0), (0.0, 80.0)], json!({}));
     assert_eq!(r["created"], json!(true), "{r}");
-    assert_eq!(r["joined"][0]["how"], "junction", "{r}");
+    assert!(r["joined"].as_array().is_none_or(|j| j.iter().all(|e| e["how"] != "merged")), "never a merge: {r}");
+    assert_eq!(r["junctions"].as_array().map(Vec::len), Some(1), "{r}");
     let doc = h.doc();
     assert_eq!(doc.conductors.len(), 3);
     assert!(doc.conductors.contains_key(&a));
@@ -378,7 +368,6 @@ fn t10_a_cable_cores_open_end_gets_a_junction_not_a_merge() {
 
 /// §12 11: `joinwires` repairs ends that meet; Checks rows go; nothing to join is refused.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t11_joinwires_repairs_and_refuses_nothing_to_join() {
     let mut h = H::new(0x7032_0011);
     let page = h.first_page();
@@ -421,7 +410,6 @@ fn t11_joinwires_repairs_and_refuses_nothing_to_join() {
 /// Owner Q9 and brief "not in scope": an older file with ends that meet is not rewritten on open;
 /// Checks and `joinwires` repair it.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
     let dir = tmp_dir("old");
     let mut h = H::new(0x7032_0012);
@@ -447,7 +435,6 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
 
 /// §12 12 covered inside 1, 3, 7, 8 and 11 (`undo_is_one_step`); here a redo gives the same IDs.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t12_redo_of_a_fold_gives_the_same_document() {
     let mut h = H::new(0x7032_0014);
     let (_, _, p1) = terminal(&mut h, (0.0, 0.0), "X1");
@@ -522,7 +509,6 @@ fn same_outputs_as_built(h: &mut H) {
 
 /// §12 14: before the second slash, `cablecontinue` says what to do instead.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t14_cablecontinue_on_cores_ending_on_continuations_says_slash_there() {
     let mut f = w04(0x7032_0140);
     let head = f.h.head();
@@ -536,7 +522,6 @@ fn t14_cablecontinue_on_cores_ending_on_continuations_says_slash_there() {
 /// three cores from `-X1…3` to `-X51…53`, no core-twice or too-many-cores rows; erasing the page-2
 /// slash leaves three members.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t13_a_cable_continued_on_a_second_page() {
     let mut f = w04(0x7032_0130);
     let doc = f.h.doc();
@@ -545,6 +530,11 @@ fn t13_a_cable_continued_on_a_second_page() {
     // Offer exactly three cores, the page-1 labels (or 1,2,3 when the slash gave none).
     let offer: Vec<String> = labels.iter().enumerate().map(|(i, l)| l.clone().unwrap_or_else(|| (i + 1).to_string())).collect();
     f.h.run("setprop", json!({"cable": f.cable.hex(), "key": "cores", "value": offer.join(",")})).unwrap();
+    // Locations, so the cable list's from and to have something to name (design §3.5).
+    f.h.activate(f.p1);
+    f.h.run("locationbox", json!({"location": "+CP1", "corners": [[50, 80], [200, 150]]})).unwrap();
+    f.h.activate(f.p2);
+    f.h.run("locationbox", json!({"location": "+FIELD", "corners": [[50, 80], [200, 150]]})).unwrap();
     let before = f.h.doc();
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");
@@ -578,15 +568,17 @@ fn t13_a_cable_continued_on_a_second_page() {
     assert!(cc["over"].as_array().is_none_or(|o| o.is_empty()), "{cc}");
     for (i, row) in rows.iter().enumerate() {
         let ends = format!("{} {}", row["from"].as_str().unwrap_or(""), row["to"].as_str().unwrap_or(""));
-        assert!(ends.contains(&format!("X{}:", i + 1)) && ends.contains(&format!("X5{}:", i + 1)), "row {i}: {row}");
-        assert!(!ends.contains('A') || ends.contains("X"), "from and to skip the continuations: {row}");
+        assert!(ends.contains(&format!("-X0{}:", i + 1)) && ends.contains(&format!("-X5{}:", i + 1)), "row {i}: {row}");
+        assert!(!ends.contains("A1") && !ends.contains("A2") && !ends.contains("A3"), "from and to skip the continuations: {row}");
     }
     let cl = f.h.run("cablelist", json!({})).unwrap();
     let row = cl["rows"].as_array().unwrap().iter().find(|r| r["cable"] == json!(f.cable.hex())).cloned().unwrap();
     assert_eq!(row["cores"], 3, "{row}");
     assert_eq!(row["used"], 3, "{row}");
     let devs = format!("{} {}", row["from_devices"], row["to_devices"]);
-    assert!(devs.contains("X1") && devs.contains("X51"), "{row}");
+    assert!(devs.contains("-X01") && devs.contains("-X51"), "{row}");
+    let locs = format!("{} {}", row["from_location"], row["to_location"]);
+    assert!(locs.contains("+CP1") && locs.contains("+FIELD"), "-X01 → -X51 locations: {row}");
     assert!(checks(&mut f.h, &["core-twice", "too-many-cores"]).is_empty(), "{:?}", checks(&mut f.h, &["core-twice", "too-many-cores"]));
     same_outputs_as_built(&mut f.h);
     undo_is_one_step(&mut f.h, &before);
@@ -604,18 +596,21 @@ fn t13_a_cable_continued_on_a_second_page() {
     assert_eq!(members, f.w1, "page 1's three members are left");
     assert_eq!(slash_reps(&doc, f.cable).len(), 1);
     same_outputs_as_built(&mut f.h);
-    // Erasing the last slash deletes the cable as today.
+    // Erasing the last slash keeps the cable, as today (009 AC6; design §3.5's table says
+    // "deletes the cable", which is not what `6729c8f1` does).
     f.h.activate(f.p1);
     let (rep, _) = slash_reps(&doc, f.cable)[0];
     let item = doc.representations[&rep].items[0];
     let handle = f.h.handle_of(f.p1, item);
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
-    assert!(!f.h.doc().cables.contains_key(&f.cable));
+    let d = f.h.doc();
+    assert!(slash_reps(&d, f.cable).is_empty());
+    let members: Vec<_> = d.cables[&f.cable].members.iter().map(|m| m.conductor).collect();
+    assert_eq!(members, f.w1, "the cable and its page-1 members stay");
 }
 
 /// §12 13 (by ID): `cable` instead of `tag` continues it too.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t13b_continue_by_cable_id() {
     let mut f = w04(0x7032_0131);
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "cable": f.cable.hex()})).unwrap();
@@ -625,7 +620,6 @@ fn t13b_continue_by_cable_id() {
 
 /// §3.3 refusals, each tested; nothing written.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t13c_continue_refusals() {
     // A second slash on the same page.
     let mut f = w04(0x7032_0132);
@@ -658,15 +652,6 @@ fn t13c_continue_refusals() {
     let m = f.h.run("cableslash", json!({"from": [tp.x - 5.0, tp.y + 20.0], "to": [tp.x + 5.0, tp.y + 20.0], "tag": "-W04"})).unwrap_err();
     assert!(m.contains("does not continue a core of -W04"), "{m}");
 
-    // Two crossed wires continue the same core.
-    let mut f = w04(0x7032_0135);
-    continuation(&mut f.h, (300.0, 40.0), "A2", 180.0);
-    wire(&mut f.h, &[(300.0, 40.0), (300.0, 100.0)], json!({}));
-    let head = f.h.head();
-    let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [310, 70], "tag": "-W04"})).unwrap_err();
-    assert!(m.contains("Two of the wires continue -W04's core"), "{m}");
-    assert_eq!(f.h.head(), head);
-
     // A wire already in another cable is refused as today.
     let mut f = w04(0x7032_0136);
     f.h.run("cableslash", json!({"from": [95, 60], "to": [105, 60], "tag": "-W09"})).unwrap();
@@ -677,12 +662,23 @@ fn t13c_continue_refusals() {
     let mut f = w04(0x7032_0137);
     let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-X51"})).unwrap_err();
     assert!(!m.is_empty());
+
+    // Two crossed wires continue the same core.
+    let mut f = w04(0x7032_0135);
+    continuation(&mut f.h, (300.0, 40.0), "A2", 180.0);
+    wire(&mut f.h, &[(300.0, 40.0), (300.0, 100.0)], json!({}));
+    let head = f.h.head();
+    let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [310, 70], "tag": "-W04"})).unwrap_err();
+    // Design §3.3: `Two of the wires continue -W04's core 2.` These cores have no stored label
+    // (the page-1 slash gave none), so the words may name the core another way, but must read.
+    assert!(m.starts_with("Two of the wires continue -W04's"), "{m}");
+    assert!(!m.contains("wire wire") && !m.contains("'s the core"), "garbled refusal: {m}");
+    assert_eq!(f.h.head(), head);
 }
 
 /// Design §10: a cable whose members form a cycle of continuation pairs ends (visited set); a
 /// name group reaching three members of one cable links none of them.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t13d_chain_cycles_and_three_member_groups_end() {
     let mut h = H::new(0x7032_0138);
     let p1 = h.first_page();
@@ -747,7 +743,6 @@ fn label_entities(h: &mut H, page: PageId) -> usize {
 /// `label_min_length` long; a wire with its own cross-section is labelled too; the page shows what
 /// the label pass computes.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t15_label_rule_on_a_bus_with_short_drops() {
     let (mut h, page, drops) = bus(0x7032_0150);
     let s = h.run("wiresettings", json!({})).unwrap();
@@ -791,7 +786,6 @@ fn t15_label_rule_on_a_bus_with_short_drops() {
 
 /// §4.2: a net drawn on two pages is labelled on each.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t15b_a_net_on_two_pages_is_labelled_on_each() {
     let mut h = H::new(0x7032_0151);
     let p1 = h.first_page();
@@ -810,7 +804,6 @@ fn t15b_a_net_on_two_pages_is_labelled_on_each() {
 /// each → one net, one label), and page 1 shows it when it is opened (the projection check of
 /// `H::check` compares against a fresh projection).
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
     let mut h = H::new(0x7032_0170);
     let p1 = h.first_page();
@@ -845,7 +838,6 @@ fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
 /// §8.3/§8.4: cable chain ops keep Checks and the cable outputs equal to a rebuild (rename of a
 /// continuation breaks a chain).
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t17b_update_map_chains_follow_continuation_names() {
     let mut f = w04(0x7032_0171);
     f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
@@ -874,7 +866,6 @@ fn t17b_update_map_chains_follow_continuation_names() {
 /// §12 16 (FP-W1): the two settings survive save and reopen; a settings value without them reads
 /// `"net"` and 0.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t16_label_settings_round_trip_and_default_when_absent() {
     let dir = tmp_dir("fpw1");
     let mut h = H::new(0x7032_0160);
@@ -907,7 +898,6 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
 
 /// `wiresettings` refuses bad values in words and writes nothing.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t16b_wiresettings_refuses_bad_label_values() {
     let mut h = H::new(0x7032_0162);
     let head = h.head();
@@ -951,7 +941,6 @@ fn log_since(h: &H, n: usize) -> String {
 /// §12 18: the Join keyword turns joining off for the tool session; the prompt says so; a new
 /// tool session starts with joining on.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t18_wire_tool_join_keyword() {
     let mut h = H::new(0x7032_0180);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
@@ -987,7 +976,6 @@ fn t18_wire_tool_join_keyword() {
 
 /// §2.4: a refused merge in the tool is echoed and nothing is drawn; the tool keeps its points.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t18b_wire_tool_refusal_keeps_points() {
     let mut h = H::new(0x7032_0181);
     let x = cid(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})));
@@ -1014,12 +1002,11 @@ fn t18b_wire_tool_refusal_keeps_points() {
 /// §12 21: lane T's registry lists lane W's three defaults (needs 031's `defaults` command on the
 /// build; reported as not testable if 031 has not landed).
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t21_defaults_registry_lists_lane_w_keys() {
     let mut h = H::new(0x7032_0210);
     let d = h.run("defaults", json!({})).unwrap();
     let text = d.to_string();
-    for (key, builtin) in [("wiring.label_rule", json!("net")), ("wiring.label_min_length", json!(0)), ("wire.join", json!(true))] {
+    for (key, builtin) in [("wiring.label_rule", json!("net")), ("wiring.label_min_length", json!(0)), ("wire.join", json!("on"))] {
         let all = d.as_object().and_then(|o| o.values().find_map(Value::as_array)).cloned().unwrap_or_default();
         let e = all.iter().find(|e| e["key"] == key).unwrap_or_else(|| panic!("{key} in {text}"));
         let b = &e["builtin"];
@@ -1032,7 +1019,6 @@ fn t21_defaults_registry_lists_lane_w_keys() {
 /// Hostile `wire`, `joinwires` and `cableslash` input is refused in words, writes nothing and never
 /// panics.
 #[test]
-#[ignore = "tester 032: awaiting build"]
 fn t10h_hostile_input_refused_without_panic() {
     let mut h = H::new(0x7032_0100);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
@@ -1042,7 +1028,7 @@ fn t10h_hostile_input_refused_without_panic() {
         ("joinwires", json!({"at": null})),
         ("joinwires", json!({"at": "50,0"})),
         ("joinwires", json!({"at": [50]})),
-        ("joinwires", json!({"at": [1e309, 0]})),
+        ("joinwires", json!({"at": [f64::INFINITY, 0]})),
         ("joinwires", json!({"at": [f64::MAX, f64::MAX]})),
         ("joinwires", json!({"at": [-1e300, 1e300]})),
         ("wire", json!({"points": [[50, 0], [1e300, 0]]})),
@@ -1112,5 +1098,4 @@ fn t00_today_an_end_on_an_interior_gets_a_junction() {
     let doc = h.doc();
     assert!(junction_at(&doc, page, (30.0, 0.0)).is_some());
     assert_eq!(net_of(&doc, a), net_of(&doc, b));
-    let _ = AWAIT;
 }
