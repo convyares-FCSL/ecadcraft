@@ -133,6 +133,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
                 o.extend(f.clone());
             }
             v["message"] = json!(message);
+            pg.echo(message);
         }
         Ok(v)
     })

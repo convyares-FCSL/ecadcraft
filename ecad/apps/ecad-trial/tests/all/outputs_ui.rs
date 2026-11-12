@@ -129,7 +129,8 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let bom = r.table().clone();
     assert_eq!(bom.headers[0], "Location");
     let qty: usize = bom.rows.iter().map(|row| row[1].text.parse::<usize>().unwrap()).sum();
-    assert_eq!(qty, 11, "the demo's eleven devices, no wire");
+    // The demo's eleven devices, no wire; brief 028: strips -X01 and -X02 count their terminals.
+    assert_eq!(qty, 15, "the demo's devices and terminals, no wire");
     assert!(bom.rows.iter().any(|row| row[2].text == "-S01" && row[4].flag.is_some()));
     save(&h, &deltas, "024-reports-bom.png");
     // Export CSV, Excel-safe.
@@ -146,7 +147,8 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.run_steps(4);
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    assert_eq!(row[..5], ["-W01", "4G1.5", "3", "+CP1", "+JB1"], "{row:?}");
+    // Brief 028: Cores is the offer read from the type, Used the three members.
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
     h.state_mut().reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.

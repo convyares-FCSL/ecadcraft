@@ -77,13 +77,21 @@ fn meets(p: Pt, q: Pt, r: Pt, s: Pt) -> bool {
 
 /// The terminal of any strip drawn at `at` on `page`.
 pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<TerminalId> {
-    doc.representations_on(page)
-        .filter_map(|(_, r)| match r.subject {
-            Subject::Component(c) if strips::is_strip(doc, c) => Some(c),
-            _ => None,
+    // Each terminal symbol shows its own connection point: O(representations on the page).
+    doc.representations_on(page).find_map(|(_, r)| {
+        let Subject::Component(c) = r.subject else { return None };
+        if !strips::is_strip(doc, c) {
+            return None;
+        }
+        let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
+        crate::devices::shown_terminals(doc, c, r).into_iter().find_map(|(t, p)| {
+            let p = match (r.form, placement) {
+                (Form::Symbol, Some(pl)) => pl.apply(p),
+                _ => p,
+            };
+            p.near(at, ON_WIRE).then_some(t)
         })
-        .flat_map(|c| doc.terminals_of(c).map(|(t, _)| t).collect::<Vec<_>>())
-        .find(|t| ecad_model::derive::terminal_position(doc, page, *t).is_some_and(|p| p.near(at, ON_WIRE)))
+    })
 }
 
 /// `-X01:3`.

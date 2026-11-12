@@ -21,6 +21,8 @@ pub struct Row {
     pub history: Option<crate::history::MeasuredHistory>,
     /// Locations, reports and printing on that file (brief 024).
     pub outputs: Option<crate::outputs::MeasuredOutputs>,
+    /// Terminal strips and cable cores on that file (brief 028).
+    pub strips: Option<crate::strips::MeasuredStrips>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -305,6 +307,27 @@ pub fn table(rows: &[Row], runs: usize) -> String {
         ));
     }
     for r in rows {
+        let Some(t) = &r.strips else { continue };
+        out.push_str(&format!(
+            "\nTerminal strips on {} {} ({} strips, {} terminals, {} cables): stripbuild {:.1} ms (target < 50), \
+             tplace {:.2} ms (< 16), tfence {:.2} ms (< 16), stripupd {:.2} ms (< 2 beyond edit), relocate {:.2} ms (< 16), \
+             tplan {:.1} ms (< 100), trenum {:.2} ms (< 16); most strips one edit recomputed: {}\n",
+            r.tier,
+            r.variant,
+            t.strips,
+            t.terminals,
+            t.cables,
+            t.stripbuild_ms,
+            t.tplace_ms,
+            t.tfence_ms,
+            t.stripupd_ms,
+            t.relocate_ms,
+            t.tplan_ms,
+            t.trenum_ms,
+            t.work
+        ));
+    }
+    for r in rows {
         let Some(c) = &r.compression else { continue };
         out.push_str(&format!(
             "\nZstandard on {} {}: {:.2} MB of records, {:.2} MB of chunks uncompressed\n",
@@ -443,6 +466,12 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
                     "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms, "print_ms": o.print_ms,
                     "print_sheets": o.print_sheets, "work": o.work, "devices": o.devices, "inside": o.inside,
+                })),
+                "strips": r.strips.as_ref().map(|t| json!({
+                    "stripbuild_ms": t.stripbuild_ms, "tplace_ms": t.tplace_ms, "tfence_ms": t.tfence_ms,
+                    "stripupd_ms": t.stripupd_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
+                    "trenum_ms": t.trenum_ms, "strips": t.strips, "terminals": t.terminals, "cables": t.cables,
+                    "work": t.work,
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,

@@ -20,6 +20,7 @@ pub mod history;
 pub mod measure;
 pub mod outputs;
 pub mod report;
+pub mod strips;
 pub mod v2;
 
 use std::path::{Path, PathBuf};
@@ -137,6 +138,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         eprintln!("{} {}: measuring locations, reports and printing…", tier.name, variant.name());
         let outs = outputs::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring terminal strips and cable cores…", tier.name, variant.name());
+        let strips = strips::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
             variant: variant.name().into(),
@@ -145,6 +149,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             compression: Some(compression),
             history: Some(hist?),
             outputs: Some(outs?),
+            strips: Some(strips?),
         });
     }
     Ok(rows)
