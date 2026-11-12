@@ -1,8 +1,5 @@
 //! Tester 031: the shared getter and the defaults registry through their Rust API (design 031
-//! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed,
-//! so this module is listed in `main.rs` only once the build has `text_style` and `defaults`
-//! (tester phase 2); until then the line in `main.rs` is commented out, so the test executable
-//! compiles.
+//! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
 
 use ecad_cadcraft::defaults::{self, Scope};
 use ecad_cadcraft::text_style::{self, TextKind, TextStyle, Weight};
@@ -30,10 +27,8 @@ const KINDS: &[(TextKind, f64, Weight)] = &[
 
 fn doc_with(props: &[(&str, &str)]) -> Document {
     let mut h = H::new(0x7031_a001);
-    let ops: Vec<Op> = props
-        .iter()
-        .map(|(k, v)| Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) })
-        .collect();
+    let ops: Vec<Op> =
+        props.iter().map(|(k, v)| Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }).collect();
     if !ops.is_empty() {
         h.cfg(|p| p.ledger.commit(Author::User, "t", ops)).unwrap();
     }

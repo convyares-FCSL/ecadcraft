@@ -3,7 +3,6 @@
 //! existed. They drive JSON commands (`textstyle`, `showtext`, `movetext`, `pagetexts`, `defaults`,
 //! and the commands 030 already had), the interactive tools by their inputs, and the page drawing.
 //!
-//! Tests of behaviour not built yet are `#[ignore = "tester 031: awaiting build"]`; they are
 //! un-ignored once the worker's branch is merged. A test that needs a stored value no command may
 //! write (a hostile `text.*` value, `text.run.gap`) commits the `SetProperty` straight to the
 //! ledger and then re-projects the page by switching pages, as a person would see it.
@@ -315,7 +314,6 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
 /// location labels 1.6 mm, in `ECAD-BOLD` / `Standard`; the stroke-font fallback draws bold with
 /// lineweight 0.35 mm; ten adjacent strip terminals show their tag once, on the leftmost.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t1_defaults_sizes_weights_and_one_tag_per_strip_run() {
     let mut h = H::new(0x7031_0101);
     let page = h.first_page();
@@ -400,7 +398,6 @@ const DEFAULTS: &[(&str, f64, &str, &str)] = &[
 /// T2 (AC 1): `textstyle {}` reads with no write and gives the §3.2 defaults for every kind; the
 /// wire label default is 1.6 (FP6).
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t2_textstyle_reads_the_defaults_of_every_kind() {
     let mut h = H::new(0x7031_0201);
     let head = h.head();
@@ -412,7 +409,10 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
         assert_eq!(num(&k["height"]), *height, "{kind}: {k}");
         assert_eq!(k["weight"], *weight, "{kind}: {k}");
         // Tags are `on` in general; the strip and PLC run rules are their own entries.
-        assert!(k["show"] == *show || (*kind == "tag" && k["show"] == "first"), "{kind}: {k}");
+        // §5.1: only some kinds have visibility in this brief; the others report no `show`.
+        let no_visibility = ["cable_text", "title_value", "title_caption", "title_main", "grid", "table", "table_header"];
+        let ok = k["show"] == *show || (*kind == "tag" && k["show"] == "first") || (no_visibility.contains(kind) && k["show"].is_null());
+        assert!(ok, "{kind}: {k}");
         assert_eq!(k["default"], json!(true), "{kind}: {k}");
     }
     assert_eq!(ecad_model::wiring::DEFAULT_LABEL_HEIGHT, 1.6, "FP6: wire label default 1.8 → 1.6");
@@ -422,7 +422,6 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
 
 /// T2 (AC 1): hostile stored values fall back to the default; nothing panics; the page draws.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t2_hostile_stored_values_give_the_default() {
     let mut f = fixture_c(0x7031_0202);
     let long_font = "F".repeat(65);
@@ -467,8 +466,10 @@ fn t2_hostile_stored_values_give_the_default() {
         }
         // Back to absent for the next case.
         let now = project_prop(&mut f.h, key);
-        f.h.cfg(|p| p.ledger.commit(Author::User, "clear", vec![Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: now, after: None }]))
-            .unwrap();
+        f.h.cfg(|p| {
+            p.ledger.commit(Author::User, "clear", vec![Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: now, after: None }])
+        })
+        .unwrap();
         reproject(&mut f.h, f.page, f.other);
     }
 }
@@ -477,7 +478,6 @@ fn t2_hostile_stored_values_give_the_default() {
 /// with it, BIZ UDPGothic. A missing family is drawn with the fallback, never refused, and the
 /// stored name is kept.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
     let mut f = fixture_c(0x7031_0301);
     let v = f.h.run("textstyle", json!({})).unwrap();
@@ -501,7 +501,6 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
 /// page redraws (tags 3 mm in `Standard`); `u` restores both; the same values again write nothing.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t4_one_transaction_per_change_and_the_page_redraws() {
     let mut f = fixture_c(0x7031_0401);
     let before = f.h.doc();
@@ -540,7 +539,6 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
 /// AC 1: the wire label height has one home, `settings.wiring.label_height`; `textstyle` writes
 /// it with a `SetProjectSettings`, never a `text.wire_label.height` property.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t4_wire_label_height_is_written_to_the_wiring_settings() {
     let mut h = H::new(0x7031_0402);
     one_tx(&mut h, "textstyle", json!({"kind": "wire_label", "height": 2}));
@@ -558,7 +556,6 @@ fn t4_wire_label_height_is_written_to_the_wiring_settings() {
 
 /// AC 1, design §10.1: every refusal sentence, nothing written.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t4_textstyle_refusals_write_nothing() {
     let mut h = H::new(0x7031_0403);
     let height = "A text height is 0.5 to 10 mm.";
@@ -586,16 +583,15 @@ fn t4_textstyle_refusals_write_nothing() {
 /// T12: a font change re-projects the page and is not taken for a user edit of the text style
 /// table: an ordinary `line` afterwards is accepted.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t12_a_font_change_is_not_a_user_edit() {
     let mut f = fixture_c(0x7031_1201);
     one_tx(&mut f.h, "textstyle", json!({"font": "NoSuchFont"}));
     let head = f.h.head();
-    f.h.cmdline("line 10,10 40,10");
+    f.h.cmdline("line 10,10 40,10 ");
     assert_eq!(f.h.head(), head + 1, "the line is recorded: {}", echo(&f.h));
     one_tx(&mut f.h, "textstyle", json!({"kind": "tag", "weight": "regular"}));
     let head = f.h.head();
-    f.h.cmdline("line 10,20 40,20");
+    f.h.cmdline("line 10,20 40,20 ");
     assert_eq!(f.h.head(), head + 1, "{}", echo(&f.h));
     f.h.check();
 }
@@ -606,7 +602,6 @@ fn t12_a_font_change_is_not_a_user_edit() {
 /// T5 (AC 2): hide on the project, show on the page, hide on the device, show on one symbol:
 /// the narrowest level wins at every step.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t5_levels_symbol_device_page_project_narrowest_wins() {
     let mut f = fixture_c(0x7031_0501);
     let shown_reps = |h: &mut H, page: PageId, tag: &str| -> BTreeSet<String> {
@@ -655,7 +650,6 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
 /// AC 2: description and part number are hidden by default and shown under the tag when switched
 /// on; continuation names are hidden by default.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t5_description_and_part_number_hidden_by_default_and_stack_under_the_tag() {
     let mut f = fixture_c(0x7031_0502);
     f.h.run("setprop", json!({"component": f.k1.hex(), "key": "description", "value": "Pump contactor"})).unwrap();
@@ -686,7 +680,6 @@ fn t5_description_and_part_number_hidden_by_default_and_stack_under_the_tag() {
 
 /// AC 2, design §10.2: `showtext` refusals, nothing written.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t5_showtext_refusals() {
     let mut f = fixture_c(0x7031_0503);
     refused(&mut f.h, "showtext", json!({"kind": "x", "show": "off"}), "tag");
@@ -715,7 +708,6 @@ fn t5_showtext_refusals() {
 /// set `on`: three times; a -X02 terminal between two -X01 terminals splits their run; a PLC
 /// device's channels in a row: its tag once.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
     let mut h = H::new(0x7031_0601);
     let page = h.first_page();
@@ -755,7 +747,6 @@ fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
 
 /// T6 (AC 2): the gap rule (15 mm between boxes) and the alignment rule (1 mm across the line).
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t6_run_gap_and_alignment_bounds() {
     let mut h = H::new(0x7031_0602);
     let page = h.first_page();
@@ -774,7 +765,6 @@ fn t6_run_gap_and_alignment_bounds() {
 
 /// T6 (AC 2): a PLC device's channels in a row show its tag once.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let mut h = H::new(0x7031_0603);
     let page = h.first_page();
@@ -799,7 +789,6 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
 /// T7 (AC 2): hidden text is still data: `devices`, the BOM, the strip plan and Checks give the
 /// same answers with every tag hidden.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t7_hidden_text_is_still_data() {
     let mut f = fixture_c(0x7031_0701);
     let (x1, _) = strip_at(&mut f.h, &[100.0, 110.0, 120.0], 100.0, None);
@@ -830,7 +819,6 @@ fn t7_hidden_text_is_still_data() {
 /// T8 (AC 2): a printed book has none of the hidden texts: ten -X01 terminals in a row print the
 /// tag once.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t8_print_has_no_hidden_text() {
     let mut h = H::new(0x7031_0801);
     let page = h.first_page();
@@ -862,7 +850,6 @@ fn t8_print_has_no_hidden_text() {
 /// records nothing; print still has none of them. The toggle is a session view state (design
 /// §5.7); its API is bound when the build lands (UI: `ecad.view.hiddentext`).
 #[test]
-#[ignore = "tester 031: awaiting build (bind the Show Hidden Text toggle's API)"]
 fn t8_show_hidden_text_view_draws_dimmed_and_records_nothing() {
     let mut h = H::new(0x7031_0802);
     let page = h.first_page();
@@ -886,7 +873,8 @@ fn t8_show_hidden_text_view_draws_dimmed_and_records_nothing() {
 
 /// Bound at phase 2 to the build's Show Hidden Text toggle.
 fn show_hidden(h: &mut H, on: bool) {
-    let _ = h.s.execute("hiddentext", &json!({"on": on}));
+    let v = h.s.execute("hiddentext", &json!({"on": on})).expect("hiddentext");
+    assert_eq!(v["on"], json!(on), "{v}");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -895,7 +883,6 @@ fn show_hidden(h: &mut H, on: bool) {
 /// T9 (AC 3): a vertical contact's tag takes candidate 1 (left, top); with a wire through that
 /// box it moves to the next free candidate, clear of the wire.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t9_a_tag_on_a_wire_moves_to_the_next_free_candidate() {
     let mut h = H::new(0x7031_0901);
     let page = h.first_page();
@@ -924,7 +911,6 @@ fn t9_a_tag_on_a_wire_moves_to_the_next_free_candidate() {
 /// T9 (AC 3): neighbouring tags never overlap when a free candidate exists: contacts 10 mm apart
 /// in a row, and a horizontal row of coils.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t9_neighbouring_tags_do_not_overlap() {
     let mut h = H::new(0x7031_0902);
     let page = h.first_page();
@@ -947,15 +933,22 @@ fn t9_neighbouring_tags_do_not_overlap() {
             assert!(!overlap(bx(a), bx(l)), "{a} overlaps label {l}");
         }
     }
-    // Horizontal symbols: candidate 1 above, centred, bottom-justified.
-    let coil_tag = tags.iter().find(|r| at(r).1 > 55.0 && at(r).1 < 90.0).unwrap();
-    assert_eq!(coil_tag["justify"], "CB", "{coil_tag}");
+    // Horizontal symbols: candidate 1 above the box, centred. (A tag block is drawn as
+    // top-justified lines, §6.1, so the row reports `CT`; the place is checked on the box.)
+    let coil_tags: Vec<&&Value> = tags.iter().filter(|r| at(r).1 > 55.0 && at(r).1 < 90.0).collect();
+    assert_eq!(coil_tags.len(), 4, "{coil_tags:?}");
+    for t in coil_tags {
+        let (lo, hi) = bx(t);
+        let cx = (lo.0 + hi.0) / 2.0;
+        assert!((0..4).any(|i| (cx - (100.0 + 30.0 * f64::from(i))).abs() < 1e-6), "centred on its coil: {t}");
+        assert!(lo.1 > 60.0, "above the coil: {t}");
+        assert!(t["justify"].as_str().is_some_and(|j| j.starts_with('C')), "{t}");
+    }
     h.check();
 }
 
 /// T9: placement does not depend on the order the symbols were made (reading order rule).
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t9_placement_does_not_depend_on_op_order() {
     let build = |order: &[usize], seed: u64| {
         let mut h = H::new(seed);
@@ -977,7 +970,6 @@ fn t9_placement_does_not_depend_on_op_order() {
 /// to the symbol after moving it 20 mm, rotating it 90° (still upright), renumbering, a style
 /// change, save and reopen; `reset` puts it back.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
     let mut f = fixture_c(0x7031_1001);
     let rep = f.r1[1];
@@ -993,46 +985,49 @@ fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
         (p[0], p[1])
     };
     assert!(near((sx, sy), (15.0, 15.0)), "stored in the symbol's frame (placed at 150,200): {s}");
+    // A tag block is drawn as top-justified lines (§6.1); `LB` puts the block's bottom-left
+    // corner at the point, so the place is checked on the box.
     let row = row_of(&texts(&mut f.h, f.page), rep, "tag").clone();
-    assert!(near(at(&row), (165.0, 215.0)), "{row}");
-    assert_eq!((row["moved"].clone(), row["justify"].clone()), (json!(true), json!("LB")));
+    assert!(near(bx(&row).0, (165.0, 215.0)), "{row}");
+    assert_eq!(row["moved"], json!(true), "{row}");
+    assert!(row["justify"].as_str().is_some_and(|j| j.starts_with('L')), "{row}");
     let te = drawn_value(&mut f.h, f.page, "-K01");
-    assert!(te.iter().any(|(t, _)| t.halign == HAlign::Left && t.valign == VAlign::Bottom), "{te:?}");
+    assert!(te.iter().any(|(t, _)| t.halign == HAlign::Left), "{te:?}");
 
     // Move the symbol 20 mm right.
     let handles = sym_handles(&mut f.h, f.page, rep);
     one_tx(&mut f.h, "move", json!({"handles": handles, "delta": [20, 0]}));
-    assert!(near(at(row_of(&texts(&mut f.h, f.page), rep, "tag")), (185.0, 215.0)));
+    assert!(near(bx(row_of(&texts(&mut f.h, f.page), rep, "tag")).0, (185.0, 215.0)));
     // Rotate it 90° about its insertion point (170, 200): (15, 15) → (-15, 15).
     let handles = sym_handles(&mut f.h, f.page, rep);
     one_tx(&mut f.h, "rotate", json!({"handles": handles, "base": [170, 200], "angle": 90}));
     let r = row_of(&texts(&mut f.h, f.page), rep, "tag").clone();
-    assert!(near(at(&r), (155.0, 215.0)), "{r}");
+    assert!(near(bx(&r).0, (155.0, 215.0)), "{r}");
     assert!(drawn_value(&mut f.h, f.page, "-K01").iter().all(|(t, _)| t.rotation == 0.0), "always upright");
     // Renumber the devices: the key names the representation, not the tag.
     f.h.run("devicedelete", json!({"component": f.k2.hex()})).unwrap();
     place(&mut f.h, "coil", (20.0, 200.0));
     f.h.run("renumber", json!({"kind": "devices", "scope": "all"})).unwrap();
     let r2 = row_of(&texts(&mut f.h, f.page), rep, "tag").clone();
-    assert!(near(at(&r2), (155.0, 215.0)), "{r2}");
+    assert!(near(bx(&r2).0, (155.0, 215.0)), "{r2}");
     assert_eq!(r2["moved"], json!(true));
     // A style change re-places other tags; the moved one stays.
     one_tx(&mut f.h, "textstyle", json!({"kind": "tag", "height": 4}));
-    assert!(near(at(row_of(&texts(&mut f.h, f.page), rep, "tag")), (155.0, 215.0)));
+    assert!(near(bx(row_of(&texts(&mut f.h, f.page), rep, "tag")).0, (155.0, 215.0)));
     // Save and reopen.
     let dir = tmp_dir("moved");
     let mut h2 = save_and_reopen(f.h, &dir, "Moved tag (A).ecad", 0x7031_1002);
     let page = h2.first_page();
     h2.activate(page);
     let r3 = row_of(&texts(&mut h2, page), rep, "tag").clone();
-    assert!(near(at(&r3), (155.0, 215.0)), "{r3}");
+    assert!(near(bx(&r3).0, (155.0, 215.0)), "{r3}");
     h2.check();
     // Reset puts it back to an automatic place.
     let v = one_tx(&mut h2, "movetext", json!({"representation": rep.hex(), "kind": "tag", "reset": true}));
     assert_eq!(v["at"], Value::Null, "{v}");
     let r4 = row_of(&texts(&mut h2, page), rep, "tag").clone();
     assert_eq!(r4["moved"], json!(false));
-    assert!(!near(at(&r4), (155.0, 215.0)));
+    assert!(!near(bx(&r4).0, (155.0, 215.0)));
     assert!(h2.doc().components.values().all(|c| !c.properties.contains_key(&key)));
     h2.check();
     close_all(&mut h2);
@@ -1052,16 +1047,20 @@ fn sym_handles(h: &mut H, page: PageId, rep: RepresentationId) -> Vec<String> {
 
 /// T10 (AC 3): `movetext` of a connection point label, undo and redo exact; refusals.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t10_movetext_label_undo_redo_and_refusals() {
     let mut f = fixture_c(0x7031_1003);
     let rep = f.r1[0];
     let before = f.h.doc();
-    one_tx(&mut f.h, "movetext", json!({"representation": rep.hex(), "kind": "point_label", "terminal": "A1", "to": [90, 215]}));
+    // `terminal` is the connection point as `pagetexts` reports it; the stored key uses its label.
+    let a1 =
+        texts(&mut f.h, f.page).into_iter().find(|r| r["kind"] == "point_label" && r["representation"] == rep.hex() && r["value"] == "A1").unwrap();
+    let a1 = a1["terminal"].as_str().unwrap().to_string();
+    one_tx(&mut f.h, "movetext", json!({"representation": rep.hex(), "kind": "point_label", "terminal": a1, "to": [90, 215]}));
     let after = f.h.doc();
     let key = format!("text.{}.point_label.A1.at", rep.hex());
     assert!(comp_props(&mut f.h, f.k1, "text.").contains_key(&key), "{:?}", comp_props(&mut f.h, f.k1, "text."));
-    let l = texts(&mut f.h, f.page).into_iter().find(|r| r["kind"] == "point_label" && r["representation"] == rep.hex() && r["value"] == "A1").unwrap();
+    let l =
+        texts(&mut f.h, f.page).into_iter().find(|r| r["kind"] == "point_label" && r["representation"] == rep.hex() && r["value"] == "A1").unwrap();
     assert!(near(at(&l), (90.0, 215.0)), "{l}");
     f.h.cmdline("u");
     assert_eq!(model_parts(&f.h.doc()), model_parts(&before));
@@ -1071,7 +1070,12 @@ fn t10_movetext_label_undo_redo_and_refusals() {
     let r = rep.hex();
     refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": ["a", 0]}), "A text position must be a finite point.");
     refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": [1]}), "A text position must be a finite point.");
-    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": [1, 2], "justify": "ZZ"}), "Justify is two letters: L, C or R, then T, M or B.");
+    refused(
+        &mut f.h,
+        "movetext",
+        json!({"representation": r, "kind": "tag", "to": [1, 2], "justify": "ZZ"}),
+        "Justify is two letters: L, C or R, then T, M or B.",
+    );
     refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": [1, 2], "justify": "TL"}), "Justify is two letters");
     refused(&mut f.h, "movetext", json!({"representation": r, "kind": "point_label", "to": [1, 2]}), "point_label needs the connection point's key.");
     refused(&mut f.h, "movetext", json!({"representation": "0123456789abcdef0123456789abcdef", "kind": "tag", "to": [1, 2]}), "No representation");
@@ -1082,7 +1086,6 @@ fn t10_movetext_label_undo_redo_and_refusals() {
 /// T10 (FP5): `text.<rep>.*` keys follow their symbol: erased with the symbol and with the device
 /// in the same transaction, moved to the survivor of a device merge.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t10_symbol_keys_follow_delete_erase_and_merge() {
     let mut f = fixture_c(0x7031_1004);
     for r in f.r1 {
@@ -1095,24 +1098,50 @@ fn t10_symbol_keys_follow_delete_erase_and_merge() {
     let handles = sym_handles(&mut f.h, f.page, f.r1[2]);
     one_tx(&mut f.h, "erase", json!({"handles": handles}));
     assert!(comp_props(&mut f.h, f.k1, "text.").keys().all(|k| !k.contains(&gone)), "{:?}", comp_props(&mut f.h, f.k1, "text."));
-    // Merge -K02 into -K01 (rename its tag): -K02's symbol keys move to the survivor.
-    let r2 = f.r2.hex();
-    f.h.run("setprop", json!({"component": f.k2.hex(), "key": "tag", "value": "-K01", "conflict": "merge"})).unwrap();
+    // Merge a lone contact device into -K01 (rename its tag): its symbol keys move to the
+    // survivor. (-K02 has a coil, as -K01 does, so it cannot merge.)
+    let k3 = place(&mut f.h, "no", (200.0, 150.0));
+    let k3_id: ComponentId = id(&k3, "component");
+    let r3 = rep_of(&mut f.h, &k3);
+    f.h.run("movetext", json!({"representation": r3.hex(), "kind": "tag", "to": [30, 30]})).unwrap();
+    let k3_at = comp_props(&mut f.h, k3_id, &format!("text.{}.tag.at", r3.hex()));
+    assert_eq!(k3_at.len(), 1, "{k3_at:?}");
+    let moved_before = comp_props(&mut f.h, f.k1, "text.").keys().filter(|k| k.ends_with(".tag.at")).count();
+    f.h.run("setprop", json!({"component": k3_id.hex(), "key": "tag", "value": "-K01", "conflict": "merge"})).unwrap();
     let doc = f.h.doc();
-    let survivor = doc.components.iter().find(|(_, c)| c.properties.keys().any(|k| k.contains(&r2))).map(|(id, _)| *id);
-    let owner = doc.representations[&f.r2].subject;
-    assert_eq!(survivor.map(Subject::Component), Some(owner), "the key lives on the component that owns the symbol");
+    assert!(!doc.components.contains_key(&k3_id), "merged away");
+    // The symbol may get a new representation ID on merge; every `text.<rep>.` key lives on the
+    // component that owns <rep>, and -K01 gained the moved tag.
+    for (cid, c) in &doc.components {
+        for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
+            let rep_hex = k.split('.').nth(1).unwrap_or_default();
+            let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
+            assert_eq!(owner, Some(Subject::Component(*cid)), "{k} on {}", cid.hex());
+        }
+    }
+    let moved_after = comp_props(&mut f.h, f.k1, "text.").keys().filter(|k| k.ends_with(".tag.at")).count();
+    assert_eq!(moved_after, moved_before + 1, "{:?}", comp_props(&mut f.h, f.k1, "text."));
+    let owner = Subject::Component(f.k1);
     // Delete the device: every text.<rep>.* key goes.
     let Subject::Component(c) = owner else { panic!("a symbol of a component") };
     one_tx(&mut f.h, "devicedelete", json!({"component": c.hex()}));
-    assert!(f.h.doc().components.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text.") || k.split('.').count() <= 3)));
+    let doc = f.h.doc();
+    assert!(!doc.components.contains_key(&f.k1));
+    // No orphan: every `text.<rep>.` key left names a symbol its component owns (-K02's stays).
+    for (cid, c) in &doc.components {
+        for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
+            let rep_hex = k.split('.').nth(1).unwrap_or_default();
+            let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
+            assert_eq!(owner, Some(Subject::Component(*cid)), "{k} on {}", cid.hex());
+        }
+    }
+    assert!(doc.components[&f.k2].properties.contains_key(&format!("text.{}.tag.at", f.r2.hex())), "-K02's moved tag stays");
     f.h.check();
 }
 
 /// The Move Text tool: pick, place (one transaction), Reset, Esc writes nothing; MOVE on a tag is
 /// refused with the new sentence.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t10_move_text_tool_and_tag_derived_sentence() {
     let mut f = fixture_c(0x7031_1005);
     let rows = texts(&mut f.h, f.page);
@@ -1156,7 +1185,6 @@ fn t10_move_text_tool_and_tag_derived_sentence() {
 /// The Show/Hide Text tool hides a picked tag on the symbol (one transaction, words on the
 /// command line) and repeats until Esc.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t5_show_hide_text_tool() {
     let mut f = fixture_c(0x7031_0504);
     let t = row_of(&texts(&mut f.h, f.page), f.r1[1], "tag").clone();
@@ -1179,7 +1207,6 @@ fn t5_show_hide_text_tool() {
 /// T11 (AC 3): `text` with `justify: "MC"` is recorded, draws centred and reopens centred; a text
 /// without a justification stores no alignment fields (old files read and save the same).
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t11_justified_text_is_recorded_and_reopens_centred() {
     let mut h = H::new(0x7031_1101);
     let page = h.first_page();
@@ -1198,9 +1225,7 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
     };
     check_drawn(&mut h);
     let doc = h.doc();
-    let json_of = |value: &str| {
-        doc.items.values().map(|i| serde_json::to_string(i).unwrap()).find(|s| s.contains(value)).unwrap()
-    };
+    let json_of = |value: &str| doc.items.values().map(|i| serde_json::to_string(i).unwrap()).find(|s| s.contains(value)).unwrap();
     let mid = json_of("MIDDLE");
     assert!(mid.contains("halign") && mid.contains("valign"), "{mid}");
     let plain = json_of("PLAIN");
@@ -1219,7 +1244,6 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
 /// T11 (AC 3): the golden v1 project from before 031 converts and opens with no transaction, its
 /// items serialise without alignment fields, and a save and reopen gives the same document.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t11_an_old_file_opens_and_saves_unchanged() {
     let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
     let dir = tmp_dir("golden");
@@ -1253,7 +1277,6 @@ fn t11_an_old_file_opens_and_saves_unchanged() {
 /// that page; a project key every page; an unrelated edit on another page does not re-place the
 /// texts of this one.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t14_update_maps_name_only_the_pages_that_change() {
     let mut h = H::new(0x7031_1401);
     let p1 = h.first_page();
@@ -1277,7 +1300,7 @@ fn t14_update_maps_name_only_the_pages_that_change() {
     let s = changed(&mut h, "setprop", json!({"component": k1.hex(), "key": "description", "value": "Pump"})).expect("pages known");
     assert!(s.contains(&p1) && s.contains(&p2) && !s.contains(&p3), "{s:?}");
     let all = changed(&mut h, "textstyle", json!({"kind": "tag", "height": 3}));
-    assert!(all.is_none_or(|s| [p1, p2, p3].iter().all(|p| s.contains(p))), "{all:?}");
+    assert!(all.as_ref().is_none_or(|s| [p1, p2, p3].iter().all(|p| s.contains(p))), "{all:?}");
     // An unrelated edit (a device on page 3) leaves page 1's texts where they were.
     let before = texts(&mut h, p1);
     let s = changed(&mut h, "setprop", json!({"component": k2.hex(), "key": "part_number", "value": "X1"})).expect("pages known");
@@ -1291,7 +1314,6 @@ fn t14_update_maps_name_only_the_pages_that_change() {
 
 /// T15: hostile moved-text values and hostile keys draw the automatic place and never panic.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t15_hostile_text_keys_draw_the_automatic_place() {
     let mut f = fixture_c(0x7031_1501);
     let rep = f.r1[0].hex();
@@ -1367,7 +1389,6 @@ fn lane_t_keys() -> Vec<String> {
 /// built-in is valid for its kind; lane T's entries are all there with `from: builtin` on a new
 /// project; after `textstyle {kind: tag, height: 3}` the tag height says `value: 3, from: project`.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
     let mut h = H::new(0x7031_1601);
     let head = h.head();
@@ -1379,7 +1400,10 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
         let key = r["key"].as_str().unwrap();
         assert!(seen.insert(key.to_string()), "duplicate key {key}");
         let parts: Vec<&str> = key.split('.').collect();
-        assert!(parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')), "key rule: {key}");
+        assert!(
+            parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')),
+            "key rule: {key}"
+        );
         assert!(["text", "wire", "print", "symbol"].contains(&parts[0]), "area first: {key}");
         for f in ["label", "group", "brief", "kind", "builtin", "levels", "value", "from"] {
             assert!(r.get(f).is_some(), "{key} has {f}: {r}");
@@ -1398,7 +1422,14 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
     assert!(text["defaults"].as_array().unwrap().iter().all(|r| r["group"] == "Text"));
     // Built-in values of §3.5's single entries.
     let one = |h: &mut H, key: &str| h.run("defaults", json!({"key": key})).unwrap()["defaults"][0].clone();
-    for (key, val) in [("text.run.align", 1.0), ("text.run.gap", 15.0), ("text.tag.gap", 0.6), ("text.line_pitch", 1.25), ("text.wire_clearance", 0.3), ("text.bold_stroke_weight", 0.35)] {
+    for (key, val) in [
+        ("text.run.align", 1.0),
+        ("text.run.gap", 15.0),
+        ("text.tag.gap", 0.6),
+        ("text.line_pitch", 1.25),
+        ("text.wire_clearance", 0.3),
+        ("text.bold_stroke_weight", 0.35),
+    ] {
         let r = one(&mut h, key);
         let b = r["builtin"].as_f64().or_else(|| r["builtin"].as_str().and_then(|s| s.parse().ok()));
         assert_eq!(b, Some(val), "{key}: {r}");
@@ -1422,7 +1453,6 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
 
 /// T16: `text.run.gap` 50 on the project joins two groups 40 mm apart into one run.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn t16_run_gap_from_the_project_joins_two_groups() {
     let mut h = H::new(0x7031_1602);
     let page = h.first_page();
@@ -1440,7 +1470,6 @@ fn t16_run_gap_from_the_project_joins_two_groups() {
 // `projectprops`, `pageprops`, `setprop` reserve the `text.` prefix (design §10.6)
 
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn text_keys_are_refused_by_the_property_commands() {
     let mut f = fixture_c(0x7031_1701);
     let s = "is set with Text styles (textstyle, showtext, movetext).";

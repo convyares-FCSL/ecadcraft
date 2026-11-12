@@ -44,7 +44,6 @@ fn reads(c: &mut Client, page: &str) -> Value {
 }
 
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn text_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t031 Schaltpl\u{e4}ne mit Leerzeichen");
     let path = dir.file("Texte -K01 (A).ecad");
@@ -123,7 +122,6 @@ fn text_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// `defaults` and `textstyle {}` on a fresh in-memory project with writes off.
 #[test]
-#[ignore = "tester 031: awaiting build"]
 fn reads_work_with_writes_off_and_record_nothing() {
     let mut c = crate::mcp_contracts::reader();
     let log = c.log();
