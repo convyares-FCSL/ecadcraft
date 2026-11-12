@@ -334,7 +334,10 @@ mod tests {
         assert_eq!(more, symbols::STARTERS.len() - MAX_ROWS);
         assert!(nothing.is_none());
         let (r, _, _) = rows(None, "-Q");
-        assert_eq!(r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(), [Pick::Symbol("mcb1"), Pick::Symbol("mcb2")]);
+        assert_eq!(
+            r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(),
+            [Pick::Symbol("mcb1"), Pick::Symbol("mcb2"), Pick::Symbol("rcbo2"), Pick::Symbol("rcd2"), Pick::Symbol("rcd4")]
+        );
         let (r, _, nothing) = rows(None, "xyz");
         assert!(r.is_empty());
         assert_eq!(nothing.as_deref(), Some("Nothing matches \"xyz\"."));

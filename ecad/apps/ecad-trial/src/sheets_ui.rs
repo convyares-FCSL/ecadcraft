@@ -20,6 +20,9 @@ use eframe::egui::{self, Color32, RichText};
 use serde_json::{Map, Value, json};
 
 /// `ecad.orphan` red.
+/// Height of the scrolling list of tag prefixes in Project settings, in points (brief 034: one
+/// field per symbol would otherwise push the dialog's buttons out of view).
+const PREFIXES_HEIGHT: f32 = 140.0;
 const RED: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 
 /// Element names (design 019 §10).
@@ -405,14 +408,18 @@ impl ProjectProps {
                         ui.label("Digits");
                         ui.add(egui::TextEdit::singleline(&mut self.padding).desired_width(30.0)).accessible_name("ecad.projectsettings.padding");
                     });
-                    egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
-                        for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
-                            ui.label(RichText::new(k.as_str()).small());
-                            ui.add(egui::TextEdit::singleline(v).desired_width(40.0)).accessible_name(format!("ecad.projectsettings.prefix.{k}"));
-                            if i % 2 == 1 {
-                                ui.end_row();
+                    // Brief 034: the library's symbols make this list long; it scrolls so the
+                    // dialog's buttons stay in view.
+                    egui::ScrollArea::vertical().id_salt("ecad.projectsettings.prefixes.scroll").max_height(PREFIXES_HEIGHT).show(ui, |ui| {
+                        egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).show(ui, |ui| {
+                            for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
+                                ui.label(RichText::new(k.as_str()).small());
+                                ui.add(egui::TextEdit::singleline(v).desired_width(40.0)).accessible_name(format!("ecad.projectsettings.prefix.{k}"));
+                                if i % 2 == 1 {
+                                    ui.end_row();
+                                }
                             }
-                        }
+                        });
                     });
                 });
                 // Brief 026 (design §5.1): numbering.

@@ -21,6 +21,7 @@ mod experiment;
 mod files;
 mod history_tester_contracts;
 mod interactive_contracts;
+mod library_contracts;
 mod mouse_tools_contracts;
 mod numbering_contracts;
 mod outputs_contracts;

@@ -10,12 +10,17 @@
 //! - Geometry is in millimetres, local frame, y up, symbol centre at (0,0), terminals on a 5 mm
 //!   grid. The shapes follow IEC 60617 forms but are drawn new for ECAD.
 //!
-//! This module reads no project and changes nothing.
+//! Brief 034 grows the catalogue by family (contacts, protection, sensors, actuators, connectors,
+//! PLC card bodies) and adds text anchors for lane T ([`anchors`]), the rating rule
+//! ([`setprop_rule`]) and quiet points ([`is_quiet`]).
+//!
+//! The catalogue reads no project; only [`setprop_rule`] reads one, to find a fuse bank's fuses.
+//! Nothing here changes a project.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use ecad_model::{Definition, DefinitionId, Document, LibraryId, Origin, Primitive, Pt, TerminalDef};
+use ecad_model::{Definition, DefinitionId, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef};
 
 /// The library ID of the starter symbols.
 pub const STARTER_LIBRARY: LibraryId = LibraryId(0x0000_ecad_0018_5ea1_0000_0000_0000_0001);
@@ -33,6 +38,9 @@ pub enum Kind {
     Terminal,
     /// A PLC channel: the next address of its letter (`I0.0`…`I0.7`, `I1.0`…).
     Plc { letter: char },
+    /// A change-over contact (brief 034): common, NC and NO, numbered by the next IEC sequence
+    /// digit (`11`/`12`/`14`, `21`/`22`/`24`…), see [`changeover_labels`].
+    ChangeOver,
     /// Fixed labels from the definition. `exclusive`: a device holds at most one of these.
     Fixed { exclusive: bool },
     /// A tagless component of its own, never part of a device: a junction or a continuation
@@ -54,6 +62,51 @@ pub struct Starter {
     pub kind: Kind,
     /// Its fixed definition ID inside [`STARTER_LIBRARY`].
     pub id: DefinitionId,
+    /// The family Find Symbol groups it in and also matches by its word (brief 034).
+    pub family: Family,
+    /// Its connection points that may stay unwired without an `Unconnected` check (design 034
+    /// §11): spare connector pins, spare fuse outputs, a card's supply points.
+    pub quiet: Quiet,
+}
+
+/// A catalogue family (design 034 §2.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    /// The 21 symbols of briefs 018, 022 and 028.
+    Basic,
+    Contacts,
+    Protection,
+    Sensors,
+    Actuators,
+    Connectors,
+    Plc,
+}
+
+impl Family {
+    /// The word a search matches (`contacts`, `protection`…); empty for [`Family::Basic`], which no
+    /// word finds.
+    pub fn word(self) -> &'static str {
+        match self {
+            Family::Basic => "",
+            Family::Contacts => "contacts",
+            Family::Protection => "protection",
+            Family::Sensors => "sensors",
+            Family::Actuators => "actuators",
+            Family::Connectors => "connectors",
+            Family::Plc => "plc",
+        }
+    }
+}
+
+/// Which connection points of a symbol are quiet (design 034 §2.2, §11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quiet {
+    /// None: every point is checked.
+    None,
+    /// Every point.
+    All,
+    /// Every point except these keys.
+    AllBut(&'static [&'static str]),
 }
 
 impl Starter {
@@ -103,128 +156,74 @@ const fn def_id(n: u128) -> DefinitionId {
     DefinitionId(0x0000_ecad_0018_5ea1_0000_0000_0001_0000 + n)
 }
 
-/// The catalogue, in table order (design 018 §4).
+/// A catalogue entry of the [`Family::Basic`] family with no quiet points; [`Starter::of`] and
+/// [`Starter::quiet_at`] set the rest.
+const fn st(key: &'static str, name: &'static str, aliases: &'static [&'static str], prefix: &'static str, kind: Kind, id: DefinitionId) -> Starter {
+    Starter { key, name, aliases, prefix, kind, id, family: Family::Basic, quiet: Quiet::None }
+}
+
+impl Starter {
+    const fn of(self, family: Family) -> Starter {
+        Starter { family, ..self }
+    }
+
+    const fn quiet_at(self, quiet: Quiet) -> Starter {
+        Starter { quiet, ..self }
+    }
+}
+
+const HEAD: Kind = Kind::Fixed { exclusive: true };
+const PART: Kind = Kind::Fixed { exclusive: false };
+
+// Brief 034's aliases, shared by several entries.
+const FUSE_BANK: &[&str] = &["fuse bank", "fuse block", "distribution", "protection"];
+
+/// Contacts and protection (brief 034 stage 1): definition IDs `0x100 + n`.
+const fn cp(n: u128) -> DefinitionId {
+    def_id(0x100 + n)
+}
+
+/// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
+/// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
-    Starter {
-        key: "coil",
-        name: "Contactor / relay coil",
-        aliases: &["coil", "relay", "contactor"],
-        prefix: "K",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(1),
-    },
-    Starter {
-        key: "no",
-        name: "NO contact",
-        aliases: &["make", "normally open", "contact"],
-        prefix: "K",
-        kind: Kind::Contact { make: true },
-        id: def_id(2),
-    },
-    Starter {
-        key: "nc",
-        name: "NC contact",
-        aliases: &["break", "normally closed", "contact"],
-        prefix: "K",
-        kind: Kind::Contact { make: false },
-        id: def_id(3),
-    },
-    Starter {
-        key: "power3",
-        name: "Power contacts, 3-pole",
-        aliases: &["main contacts", "contactor"],
-        prefix: "K",
-        kind: Kind::Fixed { exclusive: false },
-        id: def_id(4),
-    },
-    Starter {
-        key: "mcb1",
-        name: "MCB 1-pole",
-        aliases: &["breaker", "circuit breaker"],
-        prefix: "Q",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(5),
-    },
-    Starter {
-        key: "mcb2",
-        name: "MCB 2-pole",
-        aliases: &["breaker", "circuit breaker"],
-        prefix: "Q",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(6),
-    },
-    Starter { key: "fuse", name: "Fuse", aliases: &["fuse"], prefix: "F", kind: Kind::Fixed { exclusive: true }, id: def_id(7) },
-    Starter { key: "psu", name: "Power supply", aliases: &["psu", "ac/dc"], prefix: "G", kind: Kind::Fixed { exclusive: true }, id: def_id(8) },
-    Starter {
-        key: "pbno",
-        name: "Push button, NO",
-        aliases: &["push", "button", "start"],
-        prefix: "S",
-        kind: Kind::Contact { make: true },
-        id: def_id(9),
-    },
-    Starter {
-        key: "pbnc",
-        name: "Push button, NC",
-        aliases: &["push", "button", "stop"],
-        prefix: "S",
-        kind: Kind::Contact { make: false },
-        id: def_id(10),
-    },
-    Starter {
-        key: "sel",
-        name: "Selector switch, 2-position",
-        aliases: &["selector", "switch"],
-        prefix: "S",
-        kind: Kind::Contact { make: true },
-        id: def_id(11),
-    },
-    Starter {
-        key: "lamp",
-        name: "Indicator lamp",
-        aliases: &["lamp", "light", "pilot"],
-        prefix: "H",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(12),
-    },
-    Starter { key: "motor3", name: "Motor, 3-phase", aliases: &["motor"], prefix: "M", kind: Kind::Fixed { exclusive: true }, id: def_id(13) },
-    Starter { key: "motor1", name: "Motor, single-phase", aliases: &["motor"], prefix: "M", kind: Kind::Fixed { exclusive: true }, id: def_id(14) },
-    Starter {
-        key: "trafo",
-        name: "Transformer",
-        aliases: &["control transformer"],
-        prefix: "T",
-        kind: Kind::Fixed { exclusive: true },
-        id: def_id(15),
-    },
-    Starter { key: "terminal", name: "Terminal", aliases: &["terminal", "clamp"], prefix: "X", kind: Kind::Terminal, id: def_id(16) },
+    st("coil", "Contactor / relay coil", &["coil", "relay", "contactor"], "K", HEAD, def_id(1)),
+    st("no", "NO contact", &["make", "normally open", "contact"], "K", Kind::Contact { make: true }, def_id(2)),
+    st("nc", "NC contact", &["break", "normally closed", "contact"], "K", Kind::Contact { make: false }, def_id(3)),
+    st("power3", "Power contacts, 3-pole", &["main contacts", "contactor"], "K", PART, def_id(4)),
+    st("mcb1", "MCB 1-pole", &["breaker", "circuit breaker"], "Q", HEAD, def_id(5)),
+    st("mcb2", "MCB 2-pole", &["breaker", "circuit breaker"], "Q", HEAD, def_id(6)),
+    st("fuse", "Fuse", &["fuse"], "F", HEAD, def_id(7)),
+    st("psu", "Power supply", &["psu", "ac/dc"], "G", HEAD, def_id(8)),
+    st("pbno", "Push button, NO", &["push", "button", "start"], "S", Kind::Contact { make: true }, def_id(9)),
+    st("pbnc", "Push button, NC", &["push", "button", "stop"], "S", Kind::Contact { make: false }, def_id(10)),
+    st("sel", "Selector switch, 2-position", &["selector", "switch"], "S", Kind::Contact { make: true }, def_id(11)),
+    st("lamp", "Indicator lamp", &["lamp", "light", "pilot"], "H", HEAD, def_id(12)),
+    st("motor3", "Motor, 3-phase", &["motor"], "M", HEAD, def_id(13)),
+    st("motor1", "Motor, single-phase", &["motor"], "M", HEAD, def_id(14)),
+    st("trafo", "Transformer", &["control transformer"], "T", HEAD, def_id(15)),
+    st("terminal", "Terminal", &["terminal", "clamp"], "X", Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    Starter {
-        key: "terminalpe",
-        name: "PE terminal",
-        aliases: &["pe terminal", "earth terminal"],
-        prefix: "X",
-        kind: Kind::Terminal,
-        id: def_id(21),
-    },
-    Starter { key: "di", name: "PLC digital input", aliases: &["plc", "input", "di"], prefix: "A", kind: Kind::Plc { letter: 'I' }, id: def_id(17) },
-    Starter {
-        key: "do",
-        name: "PLC digital output",
-        aliases: &["plc", "output", "do"],
-        prefix: "A",
-        kind: Kind::Plc { letter: 'Q' },
-        id: def_id(18),
-    },
-    Starter { key: "junction", name: "Junction", aliases: &["junction", "dot", "tee"], prefix: "", kind: Kind::Tagless, id: def_id(19) },
-    Starter {
-        key: "continuation",
-        name: "Continuation",
-        aliases: &["continuation", "arrow", "potential", "link"],
-        prefix: "",
-        kind: Kind::Tagless,
-        id: def_id(20),
-    },
+    st("terminalpe", "PE terminal", &["pe terminal", "earth terminal"], "X", Kind::Terminal, def_id(21)),
+    st("di", "PLC digital input", &["plc", "input", "di"], "A", Kind::Plc { letter: 'I' }, def_id(17)),
+    st("do", "PLC digital output", &["plc", "output", "do"], "A", Kind::Plc { letter: 'Q' }, def_id(18)),
+    st("junction", "Junction", &["junction", "dot", "tee"], "", Kind::Tagless, def_id(19)),
+    st("continuation", "Continuation", &["continuation", "arrow", "potential", "link"], "", Kind::Tagless, def_id(20)),
+    // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
+    st("co", "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], "K", Kind::ChangeOver, cp(1))
+        .of(Family::Contacts),
+    st("swco", "Switch, change-over", &["change-over", "switch", "toggle"], "S", Kind::ChangeOver, cp(2)).of(Family::Contacts),
+    st("power4", "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], "K", PART, cp(3)).of(Family::Contacts),
+    st("rcbo2", "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], "Q", HEAD, cp(4)).of(Family::Protection),
+    st("rcd2", "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], "Q", HEAD, cp(5)).of(Family::Protection),
+    st("rcd4", "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], "Q", HEAD, cp(6)).of(Family::Protection),
+    st("ssrin", "SSR input", &["ssr", "solid state relay", "relay"], "K", HEAD, cp(7)).of(Family::Contacts),
+    st("ssrout", "SSR output", &["ssr", "solid state relay", "contact"], "K", PART, cp(8)).of(Family::Contacts),
+    st("fuseterm", "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], "F", HEAD, cp(9)).of(Family::Protection),
+    st("fusebank4", "Fuse bank, 4-way", FUSE_BANK, "F", HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank6", "Fuse bank, 6-way", FUSE_BANK, "F", HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank8", "Fuse bank, 8-way", FUSE_BANK, "F", HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank10", "Fuse bank, 10-way", FUSE_BANK, "F", HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st("fusebank12", "Fuse bank, 12-way", FUSE_BANK, "F", HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
 ];
 
 /// The starter symbol with key `key` (case-insensitive).
@@ -266,10 +265,214 @@ pub fn search(query: &str) -> Vec<&'static Starter> {
         .filter(|s| {
             s.key == q
                 || s.name.to_lowercase().contains(&q)
+                || (!s.family.word().is_empty() && s.family.word().contains(q.as_str()))
                 || s.aliases.iter().any(|a| a.contains(q.as_str()))
                 || (!bare.is_empty() && s.prefix.eq_ignore_ascii_case(bare))
         })
         .collect()
+}
+
+// ---------------------------------------------------------------- defaults (design 034 §2.7)
+//
+// Until lane T's defaults registry (design 031 §3.5) is on this branch, the catalogue above is the
+// one table of lane S's built-in defaults, read only through these functions, so moving them into
+// the registry is one change in one place.
+
+/// The built-in tag prefix of symbol `key` (letters, without `-`); a project's own
+/// `tag_prefixes` still wins over it ([`crate::devices::prefix_for`]).
+pub fn default_prefix(key: &str) -> Option<&'static str> {
+    by_key(key).map(|s| s.prefix)
+}
+
+/// The built-in connection-point labels a new device of symbol `key` gets, in definition order.
+/// Until the registry can change a label, label = the definition's key (design 034 §2.7).
+pub fn default_labels(key: &str) -> Vec<String> {
+    by_key(key).map(Starter::labels).unwrap_or_default()
+}
+
+/// The connection points of symbol `key` that are quiet (design 034 §11), in definition order.
+pub fn quiet_points(key: &str) -> Vec<String> {
+    by_key(key).map(|s| s.labels().into_iter().filter(|l| is_quiet(s, l)).collect()).unwrap_or_default()
+}
+
+/// Whether point `point` (a definition key) of `s` is quiet: left unwired, it raises no
+/// `Unconnected` check.
+pub fn is_quiet(s: &Starter, point: &str) -> bool {
+    match s.quiet {
+        Quiet::None => false,
+        Quiet::All => true,
+        Quiet::AllBut(loud) => !loud.contains(&point),
+    }
+}
+
+// ---------------------------------------------------------------- change-over contacts
+
+/// The labels a change-over contact gets joining a device whose labels are `used` (design 034
+/// §2.3): s = 1 + the highest IEC sequence digit among labels of the form `[1-9][1-4]`, then `s1`,
+/// `s2`, `s4` (common, NC, NO: definition order).
+///
+/// # Errors
+/// s would be over 9: `<who> already has 9 contacts.`
+pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<String>, String> {
+    let highest = used
+        .iter()
+        .filter_map(|l| match l.as_bytes() {
+            [s @ b'1'..=b'9', b'1'..=b'4'] => Some(u32::from(s - b'0')),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    let next = highest + 1;
+    if next > 9 {
+        return Err(format!("{who} already has 9 contacts."));
+    }
+    Ok(vec![format!("{next}1"), format!("{next}2"), format!("{next}4")])
+}
+
+// ---------------------------------------------------------------- ratings (design 034 §7.3)
+
+/// A device's rating as written on the drawing (`13A C 30mA`, `6.3A T`, `K`).
+pub const RATING_KEY: &str = "rating";
+
+/// A fuse bank's fuse rating: `rating.<n>`, `<n>` one of its fuse outputs.
+pub const RATING_OF_PREFIX: &str = "rating.";
+
+/// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
+/// (a hostile key cannot make a lookup or a message long).
+pub const MAX_FUSE_LABEL: usize = 12;
+
+/// Whether `key` is `rating` or `rating.<n>`.
+pub fn is_rating_key(key: &str) -> bool {
+    key == RATING_KEY || key.starts_with(RATING_OF_PREFIX)
+}
+
+/// Whether `s` is a fuse bank (its fuses take `rating.<n>`).
+pub fn is_fuse_bank(s: &Starter) -> bool {
+    ways(s.key, "fusebank").is_some()
+}
+
+/// Check a `rating` or `rating.<n>` value set on `object` (design 034 §7.3).
+///
+/// # Semantics
+/// `rating` on a device follows the 018 §6.1 value rules (at most 200 characters, no control
+/// characters, trimmed; empty or `None` clears). `rating.<n>` follows them too, and only on a
+/// device whose head is a fuse bank, with `<n>` one of its fuse outputs. Any other key, or an
+/// object that is not a device: no opinion, the value comes back unchanged.
+///
+/// # Errors
+/// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
+/// it does not have (`-F01 has no fuse 13.`).
+pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+    let ObjectRef::Component(c) = object else { return Ok(value.map(str::to_string)) };
+    if !is_rating_key(key) {
+        return Ok(value.map(str::to_string));
+    }
+    if let Some(n) = key.strip_prefix(RATING_OF_PREFIX) {
+        let who = crate::devices::tag_words(doc, c);
+        let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
+        let long = n.chars().count() > MAX_FUSE_LABEL;
+        let more = if long { "…" } else { "" };
+        let bank = doc.representations_of(Subject::Component(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).find(|s| is_fuse_bank(s));
+        let Some(bank) = bank else {
+            return Err(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank."));
+        };
+        let has = !long && bank.labels().iter().any(|l| l == n && l.bytes().all(|b| b.is_ascii_digit()));
+        if !has {
+            return Err(format!("{who} has no fuse {shown}{more}."));
+        }
+    }
+    crate::devices::property_value(doc, key, value)
+}
+
+// ---------------------------------------------------------------- text anchors (design 034 §10)
+
+/// What a text anchor is for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextRole {
+    Tag,
+    Description,
+    Rating,
+    /// The rating of a fuse bank's fuse, by its label (`rating.<n>`).
+    RatingOf(String),
+}
+
+/// Horizontal alignment of text at its anchor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HAlign {
+    Left,
+    Centre,
+    Right,
+}
+
+/// Vertical alignment of text at its anchor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VAlign {
+    Bottom,
+    Middle,
+    Top,
+}
+
+/// The first place lane T tries for one text of a symbol, in the symbol's local frame (it rotates
+/// and mirrors with the symbol); `rotation` in degrees.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Anchor {
+    pub role: TextRole,
+    pub at: Pt,
+    pub h: HAlign,
+    pub v: VAlign,
+    pub rotation: f64,
+}
+
+/// The gap between a symbol's box and its text, and one line's step, in millimetres (design 034
+/// §10). Geometry of the anchor rule, not a text size: lane T decides sizes.
+const ANCHOR_GAP: f64 = 2.0;
+const ANCHOR_LINE: f64 = 4.0;
+
+/// The text anchors of `s` (design 034 §10): the default rule from its box, with the overrides of
+/// fuse banks, RCBO and RCDs, card bodies and connectors. A tagless symbol has none.
+///
+/// # Semantics
+/// Default rule, box (lo, hi), mid = (lo.y + hi.y)/2: Tag at (lo.x − 2, mid), right, middle;
+/// Description at (lo.x − 2, mid − 4), right, top; Rating at (hi.x + 2, mid), left, middle.
+pub fn anchors(s: &Starter) -> Vec<Anchor> {
+    if s.kind == Kind::Tagless {
+        return Vec::new();
+    }
+    let Ok(d) = s.definition() else { return Vec::new() };
+    let (lo, hi) = bounds(d);
+    let mid = (lo.y + hi.y) / 2.0;
+    let a = |role: TextRole, x: f64, y: f64, h: HAlign, v: VAlign| Anchor { role, at: p(x, y), h, v, rotation: 0.0 };
+    let tag = a(TextRole::Tag, lo.x - ANCHOR_GAP, mid, HAlign::Right, VAlign::Middle);
+    let description = a(TextRole::Description, lo.x - ANCHOR_GAP, mid - ANCHOR_LINE, HAlign::Right, VAlign::Top);
+    let rating = a(TextRole::Rating, hi.x + ANCHOR_GAP, mid, HAlign::Left, VAlign::Middle);
+    let mut out = match s.key {
+        // Breakers carry their rating by the tag.
+        "rcbo2" | "rcd2" | "rcd4" => vec![
+            tag,
+            a(TextRole::Rating, lo.x - ANCHOR_GAP, mid - ANCHOR_LINE, HAlign::Right, VAlign::Top),
+            a(TextRole::Description, lo.x - ANCHOR_GAP, mid - 2.0 * ANCHOR_LINE, HAlign::Right, VAlign::Top),
+        ],
+        // Card bodies: the tag above, the description inside under the header.
+        _ if s.family == Family::Plc => vec![
+            a(TextRole::Tag, lo.x, hi.y + ANCHOR_GAP, HAlign::Left, VAlign::Bottom),
+            a(TextRole::Description, -13.0, 12.0, HAlign::Left, VAlign::Top),
+            rating,
+        ],
+        _ if s.family == Family::Connectors => vec![tag, description],
+        _ => vec![tag, description, rating],
+    };
+    if is_fuse_bank(s) {
+        for t in d.terminals.iter().filter(|t| t.key.bytes().all(|b| b.is_ascii_digit())) {
+            out.push(Anchor {
+                role: TextRole::RatingOf(t.key.clone()),
+                at: p(t.at.x + 3.0, -8.0),
+                h: HAlign::Left,
+                v: VAlign::Middle,
+                rotation: 90.0,
+            });
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------- geometry
@@ -321,6 +524,98 @@ fn dashed(x0: f64, x1: f64, y: f64) -> Vec<Primitive> {
         x += 2.5;
     }
     out
+}
+
+/// A vertical mechanical link drawn dashed, as [`dashed`] along y (design 034 §2.1).
+fn dashed_v(x: f64, y0: f64, y1: f64) -> Vec<Primitive> {
+    let mut out = Vec::new();
+    let mut y = y0;
+    while y < y1 && out.len() < 64 {
+        out.push(line((x, y), (x, (y + 1.5).min(y1))));
+        y += 2.5;
+    }
+    out
+}
+
+/// A closed ellipse of `n` segments (no arcs in definitions, design 034 §2.1).
+fn ellipse(c: (f64, f64), rx: f64, ry: f64, n: usize) -> Primitive {
+    let v: Vec<(f64, f64)> = (0..n)
+        .map(|k| {
+            let a = std::f64::consts::TAU * k as f64 / n as f64;
+            (c.0 + rx * a.cos(), c.1 + ry * a.sin())
+        })
+        .collect();
+    poly(&v, true)
+}
+
+/// A change-over contact, common on top (design 034 §3).
+fn contact_co() -> Vec<Primitive> {
+    vec![
+        line((0.0, 10.0), (0.0, 4.0)),
+        line((0.0, -10.0), (0.0, -4.0)),
+        line((5.0, -10.0), (5.0, -4.0)),
+        line((5.0, -4.0), (3.0, -4.0)),
+        line((0.0, 4.0), (4.0, -5.5)),
+    ]
+}
+
+/// A residual-current toroid and release, the release `dx` right of the RCBO's (design 034 §3).
+fn rcd_release(toroid_x: f64, half_width: f64, dx: f64, link_from: f64) -> Vec<Primitive> {
+    let mut g =
+        vec![ellipse((toroid_x, -7.0), half_width, 1.5, 12), line((13.0 + dx, -7.0), (16.0 + dx, -7.0)), rect((16.0 + dx, -8.5), (19.0 + dx, -5.5))];
+    g.extend(dashed_v(17.5 + dx, -5.5, 0.5));
+    g.extend(dashed(link_from, 17.5 + dx, 0.5));
+    g
+}
+
+/// The most ways or pins a sized symbol key may name (guards the loops below; the catalogue's
+/// largest is 25).
+const MAX_WAYS: usize = 32;
+
+/// The size a sized key names after `stem` (`fusebank8` → 8), at most [`MAX_WAYS`].
+fn ways(key: &str, stem: &str) -> Option<usize> {
+    key.strip_prefix(stem)?.parse::<usize>().ok().filter(|n| (1..=MAX_WAYS).contains(n))
+}
+
+/// Pin `i`'s x (1-based) in a row of pins or fuses spaced `pitch` apart.
+fn pin_x(i: usize, pitch: f64) -> f64 {
+    pitch * i.saturating_sub(1) as f64
+}
+
+/// A fuse bank of `n` ways (design 034 §3).
+fn fuse_bank(n: usize) -> Vec<Primitive> {
+    let xn = pin_x(n, 10.0);
+    let mut g = vec![
+        rect((-15.0, -10.0), (xn + 5.0, 15.0)),
+        line((-10.0, 20.0), (-10.0, 10.0)),
+        line((-10.0, 10.0), (xn, 10.0)),
+        line((-10.0, -15.0), (-10.0, -5.0)),
+        line((-12.0, -5.0), (-8.0, -5.0)),
+    ];
+    for i in 1..=n {
+        let x = pin_x(i, 10.0);
+        g.push(line((x, 10.0), (x, -15.0)));
+        g.push(rect((x - 2.0, -3.0), (x + 2.0, 7.0)));
+    }
+    g
+}
+
+/// Graphics of the sized keys (fuse banks, connectors).
+fn sized_graphics(key: &str) -> Vec<Primitive> {
+    if let Some(n) = ways(key, "fusebank") {
+        return fuse_bank(n);
+    }
+    Vec::new()
+}
+
+/// Terminals of the sized keys.
+fn sized_terminals(key: &str, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
+    if let Some(n) = ways(key, "fusebank") {
+        let mut v = vec![t("L+", -10.0, 20.0), t("M", -10.0, -15.0)];
+        v.extend((1..=n).map(|i| t(&i.to_string(), pin_x(i, 10.0), -15.0)));
+        return v;
+    }
+    Vec::new()
 }
 
 fn contact_no() -> Vec<Primitive> {
@@ -430,7 +725,52 @@ fn graphics(key: &str) -> Vec<Primitive> {
         "continuation" => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         "di" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
         "do" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DO"), line((0.0, -2.5), (0.0, -10.0))],
-        _ => Vec::new(),
+        // ---- Brief 034 stage 1 (design 034 §3).
+        "co" => contact_co(),
+        "swco" => {
+            let mut g = contact_co();
+            g.extend(dashed(-8.0, 1.5, 0.5));
+            g.push(line((-8.0, -2.5), (-8.0, 3.5)));
+            g
+        }
+        "power4" => {
+            let mut g = Vec::new();
+            for x in [-15.0, -5.0, 5.0, 15.0] {
+                g.extend(shifted(contact_no(), x));
+            }
+            g.extend(dashed(-17.0, 13.0, 0.5));
+            g
+        }
+        "rcbo2" | "rcd2" => {
+            let mut g = if key == "rcbo2" { mcb() } else { contact_no() };
+            g.extend(shifted(contact_no(), 10.0));
+            g.extend(dashed(-2.0, 8.0, 0.5));
+            g.extend(rcd_release(5.0, 8.0, 0.0, 8.0));
+            g
+        }
+        "rcd4" => {
+            let mut g = Vec::new();
+            for x in [0.0, 10.0, 20.0, 30.0] {
+                g.extend(shifted(contact_no(), x));
+            }
+            g.extend(dashed(-2.0, 28.0, 0.5));
+            g.extend(rcd_release(15.0, 18.0, 20.0, 28.0));
+            g
+        }
+        "ssrin" => vec![
+            rect((-6.0, -3.0), (6.0, 3.0)),
+            line((0.0, 3.0), (0.0, 10.0)),
+            line((0.0, -3.0), (0.0, -10.0)),
+            poly(&[(-2.0, 1.5), (2.0, 1.5), (0.0, -1.5)], true),
+            line((-2.0, -1.5), (2.0, -1.5)),
+        ],
+        "ssrout" => {
+            let mut g = contact_no();
+            g.push(poly(&[(2.0, -1.5), (5.0, -1.5), (3.5, 1.5)], true));
+            g
+        }
+        "fuseterm" => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
+        _ => sized_graphics(key),
     }
 }
 
@@ -455,7 +795,32 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         "junction" | "continuation" => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
         "di" => vec![t("I0.0", 0.0, 10.0)],
         "do" => vec![t("Q0.0", 0.0, -10.0)],
-        _ => Vec::new(),
+        // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
+        "co" | "swco" => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
+        "power4" => vec![
+            t("1", -15.0, 10.0),
+            t("2", -15.0, -10.0),
+            t("3", -5.0, 10.0),
+            t("4", -5.0, -10.0),
+            t("5", 5.0, 10.0),
+            t("6", 5.0, -10.0),
+            t("7", 15.0, 10.0),
+            t("8", 15.0, -10.0),
+        ],
+        "rcbo2" | "rcd2" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("N1", 10.0, 10.0), t("N2", 10.0, -10.0)],
+        "rcd4" => vec![
+            t("1", 0.0, 10.0),
+            t("2", 0.0, -10.0),
+            t("3", 10.0, 10.0),
+            t("4", 10.0, -10.0),
+            t("5", 20.0, 10.0),
+            t("6", 20.0, -10.0),
+            t("N1", 30.0, 10.0),
+            t("N2", 30.0, -10.0),
+        ],
+        "ssrin" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
+        "ssrout" | "fuseterm" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        _ => sized_terminals(key, &t),
     }
 }
 
@@ -520,19 +885,107 @@ mod tests {
             bare.origin = None;
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
-        // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028).
-        assert_eq!(STARTERS.len(), 21);
+        // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
+        // brief 034's stage 1 (14).
+        assert_eq!(STARTERS.len(), 21 + 14);
+        // Brief 034's definition IDs sit in their family's block.
+        for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
+            let n = s.id.0 - def_id(0).0;
+            let block = match s.family {
+                Family::Contacts | Family::Protection => 0x100,
+                Family::Sensors | Family::Actuators => 0x200,
+                Family::Connectors => 0x300,
+                Family::Plc => 0x400,
+                Family::Basic => 0,
+            };
+            assert!(n > block && n < block + 0x100, "{} id {n:#x} outside its block", s.key);
+        }
+    }
+
+    /// Design 034 §3–§6: each new symbol's box (width, height) and labels in definition order.
+    const NEW: &[(&str, f64, f64, &str)] = &[
+        ("co", 5.0, 20.0, "11/12/14"),
+        ("swco", 13.0, 20.0, "11/12/14"),
+        ("power4", 34.0, 20.0, "1/2/3/4/5/6/7/8"),
+        ("rcbo2", 23.0, 20.0, "1/2/N1/N2"),
+        ("rcd2", 23.0, 20.0, "1/2/N1/N2"),
+        ("rcd4", 43.0, 20.0, "1/2/3/4/5/6/N1/N2"),
+        ("ssrin", 12.0, 20.0, "A1/A2"),
+        ("ssrout", 9.0, 20.0, "1/2"),
+        ("fuseterm", 7.0, 20.0, "1/2"),
+        ("fusebank4", 50.0, 35.0, "L+/M/1/2/3/4"),
+        ("fusebank6", 70.0, 35.0, "L+/M/1/2/3/4/5/6"),
+        ("fusebank8", 90.0, 35.0, "L+/M/1/2/3/4/5/6/7/8"),
+        ("fusebank10", 110.0, 35.0, "L+/M/1/2/3/4/5/6/7/8/9/10"),
+        ("fusebank12", 130.0, 35.0, "L+/M/1/2/3/4/5/6/7/8/9/10/11/12"),
+    ];
+
+    #[test]
+    fn new_symbols_have_the_designed_box_and_labels() {
+        for (key, w, h, labels) in NEW {
+            let s = by_key(key).unwrap();
+            let (sw, sh) = s.size();
+            assert!((sw - w).abs() < 1e-6 && (sh - h).abs() < 1e-6, "{key}: box {sw}×{sh}, want {w}×{h}");
+            assert_eq!(s.labels().join("/"), *labels, "{key}");
+            assert_eq!(default_labels(key), s.labels());
+            assert_eq!(default_prefix(key), Some(s.prefix));
+        }
+        assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());
+    }
+
+    #[test]
+    fn changeover_labels_follow_the_sequence_digit() {
+        let set = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<BTreeSet<_>>();
+        assert_eq!(changeover_labels(&set(&["A1", "A2"]), "-K01").unwrap(), ["11", "12", "14"]);
+        assert_eq!(changeover_labels(&set(&["A1", "11", "12", "14", "23", "24"]), "-K01").unwrap(), ["31", "32", "34"]);
+        assert_eq!(changeover_labels(&set(&["91", "92"]), "-K01").unwrap_err(), "-K01 already has 9 contacts.");
+        // Labels that are not sequence labels do not count.
+        assert_eq!(changeover_labels(&set(&["15", "x1", "1"]), "-K01").unwrap(), ["11", "12", "14"]);
+    }
+
+    #[test]
+    fn quiet_points_table() {
+        assert_eq!(quiet_points("fusebank4"), ["M", "1", "2", "3", "4"]);
+        assert!(quiet_points("co").is_empty());
+        assert!(quiet_points("coil").is_empty());
+        assert!(quiet_points("nonsense").is_empty());
+    }
+
+    #[test]
+    fn every_tagged_starter_has_anchors() {
+        for s in STARTERS {
+            let a = anchors(s);
+            if s.kind == Kind::Tagless {
+                assert!(a.is_empty(), "{}", s.key);
+                continue;
+            }
+            assert!(a.iter().any(|x| x.role == TextRole::Tag), "{}", s.key);
+            assert!(a.iter().all(|x| x.at.is_finite()), "{}", s.key);
+        }
+        let coil = anchors(by_key("coil").unwrap());
+        assert_eq!(coil[0], Anchor { role: TextRole::Tag, at: p(-8.0, 0.0), h: HAlign::Right, v: VAlign::Middle, rotation: 0.0 });
+        let bank = anchors(by_key("fusebank4").unwrap());
+        let fuse3 = bank.iter().find(|x| x.role == TextRole::RatingOf("3".into())).unwrap();
+        assert_eq!((fuse3.at.x, fuse3.at.y, fuse3.rotation), (23.0, -8.0, 90.0));
+        assert_eq!(bank.iter().filter(|x| matches!(x.role, TextRole::RatingOf(_))).count(), 4);
+        // RCBO: rating under the tag, description under that.
+        let rcbo = anchors(by_key("rcbo2").unwrap());
+        let rating = rcbo.iter().find(|x| x.role == TextRole::Rating).unwrap();
+        let tag = rcbo.iter().find(|x| x.role == TextRole::Tag).unwrap();
+        assert!(rating.at.y < tag.at.y && rating.at.x == tag.at.x);
     }
 
     #[test]
     fn search_table() {
         let keys = |q: &str| search(q).into_iter().map(|s| s.key).collect::<Vec<_>>();
-        assert_eq!(keys("-Q"), ["mcb1", "mcb2"]);
-        assert_eq!(keys("q"), ["mcb1", "mcb2"]);
-        assert_eq!(keys("contact"), ["coil", "no", "nc", "power3"]);
-        assert_eq!(keys("fuse"), ["fuse"]);
+        assert_eq!(keys("-Q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
+        assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
+        assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
+        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
+        assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
         assert!(keys("xyz").is_empty());
-        assert_eq!(keys("").len(), 21);
+        assert!(keys("basic").is_empty());
+        assert_eq!(keys("").len(), STARTERS.len());
         assert!(keys(&"z".repeat(10_000)).is_empty());
     }
 }

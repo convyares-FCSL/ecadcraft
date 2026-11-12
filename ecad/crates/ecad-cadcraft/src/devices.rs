@@ -366,6 +366,8 @@ fn noun(s: &Starter) -> &'static str {
         "lamp" => "lamp",
         "motor3" | "motor1" => "motor",
         "trafo" => "transformer",
+        // Brief 034 (design 034 §7.1): the newer heads by their name (`a RCBO, 1P+N`).
+        _ if s.family != symbols::Family::Basic => s.name,
         _ => "main symbol",
     }
 }
@@ -424,6 +426,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
         }
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
+        // Brief 034: the label rule lives in the catalogue.
+        Kind::ChangeOver => symbols::changeover_labels(&used, &who),
         Kind::Fixed { exclusive } => {
             if exclusive {
                 let has = doc
