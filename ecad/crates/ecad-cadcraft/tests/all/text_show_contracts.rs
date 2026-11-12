@@ -271,3 +271,50 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     assert_eq!(keys.len(), 2, "{keys:?}");
     h.check();
 }
+
+/// AC 5 / T14, counted (the counter-test pattern): a commit works texts out again only for the
+/// page on screen (which the window redraws after every commit, whatever it changed), never for
+/// another page; `changes_since` names exactly the pages a text change can alter, so other pages
+/// redraw when shown and never at the commit.
+/// Commands run through the session directly, so the harness's own checks (which project every
+/// page again) are not counted. (Showing a page always projects it in the one page window, so
+/// switching is not what is counted.)
+#[test]
+fn text_views_are_worked_out_again_only_where_a_change_shows() {
+    let mut h = H::new(SEED);
+    let p1 = h.first_page();
+    let k = place(&mut h, "coil", [100.0, 200.0], None);
+    let k1: ComponentId = id(&k, "component");
+    let p2: PageId = id(&h.run("newpage", json!({"title": "P2"})).unwrap(), "page");
+    place(&mut h, "no", [100.0, 200.0], Some(k1));
+    let p3: PageId = id(&h.run("newpage", json!({"title": "P3"})).unwrap(), "page");
+    let k2: ComponentId = id(&place(&mut h, "coil", [100.0, 200.0], None), "component");
+    h.project.open_page(&mut h.s, p1).unwrap();
+    // Run `cmd`; the passes it caused per page, and the pages it names.
+    let counted = |h: &mut H, cmd: &str, params: Value| -> ([u64; 3], Option<std::collections::BTreeSet<PageId>>) {
+        let before = [p1, p2, p3].map(devices::text_passes);
+        let n = h.p(|p| p.change_count());
+        h.s.execute(cmd, &params).unwrap();
+        let after = [p1, p2, p3].map(devices::text_passes);
+        ([after[0] - before[0], after[1] - before[1], after[2] - before[2]], h.p(|p| p.changes_since(n)))
+    };
+    // -K01's tag (on pages 1 and 2), page 1 on screen: page 1 now, page 2 named, page 3 neither.
+    let (d, named) = counted(&mut h, "showtext", json!({"kind": "tag", "show": "off", "component": k1.hex()}));
+    assert!(d[0] >= 1 && d[1] == 0 && d[2] == 0, "{d:?}");
+    let named = named.expect("pages known");
+    assert!(named.contains(&p1) && named.contains(&p2) && !named.contains(&p3), "{named:?}");
+    // A key of page 3, page 1 on screen: page 3 not worked out now; only page 3 named.
+    let (d, named) = counted(&mut h, "showtext", json!({"kind": "tag", "show": "off", "page": p3.hex()}));
+    assert_eq!([d[1], d[2]], [0, 0], "{d:?}");
+    assert_eq!(named.expect("pages known").into_iter().collect::<Vec<_>>(), vec![p3]);
+    // A project key: the page on screen now, every page named.
+    let (d, named) = counted(&mut h, "textstyle", json!({"kind": "tag", "height": 3}));
+    assert!(d[0] >= 1 && d[1] == 0 && d[2] == 0, "{d:?}");
+    assert!(named.is_none_or(|s| [p1, p2, p3].iter().all(|p| s.contains(p))));
+    // An unrelated edit (-K02, on page 3), page 1 on screen: no other page's texts worked out;
+    // page 1 not named.
+    let (d, named) = counted(&mut h, "setprop", json!({"component": k2.hex(), "key": "maker", "value": "Acme"}));
+    assert_eq!([d[1], d[2]], [0, 0], "unrelated edit: {d:?}");
+    assert!(!named.expect("pages known").contains(&p1));
+    h.check();
+}

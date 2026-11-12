@@ -26,7 +26,10 @@ pub struct TextStyle {
     /// Height in drawing units (mm, or inches in an inch project); always finite and in range.
     pub height: f64,
     pub weight: Weight,
-    /// The CADCraft text style an entity of this kind names: [`STYLE_REGULAR`] or [`STYLE_BOLD`].
+    /// The CADCraft text style an entity of this kind names: [`STYLE_REGULAR`] or [`STYLE_BOLD`],
+    /// or, for a kind with a font of its own (`text.<kind>.font`), `ECAD-<KIND>` /
+    /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
+    /// for bold in the stroke-font fallback: use [`apply`].
     pub style_name: &'static str,
 }
 
@@ -275,6 +278,34 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
         None => weight.style_name(),
     };
     TextStyle { height, weight, style_name }
+}
+
+/// Style a text entity of `kind` as this project draws it (the one entry point for other lanes,
+/// design 031 §3.3): its height, its style name (the project font, or the kind's own font), and
+/// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
+/// styles: [`install`] (or [`install_look`]) writes them. A caller styling many entities holds a
+/// [`Look`] and calls [`Look::apply`] instead (one resolution per page, not per entity).
+pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
+    let s = text_style(doc, kind);
+    if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+        t.height = s.height;
+    }
+    let bold_lineweight = match kind_font(doc, kind) {
+        Some(f) => Fonts::for_family(doc, f.to_string()).bold_lineweight,
+        None => Fonts::resolve(doc).bold_lineweight,
+    };
+    style_entity(e, s, bold_lineweight);
+}
+
+/// Set `s`'s style name on a text entity, and the bold lineweight when bold is drawn in the
+/// stroke font.
+fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_lineweight: Option<u16>) {
+    if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+        t.style = s.style_name.to_string();
+    }
+    if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {
+        e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
+    }
 }
 
 /// The CADCraft text styles of kinds with a font of their own: `ECAD-TAG`, `ECAD-TAG-BOLD`…, in
@@ -577,28 +608,28 @@ impl Look {
         self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: STYLE_REGULAR })
     }
 
-    /// Give a text entity `kind`'s style name, and, for bold in the stroke font, its lineweight
-    /// (§2.2). Its height is left as it is.
+    /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
+    /// in the stroke font, its lineweight (§2.2), as [`apply`] does from a page's resolved look.
+    /// Its height is left as it is (derived texts set their own).
     pub fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
-        let s = self.style(kind);
-        if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
-            t.style = s.style_name.to_string();
-        }
-        if let (Weight::Bold, Some(lw)) = (s.weight, self.fonts_for(kind).bold_lineweight) {
-            e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
-        }
+        style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
     }
 }
 
 /// The width of `value` at `kind`'s height in the font it is drawn with (§2.4), falling back to
 /// the stroke font's width; a non-finite or negative result counts as `chars × height × 0.8`.
+/// Resolves only `kind`'s style and font. A caller measuring many texts holds a [`Look`] and calls
+/// [`width_in`] with [`Look::style`] and [`Look::fonts_for`] instead.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
     let s = text_style(doc, kind);
-    let look = Look::new(doc);
-    width_in(look.fonts_for(kind), s, value)
+    let fonts = match kind_font(doc, kind) {
+        Some(f) => Fonts::for_family(doc, f.to_string()),
+        None => Fonts::resolve(doc),
+    };
+    width_in(&fonts, s, value)
 }
 
-/// [`text_width`] with the style and fonts already resolved.
+/// [`text_width`] with the style and fonts already resolved (from a [`Look`] the caller holds).
 pub fn width_in(fonts: &Fonts, s: TextStyle, value: &str) -> f64 {
     let name = match s.weight {
         Weight::Bold => &fonts.bold,

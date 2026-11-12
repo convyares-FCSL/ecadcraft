@@ -950,6 +950,17 @@ pub struct PageText {
     pub overlaps: bool,
 }
 
+thread_local! {
+    /// How many times [`all_texts_on_page`] ran per page on this thread: the update-map tests
+    /// count it (a change elsewhere must not work a page's texts out again).
+    static TEXT_PASSES: std::cell::RefCell<BTreeMap<PageId, u64>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+/// How many times this thread has worked out `page`'s derived texts (see `TEXT_PASSES`).
+pub fn text_passes(page: PageId) -> u64 {
+    TEXT_PASSES.with(|c| c.borrow().get(&page).copied().unwrap_or(0))
+}
+
 /// The run rule of a symbol (design 031 §5.3), from its starter kind.
 pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRule {
     use crate::text_style::RunRule;
@@ -967,6 +978,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
+    TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {

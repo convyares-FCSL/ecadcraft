@@ -129,3 +129,90 @@ fn hostile_stored_places_draw_the_automatic_place() {
         assert_eq!((row["moved"].as_bool(), &row["at"]), (Some(false), &auto["at"]), "{bad:.20}");
     }
 }
+
+/// AC 3 / T10: a tag (moved or automatic) stays upright when its symbol rotates 90°, and a moved
+/// tag keeps its place relative to the symbol.
+#[test]
+fn a_tag_stays_upright_when_its_symbol_rotates() {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    let (_, r) = place(&mut h, "no", [100.0, 150.0]);
+    let (_, auto) = place(&mut h, "no", [160.0, 150.0]);
+    h.run("movetext", json!({"representation": r.hex(), "kind": "tag", "to": [90, 160], "justify": "RT"})).unwrap();
+    for rep in [r, auto] {
+        let item = h.doc().representations[&rep].items[0];
+        let hd = h.handle_of(page, item);
+        let origin = match &h.doc().items[&item].kind {
+            ecad_model::ItemKind::Symbol(s) => s.placement.origin,
+            _ => unreachable!(),
+        };
+        h.run("rotate", json!({"handles": [hd.hex()], "base": [origin.x, origin.y], "angle": 90})).unwrap();
+    }
+    let tags: Vec<(String, f64)> = h
+        .pv(|p, pg| pg.entities_of(p, page))
+        .iter()
+        .filter_map(|e| match &e.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_cadcraft::devices::TAG_LAYER && t.value.starts_with('-') => {
+                Some((t.value.clone(), t.rotation))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tags.len(), 2, "{tags:?}");
+    assert!(tags.iter().all(|(_, rot)| *rot == 0.0), "upright: {tags:?}");
+    // The moved tag turned with the symbol: (90, 160) is (-10, +10) from the origin (100, 150),
+    // so after 90° it is at (90, 140).
+    let row = tag_row(&mut h, page, r);
+    assert_eq!(row["moved"], json!(true));
+    let at = (row["at"][0].as_f64().unwrap(), row["at"][1].as_f64().unwrap());
+    assert!((at.0 - 90.0).abs() < 1e-6 && (at.1 - 140.0).abs() < 1e-6, "{row}");
+    h.check();
+}
+
+/// AC 3 / T10: a moved tag survives save and reopen.
+#[test]
+fn a_moved_tag_survives_save_and_reopen() {
+    let dir = std::env::temp_dir().join(format!("ecad-031-moved-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut h = H::new(SEED);
+    h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
+    let page = h.first_page();
+    let (_, r) = place(&mut h, "no", [100.0, 150.0]);
+    h.run("movetext", json!({"representation": r.hex(), "kind": "tag", "to": [130, 170], "justify": "LT"})).unwrap();
+    let before = tag_row(&mut h, page, r);
+    let path = dir.join("moved").display().to_string();
+    h.run("saveas", json!({"path": path})).unwrap();
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = cadcraft_engine::Session::empty();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &format!("{path}.ecad"), 0x31_06).unwrap();
+    let mut h = H { s, project, trail: Vec::new() };
+    let after = tag_row(&mut h, page, r);
+    assert_eq!((after["moved"].clone(), after["at"].clone(), after["justify"].clone()), (json!(true), before["at"].clone(), json!("LT")));
+    drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The entry point for other lanes: `text_style::apply` gives an entity its kind's height, style
+/// name (with a kind's own font) and, for bold in the stroke font, the bold lineweight.
+#[test]
+fn apply_styles_an_entity_like_the_page_does() {
+    use cadcraft_engine::doc::{Entity, EntityKind, HAlign, Handle, Lineweight, VAlign};
+    use ecad_cadcraft::text_style::{self, TextKind};
+    let mut doc = ecad_model::Document::default();
+    let mut e: Entity = ecad_cadcraft::devices::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
+    text_style::apply(&doc, &mut e, TextKind::Tag);
+    let EntityKind::Text(t) = &e.kind else { unreachable!() };
+    assert_eq!((t.height, t.style.as_str()), (2.5, "ECAD-BOLD"));
+    let stroke = text_style::Fonts::resolve(&doc).bold_lineweight;
+    assert_eq!(e.common.lineweight, stroke.map_or(Lineweight::ByLayer, Lineweight::Mm100));
+    doc.properties.insert("text.grid.font".into(), "Kind Font 031".into());
+    text_style::apply(&doc, &mut e, TextKind::Grid);
+    let EntityKind::Text(t) = &e.kind else { unreachable!() };
+    assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));
+    // text_width measures one kind, the same as from a held Look.
+    let look = text_style::Look::new(&doc);
+    let w = text_style::width_in(look.fonts_for(TextKind::Grid), look.style(TextKind::Grid), "ABC");
+    assert_eq!(text_style::text_width(&doc, TextKind::Grid, "ABC"), w);
+}
