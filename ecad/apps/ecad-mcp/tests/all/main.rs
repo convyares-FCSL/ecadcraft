@@ -16,4 +16,5 @@ mod release_contracts;
 mod review_026_merge;
 mod tester_024_mcp;
 mod tester_026_mcp;
+mod tester_027_mcp;
 mod xref_contracts;
