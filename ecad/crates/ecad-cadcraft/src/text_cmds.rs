@@ -99,6 +99,8 @@ fn number_text(x: f64) -> String {
 /// One kind's changes in a `textstyle` call.
 struct KindChange {
     kind: TextKind,
+    /// The kind's own font (owner, 2026-11-12); `null` goes back to the project font.
+    font: Field<String>,
     height: Field<f64>,
     weight: Field<String>,
     show: Field<String>,
@@ -121,13 +123,20 @@ fn kind_change(params: &Value) -> Result<Option<KindChange>, String> {
     let Some(kind) = kind else {
         return if changes { Err(NEEDS_KIND.into()) } else { Ok(None) };
     };
+    // With a kind, `font` is that kind's own font.
+    let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT)?;
+    if let Field::Set(f) = &font
+        && kind.font_entry().parse(f).is_none()
+    {
+        return Err(BAD_FONT.into());
+    }
     if let Field::Set(w) = &show {
         let entry = kind.show_entry().ok_or_else(|| format!("{} has no Shown setting.", kind.word()))?;
         if entry.parse(w).is_none() {
             return Err(BAD_SHOW.into());
         }
     }
-    Ok(Some(KindChange { kind, height, weight, show }))
+    Ok(Some(KindChange { kind, font, height, weight, show }))
 }
 
 /// The ops of one kind's changes.
@@ -153,6 +162,11 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>) {
             set_project(doc, k.height_entry().key, h.map(number_text), ops);
         }
     }
+    match &c.font {
+        Field::Absent => {}
+        Field::Clear => set_project(doc, k.font_entry().key, None, ops),
+        Field::Set(f) => set_project(doc, k.font_entry().key, Some(f.clone()), ops),
+    }
     match &c.weight {
         Field::Absent => {}
         Field::Clear => set_project(doc, k.weight_entry().key, None, ops),
@@ -177,7 +191,12 @@ fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     if !given {
         return with_any_page(s, |p, _| Ok(textstyle_json(p.ledger.document(), false)));
     }
-    let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT).map_err(err)?;
+    // The project font: `font` with no `kind` (with a kind it is that kind's font).
+    let font = if params.get("kind").is_some_and(|k| !k.is_null()) {
+        Field::Absent
+    } else {
+        field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT).map_err(err)?
+    };
     if let Field::Set(f) = &font
         && defaults::text::FONT.parse(f).is_none()
     {
@@ -243,6 +262,7 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
                 "kind": k.word(),
                 "height": h.number(),
                 "weight": w.word(),
+                "font": crate::text_style::kind_font(doc, *k),
                 "show": sh.map(|r| r.word()),
                 "default": default,
                 "builtin": {
@@ -549,7 +569,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
             let d = &t.text;
             let kind = crate::devices::kind_of(d.of);
             let style = look.style(kind);
-            let w = width_in(&look.fonts, TextStyle { height: d.height, ..style }, &d.value);
+            let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
             let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
                 ecad_model::Subject::Component(c) => Some(c.hex()),

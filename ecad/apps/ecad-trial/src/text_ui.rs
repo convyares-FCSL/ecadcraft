@@ -17,6 +17,9 @@ pub const BAD_HEIGHT: &str = ecad_cadcraft::text_cmds::BAD_HEIGHT;
 pub struct Row {
     pub kind: &'static str,
     pub label: &'static str,
+    /// The kind's own font; empty: the project font (owner, 2026-11-12).
+    pub font: String,
+    font_orig: String,
     pub height: String,
     height_orig: String,
     builtin_height: String,
@@ -104,9 +107,12 @@ impl TextSection {
             let builtin = &k["builtin"];
             // Lane W's wire labels and lane P's kinds keep their visibility rules (design 031 §4.1).
             let show_fixed = kind == TextKind::WireLabel || show.is_none();
+            let font = k.get("font").and_then(Value::as_str).unwrap_or_default().to_string();
             rows.push(Row {
                 kind: kind.word(),
                 label: label_of(kind),
+                font_orig: font.clone(),
+                font,
                 height: number(&k["height"]),
                 height_orig: number(&k["height"]),
                 builtin_height: number(&builtin["height"]),
@@ -141,6 +147,9 @@ impl TextSection {
         if self.rows.iter().any(|r| valid_height(&r.height).is_none()) {
             return Some(BAD_HEIGHT);
         }
+        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_cadcraft::defaults::text::FONT.parse(&r.font).is_none()) {
+            return Some(ecad_cadcraft::text_cmds::BAD_FONT);
+        }
         if ecad_cadcraft::defaults::text::FONT.parse(&self.font).is_none() {
             return Some(ecad_cadcraft::text_cmds::BAD_FONT);
         }
@@ -152,6 +161,7 @@ impl TextSection {
         for r in &mut self.rows {
             r.height.clone_from(&r.builtin_height);
             r.bold = r.builtin_bold;
+            r.font.clear();
             if !r.show_fixed {
                 r.show.clone_from(&r.builtin_show);
             }
@@ -171,6 +181,9 @@ impl TextSection {
         let mut kinds = Vec::new();
         for r in &self.rows {
             let mut k = Map::new();
+            if r.font.trim() != r.font_orig {
+                k.insert("font".into(), if r.font.trim().is_empty() { Value::Null } else { json!(r.font.trim()) });
+            }
             if r.height.trim() != r.height_orig {
                 let h = valid_height(&r.height).ok_or(BAD_HEIGHT)?;
                 k.insert("height".into(), if r.height.trim() == r.builtin_height { Value::Null } else { json!(h) });
@@ -228,14 +241,17 @@ impl TextSection {
         let status = RichText::new(&self.status).small();
         ui.label(if self.warn { status.color(warn) } else { status }).on_hover_text("ecad.projectsettings.text.font.status");
         ui.add_enabled_ui(!read_only, |ui| {
-            egui::Grid::new(SECTION_ID).num_columns(4).show(ui, |ui| {
+            egui::Grid::new(SECTION_ID).num_columns(5).show(ui, |ui| {
                 ui.label(RichText::new("Kind").small());
+                ui.label(RichText::new("Font").small());
                 ui.label(RichText::new("Height").small());
                 ui.label(RichText::new("Bold").small());
                 ui.label(RichText::new("Shown").small());
                 ui.end_row();
                 for r in &mut self.rows {
                     ui.label(r.label);
+                    ui.add(egui::TextEdit::singleline(&mut r.font).hint_text("project font").desired_width(110.0))
+                        .accessible_name(format!("ecad.projectsettings.text.{}.font", r.kind));
                     ui.add(egui::TextEdit::singleline(&mut r.height).desired_width(36.0))
                         .accessible_name(format!("ecad.projectsettings.text.{}.height", r.kind));
                     ui.checkbox(&mut r.bold, "").accessible_name(format!("ecad.projectsettings.text.{}.bold", r.kind));
@@ -290,6 +306,11 @@ mod tests {
         let line = t.line().unwrap().unwrap();
         let v: Value = serde_json::from_str(line.strip_prefix("textstyle ").unwrap()).unwrap();
         assert_eq!(v, json!({"kinds": [{"kind": "tag", "height": 3.0, "weight": "regular"}, {"kind": "point_label", "show": "off"}]}));
+        // A kind's own font, then back to the project font.
+        let tag = t.rows.iter_mut().find(|r| r.kind == "tag").unwrap();
+        tag.font = "Arial".into();
+        let v: Value = serde_json::from_str(t.line().unwrap().unwrap().strip_prefix("textstyle ").unwrap()).unwrap();
+        assert_eq!(v["kinds"][0]["font"], json!("Arial"), "{v}");
         // Defaults puts every field back: nothing to write.
         t.reset();
         assert_eq!(t.line(), Ok(None));

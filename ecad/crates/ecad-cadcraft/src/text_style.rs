@@ -200,6 +200,32 @@ impl TextKind {
         }
     }
 
+    /// The registry entry of this kind's own font (owner, 2026-11-12).
+    pub fn font_entry(self) -> &'static Entry {
+        match self {
+            TextKind::Tag => &d::TAG_FONT,
+            TextKind::PointLabel => &d::POINT_LABEL_FONT,
+            TextKind::Description => &d::DESCRIPTION_FONT,
+            TextKind::PartNumber => &d::PART_NUMBER_FONT,
+            TextKind::ContinuationName => &d::CONTINUATION_NAME_FONT,
+            TextKind::Reference => &d::REFERENCE_FONT,
+            TextKind::WireLabel => &d::WIRE_LABEL_FONT,
+            TextKind::CableText => &d::CABLE_TEXT_FONT,
+            TextKind::LocationLabel => &d::LOCATION_FONT,
+            TextKind::TitleValue => &d::TITLE_VALUE_FONT,
+            TextKind::TitleCaption => &d::TITLE_CAPTION_FONT,
+            TextKind::TitleMain => &d::TITLE_MAIN_FONT,
+            TextKind::Grid => &d::GRID_FONT,
+            TextKind::Table => &d::TABLE_FONT,
+            TextKind::TableHeader => &d::TABLE_HEADER_FONT,
+            TextKind::Free => &d::FREE_FONT,
+            TextKind::TitlePage => &d::TITLE_PAGE_FONT,
+            TextKind::TitleRev => &d::TITLE_REV_FONT,
+            TextKind::TableHeading => &d::TABLE_HEADING_FONT,
+            TextKind::Cover => &d::COVER_FONT,
+        }
+    }
+
     /// The registry entry of this kind's visibility, for the kinds that have one (design 031
     /// §5.1); `None` for kinds that are always shown.
     pub fn show_entry(self) -> Option<&'static Entry> {
@@ -244,7 +270,58 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
         "bold" => Weight::Bold,
         _ => Weight::Regular,
     };
-    TextStyle { height, weight, style_name: weight.style_name() }
+    let style_name = match kind_font(doc, kind) {
+        Some(_) => kind_style_name(kind, weight),
+        None => weight.style_name(),
+    };
+    TextStyle { height, weight, style_name }
+}
+
+/// The CADCraft text styles of kinds with a font of their own: `ECAD-TAG`, `ECAD-TAG-BOLD`…, in
+/// the order of [`TextKind::ALL`].
+const KIND_STYLES: [(&str, &str); TextKind::ALL.len()] = [
+    ("ECAD-TAG", "ECAD-TAG-BOLD"),
+    ("ECAD-POINT-LABEL", "ECAD-POINT-LABEL-BOLD"),
+    ("ECAD-DESCRIPTION", "ECAD-DESCRIPTION-BOLD"),
+    ("ECAD-PART-NUMBER", "ECAD-PART-NUMBER-BOLD"),
+    ("ECAD-CONTINUATION-NAME", "ECAD-CONTINUATION-NAME-BOLD"),
+    ("ECAD-REFERENCE", "ECAD-REFERENCE-BOLD"),
+    ("ECAD-WIRE-LABEL", "ECAD-WIRE-LABEL-BOLD"),
+    ("ECAD-CABLE-TEXT", "ECAD-CABLE-TEXT-BOLD"),
+    ("ECAD-LOCATION", "ECAD-LOCATION-BOLD"),
+    ("ECAD-TITLE-VALUE", "ECAD-TITLE-VALUE-BOLD"),
+    ("ECAD-TITLE-CAPTION", "ECAD-TITLE-CAPTION-BOLD"),
+    ("ECAD-TITLE-MAIN", "ECAD-TITLE-MAIN-BOLD"),
+    ("ECAD-GRID", "ECAD-GRID-BOLD"),
+    ("ECAD-TABLE", "ECAD-TABLE-BOLD"),
+    ("ECAD-TABLE-HEADER", "ECAD-TABLE-HEADER-BOLD"),
+    ("ECAD-FREE", "ECAD-FREE-BOLD"),
+    ("ECAD-TITLE-PAGE", "ECAD-TITLE-PAGE-BOLD"),
+    ("ECAD-TITLE-REV", "ECAD-TITLE-REV-BOLD"),
+    ("ECAD-TABLE-HEADING", "ECAD-TABLE-HEADING-BOLD"),
+    ("ECAD-COVER", "ECAD-COVER-BOLD"),
+];
+
+/// The style a kind with its own font names, for `weight`.
+pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
+    let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    let (regular, bold) = KIND_STYLES.get(i).copied().unwrap_or((STYLE_REGULAR, STYLE_BOLD));
+    match weight {
+        Weight::Regular => regular,
+        Weight::Bold => bold,
+    }
+}
+
+/// A kind's own font family (`text.<kind>.font`), when the project sets one that differs from the
+/// project font; `None` when the kind uses the project font.
+pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
+    let r = defaults::resolve(doc, kind.font_entry(), Scope::project());
+    let defaults::Value::Text(f) = r.value else { return None };
+    let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
+        defaults::Value::Text(t) => t,
+        _ => default_family(),
+    };
+    (r.from != defaults::Source::Builtin && !f.eq_ignore_ascii_case(project)).then_some(f)
 }
 
 /// Whether a text is shown (design 031 §5.2).
@@ -383,6 +460,11 @@ impl Fonts {
             defaults::Value::Text(t) => t.to_string(),
             _ => default_family().to_string(),
         };
+        Fonts::for_family(doc, wanted)
+    }
+
+    /// Resolve the family `wanted` on this machine, with the fallbacks of §2.2.
+    pub fn for_family(doc: &Document, wanted: String) -> Fonts {
         let found = |name: &str| cadcraft_engine::fonts::ttf::find(name).is_some();
         let family = if found(&wanted) {
             Some(wanted.clone())
@@ -424,28 +506,43 @@ impl Fonts {
     }
 }
 
-/// Write ECAD's two text styles into `d` (design 031 §2.3): `Standard` (the project family,
-/// regular) and `ECAD-BOLD` (bold, or as §2.2). Any drawing ECAD builds calls it; a drawing that
-/// already has the same styles is unchanged.
+/// Write ECAD's text styles into `d` (design 031 §2.3): `Standard` (the project family, regular)
+/// and `ECAD-BOLD` (bold, or as §2.2), and the two styles of every kind with a font of its own
+/// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
+/// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
-    install_fonts(d, &Fonts::resolve(doc));
+    install_look(d, &Look::new(doc));
 }
 
-/// [`install`] with fonts already resolved.
-pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
-    for (name, font) in [(STYLE_REGULAR, &fonts.regular), (STYLE_BOLD, &fonts.bold)] {
-        match d.text_styles.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
-            Some(s) => {
-                if s.font != *font {
-                    s.font.clone_from(font);
-                }
-            }
-            None => d.text_styles.push(cadcraft_engine::doc::TextStyle {
-                name: name.to_string(),
-                font: font.clone(),
-                ..cadcraft_engine::doc::TextStyle::default()
-            }),
+/// [`install`] with the look already resolved.
+pub fn install_look(d: &mut cadcraft_engine::doc::Drawing, look: &Look) {
+    install_fonts(d, &look.fonts);
+    for (kind, fonts) in TextKind::ALL.iter().zip(look.kind_fonts.iter()) {
+        if let Some(f) = fonts {
+            put_style(d, kind_style_name(*kind, Weight::Regular), &f.regular);
+            put_style(d, kind_style_name(*kind, Weight::Bold), &f.bold);
         }
+    }
+}
+
+/// Write `Standard` and `ECAD-BOLD` with `fonts` into `d`.
+pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
+    put_style(d, STYLE_REGULAR, &fonts.regular);
+    put_style(d, STYLE_BOLD, &fonts.bold);
+}
+
+fn put_style(d: &mut cadcraft_engine::doc::Drawing, name: &str, font: &String) {
+    match d.text_styles.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
+        Some(s) => {
+            if s.font != *font {
+                s.font.clone_from(font);
+            }
+        }
+        None => d.text_styles.push(cadcraft_engine::doc::TextStyle {
+            name: name.to_string(),
+            font: font.clone(),
+            ..cadcraft_engine::doc::TextStyle::default()
+        }),
     }
 }
 
@@ -454,12 +551,24 @@ pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
 pub struct Look {
     styles: [TextStyle; TextKind::ALL.len()],
     pub fonts: Fonts,
+    /// The fonts of kinds with a font of their own, in the order of [`TextKind::ALL`].
+    pub kind_fonts: [Option<Fonts>; TextKind::ALL.len()],
 }
 
 impl Look {
     /// Resolve every kind's style and the fonts of `doc`.
     pub fn new(doc: &Document) -> Look {
-        Look { styles: TextKind::ALL.map(|k| text_style(doc, k)), fonts: Fonts::resolve(doc) }
+        Look {
+            styles: TextKind::ALL.map(|k| text_style(doc, k)),
+            fonts: Fonts::resolve(doc),
+            kind_fonts: TextKind::ALL.map(|k| kind_font(doc, k).map(|f| Fonts::for_family(doc, f.to_string()))),
+        }
+    }
+
+    /// The fonts `kind` is drawn with: its own, else the project's.
+    pub fn fonts_for(&self, kind: TextKind) -> &Fonts {
+        let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+        self.kind_fonts.get(i).and_then(Option::as_ref).unwrap_or(&self.fonts)
     }
 
     /// The style of `kind`.
@@ -475,7 +584,7 @@ impl Look {
         if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
             t.style = s.style_name.to_string();
         }
-        if let (Weight::Bold, Some(lw)) = (s.weight, self.fonts.bold_lineweight) {
+        if let (Weight::Bold, Some(lw)) = (s.weight, self.fonts_for(kind).bold_lineweight) {
             e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
         }
     }
@@ -485,8 +594,8 @@ impl Look {
 /// the stroke font's width; a non-finite or negative result counts as `chars × height × 0.8`.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
     let s = text_style(doc, kind);
-    let fonts = Fonts::resolve(doc);
-    width_in(&fonts, s, value)
+    let look = Look::new(doc);
+    width_in(look.fonts_for(kind), s, value)
 }
 
 /// [`text_width`] with the style and fonts already resolved.

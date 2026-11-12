@@ -967,7 +967,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
-    use crate::text_style::{Block, Fonts, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
+    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
         if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
@@ -976,7 +976,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
-    let fonts = Fonts::resolve(doc);
+    let look = crate::text_style::Look::new(doc);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
     let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
@@ -1030,7 +1030,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
                 (at, halign, valign, moved) = (p, h, v, true);
             }
             if labels_shown {
-                let w = width_in(&fonts, crate::text_style::TextStyle { height, ..label_style }, &value);
+                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value);
                 fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
@@ -1065,7 +1065,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| width_in(&fonts, crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
+            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);

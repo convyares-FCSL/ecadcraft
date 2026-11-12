@@ -938,7 +938,7 @@ pub fn project_page_shown(
     // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
     // project's text styles (brief 031).
     let look = crate::text_style::Look::new(doc);
-    crate::text_style::install_fonts(&mut d, &look.fonts);
+    crate::text_style::install_look(&mut d, &look);
     if hidden_text {
         crate::text_style::add_hidden_layer(&mut d);
     }
