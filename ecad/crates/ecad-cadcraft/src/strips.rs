@@ -618,6 +618,12 @@ impl StripData {
         (self.drawn - self.drawn_pe + self.spare - self.spare_pe, self.drawn_pe + self.spare_pe)
     }
 
+    /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` warnings).
+    pub fn check_rows(&self) -> (usize, usize) {
+        let over = self.offer.is_some_and(|o| self.drawn > o.positions as usize);
+        (self.twice.len(), usize::from(over))
+    }
+
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
     pub fn highest(&self) -> Option<&TermRow> {
         self.rows.iter().rev().find(|r| !r.spare())
@@ -643,6 +649,10 @@ pub struct Strips {
     /// location.
     pub sheets_total: usize,
     pub bom_rows: BTreeMap<Option<String>, usize>,
+    /// Kept Checks rows of the strips (brief 027's badge): `terminal-twice` errors and
+    /// `too-many-terminals` warnings.
+    pub check_errors: usize,
+    pub check_warnings: usize,
     /// Bumped by an update that changed a strip, and the value at each strip's last change: what
     /// a copy of the plan (Reports ▸ Terminals) is keyed on (review of PR #55, finding 2).
     pub revision: u64,
@@ -739,6 +749,9 @@ impl Strips {
     fn remove(&mut self, c: ComponentId) {
         let Some(old) = self.strips.remove(&c) else { return };
         self.sheets_total = self.sheets_total.saturating_sub(old.sheets);
+        let (er, wa) = old.check_rows();
+        self.check_errors = self.check_errors.saturating_sub(er);
+        self.check_warnings = self.check_warnings.saturating_sub(wa);
         if let Some(n) = self.bom_rows.get_mut(&old.location) {
             *n = n.saturating_sub(old.bom_rows);
             if *n == 0 {
@@ -762,6 +775,9 @@ impl Strips {
         add_to(&mut self.by_page, &d.pages, c);
         add_to(&mut self.by_cable, &d.cables, c);
         self.sheets_total += d.sheets;
+        let (er, wa) = d.check_rows();
+        self.check_errors += er;
+        self.check_warnings += wa;
         if d.bom_rows > 0 {
             *self.bom_rows.entry(d.location.clone()).or_default() += d.bom_rows;
         }
@@ -784,6 +800,8 @@ impl Strips {
             && self.by_page == other.by_page
             && self.by_cable == other.by_cable
             && self.sheets_total == other.sheets_total
+            && self.check_errors == other.check_errors
+            && self.check_warnings == other.check_warnings
             && self.bom_rows == other.bom_rows
     }
 

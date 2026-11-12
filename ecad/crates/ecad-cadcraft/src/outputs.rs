@@ -481,6 +481,15 @@ pub struct Outputs {
     pub build_id: u64,
     /// How many sorted row lists were made (tests: an unrelated edit makes none).
     pub sorts: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Devices whose own location differs from their box's (one warning row each), and the
+    /// location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
+    own_box: usize,
+    box_counts: [usize; 2],
+    /// Bumped only when the check rows may read differently (brief 027's Release dialog).
+    pub checks_changed: u64,
+    /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
+    /// cables with no core count (one info row when any).
+    cable_checks: [usize; 3],
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -646,6 +655,10 @@ impl Outputs {
             let cx = cx.get_or_insert_with(|| PageCx::of(doc));
             strips.recompute(doc, &which, self, cx);
         }
+        // Brief 028's strip Checks rows read from the strips just recomputed (brief 027's key).
+        if !strips.last_changed.is_empty() {
+            self.checks_changed += 1;
+        }
         self.strips = strips;
         self.last_work = work;
         self.revision += 1;
@@ -699,6 +712,10 @@ impl Outputs {
         }
         self.no_part_number -= usize::from(old.part_number.is_none());
         self.no_location -= usize::from(old.location.value.is_none());
+        self.own_box -= usize::from(old.own_box.is_some());
+        if old.own_box.is_some() {
+            self.checks_changed += 1;
+        }
     }
 
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
@@ -745,6 +762,10 @@ impl Outputs {
         }
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
+        self.own_box += usize::from(row.own_box.is_some());
+        if row.own_box.is_some() {
+            self.checks_changed += 1;
+        }
         self.devices.insert(c, row);
     }
 
@@ -867,6 +888,19 @@ impl Outputs {
         self.set_cable_row(doc, k);
         if self.cables.get(&k) != before.as_ref() {
             self.last_cables_changed = true;
+            let rows = |r: Option<&CableRow>| -> [usize; 3] {
+                r.map_or([0, 0, 0], |r| {
+                    let known = r.count.offer.is_some();
+                    [usize::from(known && !r.count.over.is_empty()), r.count.twice.len(), usize::from(!known)]
+                })
+            };
+            let (old, new) = (rows(before.as_ref()), rows(self.cables.get(&k)));
+            for ((n, o), a) in self.cable_checks.iter_mut().zip(old).zip(new) {
+                *n = n.saturating_sub(o) + a;
+            }
+            if old != new {
+                self.checks_changed += 1;
+            }
         }
     }
 
@@ -981,6 +1015,22 @@ impl Outputs {
                 }
             }
         }
+        let old = self.box_checks.get(&page);
+        if old.map_or(out.is_empty(), |o| *o == out) {
+            return;
+        }
+        let tally = |v: &[Check]| {
+            let w = v.iter().filter(|c| c.severity() == crate::checks::Severity::Warning).count();
+            [w, v.len() - w]
+        };
+        let before = old.map_or([0, 0], |o| tally(o));
+        let now = tally(&out);
+        for i in 0..2 {
+            if let (Some(n), Some(b), Some(a)) = (self.box_counts.get_mut(i), before.get(i), now.get(i)) {
+                *n = n.saturating_sub(*b) + a;
+            }
+        }
+        self.checks_changed += 1;
         if out.is_empty() {
             self.box_checks.remove(&page);
         } else {
@@ -1096,6 +1146,23 @@ impl Outputs {
             which: format!("{tag}: core {core} is used by two wires"),
             fix: w.map(Fix::NextFreeCore),
         }
+    }
+
+    /// The check rows by severity: (errors, warnings, info), as [`Outputs::checks`] would give
+    /// them. O(1): kept by every change (brief 027's badge).
+    pub fn check_counts(&self) -> (usize, usize, usize) {
+        let info = self.box_counts[1]
+            + usize::from(self.no_part_number > 0)
+            + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
+            + usize::from(self.cable_checks[2] > 0);
+        // Brief 028: the strips' and cables' rows, kept with them.
+        let warnings = self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1];
+        (self.strips.check_errors, warnings, info)
+    }
+
+    /// What the check rows depend on besides [`Outputs::checks_changed`]: the two count rows.
+    pub fn checks_key(&self) -> (u64, usize, usize, usize) {
+        (self.checks_changed, self.no_part_number, self.no_location, self.devices.len())
     }
 
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
@@ -1397,6 +1464,83 @@ impl Outputs {
             }
         }
         (t, go)
+    }
+
+    /// The terminal plan as the release writes it (027's `terminal-plan` slot): one line per
+    /// position and conductor of every strip in tag order, columns named by `stripplan`'s keys
+    /// (design 028 §10); an absent value is an empty cell.
+    pub fn terminal_plan_csv(&self) -> Table {
+        let style = self.style;
+        let mut t = Table {
+            headers: vec![
+                "tag",
+                "location",
+                "offered",
+                "label",
+                "type",
+                "state",
+                "inside_target",
+                "inside_wire",
+                "bridge_group",
+                "outside_wire",
+                "cable",
+                "core",
+                "outside_target",
+                "place",
+            ],
+            rows: Vec::new(),
+        };
+        let opt = |v: Option<&String>| Cell::ok(v.cloned().unwrap_or_default());
+        for s in self.strips.sorted() {
+            for r in &s.rows {
+                let lines = r.inside.len().max(r.outside.len()).max(1);
+                for i in 0..lines {
+                    let (inside, outside) = (r.inside.get(i), r.outside.get(i));
+                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    t.rows.push(vec![
+                        Cell::ok(s.tag.clone()),
+                        opt(s.location.as_ref()),
+                        Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default()),
+                        Cell::ok(label),
+                        Cell::ok(if r.pe { "pe" } else { "feed-through" }),
+                        Cell::ok(if r.spare() { "spare" } else { "drawn" }),
+                        opt(inside.and_then(|c| c.target.as_ref())),
+                        opt(inside.and_then(|c| c.wire.as_ref())),
+                        Cell::ok(r.bridge_group.filter(|_| i == 0).map(|g| g.to_string()).unwrap_or_default()),
+                        opt(outside.and_then(|c| c.wire.as_ref())),
+                        Cell::ok(outside.and_then(|c| c.cable.as_ref()).map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())).unwrap_or_default()),
+                        opt(outside.and_then(|c| c.core.as_ref())),
+                        opt(outside.and_then(|c| c.target.as_ref())),
+                        Cell::ok(if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() }),
+                    ]);
+                }
+            }
+        }
+        t
+    }
+
+    /// The cable schedule as the release writes it (027's `cable-schedule` slot): every cable in
+    /// tag order with its cores (`cablecores`' keys: `label`, `state`, `wire`, `from`, `to`), an
+    /// over core after the offered ones; an absent value is an empty cell.
+    pub fn cable_schedule_csv(&self) -> Table {
+        let mut t = Table { headers: vec!["cable", "type", "offer", "label", "state", "wire", "from", "to"], rows: Vec::new() };
+        for r in self.cables() {
+            let head = [
+                Cell::ok(r.tag.clone().unwrap_or_default()),
+                Cell::ok(r.kind.clone().unwrap_or_default()),
+                Cell::ok(r.count.offer_text.clone().unwrap_or_default()),
+            ];
+            for row in self.core_table(r.cable).rows {
+                let mut line = head.to_vec();
+                // core_table: Core, Wire number, From, To, State; a spare core has no From.
+                let get = |i: usize| row.get(i).map(|c| c.text.clone()).unwrap_or_default();
+                let state = get(4);
+                let from = if state == "spare" { String::new() } else { get(2) };
+                line.extend([Cell::ok(get(0)), Cell::ok(state), Cell::ok(get(1)), Cell::ok(from), Cell::ok(get(3))]);
+                t.rows.push(line);
+            }
+        }
+        t
     }
 
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores

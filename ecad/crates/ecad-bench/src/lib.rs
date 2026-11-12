@@ -19,18 +19,20 @@ pub mod generate;
 pub mod history;
 pub mod measure;
 pub mod outputs;
+pub mod release;
 pub mod report;
 pub mod strips;
 pub mod v2;
 
 use std::path::{Path, PathBuf};
 
-pub use generate::{Generated, TIERS, Tier, Variant, generate, tier};
+pub use generate::{Generated, PRINT_TIER, TIERS, Tier, Variant, generate, tier};
 
 /// What `cargo xtask bench` accepts.
-pub const USAGE: &str = "usage: cargo xtask bench [--tier small|medium|large|all|<list>] [--keep <folder>] \
+pub const USAGE: &str = "usage: cargo xtask bench [--tier small|medium|large|print|all|<list>] [--keep <folder>] \
                          [--compare <earlier.json>] [--runs N]\n  --tier     tiers to measure, comma-separated \
-                         (default small,medium)\n  --keep     write the generated projects to <folder> and keep \
+                         (default small,medium,print; print is the 25-page project Print Book and release are \
+                         timed on)\n  --keep     write the generated projects to <folder> and keep \
                          them\n  --compare  print the change per row against an earlier results file\n  --runs     \
                          runs per measurement, the median is reported (default 5)";
 
@@ -41,6 +43,8 @@ pub struct Options {
     pub keep: Option<PathBuf>,
     pub compare: Option<PathBuf>,
     pub runs: usize,
+    /// Measure Print Book and release on the 25-page project ([`PRINT_TIER`]).
+    pub print: bool,
 }
 
 /// Parse the command-line options.
@@ -48,8 +52,8 @@ pub struct Options {
 /// # Errors
 /// An unknown option or tier, a missing or bad value.
 pub fn parse(args: &[String]) -> Result<Options, String> {
-    let mut o = Options { tiers: Vec::new(), keep: None, compare: None, runs: measure::RUNS };
-    let mut tiers = "small,medium".to_string();
+    let mut o = Options { tiers: Vec::new(), keep: None, compare: None, runs: measure::RUNS, print: false };
+    let mut tiers = "small,medium,print".to_string();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut value = || it.next().cloned().ok_or_else(|| format!("{a} needs a value\n{USAGE}"));
@@ -73,14 +77,19 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     for name in tiers.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         if name == "all" {
             o.tiers = TIERS.to_vec();
+            o.print = true;
             break;
+        }
+        if name == PRINT_TIER.name {
+            o.print = true;
+            continue;
         }
         let t = tier(name).ok_or_else(|| format!("unknown tier {name}\n{USAGE}"))?;
         if !o.tiers.contains(&t) {
             o.tiers.push(t);
         }
     }
-    if o.tiers.is_empty() {
+    if o.tiers.is_empty() && !o.print {
         return Err(format!("no tier given\n{USAGE}"));
     }
     Ok(o)
@@ -140,6 +149,8 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         measure::release_lock_file(&v2_path);
         eprintln!("{} {}: measuring terminal strips and cable cores…", tier.name, variant.name());
         let strips = strips::measure(&v2_path, runs, scratch);
+        eprintln!("{} {}: measuring the pre-release check and the release…", tier.name, variant.name());
+        let rel = release::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
@@ -150,9 +161,29 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             history: Some(hist?),
             outputs: Some(outs?),
             strips: Some(strips?),
+            release: Some(rel?),
         });
     }
     Ok(rows)
+}
+
+/// Generate the 25-page project (lean), convert it, and time Print Book and release on it.
+///
+/// # Errors
+/// Generation, conversion or a measurement failed.
+pub fn measure_print(folder: &Path, scratch: &Path, runs: usize) -> Result<release::MeasuredPrint, String> {
+    eprintln!("{}: generating the 25-page project…", PRINT_TIER.name);
+    let g = generate(PRINT_TIER, Variant::Lean)?;
+    let path = folder.join(format!("{}-{}.ecad", PRINT_TIER.name, Variant::Lean.name()));
+    measure::claim(&path)?;
+    std::fs::write(&path, g.file_bytes()?).map_err(|e| format!("{}: {e}", path.display()))?;
+    let v2_path = path.with_file_name(format!("{}-{}.v2.ecad", PRINT_TIER.name, Variant::Lean.name()));
+    measure::claim(&v2_path)?;
+    v2::convert(&path, &v2_path)?;
+    eprintln!("{}: measuring Print Book and release ({runs} runs)…", PRINT_TIER.name);
+    let m = release::measure_print(&v2_path, runs, scratch);
+    measure::release_lock_file(&v2_path);
+    m
 }
 
 /// The whole benchmark: what `cargo xtask bench` runs.
@@ -187,18 +218,19 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
         for t in &o.tiers {
             rows.extend(run_tier(*t, &folder, &scratch, o.runs)?);
         }
-        Ok::<_, String>(rows)
+        let print = if o.print { Some(measure_print(&folder, &scratch, o.runs)?) } else { None };
+        Ok::<_, String>((rows, print))
     })();
     let _ = std::fs::remove_dir_all(&scratch);
-    let rows = result?;
-    println!("{}", report::table(&rows, o.runs));
+    let (rows, print) = result?;
+    println!("{}", report::table(&rows, o.runs, print.as_ref()));
     let commit = report::commit(&root);
     let (stem, when) = report::stem_and_time(&commit);
     let out_dir = root.join("target").join("bench");
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
     // Never overwrite an earlier run, which may be the one being compared with.
     let out = report::unused_path(&out_dir, &stem);
-    let value = report::json(&rows, o.runs, &commit, &when);
+    let value = report::json(&rows, o.runs, &commit, &when, print.as_ref());
     let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
     std::fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
     println!("Results written to {}", out.display());

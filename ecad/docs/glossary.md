@@ -58,6 +58,10 @@ are.
 | **title block** | The box along the bottom of the frame showing the project's and the page's facts and the revisions. Derived from the properties, never drawn by hand. |
 | **revision** | One step in the project's release history (`Rev A`, `B`…), with its date, description and who drew, checked and approved it. Users only ever see "revision", never "version". |
 | **issue** | Releasing a revision: its fields are fixed and the project as it is then can be reopened read-only (**Reopen**). Undoing an issue asks first. |
+| **release** | Issuing a revision and writing its outputs to one folder (brief 027). Also the folder itself. |
+| **release folder** | `release/Rev B/` beside the project file (by default): the PDF book, the CSV lists, the check rows accepted at release and `release.json`, all stamped `Rev B`. Outside the project file. |
+| **pre-release check** | The Checks of the state about to be issued, grouped for a release and shown before anything is written. |
+| **release gap** | A warning a release lists but does not stop for: open ends, orphan reference ends, provisional tags and wire numbers, `?` parts. |
 | **preview** | A read-only view of another page, for checking a reference's other end. |
 | **generated page** | A page whose content ECAD draws from the project (cover, contents, revision list, BOM by location). It has a number, title and folder like any page; nothing on it is stored (brief 024). |
 | **sheet** (of a page) | One printed A3 (or other) sheet. A generated page whose table does not fit continues on more sheets of the same page; Total counts sheets. |

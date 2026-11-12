@@ -781,6 +781,52 @@ pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
     }
 }
 
+/// The step that issued revision `name`, whose `NameVersion` names step `at` of `branch`: the
+/// issue transaction itself (`at + 1`, the step after the point it names, design 027 §0), when
+/// that step does issue it.
+pub fn issue_seq(p: &Project, branch: BranchId, at: u64, name: &str) -> Option<u64> {
+    let seq = at.checked_add(1)?;
+    let t = tx_at(p, branch, seq)?;
+    let (rev, _) = revisions::issue_in(&t.ops)?;
+    (revisions::version_name(&rev) == name).then_some(seq)
+}
+
+/// The project as revision `rev` was issued (design 027 §5.2, §8; brief 019 follow-up): the state
+/// **after** its issue transaction, so its own title block and revision list read it. Found on the
+/// branch shown's line (020's `named_points`); returns the named point and that state. A hostile
+/// history whose step after the point does not issue it gets the point's state with the issued
+/// rows copied in (issued rows never change, so this is exact for what they say).
+///
+/// # Errors
+/// Not issued on this line, or the history could not be read.
+pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), String> {
+    let name = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
+    let n = named_points(p, current(p))?
+        .into_iter()
+        .find(|n| n.revision && n.name.eq_ignore_ascii_case(&name))
+        .ok_or_else(|| format!("{name} has not been issued on this branch's line."))?;
+    if let Some(seq) = issue_seq(p, n.branch, n.seq, &n.name) {
+        let pt = Point { branch: n.branch, seq, title: n.name.clone(), kind: NodeKind::Revision };
+        let doc = state_at(p, &pt)?;
+        return Ok((n, seq, doc));
+    }
+    let pt = Point { branch: n.branch, seq: n.seq, title: n.name.clone(), kind: NodeKind::Revision };
+    let mut then = state_at(p, &pt)?;
+    let live = p.ledger.document();
+    let upto = revisions::list(live).into_iter().find(|r| r.issued.as_deref() == Some(n.name.as_str())).map_or(0, |r| r.n);
+    for r in revisions::list(live).into_iter().filter(|r| r.n <= upto && r.issued.is_some()) {
+        for (f, v) in revisions::FIELDS.iter().zip(r.fields.iter()) {
+            if !v.is_empty() {
+                then.properties.insert(r.key(f), v.clone());
+            }
+        }
+        if let Some(i) = &r.issued {
+            then.properties.insert(r.key(revisions::ISSUED), i.clone());
+        }
+    }
+    Ok((n.clone(), n.seq, then))
+}
+
 /// Whether `pt`'s state is read from the file (its nearest snapshot and at most the snapshot
 /// interval of steps, reviewer finding 2) rather than from the ledger: every saved point, of any
 /// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
@@ -1227,7 +1273,13 @@ pub fn bar_text(p: &Project, pt: &Point) -> String {
 fn run_showpoint(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     with_any_page(s, |p, _| {
         let pt = point(p, params)?;
-        let then = state_at(p, &pt)?;
+        // An issued revision is shown as issued (brief 027 §16): the step after the point it
+        // names, so its title block reads it.
+        let shown = match pt.kind {
+            NodeKind::Revision => issue_seq(p, pt.branch, pt.seq, &pt.title).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() }),
+            _ => pt.clone(),
+        };
+        let then = state_at(p, &shown)?;
         let book = ecad_model::book::Book::of(&then);
         let pages: Vec<Value> = book
             .order

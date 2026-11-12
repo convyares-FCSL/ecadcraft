@@ -55,6 +55,7 @@ pub mod printbook;
 pub mod project;
 pub mod props;
 pub mod references;
+pub mod release;
 pub mod revisions;
 pub mod sheet_cmds;
 pub mod slash;

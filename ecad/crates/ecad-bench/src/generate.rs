@@ -68,6 +68,11 @@ pub const TIERS: [Tier; 3] = [
     Tier { name: "large", pages: 500, components: 5_000, wires: 25_000, cables: 2_500 },
 ];
 
+/// The 25-page project Print Book and release are measured on (owner, 2026-11-12: printing is
+/// timed on a book of a real panel's size, never on the 100- or 500-page tiers). The small tier's
+/// density, so per page it is the same drawing.
+pub const PRINT_TIER: Tier = Tier { name: "print", pages: 25, components: 250, wires: 1_250, cables: 125 };
+
 /// The tier called `name`.
 pub fn tier(name: &str) -> Option<Tier> {
     TIERS.iter().copied().find(|t| t.name == name)

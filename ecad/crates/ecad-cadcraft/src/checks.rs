@@ -22,7 +22,9 @@
 //! | `EmbedDefinition` / `RemoveDefinition` | components using it and their points |
 //! | `SetProjectSettings` changing the numbering or potentials (`wiring` scheme, digits, prefix, table) | every net (rare and explicit) |
 //! | `SetProjectSettings` changing anything else (label looks, tags, sheet, reference style) | nothing (sheet and reference style: rows are copied again) |
-//! | pages, layers, cables, versions | nothing (page texts are worked out when shown) |
+//! | representation ops of a cable (reference ends), `CreateCable` / `DeleteCable` / cable ops | that cable's reference ends (orphan, brief 027) |
+//! | `RemovePage` | the cables with a reference end on it (orphan, brief 027) |
+//! | pages, layers, versions | nothing (page texts are worked out when shown) |
 //!
 //! This module reads the document; it changes nothing.
 
@@ -30,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, ConductorId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::wires::{self, ON_WIRE, kind_of};
@@ -113,10 +115,12 @@ pub enum Kind {
     CoreTwice,
     /// Cables with no core count (one count row).
     NoCoreCount,
+    /// A cable reference end with no other end (brief 027, design 027 §4.2).
+    OrphanReference,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 28] = [
+    pub const ALL: [Kind; 29] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -145,6 +149,7 @@ impl Kind {
         Kind::TooManyCores,
         Kind::CoreTwice,
         Kind::NoCoreCount,
+        Kind::OrphanReference,
     ];
 
     /// The JSON name.
@@ -178,6 +183,7 @@ impl Kind {
             Kind::TooManyCores => "too-many-cores",
             Kind::CoreTwice => "core-twice",
             Kind::NoCoreCount => "no-core-count",
+            Kind::OrphanReference => "orphan-reference",
         }
     }
 
@@ -217,6 +223,7 @@ impl Kind {
             Kind::TooManyCores => "More cores used than the cable offers",
             Kind::CoreTwice => "Core used by two wires",
             Kind::NoCoreCount => "Cables without a core count",
+            Kind::OrphanReference => "Cable reference with no other end",
         }
     }
 
@@ -236,7 +243,8 @@ impl Kind {
             | Kind::TooManyCores
             | Kind::CoreTwice
             | Kind::OwnLocation
-            | Kind::BoxCrosses => Severity::Warning,
+            | Kind::BoxCrosses
+            | Kind::OrphanReference => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -248,6 +256,8 @@ pub enum Object {
     Conductor(ConductorId),
     Terminal(TerminalId),
     Component(ComponentId),
+    /// A cable reference end (brief 027).
+    Reference(ecad_model::RepresentationId),
     Cable(ecad_model::CableId),
     None,
 }
@@ -321,6 +331,7 @@ impl Check {
             Object::Conductor(c) => json!({"conductor": c.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Component(c) => json!({"component": c.hex()}),
+            Object::Reference(r) => json!({"reference": r.hex()}),
             Object::Cable(k) => json!({"cable": k.hex()}),
             Object::None => Value::Null,
         };
@@ -347,6 +358,8 @@ pub enum Key {
     Conductor(ConductorId),
     Terminal(TerminalId),
     Component(ComponentId),
+    /// The reference ends of a cable (brief 027: orphans).
+    CableReferences(CableId),
     Cable(ecad_model::CableId),
     Project,
 }
@@ -772,6 +785,19 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     out
 }
 
+/// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
+/// reference end has an orphan (`/?`). Reads that cable's representations only.
+pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
+    let refs = crate::references::references_of(doc, k);
+    let [(rid, r)] = refs.as_slice() else { return Vec::new() };
+    let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+        ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
+        _ => None,
+    });
+    let which = format!("{} /?", crate::views::cable_title(doc, k));
+    vec![Check { kind: Kind::OrphanReference, page: Some(r.page), at, object: Object::Reference(*rid), which, fix: None }]
+}
+
 /// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
     let mut out = Vec::new();
@@ -802,6 +828,12 @@ pub struct Checks {
     provisional: bool,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
+    /// Rows by severity (errors, warnings, info), kept by [`Checks::set`] (brief 027's badge reads
+    /// them; nothing recounts the rows).
+    counts: [usize; 3],
+    /// Bumped only when some row actually changed (an update that re-checked subjects and found
+    /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
+    pub changed: u64,
 }
 
 impl Checks {
@@ -829,6 +861,7 @@ impl Checks {
             ch.set(Key::Component(*c), component_checks(doc, *c));
         }
         for k in doc.cables.keys() {
+            ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
             ch.set(Key::Cable(*k), cable_checks(doc, *k));
         }
         ch.provisional = ecad_model::numbering::provisional_on(doc);
@@ -837,11 +870,30 @@ impl Checks {
     }
 
     fn set(&mut self, key: Key, v: Vec<Check>) {
-        if v.is_empty() {
-            self.by_key.remove(&key);
-        } else {
-            self.by_key.insert(key, v);
+        let same = match self.by_key.get(&key) {
+            Some(old) => *old == v,
+            None => v.is_empty(),
+        };
+        if same {
+            return;
         }
+        for c in &v {
+            if let Some(n) = self.counts.get_mut(c.severity() as usize) {
+                *n += 1;
+            }
+        }
+        let old = if v.is_empty() { self.by_key.remove(&key) } else { self.by_key.insert(key, v) };
+        for c in old.iter().flatten() {
+            if let Some(n) = self.counts.get_mut(c.severity() as usize) {
+                *n = n.saturating_sub(1);
+            }
+        }
+        self.changed += 1;
+    }
+
+    /// Rows by severity: (errors, warnings, info). O(1): kept by every change.
+    pub fn counts(&self) -> (usize, usize, usize) {
+        (self.counts[0], self.counts[1], self.counts[2])
     }
 
     fn set_unnumbered(&mut self) {
@@ -902,7 +954,7 @@ impl Checks {
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64) {
         scope.collect(doc, ops, &self.grid);
         if scope.all {
-            *self = Checks { revision: self.revision + 1, ..Checks::build(doc, tol) };
+            *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build(doc, tol) };
             return;
         }
         // Geometry first: the grid must hold the new routes before any conductor is re-checked.
@@ -946,7 +998,7 @@ impl Checks {
                     }
                 }
                 None => {
-                    self.by_key.remove(&Key::Net(*id));
+                    self.set(Key::Net(*id), Vec::new());
                     self.unnumbered.remove(id);
                 }
             }
@@ -960,6 +1012,9 @@ impl Checks {
         }
         for c in &scope.components {
             self.set(Key::Component(*c), component_checks(doc, *c));
+        }
+        for k in &scope.cable_references {
+            self.set(Key::CableReferences(*k), reference_checks(doc, *k));
         }
         for k in &scope.cables {
             self.set(Key::Cable(*k), cable_checks(doc, *k));
@@ -984,6 +1039,8 @@ pub struct Scope {
     routes: BTreeSet<ConductorId>,
     terminals: BTreeSet<TerminalId>,
     components: BTreeSet<ComponentId>,
+    /// Cables whose reference ends to re-check (brief 027: orphans).
+    cable_references: BTreeSet<CableId>,
     /// Cables to re-check (brief 026: provisional and shared tags).
     cables: BTreeSet<ecad_model::CableId>,
 }
@@ -1059,6 +1116,8 @@ impl Scope {
                 | Op::DeleteCable { id: k, .. }
                 | Op::AddCableMember { cable: k, .. }
                 | Op::RemoveCableMember { cable: k, .. } => {
+                    // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
+                    self.cable_references.insert(*k);
                     // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                     self.cables.insert(*k);
                     match op {
@@ -1115,8 +1174,16 @@ impl Scope {
                 | Op::AddFolder { .. }
                 | Op::RemoveFolder { .. }
                 | Op::ModifyFolder { .. }
-                | Op::AddPage { .. }
-                | Op::RemovePage { .. } => self.relocate = true,
+                | Op::AddPage { .. } => self.relocate = true,
+                // Brief 027: a removed page's reference ends go with it.
+                Op::RemovePage { id, .. } => {
+                    self.relocate = true;
+                    for (_, r) in doc.representations_on(*id) {
+                        if let Subject::Cable(k) = r.subject {
+                            self.cable_references.insert(k);
+                        }
+                    }
+                }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
             }
         }
@@ -1170,9 +1237,11 @@ impl Scope {
                     self.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
-            // A cable's drawing moves its rows (brief 026).
+            // A cable's drawing moves its rows (brief 026); a reference end linked, changed or
+            // unlinked (its point an item op) re-derives its orphans (brief 027).
             Subject::Cable(k) => {
                 self.cables.insert(k);
+                self.cable_references.insert(k);
             }
         }
     }
@@ -1186,6 +1255,14 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let subject = match object {
         Object::Conductor(c) => Subject::Conductor(c),
         Object::Component(c) => Subject::Component(c),
+        Object::Reference(r) => {
+            return doc
+                .representations
+                .get(&r)
+                .filter(|x| x.page == page)
+                .map(|x| x.items.iter().filter_map(|i| map.item(*i)).collect())
+                .unwrap_or_default();
+        }
         Object::Cable(k) => Subject::Cable(k),
         Object::Terminal(t) => match doc.terminals.get(&t) {
             Some(x) => Subject::Component(x.component),
