@@ -189,3 +189,22 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
     let tag = t["texts"].as_array().unwrap().iter().find(|x| x["kind"] == "tag").unwrap().clone();
     assert_eq!((tag["shown"].as_bool(), tag["weight"].as_str(), tag["height"].as_f64()), (Some(true), Some("bold"), Some(2.5)), "{tag}");
 }
+
+#[test]
+fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
+    let mut c = writer();
+    one_by_agent(&mut c, "text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}));
+    let found = c.doc().items.values().any(|i| {
+        matches!(
+            &i.kind,
+            ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text {
+                halign: ecad_model::TextHAlign::Center,
+                valign: ecad_model::TextVAlign::Middle,
+                ..
+            })
+        )
+    });
+    assert!(found);
+    let mut r = reader();
+    r.refused("execute", json!({"command": "text", "params": {"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}}));
+}

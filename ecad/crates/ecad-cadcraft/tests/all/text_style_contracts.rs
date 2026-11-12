@@ -105,3 +105,28 @@ fn a_font_change_is_not_a_user_edit_of_the_style_table() {
     assert!(!texts(&mut h, page).is_empty());
     h.check();
 }
+
+#[test]
+fn text_with_justify_is_recorded_with_its_alignment() {
+    let mut h = H::new(SEED);
+    let page = h.first_page();
+    let head = h.head();
+    h.run("text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"})).unwrap();
+    assert_eq!(h.head(), head + 1, "recorded, not refused");
+    let doc = h.doc();
+    let item = doc
+        .items
+        .values()
+        .find_map(|i| match &i.kind {
+            ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, at, .. }) if value == "X" => {
+                Some((*halign, *valign, *at))
+            }
+            _ => None,
+        })
+        .expect("the text item");
+    assert_eq!(item, (ecad_model::TextHAlign::Center, ecad_model::TextVAlign::Middle, ecad_model::Pt::new(100.0, 100.0)));
+    let e = texts(&mut h, page).into_iter().find(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "X")).unwrap();
+    let EntityKind::Text(t) = &e.kind else { unreachable!() };
+    assert_eq!((t.halign, t.valign), (cadcraft_engine::doc::HAlign::Center, cadcraft_engine::doc::VAlign::Middle));
+    h.check();
+}

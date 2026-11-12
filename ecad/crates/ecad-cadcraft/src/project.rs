@@ -673,9 +673,14 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
         Shape::Arc { center, radius, start, end } => {
             kind_for_primitive(&Primitive::Arc { center: *center, radius: *radius, start: *start, end: *end })
         }
-        Shape::Text { at, rotation, value } => {
-            kind_for_primitive(&Primitive::Text { at: *at, height: LABEL_HEIGHT, rotation: *rotation, value: value.clone() })
-        }
+        Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
+            at: *at,
+            height: LABEL_HEIGHT,
+            rotation: *rotation,
+            value: value.clone(),
+            halign: Default::default(),
+            valign: Default::default(),
+        }),
     };
     let lineweight = match part.weight {
         Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
