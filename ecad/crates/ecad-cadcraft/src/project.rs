@@ -998,7 +998,7 @@ pub fn project_page_shown(
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::wires::label_entity(&l, h));
+        ents.push(crate::wires::label_entity(&look, &l, h));
         map.insert_label(l.rep, l.conductor, h);
     }
     ents.sort_by_key(|e| e.handle);

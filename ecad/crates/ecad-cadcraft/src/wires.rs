@@ -111,8 +111,6 @@ pub struct WireLabel {
     pub error: bool,
     /// Drawn in `ecad.provisional`: no number yet, provisional tags on (brief 026).
     pub provisional: bool,
-    /// Brief 032 fix round: the CADCraft text style it is drawn in (lane T's wire-label weight).
-    pub style: &'static str,
     /// Brief 032 fix round: its text width as the project's font draws it (lane T's
     /// `text_style::width_in`), which placement keeps clear.
     pub width: f64,
@@ -319,7 +317,6 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             text: label.text,
             error: label.error,
             provisional: label.provisional,
-            style: style.weight.style_name(),
             width: w,
         });
     }
@@ -327,7 +324,10 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
 }
 
 /// A label as an entity on [`LABEL_LAYER`].
-pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
+///
+/// Its style (the wire-label kind's font, weight, and bold lineweight in the stroke font) comes
+/// from lane T's resolved `look` of the page ([`crate::text_style::Look::apply`]).
+pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
     let color = if l.error {
         cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI)
@@ -336,7 +336,7 @@ pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
     } else {
         cadcraft_engine::doc::color::Color::ByLayer
     };
-    Entity {
+    let mut e = Entity {
         handle,
         common: Common { layer: LABEL_LAYER.into(), color, ..Common::default() },
         kind: EntityKind::Text(Text {
@@ -347,11 +347,13 @@ pub fn label_entity(l: &WireLabel, handle: Handle) -> Entity {
             rotation: l.rotation,
             width_factor: 1.0,
             oblique: 0.0,
-            style: l.style.into(),
+            style: crate::text_style::STYLE_REGULAR.into(),
             halign: HAlign::Center,
             valign: VAlign::Bottom,
         }),
-    }
+    };
+    look.apply(&mut e, crate::text_style::TextKind::WireLabel);
+    e
 }
 
 // ---------------------------------------------------------------- continuation texts (§3.2)

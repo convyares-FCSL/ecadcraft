@@ -581,7 +581,6 @@ fn wire_labels_take_the_wire_label_text_style() {
     wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
     let regular = h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page));
     assert_eq!(regular.len(), 1);
-    assert_eq!(regular[0].style, ecad_cadcraft::text_style::STYLE_REGULAR);
     h.run("textstyle", json!({"kind": "wire_label", "weight": "bold"})).unwrap();
     let (bold, width) = h.p(|p| {
         let doc = p.ledger.document();
@@ -590,9 +589,9 @@ fn wire_labels_take_the_wire_label_text_style() {
         (l, w)
     });
     let l = &bold[0];
-    assert_eq!(l.style, ecad_cadcraft::text_style::STYLE_BOLD);
     assert!((l.width - width.unwrap()).abs() < 1e-9, "the box is the font's width");
-    let e = ecad_cadcraft::wires::label_entity(l, cadcraft_engine::doc::Handle(1));
+    let look = h.p(|p| ecad_cadcraft::text_style::Look::new(p.ledger.document()));
+    let e = ecad_cadcraft::wires::label_entity(&look, l, cadcraft_engine::doc::Handle(1));
     let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
     assert_eq!(t.style, ecad_cadcraft::text_style::STYLE_BOLD);
 }
