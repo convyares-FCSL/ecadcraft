@@ -2659,6 +2659,9 @@ impl Trial {
         match out {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
+            Some(outputs_ui::Out::Run(line)) => {
+                let _ = self.run_line(&line);
+            }
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)

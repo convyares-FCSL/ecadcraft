@@ -23,7 +23,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("accessory", "Strip Accessory", run_accessory)
             .params(
-                "{strip?: id, terminal?: id, at: \"start\"|\"end\"|label|[label…] (at most 999), on?: bool (markers on positions), \
+                "{strip?: id, terminal?: id, at: \"start\"|\"end\"|\"all\"|label|[label…] (at most 999), on?: bool (markers on positions), \
 items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [acc.… key]} items: end_stop, end_plate, partition, strip_label; on: marker",
             )
             .interactive(crate::interact::accessory)
@@ -134,6 +134,8 @@ fn run_accessory(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             return Err("Give `items` (replace), `add` or `remove`.".into());
         }
         let order = acc::positions(doc, c);
+        // `at: "all"` names every position of the strip (the plan's Marker on every position).
+        let at: Vec<String> = if at.len() == 1 && at.first().is_some_and(|a| a.eq_ignore_ascii_case("all")) { order.clone() } else { at };
         let mut spots: Vec<Spot> = Vec::new();
         let mut seen = BTreeSet::new();
         for a in &at {
