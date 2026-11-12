@@ -1,6 +1,6 @@
 //! Tester 031 (text styles, show and hide, placement; v0.15 lane T): acceptance checks from
 //! outside, written from brief 031 and design 031 (§13 T1–T16) only, before the implementation
-//! existed. They drive JSON commands (`textstyle`, `showtext`, `movetext`, `texts`, `defaults`,
+//! existed. They drive JSON commands (`textstyle`, `showtext`, `movetext`, `pagetexts`, `defaults`,
 //! and the commands 030 already had), the interactive tools by their inputs, and the page drawing.
 //!
 //! Tests of behaviour not built yet are `#[ignore = "tester 031: awaiting build"]`; they are
@@ -8,7 +8,7 @@
 //! write (a hostile `text.*` value, `text.run.gap`) commits the `SetProperty` straight to the
 //! ledger and then re-projects the page by switching pages, as a person would see it.
 //!
-//! Reading `texts {page}` rows (design §10.4): `{representation, component, kind, terminal?,
+//! Reading `pagetexts {page}` rows (design §10.4): `{representation, component, kind, terminal?,
 //! value, at, justify, height, weight, shown, moved, overlaps, box: [[x,y],[x,y]]}`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,13 +45,13 @@ fn rep_of(h: &mut H, placed: &Value) -> RepresentationId {
 }
 
 fn texts(h: &mut H, page: PageId) -> Vec<Value> {
-    let v = h.run("texts", json!({"page": page.hex()})).unwrap_or_else(|e| panic!("texts: {e}"));
+    let v = h.run("pagetexts", json!({"page": page.hex()})).unwrap_or_else(|e| panic!("pagetexts: {e}"));
     v["texts"].as_array().cloned().unwrap_or_default()
 }
 
-/// `texts` without the harness checks (after a direct ledger commit, before re-projection).
+/// `pagetexts` without the harness checks (after a direct ledger commit, before re-projection).
 fn texts_raw(h: &mut H, page: PageId) -> Vec<Value> {
-    let v = h.s.execute("texts", &json!({"page": page.hex()})).unwrap();
+    let v = h.s.execute("pagetexts", &json!({"page": page.hex()})).unwrap();
     v["texts"].as_array().cloned().unwrap_or_default()
 }
 
@@ -1330,8 +1330,8 @@ fn t15_hostile_text_keys_draw_the_automatic_place() {
     let rows = texts_raw(&mut f.h, f.page);
     assert!(shown(row_of(&rows, f.r1[0], "tag")), "hostile values are absent: {rows:?}");
     // Hostile command input.
-    assert!(f.h.run("texts", json!({"page": "zz"})).is_err());
-    let _ = f.h.run("texts", json!({}));
+    assert!(f.h.run("pagetexts", json!({"page": "zz"})).is_err());
+    let _ = f.h.run("pagetexts", json!({}));
     assert!(f.h.run("defaults", json!({"key": "nope"})).unwrap_err().contains("No default \"nope\"."));
     assert!(f.h.run("defaults", json!({"key": "x".repeat(10_000)})).is_err());
     let _ = f.h.run("movetext", json!({"representation": rep, "kind": "tag", "to": [1e308, 1e308]}));

@@ -1,7 +1,7 @@
 //! Tester 031 through MCP (brief 011 rule; brief 031 AC 4 and AC 7; design 031 §10.7): on a
 //! project saved at a path with spaces and non-ASCII letters, every text write (`textstyle`,
 //! `showtext` at four levels, `movetext` and its reset, `text` with `justify`) records one
-//! transaction by `Author::Agent(<client>)`; `textstyle {}`, `texts` and `defaults` read and
+//! transaction by `Author::Agent(<client>)`; `textstyle {}`, `pagetexts` and `defaults` read and
 //! record nothing; `projectprops`, `pageprops` and `setprop` refuse `text.` keys with design
 //! §10.6's sentence; reopened with writes off, every write is refused and the reads give what they
 //! gave before. Written from the brief and design before the implementation.
@@ -36,7 +36,7 @@ fn rep_of(c: &mut Client, placed: &Value) -> String {
 fn reads(c: &mut Client, page: &str) -> Value {
     json!({
         "textstyle": c.exec("textstyle", json!({})),
-        "texts": c.exec("texts", json!({"page": page})),
+        "texts": c.exec("pagetexts", json!({"page": page})),
         "defaults": c.exec("defaults", json!({})),
         "defaults_text": c.exec("defaults", json!({"group": "Text", "page": page})),
         "devices": c.exec("devices", json!({})),
@@ -132,7 +132,7 @@ fn reads_work_with_writes_off_and_record_nothing() {
     let d = c.exec("defaults", json!({}));
     assert!(d["defaults"].as_array().is_some_and(|a| !a.is_empty()), "{d}");
     let page = c.doc().page_order[0].hex();
-    let t = c.exec("texts", json!({"page": page}));
+    let t = c.exec("pagetexts", json!({"page": page}));
     assert_eq!(t["texts"], json!([]), "an empty page: {t}");
     let m = c.refused("execute", json!({"command": "defaults", "params": {"key": "nope"}}));
     assert!(m.contains("No default \"nope\"."), "{m}");
