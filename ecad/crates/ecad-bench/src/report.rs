@@ -24,7 +24,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 36] = [
+const COLUMNS: [(&str, &str); 42] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -52,6 +52,12 @@ const COLUMNS: [(&str, &str); 36] = [
     ("tbupd_ms", "tbupd ms"),
     ("gridchange_ms", "gridchange ms"),
     ("revopen_ms", "revopen ms"),
+    ("renumprev_ms", "renumprev ms"),
+    ("renum_ms", "renum ms"),
+    ("renumw_ms", "renumw ms"),
+    ("renumu_ms", "renumu ms"),
+    ("swap_ms", "swap ms"),
+    ("finalise_ms", "finalise ms"),
     ("xbuild_ms", "xbuild ms"),
     ("xmove_ms", "xmove ms"),
     ("xrenum_ms", "xrenum ms"),
@@ -63,7 +69,7 @@ const COLUMNS: [(&str, &str); 36] = [
     ("v2_open_x10_ms", "v2 open x10 ms"),
 ];
 
-fn values(r: &Row) -> [Option<f64>; 36] {
+fn values(r: &Row) -> [Option<f64>; 42] {
     let m = &r.measured;
     let v = r.v2.as_ref();
     [
@@ -94,6 +100,12 @@ fn values(r: &Row) -> [Option<f64>; 36] {
         Some(m.tbupd_ms),
         Some(m.gridchange_ms),
         Some(m.revopen_ms),
+        Some(m.numbering.renumprev_ms),
+        Some(m.numbering.renum_ms),
+        Some(m.numbering.renumw_ms),
+        Some(m.numbering.renumu_ms),
+        Some(m.numbering.swap_ms),
+        Some(m.numbering.finalise_ms),
         Some(m.xbuild_ms),
         Some(m.xmove_ms),
         Some(m.xrenum_ms),
@@ -422,6 +434,19 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str) -> Value {
                 "gridchange_ms": m.gridchange_ms,
                 "revopen_ms": m.revopen_ms,
             });
+            // Brief 026 (design 026 §11), outside the macro (its recursion limit).
+            let n = &m.numbering;
+            for (k, v) in [
+                ("renumprev_ms", n.renumprev_ms),
+                ("renum_ms", n.renum_ms),
+                ("renumw_ms", n.renumw_ms),
+                ("renumu_ms", n.renumu_ms),
+                ("swap_ms", n.swap_ms),
+                ("finalise_ms", n.finalise_ms),
+            ] {
+                row[k] = json!(v);
+            }
+            row["renum_count"] = json!(n.renum_count);
             // Brief 025 (set apart: one `json!` of every column reaches the macro's recursion limit).
             for (k, v) in [("xbuild_ms", m.xbuild_ms), ("xmove_ms", m.xmove_ms), ("xrenum_ms", m.xrenum_ms), ("xmirror_ms", m.xmirror_ms)] {
                 row[k] = json!(v);

@@ -79,8 +79,9 @@ props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             .noundo(),
         CommandSpec::new("issuerevision", "Issue Revision", run_issuerevision)
             .params(
-                "{rev?, date?, description?, drawn?, checked?, approved?} (issues the pending revision: needs Rev, \
-Description and Drawn; names the log point \"Rev <rev>\")",
+                "{rev?, date?, description?, drawn?, checked?, approved?, provisional?: \"finalise\"|\"issue\"} (issues the \
+pending revision: needs Rev, Description and Drawn; names the log point \"Rev <rev>\"; with provisional tags or wire numbers \
+present, `provisional` says whether to finalise them first or issue them as they are)",
             )
             .noundo(),
         CommandSpec::new("openrevision", "Reopen Revision", run_openrevision)
@@ -595,6 +596,10 @@ fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     if key.starts_with("folder") {
         return Err(format!("\"{key}\" is reserved."));
     }
+    // Brief 026: the numbering keys are written by `numbering`, Renumber and Finalise.
+    if key.starts_with("numbering.") {
+        return Err(format!("\"{key}\" is reserved (Project settings → Numbering)."));
+    }
     let n = key.chars().count();
     if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
         return Err("A property name is 1 to 40 characters a-z, 0-9 or _.".into());
@@ -618,7 +623,7 @@ pub fn project_json(doc: &Document) -> Value {
     let free: Map<String, Value> = doc
         .properties
         .iter()
-        .filter(|(k, _)| !PROJECT_KEYS.contains(&k.as_str()) && !k.starts_with(revisions::PREFIX))
+        .filter(|(k, _)| !PROJECT_KEYS.contains(&k.as_str()) && !k.starts_with(revisions::PREFIX) && !k.starts_with("numbering."))
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
     let revs: Vec<Value> = revisions::list(doc)
@@ -645,6 +650,8 @@ pub fn project_json(doc: &Document) -> Value {
     // Brief 022: the wiring settings the Project settings popout edits.
     v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
     v["label_height"] = json!(doc.settings.wiring.label_height());
+    // Brief 026: Project settings → Numbering.
+    v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
     v["revisions"] = Value::Array(revs);
     v["pending_rev"] = json!(revisions::pending_rev(doc));
     v
@@ -674,6 +681,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 };
                 ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
             }
+        }
+        // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
+        if let Some(v) = params.get("provisional").filter(|v| !v.is_null()) {
+            let on = v.as_bool().ok_or("`provisional` must be true or false")?;
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), ecad_model::tag::PROVISIONAL_SETTING, on.then(|| "yes".to_string())));
         }
         let mut settings = doc.settings.clone();
         if let Some(v) = params.get("sheet").filter(|v| !v.is_null()) {
@@ -790,23 +802,34 @@ fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         if let Some(r) = release_line_refusal(p, true) {
             return Err(r);
         }
-        let head = p.ledger.head();
-        if head == 0 {
+        if p.ledger.head() == 0 {
             return Err("Nothing to issue yet.".into());
         }
-        let mut ops = revision_ops(p.ledger.document(), params)?;
-        // The pending row as it will be after those writes.
-        let doc = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
+        // The pending row as it will be after those writes, checked before anything is written.
+        let check = |p: &Project| -> Result<(Vec<Op>, Document), String> {
+            let ops = revision_ops(p.ledger.document(), params)?;
+            let doc = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
+            let row = revisions::pending(&doc).unwrap_or_default();
+            if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
+                return Err(revisions::FILL_FIRST.into());
+            }
+            let rev = row.rev().to_string();
+            if doc.versions.contains_key(&revisions::version_name(&rev)) {
+                return Err(format!("Rev {rev} was issued before; choose another."));
+            }
+            Ok((ops, doc))
+        };
+        check(p)?;
+        // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their own
+        // transaction), or issued as they are, as asked; without an answer the ways forward are
+        // named.
+        let note = crate::numbering_cmds::before_issue(p, pg, params)?;
+        let head = p.ledger.head();
+        let (mut ops, doc) = check(p)?;
         let n = revisions::pending_n(&doc);
         let row = revisions::pending(&doc).unwrap_or_default();
-        if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
-            return Err(revisions::FILL_FIRST.into());
-        }
         let rev = row.rev().to_string();
         let name = revisions::version_name(&rev);
-        if doc.versions.contains_key(&name) {
-            return Err(format!("Rev {rev} was issued before; choose another."));
-        }
         let mut date = row.get("date").to_string();
         if date.is_empty() {
             date = revisions::today().unwrap_or_default();
@@ -818,7 +841,10 @@ fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         ops.push(Op::NameVersion { name: name.clone(), at: head, description: None });
         p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
         let tx = p.ledger.head();
-        let line = format!("Rev {rev} issued (transaction {tx}). Save to keep it.");
+        let line = match &note {
+            Some(n) => format!("Rev {rev} issued (transaction {tx}) {n}. Save to keep it."),
+            None => format!("Rev {rev} issued (transaction {tx}). Save to keep it."),
+        };
         pg.echo(line.clone());
         Ok(json!({"rev": rev, "date": date, "at": head, "transaction": tx, "message": line}))
     })

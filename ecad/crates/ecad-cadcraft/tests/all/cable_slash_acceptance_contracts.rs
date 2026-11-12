@@ -138,7 +138,8 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
         let want = if reversed { vec![f.w10, f.w5, f.w0] } else { vec![f.w0, f.w5, f.w10] };
         assert_eq!(members(&d, k), want, "crossing order from `from` to `to`");
         assert!(d.cables[&k].members.iter().all(|m| m.core.is_none()), "core stays None");
-        assert!(!d.cables[&k].properties.contains_key("tag"), "no tag unless given");
+        // Brief 026: an automatic tag when none is given.
+        assert!(d.cables[&k].properties.get("tag").is_some_and(|t| t.starts_with("-W")), "an automatic tag");
         let want_hex: Vec<String> = want.iter().map(|c| c.hex()).collect();
         assert_eq!(hexes(&r, "conductors"), want_hex);
         // AC4: the plain line is reported, not taken.
@@ -416,7 +417,8 @@ fn ac5_refusals_leave_the_head_unchanged_with_a_clear_message() {
         );
         if what.starts_with("W5") {
             assert!(e.starts_with("Wire "), "{e}");
-            assert!(e.contains(short(&k.hex())), "{what}: names the cable: {e}");
+            // Brief 026: the cable has a tag, and the message names it.
+            assert!(e.contains("cable -W"), "{what}: names the cable: {e}");
             assert!(e.ends_with("; a wire can be in only one cable. Nothing was created."), "{e}");
         }
     }
@@ -431,7 +433,7 @@ fn ac5_refusals_leave_the_head_unchanged_with_a_clear_message() {
     f.h.run("setprop", json!({"conductor": w5, "key": "tag", "value": "W5"})).unwrap();
     f.h.run("setprop", json!({"cable": k.hex(), "key": "tag", "value": "C1"})).unwrap();
     let e = slash(&mut f.h, (40.0, 3.0), (40.0, 7.0)).unwrap_err();
-    assert!(e.contains("Wire W5 is already in cable C1; a wire can be in only one cable. Nothing was created."), "{e}");
+    assert!(e.contains("Wire W5 is already in cable -C01; a wire can be in only one cable. Nothing was created."), "{e}");
 }
 
 /// AC5 interactive (design check G, §5.1 step 3): a refused second point writes nothing, echoes the
@@ -896,7 +898,7 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
     let mut f = fixture(SEED);
     let r = f.h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "K1"})).unwrap();
     let k: CableId = id(&r, "cable");
-    assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("K1"));
+    assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("-K01"));
 }
 
 /// A reopened project with `n` + 1 parallel unit wires at y = 0 ..= n (x from 0 to 1), made in one

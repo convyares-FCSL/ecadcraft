@@ -413,7 +413,7 @@ fn check_a_core_label_by_label_and_reference_screenshots() {
     h.run_steps(3);
     let prompt_img = out.as_ref().and_then(|d| shot(&h, &deltas, &d.join("009-core-prompt.png")));
     ok(&mut h, "3");
-    assert!(h.state().cad.session.log.iter().any(|l| l == "Wire W3 is now core 3 of cable C1."), "{:?}", h.state().cad.session.log.last());
+    assert!(h.state().cad.session.log.iter().any(|l| l == "Wire W3 is now core 3 of cable -C01."), "{:?}", h.state().cad.session.log.last());
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(prompt(&h), "Select a wire in a cable:", "back to step 1");
     h.key_press(Key::Escape);

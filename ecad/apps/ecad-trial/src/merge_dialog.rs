@@ -190,6 +190,16 @@ impl MergeDialog {
                                     ),
                                     "renumber_main" => (cap(c["main"].as_str().unwrap_or("renumber main's")), "renumber"),
                                     "renumber_branch" => (cap(c["branch"].as_str().unwrap_or("renumber the branch's")), "renumber"),
+                                    // Brief 026 (design §8): the third choice of a tag conflict.
+                                    "one" => (
+                                        if c["text"].as_str().is_some_and(|t| t.contains(" cable ")) {
+                                            "Make them one cable"
+                                        } else {
+                                            "Make them one device"
+                                        }
+                                        .to_string(),
+                                        "one",
+                                    ),
                                     other => (other.to_string(), "other"),
                                 };
                                 let on = chosen.as_ref().is_some_and(|x| *x == w);
@@ -197,6 +207,18 @@ impl MergeDialog {
                                     self.choices.insert(id.clone(), w.clone());
                                     out = Some(Out::Preview(self.params(true)));
                                 }
+                            }
+                            // Brief 026: Make them one, greyed with the reason when they cannot be one.
+                            if let Some(why) = c["unavailable"]["why"].as_str() {
+                                let label = if c["text"].as_str().is_some_and(|t| t.contains(" cable ")) {
+                                    "Make them one cable"
+                                } else {
+                                    "Make them one device"
+                                };
+                                ui.add_enabled(false, egui::RadioButton::new(false, label))
+                                    .accessible_name(format!("ecad.merge.conflict.{id}.one"))
+                                    .on_disabled_hover_text(why);
+                                ui.label(RichText::new(why).small().color(Color32::GRAY));
                             }
                         });
                     }

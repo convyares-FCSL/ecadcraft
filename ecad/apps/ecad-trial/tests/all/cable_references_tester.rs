@@ -392,7 +392,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     click(&mut h, at);
     assert!(h.state().cad.session.running.is_none(), "the command ends: {}", said(&h));
     assert_eq!(head(&mut h), before + 1, "one transaction");
-    assert!(said(&h).contains("Reference for cable C1 placed on page 1."), "{}", said(&h));
+    assert!(said(&h).contains("Reference for cable -C01 placed on page 1."), "{}", said(&h));
     assert_eq!(shown_text(&mut h), "?", "an orphan until continued");
     // Field: K2 with three terminals, then Continue Cable: Enter, two clicks.
     ok(&mut h, r#"newpage {"title":"Field"}"#);
@@ -405,7 +405,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     let before = head(&mut h);
     h.get_by_label("Continue Cable").click();
     h.run_steps(3);
-    assert_eq!(prompt(&h), "Enter cable to continue or [List] <C1>:");
+    assert_eq!(prompt(&h), "Enter cable to continue or [List] <-C01>:");
     h.key_press(Key::Enter);
     h.run_steps(3);
     assert_eq!(prompt(&h), "Specify reference point:", "{}", said(&h));
@@ -421,7 +421,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     click(&mut h, toward);
     assert!(h.state().cad.session.running.is_none(), "{}", said(&h));
     assert_eq!(head(&mut h), before + 1, "one transaction");
-    assert!(said(&h).contains("Cable C1 continued on page 2 with 3 wires"), "{}", said(&h));
+    assert!(said(&h).contains("Cable -C01 continued on page 2 with 3 wires"), "{}", said(&h));
     // Connect each stub's free end to K2 (JSON form; Connect's clicks are brief 008's).
     let d = doc(&mut h);
     let cable = *d.cables.keys().next().unwrap();
@@ -456,7 +456,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     assert_eq!(current_page(&mut h), supply, "Supply is current: {}", said(&h));
     let sp = reference_point(&mut h, supply);
     assert_eq!(h.state().cad.session.selection(), vec![sp], "the other end's point is selected");
-    assert!(said(&h).contains(r#"Page 1 "Supply", at the other end of cable C1 (1-B-6)."#), "{}", said(&h));
+    assert!(said(&h).contains(r#"Page 1 "Supply", at the other end of cable -C01 (1-B-6)."#), "{}", said(&h));
     assert_eq!(shown_text(&mut h), "2-A-6");
     zoom_e(&mut h);
     park(&mut h);
@@ -502,7 +502,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // AC3 in the UI: erase Field's reference point; Supply turns red; `u` restores.
     let fp = reference_point(&mut h, field);
     ok(&mut h, &format!(r#"erase {{"handles":["{}"]}}"#, fp.hex()));
-    assert!(said(&h).contains("Cable C1's reference on page 1 now has no other end."), "{}", said(&h));
+    assert!(said(&h).contains("Cable -C01's reference on page 1 now has no other end."), "{}", said(&h));
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, supply.hex()));
     assert_eq!(current_page(&mut h), supply);
     assert_eq!(shown_text(&mut h), "?");
