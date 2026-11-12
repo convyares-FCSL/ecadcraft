@@ -56,6 +56,7 @@ pub mod outputs_ui;
 pub mod preview;
 pub mod project_panel;
 pub mod release_ui;
+pub mod renumber_dialog;
 pub mod search;
 pub mod sheets_ui;
 pub mod startup;
@@ -367,6 +368,12 @@ pub struct Trial {
     pub revisions: Option<sheets_ui::Revisions>,
     /// The merge dialog (brief 020b), when open.
     pub merge: Option<merge_dialog::MergeDialog>,
+    /// The Renumber dialog (brief 026), also Finalise numbering, when open.
+    pub renumber: Option<renumber_dialog::RenumberDialog>,
+    /// Brief 026 (design §5.5): the issue line waiting on the provisional question, and its text.
+    pub issue_prompt: Option<(String, String)>,
+    /// The issue line to run once Finalise numbering is applied (Finalise numbering now).
+    issue_after_finalise: Option<String>,
     /// The folder the page name box's new page goes in.
     new_page_folder: Option<ecad_model::FolderId>,
     /// The revision shown in the panel (its log point), when one is open.
@@ -508,6 +515,9 @@ impl Trial {
             project_props: None,
             revisions: None,
             merge: None,
+            renumber: None,
+            issue_prompt: None,
+            issue_after_finalise: None,
             new_page_folder: None,
             panel_revision: None,
             revisions_seen: 0,
@@ -1044,6 +1054,19 @@ impl Trial {
     /// The tools the trial handles itself: Preview Reference and the ECAD Dev tab.
     fn trial_tool(&mut self, id: &str) -> Result<(), String> {
         match id {
+            // Brief 026: the Renumber dialog (Renumber Wires opens it with Wires chosen).
+            "ecad.renumber" => {
+                self.open_renumber(false, false, None);
+                Ok(())
+            }
+            "ecad.renumberwires" => {
+                self.open_renumber(false, true, None);
+                Ok(())
+            }
+            "ecad.finalise" => {
+                self.open_renumber(true, false, None);
+                Ok(())
+            }
             "ecad.cablepreview" => self.preview_reference(),
             "ecad.dev.debugger" => {
                 self.toggle_debugger();
@@ -1393,6 +1416,8 @@ impl Trial {
         self.sheet_windows(ui.ctx());
         self.output_windows(ui.ctx());
         self.merge_windows(ui.ctx());
+        self.renumber_window(ui.ctx());
+        self.issue_prompt_window(ui.ctx());
         self.preview_window(ui.ctx());
         self.symbol_search(ui.ctx());
         if std::mem::take(&mut self.focus_drawing) {
@@ -1732,6 +1757,9 @@ impl Trial {
             A::NumberThem => {
                 let _ = self.run_line(&format!("renumberwires {}", json!({"scope": "unnumbered"})));
             }
+            A::Finalise => self.open_renumber(true, false, None),
+            A::Renumber => self.open_renumber(false, false, None),
+            A::RenumberFolder(f) => self.open_renumber(false, false, Some(f)),
             A::UseBoxLocation(c) => {
                 let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "location", "value": null})));
             }
@@ -1819,8 +1847,10 @@ impl Trial {
             }
             A::RevisionPage(page) => self.preview_revision_page(page),
             A::History(d) => self.history_action(d),
-            A::SetDeviceProperty { component, key, value, merge } => {
-                let line = format!("setprop {}", json!({"component": component.hex(), "key": key, "value": value, "merge": merge}));
+            A::SetDeviceProperty { component, key, value, conflict } => {
+                let value = if key == "tag_fixed" && value.is_empty() { serde_json::Value::Null } else { json!(value) };
+                let line = format!("setprop {}", json!({"component": component.hex(), "key": key, "value": value, "conflict": conflict}));
+                let value = value.as_str().unwrap_or_default().to_string();
                 if let Some(e) = self.run_line(&line) {
                     self.panel.devices.refused(component, key, &value, e);
                 } else {
@@ -1970,6 +2000,146 @@ impl Trial {
                 self.merge = Some(merge_dialog::MergeDialog::new(target, v, note));
             }
             Err(e) => self.panel.history.refused(e),
+        }
+    }
+
+    /// Open the Renumber dialog (brief 026, design §3), or Finalise numbering (`finalise`), with
+    /// Wires chosen (`wires`) or a folder preset; its preview is computed now (reads only).
+    pub fn open_renumber(&mut self, finalise: bool, wires: bool, folder: Option<ecad_model::FolderId>) {
+        let Some(p) = self.project.clone() else { return };
+        let read_only = self.header().read_only;
+        let (uid, handles) = match self.cad.session.state() {
+            Ok(st) => (Some(st.uid), st.selection.clone()),
+            Err(_) => (None, Vec::new()),
+        };
+        let read = p.read(&mut self.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_cadcraft::props::selected_objects(p, pg, &handles)).unwrap_or_default();
+            (ecad_cadcraft::numbering_cmds::choices(doc), objects, ecad_cadcraft::devices::padding(doc), doc.settings.wiring.digits)
+        });
+        let Ok((choices, objects, digits, wire_digits)) = read else { return };
+        let mut d = renumber_dialog::RenumberDialog::new(&choices, objects, digits, read_only, finalise);
+        if wires {
+            d = d.for_wires(wire_digits);
+        }
+        if let Some(f) = folder {
+            d = d.for_folder(&f.hex());
+        }
+        if let Ok((c, v)) = d.params(true) {
+            match self.run_click(c, v) {
+                Ok(v) => d.preview = v,
+                Err(e) => d.error = Some(e),
+            }
+        }
+        self.renumber = Some(d);
+    }
+
+    /// The provisional question before an issue (brief 026, design §5.5), for the refused `line`.
+    fn ask_issue_provisional(&mut self, line: String) {
+        let Some(p) = self.project.clone() else { return };
+        let items = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::numbering_cmds::provisional_items(p.ledger.document()));
+        if let Ok(items) = items {
+            self.issue_prompt = Some((line, format!("{}:\n{}", items.words(), items.list_line())));
+        }
+    }
+
+    /// The provisional question's window: Finalise numbering now, Issue anyway or Cancel.
+    fn issue_prompt_window(&mut self, ctx: &egui::Context) {
+        let Some((line, text)) = self.issue_prompt.clone() else { return };
+        let rev = self.revisions.as_ref().and_then(|d| d.pending.first().cloned()).unwrap_or_default();
+        let mut chosen = None;
+        egui::Window::new(format!("Issue Rev {rev}"))
+            .id(egui::Id::unique("ecad.issue"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(egui::RichText::new(&text).small().monospace());
+                ui.horizontal(|ui| {
+                    if ui.button("Finalise numbering now").accessible_name("ecad.issue.finalise").clicked() {
+                        chosen = Some(1);
+                    }
+                    if ui.button("Issue anyway").accessible_name("ecad.issue.anyway").clicked() {
+                        chosen = Some(2);
+                    }
+                    if ui.button("Cancel").accessible_name("ecad.issue.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        chosen = Some(0);
+                    }
+                });
+            });
+        match chosen {
+            Some(1) => {
+                self.issue_prompt = None;
+                self.issue_after_finalise = Some(line);
+                self.open_renumber(true, false, None);
+            }
+            Some(2) => {
+                self.issue_prompt = None;
+                let line = with_param(&line, "provisional", json!("issue"));
+                let r = self.run_line(&line);
+                if let Some(d) = &mut self.revisions {
+                    d.error = r.clone();
+                }
+                if r.is_none() {
+                    self.open_revisions();
+                }
+            }
+            Some(_) => self.issue_prompt = None,
+            None => {}
+        }
+    }
+
+    /// The Renumber dialog per frame: previews on option changes, Apply, go to a row (brief 026).
+    fn renumber_window(&mut self, ctx: &egui::Context) {
+        let Some(d) = &mut self.renumber else { return };
+        match d.show(ctx) {
+            Some(renumber_dialog::Out::Preview(c, v)) => {
+                let r = self.run_click(c, v);
+                if let Some(d) = &mut self.renumber {
+                    match r {
+                        Ok(v) => {
+                            d.preview = v;
+                            d.error = None;
+                        }
+                        Err(e) => d.error = Some(e),
+                    }
+                }
+            }
+            Some(renumber_dialog::Out::Apply(c, v)) => match self.run_click(c, v) {
+                Ok(_) => {
+                    self.renumber = None;
+                    // Finalise numbering now (design §5.5): the issue follows, its own step.
+                    if let Some(line) = self.issue_after_finalise.take() {
+                        let _ = self.run_line(&line);
+                        self.open_revisions();
+                    }
+                }
+                Err(e) => {
+                    // A stale preview is computed again (design §3).
+                    let again = self.renumber.as_ref().and_then(|d| d.params(true).ok());
+                    let fresh = again.map(|(c, v)| self.run_click(c, v));
+                    if let Some(d) = &mut self.renumber {
+                        d.error = Some(e);
+                        if let Some(Ok(v)) = fresh {
+                            d.preview = v;
+                        }
+                    }
+                }
+            },
+            Some(renumber_dialog::Out::Goto(page, at)) => {
+                if let Some(page) = u128::from_str_radix(&page, 16).ok().map(PageId)
+                    && self.show_page(page).is_ok()
+                    && let Ok(st) = self.cad.session.state_mut()
+                {
+                    let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at[0], at[1]), height, twist: 0.0 });
+                }
+            }
+            Some(renumber_dialog::Out::Cancel) => {
+                self.renumber = None;
+                self.issue_after_finalise = None;
+            }
+            None => {}
         }
     }
 
@@ -2330,6 +2500,8 @@ impl Trial {
         for (target, key, value) in edits {
             let line = ecad_cadcraft::props::edit_line(&target, &key, value.as_deref());
             let r = self.run_line(&line);
+            // A clash box's choice (`tag#swap`, brief 026) answers the Tag field's refusal.
+            let key = key.split('#').next().unwrap_or_default().to_string();
             if let Ok(mut sh) = self.props.lock() {
                 match r {
                     Some(e) => {
@@ -2614,6 +2786,7 @@ impl Trial {
                     r.invalidate();
                 }
             }
+            Some(release_ui::Out::Finalise) => self.open_renumber(true, false, None),
             Some(release_ui::Out::ShowChecks) => self.panel.tab = project_panel::Tab::Checks,
             Some(release_ui::Out::SaveAs) => self.request_save_as(),
             Some(release_ui::Out::WriteIssued(rev)) => self.open_release(Some(rev)),
@@ -2699,11 +2872,17 @@ impl Trial {
                 Some(sheets_ui::Out::Run(line)) => {
                     let issuing = line.starts_with("issuerevision");
                     let r = self.run_line(&line);
-                    if let Some(d) = &mut self.revisions {
-                        d.error = r.clone();
-                    }
-                    if r.is_none() && issuing {
-                        self.open_revisions();
+                    // Brief 026 (design §5.5): provisional items ask first.
+                    let provisional = issuing && r.as_deref().is_some_and(|e| e.contains("provisional: \"finalise\""));
+                    if provisional {
+                        self.ask_issue_provisional(line);
+                    } else {
+                        if let Some(d) = &mut self.revisions {
+                            d.error = r.clone();
+                        }
+                        if r.is_none() && issuing {
+                            self.open_revisions();
+                        }
                     }
                 }
                 Some(sheets_ui::Out::Open(rev)) => {
@@ -3031,4 +3210,14 @@ fn in_default_folder(name: &str) -> String {
 /// Seconds since the epoch, for unique snapshot file names.
 fn ecad_stamp() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// `line` (`name {json}`) with `key` set to `value` in its JSON (brief 026: the issue's answer).
+fn with_param(line: &str, key: &str, value: serde_json::Value) -> String {
+    let (name, rest) = line.split_once(' ').unwrap_or((line, "{}"));
+    let mut v: serde_json::Value = serde_json::from_str(rest).unwrap_or_else(|_| json!({}));
+    if let Some(o) = v.as_object_mut() {
+        o.insert(key.to_string(), value);
+    }
+    format!("{name} {v}")
 }

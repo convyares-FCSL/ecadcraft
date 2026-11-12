@@ -36,6 +36,7 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::sheet_cmds::specs());
     v.extend(crate::history::specs());
     v.extend(crate::merging::specs());
+    v.extend(crate::numbering_cmds::specs());
     v.extend(crate::xref_cmds::specs());
     v.extend(crate::output_cmds::specs());
     v.extend(crate::release::specs());
@@ -107,7 +108,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("setprop", "Set Property", run_setprop)
             .params(
-                "{component|conductor|cable: id, key, value: string|null, merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's tag: an existing tag is refused unless `merge` is true, which makes this device part of that one)",
+                "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)",
             )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
@@ -234,7 +235,7 @@ pub(crate) fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, S
 
 /// A list of IDs: every entry must parse, and the list may hold at most `max`; checked before
 /// anything is collected.
-fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, String> {
+pub(crate) fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, String> {
     let a = p.get(key).and_then(Value::as_array).ok_or_else(|| format!("`{key}` (array of hex ids) is required"))?;
     if a.len() > max {
         return Err(format!("at most {max} entries in `{key}` per call"));
@@ -607,6 +608,16 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     } else {
         return Err(err("`component`, `conductor` or `cable` (hex id) is required"));
     };
+    // Brief 026: tags of devices and cables share one namespace and one set of rules.
+    if matches!(object, ObjectRef::Component(_) | ObjectRef::Cable(_)) {
+        let tagless = matches!(object, ObjectRef::Component(c) if with_any_page(s, |p, _| Ok(crate::wires::kind_of(p.ledger.document(), c).is_some())).unwrap_or(false));
+        if key == ecad_model::tag::TAG_KEY && !tagless {
+            return crate::numbering_cmds::run_set_tag(s, params, object);
+        }
+        if key == ecad_model::tag::FIXED_KEY && !tagless {
+            return crate::numbering_cmds::run_set_fixed(s, params, object);
+        }
+    }
     // Brief 018: device properties follow design 018 §6.1 (tags are identities).
     if let ObjectRef::Component(c) = object
         && crate::device_cmds::is_device_property(object, &key)
@@ -924,9 +935,9 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
             None => {
                 let c: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();
-                if let Some(t) = tag {
-                    cable.properties.insert("tag".into(), t);
-                }
+                // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
+                let t = crate::devices::new_cable_tag(&p.ledger, &mut p.tag_high, tag.as_deref())?;
+                cable.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
                 ops.push(Op::CreateCable { id: c, cable });
                 (c, 0)
             }
@@ -974,9 +985,9 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         }
         let (cable, item, rep): (CableId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
         let mut c = ecad_model::Cable::default();
-        if let Some(t) = tag {
-            c.properties.insert("tag".into(), t);
-        }
+        // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
+        let t = crate::devices::new_cable_tag(&p.ledger, &mut p.tag_high, tag.as_deref())?;
+        c.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
         let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
         for (index, m) in found.members.iter().enumerate() {
             ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: None } });

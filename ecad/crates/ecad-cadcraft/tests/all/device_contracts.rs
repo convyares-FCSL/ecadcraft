@@ -162,7 +162,8 @@ fn c_renaming_the_tag_updates_every_symbol_in_one_undoable_transaction() {
     let r = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "tag", "value": "k5"})).unwrap();
     assert_eq!(r["value"], json!("-K05"));
     let ops = last_ops(&mut f.h);
-    assert!(matches!(ops.as_slice(), [Op::SetProperty { key, .. }] if key == "tag"), "{ops:?}");
+    // Brief 026: typing a tag fixes it, in the same transaction.
+    assert!(matches!(ops.as_slice(), [Op::SetProperty { key, .. }, Op::SetProperty { key: f, .. }] if key == "tag" && f == "tag_fixed"), "{ops:?}");
     assert_eq!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Set tag");
     assert_eq!(tag_texts(&mut f.h, f.p2), ["-K05", "-K05"]);
     f.h.activate(f.p1);
@@ -183,8 +184,9 @@ fn d_a_duplicate_tag_names_the_device_and_offers_the_ways_forward() {
     let head = f.h.head();
     for typed in ["-K1", "K01", "k001"] {
         let e = f.h.run("setprop", json!({"component": k2.hex(), "key": "tag", "value": typed})).unwrap_err();
-        assert!(e.contains("Tag -K01 is already used by -K01 (Contactor / relay coil, page 1"), "{e}");
-        assert!(e.contains("`merge`") && e.contains("next free one is -K03"), "{e}");
+        // Brief 026 (design §7.1): all three ways, Swap first.
+        assert!(e.contains("-K01 is used by -K01 (Contactor / relay coil, page 1"), "{e}");
+        assert!(e.contains("\"swap\"") && e.contains("\"merge\"") && e.contains("\"next\" (use -K03)"), "{e}");
     }
     assert_eq!(f.h.head(), head, "nothing written");
     // Any letters are accepted (IEC is the default, never the law).

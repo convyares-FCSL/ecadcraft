@@ -239,6 +239,38 @@ fn errors_need_release_anyway() {
     let _ = std::fs::remove_dir_all(&f.dir);
 }
 
+/// §14 C (brief 026 in `dev`): provisional items refuse a release without a choice, with both
+/// ways forward; `"finalise"` records Finalise numbering, then the issue; `"issue"` only the issue.
+#[test]
+fn provisional_items_follow_026s_choice() {
+    for way in ["finalise", "issue"] {
+        let mut f = fixture(&format!("prov-{way}"));
+        f.h.run("numbering", json!({"provisional": true})).unwrap();
+        f.h.run("place", json!({"symbol": "coil", "at": [250, 150]})).unwrap();
+        let pre = f.h.run("prerelease", json!({})).unwrap();
+        assert!(pre["provisional"].as_u64().unwrap() >= 1, "{pre}");
+        let refusal = pre["refusal"].as_str().unwrap().to_string();
+        assert!(refusal.contains("Give provisional: \"finalise\""), "{refusal}");
+        let head = f.h.head();
+        let e = f.h.run("release", json!({})).unwrap_err();
+        assert_eq!(e, refusal);
+        assert_eq!(f.h.head(), head, "nothing recorded");
+        let v = f.h.run("release", json!({"provisional": way})).unwrap();
+        let log: Vec<String> = f.h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| t.label.clone()).collect());
+        match way {
+            "finalise" => {
+                assert_eq!(log, ["Finalise numbering", "Issue Rev B"], "{v}");
+                assert_eq!(v["transactions"], json!([head + 1, head + 2]));
+            }
+            _ => {
+                assert_eq!(log, ["Issue Rev B"], "{v}");
+                assert!(v["message"].as_str().unwrap().contains("issued)"), "{v}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&f.dir);
+    }
+}
+
 /// §5.2, AC 3: a failure injected at each step. Before the issue (staging, the issue itself):
 /// nothing recorded, nothing on disk. After it (save, manifest, rename): the issue stays, the
 /// message says how to finish, and releasing the issued revision again finishes the folder.

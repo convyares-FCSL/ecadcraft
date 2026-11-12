@@ -67,11 +67,12 @@ pub const READ_COMMANDS: &[&str] = &[
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
-/// `projectprops {}`.
-const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[])];
+/// `projectprops {}`; brief 026: `numbering {}`.
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[])];
 
-/// Commands whose form with `preview: true` only reads (brief 020b: the merge preview).
-const READ_WITH_PREVIEW: &[&str] = &["merge"];
+/// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
+/// the Renumber and Finalise previews).
+const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
 
 /// Commands whose form naming an issued revision records nothing (brief 027: `release {rev}`
 /// writes that revision's folder again, beside the project, and never issues; it refuses a `rev`
@@ -84,6 +85,18 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
         || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
         || (READ_WITH_REV.contains(&id) && params.get("rev").is_some_and(Value::is_string))
+}
+
+/// How many transactions one call of `id` with `params` may record: one
+/// ([`crate::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}`, which
+/// records Finalise numbering and then the issue (brief 026, design §5.5): two.
+pub fn transactions_allowed(id: &str, params: &Value) -> usize {
+    let finalise = id == "issuerevision"
+        && params
+            .get("provisional")
+            .and_then(Value::as_str)
+            .is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"));
+    if finalise { crate::MAX_TRANSACTIONS_PER_CALL + 1 } else { crate::MAX_TRANSACTIONS_PER_CALL }
 }
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the

@@ -788,7 +788,8 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     let other = c.exec("place", json!({"symbol": "coil", "at": [0, 60]}));
     let before = c.log();
     let m = c.refused("execute", json!({"command": "setprop", "params": {"component": other["component"], "key": "tag", "value": "-K05"}}));
-    assert!(m.contains("Tag -K05 is already used by -K05") && m.contains("`merge`"), "{m}");
+    // Brief 026 (design 026 §7.1): the three ways, Swap first.
+    assert!(m.contains("-K05 is used by -K05") && m.contains(r#""swap""#) && m.contains(r#""merge""#), "{m}");
     assert_eq!(c.log(), before);
 
     // Reading.

@@ -165,9 +165,9 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 
 // ---------------------------------------------------------------- 026 seam
 
-/// The one place 027 calls brief 026's numbering (design 027 §4.4). Until 026 is in `dev` no
-/// project has provisional items, so nothing is asked; when it lands these call
-/// `numbering_cmds::before_issue` and its provisional count, and nothing else in the flow changes.
+/// The one place 027 calls brief 026's numbering (design 027 §4.4): the provisional items, the
+/// refusal without a choice, and `numbering_cmds::before_issue` (Finalise numbering as its own
+/// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
     use serde_json::Value;
 
@@ -175,33 +175,32 @@ pub mod numbering_seam {
     use crate::checks::Check;
     use crate::project::Project;
 
-    /// How many provisional items (tags and the provisional wire-numbers row) the rows hold.
+    /// How many provisional rows the check holds (tags, and the wire-numbers row).
     pub fn provisional_count(rows: &[Check]) -> usize {
         rows.iter().filter(|c| matches!(c.kind.name(), "provisional-tag" | "provisional-wires")).count()
     }
 
     /// What `release` would refuse for provisional items without a choice (026's words), if any.
-    pub fn refusal(_p: &Project, rows: &[Check], params: &Value) -> Option<String> {
-        let n = provisional_count(rows);
-        (n > 0 && params.get("provisional").is_none_or(Value::is_null)).then(|| {
+    pub fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
+        if params.get("provisional").is_some_and(|v| !v.is_null()) {
+            return None;
+        }
+        let items = crate::numbering_cmds::provisional_items(p.ledger.document());
+        (!items.is_empty()).then(|| {
             format!(
-                "{n} provisional item{} open. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
-                if n == 1 { " is" } else { "s are" }
+                "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
+                items.words()
             )
         })
     }
 
     /// Before the issue: 026's finalise when asked (its own transaction), or its refusal; the
-    /// note for the echo. Validates `provisional` before 026 lands.
+    /// note for the echo.
     ///
     /// # Errors
     /// An unknown `provisional`, or 026's refusal.
-    pub(crate) fn before_issue(_p: &mut Project, _pg: &mut Pages<'_>, params: &Value) -> Result<Option<String>, String> {
-        match params.get("provisional") {
-            None | Some(Value::Null) => Ok(None),
-            Some(Value::String(w)) if matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize" | "issue") => Ok(None),
-            Some(other) => Err(format!("`provisional` must be \"finalise\" or \"issue\", not {other}")),
-        }
+    pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, params: &Value) -> Result<Option<String>, String> {
+        crate::numbering_cmds::before_issue(p, pg, params)
     }
 }
 

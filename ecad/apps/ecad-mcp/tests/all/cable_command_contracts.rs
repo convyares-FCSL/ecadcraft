@@ -205,7 +205,7 @@ fn rows() -> Vec<(&'static str, Value, &'static str, usize)> {
         ("movepage", json!({"page": "<field>", "index": 2}), r#""changed":false"#, 0),
         ("movepage", json!({"page": "<field>", "index": 1}), r#""index":1"#, 1),
         ("cablerefs", json!({"cable": "<c1>"}), r#""text":"2-A-6""#, 0),
-        ("cablegoto", json!({"reference": "<ref field>"}), r#"Page 1 \"Source\", at the other end of cable C1"#, 0),
+        ("cablegoto", json!({"reference": "<ref field>"}), r#"Page 1 \"Source\", at the other end of cable -C01"#, 0),
     ]
 }
 
@@ -320,10 +320,10 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
         ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` (hex id) is required"),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 1.5}), "`at` as a fraction must be from 0 to 1"),
         ("cablefan", json!({"cable": "<c1>", "at": [1e300, 0]}), "Point out of range."),
-        ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable C1 already has a reference on this page."),
+        ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
         ("cableref", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
-        ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable C1 already continues to another page"),
+        ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable -C01 already continues to another page"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": "<w0>"}), "no such reference"),
         ("cablerefs", json!({"cable": "nope"}), "`cable` (hex id) is required"),
@@ -389,7 +389,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
     let v = c.exec("cablegoto", json!({"reference": from}));
     assert_eq!(v["page"], json!(field.hex()), "{v}");
     assert_eq!(v["reference"], fill(&doc, &json!("<ref field>")), "{v}");
-    assert_eq!(v["message"], json!("Page 2 \"Field\", at the other end of cable C1 (2-A-6)."), "{v}");
+    assert_eq!(v["message"], json!("Page 2 \"Field\", at the other end of cable -C01 (2-A-6)."), "{v}");
     assert!(v.get("ecadTransactions").is_none(), "{v}");
     let (active, on_field) = c.active_and(field);
     assert!(on_field.is_some() && active == on_field, "the open page switched to Field");

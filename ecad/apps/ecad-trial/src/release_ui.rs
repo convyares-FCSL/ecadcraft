@@ -32,6 +32,8 @@ pub enum Out {
     GoTo(Box<Check>),
     /// Reports, BOM tab, Only ? (the `?` parts group).
     ShowReports,
+    /// 026's Finalise numbering dialog (the Provisional group).
+    Finalise,
     /// The Checks tab (`Show all N in Checks`).
     ShowChecks,
     /// Save As… (a project never saved).
@@ -140,7 +142,7 @@ impl ReleaseDialog {
         let mut out = None;
         let mut open = true;
         let t = Tokens::get();
-        let Some(v) = self.view.clone() else { return None };
+        let v = self.view.clone()?;
         let title = match &self.rev {
             Some(r) => format!("WRITE REV {}'S FOLDER", r.to_uppercase()),
             None => format!("RELEASE REV {}", v.rev.to_uppercase()),
@@ -224,6 +226,14 @@ impl ReleaseDialog {
                                 } else {
                                     self.collapsed.insert(*g);
                                 }
+                            }
+                            if *g == Group::Provisional
+                                && self.rev.is_none()
+                                && v.provisional > 0
+                                && !self.read_only
+                                && ui.small_button("Finalise numbering now").accessible_name("ecad.release.finalise").clicked()
+                            {
+                                out = Some(Out::Finalise);
                             }
                             if *g == Group::Parts && ui.small_button("Show in Reports").accessible_name("ecad.release.reports").clicked() {
                                 out = Some(Out::ShowReports);

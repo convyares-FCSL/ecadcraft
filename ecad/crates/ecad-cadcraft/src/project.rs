@@ -2590,6 +2590,18 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
             }
+            // Brief 026: a cable's tag is drawn by its slashes and its members' labels: their
+            // pages (its references elsewhere are the reference snapshot's part). A high-water
+            // reset is drawn nowhere.
+            Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
+                out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
+                if let Some(cable) = doc.cables.get(k) {
+                    for m in &cable.members {
+                        out.extend(doc.representations_of(Subject::Conductor(m.conductor)).map(|(_, r)| r.page));
+                    }
+                }
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
             _ => return None,
         }
     }

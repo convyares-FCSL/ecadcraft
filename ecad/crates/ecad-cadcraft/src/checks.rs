@@ -87,6 +87,12 @@ pub enum Kind {
     MixedPotentials,
     Unnumbered,
     UnknownName,
+    /// Two cables, or a cable and a device, share a tag (brief 026: one namespace).
+    DuplicateTag,
+    /// A provisional tag (brief 026, design §5.4).
+    ProvisionalTag,
+    /// Nets without a number while provisional tags are on: one summary row (Q6).
+    ProvisionalWires,
     /// Brief 024 (design 024 §8.3): a device's own location differs from its box's.
     OwnLocation,
     /// A location box outline crosses itself.
@@ -104,7 +110,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 21] = [
+    pub const ALL: [Kind; 24] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -119,6 +125,9 @@ impl Kind {
         Kind::MixedPotentials,
         Kind::Unnumbered,
         Kind::UnknownName,
+        Kind::DuplicateTag,
+        Kind::ProvisionalTag,
+        Kind::ProvisionalWires,
         Kind::OwnLocation,
         Kind::BoxCrosses,
         Kind::BoxesOverlap,
@@ -145,6 +154,9 @@ impl Kind {
             Kind::MixedPotentials => "mixed-potentials",
             Kind::Unnumbered => "unnumbered",
             Kind::UnknownName => "unknown-name",
+            Kind::DuplicateTag => "duplicate-tag",
+            Kind::ProvisionalTag => "provisional-tag",
+            Kind::ProvisionalWires => "provisional-wires",
             Kind::OwnLocation => "own-location",
             Kind::BoxCrosses => "box-crosses",
             Kind::BoxesOverlap => "boxes-overlap",
@@ -177,6 +189,9 @@ impl Kind {
             Kind::MixedPotentials => "Mixed potentials in one net",
             Kind::Unnumbered => "Unnumbered nets",
             Kind::UnknownName => "Continuation name not a potential",
+            Kind::DuplicateTag => "Two cables share a tag",
+            Kind::ProvisionalTag => "Provisional tag",
+            Kind::ProvisionalWires => "Wire numbers provisional",
             Kind::OwnLocation => "Own location differs from its box",
             Kind::BoxCrosses => "Location box outline crosses itself",
             Kind::BoxesOverlap => "Location boxes overlap without nesting",
@@ -189,13 +204,15 @@ impl Kind {
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed => Severity::Error,
+            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
             | Kind::DrawnAway
             | Kind::SinglePoint
             | Kind::UnknownName
+            | Kind::ProvisionalTag
+            | Kind::ProvisionalWires
             | Kind::TooManyContacts
             | Kind::OwnLocation
             | Kind::BoxCrosses
@@ -213,6 +230,7 @@ pub enum Object {
     Component(ComponentId),
     /// A cable reference end (brief 027).
     Reference(ecad_model::RepresentationId),
+    Cable(ecad_model::CableId),
     None,
 }
 
@@ -223,6 +241,8 @@ pub enum Fix {
     AddJunction(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
+    /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
+    Finalise,
     /// Brief 024: clear the device's own location (`setprop … value: null`): Use the box's location.
     UseBoxLocation(ComponentId),
     /// Brief 024: open Reports on the BOM tab with Only ? on.
@@ -274,6 +294,7 @@ impl Check {
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Component(c) => json!({"component": c.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
+            Object::Cable(k) => json!({"cable": k.hex()}),
             Object::None => Value::Null,
         };
         let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::wiring::place(doc, p, a));
@@ -301,6 +322,7 @@ pub enum Key {
     Component(ComponentId),
     /// The reference ends of a cable (brief 027: orphans).
     CableReferences(CableId),
+    Cable(ecad_model::CableId),
     Project,
 }
 
@@ -688,7 +710,35 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 out.push(Check { kind: Kind::LonelyContinuation, page, at, object: Object::Component(c), which: name, fix: None });
             }
         }
-        _ => {}
+        _ => {
+            // Brief 026: a provisional tag, and a tag a cable holds too.
+            if let Some(t) = crate::devices::tag_of(doc, c)
+                && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
+            {
+                // Located only when there is a row to show (a build visits every device).
+                let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+                if ecad_model::tag::is_provisional(t) {
+                    out.push(Check {
+                        kind: Kind::ProvisionalTag,
+                        page,
+                        at,
+                        object: Object::Component(c),
+                        which: t.to_string(),
+                        fix: Some(Fix::Finalise),
+                    });
+                }
+                if !doc.cables_tagged(t).is_empty() {
+                    out.push(Check {
+                        kind: Kind::DuplicateTag,
+                        page,
+                        at,
+                        object: Object::Component(c),
+                        which: format!("A cable and a device share {t}"),
+                        fix: None,
+                    });
+                }
+            }
+        }
     }
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::xref::count_checks(doc, c) {
@@ -710,6 +760,25 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
     vec![Check { kind: Kind::OrphanReference, page: Some(r.page), at, object: Object::Reference(*rid), which, fix: None }]
 }
 
+/// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
+pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
+    let mut out = Vec::new();
+    let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
+    if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
+        return out;
+    }
+    let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+    if ecad_model::tag::is_provisional(t) {
+        out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });
+    }
+    if doc.cables_tagged(t).len() > 1 {
+        out.push(Check { kind: Kind::DuplicateTag, page, at, object: Object::Cable(k), which: format!("Two cables share {t}"), fix: None });
+    } else if !doc.components_tagged(t).is_empty() {
+        out.push(Check { kind: Kind::DuplicateTag, page, at, object: Object::Cable(k), which: format!("A cable and a device share {t}"), fix: None });
+    }
+    out
+}
+
 /// The kept Checks list (see the module docs).
 #[derive(Debug, Clone, Default)]
 pub struct Checks {
@@ -717,6 +786,8 @@ pub struct Checks {
     grid: Grid,
     /// Nets with conductors and no number (for the one Unnumbered row).
     unnumbered: BTreeSet<NetId>,
+    /// Provisional tags are on (brief 026): the Unnumbered row is a warning, `… provisional`.
+    provisional: bool,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
 }
@@ -747,7 +818,9 @@ impl Checks {
         }
         for k in doc.cables.keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
+            ch.set(Key::Cable(*k), cable_checks(doc, *k));
         }
+        ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
     }
@@ -762,13 +835,26 @@ impl Checks {
 
     fn set_unnumbered(&mut self) {
         let n = self.unnumbered.len();
-        let row = (n > 0).then(|| Check {
-            kind: Kind::Unnumbered,
-            page: None,
-            at: None,
-            object: Object::None,
-            which: if n == 1 { "1 net has no number".into() } else { format!("{n} nets have no number") },
-            fix: Some(Fix::NumberThem),
+        let row = (n > 0).then(|| {
+            if self.provisional {
+                Check {
+                    kind: Kind::ProvisionalWires,
+                    page: None,
+                    at: None,
+                    object: Object::None,
+                    which: if n == 1 { "1 wire number provisional".into() } else { format!("{n} wire numbers provisional") },
+                    fix: Some(Fix::Finalise),
+                }
+            } else {
+                Check {
+                    kind: Kind::Unnumbered,
+                    page: None,
+                    at: None,
+                    object: Object::None,
+                    which: if n == 1 { "1 net has no number".into() } else { format!("{n} nets have no number") },
+                    fix: Some(Fix::NumberThem),
+                }
+            }
         });
         self.set(Key::Project, row.into_iter().collect());
     }
@@ -867,6 +953,10 @@ impl Checks {
         for k in &scope.cable_references {
             self.set(Key::CableReferences(*k), reference_checks(doc, *k));
         }
+        for k in &scope.cables {
+            self.set(Key::Cable(*k), cable_checks(doc, *k));
+        }
+        self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
     }
@@ -888,6 +978,8 @@ pub struct Scope {
     components: BTreeSet<ComponentId>,
     /// Cables whose reference ends to re-check (brief 027: orphans).
     cable_references: BTreeSet<CableId>,
+    /// Cables to re-check (brief 026: provisional and shared tags).
+    cables: BTreeSet<ecad_model::CableId>,
 }
 
 impl Scope {
@@ -932,12 +1024,16 @@ impl Scope {
                     node(self, Node::Terminal(*id));
                 }
                 Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
+                    self.tag_holders(doc, component.properties.get(ecad_model::tag::TAG_KEY));
                     self.component(doc, *id, component.properties.get(NAME).map(String::as_str));
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), before, after, .. } => {
+                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
+                    if key == ecad_model::tag::TAG_KEY {
+                        self.tag_holders(doc, [before, after].into_iter().flatten());
+                    }
                     for n in [before, after].into_iter().flatten() {
                         self.component(doc, *c, Some(n));
                         node(self, Node::Name(name_key(n)));
@@ -959,6 +1055,17 @@ impl Scope {
                 | Op::RemoveCableMember { cable: k, .. } => {
                     // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
                     self.cable_references.insert(*k);
+                    // Brief 026: the cable's own rows, and every holder of the tags it had or has.
+                    self.cables.insert(*k);
+                    match op {
+                        Op::SetProperty { key, before, after, .. } if key == ecad_model::tag::TAG_KEY => {
+                            self.tag_holders(doc, [before, after].into_iter().flatten());
+                        }
+                        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
+                            self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY));
+                        }
+                        _ => {}
+                    }
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
                         self.conductors.extend(cable.members.iter().map(|m| m.conductor));
@@ -1019,6 +1126,14 @@ impl Scope {
         }
     }
 
+    /// Every device and cable holding one of `tags` (a shared tag's rows on both sides).
+    fn tag_holders<'t>(&mut self, doc: &Document, tags: impl IntoIterator<Item = &'t String>) {
+        for t in tags {
+            self.components.extend(doc.components_tagged(t));
+            self.cables.extend(doc.cables_tagged(t));
+        }
+    }
+
     fn component_of(&mut self, doc: &Document, t: TerminalId) {
         if let Some(c) = doc.terminals.get(&t).map(|x| x.component) {
             self.components.insert(c);
@@ -1059,8 +1174,10 @@ impl Scope {
                     self.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
-            // Brief 027: a reference end linked, changed or unlinked (its point an item op).
+            // A cable's drawing moves its rows (brief 026); a reference end linked, changed or
+            // unlinked (its point an item op) re-derives its orphans (brief 027).
             Subject::Cable(k) => {
+                self.cables.insert(k);
                 self.cable_references.insert(k);
             }
         }
@@ -1083,6 +1200,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
                 .map(|x| x.items.iter().filter_map(|i| map.item(*i)).collect())
                 .unwrap_or_default();
         }
+        Object::Cable(k) => Subject::Cable(k),
         Object::Terminal(t) => match doc.terminals.get(&t) {
             Some(x) => Subject::Component(x.component),
             None => return Vec::new(),

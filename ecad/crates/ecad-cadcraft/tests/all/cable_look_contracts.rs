@@ -212,7 +212,7 @@ fn c_interactive_and_json_forms_record_identical_transactions() {
     click(&mut b.h, 30.0, 0.0).unwrap();
     assert_eq!(prompt(&b.h), "Core number or colour for W1 <none>:");
     b.h.s.input(Input::Text("1".into())).unwrap();
-    assert_eq!(last_echo(&b.h), "Wire W1 is now core 1 of cable C1.");
+    assert_eq!(last_echo(&b.h), "Wire W1 is now core 1 of cable -C01.");
     assert_eq!(prompt(&b.h), "Select a wire in a cable:", "back to step 1");
     b.h.s.input(Input::Enter).unwrap();
     assert!(b.h.s.running.is_none());
@@ -229,7 +229,7 @@ fn a_interactive_prompts_and_refusals() {
     click(&mut f.h, 30.0, 10.0).unwrap();
     assert_eq!(prompt(&f.h), "Core number or colour for W3 <none>:");
     f.h.s.input(Input::Text("3".into())).unwrap();
-    assert_eq!(last_echo(&f.h), "Wire W3 is now core 3 of cable C1.");
+    assert_eq!(last_echo(&f.h), "Wire W3 is now core 3 of cable -C01.");
     // Empty space, the slash, a component.
     let r = click(&mut f.h, 60.0, 40.0);
     let e = said(&f.h, r);
@@ -319,7 +319,7 @@ fn m_hostile_core_input_is_refused() {
     refused(&mut f.h, json!({"core": "1"}), "`conductor` (hex id) is required");
     refused(&mut f.h, json!({"conductor": "zz", "core": "1"}), "`conductor` (hex id) is required");
     refused(&mut f.h, json!({"conductor": "ab", "core": "1"}), "no such conductor");
-    refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1"]}), "`cores` must list one label (or null) per member: cable C1 has 4 members");
+    refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1"]}), "`cores` must list one label (or null) per member: cable -C01 has 4 members");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": "1"}), "`cores` must list one label");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1", "2", "a\tb", "4"]}), "Core 3: A core label cannot");
     assert_eq!(f.h.head(), head, "nothing written");
@@ -448,7 +448,7 @@ fn g_fan_is_the_worked_example() {
             other => panic!("{other:?}"),
         })
         .collect();
-    assert_eq!(lines, ["C1", "MOTOR M1", "4/C #10"]);
+    assert_eq!(lines, ["-C01", "MOTOR M1", "4/C #10"]);
     // Labels at the tail start: on the left, `1` right-aligned at x = 19, `W1` further left.
     let text = |role: Role, value: &str| -> Pt {
         fan.parts
@@ -578,7 +578,7 @@ fn k_hover_and_trail_show_cores() {
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let route = f.h.route_handle(f.page, f.wires[2]);
     let lines = f.h.p(|p| hover_lines(p, uid, route)).unwrap();
-    assert!(lines.iter().any(|l| l == "In cable C1, core 3"), "{lines:?}");
+    assert!(lines.iter().any(|l| l == "In cable -C01, core 3"), "{lines:?}");
     let slash = f.h.doc().representations.values().find(|r| r.subject == Subject::Cable(f.c1)).unwrap().items[0];
     let h_slash = f.h.handle_of(f.page, slash);
     let lines = f.h.p(|p| hover_lines(p, uid, h_slash)).unwrap();
@@ -830,7 +830,7 @@ fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
     click(&mut b.h, 22.5, 4.0).unwrap();
     assert_eq!(prompt(&b.h), "Specify where the cable joins or [Middle]:");
     click(&mut b.h, 30.0, 11.0).unwrap();
-    assert_eq!(last_echo(&b.h), "Cable C1 now joins end A at 22.5, 11.");
+    assert_eq!(last_echo(&b.h), "Cable -C01 now joins end A at 22.5, 11.");
     assert!(b.h.s.running.is_none());
     let ops = last_tx(&mut b.h).ops;
     // Same ops apart from the fresh IDs of the new item and representation.
@@ -852,7 +852,7 @@ fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
     view(&mut c.h, c.c1, "fan");
     reference_end(&mut c.h, c.page, c.c1, Pt::new(125.0, 21.25), 1);
     let e = c.h.run("cablefan", json!({"cable": c.c1.hex(), "end": "B", "at": 0.5})).unwrap_err();
-    assert!(e.contains("End B of cable C1 stops at a reference; it has no spine."), "{e}");
+    assert!(e.contains("End B of cable -C01 stops at a reference; it has no spine."), "{e}");
     c.h.run("cablefan", json!({"cable": c.c1.hex(), "end": "A", "at": 1.0})).unwrap();
     c.h.check();
 }
