@@ -1135,6 +1135,10 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         None => format!("Device (no tag)   {}", description(doc, c)),
     };
     let mut lines = vec![head, format!("Maker: {}   Part number: {}", get("maker"), get("part_number"))];
+    // Brief 028 (design 028 §7.1): a terminal's sides and its strip's positions.
+    if crate::strips::is_strip(doc, c) {
+        lines.extend(crate::strips::terminal_hover(doc, c, here));
+    }
     // Brief 024 (design 024 §3.3): the location shown, where it comes from, and this symbol's own
     // context when it differs.
     let mut boxes = crate::locations::BoxCache::default();

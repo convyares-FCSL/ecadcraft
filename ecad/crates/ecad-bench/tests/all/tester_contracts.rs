@@ -63,6 +63,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
         compression: None,
         history: None,
         outputs: None,
+        strips: None,
         release: None,
         measured: Measured {
             bytes: 1000,

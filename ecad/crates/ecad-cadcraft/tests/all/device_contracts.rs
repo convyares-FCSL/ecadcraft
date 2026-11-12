@@ -104,6 +104,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         ("motor1", "-M02"),
         ("trafo", "-T01"),
         ("terminal", "-X01"),
+        ("terminalpe", "-X02"),
         ("di", "-A01"),
         ("do", "-A02"),
     ];

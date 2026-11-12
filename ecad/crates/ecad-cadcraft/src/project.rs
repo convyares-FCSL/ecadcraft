@@ -1428,8 +1428,9 @@ impl Project {
         {
             return parts.clone();
         }
-        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024).
-        if crate::generated::has_bom_page(self.ledger.document()) {
+        // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
+        // once built they track their pages themselves.
+        if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         let doc = self.ledger.document();
@@ -2008,13 +2009,34 @@ impl Project {
         let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return };
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let (before, revision) = (crate::generated::bom_sheets(&o), o.revision);
-        o.update(ledger.document(), ops, scope);
-        let bom_shown = self
-            .frame
-            .as_ref()
-            .is_some_and(|(p, _, _)| crate::generated::kind_of(ledger.document(), *p) == Some(crate::generated::GenKind::BomLocation));
-        if crate::generated::bom_sheets(&o) != before || (bom_shown && o.revision != revision) {
+        // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
+        // and cable rows, so the book's Total is compared whenever such a page exists.
+        // Only the pages drawn from the models can change their sheet count here (review of PR
+        // #55, finding 1): the kept set, each counted from kept totals; none, no work.
+        let doc = ledger.document();
+        let sheets = |o: &crate::outputs::Outputs| -> usize {
+            o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| crate::generated::sheets(doc, *p, Some(o))).sum()
+        };
+        let (before, revision) = (sheets(&o), o.revision);
+        o.update(doc, ops, scope);
+        if ecad_model::ledger::verify_mode()
+            && let Some(line) = o.verify_strips(doc)
+        {
+            self.events.record(EventKind::IndexRebuilt, None, ledger.head(), None, line);
+        }
+        // The shown generated page redraws only when what it shows changed (tester 028, defect
+        // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
+        // a cable schedule when a cable row changed.
+        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| match crate::generated::kind_of(doc, *p) {
+            Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
+            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, *p) {
+                Some(c) => o.strips.last_changed.contains(&c),
+                None => !o.strips.last_changed.is_empty(),
+            },
+            Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
+            _ => false,
+        });
+        if sheets(&o) != before || shown_changed {
             self.frame_stale = true;
         }
         self.outputs = Some(o);
@@ -2566,6 +2588,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
+            // symbols only: their pages.
+            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                out.extend(doc.representations_of(Subject::Component(terminal.component)).map(|(_, r)| r.page));
+            }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.

@@ -187,8 +187,9 @@ impl ReleaseDialog {
                     v.writes.iter().filter(|(s, _)| s != "manifest").map(|(s, f)| if s == "book" { f.clone() } else { s.clone() }).collect();
                 ui.add(egui::Label::new(RichText::new(format!("Writes  {}", writes.join(" \u{b7} "))).small()).wrap())
                     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.writes"));
-                if !v.not_included.is_empty() {
-                    ui.label(RichText::new("Terminal plan, cable schedule: come with terminal strips (028)").small().color(t.text_dim));
+                // Brief 028: a list the project gives none of, and why (`No terminal strips in this project.`).
+                for (slot, why) in &v.not_included {
+                    ui.label(RichText::new(format!("{slot}: {why}")).small().color(t.text_dim));
                 }
                 if let Some(w) = v.exists_words() {
                     ui.label(RichText::new(w).small().color(ui.visuals().warn_fg_color));

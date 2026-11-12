@@ -105,12 +105,22 @@ pub enum Kind {
     NoLocation,
     /// A device with more contacts of a kind drawn than its part offers (brief 025).
     TooManyContacts,
+    /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
+    TooManyTerminals,
+    /// Two terminals of one strip with one label.
+    TerminalTwice,
+    /// A cable with more members than cores offered.
+    TooManyCores,
+    /// Two members of one cable with one core label.
+    CoreTwice,
+    /// Cables with no core count (one count row).
+    NoCoreCount,
     /// A cable reference end with no other end (brief 027, design 027 §4.2).
     OrphanReference,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 24] = [
+    pub const ALL: [Kind; 29] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -134,6 +144,11 @@ impl Kind {
         Kind::NoPartNumber,
         Kind::NoLocation,
         Kind::TooManyContacts,
+        Kind::TooManyTerminals,
+        Kind::TerminalTwice,
+        Kind::TooManyCores,
+        Kind::CoreTwice,
+        Kind::NoCoreCount,
         Kind::OrphanReference,
     ];
 
@@ -163,6 +178,11 @@ impl Kind {
             Kind::NoPartNumber => "no-part-number",
             Kind::NoLocation => "no-location",
             Kind::TooManyContacts => "too-many-contacts",
+            Kind::TooManyTerminals => "too-many-terminals",
+            Kind::TerminalTwice => "terminal-twice",
+            Kind::TooManyCores => "too-many-cores",
+            Kind::CoreTwice => "core-twice",
+            Kind::NoCoreCount => "no-core-count",
             Kind::OrphanReference => "orphan-reference",
         }
     }
@@ -198,13 +218,18 @@ impl Kind {
             Kind::NoPartNumber => "Devices without a part number",
             Kind::NoLocation => "Devices without a location",
             Kind::TooManyContacts => "More contacts than the part offers",
+            Kind::TooManyTerminals => "More terminals than the strip offers",
+            Kind::TerminalTwice => "Terminal drawn twice",
+            Kind::TooManyCores => "More cores used than the cable offers",
+            Kind::CoreTwice => "Core used by two wires",
+            Kind::NoCoreCount => "Cables without a core count",
             Kind::OrphanReference => "Cable reference with no other end",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag => Severity::Error,
+            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -214,6 +239,9 @@ impl Kind {
             | Kind::ProvisionalTag
             | Kind::ProvisionalWires
             | Kind::TooManyContacts
+            | Kind::TooManyTerminals
+            | Kind::TooManyCores
+            | Kind::CoreTwice
             | Kind::OwnLocation
             | Kind::BoxCrosses
             | Kind::OrphanReference => Severity::Warning,
@@ -247,6 +275,16 @@ pub enum Fix {
     UseBoxLocation(ComponentId),
     /// Brief 024: open Reports on the BOM tab with Only ? on.
     ShowReports,
+    /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
+    OfferDrawn(ComponentId),
+    /// Brief 028: renumber the strip's terminals (`renumber {kind: "terminals"}`).
+    RenumberStrip(ComponentId),
+    /// Brief 028: focus Properties ▸ Cores on the cable.
+    SetCores(ecad_model::CableId),
+    /// Brief 028: give the member the next free core (`cablecore`).
+    NextFreeCore(ConductorId),
+    /// Brief 028: open Reports on the Cables tab with Only ? on.
+    ShowCables,
 }
 
 /// One row of the Checks list.

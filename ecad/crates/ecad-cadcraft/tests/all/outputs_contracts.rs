@@ -228,7 +228,10 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     assert_eq!(c["cores"], 1, "{cables}");
     assert_eq!(c["from_location"], "+CP1");
     assert_eq!(c["to_location"], "+FIELD");
-    assert!(c["used"].is_null());
+    // Brief 028: Used counts the members; with no core offer, Spare is unknown.
+    assert_eq!(c["used"], 1);
+    assert!(c["spare"].is_null());
+    assert_eq!(c["spare_text"], Value::Null, "flagged ?: {c}");
     same_as_built(&mut h);
     // CSV, Excel-safe.
     let dir = std::env::temp_dir().join(format!("ecad-024-{}", std::process::id()));

@@ -523,6 +523,10 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
+            Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
+                out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w)));
+            }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
             // in a cable's drawing or reference texts.

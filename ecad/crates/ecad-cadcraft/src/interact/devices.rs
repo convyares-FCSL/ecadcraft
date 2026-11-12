@@ -183,7 +183,13 @@ impl Place {
         let labels: Vec<&str> =
             r.get("terminals").and_then(Value::as_array).into_iter().flatten().filter_map(|t| t.get("label").and_then(Value::as_str)).collect();
         let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(ComponentId::from);
-        if r.get("joined").and_then(Value::as_bool) == Some(true) {
+        // Brief 028: a terminal landed on a wire; the JSON form has said so.
+        let landed = r.get("split").is_some();
+        if landed {
+            if r.get("joined").and_then(Value::as_bool) == Some(true) {
+                self.join = component;
+            }
+        } else if r.get("joined").and_then(Value::as_bool) == Some(true) {
             let pages: Vec<String> =
                 r.get("pages").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_u64).map(|n| n.to_string()).collect();
             let pages = if pages.len() == 1 { format!("page {}", pages.join(", ")) } else { format!("pages {}", pages.join(", ")) };

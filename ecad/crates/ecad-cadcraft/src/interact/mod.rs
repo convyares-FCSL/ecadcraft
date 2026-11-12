@@ -23,6 +23,7 @@ mod devices;
 mod forms;
 mod location_form;
 mod refs;
+mod terminals;
 mod wiring_forms;
 mod xrefs;
 
@@ -45,6 +46,7 @@ pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use location_form::locationbox;
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
+pub(crate) use terminals::{bridge, terminals};
 pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
 pub(crate) use xrefs::mirrormove;
 
@@ -646,6 +648,10 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
         .collect();
     if !refs.is_empty() {
         lines.push(format!("References here: {}", refs.join(", ")));
+    }
+    // Brief 028 (design 028 §7.1): the core count.
+    if let Some(line) = crate::strips::cable_hover(doc, k) {
+        lines.insert(1, line);
     }
     let members = cable.map(|x| x.members.as_slice()).unwrap_or_default();
     if members.is_empty() {

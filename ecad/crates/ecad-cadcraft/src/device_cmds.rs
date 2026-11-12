@@ -84,7 +84,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, devices::padding(doc))?)),
             (None, None) => Target::New(None),
         };
-        let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
+        let landing = (starter.kind == crate::symbols::Kind::Terminal).then(|| crate::terminal_cmds::landing_point(doc, page, at)).flatten();
+        let origin = landing.map_or(at, |on| on.at);
+        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let style = style(p);
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
@@ -93,17 +96,27 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             }
             _ => false,
         };
-        let plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
-        p.apply_edit(pg, "place", &plan.label, plan.ops.clone())?;
+        let mut plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
+        let land = match (landing, plan.terminals.first()) {
+            (Some(on), Some((_, _, t))) => {
+                let land = crate::terminal_cmds::plan_land(p.ledger.document(), &mut p.ids, page, on, *t)?;
+                plan.ops.extend(land.ops.clone());
+                Some((*t, land))
+            }
+            _ => None,
+        };
+        let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
+        p.apply_edit(pg, "place", &label, plan.ops.clone())?;
         p.last_placed = Some((starter.key.to_string(), plan.component));
         let doc = p.ledger.document();
+        let landed = land.map(|(t, l)| crate::terminal_cmds::land_result(doc, t, &l));
         if let (true, crate::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
             let labels: Vec<String> = plan.terminals.iter().map(|(_, l, _)| l.clone()).collect();
             if let Some(line) = crate::xref::over_line(doc, plan.component, &labels, make) {
                 pg.echo(line);
             }
         }
-        Ok(json!({
+        let mut v = json!({
             "component": plan.component.hex(),
             "representation": plan.representation.hex(),
             "item": plan.item.hex(),
@@ -114,7 +127,15 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "offer_slot": offer_slot,
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
-        }))
+        });
+        if let Some((fields, message)) = landed {
+            if let (Some(o), Some(f)) = (v.as_object_mut(), fields.as_object()) {
+                o.extend(f.clone());
+            }
+            v["message"] = json!(message);
+            pg.echo(message);
+        }
+        Ok(v)
     })
 }
 

@@ -18,8 +18,8 @@
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
 //!   but this module's own staging folder.
-//! - **Slots** ([`LISTS`]): the generated lists as a table; 028 fills `terminal-plan` and
-//!   `cable-schedule` by replacing their `build` functions, with no change to the flow.
+//! - **Slots** ([`LISTS`]): the generated lists as a table; brief 028 fills `terminal-plan` and
+//!   `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON keys).
 //!
 //! # Update map (design 027 §11.1)
 //! The release folder is built on request only. The dialog's check reads the kept Checks (its
@@ -27,8 +27,7 @@
 //! commit.
 //!
 //! Excluded: approval and signatures, transmittals, zip or upload, DWG/DXF and XLSX outputs, a
-//! folder per branch, page-by-page diffs, and the terminal plan and cable schedule themselves
-//! (brief 028).
+//! folder per branch, page-by-page diffs.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -67,8 +66,9 @@ pub const MAX_ROWS: usize = 2000;
 const MAX_MANIFEST_BYTES: u64 = 4 << 20;
 /// Most `Rev B (n)` folders tried for Keep both.
 const MAX_KEEP_BOTH: u32 = 1000;
-/// Said by 028's slots until 028 provides them.
-pub const COMES_WITH_028: &str = "Comes with terminal strips (brief 028).";
+/// Said by 028's slots for a project with no strips or no cables (design 027 §7.2, Q7).
+pub const NO_STRIPS: &str = "No terminal strips in this project.";
+pub const NO_CABLES: &str = "No cables in this project.";
 /// Said for a project that was never saved.
 pub const SAVE_FIRST: &str = "Save the project first, so the revision is kept with it and the folder has a place.";
 /// Said on a build that cannot write files.
@@ -232,13 +232,13 @@ fn wires(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
 fn cables(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
     Ok(Some(o.cable_table()))
 }
-/// Brief 028 replaces this with its terminal plan.
-fn terminal_plan(_: &Document, _: &Outputs) -> Result<Option<Table>, String> {
-    Ok(None)
+/// Brief 028's terminal plan, when the project has strips.
+fn terminal_plan(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
+    Ok((!o.strips.is_empty()).then(|| o.terminal_plan_csv()))
 }
-/// Brief 028 replaces this with its cable schedule.
-fn cable_schedule(_: &Document, _: &Outputs) -> Result<Option<Table>, String> {
-    Ok(None)
+/// Brief 028's cable schedule, when the project has cables.
+fn cable_schedule(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
+    Ok((o.cable_count() > 0).then(|| o.cable_schedule_csv()))
 }
 
 /// The generated lists, in folder order. The book, `checks` and the manifest are always written.
@@ -246,9 +246,19 @@ pub const LISTS: [Slot; 5] = [
     Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
     Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
     Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
-    Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: COMES_WITH_028 },
-    Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: COMES_WITH_028 },
+    Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
+    Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
 ];
+
+/// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
+/// brief 028's lists only when the project has strips or cables.
+fn slot_gives(slot: &Slot, doc: &Document) -> bool {
+    match slot.id {
+        "terminal-plan" => doc.components.keys().any(|c| crate::strips::is_strip(doc, *c)),
+        "cable-schedule" => !doc.cables.is_empty(),
+        _ => slot.missing_why.is_empty(),
+    }
+}
 
 /// Every slot id `outputs` may name.
 pub fn slot_ids() -> Vec<&'static str> {
@@ -1022,8 +1032,9 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     }
     let base = format!("{} Rev {}", stem(p), v.rev);
     v.writes.push(("book".into(), format!("{base}.pdf")));
+    let doc = p.ledger.document();
     for s in &LISTS {
-        if s.missing_why.is_empty() {
+        if slot_gives(s, doc) {
             v.writes.push((s.id.into(), format!("{base}{}", s.suffix)));
         } else {
             v.not_included.push((s.id.into(), s.missing_why.into()));
