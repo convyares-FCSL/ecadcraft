@@ -67,11 +67,13 @@ pub const READ_COMMANDS: &[&str] = &[
     "cablecores",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
+    // Brief 031: the defaults registry's list reads the project and records nothing.
+    "defaults",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
-/// `projectprops {}`; brief 026: `numbering {}`.
-const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[])];
+/// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[])];
 
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).

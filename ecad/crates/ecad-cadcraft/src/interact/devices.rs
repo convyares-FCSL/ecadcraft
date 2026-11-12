@@ -456,7 +456,9 @@ impl Interactive for Place {
             def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI)).collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
             let at: Vec<(TextOf, String, ecad_model::Pt)> = def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
-            for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at) {
+            // The project's sizes (design 031 §3.2), as the page will draw them.
+            let Ok(sizes) = read(s, |p, _| Ok(devices::TagSizes::of(p.ledger.document()))) else { return out };
+            for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, TERMINAL_ACI));
             }

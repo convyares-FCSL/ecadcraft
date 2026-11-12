@@ -225,7 +225,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     click(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
-        assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("iec", "1.8"));
+        assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("iec", "1.6"));
         d.label_height = "2.5".into();
     }
     h.run_steps(2);

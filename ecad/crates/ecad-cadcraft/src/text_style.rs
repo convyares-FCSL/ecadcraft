@@ -217,6 +217,15 @@ impl TextKind {
     }
 }
 
+/// The refusal of a `text.` key through `projectprops`, `pageprops` or `setprop` (design 031
+/// §10.6).
+pub const RESERVED_KEY: &str = "\"text.…\" is set with Text styles (textstyle, showtext, movetext).";
+
+/// Whether `key` is one of the text commands' keys (`text.` prefix, any case).
+pub fn is_reserved_key(key: &str) -> bool {
+    key.trim().get(..5).is_some_and(|p| p.eq_ignore_ascii_case("text."))
+}
+
 /// The style of `kind` in this project: the project's `text.<kind>.*` keys (and, for
 /// [`TextKind::WireLabel`], `settings.wiring.label_height`), else the defaults of design 031 §3.2.
 /// Never fails; a hostile stored value gives the default.
@@ -337,6 +346,162 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
     }
     Shown::from_word(r.word())
 }
+
+// ---------------------------------------------------------------- Fonts (§2)
+
+/// The family CADCraft's resolver looks for when the project's family is missing: the built-in of
+/// `text.font` (§2.2 step 3).
+fn default_family() -> &'static str {
+    match d::FONT.builtin {
+        defaults::Value::Text(t) => t,
+        _ => "",
+    }
+}
+
+/// The fonts a project's texts are drawn with on this machine (design 031 §2.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fonts {
+    /// The family the project asks for (`text.font`, or the default).
+    pub wanted: String,
+    /// The font name the regular style names: the wanted family, the default family, or the
+    /// stroke font.
+    pub regular: String,
+    /// The font name the bold style names: the family's bold face, else [`Fonts::regular`].
+    pub bold: String,
+    /// What the texts are drawn with, in words for `textstyle {}` and the status line: a family
+    /// name, or `stroke`.
+    pub drawn_with: String,
+    /// Bold drawn in the stroke font: the lineweight (hundredths of a millimetre) that makes it
+    /// bold (§2.2 step 4, `text.bold_stroke_weight`); `None` with an outline font.
+    pub bold_lineweight: Option<u16>,
+}
+
+impl Fonts {
+    /// Resolve `doc`'s font on this machine. Never fails: a missing font falls back (§2.2).
+    pub fn resolve(doc: &Document) -> Fonts {
+        let wanted = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
+            defaults::Value::Text(t) => t.to_string(),
+            _ => default_family().to_string(),
+        };
+        let found = |name: &str| cadcraft_engine::fonts::ttf::find(name).is_some();
+        let family = if found(&wanted) {
+            Some(wanted.clone())
+        } else if found(default_family()) {
+            Some(default_family().to_string())
+        } else {
+            None
+        };
+        match family {
+            Some(f) => {
+                let bold_name = format!("{f} Bold");
+                let bold = if found(&bold_name) { bold_name } else { f.clone() };
+                Fonts { wanted, regular: f.clone(), bold, drawn_with: f, bold_lineweight: None }
+            }
+            None => {
+                let w = defaults::resolve(doc, &d::BOLD_STROKE_WEIGHT, Scope::project()).number();
+                // A lineweight is hundredths of a millimetre, at most 2.11 mm (the entry's range).
+                let lw = (w * 100.0).round().clamp(0.0, 211.0) as u16;
+                let stroke = cadcraft_engine::fonts::BUILTIN_FONT.to_string();
+                Fonts { wanted, regular: stroke.clone(), bold: stroke, drawn_with: "stroke".into(), bold_lineweight: Some(lw) }
+            }
+        }
+    }
+
+    /// Whether the project's family is the one drawn.
+    pub fn is_wanted(&self) -> bool {
+        self.drawn_with == self.wanted
+    }
+
+    /// The status words of §4.1: `drawn with <family>`, or why another font is used.
+    pub fn status(&self) -> String {
+        if self.is_wanted() {
+            format!("drawn with {}", self.drawn_with)
+        } else if self.drawn_with == "stroke" {
+            format!("{} is not available here; drawn with the stroke font", self.wanted)
+        } else {
+            format!("{} is not available here; drawn with {}", self.wanted, self.drawn_with)
+        }
+    }
+}
+
+/// Write ECAD's two text styles into `d` (design 031 §2.3): `Standard` (the project family,
+/// regular) and `ECAD-BOLD` (bold, or as §2.2). Any drawing ECAD builds calls it; a drawing that
+/// already has the same styles is unchanged.
+pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
+    install_fonts(d, &Fonts::resolve(doc));
+}
+
+/// [`install`] with fonts already resolved.
+pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, fonts: &Fonts) {
+    for (name, font) in [(STYLE_REGULAR, &fonts.regular), (STYLE_BOLD, &fonts.bold)] {
+        match d.text_styles.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
+            Some(s) => {
+                if s.font != *font {
+                    s.font.clone_from(font);
+                }
+            }
+            None => d.text_styles.push(cadcraft_engine::doc::TextStyle {
+                name: name.to_string(),
+                font: font.clone(),
+                ..cadcraft_engine::doc::TextStyle::default()
+            }),
+        }
+    }
+}
+
+/// Every style of a page, resolved once per draw, and the fonts: what a derived text entity needs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Look {
+    styles: [TextStyle; TextKind::ALL.len()],
+    pub fonts: Fonts,
+}
+
+impl Look {
+    /// Resolve every kind's style and the fonts of `doc`.
+    pub fn new(doc: &Document) -> Look {
+        Look { styles: TextKind::ALL.map(|k| text_style(doc, k)), fonts: Fonts::resolve(doc) }
+    }
+
+    /// The style of `kind`.
+    pub fn style(&self, kind: TextKind) -> TextStyle {
+        let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+        self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: STYLE_REGULAR })
+    }
+
+    /// Give a text entity `kind`'s style name, and, for bold in the stroke font, its lineweight
+    /// (§2.2). Its height is left as it is.
+    pub fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
+        let s = self.style(kind);
+        if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+            t.style = s.style_name.to_string();
+        }
+        if let (Weight::Bold, Some(lw)) = (s.weight, self.fonts.bold_lineweight) {
+            e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
+        }
+    }
+}
+
+/// The width of `value` at `kind`'s height in the font it is drawn with (§2.4), falling back to
+/// the stroke font's width; a non-finite or negative result counts as `chars × height × 0.8`.
+pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
+    let s = text_style(doc, kind);
+    let fonts = Fonts::resolve(doc);
+    width_in(&fonts, s, value)
+}
+
+/// [`text_width`] with the style and fonts already resolved.
+pub fn width_in(fonts: &Fonts, s: TextStyle, value: &str) -> f64 {
+    let name = match s.weight {
+        Weight::Bold => &fonts.bold,
+        Weight::Regular => &fonts.regular,
+    };
+    let font = cadcraft_engine::fonts::TextFont::resolve(name);
+    let w = cadcraft_engine::fonts::text_width(&font, value, s.height, 1.0);
+    if w.is_finite() && w >= 0.0 { w } else { value.chars().count() as f64 * s.height * ROUGH_WIDTH }
+}
+
+/// A character's width as a share of the height, for a width no font could give (a guard).
+const ROUGH_WIDTH: f64 = 0.8;
 
 #[cfg(test)]
 mod tests {
