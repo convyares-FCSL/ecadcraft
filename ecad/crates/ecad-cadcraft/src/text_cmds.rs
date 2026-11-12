@@ -78,40 +78,105 @@ fn number_text(x: f64) -> String {
     format!("{x}")
 }
 
-/// `textstyle {font?, kind?, height?, weight?, show?}` (design 031 §10.1).
+/// One kind's changes in a `textstyle` call.
+struct KindChange {
+    kind: TextKind,
+    height: Field<f64>,
+    weight: Field<String>,
+    show: Field<String>,
+}
+
+/// The kind changes of `params` (`kind` with `height`/`weight`/`show`); `None` when it names no
+/// kind and changes none of them.
+fn kind_change(params: &Value) -> Result<Option<KindChange>, String> {
+    let kind = kind_param(params)?;
+    let height = field(params, "height", |v| v.as_f64().filter(|h| h.is_finite() && (0.5..=10.0).contains(h)), BAD_HEIGHT)?;
+    let weight =
+        field(params, "weight", |v| v.as_str().map(|w| w.trim().to_ascii_lowercase()).filter(|w| w == "regular" || w == "bold"), BAD_WEIGHT)?;
+    let show = field(
+        params,
+        "show",
+        |v| v.as_str().map(|w| w.trim().to_ascii_lowercase()).filter(|w| ["on", "off", "first"].contains(&w.as_str())),
+        BAD_SHOW,
+    )?;
+    let changes = !matches!(height, Field::Absent) || !matches!(weight, Field::Absent) || !matches!(show, Field::Absent);
+    let Some(kind) = kind else {
+        return if changes { Err(NEEDS_KIND.into()) } else { Ok(None) };
+    };
+    if let Field::Set(w) = &show {
+        let entry = kind.show_entry().ok_or_else(|| format!("{} has no Shown setting.", kind.word()))?;
+        if entry.parse(w).is_none() {
+            return Err(BAD_SHOW.into());
+        }
+    }
+    Ok(Some(KindChange { kind, height, weight, show }))
+}
+
+/// The ops of one kind's changes.
+fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>) {
+    let k = c.kind;
+    let h = match c.height {
+        Field::Absent => None,
+        Field::Clear => Some(None),
+        Field::Set(h) => Some(Some(h)),
+    };
+    if let Some(h) = h {
+        if k == TextKind::WireLabel {
+            // One stored value (§3.4): the wiring setting, never a property. A later row of the
+            // same call replaces an earlier one.
+            ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
+            let before = doc.settings.clone();
+            let mut after = before.clone();
+            after.wiring.label_height = h.unwrap_or(ecad_model::wiring::DEFAULT_LABEL_HEIGHT);
+            if after != before {
+                ops.push(Op::SetProjectSettings { before, after });
+            }
+        } else {
+            set_project(doc, k.height_entry().key, h.map(number_text), ops);
+        }
+    }
+    match &c.weight {
+        Field::Absent => {}
+        Field::Clear => set_project(doc, k.weight_entry().key, None, ops),
+        Field::Set(w) => set_project(doc, k.weight_entry().key, Some(w.clone()), ops),
+    }
+    if let Some(entry) = k.show_entry() {
+        match &c.show {
+            Field::Absent => {}
+            Field::Clear => set_project(doc, entry.key, None, ops),
+            Field::Set(w) => set_project(doc, entry.key, Some(w.clone()), ops),
+        }
+    }
+}
+
+/// Most kinds one `textstyle` call changes (the style table has fewer; a guard on hostile input).
+const MAX_KINDS: usize = 64;
+
+/// `textstyle {font?, kind?, height?, weight?, show?, kinds?: [{kind, height?, weight?, show?}]}`
+/// (design 031 §10.1; `kinds` lets the Text section write several kinds as one transaction).
 fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let given = ["font", "kind", "height", "weight", "show"].iter().any(|k| params.get(*k).is_some());
+    let given = ["font", "kind", "height", "weight", "show", "kinds"].iter().any(|k| params.get(*k).is_some());
     if !given {
         return with_any_page(s, |p, _| Ok(textstyle_json(p.ledger.document(), false)));
     }
-    let kind = kind_param(params).map_err(err)?;
     let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT).map_err(err)?;
     if let Field::Set(f) = &font
         && defaults::text::FONT.parse(f).is_none()
     {
         return Err(err(BAD_FONT));
     }
-    let height = field(params, "height", |v| v.as_f64().filter(|h| h.is_finite() && (0.5..=10.0).contains(h)), BAD_HEIGHT).map_err(err)?;
-    let weight = field(params, "weight", |v| v.as_str().map(|w| w.trim().to_ascii_lowercase()).filter(|w| w == "regular" || w == "bold"), BAD_WEIGHT)
-        .map_err(err)?;
-    let show = field(
-        params,
-        "show",
-        |v| v.as_str().map(|w| w.trim().to_ascii_lowercase()).filter(|w| ["on", "off", "first"].contains(&w.as_str())),
-        BAD_SHOW,
-    )
-    .map_err(err)?;
-    let needs_kind = !matches!(height, Field::Absent) || !matches!(weight, Field::Absent) || !matches!(show, Field::Absent);
-    let kind = match (kind, needs_kind) {
-        (Some(k), _) => Some(k),
-        (None, true) => return Err(err(NEEDS_KIND)),
-        (None, false) => None,
-    };
-    if let (Some(k), Field::Set(w)) = (kind, &show) {
-        let entry = k.show_entry().ok_or_else(|| err(format!("{} has no Shown setting.", k.word())))?;
-        if entry.parse(w).is_none() {
-            return Err(err(BAD_SHOW));
+    let mut changes: Vec<KindChange> = kind_change(params).map_err(err)?.into_iter().collect();
+    match params.get("kinds") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(a)) if a.len() <= MAX_KINDS => {
+            for row in a {
+                match kind_change(row).map_err(err)? {
+                    Some(c) => changes.push(c),
+                    None => return Err(err(NEEDS_KIND)),
+                }
+            }
         }
+        Some(_) => return Err(err(format!("`kinds` is a list of at most {MAX_KINDS} {{kind, height?, weight?, show?}}."))),
     }
     with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
@@ -121,41 +186,25 @@ fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             Field::Clear => set_project(doc, defaults::text::FONT.key, None, &mut ops),
             Field::Set(f) => set_project(doc, defaults::text::FONT.key, Some(f.clone()), &mut ops),
         }
-        if let Some(k) = kind {
-            let h = match height {
-                Field::Absent => None,
-                Field::Clear => Some(None),
-                Field::Set(h) => Some(Some(h)),
+        for c in &changes {
+            kind_ops(doc, c, &mut ops);
+        }
+        // A key given twice (two rows of one kind): the last value wins, in one op.
+        let mut seen = std::collections::BTreeSet::new();
+        let mut kept: Vec<Op> = Vec::new();
+        for op in ops.into_iter().rev() {
+            let key = match &op {
+                Op::SetProperty { key, .. } => Some(key.clone()),
+                _ => None,
             };
-            if let Some(h) = h {
-                if k == TextKind::WireLabel {
-                    // One stored value (§3.4): the wiring setting, never a property.
-                    let before = doc.settings.clone();
-                    let mut after = before.clone();
-                    after.wiring.label_height = h.unwrap_or(ecad_model::wiring::DEFAULT_LABEL_HEIGHT);
-                    if after != before {
-                        ops.push(Op::SetProjectSettings { before, after });
-                    }
-                } else {
-                    set_project(doc, k.height_entry().key, h.map(number_text), &mut ops);
-                }
-            }
-            match &weight {
-                Field::Absent => {}
-                Field::Clear => set_project(doc, k.weight_entry().key, None, &mut ops),
-                Field::Set(w) => set_project(doc, k.weight_entry().key, Some(w.clone()), &mut ops),
-            }
-            if let Some(entry) = k.show_entry() {
-                match &show {
-                    Field::Absent => {}
-                    Field::Clear => set_project(doc, entry.key, None, &mut ops),
-                    Field::Set(w) => set_project(doc, entry.key, Some(w.clone()), &mut ops),
-                }
+            if key.as_ref().is_none_or(|k| seen.insert(k.clone())) {
+                kept.push(op);
             }
         }
-        let changed = !ops.is_empty();
+        kept.reverse();
+        let changed = !kept.is_empty();
         if changed {
-            p.apply_edit(pg, "textstyle", "Text styles", ops)?;
+            p.apply_edit(pg, "textstyle", "Text styles", kept)?;
         }
         Ok(textstyle_json(p.ledger.document(), changed))
     })
@@ -171,12 +220,18 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
             let w = defaults::resolve(doc, k.weight_entry(), Scope::project());
             let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
+            let builtin = |e: &Entry| Resolved { value: e.builtin, from: Source::Builtin };
             json!({
                 "kind": k.word(),
                 "height": h.number(),
                 "weight": w.word(),
                 "show": sh.map(|r| r.word()),
                 "default": default,
+                "builtin": {
+                    "height": builtin(k.height_entry()).number(),
+                    "weight": builtin(k.weight_entry()).word(),
+                    "show": k.show_entry().map(|e| builtin(e).word()),
+                },
             })
         })
         .collect();

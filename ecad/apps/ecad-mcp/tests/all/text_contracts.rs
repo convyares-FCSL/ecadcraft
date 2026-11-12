@@ -48,6 +48,15 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert!(!c.doc().properties.contains_key("text.wire_label.height"));
     // Several fields: one transaction.
     one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": null, "weight": "regular"}));
+    // Several kinds (the Text section's OK): one transaction.
+    one_by_agent(&mut c, "textstyle", json!({"kinds": [{"kind": "point_label", "height": 2}, {"kind": "location", "weight": "bold"}]}));
+    let d = c.doc();
+    assert_eq!(
+        (d.properties.get("text.point_label.height").map(String::as_str), d.properties.get("text.location.weight").map(String::as_str)),
+        (Some("2"), Some("bold"))
+    );
+    let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));
+    assert!(m.contains("height, weight and show need a kind."), "{m}");
     // The same value again writes nothing.
     let n = c.log().len();
     assert_eq!(c.exec("textstyle", json!({"kind": "tag", "weight": "regular"}))["changed"], json!(false));
