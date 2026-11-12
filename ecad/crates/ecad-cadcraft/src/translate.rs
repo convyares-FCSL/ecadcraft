@@ -525,6 +525,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let (more, notes) = crate::devices::erase_followups(cx.ledger.document(), &unlinked);
     t.ops.extend(more);
     t.notes.extend(notes);
+    // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
+    t.ops.extend(crate::references::slash_erase_followups(cx.ledger.document(), &unlinked));
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {

@@ -907,6 +907,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     let from = slash_point(params, "from").map_err(err)?;
     let to = slash_point(params, "to").map_err(err)?;
     let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
+    let existing: Option<CableId> = opt_id(params, "cable").map_err(err)?;
     with_project(s, |p, pg, page| {
         if from.near(to, p.tolerance) {
             return Err("`from` and `to` must differ".into());
@@ -918,6 +919,15 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         }
         if found.members.is_empty() {
             return Err(slash::no_wires(found.ignored.len()));
+        }
+        // Brief 032 §3.3: an existing cable's ID or tag continues that cable on this page.
+        let existing = match existing {
+            Some(k) if doc.cables.contains_key(&k) => Some(k),
+            Some(_) => return Err("no such cable".into()),
+            None => tag.as_deref().and_then(|t| crate::references::cable_tagged(doc, t)),
+        };
+        if let Some(k) = existing {
+            return crate::references::run_slash_continue(p, pg, page, k, from, to, &found);
         }
         let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
         if !blocked.is_empty() {

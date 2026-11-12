@@ -67,3 +67,41 @@ fn with_writes_off_the_wire_commands_are_refused() {
     assert_eq!(c.log(), before, "nothing recorded");
 }
 
+/// Design 032 §3.1 through `execute`: `-W04` slashed on the first page, its cores ending on
+/// continuations; the second page's wires continue from them. Returns the cable.
+fn pack(c: &mut Client) -> String {
+    for (i, y) in [0, 10, 20].into_iter().enumerate() {
+        c.exec("place", json!({"symbol": "terminal", "at": [0, y], "tag": "X01"}));
+        c.exec("place", json!({"symbol": "continuation", "at": [100, y], "name": format!("A{}", i + 1)}));
+        c.exec("wire", json!({"points": [[0, y], [100, y]]}));
+    }
+    let k = hex(&c.exec("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})), "cable");
+    let page = hex(&c.exec("newpage", json!({"title": "115"})), "page");
+    c.exec("openpage", json!({"page": page}));
+    for (i, y) in [0, 10, 20].into_iter().enumerate() {
+        c.exec("place", json!({"symbol": "continuation", "at": [0, y], "name": format!("A{}", i + 1)}));
+        c.exec("place", json!({"symbol": "terminal", "at": [100, y], "tag": "X05"}));
+        c.exec("wire", json!({"points": [[0, y], [100, y]]}));
+    }
+    k
+}
+
+/// `cableslash` continuing a cable: one `Cable slash` transaction with `AddCableMember` and
+/// `LinkRepresentation`, no `CreateCable`; `cablecontinue` on it before is refused with §3.4's
+/// words and records nothing.
+#[test]
+fn cableslash_continuing_and_cablecontinue_through_execute() {
+    let mut c = writer();
+    let k = pack(&mut c);
+    let n = c.log().len();
+    let m = c.refused("execute", json!({"command": "cablecontinue", "params": {"cable": k, "at": [20, 80], "toward": [40, 80]}}));
+    assert!(m.contains("-W04's cores end on continuations."), "{m}");
+    assert_eq!(c.log().len(), n, "a refusal records nothing");
+    let r = c.exec("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"}));
+    assert_eq!(r["continued"], json!(true), "{r}");
+    let t = last(&mut c);
+    assert_eq!(t.label, "Cable slash");
+    assert_eq!(t.ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    assert!(t.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
+    assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })));
+}
