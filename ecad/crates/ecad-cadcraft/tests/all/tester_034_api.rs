@@ -97,6 +97,10 @@ fn kinds() {
 fn quiet_lists() {
     let cat = catalogue();
     for st in STARTERS {
+        // Brief 045's starters are design 045's.
+        if crate::tester_034_library::BRIEF_045.contains(&st.key) {
+            continue;
+        }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key)).map(|t| t.key.clone()).collect();
         got.sort();

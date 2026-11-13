@@ -24,10 +24,11 @@
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`, and `terminal.` (brief 036). Keys already approved before the registry keep their
+/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036) and `plc.` (brief 045). Keys already approved before the registry keep their
 /// names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal"];
+pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal", "plc"];
 
+pub mod plc;
 pub mod print;
 pub mod symbols;
 pub mod terminals;
@@ -287,7 +288,9 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
 
 /// Every registered entry, lane by lane.
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    text::ENTRIES.iter().chain(wires::ENTRIES).chain(print::ENTRIES).chain(symbols::ENTRIES).chain(terminals::ENTRIES).copied()
+    // One line per area (overseer ruling, 2026-11-13): a lane adds its own line.
+    let areas: [&[&'static Entry]; 6] = [text::ENTRIES, wires::ENTRIES, print::ENTRIES, symbols::ENTRIES, terminals::ENTRIES, plc::ENTRIES];
+    areas.into_iter().flatten().copied()
 }
 
 /// The entry with this key.

@@ -19,6 +19,7 @@ pub mod generate;
 pub mod history;
 pub mod measure;
 pub mod outputs;
+pub mod plc;
 pub mod release;
 pub mod report;
 pub mod strips;
@@ -160,6 +161,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         eprintln!("{} {}: measuring wire joins, cable continuation and wire labels…", tier.name, variant.name());
         let wires = wires_nets::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring PLC racks and cards…", tier.name, variant.name());
+        let plc = plc::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
             variant: variant.name().into(),
@@ -172,6 +176,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             release: Some(rel?),
             text: Some(text?),
             wires: Some(wires?),
+            plc: Some(plc?),
         });
     }
     Ok(rows)

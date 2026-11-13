@@ -489,6 +489,8 @@ pub struct Outputs {
     no_location: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
     pub strips: crate::strips::Strips,
+    /// Brief 045: the PLC racks and cards (design 045 §11.1).
+    pub plc: crate::plc::Plc,
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
@@ -543,6 +545,7 @@ impl Outputs {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.plc = crate::plc::Plc::build(doc);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -640,6 +643,11 @@ impl Outputs {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
+        // Brief 045: the PLC model follows its own update map (design 045 §11.1).
+        if self.plc.update(doc, ops) {
+            self.checks_changed += 1;
+            self.revision += 1;
+        }
         for op in ops {
             let p = match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
@@ -770,14 +778,24 @@ impl Outputs {
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips(&mut self, doc: &Document) -> Option<String> {
+        // Brief 045 (design 045 §11.2): the kept PLC model too.
+        let plc = crate::plc::Plc::build(doc);
+        let plc_line = (!self.plc.same_as(&plc)).then(|| {
+            let (work, n) = (self.plc.last_work, self.plc.recomputed);
+            self.plc = plc;
+            self.plc.last_work = work;
+            self.plc.recomputed = n;
+            "the PLC model was out of step; rebuilt".to_string()
+        });
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
         if self.strips.same_as(&built) {
-            return None;
+            return plc_line;
         }
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
-        Some("the terminal strip model was out of step; rebuilt".into())
+        let line = "the terminal strip model was out of step; rebuilt".to_string();
+        Some(plc_line.map_or_else(|| line.clone(), |l| format!("{line}; {l}")))
     }
 
     fn remove_device(&mut self, c: ComponentId) {
@@ -1190,6 +1208,7 @@ impl Outputs {
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         out.extend(self.strip_checks());
+        out.extend(self.plc.checks());
         out
     }
 
@@ -2104,6 +2123,8 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
             out.push(("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})));
             out
         }
+        // Brief 045 (design 045 §9).
+        Fix::Plc(c, f) => o.plc.fix_commands(c, f),
         Fix::FuseDevices => o
             .strips
             .fuse_devices

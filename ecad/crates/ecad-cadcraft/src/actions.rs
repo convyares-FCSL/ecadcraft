@@ -727,6 +727,8 @@ pub const ACTIONS: &[Action] = &[
     search_only("numbering.renumber", "renumber", Params::App(App::Renumber), "Renumber", Icon::Number, &["tags", "devices"]),
     search_only("numbering.wires", "renumberwires", Params::App(App::RenumberWires), "Renumber wires", Icon::Number, &["wire numbers"]),
     search_only("numbering.finalise", "finalise", Params::App(App::Finalise), "Finalise numbering", Icon::Number, &["provisional"]),
+    // Brief 045 (design 045 §2.6, §4.8): the card commands, found with Ctrl+K until a card wheel.
+    search_only("plc.slot", "plcslot", Params::App(App::Template), "Card slot", Icon::Devices, &["plc", "rack", "card", "move card"]),
 ];
 
 const fn search_only(
@@ -789,6 +791,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
+    ("plcracks", "a read; the PLC manager (2.8) draws it"),
 ];
 
 /// The action with this id.
