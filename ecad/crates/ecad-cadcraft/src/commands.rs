@@ -29,7 +29,8 @@ use crate::project::{Mapped, Project};
 use crate::slash::{self, MAX_CABLE_MEMBERS};
 use crate::views::{self, View};
 
-/// The commands this crate adds.
+/// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
+/// their lines move here at the phase-end tidy-up.
 pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
     v.extend(crate::sheet_cmds::specs());
@@ -45,6 +46,9 @@ pub fn specs() -> Vec<CommandSpec> {
     #[cfg(not(target_arch = "wasm32"))]
     v.extend(crate::agent_access::specs());
     v.extend(crate::level_cmds::specs());
+    for (_, lane) in crate::lanes::LANES {
+        v.extend(lane());
+    }
     v
 }
 
@@ -1477,4 +1481,26 @@ fn run_movepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         p.apply_edit(pg, "movepage", "Move page", ops)?;
         Ok(json!({"page": page.hex(), "title": title, "index": to, "changed": true}))
     })
+}
+
+#[cfg(test)]
+mod lane_tests {
+    /// Lanes register in brief order, once each. A union merge of `lanes.rs` (see that module) can
+    /// leave two lanes' lines swapped; this says which to swap.
+    #[test]
+    fn lanes_are_in_brief_order() {
+        let briefs: Vec<&str> = crate::lanes::LANES.iter().map(|(b, _)| *b).collect();
+        for pair in briefs.windows(2) {
+            assert!(pair[0] < pair[1], "crate::lanes::LANES: {} must come after {}, once each", pair[0], pair[1]);
+        }
+    }
+
+    /// Every ECAD command id is registered once, so the order of the lists in [`super::specs`]
+    /// never decides which command a name finds (lookups take the first match).
+    #[test]
+    fn command_ids_are_unique() {
+        let mut seen = std::collections::BTreeSet::new();
+        let twice: Vec<&str> = super::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
+        assert!(twice.is_empty(), "registered more than once: {twice:?}");
+    }
 }

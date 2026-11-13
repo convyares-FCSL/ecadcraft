@@ -49,6 +49,7 @@ pub mod frame;
 pub mod generated;
 pub mod history;
 pub mod interact;
+mod lanes;
 pub mod level_cmds;
 pub mod link_lines;
 pub mod locations;

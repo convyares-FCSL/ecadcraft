@@ -3,6 +3,9 @@
 //! `cargo test -p ecad-model <name>` still runs one file's tests. One executable links the
 //! dependencies once instead of once per file.
 
+// Lanes in flight add their modules in `lanes/`, not to the list below (see `lanes/mod.rs`).
+mod lanes;
+
 mod connectivity_contracts;
 mod device_contracts;
 mod incremental_contracts;

@@ -35,14 +35,25 @@ Rules:
   errors like CI, when the change could affect wasm). Never `--include-ignored` and never the whole
   workspace: the slow set and the full suite run only at the dev→main QA gate, or when the owner
   calls for them. A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
-  New tests go in the crate's `tests/all/` as modules (see "Test layout" in `ecad/CLAUDE.md`).
+  New tests go in the crate's `tests/all/lanes/lane_<NNN>.rs` (see "Test layout" and "Per-lane
+  files" in `ecad/CLAUDE.md`).
   Documentation-only commits need no cargo at all.
 - **Benches:** while building, bench on the medium project. Run the large tier once at the end,
   only for the operations the brief sets targets for. Print and PDF benches (Print Book, release)
   use a project of at most 25 pages, never the 100- or 500-page tiers. The full `cargo xtask
   bench` runs at the QA gate.
   Commit in small, clear steps.
-- Update `docs/quick-start.md` in the same branch if anything the owner runs or sees changes.
+- **Per-lane files** (`ecad/CLAUDE.md`, "Branches and testing"): add your own files instead of
+  editing the shared lists, which are recombined only at the phase-end tidy-up.
+  - Quick start: what the owner runs or sees goes in `docs/quick-start/<NNN>-<name>.md` (the
+    brief's file name), in the same branch; not in `docs/quick-start.md` or its index.
+  - Tests: `tests/all/lanes/lane_<NNN>.rs` (submodules in `tests/all/lanes/lane_<NNN>/`), and one
+    line `mod lane_<NNN>;` at the end of that crate's `tests/all/lanes/mod.rs`; not the list in
+    `tests/all/main.rs`. Your tests run as `cargo test -p <crate> lane_<NNN>`.
+  - Commands: register a new module's `specs` with one line in `ecad-cadcraft/src/lanes.rs`,
+    `("<NNN>", crate::<module>::specs),`; not in `commands::specs`.
+  - Canvas tokens: new `ecad.*` tokens in a section of `docs/design/<NNN>.md`, not at the end of
+    `docs/design/tokens.md`.
 - **Keep long output out of your context.** Benches, the crash suite and `test-changed` write to a
   log file (in the feature folder or your scratchpad); read only the summary and the failures,
   never the whole output. Waits are bounded: run in the foreground with a timeout, never an

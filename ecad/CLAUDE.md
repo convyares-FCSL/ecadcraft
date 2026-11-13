@@ -36,7 +36,36 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     than one PR if it grows large.
   - **QA gate:** the PR from `dev` into `main`. It runs the full suite (CI's full jobs, screenshots,
     `cargo xtask bench`) and the owner's own click-through trial. Only the owner merges it.
+    Before it, at the end of each major phase (e.g. before v0.2 goes to `main`), the overseer
+    opens one **phase-end tidy-up** PR into `dev`: finished briefs' files in `docs/quick-start/`
+    are folded into the guide or deleted (with the owner) and the index in `docs/quick-start.md`
+    is brought up to date; each crate's `tests/all/lanes/` modules move into `tests/all/main.rs`'s
+    list (`lanes/mod.rs` keeps only its comment); `ecad-cadcraft/src/lanes.rs`'s registrations
+    move into `commands::specs`; lanes' `ecad.*` token sections move from their design specs into
+    `docs/design/tokens.md`. Behaviour stays the same; test names lose their `lanes::lane_<NNN>::`
+    prefix.
   - Never merge your own PR: green CI is not approval.
+  - **Per-lane files (owner, 2026-11-13).** Lanes (briefs built at the same time on their feature
+    branches) used to conflict at every merge on the same few lists. During a phase a lane adds
+    its own files instead, and the shared lists are recombined only at the phase-end tidy-up:
+    - **Quick start:** its own `docs/quick-start/<NNN>-<name>.md` (the brief's file name): what
+      the brief changed and how to try it by clicking. Not `docs/quick-start.md`, whose index is
+      updated only at the tidy-up; a change to a general section there (setup, running) is fine.
+    - **Tests:** `tests/all/lanes/lane_<NNN>.rs` (submodules in `tests/all/lanes/lane_<NNN>/`) in
+      each crate it tests, plus one line `mod lane_<NNN>;` at the end of `tests/all/lanes/mod.rs`.
+      Not the list in `tests/all/main.rs`. Still one test executable per crate.
+    - **Commands:** a new module of commands registers in `ecad-cadcraft/src/lanes.rs`, one line
+      `("<NNN>", crate::<module>::specs),`, not in `commands::specs`. Its `mod` line in `lib.rs`
+      stays where rustfmt sorts it.
+    - **Tokens:** new `ecad.*` canvas tokens go in a section of the lane's design spec
+      (`docs/design/<NNN>.md`), not at the end of `docs/design/tokens.md`. The checked shell
+      tables at the top of `tokens.md` (and their constants) are still edited in place: the
+      doc-sync test reads that file.
+    - `lanes/mod.rs` and `lanes.rs` merge with `merge=union` (`ecad/.gitattributes`): two lanes'
+      added lines are both kept. After such a merge run `cargo fmt`; `lanes_are_in_brief_order`
+      (ecad-cadcraft's unit tests) says if two registrations need swapping. Git applies this in
+      local merges (the merge train); GitHub's own conflict check may not, so merge `dev` into
+      the feature branch locally.
 - **Checks are scoped to the change (owner decisions, 2026-11-02 and 2026-11-08).** This is Rust:
   what builds and passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
   - **Worker (owner, 2026-11-12).** Before each commit: `cargo fmt --all -- --check` and the
@@ -51,7 +80,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   - **Test layout (brief 017).** Each crate has one integration test executable,
     `tests/all/main.rs`, whose modules are the former `tests/<name>.rs` files (shared helpers in
     `tests/all/common`), so tests are named `<name>::<test>` and `cargo test -p <crate> <name>`
-    runs one file. A new test file is a new module there, never a new `tests/*.rs`, which would
+    runs one file. A new test file is a new module there (in a lane, under `tests/all/lanes/`; see
+    "Per-lane files"), never a new `tests/*.rs`, which would
     link egui and wgpu once more. The exception is `ecad-bench`'s `translate_differential.rs`: it
     reads process-wide oracle counters and the oracle aborts the process, so it keeps its own
     executable. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
@@ -182,8 +212,9 @@ Loop for each brief in `docs/briefs/` (owner decisions, 2026-11-08 and 2026-11-1
 findings, and the re-test or re-review covers only what failed. After three failed rounds, stop and
 report to the owner.
 
-At a milestone, the owner asks for the QA gate: a PR from `dev` into `main`, full suite,
-screenshots, the full bench, and the owner's trial.
+At a milestone, the owner asks for the QA gate: first the phase-end tidy-up PR into `dev` (see
+"Branches and testing"), then a PR from `dev` into `main`, full suite, screenshots, the full
+bench, and the owner's trial.
 
 **Agent access is built in (owner decision, 2026-11-07, brief 011).** Every brief that adds or
 changes an ECAD command includes, in its acceptance criteria, an MCP contract test: it drives the
