@@ -67,24 +67,47 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
             continue;
         }
         let order = crate::accessories::positions(doc, c);
-        let here: BTreeMap<String, Pt> = crate::strips::drawn_points(doc, c)
+        // Brief 036: each level's symbols; the in point stands for a two-point level.
+        let here: BTreeMap<(String, u32), Pt> = crate::strips::drawn_points(doc, c)
             .into_iter()
-            .filter(|(_, _, p, _)| *p == page)
-            .map(|(t, _, _, at)| (crate::interact::position_label(doc, t), at))
+            .filter(|(t, _, p, _)| *p == page && crate::terminal_types::level_of(doc, *t).1 != Some('o'))
+            .map(|(t, _, _, at)| ((crate::interact::position_label(doc, t), crate::terminal_types::level_of(doc, t).0), at))
             .collect();
-        // Lanes over the whole strip, as the plan's (§5.3).
-        let mut spans: Vec<(usize, usize, u32, Vec<String>)> = found
+        // Cross-level links (design 036 §5.4): a dog-leg between the levels shown, else stubs.
+        for (n, p) in &found {
+            for sp in p.spans() {
+                let links::Span::Levels { position, lo, hi } = sp else { continue };
+                let pts: Vec<Pt> = (lo..=hi).filter_map(|l| here.get(&(position.clone(), l)).copied()).collect();
+                if pts.len() >= 2 {
+                    for w in pts.windows(2) {
+                        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+                        let knee = Pt::new(a.x + STUB_MM, a.y);
+                        let knee2 = Pt::new(a.x + STUB_MM, b.y);
+                        out.push(LinkPart { strip: c, n: *n, a: *a, b: knee });
+                        out.push(LinkPart { strip: c, n: *n, a: knee, b: knee2 });
+                        out.push(LinkPart { strip: c, n: *n, a: knee2, b: *b });
+                    }
+                } else if let Some(a) = pts.first() {
+                    out.push(LinkPart { strip: c, n: *n, a: *a, b: Pt::new(a.x + STUB_MM, a.y) });
+                }
+            }
+        }
+        // Lanes over the whole strip, as the plan's (§5.3), per level (brief 036).
+        let mut spans: Vec<(u32, usize, usize, u32, Vec<String>)> = found
             .iter()
+            .filter(|(_, p)| !p.crosses_levels())
             .filter_map(|(n, p)| {
+                let level = p.level().unwrap_or(1);
                 let sel: Vec<String> = p.select(&order).into_iter().cloned().collect();
                 let first = order.iter().position(|o| Some(o) == sel.first())?;
                 let last = order.iter().position(|o| Some(o) == sel.last())?;
-                Some((first, last, *n, sel))
+                Some((level, first, last, *n, sel))
             })
             .collect();
-        spans.sort_by_key(|(f, _, n, _)| (*f, *n));
-        let mut lanes: Vec<usize> = Vec::new();
-        for (first, last, n, sel) in spans {
+        spans.sort_by_key(|(lv, f, _, n, _)| (*lv, *f, *n));
+        let mut lanes_of: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        for (level, first, last, n, sel) in spans {
+            let lanes = lanes_of.entry(level).or_default();
             let lane = match lanes.iter().position(|e| *e < first) {
                 Some(k) => {
                     if let Some(e) = lanes.get_mut(k) {
@@ -97,7 +120,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
                     lanes.len() - 1
                 }
             };
-            let shown: Vec<(usize, Pt)> = sel.iter().enumerate().filter_map(|(i, l)| here.get(l).map(|p| (i, *p))).collect();
+            let shown: Vec<(usize, Pt)> = sel.iter().enumerate().filter_map(|(i, l)| here.get(&(l.clone(), level)).map(|p| (i, *p))).collect();
             let (Some((fi, fp)), Some((li, lp))) = (shown.first().copied(), shown.last().copied()) else { continue };
             let horizontal = shown.len() < 2 || (lp.x - fp.x).abs() >= (lp.y - fp.y).abs();
             let off = lane as f64 * LANE_MM;
@@ -138,5 +161,11 @@ pub fn hover(doc: &Document, data: Option<&crate::strips::StripData>, c: Compone
     let Some(l) = data.and_then(|d| d.acc.links.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };
     let part = l.part_number.clone().map_or_else(String::new, |p| format!(" {p}"));
-    format!("{tag} link {} ({} positions, {bars}{part})", l.text, l.labels.len())
+    // Brief 036: the level a link runs on (`level N`) when its strip has levels.
+    let level = match (l.level, data) {
+        (Some(n), Some(d)) => d.rows.iter().find(|r| r.level == n && r.ty.multi()).map(|r| format!("level {}, ", r.level_name)),
+        (None, _) => Some("levels of one position, ".to_string()),
+        _ => None,
+    };
+    format!("{tag} link {} ({}{} positions, {bars}{part})", l.text, level.unwrap_or_default(), l.labels.len())
 }

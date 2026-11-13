@@ -1580,7 +1580,15 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
     };
     let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
     for (t, _) in crate::devices::shown_terminals(doc, c, r) {
-        let kind = if pe { "PE" } else { "feed-through" };
+        // Brief 036: the type, and the level of a multi-level position.
+        let ty = crate::terminal_types::type_of_terminal(doc, t);
+        let kind = if ty.multi() {
+            format!("{} level {}", ty.word, crate::terminal_types::level_name(doc, c, ty, crate::terminal_types::level_of(doc, t).0))
+        } else if pe {
+            "PE".to_string()
+        } else {
+            ty.word.to_string()
+        };
         lines.push(format!("{}  {kind}  {}", crate::terminal_cmds::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
@@ -1622,11 +1630,12 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
             lines.push(format!("bridged to {}", bridged.join(", ")));
         }
     }
-    let drawn = drawn_terminals(doc, c).len();
+    // Brief 036: counted in positions (a three-level terminal is one).
+    let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let drawn = labels.len();
     let tag = crate::devices::tag_words(doc, c);
     lines.push(match offer_of(doc, c) {
         Some(o) => {
-            let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
             let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();
             format!("{tag}: {} positions, {drawn} drawn, {spare} spare", o.positions)
         }
