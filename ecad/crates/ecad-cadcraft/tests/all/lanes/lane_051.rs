@@ -135,7 +135,11 @@ fn j_tiles_of_a_rack_slots_squares_and_totals() {
     let kinds: Vec<TileKind> = tiles.iter().map(|t| t.kind).collect();
     assert_eq!(kinds, [TileKind::Rack(cpu), TileKind::Card(di), TileKind::Card(ai), TileKind::Card(dq), TileKind::Free]);
     assert_eq!(tiles[0].range, "32 slots, 3 used");
-    assert_eq!((tiles[1].head.as_str(), tiles[1].tag.as_str(), tiles[1].what.as_str()), ("Slot 1", "-A02", "PLC digital input card"));
+    assert_eq!(
+        (tiles[1].head.as_str(), tiles[1].tag.as_str(), tiles[1].what.as_str()),
+        ("Slot 1", "-A02", "DI 16"),
+        "the body name placing wrote is not the user's description"
+    );
     assert_eq!(tiles[1].range, "I0.0\u{2013}I1.7");
     assert_eq!(tiles[1].squares.len(), 16);
     assert_eq!(tiles[1].squares.iter().filter(|s| **s == Square::Used).count(), 8);
