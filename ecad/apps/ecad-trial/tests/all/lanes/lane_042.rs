@@ -181,3 +181,35 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     let row = h.state().settings.inspector.rows.iter().find(|r| r.key == "text.tag.show").cloned().unwrap();
     assert_eq!((row.from, row.value.as_str()), (Source::Builtin, "Shown on the page"));
 }
+
+/// Review of PR #78: with Settings open, Del and a tool key never act on the hidden page.
+#[test]
+fn keys_do_not_reach_the_page_under_settings() {
+    let (mut h, _) = fixture(None);
+    let sel = selection(&h);
+    assert!(!sel.is_empty());
+    let devices = doc(&mut h).components.len();
+    let before = head(&mut h);
+    let main = h.state().shell.slots.map(|s| s.main.center()).unwrap();
+    h.state_mut().open_settings(Section::Developer);
+    h.run_steps(2);
+    // The pointer over where the page is, as the shell's single-letter keys need.
+    h.event(eframe::egui::Event::PointerMoved(main));
+    h.run_steps(1);
+    h.key_press(Key::Delete);
+    h.run_steps(3);
+    h.key_press(Key::W);
+    h.run_steps(3);
+    assert!(h.state().shell.settings_open, "still in Settings");
+    assert_eq!((head(&mut h), doc(&mut h).components.len()), (before, devices), "Del erased nothing");
+    assert!(h.state().cad.session.running.is_none(), "W started no tool");
+    assert_eq!(selection(&h), sel, "the selection is kept");
+    // The same keys with Settings closed do reach the page (the test is not vacuous).
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    h.event(eframe::egui::Event::PointerMoved(main));
+    h.run_steps(1);
+    h.key_press(Key::Delete);
+    h.run_steps(3);
+    assert_eq!(head(&mut h), before + 1, "Del erases the selection once Settings is closed");
+}

@@ -104,8 +104,8 @@ impl Trial {
 }
 
 /// Draw Settings when it is open: over the whole window, in the foreground, so the page under it
-/// answers no hover ([`Trial::over_shown_page`]). Called before the shell's keys: Esc closes it
-/// and is taken, so it neither clears the selection nor reaches CADCraft.
+/// answers no hover ([`Trial::over_shown_page`]). Called before the shell's keys: Esc closes it,
+/// and every other key is taken once Settings has drawn, so no key reaches the hidden page.
 pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     if !t.shell.settings_open {
         return;
@@ -164,6 +164,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
             Section::AgentAccess => agent::show(t, ui),
             Section::Developer => developer::show(t, ui),
         });
+    });
+    // Settings' own fields and buttons have read this frame's keys. Take them now, so that the
+    // shell's keys (Del, the tool letters, Ctrl+1–4…) and CADCraft, which run after this, never
+    // act on the page hidden under Settings (review of PR #78).
+    ctx.input_mut(|i| {
+        i.events
+            .retain(|e| !matches!(e, egui::Event::Key { .. } | egui::Event::Text(_) | egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_)))
     });
     if close {
         t.close_settings();
