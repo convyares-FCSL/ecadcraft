@@ -161,7 +161,7 @@ fn workspaces_left_tabs_and_the_text_panel() {
     }
     // Lists hosts Reports; Library the symbol search; Publish Release and Print Book.
     keys(&mut h, Modifiers::COMMAND, Key::Num2);
-    assert!(h.state().reports.as_ref().is_some_and(|r| r.host.is_some()));
+    assert!(h.query_by_label(ecad_trial::devices_panel::FILTER).is_some(), "Lists ▸ Device list");
     keys(&mut h, Modifiers::COMMAND, Key::Num3);
     assert!(h.state().search.open && h.state().search.host.is_some());
     keys(&mut h, Modifiers::COMMAND, Key::Num4);
@@ -396,4 +396,116 @@ fn screenshots_of_the_four_workspaces() {
     h.run_steps(6);
     let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-developer.png"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------- fix round (PR #74 review)
+
+/// Review defect 1: Del erases the selection while no command runs (CADCraft's command line did
+/// it, and hears no idle keys in the shell).
+#[test]
+fn delete_erases_the_selection() {
+    let mut h = shell_harness();
+    ok(&mut h, "line 0,0 40,0");
+    // LINE asks for a next point: end it.
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    let drawn = |h: &Harness<'static, Trial>| {
+        h.state()
+            .cad
+            .session
+            .doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .map(|e| e.handle)
+            .collect::<Vec<_>>()
+    };
+    let lines = drawn(&h);
+    assert_eq!(lines.len(), 1);
+    h.state_mut().cad.session.set_selection(lines);
+    h.run_steps(2);
+    over_page(&mut h);
+    keys(&mut h, Modifiers::NONE, Key::Delete);
+    assert!(drawn(&h).is_empty(), "Del erased the selected line");
+}
+
+/// Review defect 2: a go-to onto a page seen before keeps the go-to's view; a plain page switch
+/// gets the page's stored view back.
+#[test]
+fn a_go_to_keeps_its_view_on_a_page_seen_before() {
+    let mut h = shell_harness();
+    ok(&mut h, r#"newpage {"title":"Two"}"#);
+    let d = doc(&mut h);
+    let (p1, p2) = (d.page_order[0], d.page_order[1]);
+    h.state_mut().show_page(p2).unwrap();
+    h.run_steps(3);
+    ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
+    let coil = doc(&mut h).components.keys().next().copied().unwrap();
+    let rep = doc(&mut h).representations_of(ecad_model::Subject::Component(coil)).next().unwrap().0;
+    // Page 2 seen far from the coil, then page 1.
+    let mut far = h.state().cad.session.state().unwrap().view();
+    far.center = cadcraft_engine::geom::Vec2::new(5000.0, 5000.0);
+    h.state_mut().cad.session.state_mut().unwrap().set_view(far);
+    h.run_steps(2);
+    h.state_mut().panel_action(project_panel::Action::Open(p1));
+    h.run_steps(3);
+    assert_eq!(active(&mut h), Some(p1));
+    // Go to the coil: page 2, centred on the coil, not where page 2 was left.
+    h.state_mut().goto_symbol(rep).unwrap();
+    h.run_steps(4);
+    assert_eq!(active(&mut h), Some(p2));
+    let v = h.state().cad.session.state().unwrap().view();
+    assert!((v.center.x - 100.0).abs() < 50.0 && (v.center.y - 100.0).abs() < 50.0, "centred on the coil: {v:?}");
+    // A plain switch away and back restores page 2's stored view (now the go-to's).
+    h.state_mut().panel_action(project_panel::Action::Open(p1));
+    h.run_steps(3);
+    h.state_mut().panel_action(project_panel::Action::Open(p2));
+    h.run_steps(3);
+    let back = h.state().cad.session.state().unwrap().view();
+    assert!((back.center.x - v.center.x).abs() < 1e-6 && (back.center.y - v.center.y).abs() < 1e-6, "{back:?} vs {v:?}");
+}
+
+/// Review defect 3: ECAD's hover (and the zone) react only over the page shown, not over a
+/// hosted view laid over the hidden page.
+#[test]
+fn hover_tooltips_stay_off_hosted_views() {
+    let mut h = shell_harness();
+    crate::project_panel::fixture_p(&mut h);
+    let supply = doc(&mut h).page_order[0];
+    h.state_mut().show_page(supply).unwrap();
+    h.run_steps(3);
+    let reference_end = |h: &mut Harness<'static, Trial>| {
+        let at = crate::mouse_tester::screen(h, 65.0, 5.0);
+        crate::mouse_tester::pointer_to(h, at);
+        h.run_steps(3);
+        h.state().hover_lines().map(<[String]>::to_vec)
+    };
+    assert!(reference_end(&mut h).is_some(), "Draw: the reference end is described");
+    keys(&mut h, Modifiers::COMMAND, Key::Num2);
+    h.state_mut().shell.lists = ecad_trial::shell::ListsView::Reports;
+    h.run_steps(3);
+    assert!(reference_end(&mut h).is_none(), "Lists: no tooltip from the hidden page");
+    let at = h.ctx.pointer_hover_pos().unwrap_or_default();
+    let ctx = h.ctx.clone();
+    assert!(h.state_mut().zone_under_cursor(&ctx).is_none(), "no zone from the hidden page at {at:?}");
+}
+
+/// The fix round's seam: Lists shows U3's Device list through `lists::show`, at the main view's
+/// width; the left panel's Devices tab defers to it meanwhile.
+#[test]
+fn lists_shows_the_device_list_at_the_main_views_width() {
+    let mut h = shell_harness();
+    click(&mut h, project_panel::DEVICES_TAB);
+    keys(&mut h, Modifiers::COMMAND, Key::Num2);
+    assert_eq!(h.state().shell.lists, ecad_trial::shell::ListsView::Devices);
+    let main = h.state().shell.slots.unwrap().main;
+    let filters: Vec<Rect> = h.query_all_by_label(ecad_trial::devices_panel::FILTER).map(|n| n.rect()).collect();
+    assert_eq!(filters.len(), 1, "one Devices view");
+    assert!(filters.iter().all(|r| main.contains(r.center())), "in the main view");
+    assert!(h.query_by_label(ecad_trial::shell::DEVICES_IN_LISTS).is_some(), "the left tab defers");
+    assert!(h.state().reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
+    h.get_by_label(ecad_trial::shell::LISTS_TERMINALS).click();
+    h.run_steps(3);
+    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_trial::outputs_ui::Tab::Terminals));
 }

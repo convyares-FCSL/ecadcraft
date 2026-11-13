@@ -62,11 +62,8 @@ impl Trial {
 
     /// The sheet zone (column and row labels) under the pointer on the page shown, if any.
     pub fn zone_under_cursor(&mut self, ctx: &egui::Context) -> Option<String> {
-        let at = ctx.pointer_hover_pos()?;
-        let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
-        if !rect.contains(at) {
-            return None;
-        }
+        let at = ctx.pointer_hover_pos().filter(|at| self.over_shown_page(ctx, *at))?;
+        let xf = self.cad.canvas.xf?;
         let w = xf.to_world(at);
         let p = self.project.clone()?;
         let page = self.panel.active?;

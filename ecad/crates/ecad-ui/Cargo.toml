@@ -10,11 +10,12 @@ rust-version.workspace = true
 workspace = true
 
 # UiKit (ecad xtask layers): egui and ecad-tokens only; no `cadcraft-*` crate and no other ECAD
-# crate, so the widgets stay swappable, build for wasm and test without wgpu. `egui_extras` joins
-# with the table (U3).
+# crate, so the widgets stay swappable, build for wasm and test without wgpu. `egui_extras` draws
+# the table's virtualised rows (U3, brief 039).
 [dependencies]
 ecad-tokens = { path = "../ecad-tokens" }
 egui = { version = "0.37", default-features = false }
+egui_extras = { version = "0.37", default-features = false }
 
 [dev-dependencies]
 # Headless widget tests by accessible label; no renderer (no `wgpu` feature).

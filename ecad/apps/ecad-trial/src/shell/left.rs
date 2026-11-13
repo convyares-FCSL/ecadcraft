@@ -125,6 +125,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     }
     let body = Rect::from_min_max(pos2(rect.left() + space::S, header.bottom()), pos2(rect.right() - space::S, rect.bottom()));
     let head = t.header();
+    if t.panel.tab == Tab::Devices && t.lists_shows_devices() {
+        super::in_rect(ui, body, "ecad.shell.left.body", |ui| ecad_ui::prim::read_value(ui, super::DEVICES_IN_LISTS));
+        resize_edge(t, ui, rect);
+        return;
+    }
     let actions = super::in_rect(ui, body, "ecad.shell.left.body", |ui| t.panel.show(ui, &head));
     for a in actions {
         t.panel_action(a);

@@ -62,6 +62,42 @@ pub struct Visit {
     pub page: Option<PageId>,
 }
 
+/// Lists' views (spec §2: the managers as tabs). Device list, Terminal plan and Check list are
+/// U3's column sets ([`crate::lists::show`]); Reports hosts today's BOM, wires and cables (and its
+/// own Terminals tab). While Lists shows a view the left panel or the drawer also hosts, that one
+/// defers to Lists (one table is drawn once a frame).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ListsView {
+    #[default]
+    Devices,
+    Terminals,
+    Checks,
+    Reports,
+}
+
+impl ListsView {
+    pub const ALL: [ListsView; 4] = [ListsView::Devices, ListsView::Terminals, ListsView::Checks, ListsView::Reports];
+
+    /// Its name in Lists' switch (apart from the left panel's Devices tab).
+    pub fn label(self) -> &'static str {
+        match self {
+            ListsView::Devices => LISTS_DEVICES,
+            ListsView::Terminals => LISTS_TERMINALS,
+            ListsView::Checks => LISTS_CHECKS,
+            ListsView::Reports => LISTS_REPORTS,
+        }
+    }
+}
+
+pub const LISTS_DEVICES: &str = "Device list";
+pub const LISTS_TERMINALS: &str = "Terminal plan";
+pub const LISTS_CHECKS: &str = "Check list";
+pub const LISTS_REPORTS: &str = "Reports";
+/// Said in the drawer while Lists shows the Check list.
+pub const CHECKS_IN_LISTS: &str = "The checks are shown in Lists ▸ Check list.";
+/// Said in the left panel's Devices tab while Lists shows the same view.
+pub const DEVICES_IN_LISTS: &str = "The devices are shown in Lists ▸ Device list.";
+
 /// Publish's two hosted bodies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PublishTab {
@@ -98,6 +134,15 @@ pub struct Shell {
     pub tools: tool_strip::ToolStrip,
     pub settings_open: bool,
     pub publish: PublishTab,
+    /// The view Lists shows.
+    pub lists: ListsView,
+    /// The rect the page is shown in this frame (Draw's main view, Lists' companion), or `None`
+    /// when it is laid out hidden under a hosted view: ECAD's hover, the zone and the go-to
+    /// ring's click react only inside it.
+    pub page_rect: Option<Rect>,
+    /// A plain page switch (tree click, PgUp/PgDn, Back) asked for the page's stored view; a
+    /// go-to keeps the view it set.
+    pub restore_view: bool,
     /// Library opened the symbol search: it closes again when another workspace is shown.
     search_from_library: bool,
     /// The right panel's ECAD properties (the same section CADCraft's Properties palette drew).
@@ -131,6 +176,9 @@ impl Shell {
             tools: tool_strip::ToolStrip::default(),
             settings_open: false,
             publish: PublishTab::default(),
+            lists: ListsView::default(),
+            page_rect: None,
+            restore_view: false,
             search_from_library: false,
             right_section: crate::sheets_ui::section(props),
             view_of: None,
@@ -182,6 +230,18 @@ pub fn hosted(window: egui::Window<'_>, host: Option<Rect>) -> egui::Window<'_> 
     match host {
         Some(r) => window.title_bar(false).movable(false).resizable(false).collapsible(false).fixed_rect(r.shrink(ecad_ui::tokens::space::XS)),
         None => window,
+    }
+}
+
+/// [`hosted`] as a method, so a window's builder chain (and its body's indentation) stays as it
+/// was: `egui::Window::new(..).open(&mut open).hosted(self.host).show(ctx, ..)`.
+pub trait Hosted {
+    fn hosted(self, host: Option<Rect>) -> Self;
+}
+
+impl Hosted for egui::Window<'_> {
+    fn hosted(self, host: Option<Rect>) -> Self {
+        hosted(self, host)
     }
 }
 
@@ -281,12 +341,13 @@ impl Trial {
             Workspace::Lists => slots.companion,
             Workspace::Library | Workspace::Publish => None,
         };
-        // Read before CADCraft's drawing takes the keys: Esc, or a click on the drawing area.
+        self.shell.page_rect = page_rect;
+        // Read before CADCraft's drawing takes the keys: Esc, or a click on the page shown.
         let ring_input = ui.ctx().input(|i| {
             let esc = i.key_pressed(egui::Key::Escape);
             let click = i.pointer.primary_clicked()
                 && self.cad.canvas.hover.is_none()
-                && i.pointer.interact_pos().is_some_and(|at| self.cad.canvas.rect.is_some_and(|r| r.contains(at)));
+                && i.pointer.interact_pos().is_some_and(|at| page_rect.is_some_and(|r| r.contains(at)));
             (esc, click)
         });
         // CADCraft's frame runs every frame (input, capture, its dialogs and protective prompts);
@@ -309,6 +370,72 @@ impl Trial {
         {
             fill(ui, c, ecad_ui::SHELL.bg);
         }
+        if self.shell.state.workspace == Workspace::Lists {
+            self.lists_view(ui, slots.main);
+        }
+    }
+
+    /// Lists' main view: its switch, then U3's column set (Device list, Terminal plan) through
+    /// [`crate::lists::show`], or Reports hosted under the switch ([`Trial::host_windows`]).
+    fn lists_view(&mut self, ui: &mut egui::Ui, main: Rect) {
+        let head = Rect::from_min_size(main.min, egui::vec2(main.width(), ecad_ui::tokens::size::PANEL_HEADER));
+        let body = Rect::from_min_max(egui::pos2(main.left(), head.bottom()), main.max);
+        fill(ui, main, ecad_ui::SHELL.panel);
+        let mut i = ListsView::ALL.iter().position(|v| *v == self.shell.lists).unwrap_or(0);
+        let labels: Vec<&str> = ListsView::ALL.iter().map(|v| v.label()).collect();
+        in_rect(ui, head.shrink(ecad_ui::tokens::space::XS), "ecad.shell.lists.head", |ui| {
+            ui.horizontal(|ui| ecad_ui::prim::segmented(ui, &mut i, &labels));
+        });
+        self.shell.lists = ListsView::ALL.get(i).copied().unwrap_or_default();
+        let tab = match self.shell.lists {
+            ListsView::Devices => crate::lists::Tab::Devices,
+            ListsView::Terminals => crate::lists::Tab::Terminals,
+            ListsView::Checks => crate::lists::Tab::Checks,
+            ListsView::Reports => return,
+        };
+        if !self.project_open() {
+            return;
+        }
+        // The Terminal plan is Reports' Terminals view; Reports keeps it in step.
+        self.open_reports();
+        let writable = {
+            let h = self.header();
+            h.name.is_some() && !h.read_only && self.panel.revision.is_none()
+        };
+        let Some(reports) = self.reports.as_mut() else { return };
+        if tab == crate::lists::Tab::Terminals && reports.tab != crate::outputs_ui::Tab::Terminals {
+            reports.tab = crate::outputs_ui::Tab::Terminals;
+            reports.invalidate();
+        }
+        let lists = crate::lists::Lists { checks: &mut self.panel.checks, devices: &mut self.panel.devices, terminals: &mut reports.terminals };
+        let actions = in_rect(ui, body.shrink(ecad_ui::tokens::space::S), "ecad.shell.lists.body", |ui| crate::lists::show(ui, tab, lists, writable));
+        for a in actions {
+            match a {
+                crate::lists::ListAction::Panel(a) => self.panel_action(a),
+                crate::lists::ListAction::Run(line) => {
+                    let refusal = self.run_line(&line);
+                    if let Some(r) = self.reports.as_mut() {
+                        r.ran(refusal);
+                    }
+                }
+                crate::lists::ListAction::GoTo(page, at) => self.goto_place(page, at),
+            }
+        }
+    }
+
+    /// Whether Lists shows the Device list now (the left panel's Devices tab then defers to it).
+    pub fn lists_shows_devices(&self) -> bool {
+        self.shell.state.workspace == Workspace::Lists && self.shell.lists == ListsView::Devices
+    }
+
+    /// Whether Lists shows the Check list now (the drawer then defers to it).
+    pub fn lists_shows_checks(&self) -> bool {
+        self.shell.state.workspace == Workspace::Lists && self.shell.lists == ListsView::Checks
+    }
+
+    /// Whether `at` is over the page shown, with no window or popup above it there.
+    pub fn over_shown_page(&self, ctx: &egui::Context, at: egui::Pos2) -> bool {
+        self.shell.page_rect.is_some_and(|r| r.contains(at)) && ctx.layer_id_at(at).is_none_or(|l| l.order == egui::Order::Background)
     }
 
     /// The companion split's handle: drag to resize, double-click for the default.
@@ -343,8 +470,9 @@ impl Trial {
             Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
+        let under_head = Rect::from_min_max(slots.main.min + egui::vec2(0.0, ecad_ui::tokens::size::PANEL_HEADER), slots.main.max);
         let reports = match w {
-            Workspace::Lists => Some(slots.main),
+            Workspace::Lists if self.shell.lists == ListsView::Reports => Some(under_head),
             Workspace::Draw => slots.companion,
             _ => None,
         };
@@ -488,6 +616,7 @@ impl Trial {
         if let Some(pg) = v.page
             && self.panel.active != Some(pg)
         {
+            self.shell.restore_view = true;
             let _ = self.show_page(pg);
         }
     }
@@ -502,6 +631,7 @@ impl Trial {
             None => rows.first(),
         };
         if let Some(pg) = to.map(|r| r.id) {
+            self.shell.restore_view = true;
             let _ = self.show_page(pg);
         }
     }
@@ -515,6 +645,8 @@ impl Trial {
         };
         let changed = self.shell.view_of.as_ref() != Some(&(pid.clone(), page));
         let pv = self.shell.views.projects.get(&pid);
+        // Taken every frame: it asks for the page change it came with (or none).
+        let restore = std::mem::take(&mut self.shell.restore_view);
         if changed {
             let opened = self.shell.view_of.as_ref().is_none_or(|(p, _)| *p != pid);
             if opened {
@@ -525,7 +657,10 @@ impl Trial {
                     self.shell.state.workspace = w;
                 }
             }
-            if let Some(v) = page.and_then(|pg| self.shell.views.projects.get(&pid).and_then(|p| p.pages.get(&pg.hex())).copied())
+            // Only a plain page switch, or the project opened again, restores the stored view: a
+            // go-to (a check, a device, a Terminals row's place, a reference) keeps the view it set.
+            if (restore || opened)
+                && let Some(v) = page.and_then(|pg| self.shell.views.projects.get(&pid).and_then(|p| p.pages.get(&pg.hex())).copied())
                 && let Ok(st) = self.cad.session.state_mut()
             {
                 let mut view = st.view();

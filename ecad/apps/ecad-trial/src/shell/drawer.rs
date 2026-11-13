@@ -49,6 +49,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     if !t.project_open() {
         return;
     }
+    if t.lists_shows_checks() {
+        super::in_rect(ui, body, "ecad.shell.drawer.body", |ui| ecad_ui::prim::read_value(ui, super::CHECKS_IN_LISTS));
+        return;
+    }
     let actions = super::in_rect(ui, body, "ecad.shell.drawer.body", |ui| t.panel.checks.show(ui, writable));
     for a in actions {
         t.panel_action(a);

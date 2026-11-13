@@ -1477,6 +1477,7 @@ version = "0.1.0-dev"
 dependencies = [
  "ecad-tokens",
  "egui",
+ "egui_extras",
  "egui_kittest",
  "sha2",
 ]

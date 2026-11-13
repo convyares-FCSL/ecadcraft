@@ -1,57 +1,39 @@
 //! The **Devices** tab of the Project panel (owner request, 2026-11-08, after brief 018): every
-//! device grouped by its tag prefix, each row its tag and description, expandable to its symbols
-//! with page and column; a click on a symbol shows its page and selects it; the selected device's
-//! properties are edited in place through `setprop` (brief 018's rules, its merge offer included).
+//! device with its tag and description, its function, location, symbols, pages and part; a click
+//! on a row shows its first symbol's page and selects it; the selected device's properties are
+//! edited in place through `setprop` (brief 018's rules, its merge offer included).
 //!
-//! The list is a copy ([`ecad_cadcraft::device_list::DeviceEntry`]) rebuilt only when the
-//! project's change count or the filter changed; the rows are virtualised, so a frame lays out only
-//! the visible ones.
+//! Brief 039: the rows are the one table's Devices column set ([`crate::lists::devices`]): tag and
+//! description edit in place (the same `setprop`), the list is patched with the devices a change
+//! touched, and selecting symbols on the page selects their rows. This tab is its host until the
+//! shell (U2) places it.
 //!
 //! Excluded: cables, terminals, creating or deleting devices.
 
-use std::collections::BTreeSet;
-
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::device_list::DeviceEntry;
 use ecad_cadcraft::devices::PROPERTIES;
-use ecad_model::{ComponentId, RepresentationId};
-use eframe::egui::{self, RichText, Sense, Stroke, pos2, vec2};
+use ecad_model::ComponentId;
+use eframe::egui::{self, RichText, Stroke, vec2};
 
-use crate::project_panel::{Action, ROW_H};
+use crate::lists::devices::{self as dl, DevicesSource};
+use crate::project_panel::Action;
 
 /// Accessible label of the filter field.
-pub const FILTER: &str = "Filter devices";
+pub const FILTER: &str = "Filter Devices";
 /// The merge offer's button.
 pub const MERGE: &str = "Make it the same device";
 /// Brief 026: the clash box's first button, and the header's Renumber.
 pub const SWAP: &str = "Swap";
 pub const RENUMBER: &str = "Renumber…";
-/// `ecad.provisional` (design 026 §10): ACI 30.
-pub const PROVISIONAL: egui::Color32 = egui::Color32::from_rgb(0xff, 0x7f, 0x00);
 
 /// The accessible label of a device row: `Device -K01: Contactor / relay coil`.
 pub fn device_label(e: &DeviceEntry) -> String {
     format!("Device {}: {}", e.tag.as_deref().unwrap_or("(no tag)"), e.description)
 }
 
-/// The accessible label of a symbol row: `-K01 NO contact, 2-C-4` (its place in the project's
-/// reference style, brief 019).
-pub fn symbol_label(e: &DeviceEntry, s: &ecad_cadcraft::device_list::SymbolEntry) -> String {
-    format!("{} {}, {}", e.tag.as_deref().unwrap_or("(no tag)"), s.name, s.place)
-}
-
-/// One laid-out row.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Row {
-    Group(String, usize),
-    Device(usize),
-    Symbol(usize, usize),
-}
-
 /// A property being edited: (device, property key, text).
 type Editing = (ComponentId, &'static str, String);
 
-/// The tab's state.
 /// The clash box's ways for a taken tag (brief 026, design §7.1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Clash {
@@ -61,18 +43,20 @@ pub struct Clash {
     pub next: Option<String>,
 }
 
-#[derive(Debug, Default)]
+/// The tab's state.
+#[derive(Debug)]
 pub struct DevicesPanel {
+    /// The search text (the table's search field).
     pub filter: String,
     /// The list of every device, kept up to date by `ecad-cadcraft`.
     pub list: ecad_cadcraft::device_list::DeviceList,
-    /// The filter the rows were laid out with (a new filter lays them out again; the list itself
-    /// is never rebuilt for it).
-    laid_out_filter: String,
-    rows: Vec<Row>,
-    pub expanded: BTreeSet<ComponentId>,
-    /// How many devices the filter shows.
-    shown: usize,
+    /// Brief 039: the rows as a table source, and the table.
+    pub source: DevicesSource,
+    pub table: ecad_ui::table::Table<ComponentId>,
+    /// The (project serial, change count) the table was brought up to.
+    seen: Option<(u64, u64)>,
+    /// The page selection last followed (handles), so the table follows only a new one.
+    followed: Vec<cadcraft_engine::doc::Handle>,
     pub selected: Option<ComponentId>,
     editing: Option<Editing>,
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
@@ -84,69 +68,104 @@ pub struct DevicesPanel {
     pub rows_drawn: usize,
 }
 
+impl Default for DevicesPanel {
+    fn default() -> Self {
+        let mut table = ecad_ui::table::Table::new("ecad.devices", "Devices");
+        table.empty = "No devices yet.";
+        Self {
+            filter: String::new(),
+            list: Default::default(),
+            source: Default::default(),
+            table,
+            seen: None,
+            followed: Vec::new(),
+            selected: None,
+            editing: None,
+            error: None,
+            clash: None,
+            rows_drawn: 0,
+        }
+    }
+}
+
 impl DevicesPanel {
     /// The devices listed now (those the filter matches).
     pub fn entries(&self) -> Vec<DeviceEntry> {
         self.list.entries.iter().filter(|e| ecad_cadcraft::device_list::matches(e, &self.filter)).cloned().collect()
     }
 
-    /// Bring the list up to date ([`ecad_cadcraft::device_list::DeviceList::sync`]: built whole
-    /// once, then only the devices a change touched), and lay it out again when it changed.
+    /// Bring the list and the table up to date: the list through
+    /// [`ecad_cadcraft::device_list::DeviceList::sync`] (built whole once, then only the devices a
+    /// change touched), the table by the update map of [`crate::lists::devices`].
     pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
-        let filtered = self.filter != self.laid_out_filter;
-        if self.list.sync(serial, p) || filtered {
-            self.flatten();
+        let count = p.change_count();
+        if self.seen == Some((serial, count)) && self.table.built() {
+            return;
         }
+        let since = match self.seen {
+            Some((s, n)) if s == serial && self.table.built() => Some(n),
+            _ => None,
+        };
+        let (changed, touched) = dl::changes(p, since);
+        self.list.sync(serial, p);
+        let doc = p.ledger.document();
+        match &changed {
+            ecad_ui::table::Changed::All => self.source.build(doc, &self.list.entries),
+            ecad_ui::table::Changed::Keys(_) => self.source.patch(doc, &self.list.entries, &touched),
+            ecad_ui::table::Changed::Nothing => {}
+        }
+        self.table.update(&self.source, changed);
+        if self.selected.is_some_and(|c| !self.source.contains_key(c)) {
+            self.selected = None;
+        }
+        self.seen = Some((serial, count));
     }
 
-    /// The tab is shown again: the next [`DevicesPanel::sync`] builds the list whole.
+    /// The page's selection changed: select the devices it holds symbols of, and scroll to the
+    /// first (row ↔ object link). Reads only the selected handles.
+    pub fn follow(&mut self, p: &ecad_cadcraft::Project, handles: &[cadcraft_engine::doc::Handle]) {
+        if self.followed == handles {
+            return;
+        }
+        self.followed = handles.to_vec();
+        let doc = p.ledger.document();
+        let Some(map) = p.active_page().and_then(|pg| p.pages.get(&pg)).map(|v| &v.map) else { return };
+        let mut devices: Vec<ComponentId> = Vec::new();
+        for h in handles.iter().take(ecad_cadcraft::props::MAX_LOOKED_AT) {
+            let rep = match map.get(*h) {
+                Some(ecad_cadcraft::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
+                Some(ecad_cadcraft::project::Mapped::Tag(rep) | ecad_cadcraft::project::Mapped::Marker(rep, _)) => {
+                    doc.representations.get(&rep).map(|r| r.subject)
+                }
+                _ => None,
+            };
+            if let Some(ecad_model::Subject::Component(c)) = rep
+                && self.source.contains_key(c)
+                && !devices.contains(&c)
+            {
+                devices.push(c);
+            }
+        }
+        if devices.is_empty() {
+            return;
+        }
+        self.selected = devices.first().copied();
+        self.table.reveal(&devices);
+    }
+
+    /// The tab is shown again: the next [`DevicesPanel::sync`] builds the list and table whole.
     pub fn invalidate(&mut self) {
         self.list.invalidate();
+        self.table.reset();
+        self.seen = None;
     }
 
-    /// Lay the copy out as rows: a group header per prefix, its devices, and the symbols of the
-    /// expanded ones.
-    fn flatten(&mut self) {
-        let mut rows = Vec::new();
-        let mut last: Option<&str> = None;
-        let shown: Vec<usize> = (0..self.list.entries.len())
-            .filter(|i| self.list.entries.get(*i).is_some_and(|e| ecad_cadcraft::device_list::matches(e, &self.filter)))
-            .collect();
-        for (k, &i) in shown.iter().enumerate() {
-            let Some(e) = self.list.entries.get(i) else { continue };
-            if last != Some(e.group.as_str()) {
-                let n = shown.iter().skip(k).take_while(|j| self.list.entries.get(**j).is_some_and(|x| x.group == e.group)).count();
-                rows.push(Row::Group(e.group.clone(), n));
-                last = Some(e.group.as_str());
-            }
-            rows.push(Row::Device(i));
-            if self.expanded.contains(&e.id) {
-                rows.extend((0..e.symbols.len()).map(|j| Row::Symbol(i, j)));
-            }
-        }
-        self.rows = rows;
-        self.shown = shown.len();
-        self.laid_out_filter = self.filter.clone();
-    }
-
-    /// Expand or fold device `c`'s symbols.
-    pub fn toggle(&mut self, c: ComponentId) {
-        if !self.expanded.remove(&c) {
-            self.expanded.insert(c);
-        }
-        self.flatten();
-    }
-
-    /// The tab's contents. Returns the actions asked for.
+    /// The tab's contents: Renumber, the table, the selected device's properties. Returns the
+    /// actions asked for.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
+        use ecad_ui::table::TableEvent;
         let mut out = Vec::new();
-        let t = Tokens::get();
-        ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("Filter: tag or text").desired_width(f32::INFINITY))
-            .on_hover_text("A tag such as k1 finds -K01, -K10…; other text matches the description, maker or part number")
-            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FILTER));
-        let count = self.shown;
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{count} device{}", if count == 1 { "" } else { "s" })).small().color(t.text_dim));
             // Brief 026 (design §9): Renumber in the header.
             if ui.add_enabled(writable, egui::Button::new(RichText::new(RENUMBER).small())).accessible_name("ecad.devices.renumber").clicked() {
                 out.push(Action::Renumber);
@@ -154,110 +173,48 @@ impl DevicesPanel {
         });
         // The selected device's properties, at the bottom of the tab.
         let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
-        let list_h = (ui.available_height() - editor_h).max(ROW_H * 3.0);
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let mut drawn = 0;
-        let mut toggled = None;
-        egui::ScrollArea::vertical().id_salt("ecad.devices.list").max_height(list_h).auto_shrink([false, false]).show_rows(
-            ui,
-            ROW_H,
-            self.rows.len(),
-            |ui, range| {
-                for i in range {
-                    let Some(row) = self.rows.get(i).cloned() else { continue };
-                    drawn += 1;
-                    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-                    let p = ui.painter_at(rect);
-                    let font = egui::FontId::monospace(12.0);
-                    match row {
-                        Row::Group(g, n) => {
-                            // Brief 026: `-K  (12, 2 prov)`.
-                            let prov = self
-                                .list
-                                .entries
-                                .iter()
-                                .filter(|e| e.group == g && e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional))
-                                .count();
-                            let counts = if prov > 0 { format!("{n}, {prov} prov") } else { n.to_string() };
-                            p.text(
-                                pos2(rect.left() + 4.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                format!("{g}  ({counts})"),
-                                egui::FontId::proportional(11.0),
-                                t.text_dim,
-                            );
-                        }
-                        Row::Device(d) => {
-                            let Some(e) = self.list.entries.get(d) else { continue };
-                            let selected = self.selected == Some(e.id);
-                            if selected {
-                                p.rect_filled(rect, 0.0, t.tab_active);
-                                p.rect_filled(egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height())), 0.0, t.accent);
-                            } else if resp.hovered() {
-                                p.rect_filled(rect, 0.0, t.chrome);
-                            }
-                            let open = self.expanded.contains(&e.id);
-                            let arrow = if e.symbols.is_empty() {
-                                " "
-                            } else if open {
-                                "▾"
-                            } else {
-                                "▸"
-                            };
-                            let tag = e.tag.as_deref().unwrap_or("(no tag)");
-                            // Brief 026: `F` after a fixed tag; a provisional one in its colour.
-                            let fixed = if e.fixed { " F" } else { "" };
-                            let text = format!("{arrow} {tag:<7}{fixed} {}", e.description);
-                            let colour = if ecad_model::tag::is_provisional(tag) {
-                                PROVISIONAL
-                            } else if selected {
-                                t.text
-                            } else {
-                                t.text_dim
-                            };
-                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, colour);
-                            let label = device_label(e);
-                            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
-                            if resp.clicked() {
-                                // A click on the arrow folds or unfolds; anywhere else selects the
-                                // device and unfolds its symbols.
-                                if resp.interact_pointer_pos().is_some_and(|q| q.x < rect.left() + 20.0) {
-                                    toggled = Some(e.id);
-                                } else {
-                                    if self.selected != Some(e.id) {
-                                        self.editing = None;
-                                        self.error = None;
-                                    }
-                                    self.selected = Some(e.id);
-                                    if !open {
-                                        toggled = Some(e.id);
-                                    }
-                                }
-                            }
-                        }
-                        Row::Symbol(d, s) => {
-                            let Some(e) = self.list.entries.get(d) else { continue };
-                            let Some(sym) = e.symbols.get(s) else { continue };
-                            if resp.hovered() {
-                                p.rect_filled(rect, 0.0, t.chrome);
-                            }
-                            let text = format!("    {}  {}", sym.place, sym.name);
-                            p.text(pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font, t.text_dim);
-                            let label = symbol_label(e, sym);
-                            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
-                            let rep: RepresentationId = sym.rep;
-                            if resp.on_hover_text("Show this symbol's page and select it").clicked() {
-                                self.selected = Some(e.id);
-                                out.push(Action::GotoSymbol(rep));
-                            }
-                        }
+        let list_h = (ui.available_height() - editor_h).max(ecad_ui::tokens::size::ROW_TABLE * 4.0);
+        self.table.query = self.filter.clone();
+        let events = ui
+            .allocate_ui(vec2(ui.available_width(), list_h), |ui| {
+                ui.set_min_height(list_h);
+                self.table.show(ui, &self.source)
+            })
+            .inner;
+        self.filter = self.table.query.clone();
+        self.rows_drawn = self.table.rows_drawn;
+        let first_symbol = |s: &DevicesSource, c: ComponentId| s.row(c).and_then(|r| r.entry.symbols.first()).map(|x| x.rep);
+        for e in events {
+            match e {
+                TableEvent::Selected(keys) => {
+                    let first = keys.first().copied();
+                    if self.selected != first {
+                        self.editing = None;
+                        self.error = None;
+                    }
+                    self.selected = first;
+                    // One row: its symbols on the page (the first one's page, selected).
+                    if let [c] = keys.as_slice()
+                        && let Some(rep) = first_symbol(&self.source, *c)
+                    {
+                        out.push(Action::GotoSymbol(rep));
                     }
                 }
-            },
-        );
-        self.rows_drawn = drawn;
-        if let Some(c) = toggled {
-            self.toggle(c);
+                TableEvent::GoTo { key, .. } | TableEvent::Open(key) => {
+                    self.selected = Some(key);
+                    if let Some(rep) = first_symbol(&self.source, key) {
+                        out.push(Action::GotoSymbol(rep));
+                    }
+                }
+                TableEvent::Commit { key, col, value } => {
+                    if let Some(k) = dl::property(col).filter(|_| writable) {
+                        self.selected = Some(key);
+                        out.push(Action::SetDeviceProperty { component: key, key: k, value, conflict: None });
+                    }
+                }
+                TableEvent::Export(csv) => crate::lists::copy_csv(ui, csv),
+                TableEvent::Button { .. } => {}
+            }
         }
         if let Some(c) = self.selected {
             self.editor(ui, c, writable, &mut out);
@@ -272,12 +229,17 @@ impl DevicesPanel {
             self.selected = None;
             return;
         };
-        let t = Tokens::get();
+        let (line, dim, text, accent) = (
+            ecad_ui::color(ecad_ui::SHELL.line),
+            ecad_ui::color(ecad_ui::SHELL.text_2),
+            ecad_ui::color(ecad_ui::SHELL.text),
+            ecad_ui::color(ecad_ui::SHELL.accent),
+        );
         ui.add_space(4.0);
-        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(1.0, t.border));
+        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line));
         ui.add_space(4.0);
         ui.spacing_mut().item_spacing.y = 2.0;
-        ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(t.text_dim));
+        ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
         if let Some((msg, offer)) = self.error.clone() {
             ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
             // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
@@ -285,7 +247,7 @@ impl DevicesPanel {
                 let (same_kind, next) = self.clash.as_ref().map_or((false, None), |k| (k.same_kind, k.next.clone()));
                 ui.horizontal(|ui| {
                     if same_kind {
-                        let swap = egui::Button::new(RichText::new(SWAP).small().color(t.text)).fill(t.accent);
+                        let swap = egui::Button::new(RichText::new(SWAP).small().color(text)).fill(accent);
                         if ui.add(swap).accessible_name("ecad.tagclash.swap").on_hover_text("Exchange the two tags (one undo step)").clicked() {
                             self.error = None;
                             out.push(Action::SetDeviceProperty { component: target, key: "tag", value: tag.clone(), conflict: Some("swap") });
@@ -369,6 +331,10 @@ impl DevicesPanel {
             Some(i) if offer.is_some() => message.get(..i).unwrap_or(&message).to_string(),
             _ => message,
         };
+        // Brief 039: the refusal shows under the table's cell too, and the cell reverts.
+        if let Some(col) = dl::column_of(key) {
+            self.table.refuse(c, col, message.clone());
+        }
         self.error = Some((message, offer));
     }
 }

@@ -103,9 +103,7 @@ const LOCAL_STYLE: &[&str] = &[
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/checks_panel.rs", 4, "039 (U3): Checks becomes a table"),
     ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
-    ("apps/ecad-trial/src/devices_panel.rs", 5, "039 (U3): Devices becomes a table"),
     ("apps/ecad-trial/src/history_panel.rs", 7, "038 (U2) moves it; restyled by U4d"),
     ("apps/ecad-trial/src/merge_dialog.rs", 2, "restyled with History (U4d)"),
     ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
@@ -1097,7 +1095,7 @@ let c = ecad_ui::color(SHELL.text);",
         )
         .unwrap();
         std::fs::write(
-            src.join("checks_panel.rs"),
+            src.join("history_panel.rs"),
             "fn f() -> egui::Color32 { egui::Color32::from_gray(7) }
 ",
         )
@@ -1109,7 +1107,7 @@ let c = ecad_ui::color(SHELL.text);",
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(!v.iter().any(|m| m.contains("checks_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+        assert!(!v.iter().any(|m| m.contains("history_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
     }
 
     /// Core and Adapter crates may not depend on ECAD's UI kit or the egui family (design §2).

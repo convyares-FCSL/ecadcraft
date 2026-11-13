@@ -1,5 +1,6 @@
 //! The shell's keys (spec §5, "Keyboard that remains"), those that exist today: the tool group
-//! keys V W P C D B T, Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right and Esc. Del,
+//! keys V W P C D B T, Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right, Esc and Del
+//! (erase the selection; CADCraft's command line did it, and hears no idle keys in the shell).
 //! Ctrl+Z and Ctrl+Y stay CADCraft's shortcuts (they reach the command path as before).
 //!
 //! The keys are taken before CADCraft's drawing reads the frame's input, so Ctrl+1 opens no
@@ -48,6 +49,14 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
     }
     let over_main = ctx.pointer_hover_pos().is_some_and(|p| slots.main.contains(p));
     let prompting = t.cad.session.prompting();
+    // Del (and plain Backspace on macOS) erases the selection while no command runs, as
+    // CADCraft's command line does; with idle typing off (US1) it no longer hears these keys.
+    if draw && !prompting && !t.shell.state.cad_chrome && !t.cad.session.selection().is_empty() {
+        let mac = ctx.os() == egui::os::OperatingSystem::Mac;
+        if take(Modifiers::NONE, Key::Delete) || (mac && take(Modifiers::NONE, Key::Backspace)) {
+            let _ = t.cad.run("erase.selection", serde_json::json!({}));
+        }
+    }
     if !draw || !over_main || t.shell.state.cad_chrome {
         return;
     }

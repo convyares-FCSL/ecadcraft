@@ -57,6 +57,7 @@ pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
+pub mod lists;
 pub mod merge_dialog;
 pub mod outputs_ui;
 pub mod preview;
@@ -1537,6 +1538,8 @@ impl Trial {
     /// pointer leaves the object, a button is pressed or a command starts. Only reads.
     fn hover_tooltip(&mut self, ctx: &egui::Context) {
         let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
+        // Brief 038: only over the page shown, not over a hosted view laid over the hidden page.
+        let pointer = pointer.filter(|at| self.over_shown_page(ctx, *at));
         let idle = self.cad.session.running.is_none() && !pressed;
         // A terminal under the pointer wins over the wire ending on it or the symbol around it.
         let terminal = match pointer.filter(|_| idle) {
@@ -1639,6 +1642,8 @@ impl Trial {
             return;
         };
         let serial = self.project_serial;
+        let devices_shown = self.panel.tab == project_panel::Tab::Devices || self.lists_shows_devices();
+        let selection = if devices_shown { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
         let panel_revision = &mut self.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
@@ -1668,8 +1673,10 @@ impl Trial {
             panel.sync(serial, p.page_list_version(), || Some(p.tree_rows()));
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
-            if panel.tab == project_panel::Tab::Devices {
+            if devices_shown {
                 panel.devices.sync(serial, p);
+                // Brief 039: symbols selected on the page select their rows.
+                panel.devices.follow(p, &selection);
             }
             // The History tab's copy, only while it is shown (brief 020a; its own update map).
             if panel.tab == project_panel::Tab::History {
@@ -1727,6 +1734,8 @@ impl Trial {
         self.panel.note = None;
         match a {
             A::Open(page) => {
+                // Brief 038: a plain page switch gets the page's stored view back.
+                self.shell.restore_view = true;
                 let _ = self.show_page(page);
             }
             A::New => self.open_new_page_box(),
@@ -2671,6 +2680,7 @@ impl Trial {
     /// Open Reports and show it: in Lists, or beside the page when Draw's companion is open.
     pub fn reports_view(&mut self) {
         self.open_reports();
+        self.shell.lists = shell::ListsView::Reports;
         if !(self.shell.state.workspace == shell::Workspace::Draw && self.shell.state.companion.is_some()) {
             self.set_workspace(shell::Workspace::Lists);
         }
@@ -2730,8 +2740,12 @@ impl Trial {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
             Some(outputs_ui::Out::Run(line)) => {
-                let _ = self.run_line(&line);
+                let refusal = self.run_line(&line);
+                if let Some(r) = self.reports.as_mut() {
+                    r.ran(refusal);
+                }
             }
+            Some(outputs_ui::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)
@@ -2863,15 +2877,18 @@ impl Trial {
             Some(To::Symbol(rep)) => {
                 let _ = self.goto_symbol(rep);
             }
-            Some(To::Place(page, at)) => {
-                if self.show_page(page).is_ok()
-                    && let Ok(st) = self.cad.session.state_mut()
-                {
-                    let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
-                }
-            }
+            Some(To::Place(page, at)) => self.goto_place(page, at),
             None => {}
+        }
+    }
+
+    /// Show `page`, centred on `at` at the current zoom (kept readable).
+    pub fn goto_place(&mut self, page: PageId, at: ecad_model::Pt) {
+        if self.show_page(page).is_ok()
+            && let Ok(st) = self.cad.session.state_mut()
+        {
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
     }
 
