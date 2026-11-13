@@ -374,7 +374,7 @@ fn b_level_on_another_page_joins_its_position() {
     let (x1, _) = fence(&mut m.h, None, "LNPE", "L", 90.0, 130.0);
     fence(&mut m.h, Some(x1), "LNPE", "N", 190.0, 215.0); // N on 1 and 2 only (x 200, 210)
     let n_before = positions(&m.h.doc(), x1);
-    assert!(n_before["3"].get(".2").is_none(), "position 3's N is free: {n_before:?}");
+    assert!(!n_before["3"].contains_key(".2"), "position 3's N is free: {n_before:?}");
     // Page 2: `termlnpe.2` on the wire at x 500 fills position 3's free N.
     m.h.activate(m.p2);
     let v = step(&mut m.h, "place", json!({"symbol": "termlnpe.2", "at": [500, 200], "device": x1.hex()}));
@@ -443,9 +443,9 @@ fn c_sensor_links_per_level() {
     assert_eq!(squash(prop(&mut m.h, x2, "link.1")).as_deref(), Some("1.2-4.2"));
     step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "link.2", "value": "1.3-4.3"}));
     assert_eq!(squash(prop(&mut m.h, x2, "link.2")).as_deref(), Some("1.3-4.3"));
-    let plus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(*p, ".2"))).collect();
-    let minus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(*p, ".3"))).collect();
-    let ss: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(*p, ".1"))).collect();
+    let plus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".2"))).collect();
+    let minus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".3"))).collect();
+    let ss: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".1"))).collect();
     assert!(plus.iter().all(|n| n.is_some() && *n == plus[0]), "+ one net: {plus:?}");
     assert!(minus.iter().all(|n| n.is_some() && *n == minus[0]), "− one net: {minus:?}");
     assert_ne!(plus[0], minus[0]);
