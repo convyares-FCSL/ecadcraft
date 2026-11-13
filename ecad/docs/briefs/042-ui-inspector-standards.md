@@ -1,7 +1,7 @@
 # Brief 042: Inspector, Settings and the Standards screen (U4c)
 
 Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
-Branch: `feature/ui-inspector`, from `origin/dev` (no wait).
+Branch: `feature/ui-inspector`, from `origin/dev` after `fix/ui-followups` has merged.
 Designer: done (`docs/design/ui-architecture.md` §11; the look and rules are spec §1 principle 7,
 §2 "Settings is a place you visit", §5 "What you set and what is read", the push-back's item 8,
 screen e) · Size: L, in four steps

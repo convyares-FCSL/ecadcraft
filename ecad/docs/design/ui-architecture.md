@@ -668,10 +668,13 @@ These files are shared, and each lane touches only the hunk named:
 | `ecad-trial/src/shell/text_panel.rs` | `ui.sheet` arm | — | — | — |
 | `ecad-cadcraft/src/interact/mod.rs` | `overlay_marks` body | two `mod` lines | — | — |
 | `ecad-cadcraft/src/lib.rs` | — | `pub mod actions;` | `mod default_cmds;` | — |
+| `ecad-trial/src/project_panel.rs` | — | one `Action` variant appended | — | — |
 | `ecad-tokens/src/icon.rs` | — | appended block `// 041` | appended block `// 042` if needed | — |
 | `ecad/UPSTREAM-PATCHES.md` | appended U4a block (US3, US1 line) | — | — | — |
 
-Order: 041, 042 and 043 start now; 040 starts when the redraw fix (O1) has merged. Merge order
+Order: 041 and 043 start now; 042 starts when `fix/ui-followups` has merged (it moves the popout
+code that branch fixed); 040 starts when the redraw fix (O1) has merged. Go-tos that select a
+device's symbols use `Trial::goto_symbols` from `fix/ui-followups`. Merge order
 does not matter for correctness; the merge train takes them as they are ready and merges `dev`
 into each remaining branch locally (the union merge of the `lanes` files needs a local merge).
 
