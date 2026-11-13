@@ -33,7 +33,7 @@ use ecad_model::connectivity::{CONTINUATION, KIND, NAME, continuation_key, name_
 use ecad_model::{ComponentId, Document, Form, ObjectRef, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
-use crate::text_style::{TextKind, TextTarget, text_shown, text_style, text_width};
+use crate::text_style::{TextKind, TextTarget, text_shown, text_style};
 use crate::xref::{Group, Part, Places, RefIndex, Shape};
 
 /// The component property holding a continuation's caption (FP1).
@@ -254,10 +254,12 @@ pub fn ends_named(doc: &Document, places: &mut Places<'_>, key: &str) -> Vec<End
 
 /// The text arrow `me` shows from its name's sorted ends: the others, at most `max`, then `+n`.
 /// Empty when it has no other end.
-fn text_for(ends: &[End], me: RepresentationId, max: usize) -> String {
-    let others: Vec<&End> = ends.iter().filter(|e| e.rep != me).collect();
-    let mut words: Vec<&str> = others.iter().take(max).map(|e| e.text.as_str()).collect();
-    let more = others.len().saturating_sub(max);
+/// `member`: `me` is one of `ends` (always so for a drawn arrow), so the others are one fewer.
+fn text_for(ends: &[End], me: RepresentationId, member: bool, max: usize) -> String {
+    // O(max) per arrow, never O(group): the first `max` others, and how many more there are.
+    let mut words: Vec<&str> = ends.iter().filter(|e| e.rep != me).take(max).map(|e| e.text.as_str()).collect();
+    let others = ends.len().saturating_sub(usize::from(member));
+    let more = others.saturating_sub(words.len());
     let tail = format!("+{more}");
     if more > 0 {
         words.push(&tail);
@@ -277,11 +279,19 @@ pub fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
 struct Cache {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
+    /// The text styles and fonts, resolved on the first measurement (only caption runs measure).
+    look: Option<crate::text_style::Look>,
 }
 
 impl Cache {
     fn new(doc: &Document) -> Cache {
-        Cache { settings: Settings::of(doc), ends: BTreeMap::new() }
+        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), look: None }
+    }
+
+    /// The width of `value` in `kind`'s style, with the fonts resolved once per derivation.
+    fn width(&mut self, doc: &Document, kind: TextKind, value: &str) -> f64 {
+        let look = self.look.get_or_insert_with(|| crate::text_style::Look::new(doc));
+        crate::text_style::width_in(look.fonts_for(kind), look.style(kind), value)
     }
 
     fn ends(&mut self, doc: &Document, places: &mut Places<'_>, key: &str) -> &[End] {
@@ -292,7 +302,7 @@ impl Cache {
     fn text(&mut self, doc: &Document, places: &mut Places<'_>, a: &Arrow) -> String {
         let Some(key) = name_of(doc, a.component) else { return String::new() };
         let max = self.settings.max;
-        text_for(self.ends(doc, places, &key), a.rep, max)
+        text_for(self.ends(doc, places, &key), a.rep, true, max)
     }
 }
 
@@ -351,8 +361,8 @@ fn runs<'a>(doc: &'a Document, arrows: &[Arrow], run_gap: f64) -> Vec<(&'a str, 
 
 /// A caption wrapped to `width` at word breaks, at most [`MAX_CAPTION_LINES`] lines, the last
 /// ending with `…` when the caption is longer.
-fn wrap(doc: &Document, caption: &str, width: f64) -> Vec<String> {
-    let fits = |t: &str| text_width(doc, TextKind::ContinuationCaption, t) <= width;
+fn wrap(doc: &Document, cache: &mut Cache, caption: &str, width: f64) -> Vec<String> {
+    let mut fits = |t: &str| cache.width(doc, TextKind::ContinuationCaption, t) <= width;
     let mut lines: Vec<String> = Vec::new();
     for word in caption.split_whitespace() {
         match lines.last_mut() {
@@ -387,7 +397,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, caption
     let mut reach = f64::NEG_INFINITY;
     for a in run {
         let value = cache.text(doc, places, a);
-        let len = if value.is_empty() { 0.0 } else { s.gap + text_width(doc, TextKind::Reference, &value) };
+        let len = if value.is_empty() { 0.0 } else { s.gap + cache.width(doc, TextKind::Reference, &value) };
         reach = reach.max(a.tip.x * d.x + a.tip.y * d.y + len);
     }
     let along = reach + s.caption_gap;
@@ -410,7 +420,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, caption
     if text_shown(doc, TextTarget::page(page), TextKind::ContinuationCaption) == crate::text_style::Shown::Off {
         return out;
     }
-    let lines = wrap(doc, caption, (hi - lo).max(s.min_wrap));
+    let lines = wrap(doc, cache, caption, (hi - lo).max(s.min_wrap));
     let h = s.caption_height;
     // A cap height and the space under it.
     let pitch = h * 1.6;
@@ -691,8 +701,8 @@ mod tests {
         let page = PageId(1);
         let end = |n: u128, t: &str| End { rep: RepresentationId(n), page, key: None, text: t.into() };
         let ends = vec![end(1, "1-A-1"), end(2, "2-A-1"), end(3, "3-A-1"), end(4, "4-A-1"), end(5, "5-A-1")];
-        assert_eq!(text_for(&ends, RepresentationId(1), 3), "2-A-1 3-A-1 4-A-1 +1");
-        assert_eq!(text_for(&ends, RepresentationId(9), 1), "1-A-1 +4");
-        assert_eq!(text_for(&ends[..1], RepresentationId(1), 3), "");
+        assert_eq!(text_for(&ends, RepresentationId(1), true, 3), "2-A-1 3-A-1 4-A-1 +1");
+        assert_eq!(text_for(&ends, RepresentationId(9), false, 1), "1-A-1 +4");
+        assert_eq!(text_for(&ends[..1], RepresentationId(1), true, 3), "");
     }
 }

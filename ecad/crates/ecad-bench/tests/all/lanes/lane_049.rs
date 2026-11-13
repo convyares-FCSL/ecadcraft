@@ -40,6 +40,20 @@ fn time(runs: usize, mut f: impl FnMut()) -> f64 {
     )
 }
 
+/// The median of `runs` timings of `f`, each on a fresh value from `setup` (not timed).
+fn time_with<T>(runs: usize, mut setup: impl FnMut() -> T, mut f: impl FnMut(T)) -> f64 {
+    median(
+        (0..runs)
+            .map(|_| {
+                let v = setup();
+                let t = Instant::now();
+                f(v);
+                ms(t)
+            })
+            .collect(),
+    )
+}
+
 /// A document with `pages` pages and no arrows.
 fn pages(n: usize) -> Document {
     let mut doc = Document::default();
@@ -84,20 +98,24 @@ fn move_first(doc: &Document, name: &str, dx: f64) -> Vec<Op> {
 
 /// One commit's continuation work for `ops` on `doc`: the names, what they show before and after,
 /// and the groups refreshed. Returns the pages whose parts changed.
-fn commit_work(doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> (Document, BTreeSet<PageId>) {
+/// `after_doc` is `doc` with `ops` applied (made outside the timing: a commit does not clone).
+fn commit_work(doc: &Document, after_doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> BTreeSet<PageId> {
     let mut names = continuations::names_named(doc, ops);
     let mut groups = RefIndex::groups_named(doc, ops);
     let before = continuations::shown(doc, &mut Places::new(doc), &names);
-    let mut after_doc = doc.clone();
+    names.extend(continuations::names_named(after_doc, ops));
+    groups.extend(RefIndex::groups_named(after_doc, ops));
+    idx.refresh(after_doc, &groups);
+    let after = continuations::shown(after_doc, &mut Places::new(after_doc), &names);
+    before.keys().chain(after.keys()).filter(|p| before.get(*p) != after.get(*p)).copied().collect()
+}
+
+fn applied(doc: &Document, ops: &[Op]) -> Document {
+    let mut d = doc.clone();
     for op in ops {
-        op.apply(&mut after_doc).unwrap();
+        op.apply(&mut d).unwrap();
     }
-    names.extend(continuations::names_named(&after_doc, ops));
-    groups.extend(RefIndex::groups_named(&after_doc, ops));
-    idx.refresh(&after_doc, &groups);
-    let after = continuations::shown(&after_doc, &mut Places::new(&after_doc), &names);
-    let pages = before.keys().chain(after.keys()).filter(|p| before.get(*p) != after.get(*p)).copied().collect();
-    (after_doc, pages)
+    d
 }
 
 #[test]
@@ -133,11 +151,9 @@ fn bench_049_continuation_rows() {
 
     // Move one arrow of a 20-arrow name.
     let ops = move_first(&doc, "N3", 5.0);
+    let after = applied(&doc, &ops);
     let mut redrawn = BTreeSet::new();
-    let move20 = time(runs, || {
-        let (_, p) = commit_work(&doc, &mut idx.clone(), &ops);
-        redrawn = p;
-    });
+    let move20 = time_with(runs, || idx.clone(), |mut i| redrawn = commit_work(&doc, &after, &mut i, &ops));
     let partners: BTreeSet<PageId> =
         doc.continuations_named("N3").iter().flat_map(|c| doc.representations_of(ecad_model::Subject::Component(*c))).map(|(_, r)| r.page).collect();
     assert!(redrawn.is_subset(&partners), "only pages with an N3 arrow: {redrawn:?}");
@@ -150,7 +166,8 @@ fn bench_049_continuation_rows() {
         before: Some("N3".into()),
         after: Some("N4".into()),
     }];
-    let rename20 = time(runs, || drop(commit_work(&doc, &mut idx.clone(), &rename)));
+    let after = applied(&doc, &rename);
+    let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));
 
     // A name with many arrows; move one.
     for i in 0..big {
@@ -159,8 +176,9 @@ fn bench_049_continuation_rows() {
     }
     idx = RefIndex::build(&doc);
     let ops = move_first(&doc, "BIG", 5.0);
-    let move_big = time(runs, || drop(commit_work(&doc, &mut idx.clone(), &ops)));
-    let (after, _) = commit_work(&doc, &mut idx, &ops);
+    let after = applied(&doc, &ops);
+    let move_big = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &ops)));
+    commit_work(&doc, &after, &mut idx, &ops);
     assert_eq!(idx, RefIndex::build(&after), "the kept index equals a rebuild");
 
     eprintln!(
