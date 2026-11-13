@@ -341,6 +341,8 @@ pub fn print(
     if pages.is_empty() {
         return Err("No page matches.".into());
     }
+    // Brief 040: a headless print draws in the sheet font too (a no-op once installed).
+    crate::text_style::register_sheet_font();
     let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.

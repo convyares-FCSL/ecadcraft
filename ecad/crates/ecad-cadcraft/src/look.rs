@@ -1401,6 +1401,71 @@ pub fn dash_segments(points: &[Pt], on: f64, off: f64) -> Vec<(Pt, Pt)> {
     out
 }
 
+/// Most two-colour dashes one page draws (all its wires together). A hostile file could ask for
+/// tens of millions; beyond this the remaining two-colour wires are drawn in their first colour
+/// only, and Checks lists the page ([`dash_budget`], `checks::Kind::DashesLeftOut`).
+pub const MAX_PAGE_DASHES: usize = 20_000;
+
+/// An upper bound of the dashes [`dash_segments`] makes along `points` (`on` + `off` apart): per
+/// segment its whole periods and two more. Saturates; a length that is not finite counts as
+/// `usize::MAX`.
+pub fn dash_count(points: &[Pt], on: f64, off: f64) -> usize {
+    let period = on + off;
+    if !(period.is_finite() && period > 0.0) {
+        return 0;
+    }
+    let mut n: usize = 0;
+    for w in points.windows(2) {
+        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+        let k = a.dist(*b) / period;
+        if !k.is_finite() || k >= (MAX_PAGE_DASHES as f64) * 2.0 {
+            return usize::MAX;
+        }
+        n = n.saturating_add(k as usize).saturating_add(2);
+    }
+    n
+}
+
+/// Which two-colour wires on `page` get their dashes, within [`MAX_PAGE_DASHES`] (and
+/// [`MAX_DASHES`] per wire), in the page's route order; the rest are drawn in their first colour
+/// only. The same answer for the projection and for Checks: it reads the document only.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DashBudget {
+    pub dashed: std::collections::BTreeSet<ecad_model::RepresentationId>,
+    /// The conductors whose dashes are left out, in route order.
+    pub left_out: Vec<ConductorId>,
+}
+
+/// The [`DashBudget`] of `page`.
+pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
+    let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
+    let mut out = DashBudget::default();
+    let mut total: usize = 0;
+    for (rep, r) in doc.representations_on(page) {
+        let Subject::Conductor(c) = r.subject else { continue };
+        if r.form != ecad_model::Form::Drawn {
+            continue;
+        }
+        // Only two-colour codes have dashes.
+        let Some(code) = conductor_colour(doc, c) else { continue };
+        if !colour_code(&code).is_some_and(|(_, b)| b.is_some()) {
+            continue;
+        }
+        let Some(ItemKind::Primitive(prim)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else { continue };
+        let Some(points) = crate::wires::path_vertices(prim) else { continue };
+        let n = dash_count(&points, on, off);
+        if n > MAX_DASHES || total.saturating_add(n) > MAX_PAGE_DASHES {
+            if !out.left_out.contains(&c) {
+                out.left_out.push(c);
+            }
+            continue;
+        }
+        total += n;
+        out.dashed.insert(rep);
+    }
+    out
+}
+
 /// A marker ECAD paints over the page in a shape CADCraft's marks lack (brief 040, step 2):
 /// display only, never an entity, so it never reaches a plot.
 #[derive(Debug, Clone, Copy, PartialEq)]

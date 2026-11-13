@@ -246,24 +246,10 @@ fn first_open_zoom(t: &mut Trial, st: &mut State, rect: Rect) {
     }
 }
 
-/// Give CADCraft's font table the sheet font's two faces (US3), which `ecad-ui` embeds, so the
-/// page draws `Barlow Semi Condensed` (031's `text.font` default since brief 040). Called once at
-/// start, before text is drawn. Whether they are registered now (a second call: already were).
+/// Give CADCraft's font table the sheet font (US3; `ecad_cadcraft::install` does it too, and a
+/// print). Whether it is registered.
 pub fn register_sheet_faces() -> bool {
-    use cadcraft_engine::fonts::ttf::{EmbeddedFace, register_faces};
-    static FACES: std::sync::OnceLock<Vec<EmbeddedFace>> = std::sync::OnceLock::new();
-    let faces = FACES.get_or_init(|| {
-        let family = ecad_cadcraft::defaults::text::SHEET_FONT;
-        ecad_ui::fonts::FACES
-            .iter()
-            .filter_map(|f| match f.family {
-                ecad_ui::fonts::SHEET => Some(EmbeddedFace { family, style: "Regular", bytes: f.bytes }),
-                ecad_ui::fonts::SHEET_SEMIBOLD => Some(EmbeddedFace { family, style: "SemiBold", bytes: f.bytes }),
-                _ => None,
-            })
-            .collect()
-    });
-    register_faces(faces).is_ok() || !cadcraft_engine::fonts::ttf::embedder_faces().is_empty()
+    ecad_cadcraft::text_style::register_sheet_font()
 }
 
 /// Whether `line` is the `ui.sheet` command.

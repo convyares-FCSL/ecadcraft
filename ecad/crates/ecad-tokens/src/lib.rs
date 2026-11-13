@@ -23,6 +23,7 @@ pub mod marker;
 pub mod radius;
 pub mod shadow;
 pub mod sheet;
+pub mod sheet_font;
 pub mod sheet_type;
 pub mod shell;
 pub mod size;

@@ -24,13 +24,15 @@ Brief [`040-ui-canvas.md`](../briefs/040-ui-canvas.md); choices and tokens in
   `setprop {"conductor": "<id>", "key": "colour", "value": "GNYE"}`). It is drawn in that colour.
   A two-colour code (GNYE, RDBU, YEBN, GN/YE, GRN/YEL) draws the first colour solid with 2 mm
   dashes of the second. An unknown code draws in ink and adds an information row to Checks:
-  "Colour code not defined".
+  "Colour code not defined". A page draws at most 20 000 dashes; past that, wires keep their
+  first colour and Checks warns "Two-colour wires drawn in one colour".
 - **Printing.** `print.colour` is `mono` by default: black, with the colour code in the wire
   label. No command writes the project value yet (like the other `print.*` defaults; 042's
   Standards will), so for now choose colour per run: `printbook {"colour": "colour"}`, or the
   Print Book dialog's colour choice. Wires then print in their colours, two-colour wires with
   their dashes, and everything else in ink. Markers, the grid and selection never print.
-- **Sheet font.** Page text is Barlow Semi Condensed. Tags use its SemiBold face. A project that
+- **Sheet font.** Page text is Barlow Semi Condensed, in the window and in headless prints
+  (`ecad-mcp`, Print Book, release) alike. Tags use its SemiBold face. A project that
   sets its own `text.font` keeps it. Heights are **cap heights**: a 2.5 mm tag measures 2.5 mm
   from the baseline to the top of a capital. The values are unchanged; the labels say "cap
   height".

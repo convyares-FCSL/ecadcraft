@@ -69,12 +69,17 @@ pub(crate) fn colour_routes(
         d.layers.push(cadcraft_engine::doc::Layer::new(DASH_LAYER));
     }
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
+    // The page's dash budget: past it a two-colour wire keeps its first colour only (Checks says).
+    let budget = crate::look::dash_budget(doc, page);
     let mut dashes = Vec::new();
     for r in routes {
         let Some(route) = r.handle else { continue };
         let Some(e) = index.get(&route).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.color = Color::True(crate::look::rgb(r.colours.solid));
         map.insert_coloured(route);
+        if !budget.dashed.contains(&r.rep) {
+            continue;
+        }
         let common = e.common.clone();
         for (i, mut dash) in route_dashes(&r, &common).into_iter().enumerate() {
             let Ok(i) = u32::try_from(i) else { break };

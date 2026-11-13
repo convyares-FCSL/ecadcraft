@@ -143,10 +143,12 @@ pub enum Kind {
     NoFuseRating,
     /// Brief 040: a wire or core colour code the app does not know (drawn in ink).
     UnknownColour,
+    /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
+    DashesLeftOut,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 42] = [
+    pub const ALL: [Kind; 43] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -189,6 +191,7 @@ impl Kind {
         Kind::FuseDevice,
         Kind::NoFuseRating,
         Kind::UnknownColour,
+        Kind::DashesLeftOut,
     ];
 
     /// The JSON name.
@@ -236,6 +239,7 @@ impl Kind {
             Kind::FuseDevice => "fuse-device",
             Kind::NoFuseRating => "no-fuse-rating",
             Kind::UnknownColour => "unknown-colour",
+            Kind::DashesLeftOut => "dashes-left-out",
         }
     }
 
@@ -289,6 +293,7 @@ impl Kind {
             Kind::FuseDevice => "Fuse terminals that are devices of their own",
             Kind::NoFuseRating => "Fuse positions without a rating",
             Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
+            Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
         }
     }
 
@@ -319,7 +324,8 @@ impl Kind {
             | Kind::TableOverTitle
             | Kind::ContinuationClash
             | Kind::PositionMixed
-            | Kind::LevelMissing => Severity::Warning,
+            | Kind::LevelMissing
+            | Kind::DashesLeftOut => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -464,6 +470,8 @@ pub enum Key {
     CableReferences(CableId),
     Cable(ecad_model::CableId),
     Project,
+    /// Brief 040: a page's dash budget.
+    Page(PageId),
 }
 
 type Cell = (PageId, i64, i64);
@@ -831,6 +839,17 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
     out
 }
 
+/// The checks of `page` as a whole: brief 040's dash budget ([`crate::look::dash_budget`]).
+pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
+    let left = crate::look::dash_budget(doc, page).left_out;
+    if left.is_empty() {
+        return Vec::new();
+    }
+    let n = left.len();
+    let which = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };
+    vec![Check { kind: Kind::DashesLeftOut, page: Some(page), at: None, object: Object::None, which, fix: None }]
+}
+
 /// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
@@ -1013,6 +1032,9 @@ impl Checks {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
             ch.set(Key::Cable(*k), cable_checks(doc, *k));
         }
+        for page in doc.pages.keys() {
+            ch.set(Key::Page(*page), page_checks(doc, *page));
+        }
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1167,6 +1189,16 @@ impl Checks {
         }
         for k in &scope.cables {
             self.set(Key::Cable(*k), cable_checks(doc, *k));
+        }
+        // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
+        // that had a row (a wire removed or recoloured there).
+        let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
+        for c in scope.conductors.iter().chain(scope.routes.iter()) {
+            pages.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+        }
+        for page in pages {
+            let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
+            self.set(Key::Page(page), rows);
         }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();

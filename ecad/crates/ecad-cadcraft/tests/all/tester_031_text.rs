@@ -347,11 +347,8 @@ fn t1_defaults_sizes_weights_and_one_tag_per_strip_run() {
     // The drawing: tags in ECAD-BOLD at 2.5, labels in Standard at 1.5, location 1.6.
     let ts = h.run("textstyle", json!({})).unwrap();
     let stroke = ts["drawn_with"] == "stroke";
-    if option_env!("CRAFT_FONTS_DIR").is_none() {
-        assert!(stroke, "a build without craft-fonts draws with the stroke font: {ts}");
-    } else {
-        assert_eq!(ts["drawn_with"], "BIZ UDPGothic", "{ts}");
-    }
+    // Brief 040: `install` registers the sheet font, so the page draws in it.
+    assert_eq!(ts["drawn_with"], "Barlow Semi Condensed", "{ts}");
     for (t, common) in drawn_value(&mut h, page, "-K01") {
         assert_eq!(t.height, 2.5);
         assert!(t.style.eq_ignore_ascii_case("ECAD-BOLD"), "{t:?}");
@@ -481,9 +478,9 @@ fn t2_hostile_stored_values_give_the_default() {
 fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
     let mut f = fixture_c(0x7031_0301);
     let v = f.h.run("textstyle", json!({})).unwrap();
-    // Brief 040: the built-in family is the sheet font, which only the app registers; here the
-    // fallback is 031's (BIZ UDPGothic with craft-fonts, else the stroke font).
-    let built_in = if option_env!("CRAFT_FONTS_DIR").is_some() { "BIZ UDPGothic" } else { "stroke" };
+    // Brief 040: the built-in family is the sheet font, which `install` registers (031's chain,
+    // BIZ UDPGothic then the stroke font, is the fallback where it is not).
+    let built_in = "Barlow Semi Condensed";
     assert_eq!(v["drawn_with"], built_in, "{v}");
     assert_eq!(v["font"], "Barlow Semi Condensed", "absent means the built-in family: {v}");
     let w = one_tx(&mut f.h, "textstyle", json!({"font": "NoSuchFont"}));
@@ -957,9 +954,12 @@ fn t9_placement_does_not_depend_on_op_order() {
         let page = h.first_page();
         let spots = [(100.0, 150.0), (108.0, 150.0), (100.0, 128.0), (116.0, 140.0)];
         for i in order {
-            place(&mut h, "no", spots[*i]);
+            // Each spot its own tag, whatever the order: in the proportional sheet font (brief 040)
+            // tags of different digits differ in width.
+            let (x, y) = spots[*i];
+            h.run("place", json!({"symbol": "no", "at": [x, y], "tag": format!("-K{}", 11 + i)})).unwrap();
         }
-        // Tags differ by order, so compare the set of boxes.
+        // Compare the set of boxes.
         let rows = texts(&mut h, page);
         let mut boxes: Vec<String> = rows.iter().filter(|r| r["kind"] == "tag").map(|r| format!("{:.3?}", bx(r))).collect();
         boxes.sort();

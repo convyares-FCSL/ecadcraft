@@ -60,8 +60,9 @@ fn without_craft_fonts_bold_is_a_heavier_stroke() {
         assert_eq!(f.regular, cadcraft_engine::fonts::BUILTIN_FONT);
         assert!(f.status().contains("drawn with the stroke font"), "{}", f.status());
     } else {
+        // The sheet font once `install` registered it (brief 040), else 031's BIZ UDPGothic.
         assert_eq!(f.bold_lineweight, None);
-        assert_eq!(f.drawn_with, "BIZ UDPGothic");
+        assert!(["Barlow Semi Condensed", "BIZ UDPGothic"].contains(&f.drawn_with.as_str()), "{}", f.drawn_with);
     }
     // A family nobody has falls back the same way and says so.
     let mut doc = ecad_model::Document::default();

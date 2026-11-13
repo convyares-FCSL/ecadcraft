@@ -466,6 +466,24 @@ fn default_family() -> &'static str {
     }
 }
 
+/// The sheet font's faces as given to CADCraft's font table.
+static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
+    cadcraft_engine::fonts::ttf::EmbeddedFace { family: ecad_tokens::sheet_font::FAMILY, style: "Regular", bytes: ecad_tokens::sheet_font::REGULAR },
+    cadcraft_engine::fonts::ttf::EmbeddedFace {
+        family: ecad_tokens::sheet_font::FAMILY,
+        style: "SemiBold",
+        bytes: ecad_tokens::sheet_font::SEMIBOLD,
+    },
+];
+
+/// Give CADCraft's font table the sheet font, Barlow Semi Condensed Regular and SemiBold (brief
+/// 040, upstream seam US3), so every page ECAD draws or prints, in the window or headless (MCP,
+/// Print Book, release), uses it. Called by [`crate::install`] and before a print; idempotent.
+/// Whether the faces are registered (the same faces, or another embedder's, given first).
+pub fn register_sheet_font() -> bool {
+    cadcraft_engine::fonts::ttf::register_faces(&SHEET_FACES).is_ok() || !cadcraft_engine::fonts::ttf::embedder_faces().is_empty()
+}
+
 /// The fonts a project's texts are drawn with on this machine (design 031 §2.2).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fonts {

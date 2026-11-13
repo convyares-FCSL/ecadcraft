@@ -196,41 +196,11 @@ fn overlay_never_prints() {
 }
 
 /// AC 5: a tag at `text.tag.height` 2.5 is 2.5 mm from the baseline to the top of `K` in the
-/// sheet font's SemiBold; run in a child process, as the faces are process-wide.
+/// sheet font's SemiBold. `ecad_cadcraft::install` registers the sheet font (fix round of PR
+/// #80), so every project here draws in it.
 #[test]
 fn a_tag_is_its_height_from_baseline_to_cap_in_the_sheet_font() {
-    let out = std::process::Command::new(std::env::current_exe().unwrap())
-        .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "lanes::lane_040::child_cap_height", "--ignored", "--nocapture", "--test-threads=1"])
-        .output()
-        .unwrap();
-    let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    assert!(out.status.success() && text.contains("1 passed"), "child failed:\n{text}");
-}
-
-#[test]
-#[ignore = "run by a_tag_is_its_height_from_baseline_to_cap_in_the_sheet_font in a child process"]
-fn child_cap_height() {
-    // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
-    if std::env::var_os("ECAD_TEST_CHILD").is_none() {
-        return;
-    }
-    use cadcraft_engine::fonts::ttf::{self, EmbeddedFace};
-    // Registered before the project is made, as the app does at start (without them, 031's
-    // chain draws: `tester_031_text::t3_font_fallback_never_refuses_and_keeps_the_stored_name`).
-    static FACES: [EmbeddedFace; 2] = [
-        EmbeddedFace {
-            family: "Barlow Semi Condensed",
-            style: "Regular",
-            bytes: include_bytes!("../../../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-Regular.ttf"),
-        },
-        EmbeddedFace {
-            family: "Barlow Semi Condensed",
-            style: "SemiBold",
-            bytes: include_bytes!("../../../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-SemiBold.ttf"),
-        },
-    ];
-    ttf::register_faces(&FACES).unwrap();
+    use cadcraft_engine::fonts::ttf;
     let mut h = H::new(0x40_0005);
     let v = h.run("textstyle", json!({})).unwrap();
     assert_eq!((v["font"].as_str(), v["height_is"].as_str()), (Some("Barlow Semi Condensed"), Some("cap height")));
@@ -251,4 +221,67 @@ fn child_cap_height() {
     let own = h.run("textstyle", json!({})).unwrap();
     assert_eq!(own["font"], "NoSuchFont 040");
     assert_eq!(own["drawn_with"], "Barlow Semi Condensed", "a missing family falls back to the sheet font");
+}
+
+/// Fix round of PR #80, 1: a hostile page asking for millions of dashes (a 100 km two-colour wire,
+/// and more two-colour wires than the page budget covers) draws at most
+/// [`look::MAX_PAGE_DASHES`] dashes, the wires left out keep their first colour, nothing panics,
+/// and Checks has one row for the page; it goes when the colours do.
+#[test]
+fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
+    let mut h = H::new(0x40_0006);
+    let page = h.first_page();
+    let mut wires: Vec<ConductorId> = Vec::new();
+    // 6 wires of 15 m: about 3 750 dashes each, so the page budget takes five.
+    for k in 0..6 {
+        let y = 1000.0 + 10.0 * f64::from(k);
+        wires.push(id(&h.run("wire", json!({"points": pts(&[(0.0, y), (15_000.0, y)])})).unwrap(), "conductor"));
+    }
+    // One of 1e8 mm (100 km): 25 million dashes asked for, within the command's coordinate range.
+    wires.push(id(&h.run("wire", json!({"points": pts(&[(0.0, 2000.0), (1e8, 2000.0)])})).unwrap(), "conductor"));
+    for w in &wires {
+        h.run("setprop", json!({"conductor": w.hex(), "key": "colour", "value": "GNYE"})).unwrap();
+    }
+    let doc = h.doc();
+    let budget = look::dash_budget(&doc, page);
+    assert_eq!((budget.dashed.len(), budget.left_out.len()), (5, 2), "{budget:?}");
+    assert!(budget.left_out.contains(wires.last().unwrap()), "the 100 km wire is left out");
+    let ents = h.pv(|p, pg| pg.entities_of(p, page));
+    let dashes = ents.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::DASH_LAYER).count();
+    assert!(dashes > 0 && dashes <= look::MAX_PAGE_DASHES, "{dashes} dashes");
+    // Every wire still has its first colour.
+    let green = Color::True(rgb(ecad_tokens::wire::PE.paper.solid));
+    let handles: Vec<_> = wires.iter().map(|w| h.route_handle(page, *w)).collect();
+    let coloured = handles.iter().filter(|r| ents.iter().any(|e| e.handle == **r && e.common.color == green)).count();
+    assert_eq!(coloured, wires.len());
+    // One Checks row for the page, kept up to date as colours change.
+    let full: Vec<_> = ecad_cadcraft::checks::all(&doc, 0.01).into_iter().filter(|c| c.kind == Kind::DashesLeftOut).collect();
+    assert_eq!(full.len(), 1, "{full:?}");
+    assert_eq!((full[0].page, full[0].which.as_str()), (Some(page), "2 wires"));
+    assert_eq!(h.cfg(|p| p.checks().rows().filter(|r| r.kind == Kind::DashesLeftOut).count()), 1, "the live Checks has it");
+    for w in &wires[5..] {
+        h.run("setprop", json!({"conductor": w.hex(), "key": "colour", "value": null})).unwrap();
+    }
+    let doc = h.doc();
+    assert!(ecad_cadcraft::checks::all(&doc, 0.01).iter().all(|c| c.kind != Kind::DashesLeftOut), "the row goes");
+    assert_eq!(h.cfg(|p| p.checks().rows().filter(|r| r.kind == Kind::DashesLeftOut).count()), 0, "the live Checks dropped it too");
+}
+
+/// Fix round of PR #80, 2: a headless print (no window: the commands installed as `ecad-mcp`
+/// does) draws its text in the sheet font.
+#[test]
+fn a_headless_print_draws_in_the_sheet_font() {
+    ecad_cadcraft::install();
+    printbook::install_io();
+    let (mut h, ..) = small_project(0x40_0007);
+    h.run("place", json!({"symbol": "coil", "at": [60, 120]})).unwrap();
+    let page = h.first_page();
+    let doc = h.doc();
+    let printed = printbook::print(&doc, &[page], &Default::default(), 0.01, None, printbook::Options::default(), None, &mut |_, _| true);
+    assert!(printed.is_ok_and(|p| p.files.iter().any(|f| f.2 > 0)), "a PDF was made");
+    assert!(!cadcraft_engine::fonts::ttf::embedder_faces().is_empty(), "the sheet font is registered");
+    let (scratch, _) = printbook::build_pending(&doc, &[page], &Default::default(), 0.01, None, false).unwrap();
+    let font = |name: &str| scratch.text_styles.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.font.clone());
+    assert_eq!(font("Standard").as_deref(), Some("Barlow Semi Condensed"));
+    assert_eq!(font("ECAD-BOLD").as_deref(), Some("Barlow Semi Condensed SemiBold"));
 }
