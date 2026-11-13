@@ -139,7 +139,7 @@ pub fn verify_page_shown(
     }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
-        *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::wires::label_entity(&look, &l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.

@@ -107,6 +107,8 @@ pub enum Action {
     GotoCheck(Box<ecad_cadcraft::checks::Check>),
     /// Checks tab: `junction {at}` on this page.
     AddJunction(PageId, ecad_model::Pt),
+    /// Checks tab (brief 032): `joinwires {at}` on this page.
+    JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
     NumberThem,
     /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).

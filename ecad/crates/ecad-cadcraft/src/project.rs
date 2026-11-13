@@ -74,6 +74,8 @@ pub struct HandleMap {
     /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
     /// square is shown there.
     quiet: Vec<Pt>,
+    /// Brief 032 §2.6: open ends lying on another wire (the yellow looks-connected ring).
+    looks: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
@@ -129,6 +131,10 @@ impl HandleMap {
     /// Loose wire ends that show no loose-end square (design 009 §7.3).
     pub fn quiet_ends(&self) -> &[Pt] {
         &self.quiet
+    }
+    /// Open ends that look connected (design 032 §2.6), computed with the page's projection.
+    pub fn looks_connected(&self) -> &[Pt] {
+        &self.looks
     }
     /// Whether `cable` is drawn as a fan on this page.
     pub fn is_fan(&self, cable: CableId) -> bool {
@@ -985,12 +991,14 @@ pub fn project_page_shown(
         ents.push(crate::locations::label_entity(&look, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
+    // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
+    map.looks = crate::wires::looks_connected_on_page(doc, page, &map.quiet);
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::wires::label_entity(&l, h));
+        ents.push(crate::wires::label_entity(&look, &l, h));
         map.insert_label(l.rep, l.conductor, h);
     }
     ents.sort_by_key(|e| e.handle);
@@ -2702,6 +2710,9 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 return None;
             }
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
+            // same transaction (the invariant requires it), and those ops name its pages.
+            Op::DeleteConductor { .. } => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's

@@ -1754,6 +1754,11 @@ impl Trial {
                     let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
                 }
             }
+            A::JoinWires(page, at) => {
+                if self.show_page(page).is_ok() {
+                    let _ = self.run_line(&format!("joinwires {}", json!({"at": [at.x, at.y]})));
+                }
+            }
             A::NumberThem => {
                 let _ = self.run_line(&format!("renumberwires {}", json!({"scope": "unnumbered"})));
             }
@@ -2423,6 +2428,8 @@ impl Trial {
                 // Brief 031: the Text section reads `textstyle {}` (reads only).
                 if popout == sheets_ui::Popout::Settings {
                     d.text = self.run_value("textstyle", json!({})).ok().map(|t| text_ui::TextSection::from_json(&t));
+                    // Brief 032 §4.4: the wire label rows read `wiresettings {}` (reads only).
+                    d.labels = self.run_value("wiresettings", json!({})).ok().map(|w| sheets_ui::WireLabels::from_json(&w));
                 }
                 self.project_props = Some(d);
             }
