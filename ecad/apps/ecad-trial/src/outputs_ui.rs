@@ -128,9 +128,9 @@ pub struct Reports {
     /// Brief 039: the Terminals tab as the one table's terminal manager.
     pub terminals: crate::lists::terminals::TerminalsView,
     /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
-    /// them; ticking writes `setdefault`), whether the project can be written (Columns and
-    /// + Item are greyed when not), each BOM row's item when it lists one item only, and the BOM
-    /// as CSV (Qty a number, a Unit column), row for row with the shown table.
+    /// them; ticking writes `setdefault`), whether the project can be written (Columns and the
+    /// add-item button are greyed when not), each BOM row's item when it lists one item only, and
+    /// the BOM as CSV (Qty a number, a Unit column), row for row with the shown table.
     pub view: BomView,
     pub writable: bool,
     pub items: Vec<Option<ecad_model::ComponentId>>,

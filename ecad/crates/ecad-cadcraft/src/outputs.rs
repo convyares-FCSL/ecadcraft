@@ -25,6 +25,10 @@
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
+//! | Brief 047: `SetProperty(Component c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
+//! | Brief 047: `CreateComponent` / `DeleteComponent` / `SetProperty` of an item | that item's entry |
+//! | Brief 047: `SetProperty(Project, location)` | also the items whose location is the project's |
+//! | Brief 047: `SetProperty(Project, bom.*)` | no row: the tables and page re-read the view (`BomView`); the sheet count switches to the other kept count |
 //! | anything else | nothing |
 //!
 //! This module reads the document; it changes nothing.

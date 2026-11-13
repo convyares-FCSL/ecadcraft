@@ -334,6 +334,13 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             o.wireupd_ms,
             o.work
         ));
+        // Brief 047 (design 047 §10).
+        let b = &o.bom;
+        out.push_str(&format!(
+            "BOM lines on {} {}: bomline {:.2} ms (< 16), bomkit {:.2} ms (50 devices, < 30), bomitem {:.2} ms (< 16), \
+             bomart {:.2} ms ({} entries, < 30), bomcols {:.2} ms ({} sheets, < 50)\n",
+            r.tier, r.variant, b.bomline_ms, b.bomkit_ms, b.bomitem_ms, b.bomart_ms, b.art_entries, b.bomcols_ms, b.sheets
+        ));
     }
     for r in rows {
         let Some(t) = &r.text else { continue };
@@ -607,6 +614,14 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             }
             // Brief 032 (set apart, as brief 025's columns).
             row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
+            // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
+            row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {
+                let b = &o.bom;
+                json!({
+                    "bomline_ms": b.bomline_ms, "bomkit_ms": b.bomkit_ms, "bomitem_ms": b.bomitem_ms,
+                    "bomart_ms": b.bomart_ms, "art_entries": b.art_entries, "bomcols_ms": b.bomcols_ms, "sheets": b.sheets,
+                })
+            });
             row
         }).collect::<Vec<_>>(),
     });

@@ -142,7 +142,7 @@ impl Qty {
 
     /// Whether it is a whole number.
     pub fn whole(self) -> bool {
-        self.0 % 1000 == 0
+        self.0.is_multiple_of(1000)
     }
 
     /// The sum, or `None` on overflow (never a panic).
@@ -196,7 +196,7 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, String> {
     if q == 0 || q > MAX_QTY_MILLI {
         return Err(bad());
     }
-    if !metres && q % 1000 != 0 {
+    if !metres && !q.is_multiple_of(1000) {
         return Err(format!("\"{shown}\" pieces: a count of pieces is whole. Set the unit to m for a length."));
     }
     Ok(Qty(q))
