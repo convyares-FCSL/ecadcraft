@@ -163,3 +163,67 @@ fn a_page_first_opens_where_a_tag_is_13_px_tall() {
     let tag_px = 2.5 * xf.scale;
     assert!((tag_px - canvas::TAG_PX).abs() < 0.5, "a 2.5 mm tag is {tag_px} px");
 }
+
+/// The demo page on paper and on the dark sheet, with a GNYE wire, a BU wire, an unknown code, a
+/// loose end that looks connected and the coil of `-K01` selected, for the owner's check (written
+/// only when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; nothing is asserted).
+/// It registers the sheet font, as the app does at start, so run it on its own.
+#[test]
+fn screenshots_of_the_canvas() {
+    let Some(out) = crate::project_panel::shots() else { return };
+    canvas::register_sheet_faces();
+    let dir = std::env::temp_dir().join(format!("ecad-040-shots-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = crate::checks_ui::demo_file(&dir);
+    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+        |ui, t: &mut Trial| {
+            t.logic(&ui.ctx().clone());
+            t.ui(ui);
+        },
+        trial(),
+    );
+    h.run_steps(3);
+    h.state_mut().close_project();
+    h.run_steps(2);
+    h.state_mut().open_project(&path).unwrap();
+    h.run_steps(3);
+    let first = crate::project_panel::doc(&mut h).page_order[0];
+    h.state_mut().show_page(first).unwrap();
+    h.run_steps(3);
+    for (y, code) in [(130.0, "GNYE"), (120.0, "BU"), (110.0, "PURPLISH")] {
+        let w = exec(&mut h, "wire", json!({"points": [[120.0, y], [200.0, y]]}));
+        let c = w["conductor"].as_str().unwrap().to_string();
+        exec(&mut h, "setprop", json!({"conductor": c, "key": "colour", "value": code}));
+    }
+    exec(&mut h, "wire", json!({"points": [[160.0, 145.0], [160.0, 130.0]], "join": false}));
+    h.state_mut().zoom_to_drawing();
+    h.run_steps(5);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-paper.png"));
+    h.state_mut().sheet_command("ui.sheet dark");
+    h.run_steps(5);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-dark.png"));
+    h.state_mut().sheet_command("ui.sheet paper");
+    h.run_steps(3);
+    // A device's coil selected: its contacts on the page get dashed outlines.
+    let handle = h.state().project().cloned().unwrap();
+    let pick = handle
+        .read(&mut h.state_mut().cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let page = p.active_page()?;
+            doc.tagged().find_map(|(_, c)| {
+                let reps: Vec<_> = doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page == page).map(|(id, _)| id).collect();
+                (reps.len() > 1).then(|| ecad_cadcraft::device_list::symbol_target(p, reps[0]).map(|t| t.2).unwrap_or_default())
+            })
+        })
+        .unwrap()
+        .unwrap_or_default();
+    h.state_mut().cad.session.set_selection(pick);
+    h.run_steps(5);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-related.png"));
+    // The page at its first-open zoom.
+    exec(&mut h, "newpage", json!({"title": "Fresh"}));
+    exec(&mut h, "place", json!({"symbol": "coil", "at": [60, 200]}));
+    h.run_steps(5);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-first-open.png"));
+}
