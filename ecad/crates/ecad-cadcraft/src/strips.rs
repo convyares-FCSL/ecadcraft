@@ -16,6 +16,10 @@
 //!   (FP2, Q9). Members are matched to it by label first, then in member order: **used**,
 //!   **spare** and **over** (§6.2).
 //! - Nothing here is refused because of a check; it is flagged (§8).
+//! - **Brief 036:** a strip's rows are its **levels**, grouped by position in plan order
+//!   ([`crate::terminal_types::positions`]); a position whose type has more levels than are drawn
+//!   shows them as **free** rows; spare positions come per type from the offer (`12+2PE+4x3`), each
+//!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map (design 028 §11.1)
 //! [`Strips`] lives inside [`crate::outputs::Outputs`] and is updated with it from the same
@@ -28,6 +32,10 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
+//! | brief 036: a strip's `term_label.*`, `rating.*`, `terminal.*`, `part_number.<code>` (its own properties: a device in scope) | that strip |
+//! | brief 036: project `terminal.level.separator` or `terminal.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
+//! | brief 036: project `strip_<code>_*` or `terminal.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
+//! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
 //! | anything else | nothing |
 //!
 //! A full build happens only with the report models: open, reload, first show.

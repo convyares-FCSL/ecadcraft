@@ -1275,8 +1275,9 @@ mod tests {
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
-        // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8);
+        // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
+        // multi-level terminals (20).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1393,7 +1394,8 @@ mod tests {
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
-        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic).collect();
+        // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.
+        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_types::is_level_starter(s.key)).collect();
         assert_eq!(basic.len(), want.len());
         for (key, hash) in want {
             let o = by_key(key).unwrap().definition().unwrap().origin.clone().unwrap();
@@ -1494,7 +1496,7 @@ mod tests {
         assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq"]);
         assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol"]);
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
-        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
+        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
         assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
         assert!(keys("xyz").is_empty());
         assert!(keys("basic").is_empty());

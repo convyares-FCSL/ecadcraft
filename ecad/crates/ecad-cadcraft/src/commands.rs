@@ -652,6 +652,25 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
+            // Brief 036 (§12, FP4): the registry's terminal defaults on a strip, and a level's label.
+            (ObjectRef::Component(c), k) if k.starts_with("terminal.") && crate::strips::is_strip(doc, c) => {
+                match crate::defaults::terminals::setprop_value(k, value.as_deref()) {
+                    Some(r) => r?,
+                    None => value,
+                }
+            }
+            (ObjectRef::Component(c), k) if k.starts_with(crate::terminal_types::LABEL_PREFIX) && crate::strips::is_strip(doc, c) => {
+                match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+                    None => None,
+                    Some(v) if v.chars().count() > crate::terminal_types::MAX_LABEL_CHARS || v.chars().any(char::is_control) => {
+                        return Err(format!(
+                            "A level's label is 1 to {} characters, with no control characters.",
+                            crate::terminal_types::MAX_LABEL_CHARS
+                        ));
+                    }
+                    Some(v) => Some(v.to_string()),
+                }
+            }
             // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
             (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,
             // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.

@@ -112,7 +112,13 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     // are covered by `library_contracts`.
     assert_eq!(
         want.len(),
-        STARTERS.iter().filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless && s.family == ecad_cadcraft::symbols::Family::Basic).count()
+        STARTERS
+            .iter()
+            .filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless
+                && s.family == ecad_cadcraft::symbols::Family::Basic
+                // Brief 036's level starters join strips as positions (`levels_contracts`).
+                && !ecad_cadcraft::terminal_types::is_level_starter(s.key))
+            .count()
     );
     for (i, (key, t)) in want.iter().enumerate() {
         let x = 60.0 * (i % 6) as f64;
@@ -127,7 +133,10 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     let r = place(&mut h, "coil", [400.0, 0.0]);
     assert_eq!(r["tag"], json!("-K05"));
     let doc = h.doc();
-    let devices: Vec<_> = STARTERS.iter().filter(|s| s.kind != symbols::Kind::Tagless && s.family == symbols::Family::Basic).collect();
+    let devices: Vec<_> = STARTERS
+        .iter()
+        .filter(|s| s.kind != symbols::Kind::Tagless && s.family == symbols::Family::Basic && !ecad_cadcraft::terminal_types::is_level_starter(s.key))
+        .collect();
     assert_eq!(doc.definitions.len(), devices.len());
     for s in devices.iter().copied() {
         let d = symbols::embedded(&doc, s).unwrap();
