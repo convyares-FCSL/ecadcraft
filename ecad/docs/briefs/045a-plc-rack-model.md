@@ -71,11 +71,18 @@ Design §13 rows A–E, M (a-rows), R (a-commands), S (`plcbuild`), T (a-inputs)
    verify-mode equality; `plcbuild` within target.
 9. Hostile inputs of design §13 T for slots, racks and captions: a refusal in words or a Checks row,
    never a panic.
+10. FP1's conditions (overseer, 2026-11-13): merge, diff and the inspector show the rack's tag,
+    never the hex ID; deleting a rack clears the keys on its cards in the same transaction (6); a
+    dangling ID is a `rack-missing` Checks row, never a crash (3); a round-trip test (save, reopen,
+    compare) covers `plc.rack`.
 
 ## FP items (overseer)
 
 FP1 (`plc.rack` holds a component ID: the first property that refers to a component), FP4
 (registry keys as object properties), FP7's `plc` registry area. No op, no record field.
+**Approved (overseer, 2026-11-13)**, FP1 on the conditions in criterion 10; the `plc` area joins
+047 FP6's one-line-per-area `all()` list, made by whichever of 045 and 047 lands first. Decisions in
+design §14.
 
 ## Tester
 

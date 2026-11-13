@@ -58,7 +58,7 @@ Design §13 rows N–Q, R (`iolist`), S (`iolist`). In short:
 
 ## FP items (overseer)
 
-FP5: the page property `generated = iolist`. Nothing else.
+FP5: the page property `generated = iolist`. Nothing else. **Approved (overseer, 2026-11-13).**
 
 ## Tester
 

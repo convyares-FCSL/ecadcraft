@@ -81,6 +81,8 @@ Design §13 rows F–M (b-rows), R (b-commands), S (b-rows), T (b-inputs). In sh
 FP2 (channel point keys `.<i>.<role>`, label = pin), FP3 (card properties `plc.channels`,
 `plc.addr.start`, `plc.addr.size`, `plc.ch.<i>.text`, `plc.ch.<i>.address`), FP6 (recorded ops),
 FP7 (`Kind::Plc` → `Kind::Channel`). No op, no record field, no `ecad-model` change.
+**Approved (overseer, 2026-11-13)**; reading old `di`/`do` keys as `a × 8 + b` is not
+compatibility work. Decisions in design §14.
 
 ## Tester
 
