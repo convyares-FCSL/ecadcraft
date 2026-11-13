@@ -158,8 +158,11 @@ pub struct HistoryPanel {
     details: Option<(Sel, Value)>,
     pub steps_open: bool,
     steps: Vec<StepRow>,
-    /// The Steps list's rows grouped by session (brief 043), made with the rows.
+    /// The Steps list's rows grouped by session (brief 043), made with the rows and again when the
+    /// live session changes (its steps are a group of their own).
     groups: Vec<history::SessionGroup>,
+    /// The Steps list's transactions without their ops, to regroup without reading the project.
+    step_txs: Vec<ecad_model::Transaction>,
     /// Session groups shown expanded, by their newest step.
     pub expanded: std::collections::BTreeSet<u64>,
     /// The live agent session, kept from the banner ([`crate::Trial::history_agent_sync`]).
@@ -324,7 +327,8 @@ impl HistoryPanel {
                 },
             })
             .collect();
-        self.groups = history::sessions(&rows);
+        self.step_txs = rows.into_iter().map(|t| ecad_model::Transaction { ops: Vec::new(), ..t }).collect();
+        self.regroup();
         self.steps_for = Some(want);
     }
 
@@ -847,6 +851,13 @@ impl HistoryPanel {
             .is_some_and(|l| matches!(&g.author, ecad_model::Author::Agent(n) if *n == l.agent) && g.ids.iter().any(|id| l.owned.contains(id)))
     }
 
+    /// Group the Steps list's rows by session, keeping the live session's steps apart from other
+    /// sessions of the same agent (the ledger names the agent, not the session).
+    pub fn regroup(&mut self) {
+        let owned = self.live.as_ref().map(|l| &l.owned);
+        self.groups = history::sessions_split(&self.step_txs, |id| owned.is_some_and(|o| o.contains(id)));
+    }
+
     /// The Steps list's rows as read, grouped (tests).
     pub fn groups(&self) -> &[history::SessionGroup] {
         &self.groups
@@ -1114,6 +1125,11 @@ impl crate::Trial {
             self.agent_action(crate::agent::BannerAction::UndoSession);
         }
         let kept = self.panel.history.live.take();
+        let was = kept.as_ref().map(|l| l.key.clone());
         self.panel.history.live = crate::agent::last_write::live_session(self, kept);
+        // The live session's steps split the groups: regroup when it changed.
+        if self.panel.history.live.as_ref().map(|l| l.key.clone()) != was {
+            self.panel.history.regroup();
+        }
     }
 }

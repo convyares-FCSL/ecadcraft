@@ -55,3 +55,14 @@ fn two_agents_or_a_lone_agent_step_are_not_one_session() {
     t.time_ms = None;
     assert_eq!(history::sessions(&[t])[0].text_in(Some(0)), "a \u{b7} 1 change");
 }
+
+#[test]
+fn two_sessions_of_one_agent_back_to_back_split_where_the_marked_session_starts() {
+    let claude = Author::Agent("claude".into());
+    // Newest first: the live session's 3 steps (seq 13..=11) on top of an ended one's 10.
+    let log: Vec<Transaction> = (1..=13).rev().map(|s| tx(s, &claude, s)).collect();
+    let live = |id: &TxId| id.0 >= 11;
+    let groups = history::sessions_split(&log, live);
+    assert_eq!(groups.iter().map(|g| g.seqs.len()).collect::<Vec<_>>(), [3, 10]);
+    assert_eq!(history::sessions(&log).len(), 1, "unmarked, the name alone joins them");
+}

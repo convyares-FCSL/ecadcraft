@@ -258,3 +258,30 @@ fn screenshots_of_the_banner_history_and_outline() {
     h.run_steps(3);
     let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("043-finished.png"));
 }
+
+/// Review of PR #77: two bridge sessions under one name, back to back, are two groups; Undo
+/// session is offered on the live one only.
+#[test]
+fn back_to_back_sessions_of_one_agent_are_two_groups() {
+    let (mut h, port) = live_trial();
+    let mut first = server(port, true, "tester");
+    first.exec(&mut h, "wire", wire(0.0));
+    first.exec(&mut h, "wire", wire(5.0));
+    first.bye(&mut h);
+    h.run_steps(2);
+    let mut second = server(port, true, "tester");
+    for i in 0..3 {
+        second.exec(&mut h, "wire", wire(20.0 + f64::from(i) * 5.0));
+    }
+    let head = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap()
+    };
+    h.state_mut().open_history_at(head);
+    h.run_steps(4);
+    let panel = &h.state().panel.history;
+    let sessions: Vec<(usize, bool)> = panel.groups().iter().filter(|g| g.is_session()).map(|g| (g.seqs.len(), panel.group_is_live(g))).collect();
+    assert_eq!(sessions, [(3, true), (2, false)], "{:?}", panel.groups());
+    assert_eq!(h.query_all_by_label(hp::UNDO_SESSION).count(), 1, "Undo session on the live session only");
+}

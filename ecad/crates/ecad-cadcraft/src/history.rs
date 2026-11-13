@@ -450,9 +450,19 @@ impl SessionGroup {
 /// transactions by one agent form one [`SessionGroup`]; every other transaction is a group of its
 /// own. Reads only `log`.
 pub fn sessions(log: &[Transaction]) -> Vec<SessionGroup> {
+    sessions_split(log, |_| false)
+}
+
+/// [`sessions`], also split where `marked` changes between two neighbours: the ledger records an
+/// agent by name only, so two bridge sessions of one agent back to back would read as one group;
+/// marking one session's steps (the live one's) keeps each session its own group.
+pub fn sessions_split(log: &[Transaction], marked: impl Fn(&ecad_model::TxId) -> bool) -> Vec<SessionGroup> {
     let mut out: Vec<SessionGroup> = Vec::new();
+    let mut last_mark = false;
     for t in log {
-        let joins = matches!(t.author, ecad_model::Author::Agent(_)) && out.last().is_some_and(|g| g.author == t.author);
+        let mark = marked(&t.id);
+        let joins = matches!(t.author, ecad_model::Author::Agent(_)) && out.last().is_some_and(|g| g.author == t.author) && mark == last_mark;
+        last_mark = mark;
         if !joins {
             out.push(SessionGroup { author: t.author.clone(), seqs: Vec::new(), ids: Vec::new(), from_ms: None, to_ms: None });
         }
