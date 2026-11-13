@@ -208,3 +208,31 @@ fn edit(h: &mut H, label: &str, text: &str) {
     crate::project_panel::key(h, Key::Enter, Modifiers::NONE);
     h.run_steps(2);
 }
+
+/// Screenshots of the two sheets for the owner (only when `ECAD_TESTER_SHOTS` names a folder and a
+/// wgpu adapter exists; nothing is asserted about the pictures): `051-iolist-sheet.png`,
+/// `051-rack-sheet.png`.
+#[test]
+fn screenshots_of_the_io_and_rack_sheets() {
+    let Some(_) = crate::project_panel::shots() else { return };
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas.clone());
+    fixture(&mut h);
+    let di = tagged(&mut h, "-A02").hex();
+    ok(&mut h, &format!(r#"setprop {{"component":"{di}","key":"part_number","value":"DI-16-24V"}}"#));
+    for (name, kind) in [("051-rack-sheet.png", "plcrack"), ("051-iolist-sheet.png", "iolist")] {
+        ok(&mut h, &format!(r#"newpage {{"generated":"{kind}"}}"#));
+        h.state_mut().set_workspace(Workspace::Draw);
+        h.state_mut().zoom_to_drawing();
+        h.run_steps(6);
+        take(&h, &deltas, name);
+    }
+    // The I/O sheet's first table, readable (the page on screen is the I/O list).
+    let page = doc(&mut h).page_order.last().copied().unwrap();
+    h.state_mut().goto_place(page, ecad_model::Pt::new(130.0, 240.0));
+    if let Ok(st) = h.state_mut().cad.session.state_mut() {
+        let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(190.0, 205.0), height: 230.0, twist: 0.0 });
+    }
+    h.run_steps(6);
+    take(&h, &deltas, "051-iolist-sheet-zoom.png");
+}
