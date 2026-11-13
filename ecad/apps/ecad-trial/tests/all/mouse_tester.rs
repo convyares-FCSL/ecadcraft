@@ -26,7 +26,7 @@ use serde_json::json;
 pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).
-struct Collect(Deltas);
+pub(crate) struct Collect(pub(crate) Deltas);
 
 impl egui_kittest::TestRenderer for Collect {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
@@ -516,7 +516,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 
 /// Render the harness's last frame with egui-wgpu (the canvas uses its CPU path in tests, so the
 /// frame is plain egui shapes) and save it as PNG. `None` when no adapter is available.
-pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot<S>(h: &Harness<'static, S>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
