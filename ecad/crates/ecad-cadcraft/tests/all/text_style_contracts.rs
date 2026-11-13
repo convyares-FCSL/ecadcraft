@@ -143,7 +143,9 @@ fn a_kind_may_have_its_own_font() {
     h.run("textstyle", json!({"kind": "tag", "font": "Kind Font 031"})).unwrap();
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    assert_eq!(doc.properties.get("text.tag.font").map(String::as_str), Some("Kind Font 031"));
+    // Brief 050a: the tag text style's own font, in the project's record of it.
+    let font = doc.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into()))).and_then(|r| r.fields.get("font"));
+    assert_eq!(font.map(String::as_str), Some("Kind Font 031"));
     assert!(!doc.properties.contains_key("text.font"), "the project font is unchanged");
     let s = text_style::text_style(&doc, TextKind::Tag);
     assert_eq!(s.style_name, "ECAD-TAG-BOLD");

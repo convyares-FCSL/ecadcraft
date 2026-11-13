@@ -25,10 +25,30 @@ const KINDS: &[(TextKind, f64, Weight)] = &[
     (TextKind::TableHeader, 2.5, Weight::Bold),
 ];
 
+/// A project with these values. Brief 050a: a kind's `text.<kind>.<field>` (height, weight, font)
+/// is a field of the kind's built-in text style, written as the project's record of it.
 fn doc_with(props: &[(&str, &str)]) -> Document {
     let mut h = H::new(0x7031_a001);
-    let ops: Vec<Op> =
-        props.iter().map(|(k, v)| Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }).collect();
+    let mut records: std::collections::BTreeMap<String, ecad_model::StyleRecord> = Default::default();
+    let mut ops: Vec<Op> = Vec::new();
+    for (k, v) in props {
+        let style = k.strip_prefix("text.").and_then(|r| r.rsplit_once('.')).filter(|(_, f)| ["height", "weight", "font"].contains(f));
+        match style {
+            Some((kind, field)) => {
+                records.entry(kind.to_string()).or_default().fields.insert(field.to_string(), (*v).into());
+            }
+            None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),
+        }
+    }
+    for (kind, r) in records {
+        ops.push(Op::SetStyle {
+            layer: ecad_model::StyleLayer::Project,
+            catalogue: "text".into(),
+            id: ecad_model::StyleRef::Builtin(kind),
+            before: None,
+            after: Some(r),
+        });
+    }
     if !ops.is_empty() {
         h.cfg(|p| p.ledger.commit(Author::User, "t", ops)).unwrap();
     }
@@ -81,5 +101,6 @@ fn registry_keys_unique_builtins_valid_and_project_level_allowed() {
         let r = defaults::resolve(&d, e, Scope::project());
         let _ = r;
     }
-    assert!(seen.contains("text.tag.height") && seen.contains("text.run.gap") && seen.contains("text.font"));
+    // Brief 050a: a kind's height is its text style's, chosen by `text.<kind>.style`.
+    assert!(seen.contains("text.tag.style") && seen.contains("text.run.gap") && seen.contains("text.font"));
 }

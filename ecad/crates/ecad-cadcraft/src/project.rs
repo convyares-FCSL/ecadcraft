@@ -983,6 +983,8 @@ pub fn project_page_shown(
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
     crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    // Brief 050a: location box outlines in their location style.
+    crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: Vec<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
@@ -1054,7 +1056,7 @@ pub fn project_page_shown(
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::locations::label_entity(&look, &value, at, h));
+        ents.push(crate::locations::styled_label_entity(doc, &look, rep, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
     // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
@@ -1071,10 +1073,12 @@ pub fn project_page_shown(
     let mut store = EntityStore::new();
     // The sheet frame and title block (brief 019): derived, never stored, and drawn first so
     // everything else lies on top of it (picks find the drawing, not the frame).
+    // Brief 050a: the frame style's line colour, on the frame's own lines (ink otherwise).
+    let frame_rgb = crate::frame::line_colour(doc, page);
     for (i, part) in frame.iter().enumerate() {
         let index = u32::try_from(i).map_err(|_| "the frame has too many parts")?;
         let h = prev.frame_part(index).unwrap_or_else(|| d.new_handle());
-        store.push(crate::frame::entity(part, h));
+        store.push(crate::frame::styled_entity(part, h, frame_rgb));
         map.insert_frame(index, h);
     }
     for e in ents {
@@ -2953,6 +2957,20 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}
+            // Brief 050a (design 050 §10): a style record marks the pages of its users (every page
+            // when the project's choice resolves to it); the standard's header none.
+            Op::SetStyle { .. } | Op::SetStandard { .. } => out.extend(crate::styles::pages_touched(doc, op)?),
+            // A standard's value acts like a project-level write of its key, and changes nothing on
+            // a page while the project holds its own value.
+            Op::SetProperty { object: ecad_model::ObjectRef::Standard, key, before, after } => {
+                let hidden = crate::defaults::find(key)
+                    .is_some_and(|e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).from == crate::defaults::Source::Project);
+                if !hidden {
+                    let as_project =
+                        Op::SetProperty { object: ecad_model::ObjectRef::Project, key: key.clone(), before: before.clone(), after: after.clone() };
+                    out.extend(pages_touched(doc, std::slice::from_ref(&as_project))?);
+                }
+            }
             _ => return None,
         }
     }

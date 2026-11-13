@@ -497,7 +497,8 @@ impl Scope {
                         self.route_pages.insert(*p);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                // Brief 050a: a standard's value of a registry key reaches the same views.
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
                     if key == LOCATION_KEY {
                         self.project_location = true;
                     }
@@ -514,6 +515,9 @@ impl Scope {
                         self.bom_view = true;
                     }
                 }
+                // Brief 050a: style records and the standard header change no report row here
+                // (050b's wire categories add theirs).
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.devices.insert(terminal.component);
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
@@ -765,6 +769,7 @@ impl Outputs {
                 (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
                     || key == crate::defaults::strip_pages::STYLE.key
             }
+            Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
             Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
             _ => false,
         })

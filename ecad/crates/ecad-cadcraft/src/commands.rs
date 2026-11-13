@@ -614,7 +614,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
             ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
             ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
-            ObjectRef::Page(_) | ObjectRef::Project => None,
+            ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
         }
         .ok_or("no such object")?;
         let before = props.get(&key).cloned();

@@ -1,6 +1,10 @@
 //! Lane T's defaults (031, text styles, show and hide, placement): design 031 §3.2 and §3.5.
 //!
 //! Read them through [`crate::text_style`] (`text_style`, `text_shown`), not by key.
+//!
+//! Brief 050a (FP4): a kind's cap height, weight and font are no longer registry entries; they are
+//! fields of its text style (`crate::styles::text`). 031's project properties
+//! `text.<kind>.height`, `.weight` and `.font` are no longer read (Checks: `ignored-old-setting`).
 
 use super::{Entry, Kind, Level, ProjectSource, Value};
 
@@ -15,31 +19,16 @@ const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Ob
 /// The heights a project may set: cap heights (baseline to the top of a capital), millimetres
 /// (brief 040, owner answer 9; CADCraft draws a text height as its cap height).
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
-const WEIGHT: Kind = Kind::Choice(&["regular", "bold"]);
 const SHOW: Kind = Kind::Choice(&["on", "off"]);
 const SHOW_RUN: Kind = Kind::Choice(&["on", "off", "first"]);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, builtin: Value<'static>, levels: &'static [Level]) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, builtin, levels, project: ProjectSource::Property }
 }
-const fn height(key: &'static str, label: &'static str, mm: f64) -> Entry {
-    entry(key, label, HEIGHT, Value::Length(mm), SP)
-}
-const fn regular(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, WEIGHT, Value::Choice("regular"), SP)
-}
-/// A kind's own font (owner, 2026-11-12): its built-in is the project font's, and a kind with no
-/// value of its own uses the project font (`text.font`).
-const fn font(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, Kind::Text { max_chars: 64 }, Value::Text(SHEET_FONT), SP)
-}
-const fn bold(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, WEIGHT, Value::Choice("bold"), SP)
-}
 
 /// The wire label height as the project stores it (`settings.wiring.label_height`), or `None`
 /// while it is the default.
-fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
+pub(crate) fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
     let h = s.wiring.label_height;
     ((h - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() > f64::EPSILON).then_some(Value::Length(h))
 }
@@ -57,15 +46,10 @@ pub const SHEET_FONT: &str = ecad_tokens::sheet_font::FAMILY;
 /// or a test without it): drawn with when found, else the stroke font, as 031 did.
 pub const FALLBACK_FONT: &str = "BIZ UDPGothic";
 
-// --- Heights (§3.2) --------------------------------------------------------------------------
+// --- The wire label height (§3.4) ----------------------------------------------------------
 
-pub static TAG_HEIGHT: Entry = height("text.tag.height", "Tag cap height", 2.5);
-pub static POINT_LABEL_HEIGHT: Entry = height("text.point_label.height", "Connection point label cap height", 1.5);
-pub static DESCRIPTION_HEIGHT: Entry = height("text.description.height", "Description cap height", 1.6);
-pub static PART_NUMBER_HEIGHT: Entry = height("text.part_number.height", "Part number cap height", 1.6);
-pub static CONTINUATION_NAME_HEIGHT: Entry = height("text.continuation_name.height", "Continuation name cap height", 2.0);
-pub static REFERENCE_HEIGHT: Entry = height("text.reference.height", "Reference cap height", 2.0);
-/// Stored in `settings.wiring.label_height` (§3.4), never as a property.
+/// Stored in `settings.wiring.label_height` (§3.4), never as a property. Since brief 050a it is
+/// the project field of the `wire_label` text style's height, not a registry entry of its own.
 pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     key: "text.wire_label.height",
     label: "Wire label cap height",
@@ -76,66 +60,6 @@ pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     levels: SP,
     project: ProjectSource::Settings(wire_label_height),
 };
-pub static CABLE_TEXT_HEIGHT: Entry = height("text.cable_text.height", "Cable text cap height", 1.6);
-pub static LOCATION_HEIGHT: Entry = height("text.location.height", "Location label cap height", 1.6);
-pub static TITLE_VALUE_HEIGHT: Entry = height("text.title_value.height", "Title block value cap height", 2.5);
-pub static TITLE_CAPTION_HEIGHT: Entry = height("text.title_caption.height", "Title block caption cap height", 1.8);
-pub static TITLE_MAIN_HEIGHT: Entry = height("text.title_main.height", "Title cap height", 3.5);
-pub static TITLE_PAGE_HEIGHT: Entry = height("text.title_page.height", "Title block page number cap height", 7.0);
-pub static TITLE_REV_HEIGHT: Entry = height("text.title_rev.height", "Title block revision cap height", 5.0);
-pub static GRID_HEIGHT: Entry = height("text.grid.height", "Grid label cap height", 3.0);
-pub static TABLE_HEIGHT: Entry = height("text.table.height", "Table text cap height", 2.5);
-pub static TABLE_HEADER_HEIGHT: Entry = height("text.table_header.height", "Table header cap height", 2.5);
-pub static TABLE_HEADING_HEIGHT: Entry = height("text.table_heading.height", "Table heading cap height", 3.5);
-pub static COVER_HEIGHT: Entry = height("text.cover.height", "Cover title cap height", 10.0);
-/// The height a free text gets when its command gives none (a typed height is always the user's).
-pub static FREE_HEIGHT: Entry = height("text.free.height", "Free text cap height", 2.5);
-
-// --- Weights (§3.2) --------------------------------------------------------------------------
-
-pub static TAG_WEIGHT: Entry = bold("text.tag.weight", "Tag weight");
-pub static POINT_LABEL_WEIGHT: Entry = regular("text.point_label.weight", "Connection point label weight");
-pub static DESCRIPTION_WEIGHT: Entry = regular("text.description.weight", "Description weight");
-pub static PART_NUMBER_WEIGHT: Entry = regular("text.part_number.weight", "Part number weight");
-pub static CONTINUATION_NAME_WEIGHT: Entry = regular("text.continuation_name.weight", "Continuation name weight");
-pub static REFERENCE_WEIGHT: Entry = regular("text.reference.weight", "Reference weight");
-pub static WIRE_LABEL_WEIGHT: Entry = regular("text.wire_label.weight", "Wire label weight");
-pub static CABLE_TEXT_WEIGHT: Entry = regular("text.cable_text.weight", "Cable text weight");
-pub static LOCATION_WEIGHT: Entry = regular("text.location.weight", "Location label weight");
-pub static TITLE_VALUE_WEIGHT: Entry = regular("text.title_value.weight", "Title block value weight");
-pub static TITLE_CAPTION_WEIGHT: Entry = regular("text.title_caption.weight", "Title block caption weight");
-pub static TITLE_MAIN_WEIGHT: Entry = bold("text.title_main.weight", "Title weight");
-pub static TITLE_PAGE_WEIGHT: Entry = regular("text.title_page.weight", "Title block page number weight");
-pub static TITLE_REV_WEIGHT: Entry = regular("text.title_rev.weight", "Title block revision weight");
-pub static GRID_WEIGHT: Entry = regular("text.grid.weight", "Grid label weight");
-pub static TABLE_WEIGHT: Entry = regular("text.table.weight", "Table text weight");
-pub static TABLE_HEADER_WEIGHT: Entry = bold("text.table_header.weight", "Table header weight");
-pub static TABLE_HEADING_WEIGHT: Entry = regular("text.table_heading.weight", "Table heading weight");
-pub static COVER_WEIGHT: Entry = regular("text.cover.weight", "Cover title weight");
-pub static FREE_WEIGHT: Entry = regular("text.free.weight", "Free text weight");
-
-// --- Fonts per kind (owner, 2026-11-12) -----------------------------------------------------
-
-pub static TAG_FONT: Entry = font("text.tag.font", "Tag font");
-pub static POINT_LABEL_FONT: Entry = font("text.point_label.font", "Connection point label font");
-pub static DESCRIPTION_FONT: Entry = font("text.description.font", "Description font");
-pub static PART_NUMBER_FONT: Entry = font("text.part_number.font", "Part number font");
-pub static CONTINUATION_NAME_FONT: Entry = font("text.continuation_name.font", "Continuation name font");
-pub static REFERENCE_FONT: Entry = font("text.reference.font", "Reference font");
-pub static WIRE_LABEL_FONT: Entry = font("text.wire_label.font", "Wire label font");
-pub static CABLE_TEXT_FONT: Entry = font("text.cable_text.font", "Cable text font");
-pub static LOCATION_FONT: Entry = font("text.location.font", "Location label font");
-pub static TITLE_VALUE_FONT: Entry = font("text.title_value.font", "Title block value font");
-pub static TITLE_CAPTION_FONT: Entry = font("text.title_caption.font", "Title block caption font");
-pub static TITLE_MAIN_FONT: Entry = font("text.title_main.font", "Title font");
-pub static GRID_FONT: Entry = font("text.grid.font", "Grid label font");
-pub static TABLE_FONT: Entry = font("text.table.font", "Table text font");
-pub static TABLE_HEADER_FONT: Entry = font("text.table_header.font", "Table header font");
-pub static FREE_FONT: Entry = font("text.free.font", "Free text font");
-pub static TITLE_PAGE_FONT: Entry = font("text.title_page.font", "Title block page number font");
-pub static TITLE_REV_FONT: Entry = font("text.title_rev.font", "Title block revision font");
-pub static TABLE_HEADING_FONT: Entry = font("text.table_heading.font", "Table heading font");
-pub static COVER_FONT: Entry = font("text.cover.font", "Cover title font");
 
 // --- Shown (§5.1, §5.3) ----------------------------------------------------------------------
 
@@ -173,66 +97,6 @@ pub static BOLD_STROKE_WEIGHT: Entry =
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
     &FONT,
-    &TAG_HEIGHT,
-    &POINT_LABEL_HEIGHT,
-    &DESCRIPTION_HEIGHT,
-    &PART_NUMBER_HEIGHT,
-    &CONTINUATION_NAME_HEIGHT,
-    &REFERENCE_HEIGHT,
-    &WIRE_LABEL_HEIGHT,
-    &CABLE_TEXT_HEIGHT,
-    &LOCATION_HEIGHT,
-    &TITLE_VALUE_HEIGHT,
-    &TITLE_CAPTION_HEIGHT,
-    &TITLE_MAIN_HEIGHT,
-    &TITLE_PAGE_HEIGHT,
-    &TITLE_REV_HEIGHT,
-    &GRID_HEIGHT,
-    &TABLE_HEIGHT,
-    &TABLE_HEADER_HEIGHT,
-    &TABLE_HEADING_HEIGHT,
-    &COVER_HEIGHT,
-    &FREE_HEIGHT,
-    &TAG_WEIGHT,
-    &POINT_LABEL_WEIGHT,
-    &DESCRIPTION_WEIGHT,
-    &PART_NUMBER_WEIGHT,
-    &CONTINUATION_NAME_WEIGHT,
-    &REFERENCE_WEIGHT,
-    &WIRE_LABEL_WEIGHT,
-    &CABLE_TEXT_WEIGHT,
-    &LOCATION_WEIGHT,
-    &TITLE_VALUE_WEIGHT,
-    &TITLE_CAPTION_WEIGHT,
-    &TITLE_MAIN_WEIGHT,
-    &TITLE_PAGE_WEIGHT,
-    &TITLE_REV_WEIGHT,
-    &GRID_WEIGHT,
-    &TABLE_WEIGHT,
-    &TABLE_HEADER_WEIGHT,
-    &TABLE_HEADING_WEIGHT,
-    &COVER_WEIGHT,
-    &FREE_WEIGHT,
-    &TAG_FONT,
-    &POINT_LABEL_FONT,
-    &DESCRIPTION_FONT,
-    &PART_NUMBER_FONT,
-    &CONTINUATION_NAME_FONT,
-    &REFERENCE_FONT,
-    &WIRE_LABEL_FONT,
-    &CABLE_TEXT_FONT,
-    &LOCATION_FONT,
-    &TITLE_VALUE_FONT,
-    &TITLE_CAPTION_FONT,
-    &TITLE_MAIN_FONT,
-    &GRID_FONT,
-    &TABLE_FONT,
-    &TABLE_HEADER_FONT,
-    &FREE_FONT,
-    &TITLE_PAGE_FONT,
-    &TITLE_REV_FONT,
-    &TABLE_HEADING_FONT,
-    &COVER_FONT,
     &TAG_SHOW,
     &TAG_SHOW_STRIP,
     &TAG_SHOW_PLC,

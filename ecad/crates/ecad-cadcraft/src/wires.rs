@@ -415,6 +415,10 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
         }),
     };
     look.apply(&mut e, crate::text_style::TextKind::WireLabel);
+    // Brief 050a: an error or provisional label keeps its own colour over the style's.
+    if l.error || l.provisional {
+        e.common.color = color;
+    }
     e
 }
 
@@ -473,6 +477,7 @@ pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId,
         halign: HAlign::Left,
         valign: VAlign::Bottom,
         aci: None,
+        own: None,
     });
     let (places, _) = other_places(doc, c);
     if !places.is_empty() {
@@ -485,6 +490,7 @@ pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId,
             halign: HAlign::Left,
             valign: VAlign::Top,
             aci: Some(crate::references::REFERENCE_ACI),
+            own: None,
         });
     }
     Some(out)
