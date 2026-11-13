@@ -89,8 +89,9 @@ pub enum Action {
     Save,
     SaveAs,
     CloseProject,
-    /// Devices tab: show this symbol's page and select it.
-    GotoSymbol(ecad_model::RepresentationId),
+    /// Devices tab: show the first symbol's page and select every one of these symbols on it (a
+    /// device's symbols, in the list's order).
+    GotoSymbols(Vec<ecad_model::RepresentationId>),
     /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
     /// device's tag by making this device part of it).
     SetDeviceProperty {
