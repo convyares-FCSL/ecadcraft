@@ -19,6 +19,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | `docs/cadcraft-assessment.md` | Phase 0 assessment |
 | `docs/document-architecture-proposal.md` | architecture proposal (PR #1) |
 | `docs/ecad-architecture-foundations.md` | owner's foundations note |
+| `ATTRIBUTION.md` | Shared with upstream: ECAD's rows (brief 037) for the embedded IBM Plex Sans and Barlow Semi Condensed faces under `ecad/assets/fonts/` (owner answer Q1, 2026-11-13: ECAD keeps these fonts in its own repository); on upstream merges keep upstream's rows and ours |
 
 ## Upstream fixes taken ahead of the next sync
 
@@ -33,7 +34,8 @@ Already merged upstream; each entry goes away at the next upstream sync, which b
 Proposal §14, capabilities X1-X7, X8 (Tool Sets tabs supplied by the embedder, approved
 2026-10-15) and X9 (overlay marks drawn by a document's owner, approved 2026-11-01 for brief 008,
 owner answer O2) and X10 (a section of the Properties palette drawn by the embedder, approved
-2026-11-08 for brief 019, owner answer Q8). One shape, one marker (`ECAD-SEAM(owner)`), nothing
+2026-11-08 for brief 019, owner answer Q8), and US2 (CADCraft's interface font set as a value
+the embedder extends, approved 2026-11-13 with brief 037, design `ui-architecture.md` §1.4). One shape, one marker (`ECAD-SEAM(owner)`), nothing
 ECAD-specific: the interface passes drawings, handles, command ids and provenance. Documents
 without an owner behave exactly as before.
 
@@ -59,6 +61,8 @@ without an owner behave exactly as before.
 | `crates/ui-egui/src/lib.rs` | X8, X10 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once); X10: `CadApp::owner_properties`, a section of the Properties palette drawn by the embedder (`None` by default) |
 | `crates/ui-egui/tests/owner_overlay.rs` | tests | **new file** (X9): marks keep their screen size at every zoom and sit on their drawing position; marks off the drawing area or off any screen are left out; an owned drawing asks its owner every frame and drawing the marks changes nothing |
 | `crates/ui-egui/tests/toolsets_extra.rs` | tests | **new file**: without extra tabs Drafting and Modeling are unchanged; an extra tab shows its groups, queues a click once without starting it, and keeps the selection; a tab named like a built-in one is ignored |
+| `crates/ui-egui/src/theme.rs` | US2 | font definitions builder (brief 037, design `ui-architecture.md` §1.4): `font_definitions(language) -> egui::FontDefinitions` is the font set `install_fonts` installed (system UI font, CJK, Arabic, Korean and craft-fonts fallbacks for the language); `install_fonts` now sets exactly that, so behaviour is unchanged. An embedder extends the set (ECAD puts IBM Plex Sans first) and installs it itself |
+| `crates/ui-egui/tests/font_definitions.rs` | tests | **new file** (US2): after `install_fonts` the fonts in use equal `font_definitions` for English and Japanese; the builder's result is an independent value |
 
 Not yet covered by provenance (copies through them are refused by the adapter until added):
 ARRAY, grip copy (`gripcmds.rs`), MIRROR/ROTATE/SCALE through other code paths, PASTEBLOCK,
