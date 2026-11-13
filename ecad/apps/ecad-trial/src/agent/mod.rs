@@ -373,8 +373,9 @@ impl Agent {
 
     /// Whether the session may write now, or the refusal said instead of `WRITES_OFF` (design
     /// §5.4: Read only, no `--write` (the gate's own text), not the writer, paused). Takes the
-    /// writer role when it is free.
-    fn write_gate(&mut self, session: &str) -> (bool, Option<String>) {
+    /// writer role when it is free and `take` (a hello; a call takes it once it recorded
+    /// something, [`Agent::take_writer`]).
+    fn write_gate(&mut self, session: &str, take: bool) -> (bool, Option<String>) {
         if self.pref.mode != Mode::Write {
             return (false, Some(READ_ONLY.into()));
         }
@@ -388,12 +389,20 @@ impl Agent {
                 return (false, Some(not_writer(&name)));
             }
             Some(_) => {}
-            None => self.writer = Some(session.to_string()),
+            None if take => self.writer = Some(session.to_string()),
+            None => {}
         }
         if self.paused {
             return (false, Some(PAUSED.into()));
         }
         (true, None)
+    }
+
+    /// A call of `session` recorded something: it is the writer now, if none was.
+    fn take_writer(&mut self, session: &str) {
+        if self.writer.is_none() {
+            self.writer = Some(session.to_string());
+        }
     }
 
     /// Other connected sessions than the banner's.
@@ -764,7 +773,7 @@ impl Trial {
         }
         // The first session whose hello may write, while access is Read and change, becomes the
         // writer (design §5.5).
-        let (writes, why) = match self.agent.write_gate(&session) {
+        let (writes, why) = match self.agent.write_gate(&session, true) {
             (true, _) => (true, None),
             (false, Some(why)) => (false, Some(why)),
             (false, None) => (false, Some(policy::WRITES_OFF.to_string())),
@@ -858,9 +867,10 @@ impl Trial {
             Err(v) => return v,
         };
         let Some(p) = self.project.clone() else { return failed("no ECAD project is open") };
-        let (write, refusal) = self.agent.write_gate(&session);
+        let (write, refusal) = self.agent.write_gate(&session, false);
         let Some(bs) = self.agent.sessions.get_mut(&session) else { return not_run(bridge::SAY_HELLO) };
         let mut line_used = bs.line_used;
+        let owned_before = bs.owned.len();
         let mut owned = std::mem::take(&mut bs.owned);
         let tool = (method == "ecad.tool").then(|| params.get("tool").and_then(Value::as_str).unwrap_or("").to_string());
         let args = params.get("arguments").cloned().unwrap_or(Value::Null);
@@ -881,9 +891,13 @@ impl Trial {
                 }
             }
         });
+        let recorded = owned.len() > owned_before;
         if let Some(bs) = self.agent.sessions.get_mut(&session) {
             bs.line_used = line_used;
             bs.owned = owned;
+        }
+        if recorded {
+            self.agent.take_writer(&session);
         }
         let r = match scoped {
             Err(e) => Err(e),
