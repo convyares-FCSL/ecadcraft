@@ -21,6 +21,7 @@
 //! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
@@ -153,6 +154,8 @@ pub struct EndCell {
     pub device: Option<ComponentId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
+    /// Brief 032: the end is a continuation (a core chain's inner end, design 032 §3.2).
+    pub continuation: bool,
 }
 
 impl EndCell {
@@ -200,10 +203,13 @@ pub struct CableRow {
     pub go: Option<(PageId, Pt)>,
     /// Brief 028: how its members meet its core offer (design 028 §6.2).
     pub count: crate::strips::CoreCount,
-    /// The members (in member order), for the over and twice go-tos.
+    /// The first member of each core chain (design 032 §3.2; one member per chain without
+    /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<ConductorId>,
     /// Their stored core labels, in member order.
     pub member_cores: Vec<Option<String>>,
+    /// Brief 032: the last member of each core chain (its To), aligned with `members`.
+    pub tails: Vec<ConductorId>,
     /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
@@ -345,11 +351,14 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), .. } => {
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
+                    }
+                    if key == ecad_model::connectivity::NAME {
+                        self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
@@ -370,7 +379,8 @@ impl Scope {
                     if key == LOCATION_KEY {
                         self.project_location = true;
                     }
-                    if key.starts_with("strip_") {
+                    // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
+                    if key.starts_with("strip_") || key.starts_with("terminal.") {
                         self.strip_keys.insert(key.clone());
                     }
                 }
@@ -502,6 +512,12 @@ pub struct Outputs {
     /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
     links_off_strip: BTreeSet<ComponentId>,
     link_keys: BTreeMap<ComponentId, Vec<String>>,
+    /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
+    /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
+    /// generated page's sheet count moves.
+    continuation: Vec<Check>,
+    /// How many times [`Self::continuation`] was worked out (tests: an unrelated edit makes none).
+    pub continuation_builds: u64,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -530,7 +546,36 @@ impl Outputs {
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        o.refresh_continuation(doc);
         o
+    }
+
+    /// Work out the `continuation-clash` rows (design 033 §5.3).
+    fn refresh_continuation(&mut self, doc: &Document) {
+        let rows = crate::generated::continuation_checks(doc, Some(&*self));
+        self.continuation_builds += 1;
+        if rows != self.continuation {
+            self.continuation = rows;
+            self.checks_changed += 1;
+        }
+    }
+
+    /// The sheet count of each kept generated page (BOM, terminal plan, cable schedule).
+    fn generated_sheets(&self, doc: &Document) -> Vec<(PageId, usize)> {
+        self.generated.iter().map(|p| (*p, crate::generated::sheets(doc, *p, Some(self)))).collect()
+    }
+
+    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
+    /// added, removed or renumbered, a page's kind, or an issue.
+    fn moves_page_numbers(ops: &[Op]) -> bool {
+        ops.iter().any(|op| match op {
+            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == ecad_model::book::NUMBER_KEY || key == crate::generated::KEY,
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED)
+            }
+            _ => false,
+        })
     }
 
     /// The pages drawn from these models.
@@ -581,7 +626,17 @@ impl Outputs {
 
     /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
     /// committed transaction) name in this state.
-    pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
+    pub fn update(&mut self, doc: &Document, ops: &[Op], scope: Scope) {
+        let numbers = Self::moves_page_numbers(ops);
+        let before = self.generated_sheets(doc);
+        self.update_rows(doc, ops, scope);
+        if numbers || self.generated_sheets(doc) != before {
+            self.refresh_continuation(doc);
+            self.revision += 1;
+        }
+    }
+
+    fn update_rows(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
@@ -664,6 +719,9 @@ impl Outputs {
                 project_keys: &scope.strip_keys,
             },
         );
+        if strips.note_devices(doc, &scope.devices) {
+            self.checks_changed += 1;
+        }
         let acc_only = strips.touched_acc(&scope.strip_keys, &which);
         if which.is_empty() {
             strips.last_work = 0;
@@ -825,7 +883,7 @@ impl Outputs {
             }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-                EndCell { name: Some(format!("{name} >")), order, ..EndCell::default() }
+                EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
             }
             _ => {
                 let label = crate::interact::terminal_name(doc, t);
@@ -835,7 +893,7 @@ impl Outputs {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None }
+                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None, continuation: false }
             }
         }
     }
@@ -951,6 +1009,9 @@ impl Outputs {
             return;
         };
         let p = |key: &str| clean(cab.properties.get(key));
+        // Brief 032 §3.5: cores are counted by chain; each chain is shown by its first member,
+        // with the first stored label along it.
+        let (heads, tails) = chain_heads(doc, k, cab);
         let mut locs: BTreeSet<(LocKey, String)> = BTreeSet::new();
         let mut missing = false;
         // Brief 028: the devices at the cores' ends, per location.
@@ -1006,7 +1067,7 @@ impl Outputs {
                 cable: k,
                 tag: p("tag"),
                 kind: p("type"),
-                cores: cab.members.len(),
+                cores: heads.len(),
                 from_location: from,
                 to_location: to,
                 location_reason: reason,
@@ -1014,9 +1075,10 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &cab.members),
-                members: cab.members.iter().map(|m| m.conductor).collect(),
-                member_cores: cab.members.iter().map(|m| m.core.clone()).collect(),
+                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads),
+                members: heads.iter().map(|m| m.conductor).collect(),
+                member_cores: heads.iter().map(|m| m.core.clone()).collect(),
+                tails,
                 from_devices,
                 to_devices,
             },
@@ -1082,6 +1144,7 @@ impl Outputs {
     /// The location rows of the Checks list (design 024 §8.3).
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
+        out.extend(self.continuation.iter().cloned());
         for d in self.devices.values() {
             if let Some((_, loc)) = &d.own_box {
                 out.push(Check {
@@ -1112,31 +1175,89 @@ impl Outputs {
     pub fn strip_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         for s in self.strips.strips.values() {
-            if let Some(off) = s.offer
-                && s.drawn > off.positions as usize
-            {
-                let hi = s.highest();
+            // Brief 036 (§7.1): per type; with no type codes, 028's row for the whole strip.
+            for (tc, offered) in s.over_offer() {
+                let legacy = s.offer.is_some_and(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && s.types.iter().all(|t| t.ty.legacy());
+                let hi = if legacy { s.highest() } else { s.highest_of(tc.ty) };
+                let which = if legacy {
+                    format!("{}: {} terminals drawn, strip offers {offered}", s.tag, s.drawn)
+                } else {
+                    format!("{}: {} {} terminals drawn, strip offers {offered}", s.tag, tc.drawn, tc.ty.word)
+                };
                 out.push(Check {
                     kind: Kind::TooManyTerminals,
                     page: hi.and_then(|r| r.go).map(|(p, _)| p),
                     at: hi.and_then(|r| r.go).map(|(_, a)| a),
                     object: hi.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal),
-                    which: format!("{}: {} terminals drawn, strip offers {}", s.tag, s.drawn, off.positions),
+                    which,
                     fix: Some(Fix::OfferDrawn(s.component)),
                 });
             }
             for (label, t) in &s.twice {
-                let go = s.row_of(*t).and_then(|r| r.go);
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                // Brief 036: a level of a multi-level position drawn twice goes to the next free one.
+                let multi = row.is_some_and(|r| r.ty.multi() || r.ty.breaks);
                 out.push(Check {
-                    kind: Kind::TerminalTwice,
+                    kind: if multi { Kind::LevelTwice } else { Kind::TerminalTwice },
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
                     object: Object::Terminal(*t),
                     which: format!("{}:{label} is drawn twice", s.tag),
-                    fix: Some(Fix::RenumberStrip(s.component)),
+                    fix: Some(if multi { Fix::MoveToNextFree(*t) } else { Fix::RenumberStrip(s.component) }),
+                });
+            }
+            for (pos, t) in &s.mixed {
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                let first = s.rows.iter().find(|r| r.label == *pos).map_or("?", |r| r.ty.word);
+                let other = s.other_type_word(*t);
+                out.push(Check {
+                    kind: Kind::PositionMixed,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Terminal(*t),
+                    which: format!("{}:{pos} mixes {first} and {other} symbols", s.tag),
+                    fix: Some(Fix::MoveToNewPosition(*t)),
+                });
+            }
+            for (n, items) in &s.level_missing {
+                let go = s.rows.iter().find(|r| r.go.is_some()).and_then(|r| r.go);
+                let first = items.first().cloned().unwrap_or_default();
+                let pos = ecad_model::links::split_level(&first).map(|(p, _)| p.to_string()).unwrap_or_default();
+                let levels = s.rows.iter().filter(|r| r.label == pos).count();
+                out.push(Check {
+                    kind: Kind::LevelMissing,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Component(s.component),
+                    which: format!(
+                        "{}: link {n} names {}, but {}:{pos} has {levels} level{}",
+                        s.tag,
+                        items.join(", "),
+                        s.tag,
+                        if levels == 1 { "" } else { "s" }
+                    ),
+                    fix: Some(Fix::LevelMissing(s.component, u16::try_from(*n).unwrap_or(u16::MAX))),
                 });
             }
             out.extend(accessory_checks(s));
+        }
+        // Brief 036 (§8): fuse terminals that are devices of their own, and fuse positions with no
+        // rating: one Info row each.
+        let fuses = self.strips.fuse_devices.len();
+        if fuses > 0 {
+            let which = if fuses == 1 {
+                "1 fuse terminal is a device of its own".to_string()
+            } else {
+                format!("{fuses} fuse terminals are devices of their own")
+            };
+            out.push(Check { kind: Kind::FuseDevice, page: None, at: None, object: Object::None, which, fix: Some(Fix::FuseDevices) });
+        }
+        let unrated: usize = self.strips.strips.values().map(|s| s.no_rating).sum();
+        if unrated > 0 {
+            let which = if unrated == 1 { "1 fuse position has no rating".to_string() } else { format!("{unrated} fuse positions have no rating") };
+            out.push(Check { kind: Kind::NoFuseRating, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         for c in &self.links_off_strip {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
@@ -1274,31 +1395,22 @@ impl Outputs {
         self.devices.len()
     }
 
-    /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
+    /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
+    /// in positions (a three-level terminal is one part), in catalogue order.
     fn strip_bom(&self, s: &crate::strips::StripData, location: Option<String>) -> Vec<BomRow> {
-        let (ft, pe) = s.quantities();
         let mut out = Vec::new();
-        if ft > 0 {
+        for t in &s.types {
+            if t.qty() == 0 {
+                continue;
+            }
             out.push(BomRow {
                 location: location.clone(),
-                qty: ft,
+                qty: t.qty(),
                 tags: vec![s.tag.clone()],
                 devices: vec![s.component],
-                description: s.description.clone(),
-                maker: s.maker.clone(),
-                part_number: s.part_number.clone(),
-                accessory: None,
-            });
-        }
-        if pe > 0 {
-            out.push(BomRow {
-                location: location.clone(),
-                qty: pe,
-                tags: vec![s.tag.clone()],
-                devices: vec![s.component],
-                description: Some("PE terminal".into()),
-                maker: s.maker_pe.clone(),
-                part_number: s.part_number_pe.clone(),
+                description: Some(t.description.clone()),
+                maker: t.maker.clone(),
+                part_number: t.part_number.clone(),
                 accessory: None,
             });
         }
@@ -1533,9 +1645,11 @@ impl Outputs {
                     }
                 };
                 let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
-                if r.spare() {
-                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok("spare"), Cell::default()];
-                    row.push(Cell::ok(if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) }));
+                // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+                let pe_mark = r.pe && !r.ty.multi();
+                if r.terminal.is_none() {
+                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(r.state()), Cell::default()];
+                    row.push(Cell::ok(if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) }));
                     row.push(Cell::ok(s.bridge_cell(ri)));
                     row.extend(std::iter::repeat_n(Cell::default(), 5));
                     t.rows.push(row);
@@ -1549,13 +1663,13 @@ impl Outputs {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };
-                    let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { format!("{}{marker}", r.shown) } else { format!("{}\u{2032}", r.shown) };
                     let cable = outside.and_then(|c| c.cable.as_ref());
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         side(inside, |c| c.target.clone(), "A loose far end."),
                         side(inside, |c| c.wire.clone(), "The wire has no number."),
-                        Cell::ok(if r.pe { format!("{label} PE") } else { label }),
+                        Cell::ok(if pe_mark { format!("{label} PE") } else { label }),
                         Cell::ok(if i == 0 { s.bridge_cell(ri) } else { String::new() }),
                         side(outside, |c| c.wire.clone(), "The wire has no number."),
                         Cell::ok(cable.map_or_else(String::new, |(_, t)| t.clone().unwrap_or_else(|| "?".into()))),
@@ -1624,14 +1738,18 @@ impl Outputs {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { r.shown.clone() } else { format!("{}\u{2032}", r.shown) };
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         opt(s.location.as_ref()),
                         Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default()),
                         Cell::ok(label),
-                        Cell::ok(if r.pe { "pe" } else { "feed-through" }),
-                        Cell::ok(if r.spare() { "spare" } else { "drawn" }),
+                        Cell::ok(match r.ty.code {
+                            "ft" => "feed-through",
+                            "pe" => "pe",
+                            c => c,
+                        }),
+                        Cell::ok(r.state()),
                         opt(inside.and_then(|c| c.target.as_ref())),
                         opt(inside.and_then(|c| c.wire.as_ref())),
                         Cell::ok(r.bridge_group.filter(|_| i == 0).map(|g| g.to_string()).unwrap_or_default()),
@@ -1676,6 +1794,25 @@ impl Outputs {
         t
     }
 
+    /// Brief 032 §3.5: the From and To of core `i` of cable row `r` (a core chain runs from its
+    /// first member's outer end to its last member's), in reference style `style`.
+    pub fn chain_ends(&self, r: &CableRow, i: usize, style: ecad_model::ReferenceStyle) -> (Option<String>, Option<String>) {
+        let w = r.members.get(i).and_then(|w| self.wires.get(w));
+        let tail = r.tails.get(i).filter(|t| Some(**t) != r.members.get(i).copied()).and_then(|t| self.wires.get(t));
+        match (w, tail) {
+            (Some(h), Some(t)) => {
+                let outer = |x: &WireRow, first: bool| match (x.from.continuation, x.to.continuation) {
+                    (true, false) => x.to.text(style),
+                    (false, true) => x.from.text(style),
+                    _ if first => x.from.text(style),
+                    _ => x.to.text(style),
+                };
+                (outer(h, true), outer(t, false))
+            }
+            _ => (w.and_then(|w| w.from.text(style)), w.and_then(|w| w.to.text(style))),
+        }
+    }
+
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
@@ -1684,11 +1821,12 @@ impl Outputs {
         let style = self.style;
         let member = |i: usize, label: Option<String>, state: &str| {
             let w = r.members.get(i).and_then(|w| self.wires.get(w));
+            let (from, to) = self.chain_ends(r, i, style);
             vec![
                 Cell::opt(&label, || "The core has no label.".into()),
                 Cell::ok(w.and_then(|w| w.wire_number.clone()).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.from.text(style)).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.to.text(style)).unwrap_or_default()),
+                Cell::ok(from.unwrap_or_default()),
+                Cell::ok(to.unwrap_or_default()),
                 Cell::ok(state),
             ]
         };
@@ -1712,6 +1850,43 @@ impl Outputs {
         }
         t
     }
+}
+
+/// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
+/// `c` included, read on `doc` (called on the state before and after a rename, so both the old
+/// and the new group): their core chains may join or break.
+fn continuation_group_cables(doc: &Document, c: ComponentId) -> BTreeSet<CableId> {
+    let Some(key) = doc.components.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+        return BTreeSet::new();
+    };
+    let mut group = doc.continuations_named(&key);
+    if !group.contains(&c) {
+        group.push(c);
+    }
+    let mut out = BTreeSet::new();
+    for k in group {
+        for (t, _) in doc.terminals_of(k) {
+            for (w, _) in doc.ends_at(t) {
+                out.extend(doc.cables_of(w));
+            }
+        }
+    }
+    out
+}
+
+/// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
+/// with the first stored core label along its chain, and each chain's last member.
+fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<ConductorId>) {
+    let chains = crate::references::core_chains(doc, k);
+    let mut heads = Vec::with_capacity(chains.len());
+    let mut tails = Vec::with_capacity(chains.len());
+    for ch in &chains {
+        let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
+        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
+        heads.push(ecad_model::CableMember { conductor: *first, core });
+        tails.push(*last);
+    }
+    (heads, tails)
 }
 
 /// Whether `page` exists and is drawn from the report models.
@@ -1891,6 +2066,31 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
             ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
+        // Brief 036 (design 036 §8).
+        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "next"}))],
+        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "new"}))],
+        Fix::LevelMissing(c, n) => {
+            let Some(s) = o.strips.get(c) else { return Vec::new() };
+            let key = ecad_model::links::key(u32::from(n));
+            let kept = s.level_missing.iter().find(|(m, _)| *m == u32::from(n)).map(|(_, items)| items.clone()).unwrap_or_default();
+            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::accessories::drop_items(&l.text, &kept));
+            let mut out = Vec::new();
+            if let Some(v) = after {
+                let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
+                out.push(("Drop missing levels".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": v})));
+            }
+            out.push(("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})));
+            out
+        }
+        Fix::FuseDevices => o
+            .strips
+            .fuse_devices
+            .iter()
+            .map(|d| {
+                let tag = o.devices.get(d).map_or_else(|| "?".to_string(), |x| x.tag.clone());
+                (format!("Make {tag} a strip position"), "toposition", json!({"device": d.hex()}))
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }

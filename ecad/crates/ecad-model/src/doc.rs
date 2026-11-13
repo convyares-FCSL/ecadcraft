@@ -96,12 +96,18 @@ pub enum Primitive {
         center: Pt,
         radius: f64,
     },
-    /// Single-line text, left-baseline aligned, standard style.
+    /// Single-line text in the standard style. `at` is its alignment point: the left end of the
+    /// baseline unless `halign`/`valign` say otherwise (brief 031, FP4; both are left out of the
+    /// file at left/baseline, so older files read and save the same).
     Text {
         at: Pt,
         height: f64,
         rotation: f64,
         value: String,
+        #[serde(default, skip_serializing_if = "is_default")]
+        halign: TextHAlign,
+        #[serde(default, skip_serializing_if = "is_default")]
+        valign: TextVAlign,
     },
     Point {
         at: Pt,
@@ -142,6 +148,31 @@ impl Primitive {
             Primitive::Point { at } => at.is_finite(),
         }
     }
+}
+
+/// A text's horizontal alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextHAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// A text's vertical alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextVAlign {
+    #[default]
+    Baseline,
+    Bottom,
+    Middle,
+    Top,
+}
+
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    *t == T::default()
 }
 
 /// A placed instance of an embedded definition (symbol form, proposal §4.1).
@@ -674,6 +705,20 @@ impl Document {
     /// whole document).
     pub fn representations_on(&self, page: PageId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
         referrers(&self.index.page_reps, &page).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// Representations that show `terminal` through an explicit connection point, in ID order
+    /// (brief 036: a level terminal is always shown that way).
+    pub fn representations_showing(&self, terminal: TerminalId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
+        referrers(&self.index.terminal_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// The definition a symbol representation places (its one symbol instance), if any.
+    pub fn rep_definition(&self, r: &Representation) -> Option<&Definition> {
+        r.items.iter().find_map(|i| match &self.items.get(i)?.kind {
+            ItemKind::Symbol(s) => self.definitions.get(&s.definition),
+            ItemKind::Primitive(_) => None,
+        })
     }
 
     /// Terminals of `component`, in ID order.

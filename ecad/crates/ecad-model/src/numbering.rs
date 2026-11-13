@@ -100,6 +100,11 @@ pub struct Request {
     pub digits: Option<u8>,
     /// Brief 028: the strips whose terminals [`Kind::Terminals`] numbers, chosen by the caller.
     pub strips: BTreeSet<ComponentId>,
+    /// Brief 036 (FP8c): per strip, the caller's position groups (the terminals of one position).
+    /// The planner numbers groups, each anchored at its earliest symbol in drawing order, and gives
+    /// every terminal of a group the group's new label. A strip with no groups is numbered one
+    /// terminal per group, as brief 028 did.
+    pub positions: BTreeMap<ComponentId, Vec<Vec<TerminalId>>>,
 }
 
 /// What a row does (design §3, row marks).
@@ -376,7 +381,7 @@ pub fn next_provisional(doc: &Document, prefix: &str) -> String {
             top = top.max(n);
         }
     }
-    tag::format_provisional(&p, top.saturating_add(1))
+    tag::Style::of(doc).provisional(&p, top.saturating_add(1))
 }
 
 /// The highest number of `prefix` in use by any device or cable tag in the usual form.
@@ -494,6 +499,7 @@ fn plan_tags(
         });
     }
     let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding.min(tag::MAX_PADDING));
+    let style = tag::Style::of(doc);
     // Which items are numbered: in a chosen kind, in scope, not fixed, in a numberable form.
     let mut chosen: Vec<(usize, String)> = Vec::new(); // (item index, prefix)
     // Numbers taken per prefix by everything not renumbered.
@@ -590,7 +596,13 @@ fn plan_tags(
                 rows.push(row_of(places, it, old.clone(), old, Mark::Skipped("no number left")));
                 continue;
             }
-            let new = tag::format(p, next, digits);
+            // Brief 033 (design 033 §8.3): the project's dash; under `typed` a tag keeps its own
+            // letters (`k05` → `k03`).
+            let letters = match style.case {
+                tag::Case::Typed => it.tag.as_deref().and_then(tag::typed_prefix).unwrap_or(p.as_str()),
+                tag::Case::Upper => p.as_str(),
+            };
+            let new = tag::format(letters, next, tag::Style { padding: digits, ..style });
             top = top.max(next);
             next = next.saturating_add(1);
             if new == old {
@@ -639,7 +651,19 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                     }
                     _ => BTreeSet::new(),
                 };
-                doc.terminals_of(*strip).filter(|(_, t)| t.key.as_deref().is_some_and(|k| keys.contains(k))).map(|(t, _)| t).collect()
+                // One terminal per definition key, as the symbol shows it (brief 036 §10.3): a
+                // terminal no other symbol shows first (a joined terminal's key can equal the
+                // definition key, review M1 2.1), else the first.
+                let mut shown = Vec::new();
+                for k in keys {
+                    let mut with_key = doc.terminals_of(*strip).filter(|(_, t)| t.key.as_deref() == Some(k)).map(|(t, _)| t);
+                    let first = with_key.next();
+                    let free = first.into_iter().chain(with_key).find(|t| doc.representations_showing(*t).next().is_none());
+                    if let Some(t) = free.or(first) {
+                        shown.push(t);
+                    }
+                }
+                shown
             } else {
                 r.connection_points.keys().copied().collect()
             };
@@ -657,16 +681,33 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
             continue;
         }
         list.sort_by(|a, b| a.3.cmp(&b.3).then(a.0.cmp(&b.0)));
-        for (n, (t, page, at, order)) in (start..).zip(list) {
+        // Brief 036: the caller's position groups; a terminal in none is a group of its own.
+        let groups: Vec<Vec<TerminalId>> = req.positions.get(strip).cloned().unwrap_or_default();
+        let group_of: BTreeMap<TerminalId, usize> = groups.iter().enumerate().flat_map(|(i, g)| g.iter().map(move |t| (*t, i))).collect();
+        let mut done: BTreeSet<usize> = BTreeSet::new();
+        let anchors = list.into_iter().filter(|(t, _, _, _)| match group_of.get(t) {
+            Some(g) => done.insert(*g),
+            None => true,
+        });
+        for (n, (t, page, at, order)) in (start..).zip(anchors.collect::<Vec<_>>()) {
             let Some(term) = doc.terminals.get(&t) else { continue };
             let old_label = term.label.clone().unwrap_or_default();
             let new_label = n.to_string();
-            let mark = if old_label == new_label { Mark::Same } else { Mark::Change };
-            if mark == Mark::Change {
-                let mut after = term.clone();
+            let members: Vec<TerminalId> = match group_of.get(&t).and_then(|g| groups.get(*g)) {
+                Some(g) => g.clone(),
+                None => vec![t],
+            };
+            let changes = members.iter().any(|m| doc.terminals.get(m).is_some_and(|x| x.label.as_deref() != Some(new_label.as_str())));
+            let mark = if changes { Mark::Change } else { Mark::Same };
+            for m in &members {
+                let Some(x) = doc.terminals.get(m) else { continue };
+                if x.label.as_deref() == Some(new_label.as_str()) {
+                    continue;
+                }
+                let mut after = x.clone();
                 after.label = Some(new_label.clone());
-                ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-                ops.push(Op::AddTerminal { id: t, terminal: after });
+                ops.push(Op::RemoveTerminal { id: *m, terminal: x.clone() });
+                ops.push(Op::AddTerminal { id: *m, terminal: after });
             }
             rows.push(Row {
                 object: ObjectRef::Component(*strip),
@@ -882,7 +923,14 @@ mod tests {
     }
 
     fn req(scope: Scope) -> Request {
-        Request { kinds: [Kind::Devices].into_iter().collect(), scope, start: None, digits: None, strips: BTreeSet::new() }
+        Request {
+            kinds: [Kind::Devices].into_iter().collect(),
+            scope,
+            start: None,
+            digits: None,
+            strips: BTreeSet::new(),
+            positions: BTreeMap::new(),
+        }
     }
 
     fn after(d: &Document, p: &Plan) -> BTreeMap<u128, String> {

@@ -25,7 +25,13 @@ are.
 | **component** | The model object a device is. A component without a tag (an outline converted with **Convert to Component**) is listed under "No tag". |
 | **symbol** | The drawing of a device, or part of one, on a page: a coil, a contact, a terminal. One device can be drawn by several symbols on several pages (`-K01`'s coil on page 2, its contacts on pages 2 and 3). |
 | **representation** | The model's link between a subject (a device, a conductor, a cable) and what draws it on one page: a symbol, a drawn outline, a wire's route, a cable's slash or reference. |
-| **definition** | A symbol's shape and its connection points, embedded in the project (the 18 starter symbols come built in). |
+| **definition** | A symbol's shape and its connection points, embedded in the project (81 symbols come built in). |
+| **change-over contact** | A contact with a common, a normally-closed and a normally-open point: `-K01:11`/`12`/`14`. |
+| **fuse bank** | One device holding several fuses fed from one supply point, with a connection point and a rating per fuse: `-F01:L+`, `-F01:3`. |
+| **fuse terminal** | A terminal-sized fuse holder; for now a device of its own, not a strip position: `-F02`. |
+| **connector half** | The plug or the socket side of a connector, drawn as a body with one connection point per pin. Mating two halves is not built yet: `-X03:1`. |
+| **bulkhead** | A connector through a panel wall; each pin is one connection point that wires reach from both sides: `-X04:1`. |
+| **card body** | The outline of a PLC card or CPU, with its supply points; its channels join it as PLC input and output symbols: `-A01:L+`. |
 
 ## Connections
 
@@ -101,3 +107,15 @@ are.
 | **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
 | **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
 | **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |
+
+## Multi-level terminals (brief 036)
+
+| Word | Means |
+| --- | --- |
+| **position** | One terminal block on the rail: the strip terminals that share one position label (`1`, `2.1`). |
+| **level** | One deck of a position: one connection point, or two for a fuse or disconnect level (in and out). Numbered 1… from the top deck. |
+| **terminal type** | What a position is: feed-through, PE, two-level, two-level bridged, three-level, L/N/PE, sensor, disconnect, fuse. |
+| **level name** | A level's short name in its label: `L`, `N`, `PE`; `S`, `+`, `-`; `1`, `2`, `3`. A default a project or strip can change. |
+| **terminal label** | What the page and the plan show for one level: the position, the separator and the level name (`1.L`), or the level's own label. |
+| **internal bridge** | Levels of one position joined inside the block by its type (a bridged two-level terminal). |
+| **free level** | A level of a drawn position that no symbol draws yet. |

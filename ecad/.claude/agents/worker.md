@@ -28,11 +28,14 @@ Rules:
   `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`; see "Builds" in `ecad/CLAUDE.md`). Say
   in your report when you have stopped building, so the owner can build.
 - **Before every commit:** `cargo fmt --all -- --check` and `cargo xtask test-changed` (the fast
-  tests of the crates you touched since your last push; their dependents run in CI).
+  tests of the crates you touched since your last push; the fast tests of their dependents run in
+  CI on the pull request into `dev`).
   **Before every push:** `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-  (plus `cargo xtask patches` when files outside `ecad/` changed). Never `--include-ignored` and
-  never the whole workspace: the slow set and the full suite run at the QA gate. New tests go in
-  the crate's `tests/all/` as modules (see "Test layout" in `ecad/CLAUDE.md`).
+  (plus `cargo xtask patches` when files outside `ecad/` changed; `cargo xtask wasm`, warnings as
+  errors like CI, when the change could affect wasm). Never `--include-ignored` and never the whole
+  workspace: the slow set and the full suite run only at the dev→main QA gate, or when the owner
+  calls for them. A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
+  New tests go in the crate's `tests/all/` as modules (see "Test layout" in `ecad/CLAUDE.md`).
   Documentation-only commits need no cargo at all.
 - **Benches:** while building, bench on the medium project. Run the large tier once at the end,
   only for the operations the brief sets targets for. Print and PDF benches (Print Book, release)

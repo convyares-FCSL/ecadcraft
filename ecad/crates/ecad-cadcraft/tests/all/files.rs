@@ -257,3 +257,45 @@ fn a_028_project_opens_unchanged_with_no_accessories() {
     // The store's own pages (session and lock records) change on any open; the project's log
     // and document are what must not.
 }
+
+/// Brief 031 (FP4, design §6.6): a justified text is recorded, saved and reopened centred, and
+/// draws centred; a plain text keeps no alignment fields.
+#[test]
+fn a_justified_text_saves_and_reopens_aligned() {
+    let d = TempDir::new("justify");
+    let mut h = H::new(0x31_04);
+    h.cfg(|p| p.persistence = Persistence::File);
+    h.first_page();
+    h.run("text", json!({"at": [100, 100], "text": "MID", "height": 2.5, "justify": "MC"})).unwrap();
+    h.run("text", json!({"at": [100, 80], "text": "LEFT", "height": 2.5})).unwrap();
+    h.run("saveas", json!({"path": d.path("justify")})).unwrap();
+    let before = h.doc();
+    let mut h = reopen(&mut h, &d.path("justify.ecad"), 0x31_05);
+    let after = h.doc();
+    assert_eq!(after.items, before.items, "the items reopen as saved");
+    let align = |v: &str| {
+        after.items.values().find_map(|i| match &i.kind {
+            ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, .. }) if value == v => Some((*halign, *valign)),
+            _ => None,
+        })
+    };
+    assert_eq!(align("MID"), Some((ecad_model::TextHAlign::Center, ecad_model::TextVAlign::Middle)));
+    assert_eq!(align("LEFT"), Some((ecad_model::TextHAlign::Left, ecad_model::TextVAlign::Baseline)));
+    // The left text's record has no alignment fields (older files read and save the same).
+    let plain = serde_json::to_string(&ecad_model::Primitive::Text {
+        at: Pt::new(0.0, 0.0),
+        height: 1.0,
+        rotation: 0.0,
+        value: "a".into(),
+        halign: Default::default(),
+        valign: Default::default(),
+    })
+    .unwrap();
+    assert!(!plain.contains("halign") && !plain.contains("valign"), "{plain}");
+    let page = h.first_page();
+    h.activate(page);
+    let centred = h.pv(|p, pg| pg.entities_of(p, page)).iter().any(|e| {
+        matches!(&e.kind, cadcraft_engine::doc::EntityKind::Text(t) if t.value == "MID" && t.halign == cadcraft_engine::doc::HAlign::Center && t.valign == cadcraft_engine::doc::VAlign::Middle)
+    });
+    assert!(centred, "drawn centred after reopening");
+}

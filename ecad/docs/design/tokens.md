@@ -145,6 +145,30 @@ colours) and this is a known limitation.
 | `ecad.table-row` / `ecad.table-header` | 5 mm / 7 mm | Generated table rows |
 | `ecad.flagged` | `ecad.check-warning` | `?` values on screen and in Reports |
 
+## Print and project (033, `design/033.md` §13)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.flagged-print` | ACI 7 | A missing value's `?` and its box when printed with screen colours |
+| `ecad.missing-box` | `ecad.wire-weight`, inset 0.5 mm, colour of its `?` | The box round a missing value in a generated table |
+
+## Text styles (031, `design/031.md` §3 and §9)
+
+Text sizes and weights come from the project's style table through `text_style::text_style(doc,
+kind)`; the values below are its defaults (millimetres, divided by 25.4 in an inch project). They
+replace `ecad.tag-height`, `ecad.term-label-height`, `ecad.label-height`, `ecad.ref-text-height`
+and 024's location label height when 031 lands.
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.text-tag` | 2.5 mm, bold | Device tags |
+| `ecad.text-point-label` | 1.5 mm | Connection point labels |
+| `ecad.text-label` | 1.6 mm | Wire labels, cable text, location labels, descriptions, part numbers |
+| `ecad.text-reference` | 2.0 mm | Cross-reference texts and continuation names |
+| `ecad.tag-gap` (031) | 0.6 × tag height | Gap between a symbol's box and its tag block |
+| `ecad.hidden-text` | ACI 8, on `ECAD-HIDDEN-TEXT` | Hidden derived texts while Show Hidden Text is on; never printed |
+| `ecad.stroke-bold` | lineweight 0.35 mm | Bold text drawn in the stroke-font fallback |
+
 ## Multi-level terminals (036, `design/036.md` §7.5)
 
 | Token | Value | Used for |

@@ -16,6 +16,10 @@
 //!   (FP2, Q9). Members are matched to it by label first, then in member order: **used**,
 //!   **spare** and **over** (§6.2).
 //! - Nothing here is refused because of a check; it is flagged (§8).
+//! - **Brief 036:** a strip's rows are its **levels**, grouped by position in plan order
+//!   ([`crate::terminal_types::positions`]); a position whose type has more levels than are drawn
+//!   shows them as **free** rows; spare positions come per type from the offer (`12+2PE+4x3`), each
+//!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map (design 028 §11.1)
 //! [`Strips`] lives inside [`crate::outputs::Outputs`] and is updated with it from the same
@@ -28,6 +32,10 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
+//! | brief 036: a strip's `term_label.*`, `rating.*`, `terminal.*`, `part_number.<code>` (its own properties: a device in scope) | that strip |
+//! | brief 036: project `terminal.level.separator` or `terminal.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
+//! | brief 036: project `strip_<code>_*` or `terminal.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
+//! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
 //! | anything else | nothing |
 //!
 //! A full build happens only with the report models: open, reload, first show.
@@ -132,55 +140,39 @@ pub fn bridge_of(doc: &Document, w: ConductorId) -> Option<ComponentId> {
     (sa == sb).then_some(sa)
 }
 
-/// A strip's offer (FP1): positions and how many of them are PE.
+/// A strip's offer (FP1, brief 036 §7.1): positions per terminal type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Offer {
-    /// Every position, feed-through and PE (`12+2PE`: 14).
+    /// Every position, of every type (`12+2PE+4x3`: 18).
     pub positions: u32,
     /// How many of them are PE.
     pub pe: u32,
+    /// Positions per type, in [`crate::terminal_types::TYPES`] order.
+    pub counts: crate::terminal_types::Counts,
 }
 
 impl Offer {
-    /// As stored: `12` or `12+2PE` (feed-through, then PE).
+    /// As stored: `12`, `12+2PE`, `12+2PE+4x3` (catalogue order).
     pub fn text(self) -> String {
-        if self.pe == 0 { self.positions.to_string() } else { format!("{}+{}PE", self.positions.saturating_sub(self.pe), self.pe) }
+        crate::terminal_types::counts_text(&self.counts)
+    }
+
+    /// Positions offered of type `t`.
+    pub fn of(&self, t: &crate::terminal_types::TermType) -> u32 {
+        self.counts.get(crate::terminal_types::index_of(t)).copied().unwrap_or(0)
     }
 }
 
-fn offer_refusal(text: &str) -> String {
-    let shown: String = text.chars().take(24).collect();
-    let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    format!("\"{shown}{more}\" is not a terminal count. Write 12, or 12+2PE.")
-}
-
-/// Read an offer: `12` or `12+2PE`, spaces ignored, case-insensitive.
+/// Read an offer: `+`-separated `<count><code>` items (`12+2PE+4x3`), spaces ignored, codes
+/// case-insensitive.
 ///
 /// # Errors
-/// Unreadable text, no positions, or more than [`MAX_POSITIONS`] in all, in words with the way
-/// forward.
+/// Unreadable text, an unknown code, no positions, or more than [`MAX_POSITIONS`] in all, in
+/// words with the way forward.
 pub fn parse_offer(text: &str) -> Result<Offer, String> {
-    let t: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_uppercase();
-    if t.len() > 16 {
-        return Err(offer_refusal(text));
-    }
-    let num = |s: &str| -> Option<u32> { (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())).then(|| s.parse::<u32>().ok()).flatten() };
-    let (n, pe) = match t.split_once('+') {
-        None => (num(&t).ok_or_else(|| offer_refusal(text))?, 0),
-        Some((a, b)) => {
-            let n = num(a).ok_or_else(|| offer_refusal(text))?;
-            let pe = num(b.strip_suffix("PE").ok_or_else(|| offer_refusal(text))?).ok_or_else(|| offer_refusal(text))?;
-            (n, pe)
-        }
-    };
-    let total = n.saturating_add(pe);
-    if total == 0 {
-        return Err("A strip offers at least 1 position. Write 12, or 12+2PE; empty clears it.".into());
-    }
-    if total > MAX_POSITIONS {
-        return Err(format!("A strip offers at most {MAX_POSITIONS} positions, feed-through and PE together."));
-    }
-    Ok(Offer { positions: total, pe })
+    let counts = crate::terminal_types::parse_counts(text)?;
+    let positions = counts.iter().fold(0u32, |a, b| a.saturating_add(*b));
+    Ok(Offer { positions, pe: counts.get(1).copied().unwrap_or(0), counts })
 }
 
 /// The `terminals` value as stored (canonical `12+2PE`); empty clears it.
@@ -192,6 +184,38 @@ pub fn offer_value(value: Option<&str>) -> Result<Option<String>, String> {
         None => Ok(None),
         Some(v) => Ok(Some(parse_offer(v)?.text())),
     }
+}
+
+/// The offer Checks' **Offer drawn** writes (design 028 §8, brief 036 §7.1): every type at
+/// least its drawn positions; with no type codes, 028's rule (every drawn terminal, PE kept).
+pub fn offer_drawn_value(doc: &Document, c: ComponentId) -> String {
+    use crate::terminal_types as tt;
+    let ps = tt::positions(doc, c);
+    let mut drawn: tt::Counts = [0; tt::TYPE_COUNT];
+    for p in &ps {
+        if let Some(n) = drawn.get_mut(tt::index_of(p.ty)) {
+            *n = n.saturating_add(1);
+        }
+    }
+    let offer = offer_of(doc, c);
+    let legacy = offer.is_none_or(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && ps.iter().all(|p| p.ty.legacy());
+    let mut counts: tt::Counts = [0; tt::TYPE_COUNT];
+    if legacy {
+        let total = u32::try_from(ps.len()).unwrap_or(MAX_POSITIONS).min(MAX_POSITIONS);
+        let pe = offer.map_or(0, |o| o.pe).max(drawn.get(1).copied().unwrap_or(0)).min(total);
+        if let Some(x) = counts.get_mut(0) {
+            *x = total - pe;
+        }
+        if let Some(x) = counts.get_mut(1) {
+            *x = pe;
+        }
+    } else {
+        for (i, x) in counts.iter_mut().enumerate() {
+            let offered = offer.and_then(|o| o.counts.get(i).copied()).unwrap_or(0);
+            *x = offered.max(drawn.get(i).copied().unwrap_or(0));
+        }
+    }
+    tt::counts_text(&counts)
 }
 
 /// A strip's stored offer, if readable.
@@ -558,12 +582,31 @@ pub struct SideCell {
     pub far: Option<ComponentId>,
 }
 
-/// One position of a strip's plan.
+/// One row of a strip's plan: one level of a position (brief 036 §7.3; a one-level position is
+/// one row, as in 028).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermRow {
+    /// The level's terminal (the in point of a two-point level); `None` for a free or spare row.
     pub terminal: Option<TerminalId>,
+    /// The out point of a two-point level (its outside cells come from it, Q6).
+    pub out: Option<TerminalId>,
+    /// The **position** label (what links, accessories and renumbering name).
     pub label: String,
+    /// The shown label (§4.1): `1.L`, or the level's own label.
+    pub shown: String,
+    pub label_overridden: bool,
+    /// The level number (1 = top deck) and its name.
+    pub level: u32,
+    pub level_name: String,
+    /// The position's type (§2.2).
+    pub ty: &'static crate::terminal_types::TermType,
+    /// A level of a drawn position that no symbol draws.
+    pub free: bool,
     pub pe: bool,
+    /// A fuse position's rating (`rating.<p>`).
+    pub rating: Option<String>,
+    /// The internal bridge group of the position's type this level is in (1…).
+    pub internal_bridge: Option<usize>,
     pub inside: Vec<SideCell>,
     pub outside: Vec<SideCell>,
     /// The bridge group (1, 2… per strip) this terminal is in.
@@ -573,8 +616,65 @@ pub struct TermRow {
 }
 
 impl TermRow {
+    /// A position the offer adds, with no level drawn.
     pub fn spare(&self) -> bool {
-        self.terminal.is_none()
+        self.terminal.is_none() && !self.free
+    }
+
+    /// `drawn`, `free` or `spare`.
+    pub fn state(&self) -> &'static str {
+        if self.free {
+            "free"
+        } else if self.terminal.is_none() {
+            "spare"
+        } else {
+            "drawn"
+        }
+    }
+
+    /// Whether the position's type breaks the net (disconnect, fuse).
+    pub fn breaks(&self) -> bool {
+        self.ty.breaks
+    }
+
+    fn blank(label: String, ty: &'static crate::terminal_types::TermType, level: u32, level_name: String) -> TermRow {
+        TermRow {
+            terminal: None,
+            out: None,
+            shown: label.clone(),
+            label,
+            label_overridden: false,
+            level,
+            level_name,
+            ty,
+            free: false,
+            pe: ty.pe_level == Some(level),
+            rating: None,
+            internal_bridge: None,
+            inside: Vec::new(),
+            outside: Vec::new(),
+            bridge_group: None,
+            place: None,
+            go: None,
+        }
+    }
+}
+
+/// One terminal type on a strip: positions drawn and spare, and its BOM part data (§7.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeCount {
+    pub ty: &'static crate::terminal_types::TermType,
+    pub drawn: usize,
+    pub spare: usize,
+    pub part_number: Option<String>,
+    pub maker: Option<String>,
+    pub description: String,
+}
+
+impl TypeCount {
+    /// BOM quantity: positions, drawn and spare.
+    pub fn qty(&self) -> usize {
+        self.drawn + self.spare
     }
 }
 
@@ -596,8 +696,22 @@ pub struct StripData {
     pub part_number_pe: Option<String>,
     pub maker_pe: Option<String>,
     pub description: Option<String>,
-    /// Terminals drawn with a label an earlier one has: (label, the second terminal).
+    /// Terminals drawn with a label an earlier one has: (label, the second terminal); a level
+    /// drawn twice (brief 036: `level-twice`).
     pub twice: Vec<(String, TerminalId)>,
+    /// Brief 036: positions and their BOM part data per type, in catalogue order (types with
+    /// positions only).
+    pub types: Vec<TypeCount>,
+    /// Positions whose levels are drawn by symbols of another type: (position, a terminal).
+    pub mixed: Vec<(String, TerminalId)>,
+    /// Links naming levels their positions lack: (link number, the items as written).
+    pub level_missing: Vec<(u32, Vec<String>)>,
+    /// Fuse positions with no rating.
+    pub no_rating: usize,
+    /// Each row's position index (brief 036).
+    pos_of_row: Vec<usize>,
+    /// The type word of each `mixed` terminal's own symbol.
+    mixed_types: BTreeMap<TerminalId, &'static str>,
     /// Sheets of its terminal plan section and rows of its BOM (review of PR #55, finding 1):
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
@@ -622,18 +736,52 @@ impl StripData {
 
     /// Feed-through and PE quantities for the BOM: drawn plus spare of each type.
     pub fn quantities(&self) -> (usize, usize) {
-        (self.drawn - self.drawn_pe + self.spare - self.spare_pe, self.drawn_pe + self.spare_pe)
+        let q = |code: &str| self.types.iter().find(|t| t.ty.code == code).map_or(0, TypeCount::qty);
+        (q("ft"), q("pe"))
     }
 
-    /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` warnings).
+    /// The types whose drawn positions are more than the offer gives them (brief 036 §7.1).
+    pub fn over_offer(&self) -> Vec<(&TypeCount, u32)> {
+        let Some(o) = self.offer else { return Vec::new() };
+        // 028's rule with no type codes: feed-through and PE counted together.
+        if o.counts.iter().skip(2).all(|n| *n == 0) && self.types.iter().all(|t| t.ty.legacy()) {
+            return match self.types.first() {
+                Some(t) if self.drawn > o.positions as usize => vec![(t, o.positions)],
+                _ => Vec::new(),
+            };
+        }
+        self.types.iter().filter(|t| t.drawn > o.of(t.ty) as usize).map(|t| (t, o.of(t.ty))).collect()
+    }
+
+    /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` and `position-mixed`
+    /// warnings).
     pub fn check_rows(&self) -> (usize, usize) {
-        let over = self.offer.is_some_and(|o| self.drawn > o.positions as usize);
-        (self.twice.len(), usize::from(over) + self.acc.warnings())
+        (self.twice.len(), self.over_offer().len() + self.mixed.len() + self.level_missing.len() + self.acc.warnings())
     }
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
     pub fn highest(&self) -> Option<&TermRow> {
-        self.rows.iter().rev().find(|r| !r.spare())
+        self.rows.iter().rev().find(|r| r.terminal.is_some())
+    }
+
+    /// The highest drawn row of type `t`.
+    pub fn highest_of(&self, t: &crate::terminal_types::TermType) -> Option<&TermRow> {
+        self.rows.iter().rev().find(|r| r.terminal.is_some() && r.ty == t)
+    }
+
+    /// The plan index of row `i`'s position (rows of one position share it).
+    pub fn position_index(&self, i: usize) -> usize {
+        self.pos_of_row.get(i).copied().unwrap_or(0)
+    }
+
+    /// The type word of the symbol that draws terminal `t` (`position-mixed`).
+    pub fn other_type_word(&self, t: TerminalId) -> &'static str {
+        self.mixed_types.get(&t).copied().unwrap_or("?")
+    }
+
+    /// Whether row `i` is the first row of its position.
+    pub fn first_of_position(&self, i: usize) -> bool {
+        i == 0 || self.rows.get(i - 1).zip(self.rows.get(i)).is_some_and(|(a, b)| a.label != b.label)
     }
 
     /// A drawn row by terminal.
@@ -662,14 +810,17 @@ impl StripData {
         out
     }
 
-    /// The links through plan position `i`: (link, whether `i` is one of its positions).
+    /// The links through plan row `i`: (link, whether its level of its position is one the link
+    /// names). Brief 036: a link runs on its own level; a cross-level link only through the
+    /// levels of its position.
     pub fn links_at(&self, i: usize) -> Vec<(&crate::accessories::LinkInfo, bool)> {
-        let label = self.rows.get(i).map(|r| r.label.as_str());
+        let Some(r) = self.rows.get(i) else { return Vec::new() };
+        let pi = self.position_index(i);
         self.acc
             .links
             .iter()
-            .filter(|l| l.span > 0 && l.first <= i && i <= l.last)
-            .map(|l| (l, label.is_some_and(|x| l.labels.iter().any(|y| y == x))))
+            .filter(|l| l.span > 0 && l.first <= pi && pi <= l.last && l.runs_on(r.level))
+            .map(|l| (l, l.labels.contains(&r.label) && l.names_level(r.level)))
             .collect()
     }
 
@@ -716,6 +867,8 @@ pub struct Strips {
     inherits: BTreeMap<String, BTreeSet<ComponentId>>,
     /// Brief 030: placed accessories with no part number, over every strip (one info row).
     pub acc_no_part: usize,
+    /// Brief 036: brief 034's fuse terminal devices (the `fuse-device` Info row).
+    pub fuse_devices: BTreeSet<ComponentId>,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
     /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
@@ -770,8 +923,21 @@ impl Strips {
             if is_strip(doc, *c) {
                 s.set(doc, *c, o, cx);
             }
+            if crate::level_cmds::is_fuse_device(doc, *c) {
+                s.fuse_devices.insert(*c);
+            }
         }
         s
+    }
+
+    /// Brief 036: keep the fuse terminal devices among `devices` (the ops' devices) up to date.
+    /// Returns whether the set changed.
+    pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<ComponentId>) -> bool {
+        let mut changed = false;
+        for c in devices {
+            changed |= if crate::level_cmds::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+        }
+        changed
     }
 
     /// The strips `scope` touches, before recomputing.
@@ -799,6 +965,10 @@ impl Strips {
         for p in scope.pages {
             out.extend(self.by_page.get(p).into_iter().flatten().copied());
         }
+        // Brief 036: a project level separator or level names relabel the strips inheriting them.
+        for k in scope.project_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
+            out.extend(self.inherits.get(k).into_iter().flatten().copied());
+        }
         out
     }
 
@@ -815,11 +985,15 @@ impl Strips {
         for c in which {
             let Some(old) = self.strips.get(c) else { continue };
             let Some(props) = doc.components.get(c).map(|x| &x.properties) else { continue };
-            let acc = crate::accessories::strip_acc(doc, props, &old.rows);
-            if acc == old.acc {
+            let mut acc = crate::accessories::strip_acc(doc, props, &old.rows);
+            // Brief 036: a project part or description default reaches the type rows too.
+            let mut d = old.clone();
+            acc.inherits.extend(d.refresh_types(doc, props));
+            // The level label keys a strip inherits are not this pass's (they rebuild the strip).
+            acc.inherits.extend(old.acc.inherits.iter().filter(|k| crate::defaults::terminals::is_label_key(k)).cloned());
+            if acc == old.acc && d.types == old.types {
                 continue;
             }
-            let mut d = old.clone();
             d.acc = acc;
             d.finish();
             self.remove(*c);
@@ -918,6 +1092,7 @@ impl Strips {
             && self.by_cable == other.by_cable
             && self.inherits == other.inherits
             && self.acc_no_part == other.acc_no_part
+            && self.fuse_devices == other.fuse_devices
             && self.sheets_total == other.sheets_total
             && self.check_errors == other.check_errors
             && self.check_warnings == other.check_warnings
@@ -990,6 +1165,7 @@ fn clean(v: Option<&String>) -> Option<String> {
 
 /// One strip's data on `doc`.
 fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> StripData {
+    use crate::terminal_types as tt;
     let props = doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
     let device = o.device(c);
     let location = match device {
@@ -1012,6 +1188,12 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         spare_pe: 0,
         rows: Vec::new(),
         twice: Vec::new(),
+        types: Vec::new(),
+        mixed: Vec::new(),
+        level_missing: Vec::new(),
+        no_rating: 0,
+        pos_of_row: Vec::new(),
+        mixed_types: BTreeMap::new(),
         sheets: 1,
         bom_rows: 0,
         acc: crate::accessories::StripAcc::default(),
@@ -1021,7 +1203,8 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         cables: BTreeSet::new(),
     };
     let drawn = drawn_at(doc, c);
-    let mine: BTreeSet<TerminalId> = drawn.iter().map(|(t, _, _, _)| *t).collect();
+    let shown_at: BTreeMap<TerminalId, (RepresentationId, bool, Option<Pt>)> = drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
+    let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
     let mut grids: BTreeMap<PageId, ecad_model::sheet::Grid> = BTreeMap::new();
     let mut rows: Vec<TermRow> = Vec::new();
     // Bridges, for groups: union of terminals joined by a bridge.
@@ -1038,28 +1221,14 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         x
     }
     let mut bridged: BTreeSet<TerminalId> = BTreeSet::new();
-    for (t, rid, pe, at) in &drawn {
-        let r = doc.representations.get(rid);
-        let page = r.map(|r| r.page);
-        let at = *at;
-        if let Some(p) = page {
-            d.pages.insert(p);
-        }
-        let label = crate::interact::terminal_name(doc, *t);
-        let mut row = TermRow {
-            terminal: Some(*t),
-            label,
-            pe: *pe,
-            inside: Vec::new(),
-            outside: Vec::new(),
-            bridge_group: None,
-            place: page.zip(at).and_then(|(p, a)| {
-                let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
-                ecad_model::derive::place_on(grid, cx.number(p)?, a)
-            }),
-            go: page.zip(at),
-        };
-        for (w, end) in doc.ends_at(*t) {
+    let separator = tt::separator(doc, c);
+    let mut names_of: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+    let mut inherits: BTreeSet<String> = BTreeSet::new();
+    let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
+    // The conductors on one terminal, sorted into inside and outside cells (§5.2; two-point levels
+    // by their point, Q6).
+    let mut cells = |t: TerminalId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
+        for (w, end) in doc.ends_at(t) {
             d.conductors.insert(w);
             let Some(cond) = doc.conductors.get(&w) else { continue };
             let far_end = match end {
@@ -1068,13 +1237,13 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
             };
             let other = cond.end(far_end);
             if let Some(o2) = other
-                && o2 != *t
+                && o2 != t
                 && mine.contains(&o2)
             {
                 // A bridge.
-                bridged.insert(*t);
+                bridged.insert(t);
                 bridged.insert(o2);
-                let (ra, rb) = (find(&mut parent, *t), find(&mut parent, o2));
+                let (ra, rb) = (find(&mut parent, t), find(&mut parent, o2));
                 if ra != rb {
                     parent.insert(ra.max(rb), ra.min(rb));
                 }
@@ -1092,16 +1261,18 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
             let core = cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.members.iter().find(|m| m.conductor == w)?.core.clone());
             let cell = SideCell { conductor: w, target, wire: o.wire(w).and_then(|r| r.wire_number.clone()), cable, core, far };
             // §5.2: cable core → outside; far device's location against the strip's; geometry.
-            let inside = if cell.cable.is_some() {
-                false
-            } else {
-                let far_loc = far.filter(|f| crate::locations::is_device(doc, *f)).and_then(|f| match o.device(f) {
-                    Some(x) => x.location.value.clone(),
-                    None => crate::locations::resolve(doc, f).value,
-                });
-                match (&location, far_loc) {
-                    (Some(a), Some(b)) => *a == b,
-                    _ => page.and_then(|p| geometric_inside(doc, w, end, p)).unwrap_or(true),
+            let inside = match side {
+                Some(s) => s,
+                None if cell.cable.is_some() => false,
+                None => {
+                    let far_loc = far.filter(|f| crate::locations::is_device(doc, *f)).and_then(|f| match o.device(f) {
+                        Some(x) => x.location.value.clone(),
+                        None => crate::locations::resolve(doc, f).value,
+                    });
+                    match (&location, far_loc) {
+                        (Some(a), Some(b)) => *a == b,
+                        _ => page.and_then(|p| geometric_inside(doc, w, end, p)).unwrap_or(true),
+                    }
                 }
             };
             if inside {
@@ -1110,72 +1281,276 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
                 row.outside.push(cell);
             }
         }
-        rows.push(row);
+    };
+    let positions = tt::positions(doc, c);
+    let mut drawn_by_type: [usize; tt::TYPE_COUNT] = [0; tt::TYPE_COUNT];
+    for pos in &positions {
+        let ty = pos.ty;
+        if let Some(n) = drawn_by_type.get_mut(tt::index_of(ty)) {
+            *n += 1;
+        }
+        if let Some(t) = pos.mixed.first() {
+            d.mixed.push((pos.label.clone(), *t));
+            d.mixed_types.insert(*t, tt::type_of_terminal(doc, *t).word);
+        }
+        if ty.code == "fuse" && clean(props.get(&tt::rating_key(&pos.label))).is_none() {
+            d.no_rating += 1;
+        }
+        let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
+        if ty.multi() {
+            if !own(crate::defaults::terminals::SEPARATOR.key) {
+                inherits.insert(crate::defaults::terminals::SEPARATOR.key.to_string());
+            }
+            if let Some(e) = crate::defaults::terminals::levels_entry(ty.code)
+                && !own(e.key)
+            {
+                inherits.insert(e.key.to_string());
+            }
+        }
+        let rating = ty.breaks.then(|| clean(props.get(&tt::rating_key(&pos.label)))).flatten();
+        let mut seen_levels: BTreeSet<u32> = BTreeSet::new();
+        // One row per level, free levels included; a level drawn twice adds a row (and a Checks row).
+        let max_level = ty.count().max(pos.levels.keys().copied().max().unwrap_or(1));
+        for n in 1..=max_level {
+            let level_name = names.get(usize::try_from(n.saturating_sub(1)).unwrap_or(0)).cloned().unwrap_or_else(|| n.to_string());
+            let derived = if ty.multi() { format!("{}{separator}{level_name}", pos.label) } else { pos.label.clone() };
+            let over = clean(props.get(&tt::label_key(&pos.label, n)));
+            let terms: Vec<TerminalId> = pos.levels.get(&n).cloned().unwrap_or_default();
+            if terms.is_empty() {
+                if n > ty.count() {
+                    continue;
+                }
+                let mut r = TermRow::blank(pos.label.clone(), ty, n, level_name);
+                r.label_overridden = over.is_some();
+                r.shown = over.unwrap_or(derived);
+                r.free = true;
+                r.rating = rating.clone();
+                rows.push(r);
+                continue;
+            }
+            // Split into drawings: in/out pairs for a two-point level, one terminal otherwise.
+            let mut drawings: Vec<(TerminalId, Option<TerminalId>)> = Vec::new();
+            if ty.breaks {
+                let ins: Vec<TerminalId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 != Some('o')).collect();
+                let outs: Vec<TerminalId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 == Some('o')).collect();
+                for (i, t) in ins.iter().enumerate() {
+                    drawings.push((*t, outs.get(i).copied()));
+                }
+                for t in outs.iter().skip(ins.len()) {
+                    drawings.push((*t, None));
+                }
+            } else {
+                drawings.extend(terms.iter().map(|t| (*t, None)));
+            }
+            for (k, (t, out)) in drawings.into_iter().enumerate() {
+                let (rid, pe, at) = match shown_at.get(&t).or_else(|| out.and_then(|x| shown_at.get(&x))) {
+                    Some((rid, pe, at)) => (Some(*rid), *pe, *at),
+                    None => (None, false, None),
+                };
+                let page = rid.and_then(|r| doc.representations.get(&r)).map(|r| r.page);
+                if let Some(p) = page {
+                    d.pages.insert(p);
+                }
+                let mut row = TermRow::blank(pos.label.clone(), ty, n, level_name.clone());
+                row.terminal = Some(t);
+                row.out = out;
+                row.pe = pe || ty.pe_level == Some(n);
+                row.label_overridden = over.is_some();
+                row.shown = over.clone().unwrap_or_else(|| derived.clone());
+                row.rating = rating.clone();
+                row.internal_bridge = ty
+                    .bridges
+                    .iter()
+                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
+                    .map(|i| i + 1);
+                row.place = page.zip(at).and_then(|(p, a)| {
+                    let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
+                    ecad_model::derive::place_on(grid, cx.number(p)?, a)
+                });
+                row.go = page.zip(at);
+                if ty.breaks {
+                    cells(t, Some(true), page, &mut row, &mut d);
+                    if let Some(x) = out {
+                        cells(x, Some(false), page, &mut row, &mut d);
+                    }
+                } else {
+                    cells(t, None, page, &mut row, &mut d);
+                }
+                if k > 0 || !seen_levels.insert(n) {
+                    d.twice.push((row.shown.clone(), t));
+                }
+                rows.push(row);
+            }
+        }
     }
-    // Bridge groups, numbered in label order.
-    let label_key = |r: &TermRow| (crate::xref::natural_key(&r.label), r.terminal);
-    rows.sort_by_key(label_key);
+    // Bridge groups, numbered in plan order.
     let mut groups: BTreeMap<TerminalId, usize> = BTreeMap::new();
     for r in &mut rows {
         let Some(t) = r.terminal else { continue };
-        if !bridged.contains(&t) {
-            continue;
-        }
+        let t = if bridged.contains(&t) {
+            t
+        } else {
+            match r.out.filter(|x| bridged.contains(x)) {
+                Some(x) => x,
+                None => continue,
+            }
+        };
         let root = find(&mut parent, t);
         let n = groups.len() + 1;
         r.bridge_group = Some(*groups.entry(root).or_insert(n));
     }
-    // Labels drawn twice (merged branches, a hostile file).
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for r in &rows {
-        if let Some(t) = r.terminal
-            && !seen.insert(r.label.clone())
-        {
-            d.twice.push((r.label.clone(), t));
-        }
-    }
-    d.drawn = rows.len();
-    d.drawn_pe = rows.iter().filter(|r| r.pe).count();
-    // Spare positions (FP1): positions 1…n with no drawn terminal of that label.
+    d.drawn = positions.len();
+    d.drawn_pe = drawn_by_type.get(1).copied().unwrap_or(0);
+    // Spare positions (FP1): labels 1…n no drawn position has, given to the offer's types in its
+    // order (feed-through first), each with its type's levels.
+    let mut spare_by_type: [usize; tt::TYPE_COUNT] = [0; tt::TYPE_COUNT];
     if let Some(off) = d.offer {
-        let spare: Vec<u32> = (1..=off.positions).filter(|n| !seen.contains(&n.to_string())).collect();
-        let pe_wanted = (off.pe as usize).saturating_sub(d.drawn_pe).min(spare.len());
-        let last_pe = rows.iter().filter(|r| r.pe).filter_map(|r| r.label.parse::<u32>().ok()).max().unwrap_or(0);
-        let mut pe_set: BTreeSet<u32> = spare.iter().copied().filter(|n| *n > last_pe).take(pe_wanted).collect();
-        for n in spare.iter().rev() {
-            if pe_set.len() >= pe_wanted {
-                break;
+        let taken: BTreeSet<&str> = positions.iter().map(|p| p.label.as_str()).collect();
+        let mut free: std::collections::VecDeque<u32> = (1..=off.positions).filter(|n| !taken.contains(n.to_string().as_str())).collect();
+        let legacy_only = off.counts.iter().skip(2).all(|n| *n == 0) && positions.iter().all(|p| p.ty.legacy());
+        let mut wanted: Vec<(usize, usize)> = Vec::new();
+        if legacy_only {
+            // 028's rule: the PE spares follow the last drawn PE terminal; feed-through the rest.
+            let pe_wanted = (off.pe as usize).saturating_sub(d.drawn_pe).min(free.len());
+            let last_pe = positions.iter().filter(|p| p.ty.code == "pe").filter_map(|p| p.label.parse::<u32>().ok()).max().unwrap_or(0);
+            let spare: Vec<u32> = free.iter().copied().collect();
+            let mut pe_set: BTreeSet<u32> = spare.iter().copied().filter(|n| *n > last_pe).take(pe_wanted).collect();
+            for n in spare.iter().rev() {
+                if pe_set.len() >= pe_wanted {
+                    break;
+                }
+                pe_set.insert(*n);
             }
-            pe_set.insert(*n);
+            let (ft, pe) = (tt::feedthrough(), tt::by_code("pe").unwrap_or_else(tt::feedthrough));
+            for n in &spare {
+                let ty = if pe_set.contains(n) { pe } else { ft };
+                rows.push(TermRow::blank(n.to_string(), ty, 1, "1".into()));
+                if let Some(x) = spare_by_type.get_mut(tt::index_of(ty)) {
+                    *x += 1;
+                }
+            }
+            free.clear();
+        } else {
+            for (i, t) in tt::TYPES.iter().enumerate() {
+                let drawn_n = drawn_by_type.get(i).copied().unwrap_or(0);
+                wanted.push((i, (off.of(t) as usize).saturating_sub(drawn_n)));
+            }
         }
-        for n in &spare {
-            rows.push(TermRow {
-                terminal: None,
-                label: n.to_string(),
-                pe: pe_set.contains(n),
-                inside: Vec::new(),
-                outside: Vec::new(),
-                bridge_group: None,
-                place: None,
-                go: None,
-            });
+        for (i, want) in wanted {
+            let Some(ty) = tt::TYPES.get(i) else { continue };
+            let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
+            for _ in 0..want {
+                let Some(n) = free.pop_front() else { break };
+                for lvl in 1..=ty.count() {
+                    let name = names.get(usize::try_from(lvl - 1).unwrap_or(0)).cloned().unwrap_or_else(|| lvl.to_string());
+                    let mut r = TermRow::blank(n.to_string(), ty, lvl, name.clone());
+                    r.shown = if ty.multi() { format!("{n}{separator}{name}") } else { n.to_string() };
+                    rows.push(r);
+                }
+                if let Some(x) = spare_by_type.get_mut(i) {
+                    *x += 1;
+                }
+            }
         }
-        d.spare = spare.len();
-        d.spare_pe = pe_set.len();
-        rows.sort_by_key(label_key);
+        d.spare = spare_by_type.iter().sum();
+        d.spare_pe = spare_by_type.get(1).copied().unwrap_or(0);
+        rows.sort_by_cached_key(|r| (crate::xref::natural_key(&r.label), r.level, r.terminal));
+    }
+    // Part data per type (§7.2): strip, then project, then the registry's description.
+    for (i, ty) in tt::TYPES.iter().enumerate() {
+        let (dn, sp) = (drawn_by_type.get(i).copied().unwrap_or(0), spare_by_type.get(i).copied().unwrap_or(0));
+        if dn + sp == 0 {
+            continue;
+        }
+        d.types.push(type_parts(doc, &props, ty, dn, sp, &mut inherits));
+    }
+    // Each row's position index.
+    let mut n = 0usize;
+    for (i, r) in rows.iter().enumerate() {
+        if i > 0 && rows.get(i - 1).is_some_and(|p| p.label != r.label) {
+            n += 1;
+        }
+        d.pos_of_row.push(n);
+    }
+    // Links naming levels their positions lack (`level-missing`, §8).
+    let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
+    let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
+    for (n, p) in ecad_model::links::of(&props) {
+        let mut items = Vec::new();
+        for item in &p.0 {
+            let Some(sp) = item.span() else { continue };
+            let missing = match &sp {
+                ecad_model::links::Span::Levels { position, hi, .. } => count_of.get(position.as_str()).is_some_and(|c| hi > c),
+                ecad_model::links::Span::Positions { level, .. } => {
+                    let one = ecad_model::links::Positions(vec![item.clone()]);
+                    one.select(&order).iter().any(|l| count_of.get(l.as_str()).is_some_and(|c| level > c))
+                }
+            };
+            if missing {
+                items.push(match item {
+                    ecad_model::links::Item::One(x) => x.clone(),
+                    ecad_model::links::Item::Range(a, b) => format!("{a}-{b}"),
+                });
+            }
+        }
+        if !items.is_empty() {
+            d.level_missing.push((n, items));
+        }
     }
     d.rows = rows;
     d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
+    d.acc.inherits.extend(inherits);
     d.finish();
     d
+}
+
+/// The strip key of a type's part field (§7.2): feed-through keeps `part_number`, `maker`; every
+/// other type `<field>.<code>` (`part_number.lnpe`; 028's `part_number.pe` is this rule).
+pub fn type_key(t: &crate::terminal_types::TermType, field: &str) -> String {
+    if t.code == "ft" { field.to_string() } else { format!("{field}.{}", t.code) }
+}
+
+/// One type's BOM part data on a strip with `props`: the strip's value, else the project's
+/// `strip_<code>_<field>` (recorded in `inherits`), else the registry's description.
+fn type_parts(
+    doc: &Document, props: &ecad_model::Properties, ty: &'static crate::terminal_types::TermType, drawn: usize, spare: usize,
+    inherits: &mut BTreeSet<String>,
+) -> TypeCount {
+    let mut get = |field: &str| -> Option<String> {
+        if let Some(v) = clean(props.get(&type_key(ty, field))) {
+            return Some(v);
+        }
+        let pk = format!("strip_{}_{field}", ty.code);
+        inherits.insert(pk.clone());
+        clean(doc.properties.get(&pk))
+    };
+    let part_number = get("part_number");
+    let maker = get("maker");
+    let own_description = get("description").or_else(|| if ty.code == "ft" { clean(props.get("description")) } else { None });
+    let description = own_description.unwrap_or_else(|| {
+        let e = crate::defaults::terminals::description_entry(ty.code);
+        if let Some(e) = e {
+            inherits.insert(e.key.to_string());
+        }
+        e.map_or_else(|| ty.name.to_string(), |e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).text())
+    });
+    TypeCount { ty, drawn, spare, part_number, maker, description }
 }
 
 impl StripData {
     /// Its kept sheet and BOM row counts, from its rows and accessories.
     fn finish(&mut self) {
         self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
-        let (ft, pe) = self.quantities();
-        self.bom_rows = usize::from(ft > 0) + usize::from(pe > 0) + self.acc.bom.len();
+        self.bom_rows = self.types.iter().filter(|t| t.qty() > 0).count() + self.acc.bom.len();
+    }
+
+    /// Recompute its part data per type (a project default changed, §11.1).
+    fn refresh_types(&mut self, doc: &Document, props: &ecad_model::Properties) -> BTreeSet<String> {
+        let mut inherits = BTreeSet::new();
+        for t in &mut self.types {
+            *t = type_parts(doc, props, t.ty, t.drawn, t.spare, &mut inherits);
+        }
+        inherits
     }
 }
 
@@ -1213,7 +1588,15 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
     };
     let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
     for (t, _) in crate::devices::shown_terminals(doc, c, r) {
-        let kind = if pe { "PE" } else { "feed-through" };
+        // Brief 036: the type, and the level of a multi-level position.
+        let ty = crate::terminal_types::type_of_terminal(doc, t);
+        let kind = if ty.multi() {
+            format!("{} level {}", ty.word, crate::terminal_types::level_name(doc, c, ty, crate::terminal_types::level_of(doc, t).0))
+        } else if pe {
+            "PE".to_string()
+        } else {
+            ty.word.to_string()
+        };
         lines.push(format!("{}  {kind}  {}", crate::terminal_cmds::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
@@ -1255,11 +1638,12 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
             lines.push(format!("bridged to {}", bridged.join(", ")));
         }
     }
-    let drawn = drawn_terminals(doc, c).len();
+    // Brief 036: counted in positions (a three-level terminal is one).
+    let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let drawn = labels.len();
     let tag = crate::devices::tag_words(doc, c);
     lines.push(match offer_of(doc, c) {
         Some(o) => {
-            let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
             let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();
             format!("{tag}: {} positions, {drawn} drawn, {spare} spare", o.positions)
         }
@@ -1291,13 +1675,15 @@ mod tests {
 
     #[test]
     fn offers_read_and_refuse_with_a_way_forward() {
-        assert_eq!(parse_offer("12"), Ok(Offer { positions: 12, pe: 0 }));
-        assert_eq!(parse_offer(" 12 + 2pe "), Ok(Offer { positions: 14, pe: 2 }), "12 feed-through and 2 PE");
-        assert_eq!(parse_offer("0+2PE"), Ok(Offer { positions: 2, pe: 2 }));
+        let pos = |t: &str| parse_offer(t).map(|o| (o.positions, o.pe));
+        assert_eq!(pos("12"), Ok((12, 0)));
+        assert_eq!(pos(" 12 + 2pe "), Ok((14, 2)), "12 feed-through and 2 PE");
+        assert_eq!(pos("0+2PE"), Ok((2, 2)));
+        assert_eq!(pos("12+2PE+4x3"), Ok((18, 2)), "brief 036: type codes");
         assert!(parse_offer("990+10PE").is_err(), "999 in all");
         assert_eq!(offer_value(Some("12 + 2 PE")), Ok(Some("12+2PE".into())));
         assert_eq!(offer_value(Some("  ")), Ok(None));
-        assert!(parse_offer("12X").unwrap_err().contains("Write 12, or 12+2PE"));
+        assert!(parse_offer("12X").unwrap_err().contains("Write 12, 12+2PE or 12+4x3"));
         assert!(parse_offer("1000").is_err());
         assert!(parse_offer("0").is_err());
         assert_eq!(parse_offer("2+3PE").map(Offer::text), Ok("2+3PE".into()));

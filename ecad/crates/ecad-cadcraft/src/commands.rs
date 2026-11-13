@@ -27,7 +27,6 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::{Mapped, Project};
 use crate::slash::{self, MAX_CABLE_MEMBERS};
-use crate::translate::ShownOnce;
 use crate::views::{self, View};
 
 /// The commands this crate adds.
@@ -42,6 +41,8 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::terminal_cmds::specs());
     v.extend(crate::accessory_cmds::specs());
     v.extend(crate::release::specs());
+    v.extend(crate::text_cmds::specs());
+    v.extend(crate::level_cmds::specs());
     v
 }
 
@@ -55,9 +56,9 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
-        CommandSpec::new("wire", "Wire", run_wire)
+        CommandSpec::new("wire", "Wire", crate::wire_cmds::run_wire)
             .params(
-                "{points: [[x,y], …], potential?: string, junction?: bool (true)} (ends on connection points attach; an end on another wire adds a junction there)",
+                "{points: [[x,y], …], potential?: string, join?: bool (true), junction?: bool (old name of join)} (ends on connection points attach; an end on another wire's open end joins it into one wire, on its interior adds a junction; open ends lying on the new wire join it with a junction)",
             )
             .interactive(interact::wire)
             .noundo(),
@@ -184,6 +185,10 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("ecadinspect", "Inspect Project", run_inspect)
             .params("{seq?: n} (read-only snapshot)")
+            .noundo(),
+        CommandSpec::new("joinwires", "Join Wires", crate::wire_cmds::run_joinwires)
+            .params("{at: [x,y]} (two open ends there become one wire; an open end on a wire, or three or more ends, get a junction)")
+            .interactive(interact::joinwires)
             .noundo(),
     ]
 }
@@ -371,100 +376,6 @@ fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
     })
 }
 
-fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let raw = params.get("points").and_then(Value::as_array).ok_or_else(|| err("`points` [[x,y], …] is required"))?;
-    if raw.len() > MAX_WIRE_POINTS {
-        return Err(err(format!("at most {MAX_WIRE_POINTS} points per wire")));
-    }
-    let pts: Vec<Pt> =
-        raw.iter().map(|v| point(v).ok_or_else(|| err(format!("`{v}` is not a finite [x,y] point")))).collect::<cadcraft_engine::Result<_>>()?;
-    if pts.len() < 2 {
-        return Err(err("`points` needs at least two [x,y] points"));
-    }
-    // Brief 022: the wire's potential, and junctions where an end lands on another wire.
-    let potential = match params.get("potential") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(v)) if v.trim().eq_ignore_ascii_case("auto") => None,
-        Some(Value::String(v)) => ecad_model::wiring::valid_text("potential", Some(v)).map_err(err)?,
-        Some(_) => return Err(err("`potential` must be a string")),
-    };
-    let junction = match params.get("junction") {
-        None | Some(Value::Null) => true,
-        Some(v) => v.as_bool().ok_or_else(|| err("`junction` must be true or false"))?,
-    };
-    let mut pts = pts;
-    with_project(s, |p, pg, page| {
-        let (w, i, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        let mut conductor = Conductor::default();
-        if let Some(v) = &potential {
-            conductor.properties.insert(ecad_model::wiring::POTENTIAL_KEY.into(), v.clone());
-        }
-        // Ends on the interior of another wire get a junction (design 022 §3.1, Q3).
-        let mut junction_ops = Vec::new();
-        let mut junctions = Vec::new();
-        let mut split: Vec<ConductorId> = Vec::new();
-        if junction {
-            let style = plain_style(p);
-            let doc = p.ledger.document();
-            let mut shown = ShownOnce::new(doc, page);
-            for (end, idx) in [(End::A, 0usize), (End::B, pts.len() - 1)] {
-                let Some(at) = pts.get(idx).copied() else { continue };
-                if shown.terminal_at(at, p.tolerance).is_some() {
-                    continue;
-                }
-                let Some(on) = crate::wires::wire_at(doc, page, at, crate::wires::ON_WIRE, None) else { continue };
-                if split.contains(&on.conductor) {
-                    continue;
-                }
-                let Ok(j) = crate::wires::plan_junction(doc, &mut p.ids, page, style.clone(), on) else { continue };
-                split.push(on.conductor);
-                if let Some(slot) = pts.get_mut(idx) {
-                    *slot = j.at;
-                }
-                junction_ops.extend(j.tagless.ops);
-                junction_ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(j.tagless.terminal) });
-                junctions.push(json!({"end": format!("{end:?}"), "junction": j.tagless.component.hex(), "at": [j.at.x, j.at.y]}));
-            }
-        }
-        let item = Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Polyline { vertices: pts.clone(), closed: false }) };
-        let mut ops = vec![
-            Op::CreateConductor { id: w, conductor },
-            Op::AddItem { id: i, item },
-            Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Conductor(w),
-                    page,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![i],
-                    connection_points: BTreeMap::new(),
-                },
-            },
-        ];
-        // Ends that land on a terminal attach, resolved now and recorded (TX-01).
-        // The page's terminal positions are listed once for both ends (brief 014).
-        let mut shown = ShownOnce::new(p.ledger.document(), page);
-        let mut attached = Vec::new();
-        for (end, at) in [(End::A, pts.first().copied()), (End::B, pts.last().copied())] {
-            if let Some(t) = at.and_then(|at| shown.terminal_at(at, p.tolerance)) {
-                ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(t) });
-                attached.push(json!({"end": format!("{end:?}"), "terminal": t.hex()}));
-            }
-        }
-        ops.extend(junction_ops);
-        p.apply_edit(pg, "wire", "Wire", ops)?;
-        let doc = p.ledger.document();
-        let conn = doc.connectivity();
-        let number = conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n));
-        let mut r = json!({"conductor": w.hex(), "item": i.hex(), "attached": attached, "potential": potential, "number": number});
-        if !junctions.is_empty() {
-            r["junctions"] = json!(junctions);
-        }
-        Ok(r)
-    })
-}
-
 fn route_and_end(p: &Project, page: PageId, c: ConductorId, end: End) -> Result<(ItemId, Item, Pt), String> {
     let doc = p.ledger.document();
     let (id, _) = ecad_model::derive::route_on_page(doc, c, page).ok_or("the conductor has no route on this page")?;
@@ -598,6 +509,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
         None => return Err(err("`value` is required (a string, or null to clear the property)")),
     };
+    // Brief 031 (§10.6): `text.` keys are written by the text commands only.
+    if crate::text_style::is_reserved_key(&key) {
+        return Err(err(crate::text_style::RESERVED_KEY));
+    }
     // Several devices at once (brief 019, the Properties panel): one transaction for all.
     if params.get("components").is_some() {
         let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;
@@ -646,6 +561,27 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
+            // Brief 036 (§12, FP4): the registry's terminal defaults on a strip, and a level's label.
+            (ObjectRef::Component(c), k) if k.starts_with("terminal.") && crate::strips::is_strip(doc, c) => {
+                match crate::defaults::terminals::setprop_value(k, value.as_deref()) {
+                    Some(r) => r?,
+                    None => value,
+                }
+            }
+            (ObjectRef::Component(c), k) if k.starts_with(crate::terminal_types::LABEL_PREFIX) && crate::strips::is_strip(doc, c) => {
+                match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+                    None => None,
+                    Some(v) if v.chars().count() > crate::terminal_types::MAX_LABEL_CHARS || v.chars().any(char::is_control) => {
+                        return Err(format!(
+                            "A level's label is 1 to {} characters, with no control characters.",
+                            crate::terminal_types::MAX_LABEL_CHARS
+                        ));
+                    }
+                    Some(v) => Some(v.to_string()),
+                }
+            }
+            // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
+            (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,
             // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
             (ObjectRef::Component(c), _) => match crate::accessories::setprop_rule(doc, c, &key, value.as_deref())? {
                 Some(v) => v,
@@ -688,6 +624,14 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
                     if let Some(v) = crate::accessories::setprop_rule(doc, *c, k, value.as_deref())? {
                         out = v;
                     }
+                }
+                out
+            }
+            // Brief 034: `rating.<n>` only on fuse banks that have fuse `<n>`.
+            k if crate::symbols::is_rating_key(k) => {
+                let mut out = None;
+                for c in &cs {
+                    out = crate::symbols::setprop_rule(doc, ObjectRef::Component(*c), k, value.as_deref())?;
                 }
                 out
             }
@@ -998,6 +942,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     let from = slash_point(params, "from").map_err(err)?;
     let to = slash_point(params, "to").map_err(err)?;
     let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
+    let existing: Option<CableId> = opt_id(params, "cable").map_err(err)?;
     with_project(s, |p, pg, page| {
         if from.near(to, p.tolerance) {
             return Err("`from` and `to` must differ".into());
@@ -1009,6 +954,15 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         }
         if found.members.is_empty() {
             return Err(slash::no_wires(found.ignored.len()));
+        }
+        // Brief 032 §3.3: an existing cable's ID or tag continues that cable on this page.
+        let existing = match existing {
+            Some(k) if doc.cables.contains_key(&k) => Some(k),
+            Some(_) => return Err("no such cable".into()),
+            None => tag.as_deref().and_then(|t| crate::references::cable_tagged(doc, t)),
+        };
+        if let Some(k) = existing {
+            return crate::references::run_slash_continue(p, pg, page, k, from, to, &found);
         }
         let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
         if !blocked.is_empty() {

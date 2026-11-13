@@ -42,8 +42,7 @@ use ecad_model::{
 use serde_json::{Value, json};
 
 use crate::access::PagesRef;
-use crate::project::{HandleMap, Mapped, Persistence, Project, project_page_with};
-use crate::verify::verify_page_with;
+use crate::project::{HandleMap, Mapped, Persistence, Project};
 
 /// Selected handles described per snapshot (the rest are counted).
 pub const MAX_SELECTION: usize = 500;
@@ -524,6 +523,8 @@ impl Project {
             pages,
             views: self.views.clone(),
             tolerance: self.tolerance,
+            hidden_text: self.show_hidden_text,
+            pending: self.pending,
         }
     }
 }
@@ -537,6 +538,10 @@ pub struct ProjectionInputs {
     /// Cables shown in fan view: the fresh projection uses the same views (design 005 §8).
     pub views: std::collections::BTreeSet<ecad_model::CableId>,
     pub tolerance: f64,
+    /// Show Hidden Text (brief 031): the fresh projection draws hidden texts the same way.
+    pub hidden_text: bool,
+    /// Brief 033: the project's pending flag, so the fresh frame shows the same Rev box.
+    pub pending: bool,
 }
 
 /// One open page's drawing and handle map.
@@ -808,8 +813,17 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     }
     for p in &inputs.pages {
         let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.clone());
-        let same = project_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance)
-            .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
+        let same = crate::project::project_page_pending(
+            &inputs.doc,
+            p.id,
+            &p.drawing,
+            &p.map,
+            &inputs.views,
+            inputs.tolerance,
+            inputs.hidden_text,
+            inputs.pending,
+        )
+        .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
             Ok(true) => lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len())),
             Ok(false) => {
@@ -821,7 +835,16 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
                 lines.push(format!("page {title}: projection failed: {e}"));
             }
         }
-        let v = verify_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance);
+        let v = crate::verify::verify_page_pending(
+            &inputs.doc,
+            p.id,
+            &p.drawing,
+            &p.map,
+            &inputs.views,
+            inputs.tolerance,
+            inputs.hidden_text,
+            inputs.pending,
+        );
         ok &= v.ok();
         lines.push(format!("page {title}: {}", v.summary()));
     }

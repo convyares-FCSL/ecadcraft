@@ -1179,10 +1179,10 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
 }
 
 /// The next free tag with `prefix` (above `high` and every tag already given out here).
-fn next_tag(prefix: &str, high: &mut HighWater, padding: u8) -> String {
+fn next_tag(prefix: &str, high: &mut HighWater, style: tag::Style) -> String {
     let n = high.get(prefix).copied().unwrap_or(0).saturating_add(1);
     high.insert(prefix.to_string(), n);
-    tag::format(prefix, n, padding)
+    tag::format(prefix, n, style)
 }
 
 /// What holds a tag in the merged state.
@@ -1280,7 +1280,8 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
     for x in &present {
         tag::note(&mut high, x);
     }
-    let padding = m.settings.tag_padding;
+    // Brief 033: the merged project's tag style (padding, dash, case).
+    let style = tag::Style::of(m);
     let mut out = BTreeSet::new();
     let mut done: BTreeSet<String> = BTreeSet::new();
     let ours: Vec<Holder> = objects
@@ -1322,7 +1323,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         // Provisional duplicates were never issued: the source's takes the next one, silently.
         if let Some((p, _)) = tag::provisional(&tag_text) {
             let n = top_provisional(m, &p).saturating_add(1);
-            src.set_tag(m, tag::format_provisional(&p, n));
+            src.set_tag(m, style.provisional(&p, n));
             // The indexed copy is stale now (reviewer 026, 5): rebuilt when next needed.
             indexed = None;
             out.insert(src.obj());
@@ -1331,7 +1332,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         }
         let prefix = tag::parse(&tag_text).map(|p| p.0);
         let fresh = match &prefix {
-            Some(p) => next_tag(p, &mut high, padding),
+            Some(p) => next_tag(p, &mut high, style),
             None => format!("{tag_text}-2"),
         };
         let id = format!("rule/tag/{key}");

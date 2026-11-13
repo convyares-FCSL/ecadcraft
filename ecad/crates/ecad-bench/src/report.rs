@@ -25,6 +25,10 @@ pub struct Row {
     pub strips: Option<crate::strips::MeasuredStrips>,
     /// The pre-release check and the release on that file (brief 027).
     pub release: Option<crate::release::MeasuredRelease>,
+    /// Text placement and styles on that file (brief 031).
+    pub text: Option<crate::text::MeasuredText>,
+    /// Wire joins, cable continuation and wire labels on that file (brief 032).
+    pub wires: Option<crate::wires_nets::MeasuredWires>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -332,6 +336,24 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         ));
     }
     for r in rows {
+        let Some(t) = &r.text else { continue };
+        out.push_str(&format!(
+            "
+Texts on {} {} (densest page: {} symbols, {} texts): textplace {:.2} ms (large: < 25), textstyle {:.1} ms              (large: < 1.2 x propredraw {:.1} ms)
+",
+            r.tier, r.variant, t.symbols, t.texts, t.textplace_ms, t.textstyle_ms, t.propredraw_ms
+        ));
+    }
+    for r in rows {
+        let Some(w) = &r.wires else { continue };
+        out.push_str(&format!(
+            "
+Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {:.2} ms (as junction {:.2} ms),              lnet {:.2} ms (within 10% of leach {:.2} ms; {} routes on the densest page), ccont {:.2} ms (50 cores, < 20)
+",
+            r.tier, r.variant, w.wmerge_ms, w.wopen_ms, w.jjoin_ms, w.junction_ms, w.lnet_ms, w.leach_ms, w.routes, w.ccont_ms
+        ));
+    }
+    for r in rows {
         let Some(t) = &r.strips else { continue };
         out.push_str(&format!(
             "\nTerminal strips on {} {} ({} strips, {} terminals, {} cables): stripbuild {:.1} ms (target < 50), \
@@ -358,6 +380,12 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
              linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
             t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
         ));
+        // Brief 036 (design 036 §11.3).
+        out.push_str(&format!(
+            "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
+             toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
+            t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -368,11 +396,12 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
     }
     if let Some(p) = print {
         out.push_str(&format!(
-            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets), release {:.2} s ({} sheets, {} files; \
+            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets, {} KB), release {:.2} s ({} sheets, {} files; \
              target 5 s), rerelease {:.2} s\n",
             p.pages,
             p.print_ms / 1000.0,
             p.print_sheets,
+            p.print_bytes.div_ceil(1024),
             p.release_s,
             p.sheets,
             p.files,
@@ -455,7 +484,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
     let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
     let print_v = print.map(|p| {
         json!({
-            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "release_s": p.release_s,
+            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "print_bytes": p.print_bytes, "release_s": p.release_s,
             "rerelease_s": p.rerelease_s, "sheets": p.sheets, "files": p.files,
         })
     });
@@ -569,9 +598,15 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     })).collect::<Vec<_>>(),
                 })),
             });
+            // Brief 031: added here, as the macro above is at its recursion limit.
+            if let Some(o) = row.as_object_mut() {
+                o.insert("text".into(), r.text.as_ref().map_or(Value::Null, text_json));
+            }
             if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
                 o.extend(extra);
             }
+            // Brief 032 (set apart, as brief 025's columns).
+            row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
             row
         }).collect::<Vec<_>>(),
     });
@@ -622,9 +657,27 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
 
 /// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
 /// limit.
+/// Brief 031's row as JSON.
+fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
+    json!({
+        "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
+        "symbols": t.symbols, "texts": t.texts,
+    })
+}
+
 fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     serde_json::json!({
         "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
         "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+        "lvlfence_ms": t.lvlfence_ms, "lvlplace_ms": t.lvlplace_ms, "lvlsep_ms": t.lvlsep_ms, "lvlsep_work": t.lvlsep_work,
+        "toposition_ms": t.toposition_ms, "lvltrenum_ms": t.lvltrenum_ms,
+    })
+}
+
+/// Brief 032's row as JSON (outside the report's one `json!`, which is at the macro's depth).
+fn wires_json(w: &crate::wires_nets::MeasuredWires) -> serde_json::Value {
+    json!({
+        "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "junction_ms": w.junction_ms, "jjoin_ms": w.jjoin_ms,
+        "lnet_ms": w.lnet_ms, "leach_ms": w.leach_ms, "routes": w.routes, "ccont_ms": w.ccont_ms,
     })
 }

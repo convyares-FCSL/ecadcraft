@@ -1141,7 +1141,7 @@ fn options(params: &Value) -> Result<Options, String> {
         Some(_) => return Err("`colour` is \"mono\" (black on white) or \"screen\"".into()),
     };
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
-    Ok(Options { mono, lineweights })
+    Ok(Options { mono, lineweights, pending: false })
 }
 
 /// The tags of the cables shown fan (the manifest's `cable_views`).

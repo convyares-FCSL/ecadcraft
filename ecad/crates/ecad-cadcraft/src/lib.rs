@@ -37,6 +37,7 @@ pub mod checks;
 pub mod commands;
 pub mod convert;
 pub mod debug;
+pub mod defaults;
 mod device_cmds;
 pub mod device_list;
 pub mod devices;
@@ -45,6 +46,7 @@ pub mod frame;
 pub mod generated;
 pub mod history;
 pub mod interact;
+pub mod level_cmds;
 pub mod link_lines;
 pub mod locations;
 pub mod look;
@@ -65,6 +67,9 @@ pub mod slash;
 pub mod strips;
 pub mod symbols;
 pub mod terminal_cmds;
+pub mod terminal_types;
+pub mod text_cmds;
+pub mod text_style;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]

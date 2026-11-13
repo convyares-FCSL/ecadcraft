@@ -228,6 +228,9 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     after.wiring.digits = 3;
     after.wiring.colour_style = ecad_model::wiring::ColourStyle::ThreeLetter;
     after.wiring.label_height = 2.5;
+    // Brief 032 (FP-W1): the label rule and the shortest labelled wire.
+    after.wiring.label_rule = ecad_model::wiring::LABEL_RULE_EACH.into();
+    after.wiring.label_min_length = 10.0;
     after.wiring.potentials.retain(|p| p.name != "PE");
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
@@ -286,4 +289,19 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     assert_eq!(opened.ledger.document(), f.ledger.document());
     assert_eq!(opened.ledger.document().settings, after);
     assert_eq!(opened.ledger.document().folders[&folder], renamed);
+}
+
+/// Brief 032 (FP-W1): wiring settings written before the label rule existed read with its
+/// defaults.
+#[test]
+fn wiring_settings_without_the_label_rule_read_with_its_defaults() {
+    // At their defaults the two fields are left out (review of #65, finding 4), like their
+    // neighbours; such a record reads back with the defaults.
+    let v = serde_json::to_value(ecad_file::v1::WiringSettings::from(&ecad_model::wiring::WiringSettings::default())).unwrap();
+    let o = v.as_object().unwrap();
+    assert!(!o.contains_key("label_rule") && !o.contains_key("label_min_length"), "{v}");
+    let read: ecad_file::v1::WiringSettings = serde_json::from_value(v).unwrap();
+    let w = ecad_model::wiring::WiringSettings::from(read);
+    assert_eq!(w.label_rule, ecad_model::wiring::DEFAULT_LABEL_RULE);
+    assert_eq!(w.label_min_length, ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH);
 }
