@@ -1020,7 +1020,7 @@ fn cables(
             pen.line((a + 0.8, ay + 1.2), (*a, ay));
             let mut names: Vec<(String, Option<String>)> =
                 far.iter().filter_map(|f| o.device(*f)).map(|d| (d.tag.clone(), d.description.clone().filter(|x| !x.trim().is_empty()))).collect();
-            names.sort_by(|x, y| crate::locations::natural_key(&x.0).cmp(&crate::locations::natural_key(&y.0)));
+            names.sort_by_key(|x| crate::locations::natural_key(&x.0));
             let room = Some((ay - 1.0 - fr.b).max(2.0));
             let shown = names.len().min(MAX_FAR_DEVICES);
             for (n, (t, d)) in names.iter().take(MAX_FAR_DEVICES).enumerate() {

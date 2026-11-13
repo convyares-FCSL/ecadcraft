@@ -588,8 +588,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     // Brief 030.
                     "acc": acc_json(t),
                     // Brief 046.
-                    "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
-                    "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work,
+                    "spage": spage_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
@@ -671,6 +670,14 @@ fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
     json!({
         "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
         "symbols": t.symbols, "texts": t.texts,
+    })
+}
+
+/// Brief 046's rows (its own object: one `json!` would pass the macro's recursion limit).
+fn spage_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
+    json!({
+        "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
+        "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work,
     })
 }
 
