@@ -119,3 +119,19 @@ are.
 | **terminal label** | What the page and the plan show for one level: the position, the separator and the level name (`1.L`), or the level's own label. |
 | **internal bridge** | Levels of one position joined inside the block by its type (a bridged two-level terminal). |
 | **free level** | A level of a drawn position that no symbol draws yet. |
+
+## PLC racks and cards (brief 045)
+
+| Word | Means |
+| --- | --- |
+| **rack** | A CPU or a head (interface) module and the cards in its slots. The rack **is** the head device: no new object. |
+| **slot** | A numbered place in a rack. A card is in at most one slot. |
+| **card** | A device in a slot (or in none yet): an input, output, analogue, RTD, IO-Link, power or communication module. Its type comes from its card body. |
+| **card type** | DI, DQ, AI, AO, RTD, IOL, PS, PM, CM. |
+| **channel** | One input or output of a card: one or more **channel points**, one per **role**. |
+| **role** | What a channel point is: `in`, `out`, `+`, `-`, `I+`, `S+`, `S-`, `I-`, `L+`, `C/Q`, `L-`. |
+| **pin** | The label printed at a channel point and typed after the tag (`-A02:4`): the point's connection point label. |
+| **channel number** | The channel's index shown from the card's first number (0 or 1): `channel 3`. |
+| **address** | What the PLC program calls the channel: automatic by slot and channel (`I2.3`, `%IX2.3`, `I:3/03`), or typed. |
+| **spare** | A channel with no wire and no description. **Reserved**: no wire, but a description. |
+| **I/O list** | One row per channel of every card: rack, slot, card, channel, address, pins, description, what it is wired to, wire number, place. |

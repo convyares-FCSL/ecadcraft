@@ -38,7 +38,16 @@ pub fn columns() -> Vec<Column> {
 
 /// Whether a check's row shows a count rather than a place (`12 wires`).
 pub fn count_row(k: Kind) -> bool {
-    matches!(k, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount | Kind::NoAccessoryPart)
+    matches!(
+        k,
+        Kind::Unnumbered
+            | Kind::ProvisionalWires
+            | Kind::NoPartNumber
+            | Kind::NoLocation
+            | Kind::NoCoreCount
+            | Kind::NoAccessoryPart
+            | Kind::Unracked
+    )
 }
 
 /// The button labels of a fix.
@@ -64,6 +73,9 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::MoveToNewPosition(_) => cp::MOVE_NEW_POSITION,
         Fix::LevelMissing(..) => cp::DROP_MISSING_LEVELS,
         Fix::FuseDevices => cp::MAKE_STRIP_POSITION,
+        // Brief 045: the pairs are in `cp::pair`.
+        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
+        Fix::Plc(..) => cp::MOVE_TO_FREE_SLOT,
     }]
 }
 

@@ -777,7 +777,13 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             }
         }
         if remaining.is_empty() {
+            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
+            let (released, n) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            ops.extend(released);
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+            if n > 0 {
+                notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
+            }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
@@ -835,6 +841,8 @@ pub enum TextOf {
     Description,
     /// A device's part number under its tag (brief 031, hidden by default).
     PartNumber,
+    /// Brief 045 (design 045 §7.2): a PLC card body's caption, its rack and slot.
+    Caption,
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -897,7 +905,7 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
-        TextOf::Description => TextKind::Description,
+        TextOf::Description | TextOf::Caption => TextKind::Description,
         TextOf::PartNumber => TextKind::PartNumber,
     }
 }
@@ -1055,6 +1063,10 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
                 moved,
                 overlaps: false,
             });
+        }
+        // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
+        if let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
+            out.push(text);
         }
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };

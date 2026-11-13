@@ -300,6 +300,8 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // An inherited location (brief 024) reads the main symbol's page (its boxes and
         // `location`) and the project's.
         v.deps.insert(ObjectRef::Project);
+        // Brief 045: a card's Rack row shows its rack's tag.
+        v.deps.extend(k.devices.iter().filter_map(|c| crate::plc::props_deps(doc, *c)));
         for c in &k.devices {
             if let Some((_, r)) = crate::locations::main_rep(doc, *c) {
                 v.deps.insert(ObjectRef::Page(r.page));
@@ -494,7 +496,11 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
-        (true, Some(c)) => xref_rows(doc, c, symbol, &mut rows, &mut buttons),
+        (true, Some(c)) => {
+            xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+            // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
+            crate::plc::props_rows(doc, c, &mut rows);
+        }
         _ => {}
     }
     Section {
@@ -948,6 +954,13 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     // Brief 031: a Texts row writes its visibility with `showtext`.
     if let Some(line) = showtext_line(target, key, value) {
+        return line;
+    }
+    // Brief 045: a card's Rack and Slot rows write `plcslot`.
+    if let Target::Devices(cs) = target
+        && let [c] = cs.as_slice()
+        && let Some(line) = crate::plc::edit_line(*c, key, value)
+    {
         return line;
     }
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));

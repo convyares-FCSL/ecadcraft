@@ -476,7 +476,17 @@ pub(crate) fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Re
             for (t, term) in doc.terminals_of(c) {
                 ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
             }
+            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
+            let released = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            ops.extend(released.0);
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+            if released.1 > 0 {
+                let tag = crate::devices::tag_words(doc, c);
+                p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
+                let message = format!("Deleted {tag}; {}", crate::plc::rack::released_words(released.1));
+                pg.echo(message.clone());
+                return Ok(json!({"deleted": true, "released": released.1, "message": message}));
+            }
         } else if let Ok(k) = id::<CableId>(params, "cable") {
             // Design 004 §8 (owner answer O3): the members leave, the slashes go, every conductor
             // stays.
@@ -587,6 +597,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                     }
                     Some(v) => Some(v.to_string()),
                 }
+            }
+            // Brief 045 (FP1, FP3): a card's rack, slot and channel count.
+            (ObjectRef::Component(c), k) if crate::plc::rack::setprop_value(doc, c, k, None).is_some() => {
+                crate::plc::rack::setprop_value(doc, c, k, value.as_deref()).unwrap_or(Ok(None))?
             }
             // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
             (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,

@@ -145,10 +145,18 @@ pub enum Kind {
     UnknownColour,
     /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
     DashesLeftOut,
+    /// Brief 045 (design 045 §9): two cards in one slot of a rack.
+    SlotTwice,
+    /// A card naming a rack that is not in the project.
+    RackMissing,
+    /// A card in a slot its rack does not have (or in a rack but no slot).
+    SlotRange,
+    /// PLC cards in no rack (one count row).
+    Unracked,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 43] = [
+    pub const ALL: [Kind; 47] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -192,6 +200,10 @@ impl Kind {
         Kind::NoFuseRating,
         Kind::UnknownColour,
         Kind::DashesLeftOut,
+        Kind::SlotTwice,
+        Kind::RackMissing,
+        Kind::SlotRange,
+        Kind::Unracked,
     ];
 
     /// The JSON name.
@@ -240,6 +252,10 @@ impl Kind {
             Kind::NoFuseRating => "no-fuse-rating",
             Kind::UnknownColour => "unknown-colour",
             Kind::DashesLeftOut => "dashes-left-out",
+            Kind::SlotTwice => "slot-twice",
+            Kind::RackMissing => "rack-missing",
+            Kind::SlotRange => "slot-range",
+            Kind::Unracked => "unracked",
         }
     }
 
@@ -294,14 +310,22 @@ impl Kind {
             Kind::NoFuseRating => "Fuse positions without a rating",
             Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
             Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
+            Kind::SlotTwice => "Two cards in one slot",
+            Kind::RackMissing => "Card names a rack that is not in the project",
+            Kind::SlotRange => "Card in a slot its rack does not have",
+            Kind::Unracked => "PLC cards in no rack",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice | Kind::LevelTwice => {
-                Severity::Error
-            }
+            Kind::JoinsPotentials
+            | Kind::SharedNumber
+            | Kind::TwoFixed
+            | Kind::DuplicateTag
+            | Kind::TerminalTwice
+            | Kind::LevelTwice
+            | Kind::SlotTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -325,7 +349,9 @@ impl Kind {
             | Kind::ContinuationClash
             | Kind::PositionMixed
             | Kind::LevelMissing
-            | Kind::DashesLeftOut => Severity::Warning,
+            | Kind::DashesLeftOut
+            | Kind::RackMissing
+            | Kind::SlotRange => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -393,6 +419,9 @@ pub enum Fix {
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
+    /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
+    /// ([`crate::plc::Plc::fix_commands`]).
+    Plc(ComponentId, crate::plc::PlcFix),
 }
 
 /// One row of the Checks list.

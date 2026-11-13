@@ -1,6 +1,7 @@
 # Brief 045c: The I/O list
 
-Status: Draft (designer, 2026-11-13)
+Status: Approved (owner, 2026-11-13: design 045 §15 Q1–Q17 answered "as recommended"; FP1–FP7
+approved by the overseer, 2026-11-13, design §14; FP1's four conditions are 045a's criterion 10)
 Branch: `feature/plc`, after 045b.
 Designer: **yes** (`docs/design/045.md`, §8, §11.2 c-rows) · Size: M
 Roadmap: M1 item **1.3(c)**. Its row model is what the PLC manager (2.8) later edits.

@@ -339,6 +339,11 @@ pub const STARTERS: &[Starter] = &[
     lvl("termsensor", "Sensor terminal", SENSOR, mt(18)),
     lvl("termdisc", "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
     lvl("termfuse", "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
+    // ---- Brief 045 (design 045 §3.1): a head module (a rack of its own), a power module and a
+    // communication module, as 034's card bodies.
+    card("plcim", "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
+    card("plcpm", "PLC power module", &["plc", "pm", "power", "card"], pc(10)),
+    card("plccm", "PLC communication module", &["plc", "cm", "communication", "fieldbus", "card"], pc(11)).quiet_at(Quiet::All),
 ];
 
 // Brief 036's aliases.
@@ -551,6 +556,8 @@ pub enum TextRole {
     Rating,
     /// The rating of a fuse bank's fuse, by its label (`rating.<n>`).
     RatingOf(String),
+    /// Brief 045 (design 045 §7.2): a card body's caption (`-A01 slot 2`), under the body.
+    Caption,
 }
 
 /// Horizontal alignment of text at its anchor.
@@ -610,10 +617,12 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             a(TextRole::Description, lo.x - ANCHOR_GAP, mid - 2.0 * ANCHOR_LINE, HAlign::Right, VAlign::Top),
         ],
         // Card bodies: the tag above, the description inside under the header.
+        // Brief 045 (design 045 §7.2): and the caption under the body.
         _ if s.family == Family::Plc => vec![
             a(TextRole::Tag, lo.x, hi.y + ANCHOR_GAP, HAlign::Left, VAlign::Bottom),
             a(TextRole::Description, -13.0, 12.0, HAlign::Left, VAlign::Top),
             rating,
+            a(TextRole::Caption, lo.x, lo.y - ANCHOR_GAP, HAlign::Left, VAlign::Top),
         ],
         _ if s.family == Family::Connectors => vec![tag, description],
         _ => vec![tag, description, rating],
@@ -873,6 +882,9 @@ fn card_type(key: &str) -> Option<&'static str> {
         "plcao" => "AO",
         "plcrtd" => "RTD",
         "plciol" => "IOL",
+        "plcim" => "IM",
+        "plcpm" => "PM",
+        "plccm" => "CM",
         _ => return None,
     })
 }
@@ -1150,6 +1162,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
         ],
         // ---- Brief 034 stage 3b (design 034 §6).
         "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
+        "plccm" => card_body("CM", &[(-5.0, -25.0), (5.0, -25.0)]),
         k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
         _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
@@ -1209,6 +1222,9 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         // ---- Brief 034 stage 3b.
         "plcps" => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
         "plccpu" | "plcdi" | "plcdq" | "plcai" | "plcao" | "plcrtd" | "plciol" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
+        // ---- Brief 045 (design 045 §3.1).
+        "plcim" | "plcpm" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
+        "plccm" => vec![t("P1", -5.0, -25.0), t("P2", 5.0, -25.0)],
         _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
@@ -1276,8 +1292,8 @@ mod tests {
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
         // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
-        // multi-level terminals (20).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20);
+        // multi-level terminals (20), brief 045's modules (3).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1354,6 +1370,10 @@ mod tests {
         ("plcao", 30.0, 45.0, "L+/M"),
         ("plcrtd", 30.0, 45.0, "L+/M"),
         ("plciol", 30.0, 45.0, "L+/M"),
+        // Brief 045 (design 045 §3.1).
+        ("plcim", 30.0, 45.0, "L+/M"),
+        ("plcpm", 30.0, 45.0, "L+/M"),
+        ("plccm", 30.0, 45.0, "P1/P2"),
     ];
 
     #[test]
@@ -1494,7 +1514,7 @@ mod tests {
         assert_eq!(keys("-Q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
         // A bare letter is also a substring of an alias (`dq`).
         assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq"]);
-        assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol"]);
+        assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol", "plcim", "plcpm", "plccm"]);
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
         assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
         assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
