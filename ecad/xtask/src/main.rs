@@ -4,7 +4,9 @@
 //!   only UI crates and apps may use UI toolkits (principle P10, proposal §8). Developer tools
 //!   (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product crate depends
 //!   on one except through its own `dev` feature, dev features are read only in a crate's `dev`
-//!   module, and no product source reads a file under `dev/`.
+//!   module, and no product source reads a file under `dev/`. ECAD's interface kit (`ecad-ui`,
+//!   class UiKit) uses egui and `ecad-tokens` only, and ECAD UI sources do not style locally
+//!   (design `ui-architecture.md` §2–§3.2, brief 037).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
@@ -35,6 +37,10 @@ enum Class {
     Adapter,
     /// May use anything.
     Ui,
+    /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
+    /// egui_extras and the token crate, but no `cadcraft-*` crate and no other ECAD crate, so the
+    /// widgets stay swappable, build for wasm and test without wgpu.
+    UiKit,
     /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
     /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
     Dev,
@@ -47,6 +53,8 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-file", Class::Core),
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
+    ("ecad-tokens", Class::Core),
+    ("ecad-ui", Class::UiKit),
     ("ecad-bench", Class::Adapter),
     ("ecad-cli", Class::Ui),
     ("ecad-trial", Class::Ui),
@@ -74,10 +82,34 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-cadcraft/src/translate.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
+/// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
+/// §3.2, brief 037): colours, sizes and fonts come from `ecad-tokens` through `ecad-ui`.
+const LOCAL_STYLE: &[&str] = &["Color32::from_rgb", "Color32::from_gray", "FontId::new", "CornerRadius", "Rounding::"];
+
+/// ECAD UI files that still style locally, with the brief that restyles them (design §3.2). This
+/// list only shrinks: an entry whose file no longer needs it fails `layers`, and a new file that
+/// styles locally is a violation.
+const STYLE_ALLOWLIST: &[(&str, &str)] = &[
+    ("apps/ecad-trial/src/checks_panel.rs", "039 (U3): Checks becomes a table"),
+    ("apps/ecad-trial/src/debugger.rs", "developer tool: restyled when U2 moves the Developer section"),
+    ("apps/ecad-trial/src/devices_panel.rs", "039 (U3): Devices becomes a table"),
+    ("apps/ecad-trial/src/history_panel.rs", "038 (U2) moves it; restyled by U4d"),
+    ("apps/ecad-trial/src/merge_dialog.rs", "restyled with History (U4d)"),
+    ("apps/ecad-trial/src/outputs_ui.rs", "restyled with Publish (after U2)"),
+    ("apps/ecad-trial/src/preview.rs", "restyled with the page view (U4a)"),
+    ("apps/ecad-trial/src/project_panel.rs", "038 (U2): the left panel"),
+    ("apps/ecad-trial/src/release_ui.rs", "restyled with Publish (after U2)"),
+    ("apps/ecad-trial/src/renumber_dialog.rs", "restyled with Lists (after U3)"),
+    ("apps/ecad-trial/src/sheets_ui.rs", "restyled with Publish (after U2)"),
+];
+
 const UI_CRATES: &[&str] = &["cadcraft-ui-egui", "craft-ui", "egui", "eframe", "egui-wgpu", "wgpu", "winit", "rfd"];
 
 /// Library crates that must build for wasm.
-const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-cadcraft"];
+const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-cadcraft", "ecad-tokens", "ecad-ui"];
+
+/// What a UiKit crate may depend on, besides dev-dependencies (design §2).
+const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens"];
 
 fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
@@ -150,12 +182,13 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let bad = match class {
                 Class::Core => (cadcraft || ui) && !dev,
                 Class::Adapter => ui && !dev,
+                Class::UiKit => !dev && !UIKIT_ALLOWED.contains(&dep),
                 Class::Ui | Class::Dev | Class::Exempt => false,
             };
             if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
-            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui);
+            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui | Class::UiKit);
             if product
                 && class_of(dep) == Some(Class::Dev)
                 && let Some(why) = dev_dependency_problem(p, d, dep)
@@ -205,6 +238,17 @@ fn dev_feature_places(rel: &str, text: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// The places in one ECAD UI source file (`rel`, `/` separated) that style locally
+/// ([`LOCAL_STYLE`]), as `rel:line: text`; comment lines and `//` comments are skipped.
+fn local_style_places(rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    code.lines()
+        .enumerate()
+        .filter(|(_, l)| LOCAL_STYLE.iter().any(|p| l.contains(p)))
+        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
+        .collect()
 }
 
 /// A path as components, `.` and `..` resolved (never above the start).
@@ -331,9 +375,11 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
+    let mut style_used: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
-        if !matches!(class_of(name), Some(Class::Core | Class::Adapter | Class::Ui)) {
+        let class = class_of(name);
+        if !matches!(class, Some(Class::Core | Class::Adapter | Class::Ui | Class::UiKit)) {
             continue;
         }
         let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
@@ -350,6 +396,20 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                 _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
             }
             out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
+            if class == Some(Class::Ui) {
+                let places = local_style_places(&rel, &text);
+                match STYLE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                    Some((path, _)) if !places.is_empty() => {
+                        style_used.insert(path);
+                    }
+                    _ => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from ecad-tokens through ecad-ui)"))),
+                }
+            }
+        }
+    }
+    for (path, brief) in STYLE_ALLOWLIST {
+        if !style_used.contains(path) {
+            out.push(format!("{path}: in the local-styling allowlist ({brief}) but no longer needs it; remove the entry"));
         }
     }
     for (path, brief) in DEV_FEATURE_ALLOWLIST {
@@ -940,5 +1000,81 @@ mod tests {
         let inv = "| File | Why |\n| --- | --- |\n| `crates/engine/src/lib.rs` | X3 |\n| `README.md` | ours |\n";
         assert_eq!(inventory(inv), vec!["crates/engine/src/lib.rs", "README.md"]);
         assert_eq!(upstream_commit("x\nCommit: `00c7613` (0.6.2)\n").as_deref(), Some("00c7613"));
+    }
+
+    /// Design §2 (brief 037 criterion 3): the UiKit crate may use egui, epaint, egui_extras and
+    /// ecad-tokens only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
+    /// violation.
+    #[test]
+    fn the_ui_kit_uses_egui_and_the_tokens_only() {
+        let kit = |deps: Value| serde_json::json!({"packages": [{"name": "ecad-ui", "dependencies": deps}], "workspace_root": ""});
+        let rows: &[(Value, usize, &str)] = &[
+            (
+                serde_json::json!([{"name": "egui", "kind": null}, {"name": "ecad-tokens", "kind": null}, {"name": "egui_extras", "kind": null}]),
+                0,
+                "allowed",
+            ),
+            (serde_json::json!([{"name": "egui_kittest", "kind": "dev"}]), 0, "a test-only dependency"),
+            (serde_json::json!([{"name": "cadcraft-ui-egui", "kind": null}]), 1, "a CADCraft crate"),
+            (serde_json::json!([{"name": "cadcraft-fonts", "kind": null}]), 1, "a CADCraft crate below the UI"),
+            (serde_json::json!([{"name": "ecad-model", "kind": null}]), 1, "another ECAD crate"),
+            (serde_json::json!([{"name": "eframe", "kind": null}]), 1, "an app shell"),
+        ];
+        for (deps, n, what) in rows {
+            let v = layer_violations(&kit(deps.clone())).unwrap();
+            assert_eq!(v.len(), *n, "{what}: {v:?}");
+        }
+    }
+
+    /// Design §3.2 (brief 037 criterion 3): ECAD UI sources take colours, sizes and fonts from the
+    /// tokens; local styling is found, comments are not.
+    #[test]
+    fn local_styling_is_found() {
+        let rows: &[(&str, usize)] = &[
+            ("let c = egui::Color32::from_rgb(1, 2, 3);", 1),
+            (
+                "let c = Color32::from_gray(9);
+let f = FontId::new(12.0, FontFamily::Proportional);",
+                2,
+            ),
+            ("let r = egui::CornerRadius::same(4);", 1),
+            (
+                "// Color32::from_rgb(1, 2, 3) in a comment
+let c = ecad_ui::color(SHELL.text);",
+                0,
+            ),
+            ("let c = theme::tokens().text; // not Color32::from_rgb", 0),
+        ];
+        for (text, n) in rows {
+            assert_eq!(local_style_places("apps/ecad-trial/src/x.rs", text).len(), *n, "{text}");
+        }
+    }
+
+    /// A UI file not in the allowlist that styles locally fails `layers`; one in it does not.
+    #[test]
+    fn a_new_ui_file_that_styles_locally_fails_layers() {
+        let root = std::env::temp_dir().join(format!("ecad-xtask-style-{}", std::process::id()));
+        let src = root.join("apps").join("ecad-trial").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("new_panel.rs"),
+            "fn f() -> egui::Color32 { egui::Color32::from_rgb(1, 2, 3) }
+",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("checks_panel.rs"),
+            "fn f() -> egui::Color32 { egui::Color32::from_gray(7) }
+",
+        )
+        .unwrap();
+        let meta = serde_json::json!({
+            "workspace_root": root.to_string_lossy(),
+            "packages": [{"name": "ecad-trial", "manifest_path": root.join("apps").join("ecad-trial").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
+        });
+        let v = source_violations(&meta).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
+        assert!(!v.iter().any(|m| m.starts_with("apps/ecad-trial/src/checks_panel.rs:")), "allowlisted: {v:?}");
     }
 }

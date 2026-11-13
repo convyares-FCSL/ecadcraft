@@ -4,7 +4,9 @@
 //! - the ECAD command field (`name {json}` forms) with **Run** and the reply under it (the
 //!   template buttons of Tool Sets fill this field);
 //! - the read-only debugger ([`crate::debugger`]) drawn inline;
-//! - **Inspect Project**: a readable, copyable summary of the project.
+//! - **Inspect Project**: a readable, copyable summary of the project;
+//! - `ui.primitives`: the hidden page showing every primitive of `ecad-ui` in every state (brief
+//!   037), for screenshots; it needs no project.
 //!
 //! Everything here reads, except the command field, which runs commands through the ordinary
 //! command path. Excluded: a separate debugger panel or command window.
@@ -21,6 +23,8 @@ pub const FIELD: &str = "ECAD command";
 pub const DEBUGGER: &str = "Debugger";
 pub const INSPECT: &str = "Inspect Project";
 pub const SNAPSHOT: &str = "Export Inspector Snapshot";
+/// The primitives showcase's button (brief 037), named as its page.
+pub const PRIMITIVES: &str = ecad_ui::showcase::PAGE;
 
 /// What the section asks the trial for.
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +48,8 @@ pub enum Body {
     None,
     Debugger,
     Inspect,
+    /// The primitives showcase (brief 037).
+    Primitives,
 }
 
 /// The section's state (the command field's text lives in the trial, as the template buttons
@@ -56,6 +62,8 @@ pub struct Developer {
     pub reply: Vec<String>,
     /// The project summary, from Inspect Project.
     pub inspect: Option<String>,
+    /// What the primitives showcase's live widgets edit.
+    pub showcase: ecad_ui::showcase::Showcase,
 }
 
 /// Everything the section draws, borrowed from the trial.
@@ -102,6 +110,10 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
                 if p.snapshots && ui.small_button(SNAPSHOT).on_hover_text(crate::SNAPSHOT_NOTE).clicked() {
                     out.push(Action::Snapshot);
                 }
+            }
+            let showing = p.dev.body == Body::Primitives;
+            if ui.selectable_label(showing, RichText::new(PRIMITIVES).small()).on_hover_text("Every interface primitive in every state").clicked() {
+                p.dev.body = if showing { Body::None } else { Body::Primitives };
             }
         });
         if toggled {
@@ -158,6 +170,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
                     });
                 }
             }
+            Body::Primitives => ecad_ui::showcase::show(ui, &mut p.dev.showcase),
             _ => {}
         }
     });

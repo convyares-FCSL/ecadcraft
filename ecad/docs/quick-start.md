@@ -11,13 +11,29 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > (brief 016; there is no top banner any more). An **ECAD** tab in Tool Sets has buttons for the
 > ECAD commands; most work by clicking, with prompts at CADCraft's command line. A **Developer** section at the bottom of the
 > panel (folded) holds the ECAD command field for JSON forms, the read-only debugger (stage 2b)
-> drawn inline, Inspect Project's summary and snapshot export; none of them is shown unless you
-> unfold it.
+> drawn inline, Inspect Project's summary, snapshot export and the `ui.primitives` page (every
+> interface widget in every state, brief 037); none of them is shown unless you unfold it.
 
 **Words:** a device's landing point for a wire is a **connection point** (`-K01:A1`); a
 **terminal** is only the DIN-rail terminal device (`-X01:1`). See `ecad/docs/glossary.md`.
 
 ## Which revision this describes, and what has been tried
+
+**Brief 037 (UI tokens, primitives and fonts, U1), on `feature/ui-tokens`, not yet in `dev`:**
+interface text is drawn in **IBM Plex Sans** (embedded, so present on every machine), and egui's
+widgets take the Graphite shell colours from the one token table (`ecad/docs/design/tokens.md`).
+The layout is unchanged; panels look slightly different (font, colours, 13 px body text). Unfold
+**Developer** at the bottom of the PROJECT panel and click **ui.primitives** to see every primitive
+(buttons, icon buttons, pills, chips, badges, fields, segmented control, key caps, rows, read and
+provisional values) in every state, with the shell colours and the type ramp; compare it with the
+spec's Tokens board. Barlow Semi Condensed is embedded for the sheet but not drawn yet (U4a).
+- *Automated checks:* `ecad/crates/ecad-tokens/tests/all/` (tokens.md equals the constants,
+  contrast, what prints, cap heights), `ecad/crates/ecad-ui/tests/all/` (each primitive found by
+  its label, the disabled reason, the focus ring, read values, icons, embedded fonts and their
+  hashes), `ecad/xtask` (`layers`: the UI kit's dependencies, no local styling) and CADCraft's
+  `crates/ui-egui/tests/font_definitions.rs` (seam US2).
+- *Agent-observed:* the worker took a screenshot of the showcase in the trial; no one has clicked
+  through it.
 
 **Brief 034 (design `ecad/docs/design/034.md`), on `feature/component-library`, not yet in
 `dev`:** the built-in symbols grow from 21 to 81 so a control-panel pack needs no hand-drawn boxes:
