@@ -1,6 +1,6 @@
 # Brief 040: The canvas (U4a)
 
-Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
+Status: Approved (Carl, 2026-11-13).
 Branch: `feature/ui-canvas`, from `origin/dev` **after the redraw fix has merged** (below).
 Designer: done (`docs/design/ui-architecture.md` §1.5, §4, §11; the look is spec §4 "Canvas
 colours", "Type", "Line weights") · Size: L, in five steps
