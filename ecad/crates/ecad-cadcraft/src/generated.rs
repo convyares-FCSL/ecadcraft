@@ -667,13 +667,15 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                 }
                 m.into_iter().collect::<String>().trim_end().to_string()
             };
-            if r.spare() {
+            // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+            let pe_mark = r.pe && !r.ty.multi();
+            if r.terminal.is_none() {
                 let mut cells = vec![String::new(); TERMINAL_COLUMNS.len()];
                 if let Some(c) = cells.get_mut(0) {
-                    *c = "spare".into();
+                    *c = r.state().into();
                 }
                 if let Some(c) = cells.get_mut(2) {
-                    *c = if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) };
+                    *c = if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) };
                 }
                 if let Some(c) = cells.get_mut(3) {
                     *c = links.clone();
@@ -687,8 +689,8 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                 let inside = r.inside.get(i);
                 let outside = r.outside.get(i);
                 let q = |v: Option<&String>| v.cloned().unwrap_or_else(|| "?".into());
-                let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
-                let label = if r.pe { format!("{label} PE") } else { label };
+                let label = if i == 0 { format!("{}{marker}", r.shown) } else { format!("{}\u{2032}", r.shown) };
+                let label = if pe_mark { format!("{label} PE") } else { label };
                 let cable = outside.and_then(|c| c.cable.as_ref());
                 let starts = cable.is_some_and(|(k, _)| last_cable != Some(*k));
                 last_cable = cable.map(|(k, _)| *k);

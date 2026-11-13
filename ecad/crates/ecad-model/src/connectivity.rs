@@ -209,9 +209,30 @@ fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
 }
 
 /// The terminals bridged to `t` inside its device.
+///
+/// Brief 036 (FP8a): for a level terminal (key `.n`) the groups are those of the definitions of
+/// the symbols that show it, and only terminals of the same component with the **same label**
+/// (one position) are joined; any other terminal keeps the rule of brief 022 (the component's own
+/// definition, the whole device).
 fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let Some(key) = term.key.as_deref() else { return Vec::new() };
+    if key.starts_with('.') {
+        let mut keys: BTreeSet<&str> = BTreeSet::new();
+        for (_, r) in doc.representations_showing(t) {
+            if let Some(def) = doc.rep_definition(r) {
+                keys.extend(def.bridged_with(key));
+            }
+        }
+        if keys.is_empty() {
+            return Vec::new();
+        }
+        return doc
+            .terminals_of(term.component)
+            .filter(|(id, x)| *id != t && x.label == term.label && x.key.as_deref().is_some_and(|k| keys.contains(k)))
+            .map(|(id, _)| id)
+            .collect();
+    }
     let Some(def) = doc.components.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
         return Vec::new();
     };
@@ -292,8 +313,7 @@ impl Connectivity {
         for (id, comp) in &doc.components {
             for (_, p) in crate::links::of(&comp.properties) {
                 let m = crate::links::Matcher::of(&p);
-                let members: Vec<TerminalId> =
-                    doc.terminals_of(*id).filter(|(_, x)| x.label.as_deref().is_some_and(|l| m.matches(l))).map(|(t, _)| t).collect();
+                let members: Vec<TerminalId> = doc.terminals_of(*id).filter(|(_, x)| m.matches_terminal(x)).map(|(t, _)| t).collect();
                 for w in members.windows(2) {
                     if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
                         link_edges.entry(*a).or_default().push(*b);
@@ -528,6 +548,19 @@ impl Connectivity {
         }
     }
 
+    /// The level terminals a symbol representation shows when its definition has bridges (brief
+    /// 036): the nodes whose bridge edges depend on it.
+    pub(crate) fn bridged_shown(doc: &Document, r: &crate::doc::Representation) -> Vec<TerminalId> {
+        if doc.rep_definition(r).is_none_or(|d| d.bridges.is_empty()) {
+            return Vec::new();
+        }
+        r.connection_points
+            .keys()
+            .filter(|t| doc.terminals.get(t).and_then(|x| x.key.as_deref()).is_some_and(|k| k.starts_with('.')))
+            .copied()
+            .collect()
+    }
+
     /// The terminals of `component` (present ones).
     fn terminals_of(doc: &Document, component: ComponentId) -> Vec<Node> {
         doc.terminals_of(component).map(|(t, _)| Node::Terminal(t)).collect()
@@ -546,6 +579,7 @@ impl Connectivity {
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
     /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
+    /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` of a symbol whose definition has bridges (brief 036, FP8a) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
         match op {
@@ -579,6 +613,21 @@ impl Connectivity {
                 for comp in doc.components_using(*id) {
                     for t in Self::terminals_of(doc, comp) {
                         self.cut_around(doc, &t);
+                    }
+                }
+            }
+            // Brief 036: a bridged level symbol going (or changing) cuts its position's levels apart.
+            Op::UnlinkRepresentation { id, .. } => {
+                if let Some(r) = doc.representations.get(id) {
+                    for t in Self::bridged_shown(doc, r) {
+                        self.cut_around(doc, &Node::Terminal(t));
+                    }
+                }
+            }
+            Op::ModifyItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    for t in Self::bridged_shown(doc, r) {
+                        self.cut_around(doc, &Node::Terminal(t));
                     }
                 }
             }
@@ -648,6 +697,19 @@ impl Connectivity {
             Op::SetProperty { object: ObjectRef::Component(id), key, after, .. } if crate::links::link_number(key).is_some() => {
                 for t in crate::links::terminals_named(doc, *id, after.as_deref()) {
                     self.ensure(doc, Node::Terminal(t));
+                }
+            }
+            // Brief 036: a bridged level symbol joins its position's levels.
+            Op::LinkRepresentation { rep, .. } => {
+                for t in Self::bridged_shown(doc, rep) {
+                    self.ensure(doc, Node::Terminal(t));
+                }
+            }
+            Op::ModifyItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    for t in Self::bridged_shown(doc, r) {
+                        self.ensure(doc, Node::Terminal(t));
+                    }
                 }
             }
             _ => {}

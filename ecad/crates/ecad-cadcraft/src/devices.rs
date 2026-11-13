@@ -568,9 +568,16 @@ pub(crate) fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation
         Form::Symbol => {
             let Some((def, _)) = rep_definition(doc, r) else { return Vec::new() };
             if r.connection_points.is_empty() {
+                // A terminal no other symbol shows first (a joined terminal's key can equal the
+                // definition key, review M1 2.1), else the first with the key.
                 def.terminals
                     .iter()
-                    .filter_map(|td| doc.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| (t, td.at)))
+                    .filter_map(|td| {
+                        let with_key: Vec<TerminalId> =
+                            doc.terminals_of(c).filter(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| t).collect();
+                        let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
+                        Some((*t, td.at))
+                    })
                     .collect()
             } else {
                 let mut v: Vec<(TerminalId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
@@ -773,6 +780,11 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
+            // Brief 036 (review M1): a level's own label and a fuse position's rating go with
+            // the last terminal of their level or position, never left to come back later.
+            let (key_ops, key_notes) = crate::terminal_types::orphaned_key_ops(doc, c, &drop);
+            ops.extend(key_ops);
+            notes.extend(key_notes);
             // Brief 031 (FP5): an erased symbol's own text keys go with it.
             for (rid, _) in &reps {
                 for (key, value) in crate::text_style::symbol_text_keys(&component.properties, *rid) {
@@ -973,7 +985,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
-        if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
+        // Brief 036: a strip level shows its shown label (`1.L`), not its position.
+        if let Some(label) = crate::terminal_types::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
         }
     }

@@ -380,6 +380,12 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
              linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
             t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
         ));
+        // Brief 036 (design 036 §11.3).
+        out.push_str(&format!(
+            "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
+             toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
+            t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -663,6 +669,8 @@ fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     serde_json::json!({
         "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
         "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+        "lvlfence_ms": t.lvlfence_ms, "lvlplace_ms": t.lvlplace_ms, "lvlsep_ms": t.lvlsep_ms, "lvlsep_work": t.lvlsep_work,
+        "toposition_ms": t.toposition_ms, "lvltrenum_ms": t.lvltrenum_ms,
     })
 }
 

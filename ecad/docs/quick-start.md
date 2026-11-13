@@ -25,6 +25,7 @@ A lane writes only its own file; this list is brought up to date at the phase-en
 (`ecad/CLAUDE.md`, "Branches and testing"), so it can lag behind the folder.
 
 - [037: ui tokens](quick-start/037-ui-tokens.md)
+- [036: multi level terminals](quick-start/036-multi-level-terminals.md)
 - [035: mcp bridge](quick-start/035-mcp-bridge.md)
 - [034: component library](quick-start/034-component-library.md)
 - [033: print project](quick-start/033-print-project.md)
@@ -1726,9 +1727,15 @@ Your table of three clean runs goes here once you have run it.
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Multi-level terminals (brief 036):** no graphical strip pages yet (1.8) and no terminal
+  manager (2.6): Reports ▸ Terminals shows the rows, `stripplan` gives the row model with its
+  editable fields. A fuse position cannot be turned back into a device; fuse inserts are not on the
+  BOM. Labels, positions and ratings are set with `termlabel` and `setprop` typed at the command
+  line (no Properties fields or in-place plan cells yet); **Make strip position** is the Checks
+  row's button (no context menu entry yet).
 - **Strip accessories (brief 030):** accessories are placed by hand (no automatic rule yet); no
-  level jumpers, test plugs or rail parts; marker text is not printed; links join whole positions
-  (no levels). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
+  test plugs or rail parts; marker text is not printed; links join positions on one level or
+  levels of one position (brief 036). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
   a partition or a single marker with **Strip Accessory**); a link is extended, shortened or split
   through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
   generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).

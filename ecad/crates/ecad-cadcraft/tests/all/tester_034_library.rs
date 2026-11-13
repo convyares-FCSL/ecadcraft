@@ -388,9 +388,14 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
     assert_eq!(ids.len(), STARTERS.len(), "definition IDs unique");
     let keys: BTreeSet<&str> = STARTERS.iter().map(|s| s.key).collect();
     assert_eq!(keys.len(), STARTERS.len(), "keys unique");
-    let extra: Vec<&str> = STARTERS.iter().map(|s| s.key).filter(|k| !OLD.iter().any(|o| o.0 == *k) && !cat.iter().any(|e| e.key == *k)).collect();
+    // Brief 036's multi-level terminal starters (20) are design 036's.
+    let extra: Vec<&str> = STARTERS
+        .iter()
+        .map(|s| s.key)
+        .filter(|k| !OLD.iter().any(|o| o.0 == *k) && !cat.iter().any(|e| e.key == *k) && !ecad_cadcraft::terminal_types::is_level_starter(k))
+        .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len());
+    assert_eq!(STARTERS.len(), 21 + cat.len() + 20);
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.

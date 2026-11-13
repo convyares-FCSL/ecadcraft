@@ -223,6 +223,16 @@ fn short(hex: &str) -> &str {
 
 /// A terminal's name: its label, or `terminal <first 8 hex digits>`.
 pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
+    // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
+    match crate::terminal_types::shown_label(doc, t) {
+        Some(l) => l,
+        None => format!("connection point {}", short(&t.hex())),
+    }
+}
+
+/// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
+/// accessories and renumbering name. [`terminal_name`] is what a person sees.
+pub fn position_label(doc: &Document, t: TerminalId) -> String {
     match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),

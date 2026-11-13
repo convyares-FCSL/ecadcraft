@@ -638,6 +638,10 @@ fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     if key.starts_with("numbering.") {
         return Err(format!("\"{key}\" is reserved (Project settings → Numbering)."));
     }
+    // Brief 036: the registry's terminal defaults are project properties of their entry's key.
+    if key.starts_with("terminal.") && crate::defaults::find(key).is_some() {
+        return Ok(());
+    }
     let n = key.chars().count();
     if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
         return Err("A property name is 1 to 40 characters a-z, 0-9 or _.".into());
@@ -814,7 +818,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                     // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
                     Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {
                         Some(r) => r?,
-                        None => value(doc, k, Some(t))?,
+                        // Brief 036: the registry's terminal defaults (`""` on the separator is none).
+                        None => match crate::defaults::terminals::setprop_value(k, Some(t)) {
+                            Some(r) => r?,
+                            None => value(doc, k, Some(t))?,
+                        },
                     },
                     _ => return Err(format!("`props.{k}` must be a string, or null to clear it")),
                 };
