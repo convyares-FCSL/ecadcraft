@@ -12,7 +12,6 @@ use crate::common::id;
 /// F: a fence across the eight input drops makes `-A03` channels 0–7, pins 1–8, keys `.<i>.in`, in
 /// one transaction; `u`/redo exact; the echo names card, channels, wires and pins.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn f_fence_makes_channels_0_to_7_in_one_transaction() {
     let (mut p, c) = with_cards(0x7045_f101);
     let a03 = c["-A03"];
@@ -42,7 +41,6 @@ fn f_fence_makes_channels_0_to_7_in_one_transaction() {
 /// F: Draw remaining channels (`rest`) draws 8–15 to the right as `Spare` cells, no wires, one
 /// transaction; `u` undoes it alone.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn f_rest_draws_the_remaining_channels_as_spare() {
     let (mut p, c) = with_cards(0x7045_f102);
     let a03 = c["-A03"];
@@ -73,7 +71,6 @@ fn f_rest_draws_the_remaining_channels_as_spare() {
 
 /// F (rest with `at`): the cells go where asked, on another page too.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn f_rest_at_a_point() {
     let (mut p, c) = with_cards(0x7045_f103);
     p.h.activate(p.outputs);
@@ -83,7 +80,6 @@ fn f_rest_at_a_point() {
 
 /// F: a fence with Card New and a type makes a new card (prefix A), no rack (design §4.4 rule 2).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn f_fence_new_card() {
     let mut p = fixture_p(0x7045_f104);
     p.h.activate(p.inputs);
@@ -99,7 +95,6 @@ fn f_fence_new_card() {
 
 /// G: `chai` twice with Device `-A05`: channels 0 and 1, pins `+` 1, 2 and `-` 5, 6 (role layout).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn g_ai_pins_role_layout() {
     let (mut p, c) = with_cards(0x7045_1e001);
     let a05 = c["-A05"];
@@ -117,7 +112,6 @@ fn g_ai_pins_role_layout() {
 /// G: with `plc.pins channel` on `-A05` first: 1, 2 / 3, 4. A drawn pin is never recomputed when
 /// the layout changes afterwards (Q4).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn g_ai_pins_channel_layout_and_never_rewritten() {
     let (mut p, c) = with_cards(0x7045_1e002);
     let a05 = c["-A05"];
@@ -138,7 +132,6 @@ fn g_ai_pins_channel_layout_and_never_rewritten() {
 
 /// G: RTD and IO-Link cells carry their four and three roles (design §4.1), role layout pins.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn g_rtd_and_iolink_roles() {
     let (mut p, c) = with_cards(0x7045_1e003);
     p.h.activate(p.iolink);
@@ -168,7 +161,6 @@ fn g_rtd_and_iolink_roles() {
 /// H: wrong type, a taken channel, a full card and a rack are each refused with their sentence; a
 /// compact `di` on `-A03` (0–7 drawn) joins as channel 8 with pin 9.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn h_refusals_and_compact_di_joins_as_next_channel() {
     let (mut p, c) = with_cards(0x7045_2e001);
     let a03 = c["-A03"];
@@ -208,7 +200,6 @@ fn h_refusals_and_compact_di_joins_as_next_channel() {
 /// H: a compact `do` on a DQ card joins as its next channel, role `out`; a lone `di` makes a new
 /// DI card (`-A` prefix) with channel 0, pin 1, key `.0.in` (FP7: not `I0.0`).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn h_compact_symbols_follow_fp7() {
     let (mut p, c) = with_cards(0x7045_2e002);
     p.h.activate(p.outputs);
@@ -228,7 +219,6 @@ fn h_compact_symbols_follow_fp7() {
 /// card: the next `di` skips it, a new channel 11 is refused as taken, and the label stays as
 /// stored; a hand-made file opens.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
     let (mut p, c) = with_cards(0x7045_5e001);
     let a04 = c["-A04"];
@@ -256,7 +246,6 @@ fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
 
 /// FP2: an old `do` key `Q2.7` reads as channel 23: on a 16-channel DQ that is `channel-over`.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp2_old_do_key_beyond_the_count_is_channel_over() {
     let (mut p, c) = with_cards(0x7045_5e002);
     let a07 = c["-A07"];
@@ -275,7 +264,6 @@ fn fp2_old_do_key_beyond_the_count_is_channel_over() {
 /// K: `plcchannel` text and typed address: one transaction each, both shown on the cell; the
 /// description reads upwards (rotation 90) by default; `null` clears; FP3 keys on the card.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn k_plcchannel_text_and_typed_address() {
     let (mut p, c) = with_cards(0x7045_5e003);
     let a03 = c["-A03"];
@@ -287,8 +275,9 @@ fn k_plcchannel_text_and_typed_address() {
     let texts = text_values(&mut p.h, p.inputs);
     assert!(texts.iter().any(|t| t == "I9.9"), "the typed address on the cell: {texts:?}");
     assert!(!texts.iter().any(|t| t == "I0.3"), "the typed address replaces the automatic one: {texts:?}");
-    let row = text_row(&mut p.h, p.inputs, "Door closed").expect("the description on the cell");
-    assert!(upright(&row), "rotated 90 by default: {row}");
+    assert!(text_row(&mut p.h, p.inputs, "Door closed").is_some(), "the description on the cell");
+    let r = drawn_rotation(&mut p.h, p.inputs, "Door closed").expect("drawn");
+    assert!((r.abs() - std::f64::consts::FRAC_PI_2).abs() < 1e-6 || (r.abs() - 90.0).abs() < 1e-6, "rotated 90 by default: {r}");
     let e = echo(&p.h, 3);
     assert!(e.contains("-A03 channel 3"), "{e}");
     step(&mut p.h, "plcchannel", json!({"card": a03.hex(), "channel": 3, "address": null}));
@@ -304,7 +293,6 @@ fn k_plcchannel_text_and_typed_address() {
 /// §4.6 pins: relabel a channel point (Remove + Add of the same ID and key, FP6); a duplicate,
 /// a space or 17 characters is refused with its sentence.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn k_plcchannel_relabels_pins() {
     let (mut p, c) = with_cards(0x7045_5e004);
     let a05 = c["-A05"];
@@ -337,7 +325,6 @@ fn k_plcchannel_relabels_pins() {
 /// channel is `spare`; one with a description and no wire is `reserved` and shows its description,
 /// not `Spare`.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn spare_and_reserved_are_derived() {
     let (mut p, c) = with_cards(0x7045_9e001);
     let a03 = c["-A03"];
@@ -364,7 +351,6 @@ fn spare_and_reserved_are_derived() {
 
 /// M: `channel-over`: channels drawn beyond `plc.channels`; **Raise to n** (`setprop`) clears it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_channel_over_and_raise() {
     let (mut p, c) = with_cards(0x7045_7e201);
     let a03 = c["-A03"];
@@ -381,7 +367,6 @@ fn m_channel_over_and_raise() {
 /// M: `channel-twice` (a merge or a hand-made file draws channel 3 twice): an Error naming both
 /// places; go-to on the second cell; moving one to a free channel clears it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_channel_twice_from_a_hand_made_file() {
     let (mut p, c) = with_cards(0x7045_7e202);
     let a03 = c["-A03"];
@@ -400,7 +385,6 @@ fn m_channel_twice_from_a_hand_made_file() {
 /// M: `channel-type` is a known kind (constructing it needs a hand-made file whose ops the design
 /// does not name; phase 2 adds a case if the build gives a simple one).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_channel_type_kind_is_known() {
     let (mut p, _) = with_cards(0x7045_7e203);
     assert!(p.h.run("checks", json!({"kinds": ["channel-type"]})).is_ok());
@@ -414,7 +398,6 @@ fn m_channel_type_kind_is_known() {
 /// `{rack} Slot{slot:02}` gives `-A01 Slot02`; `plc.text.caption.show off` on a card hides its
 /// caption only.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn l_registry_switches_change_only_inheriting_cards() {
     let (mut p, c) = with_cards(0x7045_6e001);
     fence_inputs(&mut p, c["-A03"]);
@@ -428,8 +411,8 @@ fn l_registry_switches_change_only_inheriting_cards() {
     assert!(!t.iter().any(|x| x == "I0.0"), "inheriting -A03 hides: {t:?}");
     assert!(t.iter().any(|x| x == "I2.0"), "-A04's own on stays: {t:?}");
     step(&mut p.h, "setdefault", json!({"key": "plc.text.channel.rotation", "level": "project", "value": "0"}));
-    let row = text_row(&mut p.h, p.inputs, "Door closed").expect("description");
-    assert!(!upright(&row), "flat at 0: {row}");
+    let r = drawn_rotation(&mut p.h, p.inputs, "Door closed").expect("description");
+    assert!(r.abs() < 1e-9, "flat at 0: {r}");
     step(&mut p.h, "setdefault", json!({"key": "plc.card.caption", "level": "project", "value": "{rack} Slot{slot:02}"}));
     let cap = text_values(&mut p.h, p.cpu_page);
     assert!(cap.iter().any(|x| x == "-A01 Slot02"), "{cap:?}");
@@ -441,7 +424,6 @@ fn l_registry_switches_change_only_inheriting_cards() {
 
 /// L: `plc.channel.first 1` on a card shifts the shown channel number, never a terminal key.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn l_channel_first_changes_no_terminal() {
     let (mut p, c) = with_cards(0x7045_6e002);
     fence_inputs(&mut p, c["-A03"]);
@@ -462,7 +444,6 @@ fn l_channel_first_changes_no_terminal() {
 /// T (b): hostile channel keys in a hand-made file, hostile counts and texts, a fence across 300
 /// wires (more than 256 crossings): a refusal in words or a Checks row, never a panic.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn t_hostile_channel_keys_and_texts() {
     let (mut p, c) = with_cards(0x7045_ae201);
     let a03 = c["-A03"];
@@ -493,7 +474,6 @@ fn t_hostile_channel_keys_and_texts() {
 /// T (b): a fence across 300 wires is refused like 028's Place Terminals (at most 256 crossings)
 /// and writes nothing.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn t_fence_across_300_wires_is_refused() {
     let mut p = fixture_p(0x7045_ae202);
     let page = p.h.doc().page_order[0];

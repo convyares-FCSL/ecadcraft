@@ -164,12 +164,13 @@ pub(crate) fn text_row(h: &mut H, page: PageId, v: &str) -> Option<Value> {
     page_texts(h, page).into_iter().find(|r| r["value"] == v)
 }
 
-/// Whether a text's box is taller than wide (rotated 90°).
-pub(crate) fn upright(r: &Value) -> bool {
-    let b = &r["box"];
-    let (w, hgt) =
-        (b[1][0].as_f64().unwrap_or(0.0) - b[0][0].as_f64().unwrap_or(0.0), b[1][1].as_f64().unwrap_or(0.0) - b[0][1].as_f64().unwrap_or(0.0));
-    hgt > w
+/// The rotation of the drawn text whose value is `v` on `page` (the page drawing's entity; the
+/// `pagetexts` box is not rotated).
+pub(crate) fn drawn_rotation(h: &mut H, page: PageId, v: &str) -> Option<f64> {
+    h.pv(|p, pg| pg.entities_of(p, page)).iter().find_map(|e| match &e.kind {
+        cadcraft_engine::doc::EntityKind::Text(t) if t.value == v => Some(t.rotation),
+        _ => None,
+    })
 }
 
 /// `plcracks`: the rack entry whose tag is `t`.

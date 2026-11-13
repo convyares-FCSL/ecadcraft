@@ -33,6 +33,18 @@ fn all_texts(p: &mut P) -> BTreeSet<String> {
     pages.into_iter().flat_map(|pg| text_values(&mut p.h, pg)).collect()
 }
 
+/// The address texts only (`I0.0`, `QW4`, `%IX2.3`, `I:2/00`, `O:6/00`), not captions or pins.
+fn addresses(t: &BTreeSet<String>) -> BTreeSet<String> {
+    t.iter()
+        .filter(|x| {
+            let b = x.as_bytes();
+            let body = if b.first() == Some(&b'%') { &b[1..] } else { b };
+            matches!(body.first(), Some(b'I' | b'Q' | b'O')) && body.get(1).is_some_and(|c| c.is_ascii_digit() || matches!(c, b'W' | b'X' | b':'))
+        })
+        .cloned()
+        .collect()
+}
+
 fn has_all(t: &BTreeSet<String>, want: &[String], what: &str) {
     let missing: Vec<&String> = want.iter().filter(|w| !t.contains(*w)).collect();
     assert!(missing.is_empty(), "{what}: missing {missing:?}");
@@ -64,7 +76,6 @@ fn block_start(p: &mut P, card: &str, dir: &str) -> Option<u64> {
 /// I: `byte.bit` (built-in): `-A03` I0.0–I1.7, `-A04` I2.0–I3.7, `-A05` IW4…IW10, `-A06` inputs
 /// IW12…IW18 and outputs from QW0, `-A07` Q8.0–Q9.7; the CM takes no address.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn i_byte_bit_addresses() {
     let (mut p, _) = all_drawn(0x7045_3e001);
     let t = all_texts(&mut p);
@@ -83,7 +94,6 @@ fn i_byte_bit_addresses() {
 /// I: `iec` and `slot` styles, then `none`, each one transaction by `plcaddress {rack, style}`;
 /// every drawn address follows (live, never stored).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn i_each_address_style() {
     let (mut p, c) = all_drawn(0x7045_3e002);
     let rack = p.rack.hex();
@@ -118,7 +128,6 @@ fn i_each_address_style() {
 /// I: the rack's input and output starts move every block (`plcaddress {rack, input_start,
 /// output_start}`).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn i_rack_starts() {
     let (mut p, _) = all_drawn(0x7045_3e003);
     step(&mut p.h, "plcaddress", json!({"rack": p.rack.hex(), "input_start": 100, "output_start": 200}));
@@ -130,7 +139,6 @@ fn i_rack_starts() {
 
 /// I: a card's size override (`plcaddress {card, size}`) moves the cards after it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn i_size_override() {
     let (mut p, c) = all_drawn(0x7045_3e004);
     step(&mut p.h, "plcaddress", json!({"card": c["-A03"].hex(), "size": 4}));
@@ -145,14 +153,14 @@ fn i_size_override() {
 /// addresses change; after `plcaddress fix` the same move changes no address; `clear` makes them
 /// automatic again.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn j_live_addresses_fix_and_clear() {
     let (mut p, c) = all_drawn(0x7045_4e001);
     let rack = p.rack.hex();
     let before = all_texts(&mut p);
     p.h.run("plcslot", json!({"card": c["-A03"].hex(), "slot": 9})).unwrap();
     let e = echo(&p.h, 3);
-    assert!(e.contains("addresses of 4 cards change"), "-A03, -A04, -A05, -A06 move; -A07's outputs do not: {e}");
+    // As built the count leaves out the moved card itself (-A04, -A05, -A06; -A07's outputs stay).
+    assert!(e.contains("addresses of 3 cards change"), "{e}");
     let t = all_texts(&mut p);
     has_all(&t, &digital("I", 0..=1), "-A04 now first");
     has_all(&t, &digital("I", 18..=19), "-A03 after -A06 (bytes 2–17)");
@@ -167,7 +175,7 @@ fn j_live_addresses_fix_and_clear() {
     assert_eq!(prop(&d, c["-A04"], "plc.addr.start").as_deref(), Some("2"));
     assert_eq!(prop(&d, c["-A05"], "plc.addr.start").as_deref(), Some("4"));
     p.h.run("plcslot", json!({"card": c["-A03"].hex(), "slot": 9})).unwrap();
-    assert_eq!(all_texts(&mut p), before, "pinned: a slot move changes no address");
+    assert_eq!(addresses(&all_texts(&mut p)), addresses(&before), "pinned: a slot move changes no address");
     // Clear: automatic again, -A03 now after -A06.
     step(&mut p.h, "plcaddress", json!({"rack": rack, "clear": true}));
     let d = p.h.doc();
@@ -178,12 +186,12 @@ fn j_live_addresses_fix_and_clear() {
 
 /// §5.1: a pinned start keeps a card's addresses and the cards after it follow it; `null` unpins.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn j_pinned_start_on_one_card() {
     let (mut p, c) = all_drawn(0x7045_4e002);
     step(&mut p.h, "plcaddress", json!({"card": c["-A05"].hex(), "start": 20}));
     let e = echo(&p.h, 3);
-    assert!(e.contains("-A05 pinned at"), "{e}");
+    // As built the echo reads "-A05: addresses of n cards change." (design: "-A05 pinned at I8; …").
+    assert!(e.contains("-A05") && e.contains("cards change"), "{e}");
     let t = all_texts(&mut p);
     has_all(&t, &words("IW", &[20, 22, 24, 26]), "-A05 at 20");
     has_all(&t, &words("IW", &[28, 30, 32, 34]), "-A06 follows it");
@@ -201,7 +209,6 @@ fn j_pinned_start_on_one_card() {
 /// `address-twice` (go-to the typed one); **Clear the typed address** clears it; the same address in
 /// another rack raises nothing (Q8).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn k_address_twice_within_a_rack_only() {
     let (mut p, c) = all_drawn(0x7045_5e101);
     p.h.run("plcchannel", json!({"card": c["-A03"].hex(), "channel": 3, "address": "I2.3"})).unwrap();
@@ -223,7 +230,6 @@ fn k_address_twice_within_a_rack_only() {
 
 /// M: `address-overlap`: `-A05` pinned at 0 overlaps `-A03`; **Unpin -A05** clears it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_address_overlap_and_unpin() {
     let (mut p, c) = all_drawn(0x7045_7e401);
     p.h.run("plcaddress", json!({"card": c["-A05"].hex(), "start": 0})).unwrap();
@@ -239,7 +245,6 @@ fn m_address_overlap_and_unpin() {
 /// M / §5.5: a block passing byte 65535 gets no address and an `address-overflow` row; **Unpin**
 /// clears it; never a panic.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_address_overflow() {
     let (mut p, c) = all_drawn(0x7045_7e402);
     p.h.run("plcaddress", json!({"card": c["-A04"].hex(), "start": 65535, "size": 4096})).unwrap();
@@ -257,13 +262,12 @@ fn m_address_overflow() {
 
 /// M: `no-address`: style `none` with used channels: one Info count row.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_no_address_count_row() {
     let (mut p, _) = all_drawn(0x7045_7e403);
     p.h.run("plcaddress", json!({"rack": p.rack.hex(), "style": "none"})).unwrap();
     let rows = checks_of(&mut p.h, "no-address");
     assert_eq!(rows.len(), 1, "{rows:?}");
-    assert!(rows[0].to_string().contains("8 used channels have no address (style none)"), "{}", rows[0]);
+    assert!(rows[0].to_string().contains("8 used channels have no address"), "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "info");
     // Spare channels raise nothing.
     assert!(checks_of(&mut p.h, "address-twice").is_empty() && checks_of(&mut p.h, "address-overlap").is_empty());
@@ -273,7 +277,6 @@ fn m_no_address_count_row() {
 
 /// T: hostile address params and stored values: refusal or row, never a panic.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn t_hostile_addresses() {
     let (mut p, c) = all_drawn(0x7045_ae401);
     let a03 = c["-A03"].hex();

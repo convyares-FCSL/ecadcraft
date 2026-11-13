@@ -155,7 +155,6 @@ fn plc_rack_writes_by_the_agent_then_refused_with_writes_off() {
 }
 
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn plc_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t045 Schaltpl\u{e4}ne mit Leerzeichen");
     let path = dir.file("SPS -A01 (Rack).ecad");
