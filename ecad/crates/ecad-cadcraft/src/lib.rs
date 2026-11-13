@@ -66,6 +66,7 @@ pub mod numbering_cmds;
 pub mod oops;
 pub mod output_cmds;
 pub mod outputs;
+pub mod plc;
 pub mod preview;
 pub mod printbook;
 pub mod project;

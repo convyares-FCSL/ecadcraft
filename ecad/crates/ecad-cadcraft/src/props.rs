@@ -307,6 +307,8 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // An inherited location (brief 024) reads the main symbol's page (its boxes and
         // `location`) and the project's.
         v.deps.insert(ObjectRef::Project);
+        // Brief 045: a card's Rack row shows its rack's tag.
+        v.deps.extend(k.devices.iter().filter_map(|c| crate::plc::props_deps(doc, *c)));
         for c in &k.devices {
             if let Some((_, r)) = crate::locations::main_rep(doc, *c) {
                 v.deps.insert(ObjectRef::Page(r.page));
@@ -314,7 +316,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
         match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
-            _ => v.sections.push(device_section(doc, &k.devices, k.symbol)),
+            _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
         }
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
@@ -422,7 +424,9 @@ fn box_section(doc: &Document, b: ComponentId) -> Section {
     }
 }
 
-fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
+fn device_section(
+    doc: &Document, plc: Option<&crate::plc::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
+) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
@@ -503,7 +507,12 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
         (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
         // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
         (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
-        (true, Some(c)) => xref_rows(doc, c, symbol, &mut rows, &mut buttons),
+        (true, Some(c)) => {
+            xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+            // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
+            crate::plc::props_rows(doc, c, &mut rows);
+            crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
+        }
         (false, _) if devices.iter().all(|c| crate::continuations::is_continuation(doc, *c)) => {
             continuation_rows(doc, devices, None, &mut rows, &mut buttons);
         }
@@ -983,6 +992,13 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     // Brief 031: a Texts row writes its visibility with `showtext`.
     if let Some(line) = showtext_line(target, key, value) {
+        return line;
+    }
+    // Brief 045: a card's Rack and Slot rows write `plcslot`.
+    if let Target::Devices(cs) = target
+        && let [c] = cs.as_slice()
+        && let Some(line) = crate::plc::edit_line(*c, key, value)
+    {
         return line;
     }
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));

@@ -29,6 +29,8 @@ pub struct Row {
     pub text: Option<crate::text::MeasuredText>,
     /// Wire joins, cable continuation and wire labels on that file (brief 032).
     pub wires: Option<crate::wires_nets::MeasuredWires>,
+    /// PLC racks and cards on that file (brief 045).
+    pub plc: Option<crate::plc::MeasuredPlc>,
 }
 
 /// The measured columns: JSON key, table heading.
@@ -401,6 +403,15 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
         ));
     }
     for r in rows {
+        let Some(t) = &r.plc else { continue };
+        out.push_str(&format!(
+            "
+PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.2} ms (< 16; {} racks and cards recomputed),              chfence {:.2} ms (< 16), plcstyle {:.2} ms (< 16), iolist {:.2} ms ({} rows; < 50), iolistupd {:.2} ms (< 5)
+",
+            r.tier, r.variant, t.racks, t.cards, t.plcbuild_ms, t.slotmove_ms, t.work, t.chfence_ms, t.plcstyle_ms, t.iolist_ms, t.rows, t.iolistupd_ms
+        ));
+    }
+    for r in rows {
         let Some(o) = &r.release else { continue };
         out.push_str(&format!(
             "\nRelease check on {} {} ({} check rows): prerelease {:.2} ms, orphanupd {:.2} ms (orphan work {:.3} ms)\n",
@@ -622,6 +633,12 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             }
             // Brief 032 (set apart, as brief 025's columns).
             row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
+            // Brief 045 (set apart, as brief 025's columns).
+            row["plc"] = r.plc.as_ref().map_or(Value::Null, |t| {
+                json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
+                    "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
+                    "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows})
+            });
             // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
             row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {
                 let b = &o.bom;

@@ -184,6 +184,9 @@ pub(crate) fn catalogue() -> Vec<Sym> {
 }
 
 /// The 21 starters of 018/022/028 with their definition IDs and prefixes, as on `dev` `6729c8f1`.
+/// Brief 045's starters (design 045 §3.1, §4.1), not design 034's.
+pub(crate) const BRIEF_045: &[&str] = &["plcim", "plcpm", "plccm", "chdi", "chdq", "chai", "chao", "chrtd", "chiol"];
+
 const OLD: [(&str, u128, &str); 21] = [
     ("coil", 1, "K"),
     ("no", 2, "K"),
@@ -392,12 +395,17 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
     let extra: Vec<&str> = STARTERS
         .iter()
         .map(|s| s.key)
-        .filter(|k| !OLD.iter().any(|o| o.0 == *k) && !cat.iter().any(|e| e.key == *k) && !ecad_cadcraft::terminal_types::is_level_starter(k))
+        .filter(|k| {
+            !OLD.iter().any(|o| o.0 == *k)
+                && !cat.iter().any(|e| e.key == *k)
+                && !ecad_cadcraft::terminal_types::is_level_starter(k)
+                && !BRIEF_045.contains(k)
+        })
         // Brief 044's connector pins (design 044 §3.2).
         .filter(|k| !matches!(*k, "pinpair" | "pins" | "pinp"))
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3);
+    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key)).count());
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.
@@ -617,9 +625,10 @@ fn e_fixed_symbols_join_by_the_018_rules() {
     let a = place(&mut h, "plcdi", (250.0, 250.0));
     assert_eq!(a["tag"], json!("-A01"));
     let a1: ComponentId = id(&a, "component");
-    assert_eq!(labels(&join(&mut h, "di", (240.0, 200.0), a1).unwrap()), ["I0.0"]);
-    assert_eq!(labels(&join(&mut h, "di", (260.0, 200.0), a1).unwrap()), ["I0.1"]);
-    assert_eq!(device_labels(&h.doc(), a1), set(&["L+", "M", "I0.0", "I0.1"]));
+    // Brief 045 (FP7): channels are labelled with pins.
+    assert_eq!(labels(&join(&mut h, "di", (240.0, 200.0), a1).unwrap()), ["1"]);
+    assert_eq!(labels(&join(&mut h, "di", (260.0, 200.0), a1).unwrap()), ["2"]);
+    assert_eq!(device_labels(&h.doc(), a1), set(&["L+", "M", "1", "2"]));
 }
 
 // ---------------------------------------------------------------------------------------------

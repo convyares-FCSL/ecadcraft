@@ -740,6 +740,18 @@ pub const ACTIONS: &[Action] = &[
     search_only("numbering.renumber", "renumber", Params::App(App::Renumber), "Renumber", Icon::Number, &["tags", "devices"]),
     search_only("numbering.wires", "renumberwires", Params::App(App::RenumberWires), "Renumber wires", Icon::Number, &["wire numbers"]),
     search_only("numbering.finalise", "finalise", Params::App(App::Finalise), "Finalise numbering", Icon::Number, &["provisional"]),
+    // Brief 045 (design 045 §2.6, §4.8): the card commands, found with Ctrl+K until a card wheel.
+    search_only("plc.slot", "plcslot", Params::App(App::Template), "Card slot", Icon::Devices, &["plc", "rack", "card", "move card"]),
+    search_only(
+        "plc.channels",
+        "plcchannels",
+        Params::App(App::Template),
+        "Place channels",
+        Icon::Connect,
+        &["plc", "channel", "fence", "spare", "remaining"],
+    ),
+    search_only("plc.channel", "plcchannel", Params::App(App::Template), "Channel data", Icon::Edit, &["plc", "channel", "description", "pin"]),
+    search_only("plc.address", "plcaddress", Params::App(App::Template), "PLC addresses", Icon::Number, &["plc", "address", "fix addresses", "pin"]),
 ];
 
 const fn search_only(
@@ -802,6 +814,8 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
+    ("plcracks", "a read; the PLC manager (2.8) draws it"),
+    ("iolist", "a read; Lists ▸ I/O shows it"),
     // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),

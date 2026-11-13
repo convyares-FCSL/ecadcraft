@@ -70,14 +70,17 @@ pub enum GenKind {
     Terminals,
     /// Brief 028: the cable schedule.
     Cables,
+    /// Brief 045 (design 045 §8.2, FP5): the I/O list.
+    IoList,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 6] = [GenKind::Cover, GenKind::Contents, GenKind::Revisions, GenKind::BomLocation, GenKind::Terminals, GenKind::Cables];
+    pub const ALL: [GenKind; 7] =
+        [GenKind::Cover, GenKind::Contents, GenKind::Revisions, GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::IoList];
 
     /// Whether its content comes from the report models (built for it on first show).
     pub fn needs_outputs(self) -> bool {
-        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables)
+        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::IoList)
     }
 
     /// The stored value.
@@ -89,6 +92,7 @@ impl GenKind {
             GenKind::BomLocation => "bom-location",
             GenKind::Terminals => "terminals",
             GenKind::Cables => "cables",
+            GenKind::IoList => "iolist",
         }
     }
 
@@ -106,6 +110,7 @@ impl GenKind {
             GenKind::BomLocation => "BOM by location",
             GenKind::Terminals => "Terminal plan",
             GenKind::Cables => "Cable schedule",
+            GenKind::IoList => "I/O list",
         }
     }
 }
@@ -230,6 +235,8 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
+        // Brief 045c: each card from a new sheet, as the terminal plan.
+        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(ROWS_PER_SHEET)),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
 }
@@ -593,6 +600,16 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
         }
         // Brief 028 (design 028 §5.3), drawn by `terminal_rows`.
         GenKind::Terminals => (TERMINAL_COLUMNS.to_vec(), Vec::new()),
+        // Brief 045c (design 045 §8.2).
+        GenKind::IoList => {
+            let Some(o) = outputs else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
+            let mut rows: Vec<TRow> =
+                crate::plc::iolist::page_lines(doc, &o.plc).into_iter().map(|(heading, cells)| TRow { cells, heading, ..TRow::default() }).collect();
+            if rows.is_empty() {
+                rows.push(row(vec![String::new(), crate::plc::iolist::NO_CARDS.into()]));
+            }
+            (crate::plc::iolist::PAGE_COLUMNS.to_vec(), rows)
+        }
         GenKind::Cables => {
             let cols = vec![
                 ("Tag", 25.0),
@@ -837,7 +854,8 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     // The sheets as the sheet count makes them; a sheet starting inside a location block repeats it
     // as `(continued)`, which takes one of its rows.
     let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
-    let (start, end, prev_heading) = paginate_with(&heads, kind == GenKind::Terminals).get(i).cloned().unwrap_or((0, 0, None));
+    let (start, end, prev_heading) =
+        paginate_with(&heads, matches!(kind, GenKind::Terminals | GenKind::IoList)).get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
         d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
