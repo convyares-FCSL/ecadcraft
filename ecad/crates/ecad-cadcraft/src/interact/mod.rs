@@ -20,6 +20,7 @@
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
 mod accessories;
+mod connectors;
 // Brief 047: Reports ▸ BOM ▸ + Item.
 mod bom_item;
 mod devices;
@@ -51,6 +52,7 @@ use crate::views::{FanOnPage, View, fan_on_page};
 
 pub(crate) use accessories::{accessory, jumper};
 pub(crate) use bom_item::bomitem;
+pub(crate) use connectors::connector;
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use location_form::locationbox;
@@ -633,7 +635,11 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
         })
         .unwrap_or_default();
     let mut lines = vec![
-        format!("Connection point {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
+        // Brief 044 (tester D3): a connector pin by its half (`-X10.S:3`).
+        format!(
+            "Connection point {}",
+            crate::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
+        ),
         format!("of component {of}"),
         format!("id {}", t.hex()),
     ];

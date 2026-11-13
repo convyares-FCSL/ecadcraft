@@ -1862,6 +1862,21 @@ impl Trial {
             }
             // Brief 041: the page row's wheel.
             A::PageWheel(page, at) => self.open_page_wheel(page, at),
+            // Brief 044: the lone pins' mates, through Place ▸ Connector's prompts (connector,
+            // halves, draw), as a person answers them.
+            A::PlaceMates(c, side) => {
+                let tag = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                });
+                if let Some(tag) = tag {
+                    let half = if side == ecad_cadcraft::symbols::Side::Socket { "Socket" } else { "Plug" };
+                    for line in ["connector", tag.as_str(), half, "Pins"] {
+                        if self.run_line(line).is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
             A::AccessoryFix(fix, i) => {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {

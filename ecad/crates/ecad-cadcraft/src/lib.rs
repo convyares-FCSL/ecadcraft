@@ -40,6 +40,8 @@ pub mod agent_access;
 pub mod bom;
 pub mod checks;
 pub mod commands;
+pub mod connector_cmds;
+pub mod connectors;
 pub mod convert;
 pub mod debug;
 pub mod default_cmds;

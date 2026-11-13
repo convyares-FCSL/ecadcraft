@@ -1109,7 +1109,8 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
         let Some((def, pl)) = crate::devices::rep_definition(doc, r) else { continue };
         let Some((lo, hi)) = crate::devices::placed_box(def, &pl) else { continue };
         let class = match crate::devices::run_rule(doc, r) {
-            RunRule::Strip => 1,
+            // Brief 044: a connector's pins run per half, so each half tag shows once per run.
+            RunRule::Strip => crate::connectors::run_class(doc, r).unwrap_or(1),
             RunRule::Plc => 2,
             RunRule::None => {
                 // Other symbols: their starter (a definition ID otherwise), so only like with like.

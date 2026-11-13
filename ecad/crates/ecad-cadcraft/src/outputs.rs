@@ -422,6 +422,8 @@ pub struct Scope {
     styles: bool,
     /// Brief 030: project `strip_*` keys that changed (the strips inheriting them).
     strip_keys: BTreeSet<String>,
+    /// Brief 044: project `connector.*` keys that changed (the connectors inheriting them).
+    connector_keys: BTreeSet<String>,
     /// Brief 047: a `bom.*` report setting changed (no row work: the view is re-read).
     bom_view: bool,
 }
@@ -439,6 +441,7 @@ impl Scope {
             && !self.sheet
             && !self.styles
             && self.strip_keys.is_empty()
+            && self.connector_keys.is_empty()
             && !self.bom_view
     }
 
@@ -501,6 +504,10 @@ impl Scope {
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
                         self.strip_keys.insert(key.clone());
+                    }
+                    // Brief 044: the registry's `connector.*` defaults reach connectors.
+                    if key.starts_with("connector.") {
+                        self.connector_keys.insert(key.clone());
                     }
                     // Brief 047 (design 047 §10): the BOM's report settings.
                     if key.starts_with("bom.") {
@@ -658,6 +665,18 @@ pub struct Outputs {
     /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
     /// cables with no core count (one info row when any).
     cable_checks: [usize; 3],
+    /// Brief 044 (design 044 §8): each connector's BOM rows, one per drawn half.
+    connectors: BTreeMap<ComponentId, Vec<BomRow>>,
+    /// Brief 044 (review of #81, 1): the pages of each connector's halves' main symbols (also in
+    /// `by_page`), so a box or page location there reaches the half.
+    connector_pages: BTreeMap<ComponentId, BTreeSet<PageId>>,
+    /// Brief 044 (review of #81, 2): the half rows' groups, kept beside `loc_rows` / `by_part`:
+    /// (location, group) and group → how many halves; location → how many groups.
+    half_loc: BTreeMap<(LocKey, HalfKey), usize>,
+    half_part: BTreeMap<HalfKey, usize>,
+    half_loc_rows: BTreeMap<LocKey, usize>,
+    /// How many times the half rows were grouped (tests: an unrelated edit groups none).
+    pub half_groupings: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
     links_off_strip: BTreeSet<ComponentId>,
     link_keys: BTreeMap<ComponentId, Vec<String>>,
@@ -759,10 +778,15 @@ impl Outputs {
     /// How many BOM rows `group` lists, from kept counts (no rows made).
     pub fn bom_count(&self, group: Group) -> usize {
         let strips: usize = self.strips.bom_rows.values().sum();
+        // Brief 044: grouped as `bom` groups them (O(connectors)).
+        let halves = match group {
+            Group::Location => self.half_loc.len(),
+            Group::Part => self.half_part.len(),
+        };
         match group {
-            Group::Location if self.view.nested => self.nested.len() + self.loc_lines.values().sum::<usize>() + strips,
-            Group::Location => self.by_location.len() + strips,
-            Group::Part => self.by_part.len() + strips,
+            Group::Location if self.view.nested => self.nested.len() + self.loc_lines.values().sum::<usize>() + strips + halves,
+            Group::Location => self.by_location.len() + strips + halves,
+            Group::Part => self.by_part.len() + strips + halves,
         }
     }
 
@@ -861,6 +885,29 @@ impl Outputs {
             }
             for (t, x) in doc.terminals_of(*c) {
                 if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
+        // Brief 044 (design 044 §11.1): a connector naming or description default reaches the
+        // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
+        for k in &scope.connector_keys {
+            let naming = crate::defaults::connectors::is_naming_key(k);
+            let own = |c: &ComponentId| naming && doc.components.get(c).is_some_and(|x| x.properties.contains_key(k.as_str()));
+            let inheriting: Vec<ComponentId> = self.connectors.keys().filter(|c| !own(c)).copied().collect();
+            for c in inheriting {
+                scope.devices.insert(c);
+                if crate::defaults::connectors::is_naming_key(k) {
+                    for (t, _) in doc.terminals_of(c) {
+                        scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+            }
+        }
+        for op in ops {
+            let Op::SetProperty { object: ObjectRef::Component(c), key, .. } = op else { continue };
+            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::is_connector(doc, *c) {
+                for (t, _) in doc.terminals_of(*c) {
                     scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
@@ -969,6 +1016,7 @@ impl Outputs {
     }
 
     fn remove_device(&mut self, c: ComponentId) {
+        self.remove_connector(c);
         let Some(old) = self.devices.remove(&c) else { return };
         if let Some((_, p, _)) = old.main
             && let Some(set) = self.by_page.get_mut(&p)
@@ -1109,6 +1157,9 @@ impl Outputs {
             Some(d) => (d.tag.clone(), d.location.value.clone()),
             None => (String::new(), None),
         };
+        // Brief 044 (design 044 §8.3): a connector's lines go under a half (`part.<n>.half`, else
+        // its first drawn half), with that half's tag and location.
+        let halves = if item { Vec::new() } else { crate::connectors::half_rows(doc, c, &mut BoxCache::default()) };
         // Sub-items only where `for` can name some or fuses can be uncovered.
         let fuseterm = !item && bom::is_fuse_terminal(doc, c);
         let subs = if item || fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
@@ -1119,12 +1170,13 @@ impl Outputs {
             let (have, missing): (Vec<String>, Vec<String>) = l.subs.iter().cloned().partition(|s| subs_has(&subs, s));
             covered.extend(l.subs.iter().map(String::as_str));
             inserts += usize::from(l.for_text.is_some() || fuseterm);
+            let half = halves.iter().find(|h| Some(h.side) == l.half).or(halves.first());
             entries.push(Entry {
                 component: c,
                 line: l.n,
                 item: false,
-                tag: tag.clone(),
-                location: location.clone(),
+                tag: half.map_or_else(|| tag.clone(), |h| h.tag.clone()),
+                location: half.map_or_else(|| location.clone(), |h| h.location.value.clone()),
                 description: l.description.clone(),
                 maker: l.maker.clone(),
                 part_number: l.part_number.clone(),
@@ -1256,9 +1308,16 @@ impl Outputs {
             }
             _ => {}
         }
+        // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
+        // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
+        let connector = crate::connectors::is_connector(doc, c);
+        if connector {
+            let (rows, pages) = connector_rows(doc, c, cache);
+            self.set_connector(c, rows, pages);
+        }
         // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
         // part lines are entries like a device's (brief 047).
-        let main = (!crate::strips::is_strip(doc, c)).then(|| Entry {
+        let main = (!crate::strips::is_strip(doc, c) && !connector).then(|| Entry {
             component: c,
             line: 0,
             item: false,
@@ -1305,11 +1364,13 @@ impl Outputs {
                 let label = crate::interact::terminal_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
+                // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
+                let name = crate::connectors::pin_name(doc, t).unwrap_or_else(|| format!("{tag}:{label}"));
                 let location = match device {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None, continuation: false }
+                EndCell { name: Some(name), location, device: Some(c), order, junction: None, continuation: false }
             }
         }
     }
@@ -1873,6 +1934,10 @@ impl Outputs {
         for (loc, n) in &self.strips.bom_rows {
             *rows.entry(loc_key(loc.as_deref())).or_default() += n;
         }
+        // Brief 044: the connectors' half-row groups per location, kept.
+        for (k, n) in &self.half_loc_rows {
+            *rows.entry(k.clone()).or_default() += n;
+        }
         for n in rows.values() {
             if used == per {
                 sheets += 1;
@@ -2005,6 +2070,12 @@ impl Outputs {
     }
 
     /// Brief 047, nested layout: the rows of `c`'s part lines, unmerged, in line order.
+    /// Brief 044: the part lines of connector `c` under its half tagged `tag` (nested layout).
+    fn line_rows_of_half(&self, c: ComponentId, tag: &str, location: &Option<String>) -> Vec<BomRow> {
+        let mine: BTreeSet<u8> = self.entries.range((c, 1)..=(c, u8::MAX)).filter(|(_, e)| e.tag == tag).map(|(k, _)| k.1).collect();
+        self.line_rows(c, location).into_iter().filter(|r| r.line.is_some_and(|n| mine.contains(&n))).collect()
+    }
+
     fn line_rows(&self, c: ComponentId, location: &Option<String>) -> Vec<BomRow> {
         self.entries
             .range((c, 1)..=(c, u8::MAX))
@@ -2061,6 +2132,21 @@ impl Outputs {
                     }
                     v.push((loc_key(s.location.as_deref()), (false, tag_key(&s.tag), s.component, 0), rows));
                 }
+                // Brief 044 (design 044 §8.1): one row per drawn half, grouped like devices; nested,
+                // each half's row is followed by its part lines (`part.<n>.half`, §8.3).
+                self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                for r in group_halves(self.connectors.values().flatten(), Group::Location) {
+                    let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
+                    let sort = (false, first, r.devices.first().copied().unwrap_or(ComponentId(0)), 0);
+                    let mut rows = Vec::new();
+                    if nested && r.part_number.is_none() {
+                        for (c, tag) in r.devices.iter().zip(&r.tags) {
+                            rows.extend(self.line_rows_of_half(*c, tag, &r.location));
+                        }
+                    }
+                    rows.insert(0, r.clone());
+                    v.push((loc_key(r.location.as_deref()), sort, rows));
+                }
                 v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
                 v.into_iter().flat_map(|(_, _, r)| r).collect()
             }
@@ -2086,6 +2172,12 @@ impl Outputs {
                     for r in self.strip_bom(s, Some(format!("{loc} \u{d7}1"))) {
                         v.push(((false, tag_key(&s.tag), s.component, 0), r));
                     }
+                }
+                // Brief 044: half rows grouped by part, their locations counted.
+                self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                for r in group_halves(self.connectors.values().flatten(), Group::Part) {
+                    let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
+                    v.push(((false, first, r.devices.first().copied().unwrap_or(ComponentId(0)), 0), r));
                 }
                 v.sort_by(|a, b| a.0.cmp(&b.0));
                 v.into_iter().map(|(_, r)| r).collect()
@@ -2590,6 +2682,117 @@ fn subs_has(subs: &bom::Subs, s: &str) -> bool {
 }
 
 /// Whether `page` exists and is drawn from the report models.
+/// A half row's group (design 024 §6.1 as for devices): maker, part number, description, compared
+/// without case; a half with no part number is a group of its own (its connector and tag).
+type HalfKey = (String, String, String, Option<(ComponentId, String)>);
+
+fn half_key(r: &BomRow) -> HalfKey {
+    let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+    let own = if r.part_number.is_some() { None } else { r.devices.first().copied().zip(r.tags.first().cloned()) };
+    (low(&r.maker), low(&r.part_number), low(&r.description), own)
+}
+
+impl Outputs {
+    /// Keep connector `c`'s half rows, their groups and their main symbols' pages (review of
+    /// #81, 1 and 2). `set_device` has taken the old ones out.
+    fn set_connector(&mut self, c: ComponentId, rows: Vec<BomRow>, pages: BTreeSet<PageId>) {
+        for r in &rows {
+            let (lk, hk) = (loc_key(r.location.as_deref()), half_key(r));
+            let n = self.half_loc.entry((lk.clone(), hk.clone())).or_default();
+            *n += 1;
+            if *n == 1 {
+                *self.half_loc_rows.entry(lk).or_default() += 1;
+            }
+            *self.half_part.entry(hk).or_default() += 1;
+        }
+        for p in &pages {
+            self.by_page.entry(*p).or_default().insert(c);
+        }
+        self.connector_pages.insert(c, pages);
+        self.connectors.insert(c, rows);
+    }
+
+    fn remove_connector(&mut self, c: ComponentId) {
+        for r in &self.connectors.remove(&c).unwrap_or_default() {
+            let (lk, hk) = (loc_key(r.location.as_deref()), half_key(r));
+            if let Some(n) = self.half_loc.get_mut(&(lk.clone(), hk.clone())) {
+                *n -= 1;
+                if *n == 0 {
+                    self.half_loc.remove(&(lk.clone(), hk.clone()));
+                    if let Some(m) = self.half_loc_rows.get_mut(&lk) {
+                        *m -= 1;
+                        if *m == 0 {
+                            self.half_loc_rows.remove(&lk);
+                        }
+                    }
+                }
+            }
+            if let Some(n) = self.half_part.get_mut(&hk) {
+                *n -= 1;
+                if *n == 0 {
+                    self.half_part.remove(&hk);
+                }
+            }
+        }
+        for p in self.connector_pages.remove(&c).unwrap_or_default() {
+            if let Some(set) = self.by_page.get_mut(&p) {
+                set.remove(&c);
+                if set.is_empty() {
+                    self.by_page.remove(&p);
+                }
+            }
+        }
+    }
+}
+
+/// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), and its halves' main pages.
+fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> (Vec<BomRow>, BTreeSet<PageId>) {
+    let halves = crate::connectors::half_rows(doc, c, cache);
+    let pages = halves.iter().filter_map(|h| h.main.map(|(_, p)| p)).collect();
+    let rows = halves
+        .into_iter()
+        .map(|h| BomRow {
+            location: h.location.value,
+            qty: Qty::ONE,
+            tags: vec![h.tag],
+            devices: vec![c],
+            description: h.description,
+            maker: h.maker,
+            part_number: h.part_number,
+            ..BomRow::default()
+        })
+        .collect();
+    (rows, pages)
+}
+
+/// Half rows grouped as device rows are (design 024 §6.1): by location and part, or by part with
+/// their locations counted; a half with no part number is a row of its own.
+fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec<BomRow> {
+    let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+    type Key = (String, String, String, String, usize);
+    let mut groups: BTreeMap<Key, (BomRow, BTreeMap<LocKey, usize>)> = BTreeMap::new();
+    for (i, r) in rows.enumerate() {
+        let loc = if group == Group::Location { r.location.clone().unwrap_or_default() } else { String::new() };
+        let own = if r.part_number.is_some() { 0 } else { i + 1 };
+        let key = (loc, low(&r.maker), low(&r.part_number), low(&r.description), own);
+        let e = groups.entry(key).or_insert_with(|| (BomRow { qty: Qty(0), tags: Vec::new(), devices: Vec::new(), ..r.clone() }, BTreeMap::new()));
+        e.0.qty = Qty(e.0.qty.0.saturating_add(Qty::ONE.0));
+        e.0.tags.extend(r.tags.iter().cloned());
+        e.0.devices.extend(r.devices.iter().copied());
+        *e.1.entry(loc_key(r.location.as_deref())).or_default() += 1;
+    }
+    groups
+        .into_values()
+        .map(|(mut r, locs)| {
+            if group == Group::Part {
+                let words: Vec<String> = locs.iter().map(|(k, n)| format!("{} \u{d7}{n}", if k.0 { "?".to_string() } else { k.2.clone() })).collect();
+                r.location = Some(words.join(", "));
+            }
+            r
+        })
+        .collect()
+}
+
 fn needs_outputs(doc: &Document, page: PageId) -> bool {
     doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(crate::generated::GenKind::needs_outputs)
 }
@@ -2810,6 +3013,18 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
                 (format!("Make {tag} a strip position"), "toposition", json!({"device": d.hex()}))
             })
             .collect(),
+        // Brief 044 (design 044 §6.3).
+        Fix::ConnectorNextPin(t) => vec![("Move to next free".to_string(), "pinlabel", json!({"terminal": t.hex(), "to": "next"}))],
+        Fix::SetPins(c, n) => {
+            vec![(format!("Set pins to {n}"), "setprop", json!({"component": c.hex(), "key": crate::connectors::PINS_KEY, "value": n.to_string()}))]
+        }
+        Fix::IgnoreConnector(c, k) => {
+            vec![(
+                "Ignore".to_string(),
+                "setprop",
+                json!({"component": c.hex(), "key": format!("{}{}", crate::connectors::IGNORE_PREFIX, k.name()), "value": "yes"}),
+            )]
+        }
         _ => Vec::new(),
     }
 }

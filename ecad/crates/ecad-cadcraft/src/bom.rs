@@ -83,11 +83,13 @@ pub enum Field {
     Unit,
     Kit,
     For,
+    /// Brief 044 (design 044 §8.3): on a connector, the half the line belongs to (`s` or `p`).
+    Half,
 }
 
 impl Field {
-    pub const ALL: [Field; 8] =
-        [Field::PartNumber, Field::Maker, Field::Description, Field::ArticleNumber, Field::Qty, Field::Unit, Field::Kit, Field::For];
+    pub const ALL: [Field; 9] =
+        [Field::PartNumber, Field::Maker, Field::Description, Field::ArticleNumber, Field::Qty, Field::Unit, Field::Kit, Field::For, Field::Half];
 
     /// The key's last part (`part_number`).
     pub fn word(self) -> &'static str {
@@ -100,6 +102,7 @@ impl Field {
             Field::Unit => UNIT_KEY,
             Field::Kit => "kit",
             Field::For => "for",
+            Field::Half => "half",
         }
     }
 
@@ -395,6 +398,8 @@ pub struct Line {
     /// The `for` value as stored, and the names it lists (empty: the device as a whole).
     pub for_text: Option<String>,
     pub subs: Vec<String>,
+    /// Brief 044: the connector half the line belongs to (`part.<n>.half`).
+    pub half: Option<crate::symbols::Side>,
 }
 
 fn clean(v: Option<&String>) -> Option<String> {
@@ -426,6 +431,11 @@ pub fn lines(props: &Properties) -> (Vec<Line>, Vec<String>) {
                     Field::ArticleNumber => line.article_number = clean(Some(v)),
                     Field::Kit => line.kit = clean(Some(v)),
                     Field::For => line.for_text = clean(Some(v)),
+                    Field::Half => match v.trim() {
+                        "s" | "S" => line.half = Some(crate::symbols::Side::Socket),
+                        "p" | "P" => line.half = Some(crate::symbols::Side::Plug),
+                        _ => note(k, &mut bad),
+                    },
                     Field::Unit => match parse_unit(v) {
                         Ok(m) => line.metres = m,
                         Err(_) => note(k, &mut bad),
@@ -649,6 +659,15 @@ fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, me
         },
         Field::Unit => unit_value(qty, value),
         Field::For => check_for(doc, c, value.unwrap_or("")),
+        // Brief 044 (design 044 §8.3): only on a connector, `s` or `p`.
+        Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
+            None => Ok(None),
+            Some(_) if !crate::connectors::is_connector(doc, c) => {
+                Err(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c)))
+            }
+            Some(v) if v.eq_ignore_ascii_case("s") || v.eq_ignore_ascii_case("p") => Ok(Some(v.to_ascii_lowercase())),
+            Some(_) => Err("`half` is s (the socket half) or p (the plug half).".into()),
+        },
     }
 }
 

@@ -222,7 +222,8 @@ fn terminal(p: &Project, page: PageId, mut t: Target, strip: ComponentId, term: 
     t.terminal = term;
     let tag = crate::devices::tag_words(doc, strip);
     t.name = match term {
-        Some(x) => format!("{tag}:{}", terminal_name(doc, x)),
+        // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+        Some(x) => crate::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", terminal_name(doc, x))),
         None => tag,
     };
     let map = p.pages.get(&page).map(|v| &v.map);

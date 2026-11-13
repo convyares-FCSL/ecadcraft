@@ -74,6 +74,11 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::MoveToNewPosition(_) => cp::MOVE_NEW_POSITION,
         Fix::LevelMissing(..) => cp::DROP_MISSING_LEVELS,
         Fix::FuseDevices => cp::MAKE_STRIP_POSITION,
+        // Brief 044.
+        Fix::ConnectorNextPin(_) => cp::MOVE_NEXT_FREE,
+        Fix::SetPins(..) => cp::SET_PINS,
+        Fix::PlaceMates(..) => cp::PLACE_MATES,
+        Fix::IgnoreConnector(..) => cp::IGNORE,
         Fix::UseArticle(..) => cp::USE_FOR_ALL,
         Fix::DropMissingFor(..) => cp::REMOVE,
     }]
