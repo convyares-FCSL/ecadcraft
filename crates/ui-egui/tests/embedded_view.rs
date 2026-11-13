@@ -121,3 +121,29 @@ fn with_canvas_menus_an_idle_right_click_opens_the_menu_and_is_not_reported() {
     assert!(h.query_by_label("Clipboard").is_some(), "the shortcut menu opens");
     assert_eq!(h.state_mut().take_secondary_click(), None);
 }
+
+/// Whether any text painted in the last frame contains `needle`.
+fn painted_text(h: &Harness<'static, CadApp>, needle: &str) -> bool {
+    fn walk(s: &egui::Shape, needle: &str) -> bool {
+        match s {
+            egui::Shape::Text(t) => t.galley.text().contains(needle),
+            egui::Shape::Vec(v) => v.iter().any(|s| walk(s, needle)),
+            _ => false,
+        }
+    }
+    h.output().shapes.iter().any(|c| walk(&c.shape, needle))
+}
+
+#[test]
+fn the_viewport_label_is_drawn_only_with_cadcrafts_chrome() {
+    // ECAD-SEAM(owner): embedded drawing view (US1 line, ECAD brief 040).
+    let mut on = harness(Embedding::default());
+    on.run_steps(1);
+    assert!(painted_text(&on, "2D Wireframe"), "the default draws the viewport label");
+    let mut chrome = harness(Embedding { chrome: true, ..embedded() });
+    chrome.run_steps(1);
+    assert!(painted_text(&chrome, "2D Wireframe"), "the chrome switch keeps it");
+    let mut off = harness(embedded());
+    off.run_steps(1);
+    assert!(!painted_text(&off, "2D Wireframe"), "an embedder without chrome labels its own view");
+}

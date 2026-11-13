@@ -541,7 +541,10 @@ fn paint_pointer_overlay(
     if app.ui.show_viewcube && sheet.is_none() {
         draw_viewcube(app, ui, rect);
     }
-    viewport_label(painter, rect);
+    // ECAD-SEAM(owner): embedded drawing view. An embedder without CADCraft's chrome labels its own view.
+    if app.embedding.chrome {
+        viewport_label(painter, rect);
+    }
     // Typing and Escape reach the command line even when its overlay is hidden.
     // ECAD-SEAM(owner): embedded drawing view. Without idle typing, only while a command prompts.
     if app.embedding.idle_typing || app.session.prompting() || app.cmd.options.is_some() {
