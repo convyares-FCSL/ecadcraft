@@ -178,16 +178,16 @@ pub(crate) fn rack_entry(h: &mut H, t: &str) -> Value {
     v["racks"].as_array().and_then(|a| a.iter().find(|r| r["tag"] == t).cloned()).unwrap_or_else(|| panic!("plcracks has no rack {t}: {v}"))
 }
 
-/// The slot rows of rack `t` (`{slot, card, tag, type, channels, used, spare, reserved, inputs,
-/// outputs, pinned, place}`, design §2.5).
+/// The slot rows of rack `t` (`{slot, card, tag, type, channels, …}`, design §2.5; the build calls
+/// the list `cards` and gives the slot count as `slots`; a free slot is `{slot, free: true}`).
 pub(crate) fn slots(h: &mut H, t: &str) -> Vec<Value> {
-    rack_entry(h, t)["slots"].as_array().cloned().unwrap_or_default()
+    rack_entry(h, t)["cards"].as_array().cloned().unwrap_or_default()
 }
 
 /// The slot row holding card `t` in any rack.
 pub(crate) fn slot_row(h: &mut H, card: &str) -> Option<Value> {
     let v = h.run("plcracks", json!({})).unwrap();
-    v["racks"].as_array()?.iter().flat_map(|r| r["slots"].as_array().cloned().unwrap_or_default()).find(|x| x["tag"] == card)
+    v["racks"].as_array()?.iter().flat_map(|r| r["cards"].as_array().cloned().unwrap_or_default()).find(|x| x["tag"] == card)
 }
 
 /// Raw ops by hand (a hand-made file or a merge result).

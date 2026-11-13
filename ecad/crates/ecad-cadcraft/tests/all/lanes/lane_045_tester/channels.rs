@@ -101,7 +101,7 @@ fn f_fence_new_card() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn g_ai_pins_role_layout() {
-    let (mut p, c) = with_cards(0x7045_g001);
+    let (mut p, c) = with_cards(0x7045_1e001);
     let a05 = c["-A05"];
     p.h.activate(p.analogue);
     step(&mut p.h, "place", json!({"symbol": "chai", "at": [100, 200], "device": a05.hex()}));
@@ -119,7 +119,7 @@ fn g_ai_pins_role_layout() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn g_ai_pins_channel_layout_and_never_rewritten() {
-    let (mut p, c) = with_cards(0x7045_g002);
+    let (mut p, c) = with_cards(0x7045_1e002);
     let a05 = c["-A05"];
     p.h.run("setdefault", json!({"key": "plc.pins", "level": "object", "component": a05.hex(), "value": "channel"})).unwrap();
     p.h.activate(p.analogue);
@@ -140,7 +140,7 @@ fn g_ai_pins_channel_layout_and_never_rewritten() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn g_rtd_and_iolink_roles() {
-    let (mut p, c) = with_cards(0x7045_g003);
+    let (mut p, c) = with_cards(0x7045_1e003);
     p.h.activate(p.iolink);
     p.h.run("place", json!({"symbol": "chiol", "at": [100, 200], "device": c["-A06"].hex()})).unwrap();
     let d = p.h.doc();
@@ -170,7 +170,7 @@ fn g_rtd_and_iolink_roles() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn h_refusals_and_compact_di_joins_as_next_channel() {
-    let (mut p, c) = with_cards(0x7045_h001);
+    let (mut p, c) = with_cards(0x7045_2e001);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     p.h.activate(p.analogue);
@@ -210,7 +210,7 @@ fn h_refusals_and_compact_di_joins_as_next_channel() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn h_compact_symbols_follow_fp7() {
-    let (mut p, c) = with_cards(0x7045_h002);
+    let (mut p, c) = with_cards(0x7045_2e002);
     p.h.activate(p.outputs);
     p.h.run("place", json!({"symbol": "do", "at": [100, 200], "device": c["-A07"].hex()})).unwrap();
     assert_eq!(pin(&p.h.doc(), c["-A07"], 0, "out").as_deref(), Some("1"));
@@ -230,7 +230,7 @@ fn h_compact_symbols_follow_fp7() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
-    let (mut p, c) = with_cards(0x7045_k001);
+    let (mut p, c) = with_cards(0x7045_5e001);
     let a04 = c["-A04"];
     p.h.activate(p.analogue);
     // Channels 0 and 1 by `di`, then rewritten by hand to the old form I0.0 and I1.3.
@@ -239,7 +239,7 @@ fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
     let pts = channel_points(&p.h.doc(), a04);
     rekey_raw(&mut p.h, pts[".0.in"].1, Some("I0.0"), Some("I0.0"));
     rekey_raw(&mut p.h, pts[".1.in"].1, Some("I1.3"), Some("I1.3"));
-    let mut h = reload(p.h, "old di", 0x7045_k101);
+    let mut h = reload(p.h, "old di", 0x7045_5e101);
     read_everything(&mut h);
     let d = h.doc();
     let a04 = by_tag(&d, "-A04");
@@ -258,13 +258,13 @@ fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn fp2_old_do_key_beyond_the_count_is_channel_over() {
-    let (mut p, c) = with_cards(0x7045_k002);
+    let (mut p, c) = with_cards(0x7045_5e002);
     let a07 = c["-A07"];
     p.h.activate(p.outputs);
     p.h.run("place", json!({"symbol": "do", "at": [300, 200], "device": a07.hex()})).unwrap();
     let t = channel_points(&p.h.doc(), a07)[".0.out"].1;
     rekey_raw(&mut p.h, t, Some("Q2.7"), Some("Q2.7"));
-    let mut h = reload(p.h, "old do", 0x7045_k102);
+    let mut h = reload(p.h, "old do", 0x7045_5e102);
     let rows = checks_of(&mut h, "channel-over");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0].to_string().contains("-A07 has channel 23 drawn; it has 16 channels"), "{}", rows[0]);
@@ -277,7 +277,7 @@ fn fp2_old_do_key_beyond_the_count_is_channel_over() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn k_plcchannel_text_and_typed_address() {
-    let (mut p, c) = with_cards(0x7045_k003);
+    let (mut p, c) = with_cards(0x7045_5e003);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     step(&mut p.h, "plcchannel", json!({"card": a03.hex(), "channel": 3, "text": "Door closed", "address": "I9.9"}));
@@ -306,7 +306,7 @@ fn k_plcchannel_text_and_typed_address() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn k_plcchannel_relabels_pins() {
-    let (mut p, c) = with_cards(0x7045_k004);
+    let (mut p, c) = with_cards(0x7045_5e004);
     let a05 = c["-A05"];
     p.h.activate(p.analogue);
     p.h.run("place", json!({"symbol": "chai", "at": [100, 200], "device": a05.hex()})).unwrap();
@@ -339,7 +339,7 @@ fn k_plcchannel_relabels_pins() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn spare_and_reserved_are_derived() {
-    let (mut p, c) = with_cards(0x7045_s001);
+    let (mut p, c) = with_cards(0x7045_9e001);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     p.h.run("plcchannels", json!({"card": a03.hex(), "rest": true})).unwrap();
@@ -366,7 +366,7 @@ fn spare_and_reserved_are_derived() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_channel_over_and_raise() {
-    let (mut p, c) = with_cards(0x7045_m201);
+    let (mut p, c) = with_cards(0x7045_7e201);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     p.h.run("setprop", json!({"component": a03.hex(), "key": "plc.channels", "value": "6"})).unwrap();
@@ -383,12 +383,12 @@ fn m_channel_over_and_raise() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_channel_twice_from_a_hand_made_file() {
-    let (mut p, c) = with_cards(0x7045_m202);
+    let (mut p, c) = with_cards(0x7045_7e202);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     let t4 = channel_points(&p.h.doc(), a03)[".4.in"].1;
     rekey_raw(&mut p.h, t4, None, Some(".3.in"));
-    let mut h = reload(p.h, "channel twice", 0x7045_m302);
+    let mut h = reload(p.h, "channel twice", 0x7045_7e302);
     let rows = checks_of(&mut h, "channel-twice");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0].to_string().contains("-A03 channel 3 is drawn twice"), "{}", rows[0]);
@@ -402,7 +402,7 @@ fn m_channel_twice_from_a_hand_made_file() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_channel_type_kind_is_known() {
-    let (mut p, _) = with_cards(0x7045_m203);
+    let (mut p, _) = with_cards(0x7045_7e203);
     assert!(p.h.run("checks", json!({"kinds": ["channel-type"]})).is_ok());
     assert!(checks_of(&mut p.h, "channel-type").is_empty());
 }
@@ -416,7 +416,7 @@ fn m_channel_type_kind_is_known() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn l_registry_switches_change_only_inheriting_cards() {
-    let (mut p, c) = with_cards(0x7045_l001);
+    let (mut p, c) = with_cards(0x7045_6e001);
     fence_inputs(&mut p, c["-A03"]);
     p.h.run("plcchannels", json!({"card": c["-A04"].hex(), "rest": true, "at": [300, 100]})).unwrap();
     p.h.run("plcchannel", json!({"card": c["-A03"].hex(), "channel": 0, "text": "Door closed"})).unwrap();
@@ -443,7 +443,7 @@ fn l_registry_switches_change_only_inheriting_cards() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn l_channel_first_changes_no_terminal() {
-    let (mut p, c) = with_cards(0x7045_l002);
+    let (mut p, c) = with_cards(0x7045_6e002);
     fence_inputs(&mut p, c["-A03"]);
     let before = channel_points(&p.h.doc(), c["-A03"]);
     p.h.run("setdefault", json!({"key": "plc.channel.first", "level": "object", "component": c["-A03"].hex(), "value": "1"})).unwrap();
@@ -464,7 +464,7 @@ fn l_channel_first_changes_no_terminal() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn t_hostile_channel_keys_and_texts() {
-    let (mut p, c) = with_cards(0x7045_t201);
+    let (mut p, c) = with_cards(0x7045_ae201);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
     let pts = channel_points(&p.h.doc(), a03);
@@ -476,7 +476,7 @@ fn t_hostile_channel_keys_and_texts() {
     raw_setprop(&mut p.h, a03, "plc.ch.0.text", Some(&"x".repeat(10_000)));
     raw_setprop(&mut p.h, a03, "plc.ch.99999999999999999999.text", Some("far"));
     raw_setprop(&mut p.h, a03, "plc.ch.-1.address", Some("I0.0"));
-    let mut h = reload(p.h, "hostile b", 0x7045_t301);
+    let mut h = reload(p.h, "hostile b", 0x7045_ae301);
     read_everything(&mut h);
     let a03 = by_tag(&h.doc(), "-A03");
     for v in [json!(-1), json!(256), json!(1e300), json!("3"), json!(null)] {
@@ -495,7 +495,7 @@ fn t_hostile_channel_keys_and_texts() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn t_fence_across_300_wires_is_refused() {
-    let mut p = fixture_p(0x7045_t202);
+    let mut p = fixture_p(0x7045_ae202);
     let page = p.h.doc().page_order[0];
     let wires: Vec<(f64, f64)> = (0..300).map(|i| (1000.0 + 2.0 * f64::from(i), 0.0)).collect();
     p.h.activate(page);

@@ -29,22 +29,30 @@ fn sets_key(ops: &[Op], key: &str) -> bool {
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
 }
 
-fn reads(c: &mut Client) -> Value {
+const KINDS_A: [&str; 4] = ["slot-twice", "rack-missing", "slot-range", "unracked"];
+const KINDS_B: [&str; 7] = ["channel-twice", "channel-over", "channel-type", "address-overlap", "address-twice", "address-overflow", "no-address"];
+
+/// The PLC reads; `b`: with 045b's Checks kinds too.
+fn reads(c: &mut Client, b: bool) -> Value {
+    let mut kinds: Vec<&str> = KINDS_A.to_vec();
+    if b {
+        kinds.extend(KINDS_B);
+    }
     json!({
         "plcracks": c.exec("plcracks", json!({})),
-        "checks": c.exec("checks", json!({"kinds": ["slot-twice", "rack-missing", "slot-range", "unracked", "channel-twice", "channel-over", "channel-type", "address-overlap", "address-twice", "address-overflow", "no-address"]})),
+        "checks": c.exec("checks", json!({"kinds": kinds})),
         "defaults": c.exec("defaults", json!({"group": "PLC"})),
     })
 }
 
-/// The writes of 045a and 045b, each checked as one agent transaction. Returns the IDs used.
+/// The writes of 045a, each checked as one agent transaction. Returns the IDs used.
 struct Ids {
     rack: String,
     di: String,
     ai: String,
 }
 
-fn writes(c: &mut Client) -> Ids {
+fn writes_a(c: &mut Client) -> Ids {
     let n = c.log().len();
     let rack = c.exec("place", json!({"symbol": "plccpu", "at": [100, 200]}));
     one_by_agent(c, n, "place plccpu");
@@ -73,7 +81,12 @@ fn writes(c: &mut Client) -> Ids {
     let n = c.log().len();
     c.exec("setdefault", json!({"key": "plc.slots", "level": "project", "value": 16}));
     one_by_agent(c, n, "setdefault plc.slots");
-    // 045b.
+    Ids { rack, di, ai }
+}
+
+/// The writes of 045b, each checked as one agent transaction.
+fn writes_b(c: &mut Client, ids: &Ids) {
+    let (rack, di, ai) = (&ids.rack, &ids.di, &ids.ai);
     let n = c.log().len();
     let v = c.exec("plcchannels", json!({"card": di, "from": [90, 400], "to": [140, 400]}));
     let ops = one_by_agent(c, n, "plcchannels fence");
@@ -105,7 +118,40 @@ fn writes(c: &mut Client) -> Ids {
     let n = c.log().len();
     c.exec("setdefault", json!({"key": "plc.address.style", "level": "object", "component": rack, "value": "slot"}));
     one_by_agent(c, n, "setdefault plc.address.style");
-    Ids { rack, di, ai }
+}
+
+/// 045a AC 7: the a-writes by the agent; reopened with writes off they are refused, and
+/// `plcracks`, `checks` and `defaults {group: "PLC"}` read and record nothing.
+#[test]
+fn plc_rack_writes_by_the_agent_then_refused_with_writes_off() {
+    let dir = TempDir::new("t045a Schaltpl\u{e4}ne mit Leerzeichen");
+    let path = dir.file("SPS -A01 (Rack).ecad");
+    let (ids, before) = {
+        let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
+        let ids = writes_a(&mut c);
+        let r = reads(&mut c, false);
+        assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
+        (ids, r)
+    };
+    let (s, _) = EcadMcp::open(&path, Options { write: false, agent: None }).unwrap();
+    let mut r = Client::new(s);
+    let log = r.log();
+    assert_eq!(reads(&mut r, false), before, "the reads give what they gave before the save");
+    let keys = r.exec("defaults", json!({"group": "PLC"}));
+    for k in ["plc.slots", "plc.slot.first", "plc.card.caption"] {
+        assert!(keys.to_string().contains(k), "{k}: {keys}");
+    }
+    for (cmd, p) in [
+        ("place", json!({"symbol": "plcdq", "at": [220, 200], "rack": ids.rack, "slot": 3})),
+        ("plcslot", json!({"card": ids.di, "slot": 7})),
+        ("plcslot", json!({"card": ids.ai, "rack": null})),
+        ("setprop", json!({"component": ids.di, "key": "plc.channels", "value": "16"})),
+        ("setdefault", json!({"key": "plc.slots", "level": "project", "value": 8})),
+    ] {
+        let m = r.refused("execute", json!({"command": cmd, "params": p}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
+    }
+    assert_eq!(r.log(), log, "nothing recorded with writes off");
 }
 
 #[test]
@@ -115,15 +161,16 @@ fn plc_writes_by_the_agent_then_refused_with_writes_off() {
     let path = dir.file("SPS -A01 (Rack).ecad");
     let (ids, before) = {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
-        let ids = writes(&mut c);
-        let r = reads(&mut c);
+        let ids = writes_a(&mut c);
+        writes_b(&mut c, &ids);
+        let r = reads(&mut c, true);
         assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
         (ids, r)
     };
     let (s, _) = EcadMcp::open(&path, Options { write: false, agent: None }).unwrap();
     let mut r = Client::new(s);
     let log = r.log();
-    assert_eq!(reads(&mut r), before, "the reads give what they gave before the save");
+    assert_eq!(reads(&mut r, true), before, "the reads give what they gave before the save");
     let keys = r.exec("defaults", json!({"group": "PLC"}));
     for k in ["plc.slots", "plc.address.style", "plc.pins", "plc.spare.text"] {
         assert!(keys.to_string().contains(k), "{k}: {keys}");
@@ -147,7 +194,6 @@ fn plc_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// Hostile PLC params through MCP: a JSON-RPC result with `isError`, never a panic, nothing written.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn hostile_plc_params_are_refused_and_record_nothing() {
     let mut c = Client::new(EcadMcp::in_memory("mcp t045", 0x7045_0001, Options { write: true, agent: None }).unwrap());
     let rack = hex(&c.exec("place", json!({"symbol": "plccpu", "at": [0, 0]})), "component");
@@ -175,7 +221,6 @@ fn hostile_plc_params_are_refused_and_record_nothing() {
 /// preview's changes and its conflict name the racks by tag, never by hex ID; the merge records
 /// `plc.rack` as an ID and the card ends in the chosen rack.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp1_merge_preview_names_racks_by_tag() {
     let dir = TempDir::new("t045 merge");
     let path = dir.file("merge plc.ecad");

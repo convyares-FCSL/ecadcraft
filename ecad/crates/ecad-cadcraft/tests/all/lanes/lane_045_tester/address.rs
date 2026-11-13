@@ -66,7 +66,7 @@ fn block_start(p: &mut P, card: &str, dir: &str) -> Option<u64> {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn i_byte_bit_addresses() {
-    let (mut p, _) = all_drawn(0x7045_i001);
+    let (mut p, _) = all_drawn(0x7045_3e001);
     let t = all_texts(&mut p);
     has_all(&t, &digital("I", 0..=1), "-A03");
     has_all(&t, &digital("I", 2..=3), "-A04");
@@ -85,7 +85,7 @@ fn i_byte_bit_addresses() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn i_each_address_style() {
-    let (mut p, c) = all_drawn(0x7045_i002);
+    let (mut p, c) = all_drawn(0x7045_3e002);
     let rack = p.rack.hex();
     step(&mut p.h, "plcaddress", json!({"rack": rack, "style": "iec"}));
     let t = all_texts(&mut p);
@@ -120,7 +120,7 @@ fn i_each_address_style() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn i_rack_starts() {
-    let (mut p, _) = all_drawn(0x7045_i003);
+    let (mut p, _) = all_drawn(0x7045_3e003);
     step(&mut p.h, "plcaddress", json!({"rack": p.rack.hex(), "input_start": 100, "output_start": 200}));
     let t = all_texts(&mut p);
     has_all(&t, &digital("I", 100..=101), "-A03 from 100");
@@ -132,7 +132,7 @@ fn i_rack_starts() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn i_size_override() {
-    let (mut p, c) = all_drawn(0x7045_i004);
+    let (mut p, c) = all_drawn(0x7045_3e004);
     step(&mut p.h, "plcaddress", json!({"card": c["-A03"].hex(), "size": 4}));
     let t = all_texts(&mut p);
     has_all(&t, &digital("I", 4..=5), "-A04 after a 4-byte -A03");
@@ -147,7 +147,7 @@ fn i_size_override() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn j_live_addresses_fix_and_clear() {
-    let (mut p, c) = all_drawn(0x7045_j001);
+    let (mut p, c) = all_drawn(0x7045_4e001);
     let rack = p.rack.hex();
     let before = all_texts(&mut p);
     p.h.run("plcslot", json!({"card": c["-A03"].hex(), "slot": 9})).unwrap();
@@ -180,7 +180,7 @@ fn j_live_addresses_fix_and_clear() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn j_pinned_start_on_one_card() {
-    let (mut p, c) = all_drawn(0x7045_j002);
+    let (mut p, c) = all_drawn(0x7045_4e002);
     step(&mut p.h, "plcaddress", json!({"card": c["-A05"].hex(), "start": 20}));
     let e = echo(&p.h, 3);
     assert!(e.contains("-A05 pinned at"), "{e}");
@@ -203,7 +203,7 @@ fn j_pinned_start_on_one_card() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn k_address_twice_within_a_rack_only() {
-    let (mut p, c) = all_drawn(0x7045_k101);
+    let (mut p, c) = all_drawn(0x7045_5e101);
     p.h.run("plcchannel", json!({"card": c["-A03"].hex(), "channel": 3, "address": "I2.3"})).unwrap();
     let rows = checks_of(&mut p.h, "address-twice");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -225,7 +225,7 @@ fn k_address_twice_within_a_rack_only() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_address_overlap_and_unpin() {
-    let (mut p, c) = all_drawn(0x7045_m401);
+    let (mut p, c) = all_drawn(0x7045_7e401);
     p.h.run("plcaddress", json!({"card": c["-A05"].hex(), "start": 0})).unwrap();
     let rows = checks_of(&mut p.h, "address-overlap");
     assert!(!rows.is_empty());
@@ -241,7 +241,7 @@ fn m_address_overlap_and_unpin() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_address_overflow() {
-    let (mut p, c) = all_drawn(0x7045_m402);
+    let (mut p, c) = all_drawn(0x7045_7e402);
     p.h.run("plcaddress", json!({"card": c["-A04"].hex(), "start": 65535, "size": 4096})).unwrap();
     let rows = checks_of(&mut p.h, "address-overflow");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -259,7 +259,7 @@ fn m_address_overflow() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn m_no_address_count_row() {
-    let (mut p, _) = all_drawn(0x7045_m403);
+    let (mut p, _) = all_drawn(0x7045_7e403);
     p.h.run("plcaddress", json!({"rack": p.rack.hex(), "style": "none"})).unwrap();
     let rows = checks_of(&mut p.h, "no-address");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -275,7 +275,7 @@ fn m_no_address_count_row() {
 #[test]
 #[ignore = "tester 045: awaiting build"]
 fn t_hostile_addresses() {
-    let (mut p, c) = all_drawn(0x7045_t401);
+    let (mut p, c) = all_drawn(0x7045_ae401);
     let a03 = c["-A03"].hex();
     let rack = p.rack.hex();
     for v in [json!(-1), json!(65536), json!(1e300), json!("x"), json!(u64::MAX)] {
@@ -296,7 +296,7 @@ fn t_hostile_addresses() {
     raw_setprop(&mut p.h, c["-A05"], "plc.addr.size", Some("-7"));
     raw_setprop(&mut p.h, p.rack, "plc.address.style", Some("\u{0}"));
     raw_setprop(&mut p.h, p.rack, "plc.address.start.input", Some("65535"));
-    let mut h = reload(p.h, "hostile addresses", 0x7045_t402);
+    let mut h = reload(p.h, "hostile addresses", 0x7045_ae402);
     read_everything(&mut h);
     h.check();
 }

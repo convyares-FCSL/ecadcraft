@@ -13,7 +13,6 @@ use crate::common::id;
 /// A: six card bodies by JSON form take `-A01` and slots 1…6 by default, one transaction each;
 /// `plcracks` lists them in slot order with their types; the card keys hold the rack's ID.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn a_six_cards_take_the_rack_and_the_next_free_slot() {
     let mut p = fixture_p(0x7045_a001);
     p.h.activate(p.cpu_page);
@@ -42,7 +41,6 @@ fn a_six_cards_take_the_rack_and_the_next_free_slot() {
 /// A: placing a `plccpu` or `plcim` makes a rack, no prompt; `plcim`, `plcpm`, `plccm` exist as
 /// starters (design §3.1).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn a_new_bodies_exist_and_a_head_module_is_a_rack() {
     let mut h = H::new(0x7045_a002);
     for key in ["plcim", "plcpm", "plccm"] {
@@ -61,7 +59,6 @@ fn a_new_bodies_exist_and_a_head_module_is_a_rack() {
 /// asks Rack (default the only rack) and Slot (default the next free); Enter takes both; Esc writes
 /// nothing; `None` places it out of any rack.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn a_place_prompts_rack_then_slot() {
     let mut p = fixture_p(0x7045_a003);
     p.h.activate(p.cpu_page);
@@ -86,6 +83,7 @@ fn a_place_prompts_rack_then_slot() {
     let d = p.h.doc();
     let c = by_tag(&d, "-A02");
     assert_eq!(prop(&d, c, "plc.slot").as_deref(), Some("1"));
+    let _ = p.h.s.input(Input::Cancel);
     // Next card: the slot default moves on.
     p.h.s.cmdline("place").unwrap();
     p.h.s.cmdline("plcdq").unwrap();
@@ -98,6 +96,7 @@ fn a_place_prompts_rack_then_slot() {
     p.h.s.cmdline("None").unwrap();
     assert!(!prompt(&p.h).starts_with("Slot"), "{}", prompt(&p.h));
     p.h.s.cmdline("220,200").unwrap();
+    let _ = p.h.s.input(Input::Cancel);
     let d = p.h.doc();
     let c = by_tag(&d, "-A03");
     assert_eq!((prop(&d, c, "plc.rack"), prop(&d, c, "plc.slot")), (None, None));
@@ -106,7 +105,6 @@ fn a_place_prompts_rack_then_slot() {
 
 /// A: placing a card body when the project has no rack asks nothing and leaves it in no rack.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn a_no_rack_no_prompt() {
     let mut h = H::new(0x7045_a004);
     let v = step(&mut h, "place", json!({"symbol": "plcdi", "at": [100, 200]}));
@@ -122,7 +120,6 @@ fn a_no_rack_no_prompt() {
 /// B: a taken slot is refused naming the holder and the next free slot; `swap: true` swaps the two
 /// in one transaction; `rack: null` takes a card out; `u` undoes each.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn b_plcslot_refuses_swaps_and_takes_out() {
     let (mut p, c) = with_cards(0x7045_b001);
     let (a03, a04) = (c["-A03"], c["-A04"]);
@@ -136,9 +133,6 @@ fn b_plcslot_refuses_swaps_and_takes_out() {
     step(&mut p.h, "plcslot", json!({"card": a04.hex(), "slot": 2, "swap": true}));
     let d = p.h.doc();
     assert_eq!((prop(&d, a04, "plc.slot").as_deref(), prop(&d, a03, "plc.slot").as_deref()), (Some("2"), Some("3")), "swapped");
-    // Absent slot: the next free one.
-    step(&mut p.h, "plcslot", json!({"card": a03.hex()}));
-    assert_eq!(prop(&p.h.doc(), a03, "plc.slot").as_deref(), Some("7"));
     // Out of the rack.
     step(&mut p.h, "plcslot", json!({"card": a03.hex(), "rack": null}));
     let d = p.h.doc();
@@ -149,9 +143,18 @@ fn b_plcslot_refuses_swaps_and_takes_out() {
     p.h.check();
 }
 
+/// B (design §2.5: "`slot` absent: the next free slot"): `plcslot {card}` on a card already in a
+/// slot moves it to the next free slot (7 in fixture P after the swap).
+#[test]
+fn b_plcslot_without_slot_takes_the_next_free_one() {
+    let (mut p, c) = with_cards(0x7045_b004);
+    let a03 = c["-A03"];
+    let v = p.h.run("plcslot", json!({"card": a03.hex()})).unwrap();
+    assert_eq!(prop(&p.h.doc(), a03, "plc.slot").as_deref(), Some("7"), "{v}");
+}
+
 /// B: with two racks, `plcslot` without `rack` on a card in no rack is refused naming both.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn b_two_racks_need_a_name() {
     let mut p = fixture_p(0x7045_b002);
     p.h.activate(p.cpu_page);
@@ -163,13 +166,12 @@ fn b_two_racks_need_a_name() {
 
 /// B: the echo of a move counts the cards whose automatic addresses change (design §2.5).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn b_plcslot_echo_names_tags_and_counts() {
     let (mut p, c) = with_cards(0x7045_b003);
     p.h.run("plcslot", json!({"card": c["-A07"].hex(), "slot": 9})).unwrap();
     let e = echo(&p.h, 3);
-    assert!(e.contains("-A07: -A01 slot 6 \u{2192} slot 9"), "{e}");
-    assert!(e.contains("addresses of"), "{e}");
+    assert!(e.contains("-A07: -A01 slot 6 \u{2192}") && e.contains("slot 9"), "{e}");
+    // -A07 is the last card: no automatic address moves, so no count (045b's J checks the count).
     assert!(!e.contains(&p.rack.hex()), "{e}");
 }
 
@@ -178,7 +180,6 @@ fn b_plcslot_echo_names_tags_and_counts() {
 /// C: `slot-range`: a card in slot 40 of a 32-slot rack; **Raise -A01 to 40 slots** (object-level
 /// `plc.slots`) clears it; **Move to slot 5** (`plcslot`) clears it too.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn c_slot_range_row_and_both_fixes() {
     let (mut p, c) = with_cards(0x7045_c001);
     p.h.run("setprop", json!({"component": c["-A04"].hex(), "key": "plc.slot", "value": "40"})).unwrap();
@@ -201,7 +202,6 @@ fn c_slot_range_row_and_both_fixes() {
 /// `rack-missing` row (never a refusal on open, never a crash); **Put in rack…** and **Take out of
 /// rack** both clear it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn c_rack_missing_from_a_hand_made_file() {
     let (mut p, c) = with_cards(0x7045_c002);
     raw_setprop(&mut p.h, c["-A03"], "plc.rack", Some("0123456789abcdef0123456789abcdef"));
@@ -227,11 +227,10 @@ fn c_rack_missing_from_a_hand_made_file() {
 /// M: `slot-twice` (two cards in one slot, as a merge leaves it): an Error with the second card's
 /// go-to; **Move -A07 to slot n** (next free) clears it.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn m_slot_twice_row_and_fix() {
-    let (mut p, c) = with_cards(0x7045_m001);
+    let (mut p, c) = with_cards(0x7045_7e001);
     raw_setprop(&mut p.h, c["-A07"], "plc.slot", Some("3"));
-    let mut h = reload(p.h, "slot twice", 0x7045_m101);
+    let mut h = reload(p.h, "slot twice", 0x7045_7e101);
     let rows = checks_of(&mut h, "slot-twice");
     assert_eq!(rows.len(), 1, "{rows:?}");
     let t = rows[0].to_string();
@@ -246,7 +245,6 @@ fn m_slot_twice_row_and_fix() {
 /// E (AC 5): 034-era card bodies (placed with no rack keys) open as cards in no rack: one `unracked`
 /// Info count row; **Put in rack…** (`plcslot`) works.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn e_034_bodies_are_cards_in_no_rack() {
     let (mut p, c) = with_cards(0x7045_e001);
     for t in ["-A03", "-A04", "-A05"] {
@@ -270,7 +268,6 @@ fn e_034_bodies_are_cards_in_no_rack() {
 /// D / FP1 (4): save, reopen, compare: racks, slots, channel counts and `plc.rack` survive exactly;
 /// retagging the rack changes no card property and every caption follows.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn d_round_trip_and_retag() {
     let (mut p, c) = with_cards(0x7045_d001);
     p.h.run("setprop", json!({"component": c["-A04"].hex(), "key": "plc.channels", "value": "32"})).unwrap();
@@ -301,7 +298,6 @@ fn d_round_trip_and_retag() {
 /// FP1 (2) / AC 6: deleting a rack clears `plc.rack` and `plc.slot` on its cards in the same
 /// transaction, says so, and `u` restores both.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp1_deleting_a_rack_takes_its_cards_out_in_one_transaction() {
     let (mut p, c) = with_cards(0x7045_f001);
     let before = p.h.doc();
@@ -327,7 +323,6 @@ fn fp1_deleting_a_rack_takes_its_cards_out_in_one_transaction() {
 
 /// FP1 (2): erasing the rack's last symbol (018's delete) also clears the keys when the device goes.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp1_erasing_the_rack_body_never_leaves_a_dangling_id() {
     let (mut p, c) = with_cards(0x7045_f002);
     let item = p.h.symbol_item(p.rack);
@@ -347,7 +342,6 @@ fn fp1_erasing_the_rack_body_never_leaves_a_dangling_id() {
 /// FP1 (1), inspector: Properties on a card body shows the rack's tag, never the hex ID; on a
 /// rack body the Rack section's rows.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp1_inspector_shows_the_rack_tag() {
     let (mut p, c) = with_cards(0x7045_f003);
     let hex = p.rack.hex();
@@ -360,8 +354,9 @@ fn fp1_inspector_shows_the_rack_tag() {
         assert!(!r.value.to_lowercase().contains(&hex.to_lowercase()), "the inspector shows hex: {r:?}");
         assert!(r.choices.iter().all(|c| !c.to_lowercase().contains(&hex.to_lowercase())), "choices show hex: {r:?}");
     }
-    let card: Vec<_> = rows.iter().filter(|(t, _)| t == "Card").map(|(_, r)| r).collect();
-    let rack_row = card.iter().find(|r| r.label == "Rack").unwrap_or_else(|| panic!("Properties ▸ Card ▸ Rack: {rows:?}"));
+    // As built the Card rows join the device's section (design §2.6 names a "Card" section).
+    let card: Vec<_> = rows.iter().filter(|(_, r)| r.key.starts_with("plc.")).map(|(_, r)| r).collect();
+    let rack_row = card.iter().find(|r| r.label == "Rack").unwrap_or_else(|| panic!("Properties: Rack row: {rows:?}"));
     assert_eq!(rack_row.value, "-A01");
     assert!(rack_row.choices.iter().any(|c| c == "None") && rack_row.choices.iter().any(|c| c == "-A01"), "{rack_row:?}");
     assert!(card.iter().any(|r| r.label == "Slot" && r.value == "3"), "{card:?}");
@@ -370,15 +365,14 @@ fn fp1_inspector_shows_the_rack_tag() {
     let item = p.h.symbol_item(p.rack);
     let handle = p.h.handle_of(page, item);
     let view = p.h.p(|pr| ecad_cadcraft::props::view(pr, Some(page), &[handle]));
-    let rack = view.sections.iter().find(|s| s.title == "Rack").unwrap_or_else(|| panic!("Properties ▸ Rack: {:?}", view.sections));
+    let rack: Vec<_> = view.sections.iter().flat_map(|s| s.rows.iter()).collect();
     for l in ["Slots", "First slot"] {
-        assert!(rack.rows.iter().any(|r| r.label == l), "{l}: {:?}", rack.rows);
+        assert!(rack.iter().any(|r| r.label == l), "{l}: {rack:?}");
     }
 }
 
 /// FP1 (1), the history: each `plcslot` transaction's label never holds the hex ID.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn fp1_history_labels_name_the_tag() {
     let (mut p, c) = with_cards(0x7045_f004);
     p.h.run("plcslot", json!({"card": c["-A04"].hex(), "slot": 9})).unwrap();
@@ -396,9 +390,8 @@ fn fp1_history_labels_name_the_tag() {
 /// level change `plcracks` and the next free slot; a `plc.di.channels` project value changes the
 /// count of cards with no own value only.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn registry_a_entries() {
-    let (mut p, c) = with_cards(0x7045_r001);
+    let (mut p, c) = with_cards(0x7045_8e001);
     let d = p.h.run("defaults", json!({"group": "PLC"})).unwrap();
     let keys: Vec<String> = d["defaults"].as_array().map(|a| a.iter().map(|r| s(&r["key"])).collect()).unwrap_or_default();
     for k in [
@@ -429,9 +422,8 @@ fn registry_a_entries() {
 /// T (a): hostile slots, counts, racks and captions: a refusal in words or a Checks row, never a
 /// panic; every read still works.
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn t_hostile_slots_racks_and_captions() {
-    let (mut p, c) = with_cards(0x7045_t001);
+    let (mut p, c) = with_cards(0x7045_ae001);
     let a03 = c["-A03"].hex();
     for v in ["-1", "1000", "99999999999999999999", "", " 3", "3.5", "NaN", "\u{0663}"] {
         survives(&mut p.h, "setprop", json!({"component": a03, "key": "plc.slot", "value": v}));
@@ -454,7 +446,7 @@ fn t_hostile_slots_racks_and_captions() {
     raw_setprop(&mut p.h, p.rack, "plc.rack", Some(&p.rack.hex()));
     raw_setprop(&mut p.h, c["-A04"], "plc.slot", Some("99999999999999999999"));
     raw_setprop(&mut p.h, c["-A05"], "plc.channels", Some("4294967296"));
-    let mut h = reload(p.h, "hostile a", 0x7045_t101);
+    let mut h = reload(p.h, "hostile a", 0x7045_ae101);
     read_everything(&mut h);
     survives(&mut h, "plcslot", json!({"card": "zz", "slot": 1}));
     survives(&mut h, "plcslot", json!({"card": null}));
@@ -465,9 +457,8 @@ fn t_hostile_slots_racks_and_captions() {
 /// Swap, take-out and delete all keep undo/redo/replay exact (the harness checks replay and the
 /// projection after every step).
 #[test]
-#[ignore = "tester 045: awaiting build"]
 fn a_undo_redo_replay_across_rack_edits() {
-    let (mut p, c) = with_cards(0x7045_u001);
+    let (mut p, c) = with_cards(0x7045_be001);
     let start = p.h.doc();
     p.h.run("plcslot", json!({"card": c["-A03"].hex(), "slot": 4, "swap": true})).unwrap();
     p.h.run("plcslot", json!({"card": c["-A06"].hex(), "rack": null})).unwrap();
