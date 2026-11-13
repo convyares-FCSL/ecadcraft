@@ -105,11 +105,13 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
 /// inside LINE, Ctrl+Z takes back a segment); the others act on the selection with nothing
 /// prompting, the single letters and Del only over the page.
 fn action_keys(t: &mut Trial, ctx: &egui::Context, over_main: bool, prompting: bool) {
-    let take = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
+    let take = |m: Modifiers, k: Key| take_exact(ctx, m, k);
+    // Ctrl+Shift+Z is redo too (CADCraft's own shortcut, kept); checked before Ctrl+Z.
+    let redo = take(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
     for k in [ActionKey::CtrlZ, ActionKey::CtrlY] {
         let (m, key) = shortcut(k);
         if let Some(a) = actions::on_key(k)
-            && take(m, key)
+            && (take(m, key) || (k == ActionKey::CtrlY && redo))
         {
             t.cad.start(a.command);
             t.after_logic();
@@ -134,6 +136,24 @@ fn action_keys(t: &mut Trial, ctx: &egui::Context, over_main: bool, prompting: b
             t.refuse(a.label, why, target.as_ref());
         }
     }
+}
+
+/// Take `k` pressed with exactly modifiers `m` (Ctrl/Cmd, Shift and Alt as given), once.
+///
+/// egui's `consume_shortcut` matches logically: it ignores an extra Shift, so Ctrl+Z would also
+/// take Ctrl+Shift+Z (redo), Ctrl+C CADCraft's Ctrl+Shift+C (copy with base point) and R a
+/// Shift+R. This check keeps those chords for what they are (review of #79).
+pub fn take_exact(ctx: &egui::Context, m: Modifiers, k: Key) -> bool {
+    ctx.input_mut(|i| {
+        let Some(at) = i.events.iter().position(|e| {
+            matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. }
+                if *key == k && modifiers.command == m.command && modifiers.shift == m.shift && modifiers.alt == m.alt)
+        }) else {
+            return false;
+        };
+        i.events.remove(at);
+        true
+    })
 }
 
 /// Whether the running command's prompt would take `letter`: it accepts text, or one of its

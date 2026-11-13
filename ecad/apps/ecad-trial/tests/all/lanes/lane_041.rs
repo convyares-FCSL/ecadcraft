@@ -428,3 +428,40 @@ fn screenshots_for_the_owner() {
     h.run_steps(4);
     shot(&h, "041-search.png");
 }
+
+/// Review of #79: Ctrl+Shift+Z is redo, not undo; Ctrl+Z undoes and Ctrl+Y redoes. A chord with
+/// an extra Shift is not taken by the plain key's action (Ctrl+Shift+C, Shift+R).
+#[test]
+fn ctrl_z_undoes_and_ctrl_shift_z_and_ctrl_y_redo() {
+    let F { mut h, k1, coil_at, .. } = fixture();
+    let main = h.state().shell.slots.unwrap().main.center();
+    h.event(Event::PointerMoved(main));
+    h.run_steps(2);
+    let delete = |h: &mut H| {
+        h.state_mut().cad.run("devicedelete", json!({"component": k1.hex()})).unwrap();
+        h.run_steps(2);
+    };
+    delete(&mut h);
+    let shift = Modifiers::COMMAND | Modifiers::SHIFT;
+    for (redo, name) in [(shift, "Ctrl+Shift+Z"), (Modifiers::COMMAND, "Ctrl+Y")] {
+        keys(&mut h, Modifiers::COMMAND, Key::Z);
+        assert!(exists(&mut h, k1), "Ctrl+Z undid the delete");
+        keys(&mut h, redo, if name == "Ctrl+Y" { Key::Y } else { Key::Z });
+        assert!(!exists(&mut h, k1), "{name} redid it");
+    }
+    keys(&mut h, Modifiers::COMMAND, Key::Z);
+    assert!(exists(&mut h, k1));
+    // With the coil selected, Shift+R and Ctrl+Shift+C start neither Rotate nor Copy.
+    let at = to_screen(&h, coil_at);
+    pointer(&mut h, at, PointerButton::Primary, true);
+    pointer(&mut h, at, PointerButton::Primary, false);
+    h.event(Event::PointerMoved(main));
+    h.run_steps(2);
+    assert!(!h.state().cad.session.selection().is_empty());
+    keys(&mut h, Modifiers::SHIFT, Key::R);
+    assert_ne!(running(&h).as_deref(), Some("rotate"), "Shift+R is not R");
+    cancel(&mut h);
+    keys(&mut h, shift, Key::C);
+    assert_ne!(running(&h).as_deref(), Some("copyclip"), "Ctrl+Shift+C is not Ctrl+C");
+    cancel(&mut h);
+}
