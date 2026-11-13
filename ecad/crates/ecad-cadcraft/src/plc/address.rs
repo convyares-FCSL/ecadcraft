@@ -225,12 +225,17 @@ pub fn shows_output(ty: CardType) -> bool {
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
 pub fn of_channel(
-    doc: &Document, c: ComponentId, i: u32, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, Block>>,
+    doc: &Document, c: ComponentId, i: u32, kept: Option<&super::Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
     let Some(ty) = super::card_type_of(doc, c) else { return (None, None) };
-    let bl = cache.entry(r).or_insert_with(|| blocks(doc, r, &members_of(doc, r)));
-    let Some(b) = bl.get(&c) else { return (None, None) };
+    // The kept model's blocks when there is one (review of #84, 3); a walk otherwise, once per rack.
+    let b = match kept {
+        Some(p) => p.blocks.get(&c).copied(),
+        None => cache.entry(r).or_insert_with(|| blocks(doc, r, &members_of(doc, r))).get(&c).copied(),
+    };
+    let Some(b) = b else { return (None, None) };
+    let b = &b;
     let style = Style::of(doc, r);
     let shown_no = i.saturating_add(super::channels::first_number(doc, c));
     let word = word_size(doc, c, ty);

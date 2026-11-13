@@ -425,3 +425,23 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<ComponentId>, w: Op
     out.dedup();
     out
 }
+
+/// The cards with a channel point on the nets of terminals `ts`.
+pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::TerminalId]) -> Vec<ComponentId> {
+    let conn = doc.connectivity();
+    let mut out = Vec::new();
+    for n in ts.iter().filter_map(|t| conn.net_of_terminal(*t)) {
+        let Some(net) = conn.net(n) else { continue };
+        for t in &net.terminals {
+            if let Some(x) = doc.terminals.get(t)
+                && plc.cards.contains_key(&x.component)
+                && channels::point_of(doc, *t).is_some()
+            {
+                out.push(x.component);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}

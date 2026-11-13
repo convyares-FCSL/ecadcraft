@@ -309,7 +309,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
         match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
-            _ => v.sections.push(device_section(doc, &k.devices, k.symbol)),
+            _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
         }
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
@@ -417,7 +417,9 @@ fn box_section(doc: &Document, b: ComponentId) -> Section {
     }
 }
 
-fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
+fn device_section(
+    doc: &Document, plc: Option<&crate::plc::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
+) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
@@ -500,7 +502,7 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
             xref_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
-            crate::plc::channel_rows(doc, c, symbol, &mut rows);
+            crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
         }
         _ => {}
     }

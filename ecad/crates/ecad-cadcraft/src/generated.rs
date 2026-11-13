@@ -236,7 +236,7 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
         // Brief 045c: each card from a new sheet, as the terminal plan.
-        Some(GenKind::IoList) => return outputs.map_or(1, |o| paginate_with(&crate::plc::iolist::page_heads(&o.plc), true).len().max(1)),
+        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(ROWS_PER_SHEET)),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
 }

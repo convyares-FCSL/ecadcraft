@@ -201,6 +201,9 @@ pub struct CardData {
     pub maker: Option<String>,
     /// Brief 045b: its channels with points, text or a typed address, by index.
     pub chans: BTreeMap<u32, ChannelData>,
+    /// Brief 045c: how many I/O rows it lists (`0..channels` and any channel beyond), kept for the
+    /// I/O page's sheet count (review of #84, 3).
+    pub rows: usize,
     /// Its first channel number (`plc.channel.first`).
     pub first: u32,
 }
@@ -214,7 +217,7 @@ pub struct Plc {
     pub racks: BTreeMap<ComponentId, RackData>,
     pub cards: BTreeMap<ComponentId, CardData>,
     /// The cards whose `plc.rack` holds each ID (valid or not): a rack's cards without a scan.
-    naming: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
+    pub naming: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
     /// Checks rows by group, worked out for the groups an update touched.
     checks: BTreeMap<Group, Vec<Check>>,
     /// Cards in no rack (the `unracked` count row).
@@ -337,6 +340,11 @@ impl Plc {
                 page,
                 part_number: text("part_number"),
                 maker: text("maker"),
+                rows: {
+                    let chans = channel_data(doc, c);
+                    let n = rack::channel_count(doc, c, ty);
+                    usize::try_from(n).unwrap_or(0) + chans.keys().filter(|i| **i >= n).count()
+                },
                 chans: channel_data(doc, c),
                 first: channels::first_number(doc, c),
             },
@@ -429,6 +437,26 @@ impl Plc {
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
+                }
+                // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
+                // nets it is on.
+                Op::AddTerminal { id, .. } => {
+                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &[*id]));
+                }
+                // A continuation renamed joins or splits nets: every continuation of the old and
+                // the new name, and the nets they are on now.
+                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if key == ecad_model::connectivity::NAME => {
+                    let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
+                    for v in [before, after].into_iter().flatten() {
+                        for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
+                            ts.extend(doc.terminals_of(k).map(|(t, _)| t));
+                        }
+                    }
+                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
+                }
+                // A strip link joins its positions' nets.
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
+                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
                 _ => {}
             }
@@ -839,6 +867,23 @@ impl Plc {
         self.cards.get(&c).map_or(0, |x| x.first)
     }
 
+    /// How many sheets the I/O page needs at `per` lines a sheet, from the kept row counts (no rows
+    /// made): each card with channels from a new sheet, its heading repeated on each sheet it runs
+    /// onto, as [`crate::generated::paginate_with`] lays them out.
+    pub fn iolist_sheets(&self, per: usize) -> usize {
+        let per = per.max(2);
+        let n: usize = self
+            .cards
+            .values()
+            .filter(|c| c.ty.has_channels())
+            .map(|c| {
+                let lines = c.rows + 1;
+                1 + lines.saturating_sub(per).div_ceil(per - 1)
+            })
+            .sum();
+        n.max(1)
+    }
+
     /// The racks by tag.
     pub fn racks_by_tag(&self) -> Vec<&RackData> {
         let mut v: Vec<&RackData> = self.racks.values().collect();
@@ -921,15 +966,17 @@ impl Plc {
 
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
 /// slot range shows in its cards' captions.
-pub fn pages_touched(doc: &Document, c: ComponentId, key: &str, after: Option<&str>) -> Vec<PageId> {
+pub fn pages_touched(doc: &Document, kept: Option<&Plc>, c: ComponentId, key: &str, after: Option<&str>) -> Vec<PageId> {
     if !(key == ecad_model::tag::TAG_KEY || key.starts_with("plc.")) {
         return Vec::new();
     }
+    // A rack's cards from the kept index (review of #84, 3); a walk only without the models.
     let pages_of = |r: ComponentId| -> Vec<PageId> {
-        rack::cards_naming(doc, r)
-            .into_iter()
-            .flat_map(|(card, _)| doc.representations_of(Subject::Component(card)).map(|(_, x)| x.page).collect::<Vec<_>>())
-            .collect()
+        let cards: Vec<ComponentId> = match kept {
+            Some(p) => p.naming.get(&r).into_iter().flatten().copied().collect(),
+            None => rack::cards_naming(doc, r).into_iter().map(|(c, _)| c).collect(),
+        };
+        cards.into_iter().flat_map(|card| doc.representations_of(Subject::Component(card)).map(|(_, x)| x.page).collect::<Vec<_>>()).collect()
     };
     if rack::is_rack(doc, c) {
         return pages_of(c);
@@ -1121,7 +1168,7 @@ pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData
 /// anchors. `cache` holds the racks' blocks for one page draw.
 pub fn channel_texts(
     doc: &Document, c: ComponentId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
-    cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, address::Block>>,
+    kept: Option<&Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, address::Block>>,
 ) -> Vec<crate::devices::PageText> {
     use crate::devices::{DerivedText, PageText, TextOf};
     use crate::symbols::TextRole;
@@ -1135,7 +1182,7 @@ pub fn channel_texts(
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).word() == "on";
     let first = channels::first_number(doc, c);
-    let (auto, _) = address::of_channel(doc, c, i, cache);
+    let (auto, _) = address::of_channel(doc, c, i, kept, cache);
     let (addr, _) = address::shown(doc, c, i, auto);
     let text =
         doc.components.get(&c).and_then(|x| x.properties.get(&channels::ch_key(i, "text"))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
@@ -1225,7 +1272,9 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
 
 /// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
-pub fn channel_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::props::Row>) {
+pub fn channel_rows(
+    doc: &Document, kept: Option<&Plc>, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::props::Row>,
+) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
     if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
         return;
@@ -1247,7 +1296,8 @@ pub fn channel_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::R
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
     rows.push(row(channels::ch_key(i, "text"), "Description", own(&channels::ch_key(i, "text")).unwrap_or_default(), true, false));
     let typed = own(&channels::ch_key(i, "address"));
-    let auto = address::of_channel(doc, c, i, &mut BTreeMap::new()).0.unwrap_or_default();
+    // The kept blocks when the models are built (review of #84, 3); a walk of one rack otherwise.
+    let auto = address::of_channel(doc, c, i, kept, &mut BTreeMap::new()).0.unwrap_or_default();
     let inherited = typed.is_none();
     rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));
     for (t, _) in &shown {
@@ -1255,4 +1305,9 @@ pub fn channel_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::R
             rows.push(row(format!("plc.pin#{i}#{role}"), &format!("Pin {role}"), term.label.clone().unwrap_or_default(), true, false));
         }
     }
+}
+
+/// Whether `page` shows a PLC channel cell (its texts read addresses).
+pub fn page_has_cells(doc: &Document, page: PageId) -> bool {
+    doc.representations_on(page).any(|(_, r)| crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_some())
 }

@@ -270,8 +270,21 @@ pub fn racks(doc: &Document) -> Vec<ComponentId> {
     v.into_iter().map(|(_, c)| c).collect()
 }
 
-/// The cards whose `plc.rack` names `rack` (valid or not), with their slots.
+thread_local! {
+    /// How many whole-project walks [`cards_naming`] made on this thread (the update-map tests
+    /// count them: a path with the kept model makes none).
+    static SCANS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread has walked the project for a rack's cards.
+pub fn scans() -> u64 {
+    SCANS.with(std::cell::Cell::get)
+}
+
+/// The cards whose `plc.rack` names `rack` (valid or not), with their slots. Walks every
+/// component: commands and checks of one edit only; kept-model paths use [`crate::plc::Plc`].
 pub fn cards_naming(doc: &Document, rack: ComponentId) -> Vec<(ComponentId, Option<u32>)> {
+    SCANS.with(|n| n.set(n.get() + 1));
     let hex = rack.hex();
     let mut v: Vec<(ComponentId, Option<u32>)> = doc
         .components
@@ -432,14 +445,10 @@ pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, s
     let rack_words = crate::devices::tag_words(doc, rack);
     let slot = match slot {
         Some(s) => s,
-        None => {
-            // Staying where it is when that slot is its own and in range.
-            match (rack_ref(doc, card), slot_of(doc, card)) {
-                (RackRef::Rack(r), Some(s)) if r == rack && (first..=last).contains(&s) && holder_of_slot(doc, rack, s, Some(card)).is_none() => s,
-                _ => next_free_slot(doc, rack, Some(card))
-                    .ok_or_else(|| format!("{rack_words}'s {n} slots are all taken. Raise its slot count (plc.slots), or pick another rack."))?,
-            }
-        }
+        // Design 045 §2.5 (tester 045a): `slot` absent is the next free slot; the card's own slot
+        // counts as taken, so a card already in the rack moves.
+        None => next_free_slot(doc, rack, None)
+            .ok_or_else(|| format!("{rack_words}'s {n} slots are all taken. Raise its slot count (plc.slots), or pick another rack."))?,
     };
     if !(first..=last).contains(&slot) {
         return Err(format!("{rack_words} has slots {first}–{last}. Pick a slot in that range, or raise its slot count (plc.slots)."));
@@ -615,4 +624,26 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
         },
         _ => return None,
     })
+}
+
+/// What merging device `from` into `into` adds for the cards of rack `from` (FP1 condition 2):
+/// their `plc.rack` re-pointed to `into`, which takes `from`'s rack body (a slot clash then shows
+/// as `slot-twice`, with its fix). Nothing when `from` is not a rack.
+pub fn merge_ops(doc: &Document, from: ComponentId, into: ComponentId) -> Vec<Op> {
+    if !is_rack(doc, from) {
+        return Vec::new();
+    }
+    // `from`'s representations, its rack body among them, move to `into`, which so becomes the rack
+    // (a merge that would give `into` two heads is refused before this).
+    let mut ops = Vec::new();
+    for (c, _) in cards_naming(doc, from) {
+        if c == into {
+            // A card of the rack becoming the rack itself leaves its slot.
+            ops.extend(slot_ops(doc, c, None));
+            continue;
+        }
+        let before = doc.components.get(&c).and_then(|x| x.properties.get(RACK_KEY)).cloned();
+        ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: RACK_KEY.into(), before, after: Some(into.hex()) });
+    }
+    ops
 }

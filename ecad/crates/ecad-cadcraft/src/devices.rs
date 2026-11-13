@@ -707,6 +707,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
             }
         }
     }
+    // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
+    // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
+    ops.extend(crate::plc::rack::merge_ops(doc, from, into));
     ops.push(Op::DeleteComponent { id: from, component: from_c });
     Ok(ops)
 }
@@ -998,6 +1001,12 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
+    all_texts_on_page_with(doc, page, None)
+}
+
+/// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
+/// (brief 045, review of #84, 3).
+pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
@@ -1092,7 +1101,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
             out.push(text);
         }
         // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
-        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, &mut plc_blocks));
+        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
