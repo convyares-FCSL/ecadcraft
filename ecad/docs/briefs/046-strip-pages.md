@@ -1,6 +1,7 @@
 # Brief 046: Graphical terminal-strip pages
 
-Status: Draft (designer, 2026-11-13; design 046 §14 questions open)
+Status: Approved (owner, 2026-11-13: all 12 design §14 questions answered "as recommended"; no FP
+needed, design §12)
 Branch: `feature/strip-pages`, from `origin/dev` `be6f4413` (036 multi-level terminals and the UI
 programme 037–043 merged).
 Designer: **yes** (`docs/design/046.md`) · Size: L (the roadmap's estimate; the design keeps it to
@@ -96,5 +97,6 @@ feature PR. Per-lane files (owner, 2026-11-13): `docs/quick-start/046-strip-page
 
 ## Needs owner check
 
-- Approve the design (`docs/design/046.md`) and answer its questions (§14).
+- ~~Approve the design and answer its questions (§14).~~ Done 2026-11-13: the owner answered all
+  12 "as recommended".
 - A click-only trial: `docs/quick-start/046-strip-pages.md`.
