@@ -161,7 +161,7 @@ impl Place {
 
     fn list(s: &mut Session) {
         for x in symbols::STARTERS {
-            s.echo(format!("{:<9} {:<28} -{}  {}", x.key, x.name, x.prefix, x.labels().join("/")));
+            s.echo(format!("{:<9} {:<28} -{}  {}", x.key, x.name, x.prefix(), x.labels().join("/")));
         }
     }
 
@@ -210,7 +210,7 @@ impl Place {
         if self.last.is_some() {
             return self.last;
         }
-        let prefix = self.symbol().prefix;
+        let prefix = self.symbol().prefix();
         read(s, |p, _| {
             let doc = p.ledger.document();
             Ok(p.last_placed
