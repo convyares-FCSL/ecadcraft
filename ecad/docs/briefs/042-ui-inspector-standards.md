@@ -1,6 +1,6 @@
 # Brief 042: Inspector, Settings and the Standards screen (U4c)
 
-Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
+Status: Approved (Carl, 2026-11-13). Drafted by the U0 designer, 2026-11-13.
 Branch: `feature/ui-inspector`, from `origin/dev` after `fix/ui-followups` has merged.
 Designer: done (`docs/design/ui-architecture.md` §11; the look and rules are spec §1 principle 7,
 §2 "Settings is a place you visit", §5 "What you set and what is read", the push-back's item 8,
@@ -145,13 +145,19 @@ None by default: `setdefault` writes existing properties through existing ops, w
 store change. If the overseer reads `setdefault` as a new op surface, the tester runs criterion 3
 only.
 
-## Owner question
+## Owner questions
 
 1. **Q1. Named standards before or after this screen?** Roadmap 1.13 splits (a) the style model
    (named standards such as IEC and US, the Standard level, stored per project) from (b) this
    screen. (a) is not built. **Recommend:** build the screen now over the registry as it is, with
    the standard shown as "IEC (built in)" and read-only; 1.13(a) then adds the Standard level and
    the IEC / US switch without changing the screen.
+   **Answered (Carl, 2026-11-13): as recommended.** Build the Standards screen now over the
+   current defaults registry, with the standard shown as "IEC (built in)", read-only. Named
+   standards (IEC / US, roadmap 1.13(a)) come later.
+2. **Q2. The first window's size.** **Dropped (Carl, 2026-11-13):** PR #76 (`fix/ui-followups`)
+   already sets the default window and fixes the popouts' sizing.
+
 ## Owner check
 
 Change the contactor letter in Standards and watch what the screen says before applying it.
