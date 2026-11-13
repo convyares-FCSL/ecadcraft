@@ -42,6 +42,8 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::accessory_cmds::specs());
     v.extend(crate::release::specs());
     v.extend(crate::text_cmds::specs());
+    #[cfg(not(target_arch = "wasm32"))]
+    v.extend(crate::agent_access::specs());
     v.extend(crate::level_cmds::specs());
     v
 }

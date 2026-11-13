@@ -292,6 +292,9 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the reserved layer `ECAD-CABLES` (005) and everything computed on it: label box, trunk, spine, bends, tails, core labels, wire numbers and reference flags (009) |
 | `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
 | `ecad.reference` | 6 (magenta) | `#FF00FF` | A linked cable reference: its ring and its derived `/page.column` text (010); same colour as `ecad.cable` |
+| `ecad.agent` (035) | `cad.accent` | — | Agent banner's left bar while connected (the styled banner, UI shell) |
+| `ecad.agent-write` (035) | 3 (green) | `#00FF00` | Agent banner's left bar for 1 s after an accepted agent write; same as `ecad.attached` |
+| `ecad.agent-bar` (035) | `cad.chrome_dark` | — | The agent banner strip: fill, 3 px left bar, 24 px high (the revision and branch bar pattern) |
 | `ecad.orphan` | 1 (red) | `#FF0000` | A cable reference with no other end: ring and `/?` text (010), the concept spec's red orphan marker |
 | `ecad.wire-label` | 7 (white), ByLayer on `ECAD-WIRE-LABELS` | `#FFFFFF` | Conductor labels: wire number, cross-section, colour (022) |
 | `ecad.check-error` | 1 (red) | `#FF0000` | Checks error glyph and go-to ring (022); same as `ecad.orphan` |

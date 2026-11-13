@@ -157,7 +157,12 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "share",
     // AUDIT rewrites the drawing outside ECAD's commands; its log setting writes a file.
     "audit",
+    // Brief 035: an agent never turns its own access on, widens it or moves the port.
+    "agentaccess",
 ];
+
+/// Said when an agent asks for `agentaccess` (brief 035, design §3.3).
+pub const AGENT_ACCESS: &str = "Refused: Agent access is set by the person in the ECAD window. Nothing was changed.";
 
 /// Parameter names that name a file on disk.
 pub const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
@@ -207,6 +212,9 @@ Nothing was changed. Restart it with --write to let the agent edit and save the 
 
 /// Said when the command is refused in every mode.
 pub fn never(id: &str) -> String {
+    if id == "agentaccess" {
+        return AGENT_ACCESS.into();
+    }
     format!(
         "Refused: {} is not available to agents. Opening, creating, closing and saving projects under another name, \
          and reading or writing other files, stay with the person who started the server; save the project with the \
@@ -298,6 +306,7 @@ mod tests {
         assert!(check("wire", &none, true, None).is_ok());
         assert!(check("wire", &none, true, Some("locked")).is_err());
         assert!(check("saveas", &none, true, None).is_err());
+        assert_eq!(check("agentaccess", &json!({"mode": "write"}), true, None), Err(AGENT_ACCESS.into()));
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());

@@ -5,6 +5,7 @@
 
 mod accessories_contracts;
 mod cable_command_contracts;
+mod connect_contracts;
 mod demo;
 mod history_contracts;
 mod levels_contracts;
@@ -29,6 +30,7 @@ mod tester_031_mcp;
 mod tester_032_mcp;
 mod tester_033_mcp;
 mod tester_034_mcp;
+mod tester_035_mcp;
 mod tester_036_mcp;
 mod text_contracts;
 mod wires_nets_contracts;
