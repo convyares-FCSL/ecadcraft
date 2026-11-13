@@ -25,7 +25,7 @@ use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, Project
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
 /// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `connector.` (brief 044),
-/// `strippage.` (brief 046, design 046 §7.2) and `bom.` (brief 047). Keys already approved before
+/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047) and `plc.` (brief 045). Keys already approved before
 /// the registry keep their names; the key-rule test reads this one list.
 /// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
 /// this file with `merge=union`.
@@ -42,10 +42,12 @@ pub const AREAS: &[&str] = &[
     "connector",
     "strippage",
     "bom",
+    "plc",
 ];
 
 pub mod bom;
 pub mod connectors;
+pub mod plc;
 pub mod print;
 pub mod strip_pages;
 pub mod symbols;
@@ -317,6 +319,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         connectors::ENTRIES,
         strip_pages::ENTRIES,
         bom::ENTRIES,
+        plc::ENTRIES,
     ]
     .into_iter()
     .flatten()

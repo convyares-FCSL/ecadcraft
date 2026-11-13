@@ -401,19 +401,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
             Ok(vec![(highest + 1).to_string()])
         }
-        Kind::Plc { letter } => {
-            let highest = used
-                .iter()
-                .filter_map(|l| {
-                    let rest = l.strip_prefix(letter)?;
-                    let (a, b) = rest.split_once('.')?;
-                    let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
-                    (a < 10_000 && b < 8).then_some(a * 8 + b)
-                })
-                .max();
-            let n = highest.map_or(0, |h| h + 1);
-            Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
-        }
+        // Brief 045 (FP7): a channel joins a card as its next free channel; its labels are pins.
+        Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra),
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
         // Brief 034: the label rule lives in the catalogue.
         Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
@@ -718,6 +707,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
             }
         }
     }
+    // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
+    // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
+    ops.extend(crate::plc::rack::merge_ops(doc, from, into));
     ops.push(Op::DeleteComponent { id: from, component: from_c });
     Ok(ops)
 }
@@ -785,7 +777,13 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             }
         }
         if remaining.is_empty() {
+            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
+            let (released, n) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            ops.extend(released);
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+            if n > 0 {
+                notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
+            }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
@@ -843,6 +841,15 @@ pub enum TextOf {
     Description,
     /// A device's part number under its tag (brief 031, hidden by default).
     PartNumber,
+    /// Brief 045 (design 045 §7.2): a PLC card body's caption, its rack and slot.
+    Caption,
+    /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description
+    /// (written turned 90° when `rotated`).
+    ChannelNo,
+    Address,
+    ChannelText {
+        rotated: bool,
+    },
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -905,7 +912,8 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
-        TextOf::Description => TextKind::Description,
+        TextOf::Description | TextOf::Caption | TextOf::ChannelText { .. } => TextKind::Description,
+        TextOf::ChannelNo | TextOf::Address => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
     }
 }
@@ -981,7 +989,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
     }
     match rep_starter(doc, r).map(|s| s.kind) {
         Some(Kind::Terminal) => RunRule::Strip,
-        Some(Kind::Plc { .. }) => RunRule::Plc,
+        Some(Kind::Channel(_)) => RunRule::Plc,
         _ => RunRule::None,
     }
 }
@@ -993,6 +1001,12 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
+    all_texts_on_page_with(doc, page, None)
+}
+
+/// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
+/// (brief 045, review of #84, 3).
+pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
@@ -1021,6 +1035,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
+    // Brief 045: the racks' address blocks, worked out once per draw.
+    let mut plc_blocks = std::collections::BTreeMap::new();
     // Tag blocks wait for placement (design 031 §6), after every fixed text is known.
     struct Pending {
         block: Block,
@@ -1080,6 +1096,12 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
                 overlaps: false,
             });
         }
+        // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
+        if let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
+            out.push(text);
+        }
+        // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
+        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
@@ -1163,6 +1185,10 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
     look.apply(&mut e, kind_of(t.of));
+    // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
+    if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
+        x.rotation = std::f64::consts::FRAC_PI_2;
+    }
     if let Some(aci) = t.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
     }

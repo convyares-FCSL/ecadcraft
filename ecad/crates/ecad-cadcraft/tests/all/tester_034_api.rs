@@ -103,6 +103,10 @@ fn quiet_lists() {
     let cat = catalogue();
     // Brief 044's pins are quiet like 034's connector bodies (design 044 §3.2).
     for st in STARTERS.iter().filter(|s| !matches!(s.key, "pinpair" | "pins" | "pinp")) {
+        // Brief 045's starters are design 045's.
+        if crate::tester_034_library::BRIEF_045.contains(&st.key) {
+            continue;
+        }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key)).map(|t| t.key.clone()).collect();
         got.sort();
@@ -160,8 +164,9 @@ fn anchors() {
             assert!(v.is_empty(), "{}", st.key);
             continue;
         }
-        // Brief 044's pins (design 044 §3.2) show their half's tag only.
-        if matches!(st.key, "pinpair" | "pins" | "pinp") {
+        // Brief 044's pins (design 044 §3.2) show their half's tag only; brief 045's channel cells
+        // have design 045 §7.1's anchors (`lanes::lane_045`).
+        if matches!(st.key, "pinpair" | "pins" | "pinp") || (crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch")) {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
