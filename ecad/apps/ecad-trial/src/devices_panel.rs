@@ -1,7 +1,8 @@
 //! The **Devices** tab of the Project panel (owner request, 2026-11-08, after brief 018): every
 //! device with its tag and description, its function, location, symbols, pages and part; a click
-//! on a row shows its first symbol's page and selects it; the selected device's properties are
-//! edited in place through `setprop` (brief 018's rules, its merge offer included).
+//! on a row shows its first symbol's page and selects all its symbols on that page; the selected
+//! device's properties are edited in place through `setprop` (brief 018's rules, its merge offer
+//! included).
 //!
 //! Brief 039: the rows are the one table's Devices column set ([`crate::lists::devices`]): tag and
 //! description edit in place (the same `setprop`), the list is patched with the devices a change
@@ -183,7 +184,9 @@ impl DevicesPanel {
             .inner;
         self.filter = self.table.query.clone();
         self.rows_drawn = self.table.rows_drawn;
-        let first_symbol = |s: &DevicesSource, c: ComponentId| s.row(c).and_then(|r| r.entry.symbols.first()).map(|x| x.rep);
+        // The device's symbols, first first; empty for a device with none.
+        let symbols =
+            |s: &DevicesSource, c: ComponentId| s.row(c).map(|r| r.entry.symbols.iter().map(|x| x.rep).collect::<Vec<_>>()).unwrap_or_default();
         for e in events {
             match e {
                 TableEvent::Selected(keys) => {
@@ -193,17 +196,20 @@ impl DevicesPanel {
                         self.error = None;
                     }
                     self.selected = first;
-                    // One row: its symbols on the page (the first one's page, selected).
-                    if let [c] = keys.as_slice()
-                        && let Some(rep) = first_symbol(&self.source, *c)
-                    {
-                        out.push(Action::GotoSymbol(rep));
+                    // One row: its symbols on the page (the first one's page, all of them on it
+                    // selected).
+                    if let [c] = keys.as_slice() {
+                        let reps = symbols(&self.source, *c);
+                        if !reps.is_empty() {
+                            out.push(Action::GotoSymbols(reps));
+                        }
                     }
                 }
                 TableEvent::GoTo { key, .. } | TableEvent::Open(key) => {
                     self.selected = Some(key);
-                    if let Some(rep) = first_symbol(&self.source, key) {
-                        out.push(Action::GotoSymbol(rep));
+                    let reps = symbols(&self.source, key);
+                    if !reps.is_empty() {
+                        out.push(Action::GotoSymbols(reps));
                     }
                 }
                 TableEvent::Commit { key, col, value } => {

@@ -1775,8 +1775,8 @@ impl Trial {
             A::SaveAs => self.request_save_as(),
             A::CloseProject => self.close_project(),
             A::RenameInBox(page) => self.open_rename_box(Some(page)),
-            A::GotoSymbol(rep) => {
-                let _ = self.goto_symbol(rep);
+            A::GotoSymbols(reps) => {
+                let _ = self.goto_symbols(&reps);
             }
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
@@ -2340,13 +2340,35 @@ impl Trial {
     /// # Errors
     /// No project, an unknown symbol, or a page that cannot be shown (echoed).
     pub fn goto_symbol(&mut self, symbol: ecad_model::RepresentationId) -> Result<(), String> {
+        self.goto_symbols(&[symbol])
+    }
+
+    /// The Devices tab's go to for a device: the first of `symbols` is gone to as
+    /// [`Trial::goto_symbol`] does, and every one of `symbols` on its page is selected (a device's
+    /// symbols on other pages are not). A selection change only: nothing is recorded.
+    ///
+    /// # Errors
+    /// No symbols, no project, an unknown first symbol, or a page that cannot be shown (echoed).
+    pub fn goto_symbols(&mut self, symbols: &[ecad_model::RepresentationId]) -> Result<(), String> {
+        let symbol = *symbols.first().ok_or("that device has no symbols")?;
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
             .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol).map(|t| t.0))?
             .ok_or("that symbol no longer exists")?;
         self.show_page(page)?;
-        let (_, at, handles) =
-            p.read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol))?.ok_or("that symbol no longer exists")?;
+        let (_, at, handles) = p
+            .read(&mut self.cad.session, |p, _| {
+                let (pg, at, mut handles) = ecad_cadcraft::device_list::symbol_target(p, symbol)?;
+                for rep in symbols.iter().skip(1) {
+                    if let Some((other, _, more)) = ecad_cadcraft::device_list::symbol_target(p, *rep)
+                        && other == pg
+                    {
+                        handles.extend(more);
+                    }
+                }
+                Some((pg, at, handles))
+            })?
+            .ok_or("that symbol no longer exists")?;
         if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
