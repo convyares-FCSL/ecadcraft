@@ -141,10 +141,12 @@ pub enum Kind {
     FuseDevice,
     /// Fuse positions with no rating (one count row).
     NoFuseRating,
+    /// Brief 040: a wire or core colour code the app does not know (drawn in ink).
+    UnknownColour,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 41] = [
+    pub const ALL: [Kind; 42] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -186,6 +188,7 @@ impl Kind {
         Kind::LevelMissing,
         Kind::FuseDevice,
         Kind::NoFuseRating,
+        Kind::UnknownColour,
     ];
 
     /// The JSON name.
@@ -232,6 +235,7 @@ impl Kind {
             Kind::LevelMissing => "level-missing",
             Kind::FuseDevice => "fuse-device",
             Kind::NoFuseRating => "no-fuse-rating",
+            Kind::UnknownColour => "unknown-colour",
         }
     }
 
@@ -284,6 +288,7 @@ impl Kind {
             Kind::LevelMissing => "Link names a level the position lacks",
             Kind::FuseDevice => "Fuse terminals that are devices of their own",
             Kind::NoFuseRating => "Fuse positions without a rating",
+            Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
         }
     }
 
@@ -816,6 +821,12 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
                 });
             }
         }
+    }
+    // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
+    if let Some(code) = crate::look::conductor_colour(doc, c).filter(|code| crate::look::colour_code(code).is_none()) {
+        let (page, at) = conductor_place(doc, c, None);
+        let code = crate::look::shorten(code.trim(), crate::look::MAX_CODE_CHARS);
+        out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Conductor(c), which: format!("{which} {code}"), fix: None });
     }
     out
 }

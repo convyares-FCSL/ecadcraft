@@ -359,6 +359,7 @@ impl Trial {
             }
             self.cad.ui_embedded(ui);
         });
+        crate::canvas::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
         // Right-click on the page does nothing in U2 except while a command runs (the wheel is U4b).
         let _ = self.cad.take_secondary_click();

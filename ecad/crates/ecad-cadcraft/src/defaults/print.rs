@@ -114,6 +114,41 @@ pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::tag::Style {
     }
 }
 
+/// Brief 040 (owner answer 1): whether prints are `mono` (black, with the colour code in the wire
+/// label; the built-in default) or `colour` (wires in their colours, two-colour wires with the
+/// second colour's dashes, everything else in ink). A print command's own `colour` wins.
+pub static COLOUR: Entry = Entry {
+    key: "print.colour",
+    label: "Print colour",
+    group: GROUP,
+    brief: "040",
+    kind: Kind::Choice(&["mono", "colour"]),
+    builtin: Value::Choice("mono"),
+    levels: SP,
+    project: ProjectSource::Property,
+};
+
+/// Whether `doc` prints mono ([`COLOUR`] is `mono`, the default).
+pub fn mono(doc: &ecad_model::Document) -> bool {
+    super::resolve(doc, &COLOUR, super::Scope::project()).word() != "colour"
+}
+
+/// A print command's `colour` parameter (`mono`, `colour`, or `screen` as `colour`), or the
+/// project's [`COLOUR`] when it gives none: whether to print mono.
+///
+/// # Errors
+/// Any other value, in words.
+pub fn mono_param(doc: &ecad_model::Document, params: &serde_json::Value) -> Result<bool, String> {
+    match params.get("colour") {
+        None | Some(serde_json::Value::Null) => Ok(mono(doc)),
+        Some(v) => match v.as_str().map(str::trim) {
+            Some("mono") => Ok(true),
+            Some("colour" | "color" | "screen") => Ok(false),
+            _ => Err("`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)".into()),
+        },
+    }
+}
+
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
     &TAG_DASH,
@@ -126,4 +161,5 @@ pub static ENTRIES: &[&Entry] = &[
     &MISSING_BOX_INSET,
     &CONTACT_TABLE_FALLBACK,
     &CONTACT_TABLE_CLEARANCE,
+    &COLOUR,
 ];

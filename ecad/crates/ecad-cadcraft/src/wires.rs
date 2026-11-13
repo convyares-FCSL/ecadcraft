@@ -117,7 +117,7 @@ pub struct WireLabel {
 }
 
 /// The vertices of a route path.
-fn path_vertices(p: &Primitive) -> Option<Vec<Pt>> {
+pub(crate) fn path_vertices(p: &Primitive) -> Option<Vec<Pt>> {
     match p {
         Primitive::Line { a, b } => Some(vec![*a, *b]),
         Primitive::Polyline { vertices, closed: false } => Some(vertices.clone()),

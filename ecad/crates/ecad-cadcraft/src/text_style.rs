@@ -497,17 +497,13 @@ impl Fonts {
     /// Resolve the family `wanted` on this machine, with the fallbacks of §2.2.
     pub fn for_family(doc: &Document, wanted: String) -> Fonts {
         let found = |name: &str| cadcraft_engine::fonts::ttf::find(name).is_some();
-        let family = if found(&wanted) {
-            Some(wanted.clone())
-        } else if found(default_family()) {
-            Some(default_family().to_string())
-        } else {
-            None
-        };
+        // Brief 040: the wanted family, the sheet font (registered by the app), then 031's
+        // built-in font, then the stroke font.
+        let family = [wanted.as_str(), default_family(), d::FALLBACK_FONT].into_iter().find(|f| found(f)).map(str::to_string);
         match family {
             Some(f) => {
-                let bold_name = format!("{f} Bold");
-                let bold = if found(&bold_name) { bold_name } else { f.clone() };
+                // Bold is the family's Bold face, else its SemiBold (the sheet font's 600).
+                let bold = [format!("{f} Bold"), format!("{f} SemiBold")].into_iter().find(|n| found(n)).unwrap_or_else(|| f.clone());
                 Fonts { wanted, regular: f.clone(), bold, drawn_with: f, bold_lineweight: None }
             }
             None => {

@@ -281,17 +281,19 @@ fn joinwires_on_a_tee_places_a_junction() {
 /// `joinwires`, none.
 #[test]
 fn a_yellow_ring_marks_ends_that_look_connected() {
-    use cadcraft_engine::ext::MarkShape;
     let mut h = H::new(0x32_13);
     let page = h.first_page();
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({"join": false}));
     let uid = h.p(|p| p.pages[&page].uid).unwrap();
     let yellow = |h: &mut H| {
-        h.p(|p| ecad_cadcraft::interact::overlay_marks(p, uid))
+        // Brief 040: painted as the warning triangle (was a yellow ring mark).
+        h.p(|p| ecad_cadcraft::look::painted_marks(p, uid))
             .into_iter()
-            .filter(|m| m.shape == MarkShape::Ring && (m.stroke - 1.5).abs() < 1e-6 && (m.size - 10.0).abs() < 1e-6)
-            .map(|m| (m.at.x, m.at.y))
+            .filter_map(|m| match m {
+                ecad_cadcraft::look::Painted::Warning(at) => Some((at.x, at.y)),
+                ecad_cadcraft::look::Painted::Error(_) => None,
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(yellow(&mut h), vec![(50.0, 0.0)]);

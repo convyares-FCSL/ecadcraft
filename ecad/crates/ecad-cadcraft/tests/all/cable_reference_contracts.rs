@@ -15,7 +15,7 @@ use crate::common;
 use cadcraft_engine::Input;
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
-use cadcraft_engine::doc::color::{Color as CColor, Rgb};
+use cadcraft_engine::doc::color::Color as CColor;
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
@@ -330,12 +330,13 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(text_of(&mut r.h, r.supply), "?");
     let doc = r.h.doc();
     assert!(markers_on_page(&doc, r.supply)[0].orphan);
-    // Red: the ring (`ecad.orphan`, #FF0000) and the text (ACI 1).
+    // Red: the painted error disc (brief 040; was a red ring) and the text (ACI 1).
     // Only the active page is drawn (brief 016): Supply shows the new text once it is active.
     r.h.activate(r.supply);
     let su = uid(&mut r.h, r.supply);
-    let ring = r.h.p(|p| overlay_marks(p, su)).into_iter().find(|m| m.at == Vec2::new(65.0, 5.0)).expect("ring");
-    assert_eq!((ring.shape, ring.color), (MarkShape::Ring, Rgb(0xff, 0x00, 0x00)));
+    assert!(r.h.p(|p| overlay_marks(p, su)).into_iter().all(|m| m.at != Vec2::new(65.0, 5.0)), "no ring mark");
+    let painted = r.h.p(|p| ecad_cadcraft::look::painted_marks(p, su));
+    assert!(painted.contains(&ecad_cadcraft::look::Painted::Error(ecad_model::Pt::new(65.0, 5.0))), "{painted:?}");
     let srid = reference_on(&mut r.h, r.supply);
     let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
     let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();

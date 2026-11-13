@@ -1146,6 +1146,235 @@ impl<'a> PageIndex<'a> {
     }
 }
 
+// ---------------------------------------------------------------- the canvas (brief 040)
+
+/// The dark sheet is in use (brief 040, step 1): a viewing preference of the person, set by the
+/// app, never stored in the project. Process-wide, as there is one window.
+static DARK_SHEET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Use the dark sheet (`true`) or the paper sheet (`false`, the default) for ECAD's overlay marks.
+pub fn set_dark_sheet(dark: bool) {
+    DARK_SHEET.store(dark, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The sheet in use: [`ecad_tokens::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
+pub fn sheet() -> &'static ecad_tokens::Sheet {
+    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_tokens::sheet::DARK } else { &ecad_tokens::sheet::PAPER }
+}
+
+/// A token colour as CADCraft's RGB.
+pub fn rgb(c: ecad_tokens::Color) -> cadcraft_engine::doc::color::Rgb {
+    cadcraft_engine::doc::color::Rgb(c.r, c.g, c.b)
+}
+
+/// `ecad.wire_colour.*` (design `040.md` §2): the colour each IEC 60757 code draws in, on the
+/// paper and the dark sheet. Black draws in ink, so it shows on both sheets; white draws as a warm
+/// grey on paper. Codes as `ecad_model::wiring::COLOUR_CODES` (the single colours).
+pub const CODE_COLOURS: [(&str, &str, ecad_tokens::Color, ecad_tokens::Color); 14] = {
+    use ecad_tokens::Color as C;
+    [
+        ("BK", "BLK", ecad_tokens::sheet::PAPER.ink, ecad_tokens::sheet::DARK.ink),
+        ("BN", "BRN", C::hex(0x8A4B1F), C::hex(0xC9895A)),
+        ("RD", "RED", C::hex(0xC62828), C::hex(0xFF7A70)),
+        ("OG", "ORG", C::hex(0xD96800), C::hex(0xFFA34D)),
+        ("YE", "YEL", C::hex(0xE3B800), C::hex(0xF2D34B)),
+        ("GN", "GRN", C::hex(0x2F8F3A), C::hex(0x6FD67A)),
+        ("BU", "BLU", C::hex(0x23408F), C::hex(0x8FB0FF)),
+        ("VT", "VIO", C::hex(0x7B3FA0), C::hex(0xC392F0)),
+        ("GY", "GRY", C::hex(0x7C8591), C::hex(0xA3ABB6)),
+        ("WH", "WHT", C::hex(0xB9B4A6), C::hex(0xF2F3F5)),
+        ("PK", "PNK", C::hex(0xD9528F), C::hex(0xFF9CC8)),
+        ("GD", "GLD", C::hex(0xA8851C), C::hex(0xE3C463)),
+        ("TQ", "TQS", C::hex(0x14948F), C::hex(0x54D3CC)),
+        ("SR", "SLR", C::hex(0x98A0A8), C::hex(0xC9CED4)),
+    ]
+};
+
+/// Longest colour code looked at (characters after trimming).
+pub const MAX_CODE_CHARS: usize = 16;
+
+/// Index into [`CODE_COLOURS`] of one colour code, either form, any case.
+fn one_code(s: &str) -> Option<usize> {
+    CODE_COLOURS.iter().position(|(iec, three, _, _)| s.eq_ignore_ascii_case(iec) || s.eq_ignore_ascii_case(three))
+}
+
+/// The colours of a colour code: one colour (`BU`, `BLU`), or two, the first solid and the second
+/// laid over it as dashes (`GNYE`, `GN/YE`, `GRN/YEL`, `RDBU`, `YEBN`). `None` for a code the app
+/// does not know (it draws in ink and raises an information check) and for an empty one.
+///
+/// # Example
+/// ```
+/// use ecad_cadcraft::look::colour_code;
+/// assert_eq!(colour_code("GNYE"), colour_code("grn/yel"));
+/// assert!(colour_code("GNYE").is_some_and(|(_, dashes)| dashes.is_some()));
+/// assert_eq!(colour_code("PURPLISH"), None);
+/// ```
+pub fn colour_code(code: &str) -> Option<(usize, Option<usize>)> {
+    let c = code.trim();
+    if c.is_empty() || c.chars().count() > MAX_CODE_CHARS || !c.is_ascii() {
+        return None;
+    }
+    if let Some(i) = one_code(c) {
+        return Some((i, None));
+    }
+    let parts: Vec<&str> = c.split(['/', '-', ' ', '+']).filter(|p| !p.is_empty()).collect();
+    match parts.as_slice() {
+        [a, b] => Some((one_code(a)?, Some(one_code(b)?))),
+        // Run together: two two-letter codes (`GNYE`) or two three-letter ones (`GRNYEL`).
+        [ab] => [2usize, 3].iter().find_map(|n| {
+            let (a, b) = (ab.get(..*n)?, ab.get(*n..)?);
+            if b.len() != *n {
+                return None;
+            }
+            Some((one_code(a)?, Some(one_code(b)?)))
+        }),
+        _ => None,
+    }
+}
+
+/// How a wire of colour `code` is drawn on `sheet`: its solid colour, and the dashes' colour for a
+/// two-colour code; `None` for an unknown code (drawn in ink).
+pub fn wire_colours(code: &str, sheet: &ecad_tokens::Sheet) -> Option<ecad_tokens::wire::WireColors> {
+    let dark = sheet.sheet == ecad_tokens::sheet::DARK.sheet;
+    let colour = |i: usize| CODE_COLOURS.get(i).map(|(_, _, paper, on_dark)| if dark { *on_dark } else { *paper });
+    let (a, b) = colour_code(code)?;
+    Some(ecad_tokens::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
+}
+
+/// A conductor's colour code: its own, else its potential's when it is not a cable core (the
+/// same source as its label, `ecad_model::wiring::label`). `None` when it has none.
+pub fn conductor_colour(doc: &Document, c: ConductorId) -> Option<String> {
+    let cond = doc.conductors.get(&c)?;
+    if let Some(v) = cond.properties.get(ecad_model::wiring::COLOUR).filter(|v| !v.trim().is_empty()) {
+        return Some(v.clone());
+    }
+    if !doc.cables_of(c).is_empty() {
+        return None;
+    }
+    let conn = doc.connectivity();
+    let net = conn.net_of_conductor(c).and_then(|id| conn.net(id))?;
+    ecad_model::wiring::net_potential(doc, net).colour.filter(|v| !v.trim().is_empty())
+}
+
+/// A wire route drawn in its colours on a page (brief 040, step 3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColouredRoute {
+    pub conductor: ConductorId,
+    /// The handle the route is drawn with on the page (to leave a selected wire to CADCraft).
+    pub handle: Option<cadcraft_engine::doc::Handle>,
+    pub points: Vec<Pt>,
+    pub colours: ecad_tokens::wire::WireColors,
+}
+
+/// Most routes [`coloured_routes`] returns for one page.
+pub const MAX_COLOURED_ROUTES: usize = 20_000;
+
+/// The wire routes of `page` whose colour code is known, with their colours on `sheet`. Routes
+/// not drawn (a cable in fan view hides its members) and plain black wires (ink already) are left
+/// out. `map`: the page's handles when it is projected (routes it does not draw are left out).
+/// Display and print only; nothing is stored.
+pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_tokens::Sheet) -> Vec<ColouredRoute> {
+    let mut out = Vec::new();
+    for (_, r) in doc.representations_on(page) {
+        let Subject::Conductor(c) = r.subject else { continue };
+        if r.form != ecad_model::Form::Drawn {
+            continue;
+        }
+        let Some(item) = r.items.first() else { continue };
+        let handle = map.and_then(|m| m.item(*item));
+        if map.is_some() && handle.is_none() {
+            continue;
+        }
+        let Some(ItemKind::Primitive(prim)) = doc.items.get(item).map(|i| &i.kind) else { continue };
+        let Some(points) = crate::wires::path_vertices(prim) else { continue };
+        if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
+            continue;
+        }
+        let Some(colours) = conductor_colour(doc, c).and_then(|code| wire_colours(&code, sheet)) else { continue };
+        if colours.solid == sheet.ink && colours.dashes.is_none() {
+            continue;
+        }
+        out.push(ColouredRoute { conductor: c, handle, points, colours });
+        if out.len() >= MAX_COLOURED_ROUTES {
+            break;
+        }
+    }
+    out
+}
+
+/// Most dashes [`dash_segments`] makes for one route.
+pub const MAX_DASHES: usize = 4_000;
+
+/// The dashes of a two-colour wire along `points`: `on` long, `off` apart, starting with a dash
+/// at the first point (spec: 2 mm on, 2 mm off, `ecad_tokens::wire`). At most [`MAX_DASHES`];
+/// none when a length is not positive and finite.
+pub fn dash_segments(points: &[Pt], on: f64, off: f64) -> Vec<(Pt, Pt)> {
+    let mut out = Vec::new();
+    if !(on.is_finite() && off.is_finite() && on > 0.0 && off > 0.0) {
+        return out;
+    }
+    let period = on + off;
+    // How far along the dash pattern the current segment starts.
+    let mut phase = 0.0_f64;
+    for w in points.windows(2) {
+        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+        let len = a.dist(*b);
+        if !len.is_finite() || len <= 0.0 {
+            continue;
+        }
+        let at = |t: f64| Pt::new(a.x + (b.x - a.x) * t / len, a.y + (b.y - a.y) * t / len);
+        // Distance along this segment of the next dash start.
+        let mut t = if phase < on { -phase } else { period - phase };
+        while t < len {
+            let (s, e) = (t.max(0.0), (t + on).min(len));
+            if e > s {
+                out.push((at(s), at(e)));
+                if out.len() >= MAX_DASHES {
+                    return out;
+                }
+            }
+            t += period;
+        }
+        phase = (phase + len) % period;
+    }
+    out
+}
+
+/// A marker ECAD paints over the page in a shape CADCraft's marks lack (brief 040, step 2):
+/// display only, never an entity, so it never reaches a plot.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Painted {
+    /// An error (an orphan cable reference): a filled disc with "!".
+    Error(Pt),
+    /// A warning (an open end that looks connected): a filled triangle with "!".
+    Warning(Pt),
+}
+
+/// The painted markers of page drawing `uid`.
+pub fn painted_marks(p: &crate::Project, uid: u64) -> Vec<Painted> {
+    let Some(page) = p.page_of(uid) else { return Vec::new() };
+    let Some(view) = p.pages.get(&page).filter(|v| !v.unavailable) else { return Vec::new() };
+    let doc = p.ledger.document();
+    let mut out: Vec<Painted> =
+        crate::references::markers_on_page(doc, page).into_iter().filter(|m| m.orphan).map(|m| Painted::Error(m.at)).collect();
+    out.extend(view.map.looks_connected().iter().map(|at| Painted::Warning(*at)));
+    out
+}
+
+/// The handles of the provisional device tags drawn on `page` (`-K?1`): painted in the
+/// provisional colour with a dotted underline (spec §5, "dotted means not final yet").
+pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft_engine::doc::Handle> {
+    let doc = p.ledger.document();
+    let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
+    map.tag_text_handles()
+        .filter(|h| {
+            let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
+            let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
+            crate::devices::tag_of(doc, c).is_some_and(ecad_model::tag::is_provisional)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

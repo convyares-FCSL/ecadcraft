@@ -105,6 +105,8 @@ fn main() -> eframe::Result {
     };
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
+    // Brief 040: the sheet font for the page (US3), before any text is drawn.
+    ecad_trial::canvas::register_sheet_faces();
     // Brief 024: Print Book plots through CADCraft's PDF plotter.
     ecad_cadcraft::printbook::install_io();
     if let Some(t) = &mut timing {

@@ -397,9 +397,11 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let orphaned = r.h.doc();
     assert!(ref_on(&mut r.h, r.field).is_none(), "Field's reference is gone");
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("?"));
-    let rings = ring(&mut r.h, r.supply);
-    assert_eq!(rings.len(), 1);
-    assert_ne!(rings[0].color, linked_colour, "the orphan ring is not the linked colour");
+    // Brief 040: an orphan is the painted error disc, not a ring in another colour.
+    assert!(ring(&mut r.h, r.supply).is_empty(), "no linked ring");
+    let su = uid(&mut r.h, r.supply);
+    let painted = r.h.p(|p| ecad_cadcraft::look::painted_marks(p, su));
+    assert!(painted.iter().any(|m| matches!(m, ecad_cadcraft::look::Painted::Error(_))), "{painted:?}");
     let sid = ref_on(&mut r.h, r.supply).unwrap();
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(sid)).unwrap();
     let e = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == text).unwrap();
