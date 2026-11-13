@@ -388,9 +388,9 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
         ));
         // Brief 046 (design 046 §10).
         out.push_str(&format!(
-            "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1),              spagetype {:.2} ms (< 16; {} strips marked)
-",
-            t.spage_ms, t.spageupd_ms, t.spageoff_ms, t.spageoff_projections, t.spagetype_ms, t.spagetype_work
+            "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1), \
+             spagetype {:.2} ms (< 16; {} strips marked), spbuild {:.2} ms (part of stripbuild; growth < 10 %)\n",
+            t.spage_ms, t.spageupd_ms, t.spageoff_ms, t.spageoff_projections, t.spagetype_ms, t.spagetype_work, t.spbuild_ms
         ));
     }
     for r in rows {
@@ -677,7 +677,7 @@ fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
 fn spage_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     json!({
         "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
-        "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work,
+        "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work, "spbuild_ms": t.spbuild_ms,
     })
 }
 

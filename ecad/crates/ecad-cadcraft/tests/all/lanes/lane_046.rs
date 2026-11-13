@@ -350,3 +350,27 @@ fn paginate_keeps_blocks_whole() {
     assert_eq!(strip_page::paginate(&[150.0, 10.0], 100.0), vec![(0, 1), (1, 2)]);
     assert_eq!(strip_page::paginate(&[f64::NAN, 10.0], 100.0).len(), 1);
 }
+
+/// Review of 046, finding 1: a style switch changes a page's sheet count on the document alone;
+/// the shown page's frame (its Total) is still redrawn.
+#[test]
+fn a_style_switch_moves_the_total_on_the_shown_page() {
+    let mut g = fixture(0x46_0c);
+    g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "45"})).unwrap();
+    // 20 mm columns: 18 a sheet, so the graphic page has more sheets than the table's two.
+    g.h.run("setdefault", json!({"key": "strippage.pitch", "level": "project", "value": "20"})).unwrap();
+    let plain: PageId = id(&g.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    g.h.activate(g.schematic);
+    let total = |h: &mut H| {
+        let o = outputs(h);
+        generated::book_sheets(&h.doc(), Some(&o))
+    };
+    let before = total(&mut g.h);
+    let (n, _) = counted(&mut g.h, "setdefault", json!({"key": "terminal.plan.style", "level": "project", "value": "graphic"}));
+    let after = total(&mut g.h);
+    assert_ne!(before, after, "the strip page has another sheet count than the table");
+    assert_eq!(n, 1, "the shown page's frame (Total) is redrawn");
+    assert!(outputs(&mut g.h).numbers_moved);
+    g.h.check();
+    let _ = plain;
+}
