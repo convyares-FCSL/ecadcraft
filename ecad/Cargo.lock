@@ -1444,6 +1444,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecad-tokens"
+version = "0.1.0-dev"
+
+[[package]]
 name = "ecad-trial"
 version = "0.1.0-dev"
 dependencies = [
@@ -1455,10 +1459,21 @@ dependencies = [
  "ecad-mcp",
  "ecad-model",
  "ecad-store",
+ "ecad-ui",
  "eframe",
  "egui_kittest",
  "ron",
  "serde_json",
+]
+
+[[package]]
+name = "ecad-ui"
+version = "0.1.0-dev"
+dependencies = [
+ "ecad-tokens",
+ "egui",
+ "egui_kittest",
+ "sha2",
 ]
 
 [[package]]

@@ -32,5 +32,6 @@ mod strips_ui;
 mod text_ui;
 mod tools;
 mod trial;
+mod ui_primitives;
 mod windows_trial_contracts;
 mod xref_ui;

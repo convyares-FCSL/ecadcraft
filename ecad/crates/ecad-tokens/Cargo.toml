@@ -1,0 +1,12 @@
+[package]
+name = "ecad-tokens"
+description = "ECAD design tokens: the one table of colours, sizes, radii, line weights, type and icon names (brief 037)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
