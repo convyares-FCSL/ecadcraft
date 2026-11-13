@@ -868,7 +868,8 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             }
         }
         // Brief 036 (FP7): a level's own label and a fuse position's rating move with their position.
-        for prefix in [crate::terminal_types::LABEL_PREFIX, crate::terminal_types::RATING_PREFIX] {
+        // The rest of the position-keyed list (`acc.*` above, with its merge rule).
+        for prefix in crate::terminal_types::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
             for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
                 let Some(rest) = k.strip_prefix(prefix) else { continue };
                 // `term_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.

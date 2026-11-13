@@ -780,6 +780,11 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
+            // Brief 036 (review M1): a level's own label and a fuse position's rating go with
+            // the last terminal of their level or position, never left to come back later.
+            let (key_ops, key_notes) = crate::terminal_types::orphaned_key_ops(doc, c, &drop);
+            ops.extend(key_ops);
+            notes.extend(key_notes);
             // Brief 031 (FP5): an erased symbol's own text keys go with it.
             for (rid, _) in &reps {
                 for (key, value) in crate::text_style::symbol_text_keys(&component.properties, *rid) {

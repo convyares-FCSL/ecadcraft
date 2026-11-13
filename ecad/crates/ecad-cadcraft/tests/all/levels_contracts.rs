@@ -270,3 +270,95 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
     h.s.execute("renumber", &json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()]})).unwrap();
     assert_eq!(labels(&mut h), ["3", "2", "1"], "each terminal numbered at its own symbol");
 }
+
+/// Review M1 (no silent data loss): a level's own label and a fuse position's rating go with the
+/// last terminal of their level or position (and come back with `u`); a two-point split reports a
+/// wire number its out half does not keep; `toposition` lists every property it does not carry.
+#[test]
+fn nothing_is_lost_silently() {
+    let mut h = H::new(0x0360_0009);
+    let page = h.first_page();
+    wires(&mut h, 0.0);
+    let s1 = fence(&mut h, None, "SEN", "S", 20.0);
+    let x1: ComponentId = id(&s1, "strip");
+    let t2 = terminals(&s1)[1];
+    h.run("termlabel", json!({"terminal": t2.hex(), "text": "2S"})).unwrap();
+    // Erase position 2's S symbol: its label key goes with it.
+    let rep = h.doc().representations_showing(t2).next().map(|(r, _)| r).unwrap();
+    let item = h.doc().representations[&rep].items[0];
+    let handle = h.handle_of(page, item);
+    h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
+    assert_eq!(h.doc().components[&x1].properties.get("term_label.2.1"), None, "removed with its level");
+    h.run("undo", json!({})).unwrap();
+    assert_eq!(h.doc().components[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
+    same_as_built(&mut h);
+    // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
+    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 0.0), (100.0, 80.0)])})).unwrap(), "conductor");
+    h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-07"})).unwrap();
+    let f = h.run("terminals", json!({"type": "FUSE", "from": [90, 40], "to": [110, 40]})).unwrap();
+    assert_eq!(f["dropped_wire_numbers"][0]["number"], "24V-07", "{f}");
+    assert!(f["message"].as_str().unwrap().contains("no longer carry wire number 24V-07"), "{f}");
+    // toposition lists what goes with the device.
+    let dev: ComponentId = id(&h.run("place", json!({"symbol": "fuseterm", "at": [200, 100]})).unwrap(), "component");
+    h.run("setprop", json!({"component": dev.hex(), "key": "part_number", "value": "FT-4"})).unwrap();
+    let v = h.run("toposition", json!({"device": dev.hex(), "strip": x1.hex()})).unwrap();
+    let lost: Vec<&str> = v["lost"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert!(lost.contains(&"part_number") && lost.contains(&"tag"), "{v}");
+    h.check();
+}
+
+/// Review M1: relabelling a position moves every position-keyed property (one shared list) and
+/// rewrites the links naming it, in one transaction.
+#[test]
+fn relabel_moves_every_position_keyed_property() {
+    let mut h = H::new(0x0360_000a);
+    wires(&mut h, 0.0);
+    let f = fence(&mut h, None, "FUSE", "1", 20.0);
+    let x1: ComponentId = id(&f, "strip");
+    let t2 = terminals(&f)[1];
+    let suffix = |prefix: &str, p: &str| if prefix == ecad_cadcraft::terminal_types::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() };
+    let value = |prefix: &str| {
+        if prefix == ecad_cadcraft::accessories::AFTER_PREFIX {
+            "partition"
+        } else if prefix == ecad_cadcraft::accessories::ON_PREFIX {
+            "marker"
+        } else {
+            "2A"
+        }
+    };
+    for prefix in ecad_cadcraft::terminal_types::POSITION_KEYED {
+        h.run("setprop", json!({"component": x1.hex(), "key": format!("{prefix}{}", suffix(prefix, "2")), "value": value(prefix)})).unwrap();
+    }
+    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-2"})).unwrap();
+    let head = h.head();
+    h.run("termlabel", json!({"terminal": t2.hex(), "position": "7"})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    let props = h.doc().components[&x1].properties.clone();
+    for prefix in ecad_cadcraft::terminal_types::POSITION_KEYED {
+        assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "2"))), None, "{prefix} left on 2");
+        assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "7"))).map(String::as_str), Some(value(prefix)), "{prefix} moved to 7");
+    }
+    assert_eq!(props.get("link.1").map(String::as_str), Some("1, 7"));
+    same_as_built(&mut h);
+}
+
+/// Review M1 (update maps, design 036 §11): an edit unrelated to strips recomputes none; the
+/// project separator recomputes only the strips with a multi-level position that inherit it.
+#[test]
+fn update_map_counters() {
+    let mut h = H::new(0x0360_000b);
+    wires(&mut h, 0.0);
+    wires(&mut h, 100.0);
+    let a = fence(&mut h, None, "LNPE", "L", 20.0);
+    let _plain = fence(&mut h, None, "Feedthrough", "1", 120.0);
+    let x1: ComponentId = id(&a, "strip");
+    let work = |h: &mut H| h.cfg(|p| p.outputs().strips.last_work);
+    h.run("wire", json!({"points": pts(&[(300.0, 0.0), (300.0, 40.0)])})).unwrap();
+    assert_eq!(work(&mut h), 0, "a wire elsewhere recomputes no strip");
+    h.run("projectprops", json!({"props": {"terminal.level.separator": "/"}})).unwrap();
+    assert_eq!(work(&mut h), 1, "only the L/N/PE strip inherits the separator");
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal.level.separator", "value": "-"})).unwrap();
+    h.run("projectprops", json!({"props": {"terminal.level.separator": ":"}})).unwrap();
+    assert_eq!(work(&mut h), 0, "a strip with its own separator no longer inherits it");
+    same_as_built(&mut h);
+}

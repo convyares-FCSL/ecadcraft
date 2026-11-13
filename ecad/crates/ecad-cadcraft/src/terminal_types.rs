@@ -26,6 +26,12 @@ use ecad_model::{ComponentId, Document, Primitive, Pt, Subject, TerminalDef, Ter
 pub const LABEL_PREFIX: &str = "term_label.";
 /// The strip property prefix of a fuse position's rating (FP5): `rating.<p>`.
 pub const RATING_PREFIX: &str = "rating.";
+/// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
+/// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
+/// and `acc.on.` are brief 030's placements, the next two this brief's; `link.` values name
+/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]).
+pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX, RATING_PREFIX];
+
 /// Most characters of a position label (`termlabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
 /// Most characters of a level's own label (`termlabel {text}`).
@@ -335,6 +341,40 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
         return Some(p);
     }
     Some(derived_label(doc, c, type_of_terminal(doc, t), &p, n))
+}
+
+/// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
+/// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
+/// terminal left, `rating.<p>` when position `p` has none; with a note for each.
+pub fn orphaned_key_ops(doc: &Document, c: ComponentId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
+    let (mut ops, mut notes) = (Vec::new(), Vec::new());
+    let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { return (ops, notes) };
+    if dropped.is_empty() || !crate::strips::is_strip(doc, c) {
+        return (ops, notes);
+    }
+    let gone: BTreeSet<TerminalId> = dropped.iter().copied().collect();
+    let left: Vec<(String, u32)> =
+        doc.terminals_of(c).filter(|(t, _)| !gone.contains(t)).filter_map(|(t, x)| Some((x.label.clone()?, level_of(doc, t).0))).collect();
+    let tag = crate::devices::tag_words(doc, c);
+    let mut remove = |key: String, ops: &mut Vec<ecad_model::Op>, notes: &mut Vec<String>| {
+        if let Some(v) = props.get(&key)
+            && !ops.iter().any(|o| matches!(o, ecad_model::Op::SetProperty { key: k, .. } if *k == key))
+        {
+            notes.push(format!("{tag}: {key} ({v}) removed with its terminal; U brings it back."));
+            ops.push(ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, before: Some(v.clone()), after: None });
+        }
+    };
+    for t in dropped {
+        let Some(p) = doc.terminals.get(t).and_then(|x| x.label.clone()) else { continue };
+        let n = level_of(doc, *t).0;
+        if !left.iter().any(|(l, m)| *l == p && *m == n) {
+            remove(label_key(&p, n), &mut ops, &mut notes);
+        }
+        if !left.iter().any(|(l, _)| *l == p) {
+            remove(rating_key(&p), &mut ops, &mut notes);
+        }
+    }
+    (ops, notes)
 }
 
 /// One position of a strip.

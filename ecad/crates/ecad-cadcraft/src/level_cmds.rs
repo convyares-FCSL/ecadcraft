@@ -206,8 +206,7 @@ pub struct ToPosition {
     pub ops: Vec<Op>,
     pub strip: ComponentId,
     pub position: String,
-    /// Properties that go with the device (not `tag`, `description`, `rating`, `part_number`,
-    /// `maker`).
+    /// Properties that go with the device: every one but `rating`, which moves to `rating.<p>`.
     pub lost: Vec<String>,
     /// The part number note, when the device's differs from the strip's fuse part.
     pub note: Option<String>,
@@ -329,8 +328,10 @@ pub fn plan_toposition(
         let before = doc.components.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
         ops.push(Op::SetProperty { object: ObjectRef::Component(strip), key, before, after: Some(r.clone()) });
     }
-    let keep = ["tag", "description", "rating", "part_number", "maker"];
-    let lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str()) && !k.starts_with("text.")).cloned().collect();
+    let keep = ["rating"];
+    // Everything else goes with the device and is listed (review M1: no silent loss), its own
+    // text placements included.
+    let lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
     let strip_part = doc.components.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
     let note = match (props.get("part_number"), &strip_part) {
         (Some(a), Some(b)) if a != b => {

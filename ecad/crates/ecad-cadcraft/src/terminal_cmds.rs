@@ -63,6 +63,9 @@ pub struct Land {
     pub new: ConductorId,
     /// The cable whose membership was decided, and which half keeps it.
     pub cable: Option<(CableId, ConductorId, bool)>,
+    /// Brief 036: the stored wire number the second half of a two-point split did not keep
+    /// (review M1: reported, never dropped silently), and whether it was fixed.
+    pub dropped_number: Option<(String, bool)>,
 }
 
 fn segments(v: &[Pt]) -> impl Iterator<Item = (Pt, Pt)> + '_ {
@@ -203,7 +206,7 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire
         }
         cable = Some((k, if moved { c2 } else { c }, decided));
     }
-    Ok(Land { ops, conductor: c, new: c2, cable })
+    Ok(Land { ops, conductor: c, new: c2, cable, dropped_number: None })
 }
 
 /// The echo of a landed terminal.
@@ -314,6 +317,9 @@ pub struct Fence {
     pub placed: Vec<(TerminalId, String, ConductorId, ConductorId)>,
     /// Wires skipped because a terminal of the strip is already there.
     pub skipped: usize,
+    /// Brief 036: stored wire numbers the out halves of two-point splits did not keep: (the new
+    /// half, the number, whether it was fixed).
+    pub dropped: Vec<(ConductorId, String, bool)>,
 }
 
 /// Plan Place Terminals (design 028 §3.2) from `from` to `to` on `page`.
@@ -396,6 +402,7 @@ pub fn plan_fence_typed(
         }
     };
     let mut placed = Vec::new();
+    let mut dropped = Vec::new();
     let mut named = kind.position.clone();
     for m in crossings {
         let on = on_wire_of(doc, page, m.conductor, m.at).ok_or("A crossed wire has no route here.")?;
@@ -414,11 +421,14 @@ pub fn plan_fence_typed(
         let shown = level_symbol(ids, page, style.clone(), def, starter, strip, &position, placement, &mut ops)?;
         let land =
             land_level(doc, ids, page, on, &shown, placement).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
+        if let Some((n, fixed)) = land.dropped_number.clone() {
+            dropped.push((land.new, n, fixed));
+        }
         ops.extend(land.ops);
         let t = shown.first().map(|(_, t, _)| *t).ok_or("The symbol has no connection point.")?;
         placed.push((t, position, land.conductor, land.new));
     }
-    Ok(Fence { ops, strip, tag, placed, skipped })
+    Ok(Fence { ops, strip, tag, placed, skipped, dropped })
 }
 
 /// Plan one level symbol (or a whole terminal) of `strip` at position `position` (brief 036 §3.3):
@@ -477,19 +487,22 @@ pub fn land_level(
     let keep_in = before.is_none_or(|b| b.dist(pin) <= b.dist(pout));
     let (keep_t, keep_p, rest_t, rest_p) = if keep_in { (tin.1, pin, tout.1, pout) } else { (tout.1, pout, tin.1, pin) };
     let (c1, c2) = (land.conductor, land.new);
+    let mut dropped: Option<(String, bool)> = None;
     for op in &mut land.ops {
         match op {
             Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
             Op::CreateConductor { id, conductor } if *id == c2 => {
                 conductor.ends[0] = Some(rest_t);
-                conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER);
-                conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER_FIXED);
+                let number = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER);
+                let fixed = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER_FIXED).is_some();
+                dropped = number.map(|n| (n, fixed));
             }
             Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
             Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
             _ => {}
         }
     }
+    land.dropped_number = dropped;
     Ok(land)
 }
 
@@ -615,12 +628,24 @@ fn run_terminals(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             };
             format!("Placed {}:{range} on {wires} ({span}{what}).", f.tag)
         };
+        // Review M1: a stored wire number an out half did not keep is said, never dropped silently.
+        let message = if f.dropped.is_empty() {
+            message
+        } else {
+            let list: Vec<&str> = f.dropped.iter().map(|(_, n, _)| n.as_str()).collect();
+            format!(
+                "{message} Out halves no longer carry wire number{} {}; they get their own.",
+                if list.len() == 1 { "" } else { "s" },
+                list.join(", ")
+            )
+        };
         Ok(json!({
             "strip": f.strip.hex(),
             "tag": f.tag,
             "type": ty.code,
             "terminals": f.placed.iter().zip(&shown).map(|((t, l, c, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "conductor": c.hex(), "new": n.hex()})).collect::<Vec<_>>(),
             "skipped": f.skipped,
+            "dropped_wire_numbers": f.dropped.iter().map(|(c, n, fixed)| json!({"conductor": c.hex(), "number": n, "fixed": fixed})).collect::<Vec<_>>(),
             "message": message,
         }))
     })?;
@@ -744,6 +769,13 @@ pub(crate) fn run_place_level(
         });
         if let Some(l) = &land {
             v["split"] = json!({"conductor": l.conductor.hex(), "new": l.new.hex()});
+            if let Some((n, fixed)) = &l.dropped_number {
+                v["dropped_wire_number"] = json!({"conductor": l.new.hex(), "number": n, "fixed": fixed});
+                let words = format!(" The out half no longer carries {}wire number {n}; it gets its own.", if *fixed { "the fixed " } else { "" });
+                if let Some(m) = v["message"].as_str() {
+                    v["message"] = json!(format!("{m}{words}"));
+                }
+            }
         }
         Ok(v)
     })?;
