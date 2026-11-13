@@ -121,7 +121,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
                     let v = if i % 2 == 0 { "signal" } else { "analogue" };
                     cat.push(exec(&mut s, "category", json!({"net": w.hex(), "value": v}))?);
                     let p = if i % 2 == 0 { "L1" } else { "L2" };
-                    pot.push(exec(&mut s, "potential", json!({"conductor": w.hex(), "potential": p}))?);
+                    pot.push(exec(&mut s, "potential", json!({"conductor": w.hex(), "value": p}))?);
                 }
                 out.category_net_ms = median(&mut cat);
                 out.potential_net_ms = median(&mut pot);
