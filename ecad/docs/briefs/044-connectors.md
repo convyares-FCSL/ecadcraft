@@ -1,7 +1,7 @@
 # Brief 044: Connector devices
 
-Status: Draft (designer, 2026-11-13). FP1–FP6 approved by the overseer (2026-11-13, design §13);
-waits for the owner's answers (design §14).
+Status: Approved (owner, 2026-11-13: Carl answered all 12 owner questions of design §14 "as
+recommended"). FP1–FP6 approved by the overseer (2026-11-13, design §13).
 Branch: `feature/connectors`, from `origin/dev` `be6f4413`.
 Designer: **yes** (`docs/design/044.md`) · Size: M (the roadmap's estimate; the design keeps it
 there by reusing 036's per-position bridges and 041's Place group)

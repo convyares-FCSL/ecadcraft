@@ -214,6 +214,10 @@ fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
 /// the symbols that show it, and only terminals of the same component with the **same label**
 /// (one position) are joined; any other terminal keeps the rule of brief 022 (the component's own
 /// definition, the whole device).
+///
+/// Brief 044 (FP2): a connector pin (key `.s` or `.p`) uses the same rule: its half's definition
+/// bridges `.s` with `.p`, so pin `n` of the socket half joins pin `n` of the plug half, and only
+/// that.
 fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let Some(key) = term.key.as_deref() else { return Vec::new() };

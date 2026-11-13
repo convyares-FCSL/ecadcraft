@@ -67,6 +67,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     if crate::terminal_types::is_level_starter(starter.key) {
         return crate::terminal_cmds::run_place_level(s, params, starter, at, degrees, mirror);
     }
+    // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
+    if let crate::symbols::Kind::ConnectorHalf { .. } = starter.kind {
+        return crate::connector_cmds::run_place_half(s, params, starter, at, degrees, mirror);
+    }
     let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
     let tag = match params.get("tag") {
         None | Some(Value::Null) => None,

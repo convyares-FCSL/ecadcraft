@@ -698,6 +698,12 @@ pub(crate) fn run_set_tag(s: &mut Session, params: &Value, o: ObjectRef) -> cadc
             return Ok(json!({"changed": true, "value": Value::Null}));
         };
         let typed_fixed = !tag::is_provisional(&t);
+        // Brief 044 (design 044 §5.1): a connector's half tag is not free for another device.
+        if let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &t)
+            && ObjectRef::Component(c) != o
+        {
+            return Err(format!("{t} is the {} half of {}. Pick another tag.", side.word(), devices::tag_words(doc, c)));
+        }
         let Some(holder) = devices::tag_holder(doc, &t, Some(o)) else {
             let ops = tag_ops(doc, o, Some(t.clone()), typed_fixed);
             if ops.is_empty() {

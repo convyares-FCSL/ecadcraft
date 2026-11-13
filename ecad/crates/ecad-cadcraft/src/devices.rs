@@ -384,6 +384,10 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
     let mut used = labels_of(doc, c);
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
+    // Brief 044: a connector holds connector halves and pins only.
+    if crate::connectors::is_connector(doc, c) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
+        return Err(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device."));
+    }
     match s.kind {
         Kind::Contact { make } => {
             // Brief 025 (owner answer Q4): the part's next free offered contact of this kind.
@@ -413,6 +417,10 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
         // Brief 034: the label rule lives in the catalogue.
         Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
+        // Brief 044: a connector half joins by its own rules (design 044 §4.4), through `place`.
+        Kind::ConnectorHalf { .. } => {
+            Err(format!("A {} joins a connector only: place it with Place ▸ Connector, or name a connector.", s.name.to_lowercase()))
+        }
         Kind::Fixed { exclusive } => {
             if exclusive {
                 let has = doc
@@ -967,6 +975,10 @@ pub fn text_passes(page: PageId) -> u64 {
 /// The run rule of a symbol (design 031 §5.3), from its starter kind.
 pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRule {
     use crate::text_style::RunRule;
+    // Brief 044 (design 044 §5.2): a connector's pins show their half's tag once per run.
+    if crate::connectors::rep_half(doc, r).is_some_and(crate::connectors::is_pin_starter) {
+        return RunRule::Strip;
+    }
     match rep_starter(doc, r).map(|s| s.kind) {
         Some(Kind::Terminal) => RunRule::Strip,
         Some(Kind::Plc { .. }) => RunRule::Plc,
@@ -985,6 +997,10 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
+        // Brief 044: a pin pair shows its pin name once, beside the socket point.
+        if doc.representations.get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
+            continue;
+        }
         // Brief 036: a strip level shows its shown label (`1.L`), not its position.
         if let Some(label) = crate::terminal_types::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
@@ -1061,14 +1077,25 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
         let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
         let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
-        if let Some(t) = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes)) {
+        // Brief 044 (design 044 §5.2): a connector symbol shows its half's tag and fields.
+        let half = crate::connectors::rep_side(doc, r);
+        let tag_text = match half {
+            Some(side) => Some(crate::connectors::half_tag(doc, c, side)),
+            None => tag_of(doc, c).map(str::to_string),
+        };
+        if let Some(t) = tag_text.map(|t| crate::locations::shown_tag(doc, c, r, &t, &mut boxes)) {
             lines.push((TextOf::Tag, t, sizes.tag, shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
         }
         for (of, key, kind) in
             [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
         {
-            if let Some(v) = props.and_then(|p| p.get(key)).map(|v| v.trim()).filter(|v| !v.is_empty()) {
-                lines.push((of, v.to_string(), text_style(doc, kind).height, shown(kind), None));
+            let value = match half {
+                Some(side @ (crate::symbols::Side::Socket | crate::symbols::Side::Plug)) => crate::connectors::half_prop(doc, c, side, key),
+                Some(crate::symbols::Side::Both) => None,
+                None => props.and_then(|p| p.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            };
+            if let Some(v) = value {
+                lines.push((of, v, text_style(doc, kind).height, shown(kind), None));
             }
         }
         if lines.is_empty() {

@@ -569,6 +569,13 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
+            // Brief 044 (FP4): a connector's `pins`, `half.<s|p>.<field>` and naming defaults.
+            (ObjectRef::Component(c), k) if crate::connectors::setprop_value(doc, c, k, None).is_some() => {
+                match crate::connectors::setprop_value(doc, c, k, value.as_deref()) {
+                    Some(r) => r?,
+                    None => value,
+                }
+            }
             // Brief 036 (§12, FP4): the registry's terminal defaults on a strip, and a level's label.
             (ObjectRef::Component(c), k) if k.starts_with("terminal.") && crate::strips::is_strip(doc, c) => {
                 match crate::defaults::terminals::setprop_value(k, value.as_deref()) {
