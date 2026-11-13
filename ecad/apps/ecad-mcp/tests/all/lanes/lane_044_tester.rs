@@ -57,7 +57,6 @@ fn reads(c: &mut Client, x: &str) -> Value {
 }
 
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn connector_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t044 Steckverbinder mit Leerzeichen \u{e4}");
     let path = dir.file("Stecker -X01 (S P).ecad");
@@ -195,7 +194,6 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
 /// `connector` and `pinlabel` are listed with their docs (every ECAD command reaches MCP through
 /// `execute`, design §0: no ecad-mcp code change).
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn connector_and_pinlabel_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));

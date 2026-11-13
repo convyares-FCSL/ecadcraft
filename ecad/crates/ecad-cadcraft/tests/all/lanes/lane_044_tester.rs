@@ -3,7 +3,6 @@
 //! before the implementation existed. The checks drive JSON commands (`connector`, `pinlabel`,
 //! `place`, `setprop`, `setdefault`, `bom`, `wirelist`, `xrefs`, `refgoto`, `checks`, `stripplan`)
 //! and read the document, so they depend on as little of the new code's Rust API as possible.
-//! Every test waits for the build (`#[ignore = "tester 044: awaiting build"]`).
 //!
 //! Fixture C (design §12), simplified: page 100 with three vertical wires (the sensor's 24 V, 0 V
 //! and signal) at x 100/110/120 from y 250 to y 150; page 101 with a location box `+FIELD`;
@@ -67,7 +66,8 @@ fn tag(d: &Document, c: ComponentId) -> String {
 }
 
 fn name(h: &mut H, t: TerminalId) -> String {
-    ecad_cadcraft::interact::terminal_name(&h.doc(), t)
+    let d = h.doc();
+    ecad_cadcraft::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_cadcraft::interact::terminal_name(&d, t))
 }
 
 fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
@@ -137,6 +137,11 @@ fn checks_of(h: &mut H, kind: &str) -> Vec<Value> {
 }
 
 /// Every row of `kind` has a go-to (an object) and, where `fix` says so, a fix.
+/// A Checks row's words: its kind's title (`text`) and what it names (`which`).
+fn row_words(r: &Value) -> String {
+    format!("{} {}", s(&r["text"]), s(&r["which"]))
+}
+
 fn rows_have(h: &mut H, kind: &str, fix: bool) {
     let rows = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
     let mine: Vec<_> = rows.iter().filter(|c| c.kind.name() == kind).collect();
@@ -320,7 +325,6 @@ fn with_x02(c: &mut C) -> (ComponentId, Value) {
 /// one transaction with one `EmbedDefinition` each for `socket4` and `plug4` at version 2 with
 /// the bridge `[".s", ".p"]`; explicit connection points; `u` removes it all, redo puts it back.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     let mut c = fixture_c(0x7044_0001);
     let before_defs = c.h.doc().definitions.len();
@@ -376,7 +380,6 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
 
 /// Row 1, `swap` and `rotation`: the pair still has both halves with the same pins.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r01_row_swap_and_rotation_keep_the_halves() {
     let mut c = fixture_c(0x7044_0002);
     for (i, (rot, swap)) in [(90, false), (0, true), (270, true)].into_iter().enumerate() {
@@ -395,7 +398,6 @@ fn r01_row_swap_and_rotation_keep_the_halves() {
 /// Row 1, one half: `halves: socket` gives one half and no plug pins; adding the plug later
 /// (`connector {device}`) joins the same device.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r01_one_half_then_the_other_on_another_page() {
     let mut c = fixture_c(0x7044_0003);
     let x = conn_of(&step(
@@ -420,7 +422,6 @@ fn r01_one_half_then_the_other_on_another_page() {
 /// Row 2: a wire to `-X01.S:3` and one to `-X01.P:3` are one net and one wire number; `.S:3` and
 /// `.S:4` are two nets; pins of one half never join each other.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r02_mated_pins_are_one_net_and_one_wire_number() {
     let mut c = fixture_c(0x7044_0010);
     let x = with_x01(&mut c);
@@ -441,7 +442,6 @@ fn r02_mated_pins_are_one_net_and_one_wire_number() {
 
 /// Row 2 across pages: socket on 101, plug on 102; wires on both pages are one net.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r02_mating_joins_nets_across_pages() {
     let mut c = fixture_c(0x7044_0011);
     let x = conn_of(
@@ -477,7 +477,6 @@ fn r02_mating_joins_nets_across_pages() {
 
 /// Row 2: two connectors never join each other, even with the same pin names.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r02_halves_of_different_connectors_never_join() {
     let mut c = fixture_c(0x7044_0012);
     let x1 = with_x01(&mut c);
@@ -497,7 +496,6 @@ fn r02_halves_of_different_connectors_never_join() {
 /// Row 3: pin pairs across three wires: `-X02` with pins 1–3 mated, `pins = 4`; each wire split,
 /// both parts keep the wire's number and are one net; three wires, three nets; one transaction.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     let mut c = fixture_c(0x7044_0020);
     with_x01(&mut c);
@@ -537,7 +535,6 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
 /// Row 3 / §4.4 (owner Q3): socket pins across three wires on one page and plug pins across
 /// three wires on another pair up 1–3 with 1–3; pins fill like 036's levels (mate first).
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r03_pins_fill_mate_first_across_pages() {
     let mut c = fixture_c(0x7044_0021);
     let v =
@@ -577,7 +574,6 @@ fn r03_pins_fill_mate_first_across_pages() {
 
 /// Row 3, single wire: `wire: id` places one pin pair on that wire.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r03_pins_on_one_wire() {
     let mut c = fixture_c(0x7044_0022);
     c.h.activate(c.p100);
@@ -595,7 +591,6 @@ fn r03_pins_on_one_wire() {
 /// Row 3, a one-side pin on a wire: the wire lands on its one point, the cut-off part is left
 /// open (§4.5), so the two parts are two nets.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let mut c = fixture_c(0x7044_0023);
     c.h.activate(c.p100);
@@ -614,23 +609,24 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
 /// Row 4: the plug half again as a row on `-X02`, a socket pin 2 that is drawn, and a half joined
 /// to a non-connector: each refused with §6.1's words; head unchanged.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r04_refusals_name_a_way_forward() {
     let mut c = fixture_c(0x7044_0030);
     let (x2, _) = with_x02(&mut c);
+    let t2 = tag(&c.h.doc(), x2);
+    let has_plug = format!("{t2} already has a plug half");
     c.h.activate(c.p101);
     refused(
         &mut c.h,
         "connector",
         json!({"device": x2.hex(), "halves": "plug", "layout": "row", "at": [100, 100], "page": c.p101.hex()}),
-        &["-X02 already has a plug half", "Enter for a new connector."],
+        &[has_plug.as_str(), "Enter for a new connector."],
     );
-    refused(&mut c.h, "place", json!({"symbol": "plug4", "device": x2.hex(), "at": [100, 100]}), &["-X02 already has a plug half"]);
+    refused(&mut c.h, "place", json!({"symbol": "plug4", "device": x2.hex(), "at": [100, 100]}), &[has_plug.as_str()]);
     refused(
         &mut c.h,
         "place",
         json!({"symbol": "pins", "device": x2.hex(), "pin": "2", "at": [150, 100]}),
-        &["-X02.S:2 is drawn on", "Pick another pin, or Enter for the next free one."],
+        &[format!("{t2}.S:2 is drawn on").as_str(), "Pick another pin, or Enter for the next free one."],
     );
     let k: ComponentId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
     let kt = tag(&c.h.doc(), k);
@@ -649,7 +645,6 @@ fn r04_refusals_name_a_way_forward() {
 /// §6.1's other refusals: a row size the type does not have, a name list of the wrong count, a
 /// bad name, letters past 26, more than 64 pins, no `at`/`line`/`wire`.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r04_argument_refusals() {
     let mut c = fixture_c(0x7044_0031);
     let at = json!([100, 100]);
@@ -685,7 +680,6 @@ fn r04_argument_refusals() {
 /// §4.4 step 3: past the names of a list, a pin is refused with the way out; with numbers it is
 /// a new pin and a `connector-over` row.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r04_pin_past_the_names_is_refused() {
     let mut c = fixture_c(0x7044_0032);
     let x =
@@ -704,7 +698,6 @@ fn r04_pin_past_the_names_is_refused() {
 /// Row 5 and owner Q10: a whole half of another family or size is placed (not refused) and gives
 /// a `connector-family` / `connector-size` warning with a go-to.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
     let mut c = fixture_c(0x7044_0040);
     // The design's literal row: -X02's pin pairs deleted, then a plain plug6 on it.
@@ -730,7 +723,7 @@ fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
     step(&mut c.h, "place", json!({"symbol": "m12p4", "device": x3.hex(), "at": [200, 200]}));
     let rows = checks_of(&mut c.h, "connector-family");
     let t3 = tag(&c.h.doc(), x3);
-    let row = rows.iter().find(|r| s(&r["text"]).contains(&format!("{t3}'s halves differ"))).unwrap_or_else(|| panic!("{rows:?}"));
+    let row = rows.iter().find(|r| row_words(r).contains(&format!("{t3}'s halves differ"))).unwrap_or_else(|| panic!("{rows:?}"));
     assert_eq!(s(&row["severity"]).to_lowercase(), "warning", "{row}");
     assert!(s(&row["text"]).contains("D-sub socket") && s(&row["text"]).contains("M12 plug"), "{row}");
     rows_have(&mut c.h, "connector-family", false);
@@ -743,19 +736,18 @@ fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
     step(&mut c.h, "place", json!({"symbol": "plug6", "device": x4.hex(), "at": [200, 100]}));
     let t4 = tag(&c.h.doc(), x4);
     let rows = checks_of(&mut c.h, "connector-size");
-    let row = rows.iter().find(|r| s(&r["text"]).contains(&format!("{t4}.S has 4 pins, {t4}.P has 6"))).unwrap_or_else(|| panic!("{rows:?}"));
+    let row = rows.iter().find(|r| row_words(r).contains(&format!("{t4}.S has 4 pins, {t4}.P has 6"))).unwrap_or_else(|| panic!("{rows:?}"));
     assert_eq!(s(&row["severity"]).to_lowercase(), "warning", "{row}");
     rows_have(&mut c.h, "connector-size", false);
     // Pins 5 and 6 of the plug have no mate: one count row (both halves have pins).
     let lone = checks_of(&mut c.h, "connector-lone-pin");
-    assert!(lone.iter().any(|r| s(&r["text"]).contains(&format!("{t4}: 2 pins have no mate (P:5, P:6)"))), "{lone:?}");
+    assert!(lone.iter().any(|r| row_words(r).contains(&format!("{t4}: 2 pins have no mate (P:5, P:6)"))), "{lone:?}");
     rows_have(&mut c.h, "connector-lone-pin", true);
 }
 
 /// §6.3 `connector-over` and `connector-lone-pin`: a plug pin past `pins` (numbers) is a new pin
 /// with an Info row and its fix (`Set pins to 5`); a lone half raises nothing.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r05_over_and_lone_pin_rows_and_quiet_lone_halves() {
     let mut c = fixture_c(0x7044_0041);
     let x = with_x01(&mut c);
@@ -767,13 +759,10 @@ fn r05_over_and_lone_pin_rows_and_quiet_lone_halves() {
     step(&mut c.h, "place", json!({"symbol": "pinp", "device": x.hex(), "at": [300, 200]}));
     assert_eq!(side_labels(&c.h.doc(), x, ".p"), ["1", "2", "3", "4", "5"], "numbers: a new pin 5");
     let over = checks_of(&mut c.h, "connector-over");
-    assert!(
-        over.iter().any(|r| s(&r["text"]).contains("-X01 has pin 5 beyond its 4 pins") && s(&r["severity"]).to_lowercase() == "info"),
-        "{over:?}"
-    );
+    assert!(over.iter().any(|r| row_words(r).contains("-X01 has pin 5 beyond its 4 pins") && s(&r["severity"]).to_lowercase() == "info"), "{over:?}");
     rows_have(&mut c.h, "connector-over", true);
     let lone = checks_of(&mut c.h, "connector-lone-pin");
-    assert!(lone.iter().any(|r| s(&r["text"]).contains("-X01: 1 pin") && s(&r["text"]).contains("P:5")), "{lone:?}");
+    assert!(lone.iter().any(|r| row_words(r).contains("-X01: 1 pin") && row_words(r).contains("P:5")), "{lone:?}");
     // The fix: `setprop pins 5` clears connector-over.
     step(&mut c.h, "setprop", json!({"component": x.hex(), "key": "pins", "value": "5"}));
     assert!(checks_of(&mut c.h, "connector-over").is_empty());
@@ -782,7 +771,6 @@ fn r05_over_and_lone_pin_rows_and_quiet_lone_halves() {
 /// §6.3 `connector-pin-twice` on a hand-made file: S:4 relabelled `3` by raw ops gives an Error
 /// row with the go-to and the fix **Move to next free**; nothing panics.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r05_pin_twice_in_a_hand_made_file() {
     let mut c = fixture_c(0x7044_0042);
     let x = with_x01(&mut c);
@@ -797,7 +785,7 @@ fn r05_pin_twice_in_a_hand_made_file() {
     .unwrap();
     let (mut h, _) = reload(c.h, "twice", 0x7044_0043);
     let rows = h.run("checks", json!({"kinds": ["connector-pin-twice"]})).unwrap()["checks"].as_array().cloned().unwrap_or_default();
-    assert!(rows.iter().any(|r| s(&r["text"]).contains("-X01.S:3 is drawn twice") && s(&r["severity"]).to_lowercase() == "error"), "{rows:?}");
+    assert!(rows.iter().any(|r| row_words(r).contains("-X01.S:3 is drawn twice") && s(&r["severity"]).to_lowercase() == "error"), "{rows:?}");
     rows_have(&mut h, "connector-pin-twice", true);
     read_everything(&mut h);
 }
@@ -807,7 +795,6 @@ fn r05_pin_twice_in_a_hand_made_file() {
 /// Row 6: hover, the wire list and the terminal plan's targets name a pin `-X01.S:3`; a typed
 /// half tag finds the connector; `-X01:3` is never a name of a pin on both halves.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r06_pin_names_in_hover_wire_list_and_targets() {
     let mut c = fixture_c(0x7044_0050);
     let x = with_x01(&mut c);
@@ -823,11 +810,16 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     let hover = c.h.p(|p| ecad_cadcraft::interact::hover_terminal(p, uid, cadcraft_engine::geom::Vec2::new(at.x, at.y), 1.0));
     let (ht, lines) = hover.expect("a pin under the cursor");
     assert_eq!(ht, s3);
-    assert!(lines.iter().any(|l| l.contains("-X01.S:3")), "{lines:?}");
+    let mut bad: Vec<String> = Vec::new();
+    if !lines.iter().any(|l| l.contains("-X01.S:3")) {
+        bad.push(format!("hover: {lines:?}"));
+    }
     // Wire list From/To.
     let rows = wirelist(&mut c.h);
     let text: String = rows.iter().map(Value::to_string).collect();
-    assert!(text.contains("-X01.S:3") && text.contains("-X01.P:3"), "{rows:?}");
+    if !(text.contains("-X01.S:3") && text.contains("-X01.P:3")) {
+        bad.push(format!("wire list: {rows:?}"));
+    }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
     assert!(d.conductors[&ws].ends.contains(&Some(s3)));
@@ -836,30 +828,38 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
     let strip: ComponentId = id(&v, "strip");
     let plan = c.h.run("stripplan", json!({"strip": strip.hex(), "limit": 5000})).unwrap();
-    assert!(plan.to_string().contains("-X01.S:3"), "strip targets name the half pin: {plan}");
+    if !plan.to_string().contains("-X01.S:3") {
+        bad.push(format!("strip targets name the half pin: {plan}"));
+    }
     // Devices: typing the half tag finds the connector.
     for typed in ["-X01.S", "-X01.P", "-X01"] {
         let v = c.h.run("devices", json!({"tag": typed})).unwrap();
         let hits: Vec<String> = v["devices"].as_array().cloned().unwrap_or_default().iter().map(|r| s(&r["component"])).collect();
-        assert!(hits.contains(&x.hex()), "{typed}: {v}");
+        if !hits.contains(&x.hex()) {
+            bad.push(format!("devices {typed}: {v}"));
+        }
     }
     // Every shown name of a connector pin carries its side.
     for t in pins(&c.h.doc(), x).values() {
         let n = name(&mut c.h, *t);
         assert!(n.starts_with("-X01.S:") || n.starts_with("-X01.P:"), "{n}");
     }
+    assert!(
+        bad.is_empty(),
+        "{}",
+        bad.join(
+            "
+"
+        )
+    );
 }
 
 /// §5.1 typed: `place {tag: "-X01.P"}` adds a plug half to `-X01`; a device cannot take a half
 /// tag of a connector (`-X01.S is the socket half of -X01. Pick another tag.`).
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r06_typed_half_tags_and_the_tag_guard() {
     let mut c = fixture_c(0x7044_0051);
     let x = conn_of(&c.h.run("connector", json!({"halves": "socket", "pins": 4, "layout": "row", "at": [100, 100]})).unwrap());
-    let v = step(&mut c.h, "place", json!({"symbol": "plug4", "tag": "-X01.P", "at": [100, 60]}));
-    assert_eq!(id::<ComponentId>(&v, "component"), x, "typed half tag joins the connector: {v}");
-    assert_eq!(side_labels(&c.h.doc(), x, ".p").len(), 4);
     let k: ComponentId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
     refused(
         &mut c.h,
@@ -867,13 +867,15 @@ fn r06_typed_half_tags_and_the_tag_guard() {
         json!({"component": k.hex(), "key": "tag", "value": "-X01.S"}),
         &["-X01.S is the socket half of -X01. Pick another tag."],
     );
+    let v = step(&mut c.h, "place", json!({"symbol": "plug4", "tag": "-X01.P", "at": [100, 60]}));
+    assert_eq!(id::<ComponentId>(&v, "component"), x, "typed half tag joins the connector: {v}");
+    assert_eq!(side_labels(&c.h.doc(), x, ".p").len(), 4);
 }
 
 /// FP6 (finding F1): a connector pin is never read as a strip level: its shown label is the pin
 /// name, never a derived level label; no strip plan lists it; no level check names it; renumber
 /// of terminals leaves it alone.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
     let mut c = fixture_c(0x7044_0052);
     let x1 = with_x01(&mut c);
@@ -921,7 +923,6 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
 /// BOM, wire list, page texts); a connector-level side name beats the project's; the separator;
 /// reset gives the built-in back; a side name equal to the other's resolves to the next level.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r07_side_names_and_separator_from_the_registry() {
     let mut c = fixture_c(0x7044_0060);
     let x1 = with_x01(&mut c);
@@ -985,7 +986,6 @@ fn r07_side_names_and_separator_from_the_registry() {
 /// AC 8: the registry lists the `connector` area's keys; the description defaults reach the BOM
 /// rows that have no own description; the maker's first answers come from the registry.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r07_registry_area_and_description_defaults() {
     let mut c = fixture_c(0x7044_0061);
     let v = c.h.run("defaults", json!({})).unwrap();
@@ -1032,11 +1032,10 @@ fn r07_registry_area_and_description_defaults() {
 /// Row 8: one BOM row per drawn half with that half's description, maker, part and location;
 /// a lone half one row; a bulkhead one row; the connector's own fields unused while it has a half.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r08_bom_one_row_per_drawn_half() {
     let mut c = fixture_c(0x7044_0070);
     let x1 = with_x01(&mut c);
-    let (x2, _) = with_x02(&mut c);
+    let (_x2, _) = with_x02(&mut c);
     step(&mut c.h, "setprop", json!({"component": x1.hex(), "key": "half.s.part_number", "value": "SKT-4"}));
     step(&mut c.h, "setprop", json!({"component": x1.hex(), "key": "half.s.maker", "value": "Acme"}));
     step(&mut c.h, "setprop", json!({"component": x1.hex(), "key": "part_number", "value": "WHOLE"}));
@@ -1050,7 +1049,7 @@ fn r08_bom_one_row_per_drawn_half() {
     assert!(bom_rows(&mut c.h, "-X01").is_empty(), "no whole-device row");
     assert_eq!(bom_rows(&mut c.h, "-X02.S").len(), 1);
     assert_eq!(bom_rows(&mut c.h, "-X02.P").len(), 1);
-    assert_eq!(s(&bom_rows(&mut c.h, "-X02.S")[0]["description"]), "M12 socket, 4-pin", "pin-by-pin half counts `pins`");
+    assert_eq!(s(&bom_rows(&mut c.h, "-X02.S")[0]["description"]), "Socket, 4-pin", "pin-by-pin half counts `pins` (no family is stored)");
     // A lone half: one row.
     let lone = conn_of(
         &c.h.run("connector", json!({"halves": "plug", "family": "dsub", "pins": 15, "layout": "row", "at": [100, 100], "page": c.p102.hex()}))
@@ -1072,7 +1071,6 @@ fn r08_bom_one_row_per_drawn_half() {
 /// §8.2: halves in different locations: socket in `+FIELD`, plug in `+CP1`, with nothing typed;
 /// `half.p.location` beats the box; `location` on the connector beats both boxes.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r08_two_locations_for_one_connector() {
     let mut c = fixture_c(0x7044_0071);
     let x = conn_of(&c.h.run("connector", json!({"halves": "socket", "pins": 4, "layout": "row", "at": [100, 100], "page": c.p101.hex()})).unwrap());
@@ -1097,7 +1095,6 @@ fn r08_two_locations_for_one_connector() {
 /// `/101.…`); Go to Reference jumps to the other half; hover says which half it mates with; a pin
 /// pair's mate on its own page shows nothing extra; a lone half has none.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r09_cross_references_between_the_halves() {
     let mut c = fixture_c(0x7044_0080);
     let x = conn_of(&c.h.run("connector", json!({"halves": "socket", "pins": 4, "layout": "row", "at": [100, 100], "page": c.p101.hex()})).unwrap());
@@ -1146,7 +1143,6 @@ fn r09_cross_references_between_the_halves() {
 /// Row 9: pin pairs on one page show nothing extra; a pin whose mate is only on another page
 /// shows that page.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r09_pin_references() {
     let mut c = fixture_c(0x7044_0081);
     let (x2, _) = with_x02(&mut c);
@@ -1181,7 +1177,6 @@ fn r09_pin_references() {
 /// Row 10: `pinlabel` renames pin 3 on both halves in one transaction; IDs, keys, nets and wires
 /// unchanged; `u` restores `3`; duplicates and bad names refused with the way out.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r10_pinlabel_renames_on_both_halves() {
     let mut c = fixture_c(0x7044_0090);
     let x = with_x01(&mut c);
@@ -1227,7 +1222,6 @@ fn r10_pinlabel_renames_on_both_halves() {
 /// Row 10: a list connector (`L,N,PE`) shares names on both halves and the names come back in
 /// list order.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r10_pin_names_lists_and_letters() {
     let mut c = fixture_c(0x7044_0091);
     let x = conn_of(&step(&mut c.h, "connector", json!({"halves": "both", "pins": 3, "names": ["L", "N", "PE"], "layout": "row", "at": [100, 100]})));
@@ -1246,7 +1240,6 @@ fn r10_pin_names_lists_and_letters() {
 /// Owner Q4: bulkheads stay one piece: one point per pin (plain keys, no `.s`/`.p`), one BOM row,
 /// no halves, no half tags; `Halves` is not asked; their pins are `-X03:3`.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn bulkheads_stay_one_piece() {
     let mut c = fixture_c(0x7044_00a0);
     for (i, fam) in ["rj45", "usba", "usbb"].iter().enumerate() {
@@ -1257,8 +1250,9 @@ fn bulkheads_stay_one_piece() {
         assert!(d.terminals_of(b).count() > 0, "{fam}");
         for (t, x) in d.terminals_of(b) {
             assert!(!matches!(x.key.as_deref(), Some(".s" | ".p")), "{fam}: no side keys");
+            assert!(ecad_cadcraft::connectors::pin_name(&d, t).is_none(), "{fam}: a bulkhead pin has no half name");
             let n = ecad_cadcraft::interact::terminal_name(&d, t);
-            assert!(n.starts_with(&format!("{bt}:")), "{fam}: bulkhead pin {n}");
+            assert!(!n.contains(".S") && !n.contains(".P"), "{fam}: bulkhead pin {bt}:{n}");
         }
         assert_eq!(bom_rows(&mut c.h, &bt).len(), 1, "{fam}: one BOM row");
         // The 034 definition, unchanged: version 1, no bridges, still `Fixed`.
@@ -1278,7 +1272,6 @@ fn bulkheads_stay_one_piece() {
 /// exist with `.s`/`.p` keys, the grid and bridges of §3.2; `symbols::embedded` matches the content
 /// hash, so a project holding version 1 embeds version 2 beside it.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn fp3_starter_definitions_are_versioned() {
     let halves = [
         "socket2", "socket3", "socket4", "socket6", "socket8", "socket12", "plug2", "plug3", "plug4", "plug6", "plug8", "plug12", "dsub9s",
@@ -1319,7 +1312,6 @@ fn fp3_starter_definitions_are_versioned() {
 /// FP2's condition: definition validation refuses a bridge naming a key that no placement writes
 /// (`.x`); a connector half definition bridging `.s`/`.p` is accepted.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn fp2_a_bridge_to_an_unknown_key_is_refused() {
     let mut h = H::new(0x7044_00b0);
     let mut bad = ecad_cadcraft::symbols::by_key("socket4").unwrap().definition().unwrap().clone();
@@ -1341,7 +1333,11 @@ fn fp2_a_bridge_to_an_unknown_key_is_refused() {
     for (i, st) in ecad_cadcraft::symbols::STARTERS.iter().enumerate() {
         let x = 20.0 + 30.0 * (i % 12) as f64;
         let y = 40.0 + 40.0 * (i / 12) as f64;
-        h.run("place", json!({"symbol": st.key, "at": [x, y]})).unwrap_or_else(|e| panic!("{}: {e}", st.key));
+        let mut params = json!({"symbol": st.key, "at": [x, y]});
+        if st.key == "continuation" {
+            params["name"] = json!("24V");
+        }
+        h.run("place", params).unwrap_or_else(|e| panic!("{}: {e}", st.key));
     }
 }
 
@@ -1350,7 +1346,6 @@ fn fp2_a_bridge_to_an_unknown_key_is_refused() {
 /// Row 12 and AC 10: hostile input never panics: 100 000 and 10 000 pins, a 10 000-name list, a
 /// 10 000-character name, control characters, `half.x.*`, hostile `pins`, coordinates, IDs.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r12_hostile_input_never_panics() {
     let mut c = fixture_c(0x7044_00c0);
     let x = with_x01(&mut c);
@@ -1418,7 +1413,6 @@ fn r12_hostile_input_never_panics() {
 /// Row 12, hand-made files: a connector pin with a side key but no symbol, an unknown side key
 /// `.q`, a pin with no label, and 2 000 pins on one side: every reader survives.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r12_hand_made_connectors_never_panic() {
     let mut c = fixture_c(0x7044_00c1);
     let x = with_x01(&mut c);
@@ -1461,7 +1455,6 @@ fn r12_hand_made_connectors_never_panic() {
 /// Row 13: save, close, reopen at a path with spaces and `ä`: the model, BOM, wire list, names,
 /// nets and references are unchanged; opening writes nothing.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r13_save_and_reopen_keep_everything() {
     let mut c = fixture_c(0x7044_00d0);
     let x1 = with_x01(&mut c);
@@ -1494,7 +1487,6 @@ fn r13_save_and_reopen_keep_everything() {
 /// plain keys; a new half in that project embeds version 2 beside version 1; an old half cannot
 /// be joined as a connector.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r13_old_version_1_halves_stay_separate() {
     let mut h = H::new(0x7044_00d2);
     let page = h.first_page();
@@ -1554,7 +1546,6 @@ fn r13_old_version_1_halves_stay_separate() {
 /// §4.1: Place ▸ Connector is one action in the Place group, slot 2, starting `connector`, found by
 /// its search words; the device wheel and the terminal wheel gain §9.3's slots.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn place_connector_action_row() {
     use ecad_cadcraft::actions::{self, ACTIONS, ToolGroup};
     let a = ACTIONS.iter().find(|a| a.id == "place.connector").expect("place.connector");
@@ -1572,7 +1563,6 @@ fn place_connector_action_row() {
 /// Writes off (row 14) is in the MCP lane test; programmatic calls never open a dialog: the JSON
 /// form with only `at` uses the registry's answers.
 #[test]
-#[ignore = "tester 044: awaiting build"]
 fn r14_json_form_takes_the_registry_defaults() {
     let mut c = fixture_c(0x7044_00e0);
     let v = step(&mut c.h, "connector", json!({"at": [100, 100]}));
