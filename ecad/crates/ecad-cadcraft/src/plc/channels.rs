@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cadcraft_engine::Session;
 use ecad_model::{
-    ComponentId, DefinitionId, Document, Form, IdAllocator, Item, ItemId, ItemKind, ObjectRef, Op, PageId, Placement, Pt, Representation,
+    ComponentId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, ObjectRef, Op, PageId, Placement, Pt, Representation,
     RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 use serde_json::{Value, json};
@@ -538,9 +538,8 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
             let cell = plan_cell(&mut p.ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
             let on = crate::terminal_cmds::on_wire_of(doc, page, m.conductor, m.at).ok_or("A crossed wire has no route here.")?;
             let t0 = cell.terminals.first().map(|x| x.1).ok_or("The channel symbol has no point.")?;
-            let land = crate::terminal_cmds::plan_land(doc, &mut p.ids, page, on, t0)
-                .map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
-            ops.extend(land.ops);
+            let land = land_cell(doc, &mut p.ids, page, on, t0).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
+            ops.extend(land);
             placed.push(next);
             all_pins.extend(pins);
             next += 1;
@@ -565,6 +564,68 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
         s.echo(m.to_string());
     }
     Ok(v)
+}
+
+/// The ops landing a channel cell's point `t` on its wire at `on` (design 045 §4.5). The wire is
+/// split at the point as Place Terminals splits it (028 §3.1), but a cell has one point, not a way
+/// through: a half whose far end is attached to nothing, and which no cable holds, carries nothing
+/// past the cell, so it is not kept. The wire ends at the point instead of running on through the
+/// cell box, where its number label covered the channel number. A half that reaches something is
+/// kept, as before.
+///
+/// # Errors
+/// As [`crate::terminal_cmds::plan_land`].
+fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, String> {
+    let land = crate::terminal_cmds::plan_land(doc, ids, page, on, t)?;
+    let Some(cond) = doc.conductors.get(&land.conductor) else { return Ok(land.ops) };
+    if !doc.cables_of(land.conductor).is_empty() {
+        return Ok(land.ops);
+    }
+    let (a_loose, b_loose) = (cond.end(End::A).is_none(), cond.end(End::B).is_none());
+    if a_loose == b_loose {
+        return Ok(land.ops);
+    }
+    // The new half (the far side, end B) is dropped: its conductor, representation and item.
+    let new = land.new;
+    let new_items: Vec<ItemId> = land
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => Some(rep.items.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let rest_path = land.ops.iter().find_map(|op| match op {
+        Op::AddItem { id, item } if new_items.contains(id) => Some(item.kind.clone()),
+        _ => None,
+    });
+    let mut out = Vec::with_capacity(land.ops.len());
+    for op in land.ops {
+        match op {
+            Op::CreateConductor { id, .. } if id == new => {}
+            Op::AddItem { id, .. } if new_items.contains(&id) => {}
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => {}
+            // End A's side is the loose one: the wire keeps its own ID, now drawn along the far
+            // side, its end A on the point and its end B where it was.
+            Op::ModifyItem { id, before, mut after } if a_loose && id_of_route(doc, land.conductor, page) == Some(id) => {
+                if let Some(k) = rest_path.clone() {
+                    after.kind = k;
+                }
+                out.push(Op::ModifyItem { id, before, after });
+            }
+            Op::AttachEnd { conductor, end: End::B, .. } if a_loose && conductor == land.conductor => {
+                out.push(Op::AttachEnd { conductor, end: End::A, before: cond.end(End::A), after: Some(t) });
+            }
+            op => out.push(op),
+        }
+    }
+    Ok(out)
+}
+
+/// The item drawing wire `c`'s route on `page`.
+fn id_of_route(doc: &Document, c: ecad_model::ConductorId, page: PageId) -> Option<ItemId> {
+    crate::wires::route_vertices(doc, c, page).map(|(id, _, _)| id)
 }
 
 /// The rest (design 045 §4.5): every channel of `c` not drawn yet, as cells in a row to the right of
