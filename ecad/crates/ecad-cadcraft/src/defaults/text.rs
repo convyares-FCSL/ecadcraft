@@ -65,6 +65,8 @@ pub static DESCRIPTION_HEIGHT: Entry = height("text.description.height", "Descri
 pub static PART_NUMBER_HEIGHT: Entry = height("text.part_number.height", "Part number cap height", 1.6);
 pub static CONTINUATION_NAME_HEIGHT: Entry = height("text.continuation_name.height", "Continuation name cap height", 2.0);
 pub static REFERENCE_HEIGHT: Entry = height("text.reference.height", "Reference cap height", 2.0);
+/// Brief 049 (FP2): a continuation caption.
+pub static CONTINUATION_CAPTION_HEIGHT: Entry = height("text.continuation_caption.height", "Continuation caption cap height", 2.5);
 /// Stored in `settings.wiring.label_height` (§3.4), never as a property.
 pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     key: "text.wire_label.height",
@@ -99,6 +101,7 @@ pub static DESCRIPTION_WEIGHT: Entry = regular("text.description.weight", "Descr
 pub static PART_NUMBER_WEIGHT: Entry = regular("text.part_number.weight", "Part number weight");
 pub static CONTINUATION_NAME_WEIGHT: Entry = regular("text.continuation_name.weight", "Continuation name weight");
 pub static REFERENCE_WEIGHT: Entry = regular("text.reference.weight", "Reference weight");
+pub static CONTINUATION_CAPTION_WEIGHT: Entry = regular("text.continuation_caption.weight", "Continuation caption weight");
 pub static WIRE_LABEL_WEIGHT: Entry = regular("text.wire_label.weight", "Wire label weight");
 pub static CABLE_TEXT_WEIGHT: Entry = regular("text.cable_text.weight", "Cable text weight");
 pub static LOCATION_WEIGHT: Entry = regular("text.location.weight", "Location label weight");
@@ -122,6 +125,7 @@ pub static DESCRIPTION_FONT: Entry = font("text.description.font", "Description 
 pub static PART_NUMBER_FONT: Entry = font("text.part_number.font", "Part number font");
 pub static CONTINUATION_NAME_FONT: Entry = font("text.continuation_name.font", "Continuation name font");
 pub static REFERENCE_FONT: Entry = font("text.reference.font", "Reference font");
+pub static CONTINUATION_CAPTION_FONT: Entry = font("text.continuation_caption.font", "Continuation caption font");
 pub static WIRE_LABEL_FONT: Entry = font("text.wire_label.font", "Wire label font");
 pub static CABLE_TEXT_FONT: Entry = font("text.cable_text.font", "Cable text font");
 pub static LOCATION_FONT: Entry = font("text.location.font", "Location label font");
@@ -149,6 +153,7 @@ pub static DESCRIPTION_SHOW: Entry = entry("text.description.show", "Description
 pub static PART_NUMBER_SHOW: Entry = entry("text.part_number.show", "Part number shown", SHOW, Value::Choice("off"), SPGO);
 pub static CONTINUATION_NAME_SHOW: Entry = entry("text.continuation_name.show", "Continuation name shown", SHOW, Value::Choice("off"), SPGO);
 pub static REFERENCE_SHOW: Entry = entry("text.reference.show", "References shown", SHOW, Value::Choice("on"), SPG);
+pub static CONTINUATION_CAPTION_SHOW: Entry = entry("text.continuation_caption.show", "Continuation captions shown", SHOW, Value::Choice("on"), SPG);
 pub static LOCATION_SHOW: Entry = entry("text.location.show", "Location labels shown", SHOW, Value::Choice("on"), SPG);
 /// Read by lane W (conductor, page, project).
 pub static WIRE_LABEL_SHOW: Entry = entry("text.wire_label.show", "Wire labels shown", SHOW, Value::Choice("on"), SPGO);
@@ -179,6 +184,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER_HEIGHT,
     &CONTINUATION_NAME_HEIGHT,
     &REFERENCE_HEIGHT,
+    &CONTINUATION_CAPTION_HEIGHT,
     &WIRE_LABEL_HEIGHT,
     &CABLE_TEXT_HEIGHT,
     &LOCATION_HEIGHT,
@@ -199,6 +205,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER_WEIGHT,
     &CONTINUATION_NAME_WEIGHT,
     &REFERENCE_WEIGHT,
+    &CONTINUATION_CAPTION_WEIGHT,
     &WIRE_LABEL_WEIGHT,
     &CABLE_TEXT_WEIGHT,
     &LOCATION_WEIGHT,
@@ -219,6 +226,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER_FONT,
     &CONTINUATION_NAME_FONT,
     &REFERENCE_FONT,
+    &CONTINUATION_CAPTION_FONT,
     &WIRE_LABEL_FONT,
     &CABLE_TEXT_FONT,
     &LOCATION_FONT,
@@ -241,6 +249,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER_SHOW,
     &CONTINUATION_NAME_SHOW,
     &REFERENCE_SHOW,
+    &CONTINUATION_CAPTION_SHOW,
     &LOCATION_SHOW,
     &WIRE_LABEL_SHOW,
     &RUN_ALIGN,

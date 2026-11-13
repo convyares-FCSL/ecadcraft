@@ -65,6 +65,8 @@ pub enum TextKind {
     ContinuationName,
     /// Cross-reference texts.
     Reference,
+    /// Brief 049 (FP2): a continuation caption.
+    ContinuationCaption,
     /// Conductor labels (height stored in `settings.wiring.label_height`).
     WireLabel,
     /// Cable look: core labels, wire numbers at the slash, label box lines.
@@ -97,13 +99,14 @@ pub enum TextKind {
 
 impl TextKind {
     /// Every kind, in the order of the style table.
-    pub const ALL: [TextKind; 20] = [
+    pub const ALL: [TextKind; 21] = [
         TextKind::Tag,
         TextKind::PointLabel,
         TextKind::Description,
         TextKind::PartNumber,
         TextKind::ContinuationName,
         TextKind::Reference,
+        TextKind::ContinuationCaption,
         TextKind::WireLabel,
         TextKind::CableText,
         TextKind::LocationLabel,
@@ -129,6 +132,7 @@ impl TextKind {
             TextKind::PartNumber => "part_number",
             TextKind::ContinuationName => "continuation_name",
             TextKind::Reference => "reference",
+            TextKind::ContinuationCaption => "continuation_caption",
             TextKind::WireLabel => "wire_label",
             TextKind::CableText => "cable_text",
             TextKind::LocationLabel => "location",
@@ -160,6 +164,7 @@ impl TextKind {
             TextKind::PartNumber => &d::PART_NUMBER_HEIGHT,
             TextKind::ContinuationName => &d::CONTINUATION_NAME_HEIGHT,
             TextKind::Reference => &d::REFERENCE_HEIGHT,
+            TextKind::ContinuationCaption => &d::CONTINUATION_CAPTION_HEIGHT,
             TextKind::WireLabel => &d::WIRE_LABEL_HEIGHT,
             TextKind::CableText => &d::CABLE_TEXT_HEIGHT,
             TextKind::LocationLabel => &d::LOCATION_HEIGHT,
@@ -186,6 +191,7 @@ impl TextKind {
             TextKind::PartNumber => &d::PART_NUMBER_WEIGHT,
             TextKind::ContinuationName => &d::CONTINUATION_NAME_WEIGHT,
             TextKind::Reference => &d::REFERENCE_WEIGHT,
+            TextKind::ContinuationCaption => &d::CONTINUATION_CAPTION_WEIGHT,
             TextKind::WireLabel => &d::WIRE_LABEL_WEIGHT,
             TextKind::CableText => &d::CABLE_TEXT_WEIGHT,
             TextKind::LocationLabel => &d::LOCATION_WEIGHT,
@@ -212,6 +218,7 @@ impl TextKind {
             TextKind::PartNumber => &d::PART_NUMBER_FONT,
             TextKind::ContinuationName => &d::CONTINUATION_NAME_FONT,
             TextKind::Reference => &d::REFERENCE_FONT,
+            TextKind::ContinuationCaption => &d::CONTINUATION_CAPTION_FONT,
             TextKind::WireLabel => &d::WIRE_LABEL_FONT,
             TextKind::CableText => &d::CABLE_TEXT_FONT,
             TextKind::LocationLabel => &d::LOCATION_FONT,
@@ -239,6 +246,7 @@ impl TextKind {
             TextKind::PartNumber => Some(&d::PART_NUMBER_SHOW),
             TextKind::ContinuationName => Some(&d::CONTINUATION_NAME_SHOW),
             TextKind::Reference => Some(&d::REFERENCE_SHOW),
+            TextKind::ContinuationCaption => Some(&d::CONTINUATION_CAPTION_SHOW),
             TextKind::LocationLabel => Some(&d::LOCATION_SHOW),
             TextKind::WireLabel => Some(&d::WIRE_LABEL_SHOW),
             _ => None,
@@ -317,6 +325,7 @@ const KIND_STYLES: [(&str, &str); TextKind::ALL.len()] = [
     ("ECAD-PART-NUMBER", "ECAD-PART-NUMBER-BOLD"),
     ("ECAD-CONTINUATION-NAME", "ECAD-CONTINUATION-NAME-BOLD"),
     ("ECAD-REFERENCE", "ECAD-REFERENCE-BOLD"),
+    ("ECAD-CONTINUATION-CAPTION", "ECAD-CONTINUATION-CAPTION-BOLD"),
     ("ECAD-WIRE-LABEL", "ECAD-WIRE-LABEL-BOLD"),
     ("ECAD-CABLE-TEXT", "ECAD-CABLE-TEXT-BOLD"),
     ("ECAD-LOCATION", "ECAD-LOCATION-BOLD"),
@@ -1219,13 +1228,15 @@ mod tests {
     use ecad_model::{Component, LengthUnit, Page, Representation};
 
     /// Design 031 §3.2, written out here so a reader and its entry cannot drift.
-    const TABLE: [(TextKind, f64, Weight); 20] = [
+    const TABLE: [(TextKind, f64, Weight); 21] = [
         (TextKind::Tag, 2.5, Weight::Bold),
         (TextKind::PointLabel, 1.5, Weight::Regular),
         (TextKind::Description, 1.6, Weight::Regular),
         (TextKind::PartNumber, 1.6, Weight::Regular),
         (TextKind::ContinuationName, 2.0, Weight::Regular),
         (TextKind::Reference, 2.0, Weight::Regular),
+        // Brief 049 (design 049 §7).
+        (TextKind::ContinuationCaption, 2.5, Weight::Regular),
         (TextKind::WireLabel, ecad_model::wiring::DEFAULT_LABEL_HEIGHT, Weight::Regular),
         (TextKind::CableText, 1.6, Weight::Regular),
         (TextKind::LocationLabel, 1.6, Weight::Regular),
