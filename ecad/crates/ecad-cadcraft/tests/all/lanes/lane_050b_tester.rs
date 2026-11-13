@@ -158,7 +158,7 @@ fn b12_a_category_colour_reaches_every_user_but_an_overridden_one() {
     let b = wire_at(&mut h, 40.0, Some("24V"));
     let own = wire_at(&mut h, 60.0, Some("24V"));
     h.run("setprop", json!({"conductor": own.hex(), "key": "colour", "value": "VT"})).unwrap();
-    let (_, tx) = one_tx(&mut h, "style", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
+    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "a category is a style record, no new op");
     for w in [a, b] {
         assert!(label(&mut h, page, w).is_some_and(|t| t.ends_with(" RD")), "{:?}", label(&mut h, page, w));
@@ -285,18 +285,18 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
 #[ignore = "tester 050: awaiting build"]
 fn b14_two_defaults_for_one_potential() {
     let mut h = H::new(0x50b_1401);
-    let m = refused(&mut h, "style", json!({"catalogue": "wire", "id": "pe", "fields": {"potential": "24V"}}));
+    let m = refused(&mut h, "setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"potential": "24V"}}));
     assert!(m.contains("already the default for 24V"), "{m}");
-    refused(&mut h, "style", json!({"catalogue": "wire", "new": true, "name": "Other 24", "copy_of": "dc24"}));
+    refused(&mut h, "setstyle", json!({"catalogue": "wire", "new": true, "name": "Other 24", "copy_of": "dc24"}));
     // A potential not in the table is allowed (§5.4).
     h.run(
-        "style",
+        "setstyle",
         json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V", "line_colour": "RD"}}),
     )
     .unwrap();
     // Hostile: a file holding a second category for 24V. Built from a real new-style record
     // (`before` empty), taken back, then injected with the potential changed.
-    h.run("style", json!({"catalogue": "wire", "new": true, "name": "Second 24", "copy_of": "signal", "fields": {"potential": "47V"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "Second 24", "copy_of": "signal", "fields": {"potential": "47V"}})).unwrap();
     let mut tx = last_tx_json(&mut h);
     undo(&mut h);
     let rec = find_obj_mut(&mut tx, "fields").and_then(|m| m.get_mut("fields")).and_then(Value::as_object_mut).expect("the record's fields");
@@ -331,13 +331,13 @@ fn b15_bom_wire_rows_and_the_allowance() {
         wire_at(&mut h, y, Some("24V"));
     }
     assert!(bom(&mut h).iter().all(|r| s(&r["unit"]) != "m"), "no part number: no wire row");
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"part_number": "W-05-BU", "allowance": 1.4}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"part_number": "W-05-BU", "allowance": 1.4}})).unwrap();
     let rows: Vec<Value> = bom(&mut h).into_iter().filter(|r| s(&r["part_number"]) == "W-05-BU").collect();
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(s(&rows[0]["unit"]), "m");
     assert_eq!(num(&rows[0]["qty"]), Some(4.5), "3 × 1.4 = 4.2, rounded up to 4.5: {}", rows[0]);
     assert!(rows[0].to_string().contains("estimate"), "{}", rows[0]);
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 1.5}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 1.5}})).unwrap();
     let r = bom(&mut h).into_iter().find(|r| s(&r["part_number"]) == "W-05-BU").unwrap();
     assert_eq!(num(&r["qty"]), Some(4.5));
     // An own colour: its effective row.
@@ -346,14 +346,14 @@ fn b15_bom_wire_rows_and_the_allowance() {
     let parts: Vec<Value> = bom(&mut h).into_iter().filter(|r| s(&r["part_number"]) == "W-05-BU").collect();
     assert_eq!(parts.len(), 2, "one row per (part, colour, cross-section): {parts:?}");
     // Allowance 0: no Qty, the count in the note, and the check.
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 0}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 0}})).unwrap();
     let r = bom(&mut h).into_iter().find(|r| s(&r["part_number"]) == "W-05-BU").unwrap();
     assert_eq!(s(&r["qty"]), "", "{r}");
     let all = checks_all(&mut h).iter().map(Value::to_string).collect::<String>();
     assert!(all.contains("Wire length not set for 24 V DC"), "{all:.800}");
     // Hostile allowances are refused.
     for bad in [json!(-1), json!(101), json!("NaN"), json!(1e308)] {
-        refused(&mut h, "style", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": bad}}));
+        refused(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": bad}}));
     }
 }
 
@@ -389,10 +389,10 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
     let dc = wire_at(&mut h, 20.0, Some("24V"));
     let pw = wire_at(&mut h, 40.0, Some("L1"));
     let pe = wire_at(&mut h, 60.0, Some("PE"));
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_type": "dashed"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_type": "dashed"}})).unwrap();
     let ac = own_id(
         &h.run(
-            "style",
+            "setstyle",
             json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V", "line_colour": "RD"}}),
         )
         .unwrap(),
@@ -470,13 +470,14 @@ fn b18_old_potential_colours_are_ignored_and_reported() {
 fn b18_category_records_and_choices_round_trip() {
     let mut h = H::new(0x50b_1803);
     let a = wire_at(&mut h, 20.0, Some("24V"));
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
     let ac = own_id(
-        &h.run("style", json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V"}})).unwrap(),
+        &h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V"}}))
+            .unwrap(),
     );
     h.run("category", json!({"conductor": a.hex(), "value": ac})).unwrap();
     h.run("setdefault", json!({"key": "wire.category", "level": "project", "value": "signal"})).unwrap();
-    h.run("style", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}})).unwrap();
     let trail = h.trail.clone();
     for i in (0..trail.len() - 1).rev() {
         undo(&mut h);
@@ -507,7 +508,7 @@ fn b_label_rule_none_draws_no_label() {
     let mut h = H::new(0x50b_1901);
     let page = h.first_page();
     let w = wire_at(&mut h, 20.0, Some("24V"));
-    h.run("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"label_rule": "none"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"label_rule": "none"}})).unwrap();
     assert_eq!(label(&mut h, page, w), None);
     let r = wire_row(&mut h, w);
     assert_eq!(s(&r["colour"]), "BU", "{r}");
@@ -551,12 +552,12 @@ fn b_hostile_category_input_never_panics() {
         ("category", json!({"conductor": "zz", "value": "dc24"})),
         ("category", json!({"conductors": (0..10_000).map(|_| w.hex()).collect::<Vec<_>>(), "value": "nope"})),
         ("category", json!({"value": "dc24"})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": long}})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": "NaN"}})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": 1e308}})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_colour": "PURPLISH"}})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"potential": "x".repeat(25)}})),
-        ("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"label_rule": "sometimes"}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": long}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": "NaN"}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": 1e308}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_colour": "PURPLISH"}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"potential": "x".repeat(25)}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"label_rule": "sometimes"}})),
         ("wire", json!({"points": pts(&[(0.0, 90.0), (10.0, 90.0)]), "category": long})),
     ] {
         refused(&mut h, cmd, params);

@@ -84,7 +84,6 @@ fn merge_preview(c: &mut Client, from: &str) -> Value {
 
 /// §6.8: every 050a writing command, by the agent, one transaction, one undo; then writes off.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t050 Hausstandard mit Leerzeichen \u{e4}");
     let other = dir.file("Panel Std (other).ecad");
@@ -111,34 +110,38 @@ fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
         one_by_agent_then_undo(&mut c, "standard", json!({"name": "House 2026"}));
         let (_, ops) = one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"}));
         assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Standard, .. }]), "{ops:?}");
-        let (_, ops) = one_by_agent_then_undo(&mut c, "style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
+        let (_, ops) = one_by_agent_then_undo(&mut c, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
         assert_eq!(ops.iter().map(Op::name).collect::<Vec<_>>(), ["SetStyle"]);
         let (v, _) = one_by_agent_then_undo(
             &mut c,
-            "style",
+            "setstyle",
             json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}}),
         );
         let large = own_id(&v);
         one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "text.tag.style", "level": "object", "component": k, "value": large}));
         one_by_agent_then_undo(&mut c, "deletestyle", json!({"catalogue": "text", "id": large, "replace_with": "tag"}));
         // The style is gone after redo of the delete: make another for promote.
-        let (v, _) = one_by_agent_then_undo(&mut c, "style", json!({"catalogue": "text", "new": true, "name": "Promoted", "copy_of": "tag"}));
+        let (v, _) = one_by_agent_then_undo(&mut c, "setstyle", json!({"catalogue": "text", "new": true, "name": "Promoted", "copy_of": "tag"}));
         let p = own_id(&v);
         one_by_agent_then_undo(&mut c, "promote", json!({"catalogue": "text", "id": p}));
-        one_by_agent_then_undo(&mut c, "standard", json!({"from": other}));
+        // Agents cannot read other files: MCP refuses `from` (brief 050a deviation), recording nothing.
+        let n = c.log().len();
+        let m = c.refused("execute", json!({"command": "standard", "params": {"from": other}}));
+        assert!(m.contains("`from` names a file"), "{m}");
+        assert_eq!(c.log().len(), n);
         let (v, _) = one_by_agent_then_undo(&mut c, "standard", json!({"remove": true}));
         assert!(!v.is_null());
         c.exec("standard", json!({"new": "Final"}));
-        c.exec("style", json!({"catalogue": "location", "id": "box", "layer": "standard", "fields": {"line_type": "continuous"}}));
+        c.exec("setstyle", json!({"catalogue": "location", "id": "box", "layer": "standard", "fields": {"line_type": "continuous"}}));
 
         // Refusals record nothing.
         let n = c.log().len();
         for (cmd, params) in [
-            ("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 11}})),
+            ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 11}})),
             ("deletestyle", json!({"catalogue": "text", "id": "tag"})),
             ("standard", json!({"new": "Twice"})),
             ("promote", json!({"catalogue": "text", "id": "tag"})),
-            ("style", json!({"catalogue": "text", "new": true, "name": "x".repeat(10_000), "copy_of": "tag"})),
+            ("setstyle", json!({"catalogue": "text", "new": true, "name": "x".repeat(10_000), "copy_of": "tag"})),
         ] {
             let m = c.refused("execute", json!({"command": cmd, "params": params}));
             assert!(!m.is_empty(), "{cmd}");
@@ -157,9 +160,8 @@ fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
     for (cmd, params) in [
         ("standard", json!({"name": "Renamed"})),
         ("standard", json!({"remove": true})),
-        ("standard", json!({"from": other})),
-        ("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})),
-        ("style", json!({"catalogue": "text", "new": true, "name": "New", "copy_of": "tag"})),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})),
+        ("setstyle", json!({"catalogue": "text", "new": true, "name": "New", "copy_of": "tag"})),
         ("deletestyle", json!({"catalogue": "text", "id": "#00000000000000000000000000000001", "replace_with": "tag"})),
         ("promote", json!({"key": "symbol.coil.prefix"})),
         ("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Z"})),
@@ -179,7 +181,7 @@ fn a10_the_new_commands_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().cloned().unwrap_or_default();
-    for id in ["standard", "style", "deletestyle", "promote", "styles", "category"] {
+    for id in ["standard", "setstyle", "deletestyle", "promote", "styles", "category"] {
         let info = catalog.iter().find(|i| i["id"] == id).unwrap_or_else(|| panic!("{id} not listed"));
         assert!(info["params"].as_str().is_some_and(|p| !p.is_empty()), "{id} has parameter docs");
     }
@@ -208,48 +210,56 @@ fn verify(path: &str) {
 /// §3.5, FP3 ruling: the same style record changed differently on both branches is one conflict,
 /// worded with the style's name, whose every choice merges; the result survives save and reopen.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp3_the_same_style_on_both_branches_is_one_conflict_named_by_the_style() {
     let dir = TempDir::new("t050-merge-same");
-    let (mut c, path) = branched(&dir, "same.ecad");
-    c.exec("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 4}}));
+    let path = dir.file("same.ecad");
+    let mut c = create(&path);
+    c.exec("standard", json!({"new": "House"}));
+    let large = own_id(&c.exec("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag"})));
+    c.ok("save", json!({}));
+    c.exec("branch", json!({"name": "Option B"}));
+    c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 4}}));
+    c.exec("setstyle", json!({"catalogue": "text", "id": large, "fields": {"height": 6}}));
     to_main(&mut c);
-    c.exec("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}}));
+    c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}}));
+    c.exec("setstyle", json!({"catalogue": "text", "id": large, "fields": {"height": 7}}));
     let pv = merge_preview(&mut c, "Option B");
     let ks = pv["conflicts"].as_array().cloned().unwrap_or_default();
-    assert_eq!(ks.len(), 1, "one unit, one conflict: {pv}");
-    let words = ks[0].to_string();
-    let name = s(&styles(&mut c, "text").iter().find(|r| s(&r["id"]) == "tag").unwrap()["name"]);
-    assert!(words.contains(&name), "worded with the style's name {name}: {words}");
-    let id = s(&ks[0]["id"]);
+    assert_eq!(ks.len(), 2, "one unit per record, one conflict each: {pv}");
+    let words = |k: &Value| s(&k["text"]);
+    assert!(ks.iter().any(|k| words(k).contains("Tag large")), "an own style's conflict is worded with its name, not its ID: {ks:?}");
+    let ids: Vec<String> = ks.iter().map(|k| s(&k["id"])).collect();
     for (choice, want) in [("branch", "4"), ("main", "3")] {
-        let r = c.exec("merge", json!({"from": "Option B", "choices": {id.clone(): choice}}));
+        let choices: serde_json::Map<String, Value> = ids.iter().map(|i| (i.clone(), json!(choice))).collect();
+        let r = c.exec("merge", json!({"from": "Option B", "choices": choices}));
         assert_eq!(r["merged"], json!(true), "{choice}: {r}");
         assert!(field(&mut c, "text", "tag", "height").starts_with(want), "{choice}");
-        c.exec("u", json!({}));
+        c.exec("undomerge", json!({}));
     }
-    c.exec("merge", json!({"from": "Option B", "choices": {id: "branch"}}));
+    let choices: serde_json::Map<String, Value> = ids.iter().map(|i| (i.clone(), json!("branch"))).collect();
+    c.exec("merge", json!({"from": "Option B", "choices": choices}));
     let want = c.doc();
     c.ok("save", json!({}));
     drop(c);
     verify(&path);
     let mut c = open(&path);
     assert!(c.doc() == want, "reopen gives the merged state");
+    // Last, so the checks above report on their own: a built-in's override is named too.
+    assert!(ks.iter().any(|k| words(k).contains("Tag") && !words(k).contains("large")), "the built-in's by its name Tag: {ks:?}");
 }
 
 /// Different styles, a style and a concurrent drawing edit, and different standard values merge
 /// with no conflict; the same standard value changed differently is one conflict (values merge
 /// per key, like project properties).
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp3_different_styles_values_and_edits_merge_cleanly() {
     let dir = TempDir::new("t050-merge-clean");
     let (mut c, path) = branched(&dir, "clean.ecad");
-    c.exec("style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}}));
-    let own = own_id(&c.exec("style", json!({"catalogue": "location", "new": true, "name": "Field box", "copy_of": "box", "layer": "standard"})));
+    c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}}));
+    let own = own_id(&c.exec("setstyle", json!({"catalogue": "location", "new": true, "name": "Field box", "copy_of": "box", "layer": "standard"})));
     c.exec("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"}));
     to_main(&mut c);
-    c.exec("style", json!({"catalogue": "frame", "id": "sheet", "fields": {"border_weight": 0.7}}));
+    c.exec("setstyle", json!({"catalogue": "frame", "id": "sheet", "fields": {"border_weight": 0.7}}));
     c.exec("wire", json!({"points": [[100, 40], [160, 40]]}));
     c.exec("setdefault", json!({"key": "wiring.label_rule", "level": "standard", "value": "each"}));
     let pv = merge_preview(&mut c, "Option B");
@@ -278,7 +288,6 @@ fn fp3_different_styles_values_and_edits_merge_cleanly() {
 /// §3.5: the standard header is one unit: renamed differently on both branches, one conflict;
 /// a standard made on a branch arrives whole.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp3_the_standard_header_is_one_unit() {
     let dir = TempDir::new("t050-merge-header");
     let (mut c, _) = branched(&dir, "header.ecad");
@@ -294,7 +303,7 @@ fn fp3_the_standard_header_is_one_unit() {
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Std"}));
     c.exec("standard", json!({"new": "From branch"}));
-    c.exec("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}}));
+    c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}}));
     let want = c.doc().standard.clone();
     to_main(&mut c);
     assert!(c.doc().standard.is_none());
@@ -321,7 +330,7 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
         one_by_agent_then_undo(&mut c, "wire", json!({"points": [[0, 60], [60, 60]], "category": "dc24"}));
         one_by_agent_then_undo(
             &mut c,
-            "style",
+            "setstyle",
             json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 1.5}}),
         );
         one_by_agent_then_undo(&mut c, "category", json!({"net": w, "value": "analogue"}));
@@ -351,7 +360,7 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
     for (cmd, params) in [
         ("category", json!({"conductor": w, "value": "signal"})),
         ("wire", json!({"points": [[0, 90], [60, 90]], "category": "dc24"})),
-        ("style", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}})),
     ] {
         assert_eq!(c.refused("execute", json!({"command": cmd, "params": params})), policy::WRITES_OFF, "{cmd}");
     }
@@ -378,10 +387,10 @@ fn b18_category_merges() {
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option B"}));
     c.exec("category", json!({"conductor": w, "value": "signal"}));
-    c.exec("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "VT"}}));
+    c.exec("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "VT"}}));
     to_main(&mut c);
-    c.exec("style", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}}));
-    c.exec("style", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
+    c.exec("setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"line_weight": 0.5}}));
+    c.exec("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
     let pv = merge_preview(&mut c, "Option B");
     let ks = pv["conflicts"].as_array().cloned().unwrap_or_default();
     assert_eq!(ks.len(), 1, "{pv}");

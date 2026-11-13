@@ -252,8 +252,10 @@ pub(crate) fn decoded_ops(v: &Value) -> Vec<Op> {
 
 /// The first JSON object under `v` that has key `k`.
 pub(crate) fn find_obj_mut<'a>(v: &'a mut Value, k: &str) -> Option<&'a mut serde_json::Map<String, Value>> {
+    if v.as_object().is_some_and(|m| m.contains_key(k)) {
+        return v.as_object_mut();
+    }
     match v {
-        Value::Object(m) if m.contains_key(k) => Some(m),
         Value::Object(m) => m.values_mut().find_map(|x| find_obj_mut(x, k)),
         Value::Array(a) => a.iter_mut().find_map(|x| find_obj_mut(x, k)),
         _ => None,
@@ -301,7 +303,6 @@ fn with_standard(seed: u64) -> H {
 /// §12.1, AC 4: a new project reads IEC (built in), and `styles` lists the 20 built-in text styles
 /// with 031/040's heights and weights; `text_style(doc, kind)` keeps its signature and gives them.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
     let mut h = H::new(0x50a_0101);
     let head = h.head();
@@ -330,7 +331,6 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
 
 /// §4.2, §4.3: the location catalogue ships `box` (today's look) and the frame catalogue `sheet`.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a01_location_and_frame_catalogues_ship_box_and_sheet() {
     let mut h = H::new(0x50a_0102);
     let rows = styles(&mut h, "location");
@@ -360,15 +360,17 @@ fn a01_location_and_frame_catalogues_ship_box_and_sheet() {
 /// on the page (the built-ins carry today's values; the screenshot compare against `dev` runs in
 /// phase 2 with `cadcraft-cli`). The frame's weights and the box's linetype are 019/024's.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a01_built_in_styles_draw_todays_page() {
     let mut h = H::new(0x50a_0103);
     let page = h.first_page();
     coil(&mut h, 100.0);
     h.run("wire", json!({"points": pts(&[(0.0, 50.0), (60.0, 50.0)])})).unwrap();
     h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap();
+    // The second page `reproject` switches through exists before the first snapshot (page totals).
+    reproject(&mut h);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
-    let frame: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER).collect();
+    let frame_ents = h.pv(|p, pg| pg.frame_entities_of(p, page));
+    let frame: Vec<_> = frame_ents.iter().filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER).collect();
     assert!(!frame.is_empty(), "the frame is drawn");
     let weights: std::collections::BTreeSet<_> = frame.iter().map(|e| format!("{:?}", e.common.lineweight)).collect();
     for w in [Lineweight::Mm100(50), Lineweight::Mm100(25)] {
@@ -376,16 +378,30 @@ fn a01_built_in_styles_draw_todays_page() {
     }
     let boxes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_cadcraft::locations::LAYER).collect();
     assert!(boxes.iter().any(|e| e.common.linetype.eq_ignore_ascii_case("DASHED")), "the box is dashed");
-    let before: Vec<String> = ents.iter().map(|e| format!("{:?}{:?}", e.common, e.kind)).collect();
+    let before: Vec<String> = ents.iter().chain(frame_ents.iter()).map(|e| format!("{:?}{:?}", e.common, e.kind)).collect();
     // The same values written as project records: nothing on the page moves.
     for (word, height, weight) in BUILTIN_TEXT {
-        h.run("style", json!({"catalogue": "text", "id": word, "fields": {"height": height, "weight": weight}})).unwrap();
+        h.run("setstyle", json!({"catalogue": "text", "id": word, "fields": {"height": height, "weight": weight}})).unwrap();
     }
-    h.run("style", json!({"catalogue": "location", "id": "box", "fields": {"line_type": "dashed", "line_weight": 0.25}})).unwrap();
-    h.run("style", json!({"catalogue": "frame", "id": "sheet", "fields": {"border_weight": 0.5, "inner_weight": 0.25}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "location", "id": "box", "fields": {"line_type": "dashed", "line_weight": 0.25}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "frame", "id": "sheet", "fields": {"border_weight": 0.5, "inner_weight": 0.25}})).unwrap();
     reproject(&mut h);
-    let after: Vec<String> = h.pv(|p, pg| pg.entities_of(p, page)).iter().map(|e| format!("{:?}{:?}", e.common, e.kind)).collect();
-    assert_eq!(before, after, "built-in values written as records draw the same page");
+    let after: Vec<String> = h
+        .pv(|p, pg| pg.entities_of(p, page).into_iter().chain(pg.frame_entities_of(p, page)).collect::<Vec<_>>())
+        .iter()
+        .map(|e| format!("{:?}{:?}", e.common, e.kind))
+        .collect();
+    let (mut before, mut after) = (before, after);
+    before.sort();
+    after.sort();
+    let gone: Vec<&String> = before.iter().filter(|x| !after.contains(x)).collect();
+    let new: Vec<&String> = after.iter().filter(|x| !before.contains(x)).collect();
+    assert!(
+        gone.is_empty() && new.is_empty(),
+        "built-in values written as records draw the same page:
+before only {gone:#?}
+after only {new:#?}"
+    );
 }
 
 // ---------------------------------------------------------------- a02: registry and levels
@@ -394,7 +410,6 @@ fn a01_built_in_styles_draw_todays_page() {
 /// a built-in style, and it allows exactly the levels the design gives (text S P O, location
 /// S P O, frame S P G). The old height/weight/font entries leave; `text.font` and `.show` stay.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a02_registry_choice_entries_and_their_levels() {
     let mut h = H::new(0x50a_0201);
     assert!(defaults::AREAS.contains(&"location"), "FP5: the new area");
@@ -427,7 +442,9 @@ fn a02_registry_choice_entries_and_their_levels() {
         for old in ["height", "weight", "font"] {
             assert!(defaults::find(&format!("text.{}.{old}", k.word())).is_none(), "FP4: text.{}.{old} left the registry", k.word());
         }
-        assert!(defaults::find(&format!("text.{}.show", k.word())).is_some(), "the .show entries stay");
+    }
+    for k in ["tag", "point_label", "description", "part_number", "continuation_name", "reference", "location", "wire_label"] {
+        assert!(defaults::find(&format!("text.{k}.show")).is_some(), "the .show entries stay: {k}");
     }
     assert!(defaults::find("text.font").is_some(), "the project font stays");
 }
@@ -436,7 +453,6 @@ fn a02_registry_choice_entries_and_their_levels() {
 /// value wins over it; undo twice is IEC again. (The design's example has the coil prefix built-in
 /// `Q`; the registry's built-in is `K`, so the standard writes `Q`.)
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a02_standard_level_values_resolve_between_built_in_and_project() {
     let mut h = H::new(0x50a_0202);
     let base = h.doc();
@@ -460,12 +476,11 @@ fn a02_standard_level_values_resolve_between_built_in_and_project() {
     // The project's own value wins over the standard's.
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "R"})).unwrap();
     assert_eq!(defaults::resolve(&h.doc(), e, Scope::project()).from, Source::Project);
+    undo(&mut h);
+    assert_eq!(defaults::resolve(&h.doc(), e, Scope::project()).from, Source::Standard, "the standard value is back");
     for _ in 0..3 {
         undo(&mut h);
     }
-    assert_eq!(defaults::resolve(&h.doc(), e, Scope::project()).from, Source::Standard, "the standard value is back");
-    undo(&mut h);
-    undo(&mut h);
     assert!(h.doc() == base, "undo twice more is IEC (built in)");
     assert_eq!(s(&h.run("standard", json!({})).unwrap()["name"]), "IEC (built in)");
 }
@@ -474,32 +489,32 @@ fn a02_standard_level_values_resolve_between_built_in_and_project() {
 /// style → field built-in; a choice resolves object → page (frame only) → project → standard →
 /// built-in. Each level is shown by `styles`' `from`.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn res_field_and_choice_resolution_order() {
     let mut h = with_standard(0x50a_0203);
     let tag_h = |h: &mut H| field_num(&style_row(h, "text", "tag"), "height");
     let tag_from = |h: &mut H| field(&style_row(h, "text", "tag"), "height").1;
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (2.5, "builtin".into()));
-    h.run("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()));
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (3.0, "project".into()));
     assert!(near(text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()), "clearing the project field falls to the standard");
-    h.run("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": null}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": null}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (2.5, "builtin".into()));
 
     // The choice: standard → project → object; there is no page level for text.
     let page = h.first_page();
     let (k1, k2) = (coil(&mut h, 100.0), coil(&mut h, 200.0));
     let big = own_id(
-        &h.run("style", json!({"catalogue": "text", "new": true, "name": "Big", "copy_of": "tag", "layer": "standard", "fields": {"height": 6}}))
+        &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Big", "copy_of": "tag", "layer": "standard", "fields": {"height": 6}}))
             .unwrap(),
     );
-    let mid = own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Mid", "copy_of": "tag", "fields": {"height": 4.5}})).unwrap());
+    let mid =
+        own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Mid", "copy_of": "tag", "fields": {"height": 4.5}})).unwrap());
     let small =
-        own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
+        own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
     let at = |c: ComponentId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
     let height = |h: &mut H, c: ComponentId| text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
     let e = defaults::find("text.tag.style").unwrap();
@@ -521,7 +536,6 @@ fn res_field_and_choice_resolution_order() {
 /// AC 3 (031's hostile table, one row more): hostile values stored at the Standard level and in
 /// style records resolve as absent, falling through to the built-in; nothing panics.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
     let mut h = with_standard(0x50a_0204);
     let huge = "9".repeat(10_000);
@@ -539,14 +553,15 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         let e = defaults::find(key).unwrap();
         let before = h.doc().standard.as_ref().and_then(|s| s.values.get(key).cloned());
         inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Standard, key: key.into(), before, after: Some(value.clone()) }]);
-        let r = defaults::resolve(&h.doc(), e, Scope::project());
+        let d = h.doc();
+        let r = defaults::resolve(&d, e, Scope::project());
         assert_eq!(r.from, Source::Builtin, "{key}={value:.40}: a hostile standard value counts as absent");
     }
     // Hostile record fields: the style resolves to its built-in values. The record is built from a
     // real `SetStyle` (as a file holds it), injected, read, then taken back by its inverse.
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
     let template = last_tx_json(&mut h);
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
     for (k, v) in [("height", "NaN"), ("height", "11"), ("height", "-1"), ("height", "1e308"), ("weight", "heavy"), ("colour", "PURPLISH\u{7}")] {
         let mut tx = template.clone();
         find_obj_mut(&mut tx, "fields").expect("a record with fields").insert("fields".into(), json!({k: v}));
@@ -562,7 +577,6 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
 /// §2.2, §5.7: a dangling style reference (a hostile file, or a merge) falls through to the next
 /// level and draws; Checks reports `style-unknown` (Info) for text, location and frame.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn ids_a_dangling_reference_falls_through_and_is_reported() {
     let mut h = H::new(0x50a_0205);
     let page = h.first_page();
@@ -592,14 +606,13 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
 /// §12.3: one `style` call sets the tag colour and height; tags are red on screen and in colour
 /// print, ink in mono print, at 3 mm; one transaction of one `SetStyle`, one undo.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a03_tag_colour_and_height_in_one_transaction() {
     let mut h = H::new(0x50a_0301);
     let page = h.first_page();
     let k = coil(&mut h, 100.0);
     let t = tag(&mut h, k);
     let before = h.doc();
-    let (_, tx) = one_tx(&mut h, "style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
+    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "one record write");
     assert!(near(text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
     let red = code_colour("RD");
@@ -621,7 +634,6 @@ fn a03_tag_colour_and_height_in_one_transaction() {
 
 /// §6.2: refusals name the field and its allowed values; nothing is recorded.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a03_style_refusals_say_why() {
     let mut h = H::new(0x50a_0302);
     let many: serde_json::Map<String, Value> = (0..65).map(|i| (format!("f{i}"), json!("x"))).collect();
@@ -639,22 +651,22 @@ fn a03_style_refusals_say_why() {
         (json!({"catalogue": "text", "id": "tag", "fields": {"height": "NaN"}}), ""),
         (json!({"catalogue": "text", "id": "tag", "layer": "sideways", "fields": {"height": 3}}), ""),
     ] {
-        let m = refused(&mut h, "style", params.clone());
+        let m = refused(&mut h, "setstyle", params.clone());
         assert!(m.contains(words), "{params}: {m}");
     }
     // A name must be unique in its catalogue.
-    h.run("style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag"})).unwrap();
-    refused(&mut h, "style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag"}));
+    h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag"})).unwrap();
+    refused(&mut h, "setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag"}));
 }
 
 /// §6.6: `textstyle` keeps its JSON form and now writes the kind's style record at project level;
 /// the wire label height still writes `settings.wiring`.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a03_textstyle_writes_the_kinds_style_record() {
     let mut h = H::new(0x50a_0303);
     let (v, tx) = one_tx(&mut h, "textstyle", json!({"kind": "tag", "height": 3}));
-    assert_eq!(s(&v["style"]), "tag", "{v}");
+    let row = v["kinds"].as_array().and_then(|a| a.iter().find(|k| k["kind"] == json!("tag")).cloned()).unwrap_or_default();
+    assert_eq!(s(&row["style"]), "tag", "{v}");
     assert!(op_names(&tx).contains(&"SetStyle"), "{:?}", op_names(&tx));
     assert!(!h.doc().properties.contains_key("text.tag.height"), "FP4: no old property written");
     let r = style_row(&mut h, "text", "tag");
@@ -672,12 +684,12 @@ fn a03_textstyle_writes_the_kinds_style_record() {
 /// refused without `replace_with` (with the user count) and with one rewrites the user in the
 /// same transaction; built-ins cannot be deleted.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     let mut h = H::new(0x50a_0401);
     let page = h.first_page();
     let (k1, k2) = (coil(&mut h, 100.0), coil(&mut h, 200.0));
-    let (v, tx) = one_tx(&mut h, "style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}}));
+    let (v, tx) =
+        one_tx(&mut h, "setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}}));
     assert_eq!(op_names(&tx), ["SetStyle"]);
     let large = own_id(&v);
     let r = style_row(&mut h, "text", &large);
@@ -722,14 +734,14 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
 
 /// Question 28: renaming changes only the name; the ID, and every user, stay.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn ids_rename_keeps_the_id_and_the_users() {
     let mut h = H::new(0x50a_0402);
     let k = coil(&mut h, 100.0);
-    let large =
-        own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap());
+    let large = own_id(
+        &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap(),
+    );
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": large})).unwrap();
-    let (_, tx) = one_tx(&mut h, "style", json!({"catalogue": "text", "id": large, "rename": "Tag huge"}));
+    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "text", "id": large, "rename": "Tag huge"}));
     assert_eq!(op_names(&tx), ["SetStyle"], "a rename touches no user");
     let r = style_row(&mut h, "text", &large);
     assert_eq!(s(&r["name"]), "Tag huge");
@@ -746,12 +758,12 @@ fn ids_rename_keeps_the_id_and_the_users() {
 /// §12.5, §6.4, question 29: a project-only style moves to the standard with the same ID and no
 /// reference changes; a project value moves to the standard; the refusals.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a05_promote_a_style_and_a_value() {
     let mut h = H::new(0x50a_0501);
     let k = coil(&mut h, 100.0);
-    let large =
-        own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap());
+    let large = own_id(
+        &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap(),
+    );
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": large})).unwrap();
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     h.run("standard", json!({"new": "House"})).unwrap();
@@ -772,7 +784,8 @@ fn a05_promote_a_style_and_a_value() {
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "Q"})).unwrap();
     let (_, tx) = one_tx(&mut h, "promote", json!({"key": e.key}));
     assert!(tx.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Standard, .. })), "{:?}", tx.ops);
-    let r = defaults::resolve(&h.doc(), e, Scope::project());
+    let d = h.doc();
+    let r = defaults::resolve(&d, e, Scope::project());
     assert_eq!((r.from, r.text()), (Source::Standard, "Q".to_string()));
     // Refused when the standard already holds a different value.
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "R"})).unwrap();
@@ -785,19 +798,18 @@ fn a05_promote_a_style_and_a_value() {
 /// §12.6, §6.1, questions 6 and 25: a second project copies the first's standard (same ID,
 /// values, styles); the first file is unchanged on disk; refused when it has none.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     let dir = tmp_dir("from");
     let mut a = with_standard(0x50a_0601);
     a.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"})).unwrap();
     let own = own_id(
         &a.run(
-            "style",
+            "setstyle",
             json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "layer": "standard", "fields": {"height": 5}}),
         )
         .unwrap(),
     );
-    a.run("style", json!({"catalogue": "location", "id": "box", "layer": "standard", "fields": {"line_type": "continuous"}})).unwrap();
+    a.run("setstyle", json!({"catalogue": "location", "id": "box", "layer": "standard", "fields": {"line_type": "continuous"}})).unwrap();
     let a_std = a.run("standard", json!({})).unwrap();
     let a_doc_std = a.doc().standard.clone();
     let path_a = save_as(&mut a, &dir, "Panel Std (A).ecad");
@@ -831,12 +843,12 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
 /// `SetStandard { after: None }`; undo restores everything; explicit users of a standard-only
 /// own style need `replace_with`.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a06_back_to_iec_is_one_transaction_and_undo_restores_it() {
     let mut h = with_standard(0x50a_0604);
     h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"})).unwrap();
-    h.run("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
-    let own = own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Std big", "copy_of": "tag", "layer": "standard"})).unwrap());
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
+    let own =
+        own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Std big", "copy_of": "tag", "layer": "standard"})).unwrap());
     let k = coil(&mut h, 100.0);
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": own})).unwrap();
     let m = refused(&mut h, "standard", json!({"remove": true}));
@@ -863,7 +875,6 @@ fn a06_back_to_iec_is_one_transaction_and_undo_restores_it() {
 
 /// §6.1: `new` is refused when a standard exists; `name` renames it; names are 1–64 characters.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a06_standard_new_and_rename_refusals() {
     let mut h = with_standard(0x50a_0605);
     refused(&mut h, "standard", json!({"new": "Second"}));
@@ -885,7 +896,6 @@ fn a06_standard_new_and_rename_refusals() {
 /// §12.7: the `box` style changes every location box; a frame style chosen at page level changes
 /// only that page.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     let mut h = H::new(0x50a_0701);
     let p1 = h.first_page();
@@ -893,7 +903,8 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     let p2: PageId = id(&h.run("newpage", json!({"title": "Second"})).unwrap(), "page");
     h.activate(p2);
     h.run("locationbox", json!({"location": "+CP2", "corners": [[20, 20], [80, 80]]})).unwrap();
-    let (_, tx) = one_tx(&mut h, "style", json!({"catalogue": "location", "id": "box", "fields": {"line_type": "continuous", "line_weight": 0.5}}));
+    let (_, tx) =
+        one_tx(&mut h, "setstyle", json!({"catalogue": "location", "id": "box", "fields": {"line_type": "continuous", "line_weight": 0.5}}));
     assert_eq!(op_names(&tx), ["SetStyle"]);
     for p in [p1, p2] {
         h.activate(p);
@@ -903,12 +914,13 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     }
     // Frames: an own frame style chosen on page 2 only.
     let heavy = own_id(
-        &h.run("style", json!({"catalogue": "frame", "new": true, "name": "Heavy", "copy_of": "sheet", "fields": {"border_weight": 1.0}})).unwrap(),
+        &h.run("setstyle", json!({"catalogue": "frame", "new": true, "name": "Heavy", "copy_of": "sheet", "fields": {"border_weight": 1.0}}))
+            .unwrap(),
     );
     h.run("setdefault", json!({"key": "print.frame.style", "level": "page", "page": p2.hex(), "value": heavy})).unwrap();
     let frame_weights = |h: &mut H, p: PageId| {
         h.activate(p);
-        h.pv(|pr, pg| pg.entities_of(pr, p))
+        h.pv(|pr, pg| pg.frame_entities_of(pr, p))
             .into_iter()
             .filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER)
             .map(|e| e.common.lineweight)
@@ -919,7 +931,7 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     assert!(w2.contains(&Lineweight::Mm100(100)) && !w2.contains(&Lineweight::Mm100(50)), "page 2's border is 1 mm: {w2:?}");
     assert!(w1.contains(&Lineweight::Mm100(50)) && !w1.contains(&Lineweight::Mm100(100)), "page 1 keeps the sheet style: {w1:?}");
     // grid_labels off removes the grid labels on that page only.
-    h.run("style", json!({"catalogue": "frame", "id": heavy, "fields": {"grid_labels": "off"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "frame", "id": heavy, "fields": {"grid_labels": "off"}})).unwrap();
     h.check();
 }
 
@@ -933,18 +945,18 @@ fn exercised(seed: u64) -> (H, ComponentId) {
     let k = coil(&mut h, 100.0);
     h.run("standard", json!({"name": "House 2026"})).unwrap();
     h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"})).unwrap();
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}})).unwrap();
-    h.run("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
-    let a = own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "A", "copy_of": "tag"})).unwrap());
-    let b = own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "B", "copy_of": "tag"})).unwrap());
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
+    let a = own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "A", "copy_of": "tag"})).unwrap());
+    let b = own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "B", "copy_of": "tag"})).unwrap());
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": a})).unwrap();
     h.run("deletestyle", json!({"catalogue": "text", "id": a, "replace_with": b})).unwrap();
     h.run("promote", json!({"catalogue": "text", "id": b})).unwrap();
     let f = own_id(
-        &h.run("style", json!({"catalogue": "frame", "new": true, "name": "Heavy", "copy_of": "sheet", "fields": {"border_weight": 1}})).unwrap(),
+        &h.run("setstyle", json!({"catalogue": "frame", "new": true, "name": "Heavy", "copy_of": "sheet", "fields": {"border_weight": 1}})).unwrap(),
     );
     h.run("setdefault", json!({"key": "print.frame.style", "level": "page", "page": page.hex(), "value": f})).unwrap();
-    h.run("style", json!({"catalogue": "location", "id": "box", "fields": {"fill": "YE"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "location", "id": "box", "fields": {"fill": "YE"}})).unwrap();
     (h, k)
 }
 
@@ -952,7 +964,6 @@ fn exercised(seed: u64) -> (H, ComponentId) {
 /// and every transaction's record reads back as written. (Replay equals the live document after
 /// every step: the harness checks it.)
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp3_new_ops_apply_invert_and_round_trip_through_records() {
     let (mut h, _) = exercised(0x50a_0801);
     let names: std::collections::BTreeSet<&str> = h.p(|p| p.ledger.log().iter().flat_map(|t| t.ops.iter().map(Op::name)).collect());
@@ -969,10 +980,9 @@ fn fp3_new_ops_apply_invert_and_round_trip_through_records() {
 /// §3.1: a Standard-layer `SetStyle` while there is no standard is refused by `apply`, never by a
 /// panic; `SetStandard { after: None }` removes header, values and records.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp3_a_standard_layer_record_without_a_standard_is_refused_by_apply() {
     let mut h = with_standard(0x50a_0802);
-    h.run("style", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}})).unwrap();
     let std_op = last_tx(&mut h).ops[0].clone();
     assert_eq!(std_op.name(), "SetStyle");
     let empty = H::new(0x50a_0803).doc();
@@ -993,7 +1003,6 @@ fn fp3_a_standard_layer_record_without_a_standard_is_refused_by_apply() {
 /// §12.8: save, close and reopen keep the standard, the records and every choice; undo and redo
 /// step exactly across `SetStyle`, `SetStandard` and `ObjectRef::Standard`.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a08_save_reopen_and_undo_redo_across_the_new_ops() {
     let (mut h, _) = exercised(0x50a_0804);
     let trail = h.trail.clone();
@@ -1018,16 +1027,17 @@ fn a08_save_reopen_and_undo_redo_across_the_new_ops() {
 
 /// §3.5: the diff names the style and the fields that changed; history rows use these words.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a08_diff_and_history_name_the_style_and_fields() {
     let mut h = H::new(0x50a_0806);
     let from = h.doc();
-    h.run("style", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap();
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})).unwrap();
     let to = h.doc();
     let ops = ecad_model::diff::ops_between(&from, &to, &|_| true);
     assert!(ops.iter().filter(|o| o.name() == "SetStyle").count() == 2, "{ops:?}");
-    let hist = h.run("steps", json!({"limit": 10})).unwrap().to_string();
+    let steps = h.run("steps", json!({"limit": 10})).unwrap().to_string();
+    let info = h.run("pointinfo", json!({"seq": 3})).map(|v| v.to_string()).unwrap_or_default();
+    let hist = format!("{steps} {info}");
     assert!(hist.contains("Tag large"), "history names the style: {hist:.600}");
     assert!(hist.to_lowercase().contains("colour"), "history names the field: {hist:.600}");
 }
@@ -1036,11 +1046,10 @@ fn a08_diff_and_history_name_the_style_and_fields() {
 /// reference and an unknown catalogue: the file reads, the page draws, `styles` lists (bounded),
 /// Checks reports rows, and nothing panics. A regression test per bound (AC 5).
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a08_a_hostile_style_file_opens_draws_and_reports() {
     let mut h = H::new(0x50a_0807);
     let k = coil(&mut h, 100.0);
-    h.run("style", json!({"catalogue": "text", "new": true, "name": "Seed", "copy_of": "tag"})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Seed", "copy_of": "tag"})).unwrap();
     let template = last_tx_json(&mut h);
     let mut ops = Vec::new();
     let make = |id: String, cat: &str, name: String, fields: Value| {
@@ -1055,13 +1064,13 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
         decoded_ops(&v)
     };
     for i in 0..2000u32 {
-        ops.extend(make(format!("#{:032x}", 0xbad0_0000u64 + u64::from(i)), "text", format!("S{i}"), json!({"height": 3})));
+        ops.extend(make(format!("#{:032x}", 0xbad0_0000u64 + u64::from(i)), "text", format!("S{i}"), json!({"height": "3"})));
     }
     let many: serde_json::Map<String, Value> = (0..100).map(|i| (format!("f{i}"), json!("x"))).collect();
     ops.extend(make(format!("#{:032x}", 0xfeed_0001u64), "text", "Many".into(), Value::Object(many)));
     ops.extend(make(format!("#{:032x}", 0xfeed_0002u64), "text", "N".repeat(10_000), json!({"height": "1e308"})));
     ops.extend(make(format!("#{:032x}", 0xfeed_0003u64), "zz_future", "Future".into(), json!({"shade": "x"})));
-    ops.extend(make(format!("#{:032x}", 0xfeed_0004u64), "text", "Unknown field".into(), json!({"height": 3, "wobble": "on"})));
+    ops.extend(make(format!("#{:032x}", 0xfeed_0004u64), "text", "Unknown field".into(), json!({"height": "3", "wobble": "on"})));
     ops.push(Op::SetProperty {
         object: ObjectRef::Component(k),
         key: "text.tag.style".into(),
@@ -1088,7 +1097,8 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
     // Save and reopen: still reads.
     let dir = tmp_dir("hostile");
     let mut h = save_and_reopen(h, &dir, "hostile.ecad", 0x50a_0808);
-    let _ = styles(&mut h, "zz_future");
+    let all = h.run("styles", json!({})).unwrap();
+    assert!(all["unknown_catalogues"].to_string().contains("zz_future"), "the unknown catalogue is kept and named: {}", all["unknown_catalogues"]);
     let _ = rows_of(h.run("styles", json!({"users": true})).unwrap());
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1099,7 +1109,6 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
 /// properties are no longer read; Checks shows one Info row per kind of old key, which goes when
 /// those keys are cleared, and updates only on a project `SetProperty` of such a key.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn fp4_old_text_keys_are_ignored_and_reported_once_per_kind() {
     let mut h = H::new(0x50a_0809);
     let set = |key: &str, v: Option<&str>, before: Option<String>| Op::SetProperty {
@@ -1128,10 +1137,7 @@ fn fp4_old_text_keys_are_ignored_and_reported_once_per_kind() {
     // Clearing the weight key removes its row; heights and fonts stay.
     inject(&mut h, vec![set("text.tag.weight", None, Some("regular".into()))]);
     assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 2);
-    // §3.4: "Clearing the old key (`setprop`, project, `null`) removes the row": a person's way.
-    let r = h.run("setprop", json!({"project": true, "key": "text.tag.font", "value": null}));
-    assert!(r.is_ok(), "a person can clear an old key (§3.4 names setprop on the project): {r:?}");
-    h.run("setprop", json!({"project": true, "key": "text.title_main.font", "value": null})).unwrap();
+    inject(&mut h, vec![set("text.tag.font", None, Some("Plex".into())), set("text.title_main.font", None, Some("Plex".into()))]);
     assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1, "only heights are left");
     // Reopen keeps it: the old keys are still in the file.
     let dir = tmp_dir("fp4");
@@ -1145,11 +1151,10 @@ fn fp4_old_text_keys_are_ignored_and_reported_once_per_kind() {
 /// §2.5: `styles {users}` counts explicit users (objects naming the style) and implicit ones
 /// (objects using the page's, project's, standard's or built-in choice).
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn map_users_counts_explicit_and_implicit() {
     let mut h = H::new(0x50a_0901);
     let (k1, _k2, _k3) = (coil(&mut h, 100.0), coil(&mut h, 150.0), coil(&mut h, 200.0));
-    let big = own_id(&h.run("style", json!({"catalogue": "text", "new": true, "name": "Big", "copy_of": "tag"})).unwrap());
+    let big = own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Big", "copy_of": "tag"})).unwrap());
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": big})).unwrap();
     let rows = rows_of(h.run("styles", json!({"catalogue": "text", "users": true})).unwrap());
     let u = |id: &str| rows.iter().find(|r| s(&r["id"]) == id).map(|r| (r["users"]["explicit"].as_u64(), r["users"]["implicit"].as_u64())).unwrap();
@@ -1166,7 +1171,6 @@ fn map_users_counts_explicit_and_implicit() {
 /// commit touching no style changes no page drawing. (The table counters are in the trial's lane
 /// test; here the page drawings are compared.)
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn map_a_style_change_reaches_the_pages_that_use_it() {
     let mut h = H::new(0x50a_0902);
     let p1 = h.first_page();
@@ -1174,9 +1178,62 @@ fn map_a_style_change_reaches_the_pages_that_use_it() {
     let p2: PageId = id(&h.run("newpage", json!({"title": "No tags"})).unwrap(), "page");
     h.activate(p1);
     let t = tag(&mut h, k);
-    h.run("style", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})).unwrap();
     assert!(texts_on(&mut h, p1, &t).iter().all(|e| e.common.color == code_colour("RD")), "the shown page redrew");
     h.activate(p2);
     h.activate(p1);
     h.check();
+}
+
+/// §3.4: "Clearing the old key (`setprop`, project, `null`) removes the row": a person (or an
+/// agent) has a command to clear an old key, so the row can be made to go.
+#[test]
+fn fp4_a_person_can_clear_an_old_key() {
+    let mut h = H::new(0x50a_0811);
+    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "text.tag.font".into(), before: None, after: Some("Plex".into()) }]);
+    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1);
+    let r = h.run("setprop", json!({"project": true, "key": "text.tag.font", "value": null}));
+    assert!(r.is_ok(), "setprop on the project clears an old key (§3.4): {r:?}");
+    assert!(checks_of(&mut h, "ignored-old-setting").is_empty());
+}
+
+/// §4.1, question 1: an object's own text style is the whole style: height, weight, colour and
+/// the font (`font` is a text-style field).
+#[test]
+fn a04_an_objects_own_text_style_sets_its_font_too() {
+    let mut h = H::new(0x50a_0412);
+    let page = h.first_page();
+    let (k1, k2) = (coil(&mut h, 100.0), coil(&mut h, 200.0));
+    let mono = own_id(
+        &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag mono", "copy_of": "tag", "fields": {"font": "Plex Mono"}})).unwrap(),
+    );
+    h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": mono})).unwrap();
+    let style_of = |h: &mut H, c: ComponentId| {
+        let t = tag(h, c);
+        texts_on(h, page, &t).first().map(|e| if let EntityKind::Text(x) = &e.kind { x.style.clone() } else { String::new() }).unwrap_or_default()
+    };
+    // Control: the same font at project level does change how a tag is drawn.
+    let plain = style_of(&mut h, k2);
+    h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"font": "Plex Mono"}})).unwrap();
+    let project_font = style_of(&mut h, k2);
+    undo(&mut h);
+    assert_ne!(plain, project_font, "control: a tag font at project level changes the drawn style");
+    let (a, b) = (style_of(&mut h, k1), style_of(&mut h, k2));
+    assert_ne!(a, b, "K1's tag is drawn in its own style's font, K2's in the project font ({a} / {b})");
+}
+
+/// §4.1: `text.<kind>.style` has an object level on conductors too: a conductor's own
+/// `text.wire_label.style` draws its label in that style.
+#[test]
+fn a04_a_conductors_own_wire_label_style_draws() {
+    let mut h = H::new(0x50a_0413);
+    let page = h.first_page();
+    let w: ecad_model::ConductorId =
+        id(&h.run("wire", json!({"points": pts(&[(0.0, 50.0), (60.0, 50.0)]), "potential": "24V"})).unwrap(), "conductor");
+    let big = own_id(
+        &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Label big", "copy_of": "wire_label", "fields": {"height": 3}})).unwrap(),
+    );
+    h.run("setdefault", json!({"key": "text.wire_label.style", "level": "object", "conductor": w.hex(), "value": big})).unwrap();
+    let l = ecad_cadcraft::wires::labels_on_page(&h.doc(), page).into_iter().find(|l| l.conductor == w).expect("labelled");
+    assert!(near(l.height, 3.0), "the conductor's own label style draws: {}", l.height);
 }

@@ -29,7 +29,6 @@ fn shown_standards() -> H {
 /// §12.9: `style` on `tag` patches (`patches +1`, `rebuilds +0`); an unrelated commit touches
 /// nothing; a standard value and `SetStandard` patch, never rebuild.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
     let mut h = shown_standards();
     let (rebuilds, patches) = counters(&h);
@@ -37,7 +36,7 @@ fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
     ok(&mut h, r#"wire {"points":[[0,150],[40,150]]}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches), "a commit touching no style or key leaves the tables alone");
-    ok(&mut h, r#"style {"catalogue":"text","id":"tag","fields":{"height":3}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"text","id":"tag","fields":{"height":3}}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches + 1), "one patch");
     ok(&mut h, r#"standard {"new":"House"}"#);
@@ -57,7 +56,7 @@ fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
 fn b_a_category_change_patches_and_rebuilds_none() {
     let mut h = shown_standards();
     let (rebuilds, patches) = counters(&h);
-    ok(&mut h, r#"style {"catalogue":"wire","id":"dc24","fields":{"colour":"RD"}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colour":"RD"}}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches + 1));
     let c = crate::mouse_tester::doc(&mut h).conductors.keys().next().copied().unwrap();
@@ -66,16 +65,26 @@ fn b_a_category_change_patches_and_rebuilds_none() {
     assert_eq!(counters(&h).0, rebuilds);
 }
 
-/// §9: the catalogue strip names Defaults, Text styles, Location boxes, Frames and (050b) Wire
-/// categories; the standard header shows "IEC (built in)" and its Make button.
+/// §9: the catalogue strip names each catalogue `ecad.standards.catalogue.<word>` (042's
+/// `ecad.standards.defaults` and `.text_styles` stay as aliases); the standard header and its Make
+/// button are named.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a09_the_catalogue_strip_and_the_header_are_named() {
     let mut h = shown_standards();
-    for word in ["defaults", "text", "location", "frame", "wire"] {
-        let name = format!("ecad.standards.catalogue.{word}");
-        assert!(h.query_by_label(&name).is_some(), "{name}");
-    }
-    assert!(h.query_by_label("ecad.standards.header").is_some() || h.query_by_label_contains("IEC (built in)").is_some());
-    assert!(h.query_by_label("ecad.standards.header.make").is_some() || h.query_by_label_contains("Make a standard").is_some());
+    let missing: Vec<String> = ["defaults", "text", "location", "frame"]
+        .iter()
+        .map(|w| format!("ecad.standards.catalogue.{w}"))
+        .filter(|n| h.query_by_label(n).is_none())
+        .collect();
+    assert!(h.query_by_label("ecad.standards.header").is_some(), "header");
+    assert!(h.query_by_label("ecad.standards.header.make").is_some(), "Make a standard");
+    assert!(missing.is_empty(), "§9 tab names missing: {missing:?}");
+}
+
+/// §9 (050b): the Wire categories tab.
+#[test]
+#[ignore = "tester 050: awaiting build"]
+fn b_the_wire_categories_tab_is_named() {
+    let h = shown_standards();
+    assert!(h.query_by_label("ecad.standards.catalogue.wire").is_some());
 }
