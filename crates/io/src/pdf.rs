@@ -843,6 +843,19 @@ fn marks(s: &mut Surface<'_>, p: &SheetPage, groups: &Groups, fonts: &mut fonts:
     let mut batch: Option<(StrokeStyle, PathBuilder)> = None;
     let mut layer: Option<OcgId> = None;
     for (i, prim) in list.prims.iter().enumerate() {
+        let raw = list.points(prim);
+        if raw.iter().any(|q| !q.is_finite()) {
+            continue;
+        }
+        let w = f64::from(prim.lw) * PT_PER_MM;
+        let w = if w.is_finite() && w > 0.0 { w.min(100.0) } else { 0.0 };
+        // ECAD-SEAM(owner): a primitive wholly outside the plot area is not written. A plot of
+        // `pages` builds the whole model for every page, so without this each page's content
+        // stream held every page's geometry and the file grew with pages squared. What shows
+        // is unchanged: the page clips to the same area.
+        if outside_plot_area(prim, raw, &p.map, &p.clip_pt, w) {
+            continue;
+        }
         let want = list.prim_layers.get(i).and_then(|l| groups.ids.get(l)).copied();
         if want != layer {
             flush(s, &mut batch);
@@ -850,14 +863,8 @@ fn marks(s: &mut Surface<'_>, p: &SheetPage, groups: &Groups, fonts: &mut fonts:
             layer = want;
         }
         let rgb = prim.display_rgb(white);
-        let raw = list.points(prim);
-        if raw.iter().any(|q| !q.is_finite()) {
-            continue;
-        }
         // A wipeout's mask always hides what is under it.
         let t = if prim.kind == Kind::Mask { 0 } else { prim.transparency.min(cadcraft_render::MAX_TRANSPARENCY) };
-        let w = f64::from(prim.lw) * PT_PER_MM;
-        let w = if w.is_finite() && w > 0.0 { w.min(100.0) } else { 0.0 };
         let m = Mark { rgb, t, w };
         match prim.kind {
             Kind::Polyline | Kind::Infinite { .. } => polyline(s, &mut batch, p, prim, raw, m),
@@ -887,6 +894,27 @@ struct Mark {
     rgb: Rgb,
     t: u8,
     w: f64,
+}
+
+/// Margin (points) added round the plot area, beyond the stroke width, before a primitive counts
+/// as outside it: a round cap, a point's minimum size and a glyph's tessellation all stay inside.
+const CULL_MARGIN_PT: f64 = 2.0;
+
+// ECAD-SEAM(owner): window culling for multi-page plots (see `marks`).
+/// Whether a primitive lies wholly outside the plot area `clip_pt` (points), grown by its stroke
+/// width `w` (points) and [`CULL_MARGIN_PT`]. Infinite lines and images are never culled here:
+/// they are clipped (or skipped) where they are drawn.
+fn outside_plot_area(prim: &DPrim, raw: &[Vec2], map: &Map, clip_pt: &Bounds2, w: f64) -> bool {
+    match prim.kind {
+        Kind::Polyline | Kind::Tris | Kind::Mask | Kind::Point => {
+            if raw.is_empty() {
+                return false;
+            }
+            let b = Bounds2::from_points(raw.iter().map(|q| map.pt(*q)));
+            !b.intersects(&clip_pt.expand(w + CULL_MARGIN_PT))
+        }
+        Kind::Infinite { .. } | Kind::Image { .. } => false,
+    }
 }
 
 /// Stroke a polyline or infinite line, clipped to the plot area, into the open batch.

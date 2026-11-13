@@ -223,17 +223,121 @@ pub fn key(tag: &str) -> String {
     }
 }
 
-/// The written form of `prefix` and `n`: `-`, the prefix in upper case, the number padded with
-/// zeros to `padding` digits.
+/// The project property of the tag style's leading `-` (brief 033, FP1): `yes` or `no`.
+pub const DASH_KEY: &str = "tags.dash";
+/// The project property of the tag style's case (brief 033, FP1): `upper` or `typed`.
+pub const CASE_KEY: &str = "tags.case";
+/// The values of [`DASH_KEY`], and its default (the registry's built-in, overseer ruling 2).
+pub const DASH_WORDS: &[&str] = &["yes", "no"];
+pub const DEFAULT_DASH: &str = "yes";
+/// The values of [`CASE_KEY`], and its default.
+pub const CASE_WORDS: &[&str] = &["upper", "typed"];
+pub const DEFAULT_CASE: &str = "upper";
+
+/// The case tags are written in (brief 033, project property `tags.case`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Case {
+    /// Upper case (the default, and every tag before brief 033).
+    #[default]
+    Upper,
+    /// As typed.
+    Typed,
+}
+
+/// How a project writes tags (brief 033, design 033 §8): number padding, the leading `-`
+/// (`tags.dash`) and the case (`tags.case`). It is a writing rule: [`key`] ignores the `-` and
+/// the case, so it never changes which tags are the same. A bare padding is the style of every
+/// project before brief 033 (`-`, upper case).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Style {
+    pub padding: u8,
+    pub dash: bool,
+    pub case: Case,
+}
+
+impl From<u8> for Style {
+    fn from(padding: u8) -> Self {
+        Style { padding, dash: true, case: Case::Upper }
+    }
+}
+
+impl Style {
+    /// The project's tag style: its padding, and [`DASH_KEY`] and [`CASE_KEY`] read as the
+    /// defaults registry reads them (a word compared without case; anything else is the default).
+    /// `ecad-cadcraft` registers the same keys and defaults.
+    pub fn of(doc: &crate::Document) -> Style {
+        let word = |key: &str, words: &[&str], default: &'static str| -> String {
+            doc.properties
+                .get(key)
+                .map(|v| v.trim())
+                .and_then(|v| words.iter().find(|w| w.eq_ignore_ascii_case(v)))
+                .map_or(default, |w| w)
+                .to_string()
+        };
+        Style {
+            padding: doc.settings.tag_padding.min(MAX_PADDING),
+            dash: word(DASH_KEY, DASH_WORDS, DEFAULT_DASH) == "yes",
+            case: if word(CASE_KEY, CASE_WORDS, DEFAULT_CASE) == "typed" { Case::Typed } else { Case::Upper },
+        }
+    }
+
+    /// A provisional tag `-K?3` in this style (never padded): the dash as set, the letters in
+    /// this style's case.
+    pub fn provisional(&self, prefix: &str, n: u64) -> String {
+        format!("{}{}?{n}", self.dash(), self.letters(prefix.trim_start_matches('-')))
+    }
+
+    /// `letters` as this style writes them.
+    fn letters(&self, letters: &str) -> String {
+        match self.case {
+            Case::Upper => letters.to_uppercase(),
+            Case::Typed => letters.to_string(),
+        }
+    }
+
+    fn dash(&self) -> &'static str {
+        if self.dash { "-" } else { "" }
+    }
+}
+
+/// The written form of `prefix` and `n`: `-` (unless the style drops it), the prefix in upper case
+/// (or as given, for [`Case::Typed`]), the number padded with zeros to the style's padding.
 ///
 /// # Example
 /// ```
+/// use ecad_model::tag::{Case, Style};
 /// assert_eq!(ecad_model::tag::format("K", 1, 2), "-K01");
 /// assert_eq!(ecad_model::tag::format("k", 123, 2), "-K123");
+/// assert_eq!(ecad_model::tag::format("k", 5, Style { padding: 2, dash: false, case: Case::Typed }), "k05");
 /// ```
-pub fn format(prefix: &str, n: u64, padding: u8) -> String {
-    let width = usize::from(padding.min(MAX_PADDING));
-    format!("-{}{n:0width$}", prefix.trim_start_matches('-').to_ascii_uppercase())
+pub fn format(prefix: &str, n: u64, style: impl Into<Style>) -> String {
+    let style = style.into();
+    let width = usize::from(style.padding.min(MAX_PADDING));
+    format!("{}{}{n:0width$}", style.dash(), style.letters(prefix.trim_start_matches('-')))
+}
+
+/// The letters of a tag in the usual form as they were typed (`k05` → `k`), for renumbering a
+/// tag under [`Case::Typed`] (design 033 §8.3); `None` for any other tag.
+pub fn typed_prefix(tag: &str) -> Option<&str> {
+    parse(tag)?;
+    let t = tag.trim();
+    let t = t.strip_prefix('-').unwrap_or(t);
+    let split = t.find(|c: char| !c.is_ascii_alphabetic())?;
+    t.get(..split)
+}
+
+/// A stored tag rewritten in `style` (design 033 §8.4): the leading `-` added or dropped, and
+/// upper-cased under [`Case::Upper`]. The padding and the letters' typed case are not restored.
+/// A function or location (`=…`, `+…`) is never touched.
+pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
+    let style = style.into();
+    let t = tag.trim();
+    if t.starts_with(['=', '+']) {
+        return t.to_string();
+    }
+    let bare = t.strip_prefix('-').unwrap_or(t);
+    let bare = style.letters(bare);
+    if style.dash && (bare.starts_with(|c: char| c.is_alphabetic()) || t.starts_with('-')) { format!("-{bare}") } else { bare }
 }
 
 /// A typed tag as it is stored.
@@ -246,20 +350,28 @@ pub fn format(prefix: &str, n: u64, padding: u8) -> String {
 /// # Errors
 /// [`BAD_TAG`] when it is empty, longer than [`MAX_TAG_CHARS`] characters, holds a control
 /// character, or is nothing but `-` (its [`key`] would be empty or `-`).
-pub fn normalise(text: &str, padding: u8) -> Result<String, String> {
+pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, String> {
+    let style = style.into();
     let t = text.trim();
     let n = t.chars().count();
     if !(1..=MAX_TAG_CHARS).contains(&n) || t.chars().any(char::is_control) || t.chars().all(|c| c == '-' || c.is_whitespace()) {
         return Err(BAD_TAG.into());
     }
-    if let Some((prefix, number)) = parse(t) {
-        return Ok(format(&prefix, number, padding));
+    if let Some((_, number)) = parse(t) {
+        let prefix = typed_prefix(t).unwrap_or_default();
+        return Ok(format(prefix, number, style));
     }
     if let Some((prefix, number)) = provisional(t) {
-        return Ok(if number == 0 { format!("-{prefix}?") } else { format_provisional(&prefix, number) });
+        let typed = t.strip_prefix('-').unwrap_or(t).split('?').next().unwrap_or(&prefix);
+        let letters = style.letters(typed);
+        return Ok(if number == 0 { format!("{}{letters}?", style.dash()) } else { format!("{}{letters}?{number}", style.dash()) });
     }
-    let upper = t.to_uppercase();
-    if upper.starts_with(|c: char| c.is_alphabetic()) { Ok(format!("-{upper}")) } else { Ok(upper) }
+    let shown = style.letters(t);
+    let bare = shown.strip_prefix('-').unwrap_or(&shown);
+    if !style.dash {
+        return Ok(bare.to_string());
+    }
+    if shown.starts_with(|c: char| c.is_alphabetic()) { Ok(format!("-{shown}")) } else { Ok(shown) }
 }
 
 #[cfg(test)]
@@ -276,6 +388,32 @@ mod tests {
         for (a, b) in different {
             assert_ne!(key(a), key(b), "{a} and {b}");
         }
+    }
+
+    #[test]
+    fn the_tag_style_table() {
+        let st = |dash: bool, case: Case| Style { padding: 2, dash, case };
+        let rows = [
+            ("k5", ["-K05", "K05", "k05", "-k05"]),
+            ("M02a", ["-M02A", "M02A", "M02a", "-M02a"]),
+            ("N01 Slot02", ["-N01 SLOT02", "N01 SLOT02", "N01 Slot02", "-N01 Slot02"]),
+            ("-K1", ["-K01", "K01", "K01", "-K01"]),
+            ("=PWR", ["=PWR", "=PWR", "=PWR", "=PWR"]),
+            ("-k?3", ["-K?3", "K?3", "k?3", "-k?3"]),
+        ];
+        let styles = [st(true, Case::Upper), st(false, Case::Upper), st(false, Case::Typed), st(true, Case::Typed)];
+        for (typed, want) in rows {
+            for (style, w) in styles.iter().zip(want) {
+                assert_eq!(normalise(typed, *style).as_deref(), Ok(w), "{typed} {style:?}");
+                assert_eq!(key(typed), key(w), "identity kept: {typed} {w}");
+            }
+        }
+        assert_eq!(restyle("-K01", st(false, Case::Upper)), "K01");
+        assert_eq!(restyle("K01", st(true, Case::Upper)), "-K01");
+        assert_eq!(restyle("k01", st(true, Case::Upper)), "-K01");
+        assert_eq!(restyle("+CP1", st(true, Case::Upper)), "+CP1");
+        assert_eq!(typed_prefix("-k05"), Some("k"));
+        assert_eq!(format("k", 3, st(false, Case::Typed)), "k03");
     }
 
     #[test]

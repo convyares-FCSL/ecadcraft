@@ -579,6 +579,10 @@ pub struct Project {
     frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
     /// An op of the update map was committed since the frame was drawn.
     frame_stale: bool,
+    /// Brief 033 (design 033 §6): the drawing changed since the newest issued revision, as the
+    /// title block shows it; worked out on first use and after every change.
+    pub pending: bool,
+    pending_known: bool,
     /// How many times a frame was worked out again (tests and bench: only when it can differ).
     pub frame_builds: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
@@ -829,7 +833,19 @@ pub fn project_page_framed(
 pub fn project_page_with_hidden(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_shown(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, None), hidden_text)
+    project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false)
+}
+
+/// [`project_page_with_hidden`] with the project's pending flag (brief 033, design 033 §6): the
+/// frame's Rev box and the cover show the pending marker as the project draws them.
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_pending(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_shown(doc, page, base, prev, fan, tol, &crate::generated::parts_of_pending(doc, page, None, pending), hidden_text)
 }
 
 /// [`project_page_framed`] with Show Hidden Text (see [`project_page_with_hidden`]).
@@ -1102,6 +1118,8 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
             revision_view: None,
             tx_budget: None,
@@ -1186,6 +1204,8 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
             revision_view: None,
             tx_budget: None,
@@ -1311,6 +1331,8 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
             revision_view: None,
             tx_budget: None,
@@ -1399,6 +1421,7 @@ impl Project {
         self.goto_ring = None;
         self.frame = None;
         self.frame_stale = false;
+        self.pending_known = false;
         self.revision_view = None;
         self.clips.clear();
         self.last_placed = None;
@@ -1544,8 +1567,12 @@ impl Project {
         if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
+        if !self.pending_known {
+            self.refresh_pending();
+        }
         let doc = self.ledger.document();
         let (input, total) = crate::generated::input_of(doc, page, self.outputs.as_ref());
+        let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
         if let Some((p, old, parts)) = &self.frame
@@ -1764,11 +1791,23 @@ impl Project {
     /// The tag numbering ([`crate::devices::TagHigh`]) reads the transactions this change added,
     /// so reads (prompts, previews, pick lists) never read the log. The Pages tree's version moves
     /// only with a change of its update map (`tree`, brief 019, or pages added or removed).
+    /// Work out the pending flag again (design 033 §6.3): O(1) on an ordinary edit, the walk
+    /// stops at the first decisive transaction. A flip redraws the frame.
+    pub(crate) fn refresh_pending(&mut self) {
+        let now = crate::revisions::is_pending(&self.ledger);
+        if self.pending_known && now != self.pending {
+            self.frame_stale = true;
+        }
+        self.pending = now;
+        self.pending_known = true;
+    }
+
     fn record_change(
         &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
     ) {
         self.goto_ring = None;
+        self.refresh_pending();
         self.tag_high.catch_up(&self.ledger);
         if devices.pages || tree {
             self.page_list_version += 1;
@@ -1922,7 +1961,16 @@ impl Project {
         // Recovery path: fresh handles, so the check is by content against the document.
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
-                let v = crate::verify::verify_page_shown(self.ledger.document(), page, &d, &map, &self.views, self.tolerance, self.show_hidden_text);
+                let v = crate::verify::verify_page_pending(
+                    self.ledger.document(),
+                    page,
+                    &d,
+                    &map,
+                    &self.views,
+                    self.tolerance,
+                    self.show_hidden_text,
+                    self.pending,
+                );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
                     Ok((d, map))
@@ -2227,7 +2275,7 @@ impl Project {
                 let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
-                        project_page_with_hidden(doc, *p, &st.doc, &v.map, &self.views, self.tolerance, self.show_hidden_text)
+                        project_page_pending(doc, *p, &st.doc, &v.map, &self.views, self.tolerance, self.show_hidden_text, self.pending)
                             .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
                             .unwrap_or(false),
                     ),
