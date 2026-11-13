@@ -789,6 +789,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
+    // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
+    ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
+    ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
+    ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
 ];
 
 /// The action with this id.

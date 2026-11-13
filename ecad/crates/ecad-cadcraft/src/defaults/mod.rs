@@ -7,8 +7,8 @@
 //! ([`crate::default_cmds`]) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
-//! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
-//! not change when a lane adds an entry, so two lanes never edit one file.
+//! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034), `bom.rs` (U, 047). [`all`] reads
+//! one line per file and does not change when a lane adds an entry, so two lanes never edit one file.
 //!
 //! Not entries: hostile-input bounds (most candidates, most texts per page…). They are guards, not
 //! preferences, and stay constants beside the code they guard.
@@ -24,10 +24,23 @@
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`, and `terminal.` (brief 036). Keys already approved before the registry keep their
-/// names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal"];
+/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036) and `bom.` (brief 047). Keys
+/// already approved before the registry keep their names; the key-rule test reads this one list.
+/// One line per area, so lanes adding an area add a line (design 047 FP6, overseer 2026-11-13).
+pub const AREAS: &[&str] = &[
+    // One area per line, below this one.
+    "text",
+    "wiring",
+    "wire",
+    "tags",
+    "revisions",
+    "print",
+    "symbol",
+    "terminal",
+    "bom",
+];
 
+pub mod bom;
 pub mod print;
 pub mod symbols;
 pub mod terminals;
@@ -285,9 +298,21 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
     }
 }
 
+/// Each lane's entries, one line per lane file (design 047 FP6, overseer 2026-11-13): a lane that
+/// adds a registry file adds its line here, so two lanes never edit one chain.
+const LANE_ENTRIES: &[&[&Entry]] = &[
+    // One lane file per line, below this one.
+    text::ENTRIES,
+    wires::ENTRIES,
+    print::ENTRIES,
+    symbols::ENTRIES,
+    terminals::ENTRIES,
+    bom::ENTRIES,
+];
+
 /// Every registered entry, lane by lane.
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    text::ENTRIES.iter().chain(wires::ENTRIES).chain(print::ENTRIES).chain(symbols::ENTRIES).chain(terminals::ENTRIES).copied()
+    LANE_ENTRIES.iter().flat_map(|e| e.iter()).copied()
 }
 
 /// The entry with this key.

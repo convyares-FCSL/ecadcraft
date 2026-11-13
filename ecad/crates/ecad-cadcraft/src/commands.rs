@@ -543,6 +543,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             return crate::numbering_cmds::run_set_fixed(s, params, object);
         }
     }
+    // Brief 047 (design 047 §3): an item takes no tag and no part lines, and keeps its description.
+    if let ObjectRef::Component(c) = object {
+        with_any_page(s, |p, _| crate::bom::refuse_on_item(p.ledger.document(), c, &key, value.as_deref()))?;
+    }
     // Brief 018: device properties follow design 018 §6.1 (tags are identities).
     if let ObjectRef::Component(c) = object
         && crate::device_cmds::is_device_property(object, &key)
@@ -590,6 +594,8 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             }
             // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
             (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,
+            // Brief 047 (design 047 §2.4): article numbers, part lines and items' quantities.
+            (ObjectRef::Component(c), k) if crate::bom::is_bom_key(doc, c, k) => crate::bom::setprop_rule(doc, c, k, value.as_deref())?,
             // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
             (ObjectRef::Component(c), _) => match crate::accessories::setprop_rule(doc, c, &key, value.as_deref())? {
                 Some(v) => v,
@@ -654,6 +660,19 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
                 let mut out = None;
                 for c in &cs {
                     out = crate::symbols::setprop_rule(doc, ObjectRef::Component(*c), k, value.as_deref())?;
+                }
+                out
+            }
+            // Brief 047: part lines, article numbers and items' keys, checked on each component.
+            k if cs.iter().any(|c| crate::bom::is_bom_key(doc, *c, k) || crate::bom::is_item(doc, *c)) => {
+                let mut out = None;
+                for c in &cs {
+                    out = if crate::bom::is_bom_key(doc, *c, k) {
+                        crate::bom::setprop_rule(doc, *c, k, value.as_deref())?
+                    } else {
+                        crate::bom::refuse_on_item(doc, *c, k, value.as_deref())?;
+                        crate::devices::property_value(doc, k, value.as_deref())?
+                    };
                 }
                 out
             }

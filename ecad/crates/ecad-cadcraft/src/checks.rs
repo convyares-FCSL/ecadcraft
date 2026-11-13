@@ -145,10 +145,20 @@ pub enum Kind {
     UnknownColour,
     /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
     DashesLeftOut,
+    /// Brief 047 (design 047 §9): items without a part number (one count row).
+    ItemNoPartNumber,
+    /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
+    FuseNoInsert,
+    /// One part number with two article numbers.
+    ArticleConflict,
+    /// A part line's `for` names a fuse or position the device does not have.
+    PartForMissing,
+    /// A `part.` key ECAD does not read.
+    BadPartKey,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 43] = [
+    pub const ALL: [Kind; 48] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -192,6 +202,11 @@ impl Kind {
         Kind::NoFuseRating,
         Kind::UnknownColour,
         Kind::DashesLeftOut,
+        Kind::ItemNoPartNumber,
+        Kind::FuseNoInsert,
+        Kind::ArticleConflict,
+        Kind::PartForMissing,
+        Kind::BadPartKey,
     ];
 
     /// The JSON name.
@@ -240,6 +255,11 @@ impl Kind {
             Kind::NoFuseRating => "no-fuse-rating",
             Kind::UnknownColour => "unknown-colour",
             Kind::DashesLeftOut => "dashes-left-out",
+            Kind::ItemNoPartNumber => "item-no-part-number",
+            Kind::FuseNoInsert => "fuse-no-insert",
+            Kind::ArticleConflict => "article-conflict",
+            Kind::PartForMissing => "part-for-missing",
+            Kind::BadPartKey => "bad-part-key",
         }
     }
 
@@ -294,6 +314,11 @@ impl Kind {
             Kind::NoFuseRating => "Fuse positions without a rating",
             Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
             Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
+            Kind::ItemNoPartNumber => "Items without a part number",
+            Kind::FuseNoInsert => "Fuses without an insert",
+            Kind::ArticleConflict => "One part number, two article numbers",
+            Kind::PartForMissing => "Part line names a fuse or position the device lacks",
+            Kind::BadPartKey => "Part line key ECAD does not read",
         }
     }
 
@@ -325,7 +350,9 @@ impl Kind {
             | Kind::ContinuationClash
             | Kind::PositionMixed
             | Kind::LevelMissing
-            | Kind::DashesLeftOut => Severity::Warning,
+            | Kind::DashesLeftOut
+            | Kind::ArticleConflict
+            | Kind::PartForMissing => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -393,6 +420,12 @@ pub enum Fix {
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
+    /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
+    /// `n` of the component (`article`).
+    UseArticle(ComponentId, u8),
+    /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
+    /// (`partline set for`).
+    DropMissingFor(ComponentId, u8),
 }
 
 /// One row of the Checks list.

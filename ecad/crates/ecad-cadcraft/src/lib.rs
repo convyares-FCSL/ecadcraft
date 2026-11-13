@@ -37,6 +37,7 @@ pub mod actions;
 // Brief 035: a per-user settings file and a window's port; nothing of it on the web build.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod agent_access;
+pub mod bom;
 pub mod checks;
 pub mod commands;
 pub mod convert;
