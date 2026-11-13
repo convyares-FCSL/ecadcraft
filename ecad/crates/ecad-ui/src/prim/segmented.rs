@@ -53,9 +53,7 @@ impl Widget for Segmented<'_> {
             }
             if visible {
                 let look = self.look.filter(|(n, _)| *n == i).map_or(Look::Auto, |(_, l)| l);
-                let fill = if on {
-                    Some(s.active)
-                } else if look.pressed(&r) {
+                let fill = if on || look.pressed(&r) {
                     Some(s.active)
                 } else if look.hovered(&r) {
                     Some(s.hover)

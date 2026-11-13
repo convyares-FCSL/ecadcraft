@@ -54,7 +54,7 @@ fn every_primitive_in_every_state_is_found_by_its_label() {
     }
     h.get_by_role_and_label(Role::Link, "/3.4 (page 3, column 4)");
     assert_eq!(h.get_by_label("-K?1").accesskit_node().description().as_deref(), Some("provisional"));
-    assert_eq!(h.get_by_label("Field read-only").accesskit_node().is_disabled(), true, "read-only is not editable");
+    assert!(h.get_by_label("Field read-only").accesskit_node().is_disabled(), "read-only is not editable");
 }
 
 #[derive(Default)]
