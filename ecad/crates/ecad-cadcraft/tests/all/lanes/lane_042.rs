@@ -125,10 +125,10 @@ fn setdefault_is_one_undoable_transaction() {
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
     for (key, value, (level, target, scope, source)) in [
-        ("text.tag.height", "3", t[0].clone()),
-        ("wiring.label_rule", "each", t[0].clone()),
-        ("text.tag.show", "off", t[1].clone()),
-        ("text.tag.show", "first", t[3].clone()),
+        ("text.tag.height", "3", t[0]),
+        ("wiring.label_rule", "each", t[0]),
+        ("text.tag.show", "off", t[1]),
+        ("text.tag.show", "first", t[3]),
     ] {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
@@ -188,14 +188,14 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
     let d = h.doc();
     assert_eq!(d.settings.tag_prefixes.get("coil").map(String::as_str), Some("Q"), "as Tag Settings writes it");
-    assert!(d.properties.get(e.key).is_none(), "never a project property too");
+    assert!(!d.properties.contains_key(e.key), "never a project property too");
     assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
     let chain = defaults::chain(&d, e, Scope::project());
     let words: Vec<(Source, Option<String>)> = chain.iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
     assert_eq!(words, vec![(Source::Builtin, Some("K".into())), (Source::Standard, None), (Source::Project, Some("Q".into()))]);
     h.run("setdefault", json!({"key": e.key, "reset": true})).unwrap();
-    assert!(h.doc().settings.tag_prefixes.get("coil").is_none());
+    assert!(!h.doc().settings.tag_prefixes.contains_key("coil"));
 }
 
 #[test]
