@@ -288,7 +288,7 @@ pub(crate) fn apply_tag_settings(after: &mut ecad_model::ProjectSettings, paddin
     }
     for (k, v) in changes {
         match v {
-            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix == px) => after.tag_prefixes.remove(&k),
+            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix() == px) => after.tag_prefixes.remove(&k),
             Some(px) => after.tag_prefixes.insert(k, px),
             None => after.tag_prefixes.remove(&k),
         };
