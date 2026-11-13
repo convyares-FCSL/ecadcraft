@@ -50,6 +50,7 @@ pub const CATALOGUES: &[(&str, &str, &str)] = &[
     ("text", CATALOGUE_STYLES, "standards.text"),
     ("location", "ecad.standards.catalogue.location", "standards.location"),
     ("frame", "ecad.standards.catalogue.frame", "standards.frame"),
+    ("wire", "ecad.standards.catalogue.wire", "standards.wire"),
 ];
 
 /// What the standard header is doing (design 050 §7.1).

@@ -172,10 +172,17 @@ pub enum Kind {
     IgnoredOldSetting,
     /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
     StyleLimits,
+    /// Brief 050b: a wire's own category names no category (drawn without one).
+    CategoryUnknown,
+    /// Brief 050b: two categories name one potential (the first by ID is used).
+    CategoryPotentialTwice,
+    /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
+    /// has no length.
+    WireAllowance,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 56] = [
+    pub const ALL: [Kind; 59] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -232,6 +239,9 @@ impl Kind {
         Kind::StyleUnknown,
         Kind::IgnoredOldSetting,
         Kind::StyleLimits,
+        Kind::CategoryUnknown,
+        Kind::CategoryPotentialTwice,
+        Kind::WireAllowance,
     ];
 
     /// The JSON name.
@@ -293,6 +303,9 @@ impl Kind {
             Kind::StyleUnknown => "style-unknown",
             Kind::IgnoredOldSetting => "ignored-old-setting",
             Kind::StyleLimits => "style-limits",
+            Kind::CategoryUnknown => "category-unknown",
+            Kind::CategoryPotentialTwice => "category-potential-twice",
+            Kind::WireAllowance => "wire-allowance",
         }
     }
 
@@ -360,6 +373,9 @@ impl Kind {
             Kind::StyleUnknown => "Style not found; drawn without it",
             Kind::IgnoredOldSetting => "Set in an older build, now ignored: set it in Standards",
             Kind::StyleLimits => "Style records past the limits are ignored",
+            Kind::CategoryUnknown => "Wire category not found; drawn without one",
+            Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
+            Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
         }
     }
 
@@ -399,7 +415,8 @@ impl Kind {
             | Kind::ConnectorFamily
             | Kind::ConnectorSize
             | Kind::ArticleConflict
-            | Kind::PartForMissing => Severity::Warning,
+            | Kind::PartForMissing
+            | Kind::CategoryPotentialTwice => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -515,6 +532,8 @@ impl Check {
             | Kind::StyleUnknown
             | Kind::IgnoredOldSetting
             | Kind::StyleLimits
+            | Kind::CategoryPotentialTwice
+            | Kind::WireAllowance
                 if !self.which.is_empty() =>
             {
                 self.which.clone()

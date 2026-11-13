@@ -437,8 +437,9 @@ fn a_wires_properties_show_and_edit_its_net() {
     let pot = row(&v, "potential");
     assert!(pot.value == "24V (continuation)" && pot.inherited, "{pot:?}");
     let cs = row(&v, "cross_section");
-    assert!(cs.value == "0.5 (24V)" && cs.inherited, "{cs:?}");
-    assert_eq!(row(&v, "colour").value, "BU (24V)");
+    // Brief 050b: the defaults are the 24 V DC category's.
+    assert!(cs.value == "0.5 (24 V DC)" && cs.inherited, "{cs:?}");
+    assert_eq!(row(&v, "colour").value, "BU (24 V DC)");
     assert!(row(&v, "net").value.starts_with("1 wire"), "{v:?}");
     let target = v.sections[0].target.clone().unwrap();
     // Each edit through the line the panel sends.
@@ -462,7 +463,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let c = row(&view(&mut h, a), "colour");
     assert!(c.value == "RD" && !c.inherited, "{c:?}");
     send(&mut h, "colour", None);
-    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0V)", "empty returns to the default");
+    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0 V DC)", "empty returns to the default");
     // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
     let v = view(&mut h, a);
     let n = h.p(|p| p.change_count());

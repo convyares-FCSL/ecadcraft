@@ -983,6 +983,8 @@ pub fn project_page_shown(
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
     crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    // Brief 050b: wire routes in their category's line type and weight.
+    crate::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
     // Brief 050a: location box outlines in their location style.
     crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();

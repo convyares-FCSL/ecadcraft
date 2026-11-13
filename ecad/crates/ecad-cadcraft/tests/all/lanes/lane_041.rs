@@ -121,6 +121,8 @@ const ECAD_COMMANDS: &[&str] = &[
     "deletestyle",
     "promote",
     "styles",
+    // Brief 050b.
+    "category",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

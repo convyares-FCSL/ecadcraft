@@ -34,6 +34,7 @@ pub mod checks;
 pub mod frame;
 pub mod location;
 pub mod text;
+pub mod wire;
 
 /// One field of a catalogue.
 #[derive(Debug)]
@@ -106,6 +107,7 @@ pub static CATALOGUES: &[&Catalogue] = &[
     &text::CATALOGUE,
     &location::CATALOGUE,
     &frame::CATALOGUE,
+    &wire::CATALOGUE,
 ];
 
 /// The catalogue with this word.
@@ -339,6 +341,11 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     match cat.word {
         "frame" => doc.pages.iter().filter(|(_, p)| !own(&p.properties)).filter(|_| project == *id).count(),
         "location" if project == *id => doc.components.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count(),
+        // 050b: conductors whose resolved category is `id` and that have none of their own.
+        "wire" => {
+            let looks = wire::WireLooks::new(doc);
+            doc.conductors.iter().filter(|(_, x)| !own(&x.properties)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+        }
         "text" if project == *id => match text::noun(entry.key) {
             text::Noun::Devices => doc.components.values().filter(|x| !own(&x.properties)).count(),
             text::Noun::Wires => doc.conductors.values().filter(|x| !own(&x.properties)).count(),
@@ -388,6 +395,20 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
             if cat.word == "text" && location::labels_with(doc, id) {
                 return None;
             }
+            // 050b: a category that is (or becomes, or was) a potential's default reaches every
+            // net of that potential, on any page (there is no potential index): every page.
+            if cat.word == "wire" {
+                let names_potential = |r: &Option<StyleRecord>| r.as_ref().is_some_and(|r| r.fields.contains_key("potential"));
+                let (before, after) = match op {
+                    Op::SetStyle { before, after, .. } => (before, after),
+                    _ => return None,
+                };
+                let looks = wire::WireLooks::new(doc);
+                let default = looks.by_potential_ids().any(|x| x == id);
+                if default || names_potential(before) || names_potential(after) {
+                    return None;
+                }
+            }
             let mut out = BTreeSet::new();
             for (_, o) in explicit_users(doc, catalogue, id) {
                 pages_of(doc, o, &mut out);
@@ -413,6 +434,13 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     }
     if r.fields.values().any(|v| v.chars().count() > MAX_FIELD_CHARS) {
         return Err(format!("A field value is at most {MAX_FIELD_CHARS} characters."));
+    }
+    // 050b (design 050 §5.4): one category per potential.
+    if cat.word == "wire"
+        && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case(wire::NONE))
+        && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
+    {
+        return Err(format!("{} is already the default for {p}; clear it there first.", name(doc, "wire", other)));
     }
     let held = ms::layer_of(doc, layer).and_then(|c| c.get(cat.word));
     if held.is_some_and(|m| !m.contains_key(id) && m.len() >= MAX_STYLES_PER_CATALOGUE) {
@@ -491,8 +519,10 @@ mod tests {
             }
             for e in (c.choices)() {
                 assert!(matches!(e.kind, Kind::Style(w) if w == c.word), "{}", e.key);
+                // 050b: the category choice's built-in is `none`, no category.
                 let b = StyleRef::parse(&builtin_word(e));
-                assert!(b.as_ref().is_some_and(|b| c.builtin(b).is_some()), "{}: built-in names no built-in style", e.key);
+                let none = c.word == "wire" && builtin_word(e) == wire::NONE;
+                assert!(none || b.as_ref().is_some_and(|b| c.builtin(b).is_some()), "{}: built-in names no built-in style", e.key);
             }
         }
     }

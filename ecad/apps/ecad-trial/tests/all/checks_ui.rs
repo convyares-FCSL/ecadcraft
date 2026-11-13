@@ -116,7 +116,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     for want in [
         "End B: junction",
         "Potential 0V (continuation)",
-        "Cross-section 0.5 (0V) \u{b7} Colour BU (0V)",
+        "Cross-section 0.5 (0 V DC) \u{b7} Colour BU (0 V DC)",
         "Net 0V-01 \u{b7} 5 wires \u{b7} -G01:-, -H01:X2, -H02:X2, -K01:A2",
     ] {
         assert!(lines.iter().any(|l| l == want), "{want} missing from {lines:?}");

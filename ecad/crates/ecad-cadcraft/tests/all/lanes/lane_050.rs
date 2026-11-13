@@ -326,3 +326,143 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     assert!(h.run("styles", json!({})).unwrap()["unknown_catalogues"].as_array().unwrap().iter().any(|c| c["catalogue"] == "cable"));
     assert_eq!(text_style(&doc, TextKind::Tag).height, 2.5);
 }
+
+// ------------------------------------------------------------------------- 050b: wire categories
+
+fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::ConductorId {
+    let mut p = json!({"points": [[10, y], [60, y]]});
+    if let Some(pot) = potential {
+        p["potential"] = json!(pot);
+    }
+    id(&h.run("wire", p).unwrap(), "conductor")
+}
+
+fn label_of(h: &mut H, page: PageId, c: ecad_model::ConductorId) -> Option<String> {
+    h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text))
+}
+
+#[test]
+fn a_24v_wire_takes_the_24_v_dc_category() {
+    let (mut h, page, _) = fixture();
+    let v = h.run("styles", json!({"catalogue": "wire"})).unwrap();
+    let ids: Vec<&str> = v["styles"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["l", "l1", "l2", "l3", "n", "pe", "dc24", "dc0", "signal", "analogue"]);
+    let w = wire(&mut h, 150.0, Some("24V"));
+    h.run("renumberwires", json!({})).unwrap();
+    let label = label_of(&mut h, page, w).unwrap();
+    assert!(label.ends_with(" 0.5 BU") && label.starts_with("24V-"), "{label}");
+    let doc = h.doc();
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, w).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
+    let rows = h.run("wirelist", json!({})).unwrap();
+    assert!(rows.to_string().contains("24 V DC"), "{rows}");
+    // A power wire is drawn in ink, heavier.
+    let l = wire(&mut h, 170.0, Some("L1"));
+    let doc = h.doc();
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, l), None, "power in ink");
+    assert!((styles::wire::wire_look(&doc, l).line_weight - 0.6).abs() < 1e-9);
+}
+
+#[test]
+fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
+    let (mut h, page, _) = fixture();
+    let a = wire(&mut h, 150.0, Some("24V"));
+    let b = wire(&mut h, 170.0, Some("24V"));
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": "WH"})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}})).unwrap();
+    let doc = h.doc();
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).as_deref(), Some("RD"));
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, b).as_deref(), Some("WH"), "its own colour stays");
+    assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
+    let look = styles::wire::wire_look(&doc, b);
+    assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
+    // Reset: it follows the category again.
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": null})).unwrap();
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&h.doc(), b).as_deref(), Some("RD"));
+}
+
+#[test]
+fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
+    let (mut h, _, _) = fixture();
+    let a = wire(&mut h, 150.0, Some("24V"));
+    let before = h.head();
+    let v = h.run("category", json!({"conductor": a.hex(), "value": "signal"})).unwrap();
+    assert_eq!(h.head(), before + 1);
+    let doc = h.doc();
+    assert_eq!(styles::wire::wire_look(&doc, a).category, Some(StyleRef::Builtin("signal".into())));
+    let net = doc.connectivity().net_of_conductor(a).and_then(|n| doc.connectivity().net(n)).unwrap();
+    assert_eq!(ecad_model::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"), "the net keeps 24V");
+    assert!(v["message"].is_null(), "signal names no potential: {v}");
+    // A wire with no potential: the category's potential comes with it, in one transaction.
+    let b = wire(&mut h, 170.0, None);
+    let before = h.head();
+    h.run("category", json!({"conductor": b.hex(), "value": "24 V DC"})).unwrap();
+    assert_eq!(h.head(), before + 1);
+    let doc = h.doc();
+    let net = doc.connectivity().net_of_conductor(b).and_then(|n| doc.connectivity().net(n)).unwrap();
+    assert_eq!(ecad_model::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"));
+    // A net with another potential keeps it, and says so.
+    let v = h.run("category", json!({"conductor": a.hex(), "value": "Power L1"})).unwrap();
+    assert_eq!(v["message"], json!("Category set; the net keeps potential 24V."));
+    // `wire {category}` gives the new wire its category in the same transaction.
+    let before = h.head();
+    let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
+    assert_eq!(h.head(), before + 1);
+    let c: ecad_model::ConductorId = id(&r, "conductor");
+    assert_eq!(styles::wire::wire_look(&h.doc(), c).category, Some(StyleRef::Builtin("analogue".into())));
+}
+
+#[test]
+fn one_category_per_potential_and_old_potential_colours_are_refused() {
+    let (mut h, _, _) = fixture();
+    let e = h.run("setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"potential": "24V"}})).unwrap_err();
+    assert!(e.contains("24 V DC is already the default for 24V; clear it there first."), "{e}");
+    let mut w = h.run("wiresettings", json!({})).unwrap();
+    let pots = w["potentials"].as_array_mut().unwrap();
+    pots[0]["colour"] = json!("RD");
+    let e = h.run("wiresettings", json!({"potentials": pots.clone()})).unwrap_err();
+    assert!(e.contains("set on wire categories now"), "{e}");
+    // An older file's potential colours: one Checks row, cleared by writing the table.
+    h.cfg(|p| {
+        let before = p.ledger.document().settings.clone();
+        let mut after = before.clone();
+        after.wiring.potentials[0].legacy_colour = Some("BN".into());
+        p.ledger.commit(ecad_model::Author::User, "old", vec![Op::SetProjectSettings { before, after }]).unwrap();
+    });
+    let rows = ecad_cadcraft::checks::all(&h.doc(), 0.01);
+    assert!(rows.iter().any(|c| c.kind == ecad_cadcraft::checks::Kind::IgnoredOldSetting && c.which.contains("Potential colours")));
+    let w = h.run("wiresettings", json!({})).unwrap();
+    h.run("wiresettings", json!({"potentials": w["potentials"].clone(), "digits": 3})).unwrap();
+    assert!(h.doc().settings.wiring.potentials.iter().all(|p| p.legacy_colour.is_none()));
+}
+
+#[test]
+fn a_category_with_a_part_number_puts_wire_on_the_bom() {
+    let (mut h, _, _) = fixture();
+    for y in [150.0, 160.0, 170.0] {
+        wire(&mut h, y, Some("24V"));
+    }
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"part_number": "W-05-BU"}})).unwrap();
+    let rows = ecad_cadcraft::checks::all(&h.doc(), 0.01);
+    assert!(rows.iter().any(|c| c.kind == ecad_cadcraft::checks::Kind::WireAllowance), "no allowance: the BOM check");
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 1.5}})).unwrap();
+    let bom = h.cfg(|p| p.outputs().wire_bom());
+    assert_eq!(bom.len(), 1);
+    assert_eq!(bom[0].part_number.as_deref(), Some("W-05-BU"));
+    assert_eq!(bom[0].qty_text(), "4.5 m", "3 wires × 1.5 m");
+    assert!(bom[0].description.as_deref().is_some_and(|d| d.contains("estimate")));
+}
+
+#[test]
+fn mono_prints_wires_in_ink_and_colour_prints_their_line_colours() {
+    let (mut h, page, _) = fixture();
+    wire(&mut h, 150.0, Some("24V"));
+    wire(&mut h, 170.0, Some("L1"));
+    let doc = h.doc();
+    let fan = Default::default();
+    let (mono, _) = ecad_cadcraft::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
+    assert!(mono.model.iter().all(|e| !matches!(e.common.color, Color::True(_))));
+    let (colour, _) = ecad_cadcraft::printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
+    assert_eq!(colour.model.iter().filter(|e| matches!(e.common.color, Color::True(_))).count(), 1, "only the 24V wire (power is ink)");
+    // The heavier power line prints in mono too (weight is not colour).
+    assert!(mono.model.iter().any(|e| e.common.lineweight == cadcraft_engine::doc::Lineweight::Mm100(60)));
+}

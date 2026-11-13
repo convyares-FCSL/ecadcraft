@@ -42,6 +42,8 @@ pub fn is_old_key(key: &str) -> bool {
 pub fn touches(op: &Op) -> bool {
     match op {
         Op::SetStyle { .. } | Op::SetStandard { .. } => true,
+        // 050b: a potentials table written again clears its older colours.
+        Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
         Op::SetProperty { object: ObjectRef::Project, key, .. } => is_choice_key(key) || is_old_key(key),
         Op::SetProperty { key, .. } => is_choice_key(key),
         // A deleted object takes its choices with it.
@@ -97,8 +99,56 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             });
         }
     }
+    // 050b (FP6 ruling): potential colours or cross-sections an older build stored.
+    if doc.settings.wiring.potentials.iter().any(|p| p.legacy_colour.is_some() || p.legacy_cross_section.is_some()) {
+        out.push(Check {
+            kind: Kind::IgnoredOldSetting,
+            page: None,
+            at: None,
+            object: Object::None,
+            which: "Potential colours and cross-sections set in an older build, now ignored: set them in Standards ▸ Wire categories".into(),
+            fix: Some(Fix::OpenStandards("wire")),
+        });
+    }
+    // 050b: two categories default for one potential.
+    for (pot, ids) in &super::wire::WireLooks::new(doc).twice {
+        let names: Vec<String> = ids.iter().map(|id| super::name(doc, "wire", id)).collect();
+        let shown = doc.settings.wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
+        out.push(Check {
+            kind: Kind::CategoryPotentialTwice,
+            page: None,
+            at: None,
+            object: Object::None,
+            which: format!("Two wire categories are the default for {shown} ({}); the first is used", names.join(", ")),
+            fix: Some(Fix::OpenStandards("wire")),
+        });
+    }
+    // 050b: a category on the BOM (a part number) with no allowance.
+    for row in super::rows(doc, &super::wire::CATALOGUE) {
+        let f = |k: &str| super::field_of(doc, "wire", &row.id, k, None);
+        let has_part = f("part_number").is_some_and(|r| !r.text().eq_ignore_ascii_case(super::wire::NONE));
+        if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
+            out.push(Check {
+                kind: Kind::WireAllowance,
+                page: None,
+                at: None,
+                object: Object::None,
+                which: format!("Wire length not set for {} (set an allowance in Standards)", row.name),
+                fix: Some(Fix::OpenStandards("wire")),
+            });
+        }
+    }
     // Dangling choices held by objects (through the index).
     for (value, key, o) in doc.style_choices() {
+        if key == ecad_model::wiring::WIRE_CATEGORY {
+            if let ObjectRef::Conductor(c) = o
+                && dangling(doc, "wire", value)
+            {
+                let page = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
+                out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Conductor(c), which: String::new(), fix: None });
+            }
+            continue;
+        }
         let Some(cat) = catalogue_of(key) else { continue };
         if !dangling(doc, cat, value) {
             continue;

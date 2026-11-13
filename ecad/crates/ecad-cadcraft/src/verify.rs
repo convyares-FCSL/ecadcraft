@@ -178,9 +178,12 @@ pub fn verify_page_pending(
         {
             e.common.color = own.common.color;
         }
-        // Brief 050a: a location box outline drawn in its location style reads back as its item.
+        // Brief 050a: a location box outline drawn in its location style reads back as its item;
+        // brief 050b: a wire route drawn in its category's line type and weight likewise.
         if let Some(Mapped::Item(id)) = map.get(e.handle)
-            && doc.representation_of_item(id).is_some_and(|(_, r)| r.role == crate::locations::ROLE)
+            && doc
+                .representation_of_item(id)
+                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Conductor(_)))
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;

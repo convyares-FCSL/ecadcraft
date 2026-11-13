@@ -86,3 +86,22 @@ fn writes_are_refused_with_writes_off_and_the_reads_still_answer() {
     assert_eq!(r.exec("styles", json!({"catalogue": "frame"}))["styles"][0]["id"], json!("sheet"));
     assert_eq!(r.log(), log, "nothing recorded with writes off");
 }
+
+/// Brief 050b (design 050 §6.8): `category` and `wire {category}` by the agent.
+#[test]
+fn category_and_wire_with_a_category_by_the_agent() {
+    let mut c = writer();
+    let w = c.exec("wire", json!({"points": [[10, 150], [60, 150]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
+    one_undoable(&mut c, "category", json!({"conductor": w, "value": "signal"}), "Category Signal");
+    let n = c.log().len();
+    let v = c.exec("wire", json!({"points": [[10, 170], [60, 170]], "category": "24 V DC"}));
+    assert_eq!(c.log().len(), n + 1, "one transaction");
+    assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
+    let id = v["conductor"].as_str().unwrap();
+    let d = c.doc();
+    let cond = d.conductors.iter().find(|(k, _)| k.hex() == id).unwrap().1;
+    assert_eq!(cond.properties.get("wire.category").map(String::as_str), Some("dc24"));
+    let mut r = crate::mcp_contracts::reader();
+    let m = r.refused("execute", json!({"command": "category", "params": {"conductor": w, "value": "signal"}}));
+    assert_eq!(m, policy::WRITES_OFF);
+}

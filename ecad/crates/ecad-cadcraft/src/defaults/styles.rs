@@ -96,6 +96,18 @@ pub static FRAME: Entry = Entry {
     project: ProjectSource::Property,
 };
 
+/// A conductor's wire category (brief 050b, FP5): S P O; the built-in `none` is no category.
+pub static WIRE_CATEGORY: Entry = Entry {
+    key: "wire.category",
+    label: "Wire category",
+    group: GROUP,
+    brief: BRIEF,
+    kind: Kind::Style("wire"),
+    builtin: Value::Text("none"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
     &TAG,
@@ -120,4 +132,5 @@ pub static ENTRIES: &[&Entry] = &[
     &COVER,
     &LOCATION,
     &FRAME,
+    &WIRE_CATEGORY,
 ];

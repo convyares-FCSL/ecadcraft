@@ -291,6 +291,26 @@ fn style_row(
     doc: &ecad_model::Document, e: &Entry, cat: &str, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
     use ecad_cadcraft::styles;
+    // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
+    if e.key == ecad_model::wiring::WIRE_CATEGORY
+        && let Some(c) = scope.conductor
+    {
+        let looks = styles::wire::WireLooks::new(doc);
+        let (id, from) = looks.category(doc, c);
+        let list = styles::catalogue(cat).map(|x| styles::rows(doc, x).into_iter().map(|r| (r.id.text(), r.name)).collect()).unwrap_or_default();
+        let name = id.as_ref().map(|i| styles::name(doc, cat, i));
+        let value = match (name, from) {
+            (Some(n), styles::wire::CategoryFrom::Potential(p)) => format!("{n} (from potential {p})"),
+            (Some(n), styles::wire::CategoryFrom::Project) => format!("{n} (project default)"),
+            (Some(n), styles::wire::CategoryFrom::Standard) => format!("{n} (standard default)"),
+            (Some(n), _) => n,
+            (None, _) => "None".into(),
+        };
+        let own = doc.conductors.get(&c).and_then(|x| x.properties.get(e.key));
+        let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| "Not found: drawn without a category".to_string());
+        let _ = r;
+        return (value, list, dangling);
+    }
     let id = styles::chosen(doc, e, scope);
     let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
     let own = match scope.component {
@@ -530,7 +550,14 @@ impl Inspector {
                     });
                     combo.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &name));
                     if let Some(id) = pick {
-                        out.push(InspectorAction::Run(row.key, default_cmds::line(row.key, level, target, Some(&id))));
+                        // Brief 050b: a wire's category runs `category` (it may set the potential).
+                        let line = match target {
+                            Target::Conductor(c) if row.key == ecad_model::wiring::WIRE_CATEGORY => {
+                                format!("category {}", serde_json::json!({"conductor": c.hex(), "value": id}))
+                            }
+                            _ => default_cmds::line(row.key, level, target, Some(&id)),
+                        };
+                        out.push(InspectorAction::Run(row.key, line));
                     }
                 }
                 Some((level, target)) if !row.choices.is_empty() => {

@@ -50,6 +50,10 @@ layer?: \"project\"|\"standard\"} (one transaction)",
         CommandSpec::new("promote", "Promote to Standard", run_promote)
             .params("{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)")
             .noundo(),
+        // Brief 050b (design 050 §6.9).
+        CommandSpec::new("category", "Wire Category", crate::wire_cmds::run_category)
+            .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
+            .noundo(),
         CommandSpec::new("styles", "Styles", run_styles).params("{catalogue?, users?: bool} (read only)").noundo(),
     ]
 }
@@ -454,6 +458,10 @@ fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
             let id = StyleRef::Own(p.ids.fresh::<u128>());
             let mut rec = StyleRecord { name: name.to_string(), fields: Default::default() };
             for f in cat.fields {
+                // 050b: a copy is no potential's default (one category per potential).
+                if cat.word == "wire" && f.key == "potential" {
+                    continue;
+                }
                 rec.fields.insert(f.key.to_string(), styles::field(doc, cat, &from, f, None).text());
             }
             let rec = styles::with_fields(Some(&rec), None, &fields);

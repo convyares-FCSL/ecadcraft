@@ -762,6 +762,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
     ("promote", "Settings ▸ Standards: Promote to standard"),
     ("styles", "a read; Settings ▸ Standards shows the catalogues"),
+    ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),
