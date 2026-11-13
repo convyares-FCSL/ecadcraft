@@ -176,6 +176,8 @@ pub enum Action {
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
+    PlaceMates(ecad_model::ComponentId, ecad_cadcraft::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
 }

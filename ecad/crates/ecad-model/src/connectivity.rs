@@ -554,8 +554,12 @@ impl Connectivity {
 
     /// The level terminals a symbol representation shows when its definition has bridges (brief
     /// 036): the nodes whose bridge edges depend on it.
+    ///
+    /// Brief 044 (tester D1): when the definition cannot be read (the symbol's item was removed
+    /// earlier in the transaction, before its representation is unlinked), every `.`-key point
+    /// counts: a wider cut is only extra search, a missed one leaves mated pins joined.
     pub(crate) fn bridged_shown(doc: &Document, r: &crate::doc::Representation) -> Vec<TerminalId> {
-        if doc.rep_definition(r).is_none_or(|d| d.bridges.is_empty()) {
+        if doc.rep_definition(r).is_some_and(|d| d.bridges.is_empty()) {
             return Vec::new();
         }
         r.connection_points
@@ -583,7 +587,7 @@ impl Connectivity {
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
     /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
-    /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` of a symbol whose definition has bridges (brief 036, FP8a) | the level terminals it shows, and their position mates, joined / cut |
+    /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
         match op {
@@ -628,7 +632,9 @@ impl Connectivity {
                     }
                 }
             }
-            Op::ModifyItem { id, .. } => {
+            // Brief 044 (tester D1): removing a bridged symbol's item cuts too (its definition is
+            // still readable here; the unlink that follows may not see it).
+            Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     for t in Self::bridged_shown(doc, r) {
                         self.cut_around(doc, &Node::Terminal(t));
@@ -709,7 +715,8 @@ impl Connectivity {
                     self.ensure(doc, Node::Terminal(t));
                 }
             }
-            Op::ModifyItem { id, .. } => {
+            // Brief 044 (tester D1): an item added after its representation was linked joins too.
+            Op::ModifyItem { id, .. } | Op::AddItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     for t in Self::bridged_shown(doc, r) {
                         self.ensure(doc, Node::Terminal(t));

@@ -111,7 +111,7 @@ fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> Conductor
     };
     let v = h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)])})).unwrap();
     let w: ConductorId = id(&v, "conductor");
-    assert!(h.doc().conductors[&w].ends.iter().any(|e| *e == Some(t)), "the wire lands on {}", name(h, t));
+    assert!(h.doc().conductors[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -711,7 +711,7 @@ fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
         step(&mut c.h, "place", json!({"symbol": "plug6", "device": x2.hex(), "at": [100, 100]}));
         let rows: Vec<Value> = ["connector-family", "connector-size"].iter().flat_map(|k| checks_of(&mut c.h, k)).collect();
         assert!(
-            !rows.is_empty() || c.h.doc().components[&x2].properties.get("pins").is_none(),
+            !rows.is_empty() || !c.h.doc().components[&x2].properties.contains_key("pins"),
             "an M12 4-pin connector with a plain plug6: {rows:?}"
         );
     }

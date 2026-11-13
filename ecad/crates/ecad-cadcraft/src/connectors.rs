@@ -37,10 +37,22 @@ pub const MAX_NAME_CHARS: usize = 8;
 pub const MAX_LIST_CHARS: usize = 1_000;
 /// The component property holding the pin count (FP4).
 pub const PINS_KEY: &str = "pins";
+/// The component property holding a typed list of pin names, in pin order (`L,N,PE`; overseer,
+/// fix round 1: names not drawn yet are kept, never lost).
+pub const PIN_NAMES_KEY: &str = "pin_names";
 /// The start of the per-half property keys (FP4).
 pub const HALF_PREFIX: &str = "half.";
 /// The per-half fields the BOM and locations read (FP4).
 pub const HALF_FIELDS: [&str; 4] = ["description", "maker", "part_number", "location"];
+/// The start of a connector's ignored-warning keys (`ignore.connector-family`; overseer, fix round
+/// 1: the Checks rows' Ignore button).
+pub const IGNORE_PREFIX: &str = "ignore.";
+
+/// Whether connector `c` ignores Checks rows of `kind`.
+pub fn ignores(doc: &Document, c: ComponentId, kind: CheckKind) -> bool {
+    doc.components.get(&c).is_some_and(|x| x.properties.contains_key(&format!("{IGNORE_PREFIX}{}", kind.name())))
+}
+
 /// The keys of the pin starters.
 pub const PIN_KEYS: [&str; 3] = ["pinpair", "pins", "pinp"];
 
@@ -388,8 +400,17 @@ pub fn drawn(doc: &Document, c: ComponentId) -> Drawn {
     } else {
         order.sort_by_key(|(_, t)| *t);
     }
+    // A typed list gives the pin order (tester D7).
+    if let Some(list) = pin_names(doc, c) {
+        order.sort_by_key(|(n, _)| list.iter().position(|x| x == n).unwrap_or(usize::MAX));
+    }
     d.order = order.into_iter().map(|(n, _)| n).collect();
     d
+}
+
+/// Connector `c`'s typed list of pin names, when it holds a valid one.
+pub fn pin_names(doc: &Document, c: ComponentId) -> Option<Vec<String>> {
+    parse_list(doc.components.get(&c)?.properties.get(PIN_NAMES_KEY)?).ok().filter(|v| !v.is_empty())
 }
 
 /// Connector `c`'s `pins` property, when it holds a count from 1 to [`MAX_PINS`].
@@ -499,6 +520,15 @@ pub fn names_for(names: &Names, n: usize) -> Result<Vec<String>, String> {
 /// The pins connector `c` offers, in name order: those drawn, then the ones its pin count and
 /// naming imply (numbers 1…n, or letters A…).
 fn candidates(doc: &Document, c: ComponentId, d: &Drawn) -> Vec<String> {
+    // A typed list: its names in order, then any other pin drawn.
+    if let Some(mut list) = pin_names(doc, c) {
+        for x in &d.order {
+            if !list.contains(x) {
+                list.push(x.clone());
+            }
+        }
+        return list;
+    }
     let n = pin_count(doc, c, d).min(MAX_PINS);
     let numbers = d.order.iter().all(|x| x.parse::<u64>().is_ok());
     let letters = !d.order.is_empty() && d.order.iter().all(|x| x.len() == 1 && x.bytes().all(|b| b.is_ascii_uppercase()));
@@ -685,7 +715,7 @@ pub fn symbol_ops(
 /// No tag number left.
 pub fn create_ops(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
-    pins: Option<usize>, ops: &mut Vec<Op>,
+    pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
 ) -> Result<(ComponentId, String), String> {
     let doc = ledger.document();
     let tag = match tag {
@@ -702,6 +732,9 @@ pub fn create_ops(
     properties.insert("description".into(), defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text());
     if let Some(n) = pins {
         properties.insert(PINS_KEY.into(), n.to_string());
+    }
+    if let Some(list) = names.filter(|l| !l.is_empty()) {
+        properties.insert(PIN_NAMES_KEY.into(), list.join(","));
     }
     ops.push(Op::CreateComponent { id: c, component: Component { properties, definition: Some(def) } });
     Ok((c, tag))
@@ -851,6 +884,15 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
                 .filter(|n| (1..=MAX_PINS).contains(n))
                 .map(|n| Some(n.to_string()))
                 .ok_or_else(|| format!("`pins` is a whole number from 1 to {MAX_PINS}.")),
+        });
+    }
+    if key == PIN_NAMES_KEY {
+        if !is_connector(doc, c) {
+            return None;
+        }
+        return Some(match value.map(str::trim).filter(|v| !v.is_empty()) {
+            None => Ok(None),
+            Some(v) => parse_list(v).map(|l| Some(l.join(","))),
         });
     }
     if let Some(rest) = key.strip_prefix(HALF_PREFIX) {
@@ -1011,7 +1053,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     if let (Some((_, _, s)), Some((rp, _, p))) = (half(Side::Socket), half(Side::Plug)) {
         let (fs, fp) = (family_of(s), family_of(p));
         let (page, at) = rep_at(doc, Some(*rp));
-        if fs != fp {
+        if fs != fp && !ignores(doc, c, CheckKind::ConnectorFamily) {
             let words = |f: Option<Family>, side: Side| format!("{} {}", f.map_or("Plain", Family::name), side.word());
             out.push(Check {
                 kind: CheckKind::ConnectorFamily,
@@ -1019,11 +1061,12 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 at,
                 object: Object::Component(c),
                 which: format!("{tag}'s halves differ: {}, {}", words(fs, Side::Socket), words(fp, Side::Plug)),
-                fix: None,
+                fix: Some(Fix::IgnoreConnector(c, CheckKind::ConnectorFamily)),
             });
         }
         if let (Some(ns), Some(np)) = (size_of(s), size_of(p))
             && ns != np
+            && !ignores(doc, c, CheckKind::ConnectorSize)
         {
             out.push(Check {
                 kind: CheckKind::ConnectorSize,
@@ -1031,7 +1074,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 at,
                 object: Object::Component(c),
                 which: format!("{} has {ns} pins, {} has {np}", half_tag(doc, c, Side::Socket), half_tag(doc, c, Side::Plug)),
-                fix: None,
+                fix: Some(Fix::IgnoreConnector(c, CheckKind::ConnectorSize)),
             });
         }
     }
@@ -1039,10 +1082,17 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     if !d.socket.is_empty() && !d.plug.is_empty() {
         let (_, s, p) = side_names(doc, Some(c));
         let mut lone: Vec<(String, TerminalId)> = Vec::new();
+        let mut lacking = None;
         for name in &d.order {
             match (d.socket.get(name), d.plug.get(name)) {
-                (Some(ts), None) => lone.extend(ts.first().map(|t| (format!("{s}:{name}"), *t))),
-                (None, Some(ts)) => lone.extend(ts.first().map(|t| (format!("{p}:{name}"), *t))),
+                (Some(ts), None) => {
+                    lone.extend(ts.first().map(|t| (format!("{s}:{name}"), *t)));
+                    lacking.get_or_insert(Side::Plug);
+                }
+                (None, Some(ts)) => {
+                    lone.extend(ts.first().map(|t| (format!("{p}:{name}"), *t)));
+                    lacking.get_or_insert(Side::Socket);
+                }
                 _ => {}
             }
         }
@@ -1062,7 +1112,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                     if n == 1 { "has" } else { "have" },
                     names.join(", ")
                 ),
-                fix: None,
+                fix: lacking.map(|side| Fix::PlaceMates(c, side)),
             });
         }
     }
@@ -1173,22 +1223,171 @@ pub fn hover_words(doc: &Document, c: ComponentId, side: Side) -> Option<String>
     })
 }
 
-/// The pages connector symbols that inherit naming key `key` from the project are drawn on (the
-/// one wide case of design 044 §11.1, O(connectors' symbols)).
-pub fn pages_inheriting(doc: &Document, key: &str) -> BTreeSet<PageId> {
-    let mut out = BTreeSet::new();
-    for (c, comp) in &doc.components {
-        if comp.properties.contains_key(key) || !is_connector(doc, *c) {
-            continue;
-        }
-        out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
-    }
-    out
+// ---------------------------------------------------------------- the index (design 044 §11.1)
+
+/// The connector index (design 044 §11.1): which connectors have a symbol on each page, and which
+/// read each naming key (separator, side names) from the project or the built-in. Built on open,
+/// reload and branch switch ([`Index::build`]); kept per commit, undo, redo and merge from the
+/// ops ([`Index::touched`], [`Index::update`]): only the connectors an op names are recomputed.
+///
+/// # Update map
+/// | Op (kind, target) | Recomputed |
+/// | --- | --- |
+/// | `AddTerminal` / `RemoveTerminal` | that terminal's component |
+/// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component shown |
+/// | `AddItem` of a symbol | the component its representation shows |
+/// | `CreateComponent` / `DeleteComponent` | that component (added / dropped) |
+/// | `SetProperty` of a component | that component (its naming keys) |
+/// | `EmbedDefinition` / `RemoveDefinition` | the components using it |
+/// | anything else | nothing |
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Index {
+    /// Page → the connectors with a symbol there.
+    pub by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
+    /// Naming key → the connectors that inherit it (no own value).
+    pub inherits: BTreeMap<&'static str, BTreeSet<ComponentId>>,
+    /// Each connector's pages, to take it out again.
+    pages_of: BTreeMap<ComponentId, BTreeSet<PageId>>,
 }
 
-/// The connectors that inherit naming key `key` from the project.
-pub fn inheriting(doc: &Document, key: &str) -> Vec<ComponentId> {
-    doc.components.iter().filter(|(c, comp)| !comp.properties.contains_key(key) && is_connector(doc, **c)).map(|(c, _)| *c).collect()
+/// The naming keys a connector may hold (design 044 §10).
+fn naming_keys() -> [&'static str; 3] {
+    use crate::defaults::connectors as dc;
+    [dc::SEPARATOR.key, dc::SIDE_SOCKET.key, dc::SIDE_PLUG.key]
+}
+
+/// How many connectors the last [`Index::update`] on this thread recomputed (tests and bench:
+/// never the whole project on an ordinary edit).
+pub fn index_work() -> usize {
+    INDEX_WORK.with(std::cell::Cell::get)
+}
+
+thread_local! {
+    static INDEX_WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+impl Index {
+    /// The whole index of `doc`: O(components).
+    pub fn build(doc: &Document) -> Index {
+        let mut idx = Index::default();
+        for c in doc.components.keys() {
+            idx.set(doc, *c);
+        }
+        idx
+    }
+
+    /// The components whose entries `ops` (just applied to `doc`) could change.
+    pub fn touched(doc: &Document, ops: &[Op]) -> BTreeSet<ComponentId> {
+        let mut out = BTreeSet::new();
+        let subject = |r: &Representation, out: &mut BTreeSet<ComponentId>| {
+            if let Subject::Component(c) = r.subject {
+                out.insert(c);
+            }
+        };
+        for op in ops {
+            match op {
+                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                    out.insert(terminal.component);
+                }
+                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep, &mut out),
+                Op::ModifyRepresentation { before, after, .. } => {
+                    subject(before, &mut out);
+                    subject(after, &mut out);
+                }
+                Op::AddItem { id, .. } => {
+                    if let Some((_, r)) = doc.representation_of_item(*id) {
+                        subject(r, &mut out);
+                    }
+                }
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                    out.insert(*id);
+                }
+                Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+                    out.insert(*c);
+                }
+                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.extend(doc.components_using(*id)),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Recompute `touched`'s entries from `doc`.
+    pub fn update(&mut self, doc: &Document, touched: &BTreeSet<ComponentId>) {
+        INDEX_WORK.with(|w| w.set(touched.len()));
+        for c in touched {
+            self.set(doc, *c);
+        }
+    }
+
+    /// Take connector `c` out, then put it back as `doc` has it.
+    fn set(&mut self, doc: &Document, c: ComponentId) {
+        for p in self.pages_of.remove(&c).unwrap_or_default() {
+            if let Some(set) = self.by_page.get_mut(&p) {
+                set.remove(&c);
+                if set.is_empty() {
+                    self.by_page.remove(&p);
+                }
+            }
+        }
+        for set in self.inherits.values_mut() {
+            set.remove(&c);
+        }
+        self.inherits.retain(|_, s| !s.is_empty());
+        if !is_connector(doc, c) {
+            return;
+        }
+        let pages: BTreeSet<PageId> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).collect();
+        for p in &pages {
+            self.by_page.entry(*p).or_default().insert(c);
+        }
+        self.pages_of.insert(c, pages);
+        let props = doc.components.get(&c).map(|x| &x.properties);
+        for k in naming_keys() {
+            if !props.is_some_and(|p| p.contains_key(k)) {
+                self.inherits.entry(k).or_default().insert(c);
+            }
+        }
+    }
+
+    /// The connectors that inherit `key` from the project: a naming key's inheritors; for any
+    /// other `connector.` key (a description), every connector.
+    pub fn inheriting(&self, key: &str) -> BTreeSet<ComponentId> {
+        match self.inherits.get(key) {
+            Some(s) => s.clone(),
+            None if naming_keys().contains(&key) => BTreeSet::new(),
+            None => self.pages_of.keys().copied().collect(),
+        }
+    }
+
+    /// The pages showing the connectors that inherit `key` (the one wide case of §11.1).
+    pub fn pages_inheriting(&self, key: &str) -> BTreeSet<PageId> {
+        self.inheriting(key).iter().flat_map(|c| self.pages_of.get(c).into_iter().flatten().copied()).collect()
+    }
+
+    /// The pages a project `connector.` naming or description key in `ops` redraws.
+    pub fn pages_for(&self, ops: &[Op]) -> BTreeSet<PageId> {
+        let mut out = BTreeSet::new();
+        for op in ops {
+            if let Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } = op
+                && key.starts_with("connector.")
+                && (crate::defaults::connectors::is_naming_key(key) || key.ends_with(".description"))
+            {
+                out.extend(self.pages_inheriting(key));
+            }
+        }
+        out
+    }
+
+    /// How many connectors are indexed.
+    pub fn len(&self) -> usize {
+        self.pages_of.len()
+    }
+
+    /// Whether no connector is indexed.
+    pub fn is_empty(&self) -> bool {
+        self.pages_of.is_empty()
+    }
 }
 
 #[cfg(test)]

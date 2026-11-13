@@ -340,10 +340,10 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     if !term.key.as_deref().is_some_and(|k| k.starts_with('.')) {
         return Some(p);
     }
-    // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) shows its
-    // pin name.
+    // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
+    // by its half (`-X10.S:3`, design 044 §0).
     if !crate::strips::is_strip(doc, c) {
-        return Some(p);
+        return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
     Some(derived_label(doc, c, type_of_terminal(doc, t), &p, n))
 }

@@ -89,7 +89,13 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
                 }
                 Target::Join(c)
             }
-            (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?)),
+            (None, Some(t)) => {
+                // Brief 044 (tester D5): a connector half's tag is not free for a new device.
+                if let Some(Ok((c, Some(side), _))) = crate::connectors::resolve(doc, &t) {
+                    return Err(format!("{} is the {} half of {}. Pick another tag.", t.trim(), side.word(), devices::tag_words(doc, c)));
+                }
+                Target::New(Some(ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?))
+            }
             (None, None) => Target::New(None),
         };
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.

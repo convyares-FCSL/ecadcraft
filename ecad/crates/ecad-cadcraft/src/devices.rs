@@ -1001,6 +1001,14 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         if doc.representations.get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
             continue;
         }
+        // Brief 044: a connector pin's label on the page is its pin name (`3`), beside its half's
+        // tag; elsewhere it is named `-X10.S:3`.
+        if crate::connectors::side_of(doc, t).is_some() {
+            if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
+                by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
+            }
+            continue;
+        }
         // Brief 036: a strip level shows its shown label (`1.L`), not its position.
         if let Some(label) = crate::terminal_types::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
@@ -1215,6 +1223,13 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<ComponentId> {
         })
         .collect();
     v.sort();
+    // Brief 044 (design 044 §5.1, tester D5): a typed half tag (`-X10.S`, `-X10.P:3`) finds its
+    // connector.
+    if v.is_empty()
+        && let Some(Ok((c, Some(_), _))) = query.and_then(|q| crate::connectors::resolve(doc, q))
+    {
+        return vec![c];
+    }
     v.into_iter().map(|(_, _, _, id)| id).collect()
 }
 
@@ -1370,6 +1385,15 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         None => format!("Device (no tag)   {}", description(doc, c)),
     };
     let mut lines = vec![head, format!("Maker: {}   Part number: {}", get("maker"), get("part_number"))];
+    // Brief 044 (design 044 §7, tester D3): a connector half says where its mate is.
+    if let Some(side) = doc.representations.get(&here).and_then(|r| crate::connectors::rep_side(doc, r)) {
+        let sides: &[crate::symbols::Side] = match side {
+            crate::symbols::Side::Both => &[crate::symbols::Side::Socket, crate::symbols::Side::Plug],
+            crate::symbols::Side::Socket => &[crate::symbols::Side::Socket],
+            crate::symbols::Side::Plug => &[crate::symbols::Side::Plug],
+        };
+        lines.extend(sides.iter().filter_map(|s| crate::connectors::hover_words(doc, c, *s)));
+    }
     // Brief 028 (design 028 §7.1): a terminal's sides and its strip's positions.
     if crate::strips::is_strip(doc, c) {
         lines.extend(crate::strips::terminal_hover(doc, c, here));

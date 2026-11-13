@@ -1629,6 +1629,13 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                 };
                 match (g, idx.member(s).map(|(_, c)| c)) {
                     (Group::Cable(_), _) => out.push(r("cable", None, cable_texts.get(&s).cloned().unwrap_or_default())),
+                    // Brief 044 (tester D2): a connector half shows its mate half's place, a pin its
+                    // mate pin's (labelled with the pin name).
+                    (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
+                    (Group::Device(_), Some(Class::Pin(_))) => {
+                        let name = sr.connection_points.keys().find_map(|t| doc.terminals.get(t).and_then(|x| x.label.clone()));
+                        out.push(r("pin", name, places.text(tr.page, anchor(doc, tr))));
+                    }
                     (Group::Device(_), Some(Class::Head)) => {
                         let place = places.text(tr.page, anchor(doc, tr));
                         out.extend(poles(t).into_iter().map(|l| r("mirror", Some(l), place.clone())));

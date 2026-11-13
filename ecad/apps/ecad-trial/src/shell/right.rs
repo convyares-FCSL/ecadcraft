@@ -120,6 +120,112 @@ impl Row {
     }
 }
 
+/// Brief 044 (design 044 §9.4): one row of a connector's Halves group, or the selected pin's Pin
+/// and Mate rows. Accessible name `ecad.props.connector.<key>`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConnectorRow {
+    /// `pins`, `half.s.description`…, `pin`, `mate`.
+    pub key: String,
+    /// A sub-heading (a half's tag) shown before this row, if any.
+    pub heading: Option<String>,
+    pub label: &'static str,
+    pub value: String,
+    /// 042's origin words: `set here`, `from standard`, `from project`, `from box`…
+    pub origin: &'static str,
+    /// The command and its parameters that set this row (the value goes in `value_key`); `None`
+    /// for a read row.
+    pub set: Option<(&'static str, serde_json::Value, &'static str)>,
+    /// A read row that goes to these symbols when clicked (the mate).
+    pub goto: Vec<RepresentationId>,
+}
+
+/// The connector rows for symbol `rep` of `c` (design 044 §9.4): Pins, each drawn half's
+/// Description, Maker, Part number and Location, and for a pin symbol its Pin and Mate.
+fn connector_rows(doc: &ecad_model::Document, c: ecad_model::ComponentId, rep: RepresentationId) -> Vec<ConnectorRow> {
+    use ecad_cadcraft::connectors as cn;
+    use ecad_cadcraft::symbols::Side;
+    if !cn::is_connector(doc, c) {
+        return Vec::new();
+    }
+    let comp = json_id(c);
+    let d = cn::drawn(doc, c);
+    let mut out = vec![ConnectorRow {
+        key: "pins".into(),
+        heading: None,
+        label: "Pins",
+        value: cn::pin_count(doc, c, &d).to_string(),
+        origin: if cn::pins_prop(doc, c).is_some() { "set here" } else { "from symbols" },
+        set: Some(("setprop", serde_json::json!({"component": comp, "key": cn::PINS_KEY}), "value")),
+        goto: Vec::new(),
+    }];
+    let mut cache = ecad_cadcraft::locations::BoxCache::default();
+    for h in cn::half_rows(doc, c, &mut cache) {
+        let Some(letter) = h.side.letter() else { continue };
+        let own = |f: &str| cn::half_prop(doc, c, h.side, f).is_some();
+        let row = |field: &'static str, label: &'static str, value: Option<String>, origin: &'static str, heading: Option<String>| ConnectorRow {
+            key: format!("half.{letter}.{field}"),
+            heading,
+            label,
+            value: value.unwrap_or_else(|| "?".into()),
+            origin,
+            set: Some(("setprop", serde_json::json!({"component": comp, "key": format!("half.{letter}.{field}")}), "value")),
+            goto: Vec::new(),
+        };
+        let desc_origin = if own("description") {
+            "set here"
+        } else if doc.properties.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
+            "from project"
+        } else {
+            "from standard"
+        };
+        let loc_origin = match h.location.source {
+            _ if own("location") => "set here",
+            ecad_cadcraft::locations::Source::Device => "from device",
+            ecad_cadcraft::locations::Source::Box { .. } => "from box",
+            ecad_cadcraft::locations::Source::Page(_) => "from page",
+            ecad_cadcraft::locations::Source::Project => "from project",
+            ecad_cadcraft::locations::Source::None => "none",
+        };
+        out.push(row("description", "Description", h.description.clone(), desc_origin, Some(h.tag.clone())));
+        out.push(row("maker", "Maker", h.maker.clone(), if own("maker") { "set here" } else { "none" }, None));
+        out.push(row("part_number", "Part number", h.part_number.clone(), if own("part_number") { "set here" } else { "none" }, None));
+        out.push(row("location", "Location", h.location.value.clone(), loc_origin, None));
+    }
+    // A pin symbol: its pin, and where its mate is.
+    let Some(r) = doc.representations.get(&rep) else { return out };
+    if cn::rep_half(doc, r).is_some_and(cn::is_pin_starter) {
+        let t = r.connection_points.keys().next().copied();
+        let name = t.and_then(|t| doc.terminals.get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
+        out.push(ConnectorRow {
+            key: "pin".into(),
+            heading: None,
+            label: "Pin",
+            value: name.clone(),
+            origin: "set here",
+            set: Some(("pinlabel", serde_json::json!({"device": comp, "pin": name}), "to")),
+            goto: Vec::new(),
+        });
+        let side = t.and_then(|t| cn::side_of(doc, t));
+        if let Some(side @ (Side::Socket | Side::Plug)) = side {
+            let mate = doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(name.as_str()) && x.key.as_deref() == side.other().key());
+            let (value, goto) = match mate {
+                Some((m, _)) => {
+                    let reps: Vec<RepresentationId> = doc.representations_showing(m).map(|(id, _)| id).collect();
+                    let at = reps.first().map(|id| cn::where_words(doc, *id)).unwrap_or_default();
+                    (format!("{} on {at}", cn::pin_name(doc, m).unwrap_or_default()), reps)
+                }
+                None => (format!("{} has no mate", cn::half_tag(doc, c, side)), Vec::new()),
+            };
+            out.push(ConnectorRow { key: "mate".into(), heading: None, label: "Mate", value, origin: "derived", set: None, goto });
+        }
+    }
+    out
+}
+
+fn json_id(c: ecad_model::ComponentId) -> String {
+    c.hex()
+}
+
 /// What the inspector asks the trial for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InspectorAction {
@@ -129,6 +235,8 @@ pub enum InspectorAction {
     Run(&'static str, String),
     /// Select every placement of the device.
     Placements(Vec<RepresentationId>),
+    /// Brief 044: run this command line (a connector row's edit).
+    RunLine(String),
 }
 
 /// The inspector's rows and what they were built from.
@@ -141,6 +249,9 @@ pub struct Inspector {
     seen: Option<(u64, u64, Option<PageId>, Vec<cadcraft_engine::doc::Handle>)>,
     /// The device's placements (its symbols), for "Select all placements".
     placements: Vec<RepresentationId>,
+    /// Brief 044: a connector's Halves group and the selected pin's rows.
+    pub connector: Vec<ConnectorRow>,
+    connector_edits: BTreeMap<String, String>,
     /// The values being typed, by key.
     edits: BTreeMap<&'static str, String>,
     /// A refusal per key.
@@ -164,7 +275,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::lists::standards::value_text(e, r)
 }
 
-type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>);
+type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>);
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let mut deps = BTreeSet::from([ObjectRef::Project]);
@@ -219,7 +330,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, _) => doc.representations_of(Subject::Component(c)).map(|(id, _)| id).collect(),
         _ => Vec::new(),
     };
-    (rows, deps, placements)
+    let connector = match what {
+        What::Symbol(c, rep) => connector_rows(doc, c, rep),
+        _ => Vec::new(),
+    };
+    (rows, deps, placements, connector)
 }
 
 /// Bring the inspector's rows up to date (its update map).
@@ -265,8 +380,9 @@ fn sync(t: &mut Trial) {
                 i.errors.clear();
             }
             i.what = what;
-            let (rows, deps, placements) = rows.unwrap_or_default();
-            (i.rows, i.deps, i.placements) = (rows, deps, placements);
+            let (rows, deps, placements, connector) = rows.unwrap_or_default();
+            (i.rows, i.deps, i.placements, i.connector) = (rows, deps, placements, connector);
+            i.connector_edits.clear();
             i.rebuilds += 1;
             i.seen = Some((serial, count, page, selection));
         }
@@ -312,6 +428,7 @@ impl Inspector {
     /// Draw the rows under the properties section. Returns what was asked for.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<InspectorAction> {
         let mut out = Vec::new();
+        self.show_connector(ui, writable, &mut out);
         if self.rows.is_empty() {
             return out;
         }
@@ -394,6 +511,52 @@ impl Inspector {
     }
 }
 
+impl Inspector {
+    /// Brief 044 (design 044 §9.4): the Halves group, and Pin and Mate for a pin symbol.
+    fn show_connector(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>) {
+        if self.connector.is_empty() {
+            return;
+        }
+        ui.add_space(space::M);
+        ecad_ui::prim::read_value(ui, "HALVES").widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.props.connector"));
+        let weak = ui.visuals().weak_text_color();
+        for row in &self.connector {
+            if let Some(h) = &row.heading {
+                ui.add_space(space::XS);
+                ui.label(RichText::new(h).strong());
+            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(row.label).small().color(weak));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ecad_ui::prim::badge(ui, row.origin, ecad_ui::prim::Tone::Neutral);
+                });
+            });
+            let name = format!("ecad.props.connector.{}", row.key);
+            let width = ui.available_width().min(240.0);
+            match (&row.set, writable) {
+                (Some((cmd, params, value_key)), true) => {
+                    let start = if row.value == "?" { String::new() } else { row.value.clone() };
+                    let buf = self.connector_edits.entry(row.key.clone()).or_insert(start);
+                    let r = ui.add(egui::TextEdit::singleline(buf).desired_width(width));
+                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &name));
+                    if r.lost_focus() && buf.trim() != row.value.trim() {
+                        let mut p = params.clone();
+                        p[*value_key] = if buf.trim().is_empty() { serde_json::Value::Null } else { serde_json::json!(buf.trim()) };
+                        out.push(InspectorAction::RunLine(format!("{cmd} {p}")));
+                    }
+                }
+                _ => {
+                    let r = ui.add(egui::Label::new(RichText::new(&row.value).color(weak)).sense(egui::Sense::click()));
+                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &name));
+                    if r.clicked() && !row.goto.is_empty() {
+                        out.push(InspectorAction::Placements(row.goto.clone()));
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl Trial {
     /// Act on what the inspector asked for.
     pub fn inspector_action(&mut self, a: InspectorAction) {
@@ -410,6 +573,11 @@ impl Trial {
                     None => {
                         i.errors.remove(key);
                     }
+                }
+            }
+            InspectorAction::RunLine(line) => {
+                if let Some(e) = self.run_line(&line) {
+                    self.cad.session.echo(e);
                 }
             }
             InspectorAction::Placements(reps) => {

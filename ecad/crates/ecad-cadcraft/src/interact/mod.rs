@@ -632,7 +632,11 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
         })
         .unwrap_or_default();
     let mut lines = vec![
-        format!("Connection point {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
+        // Brief 044 (tester D3): a connector pin by its half (`-X10.S:3`).
+        format!(
+            "Connection point {}",
+            crate::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
+        ),
         format!("of component {of}"),
         format!("id {}", t.hex()),
     ];

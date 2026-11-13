@@ -35,6 +35,10 @@ pub const RENUMBER_STRIP: &str = "Renumber strip";
 pub const SET_CORES: &str = "Set cores\u{2026}";
 /// Brief 044: `connector-over`'s fix.
 pub const SET_PINS: &str = "Set pins";
+/// Brief 044: `connector-lone-pin`'s fix.
+pub const PLACE_MATES: &str = "Place mates";
+/// Brief 044: `connector-family` / `connector-size`'s fix.
+pub const IGNORE: &str = "Ignore";
 pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
@@ -221,12 +225,14 @@ impl ChecksPanel {
                 | Fix::FuseDevices
                 | Fix::ConnectorNextPin(_)
                 | Fix::SetPins(..)
+                | Fix::IgnoreConnector(..)
                 | Fix::AccessoryOrphan(..)
                 | Fix::LinkAcrossPartition(..)
                 | Fix::LinkOrphan(..)
                 | Fix::LevelMissing(..),
                 _,
             ) => Action::AccessoryFix(f, 0),
+            (Fix::PlaceMates(c, side), _) => Action::PlaceMates(c, side),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
             (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
             (Fix::AddJunction(_) | Fix::Join(_), None) => return None,

@@ -428,6 +428,11 @@ pub enum Fix {
     ConnectorNextPin(TerminalId),
     /// Brief 044: **Set pins to n** (`setprop pins`).
     SetPins(ComponentId, u32),
+    /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
+    /// the lone pins lack (§4.4 gives them first).
+    PlaceMates(ComponentId, crate::symbols::Side),
+    /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
+    IgnoreConnector(ComponentId, Kind),
 }
 
 /// One row of the Checks list.
@@ -447,9 +452,17 @@ impl Check {
         self.kind.severity()
     }
 
-    /// The row's text: the kind's words, or for the unnumbered row its count.
+    /// The row's text: the kind's words, or for the unnumbered row its count. Brief 044 (design
+    /// 044 §6.3): a connector row's text names its connector (`-X10's halves differ: …`).
     pub fn what(&self) -> String {
-        self.kind.words().to_string()
+        match self.kind {
+            Kind::ConnectorPinTwice | Kind::ConnectorFamily | Kind::ConnectorSize | Kind::ConnectorLonePin | Kind::ConnectorOver
+                if !self.which.is_empty() =>
+            {
+                self.which.clone()
+            }
+            _ => self.kind.words().to_string(),
+        }
     }
 
     /// Where the row is, as references name a place (`3-D-5`, or `/3.D` in that style); the page

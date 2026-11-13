@@ -720,6 +720,9 @@ pub const ACTIONS: &[Action] = &[
     search_only("wire.disconnecttool", "disconnect", Params::Start, "Disconnect", Icon::Disconnect, &["detach"]),
     search_only("wire.numbertool", "wirenumber", Params::Start, "Fix wire number", Icon::Number, &["number"]),
     search_only("terminal.bridge", "bridge", Params::Start, "Draw bridge", Icon::Connect, &["terminal", "link"]),
+    // Brief 044 (design 044 §9.3): the terminal wheel holds strip terminals only (its jumper, plan
+    // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
+    search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
     search_only("terminal.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
     search_only("terminal.accessorytool", "accessory", Params::Start, "Strip accessory", Icon::Terminal, &["endplate", "partition", "marker"]),
     search_only("terminal.toposition", "toposition", Params::Start, "Make strip position", Icon::Terminal, &["fuse terminal"]),
@@ -753,7 +756,6 @@ const fn search_only(
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("setdefault", "Settings ▸ Standards (U4c)"),
-    ("pinlabel", "the inspector's Pin row and the terminal wheel's Rename pin (044; not built yet), and the pin-twice Checks fix"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),

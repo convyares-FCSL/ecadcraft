@@ -26,7 +26,20 @@ use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, Project
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
 /// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036) and `connector.` (brief 044). Keys already approved before the
 /// registry keep their names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal", "connector"];
+/// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
+/// this file with `merge=union`.
+#[rustfmt::skip]
+pub const AREAS: &[&str] = &[
+    "text",
+    "wiring",
+    "wire",
+    "tags",
+    "revisions",
+    "print",
+    "symbol",
+    "terminal",
+    "connector",
+];
 
 pub mod connectors;
 pub mod print;
@@ -288,8 +301,19 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
 
 /// Every registered entry, lane by lane: one line per area (overseer ruling, 2026-11-13), so lanes
 /// adding an area each add one line and merge without conflict.
+#[rustfmt::skip]
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    [text::ENTRIES, wires::ENTRIES, print::ENTRIES, symbols::ENTRIES, terminals::ENTRIES, connectors::ENTRIES].into_iter().flatten().copied()
+    [
+        text::ENTRIES,
+        wires::ENTRIES,
+        print::ENTRIES,
+        symbols::ENTRIES,
+        terminals::ENTRIES,
+        connectors::ENTRIES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
 }
 
 /// The entry with this key.

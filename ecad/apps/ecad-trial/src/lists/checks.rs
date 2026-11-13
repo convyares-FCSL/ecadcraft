@@ -67,6 +67,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         // Brief 044.
         Fix::ConnectorNextPin(_) => cp::MOVE_NEXT_FREE,
         Fix::SetPins(..) => cp::SET_PINS,
+        Fix::PlaceMates(..) => cp::PLACE_MATES,
+        Fix::IgnoreConnector(..) => cp::IGNORE,
     }]
 }
 

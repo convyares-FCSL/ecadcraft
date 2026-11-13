@@ -652,6 +652,9 @@ pub struct Project {
     /// The general reference index (brief 025): built on open and branch switch, kept per commit
     /// from the ops ([`crate::xref::Watch`]).
     pub xref: crate::xref::RefIndex,
+    /// Brief 044 (design 044 §11.1): the connector index, built on open and branch switch, kept
+    /// per commit from the ops ([`crate::connectors::Index`]).
+    pub connectors: crate::connectors::Index,
     /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
     /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
     xref_shown: Option<((u64, u128), crate::xref::Shown)>,
@@ -1122,6 +1125,7 @@ impl Project {
         let id: ProjectId = ids.fresh();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -1160,6 +1164,7 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -1213,6 +1218,7 @@ impl Project {
         let baseline = ledger.head();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -1251,6 +1257,7 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -1345,6 +1352,7 @@ impl Project {
         let summary = summary.join("\n");
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
             path: Some(path.clone()),
@@ -1383,6 +1391,7 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -1475,6 +1484,7 @@ impl Project {
         self.ledger = ledger;
         self.xref = crate::xref::RefIndex::build(self.ledger.document());
         self.xref_shown = None;
+        self.connectors = crate::connectors::Index::build(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.views.retain(|c| cables.contains(c));
@@ -2245,6 +2255,22 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
         let head = ledger.head();
+        // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
+        // with a rebuild.
+        let touched = crate::connectors::Index::touched(ledger.document(), ops);
+        self.connectors.update(ledger.document(), &touched);
+        if ecad_model::ledger::verify_mode() && self.connectors != crate::connectors::Index::build(ledger.document()) {
+            self.connectors = crate::connectors::Index::build(ledger.document());
+            out.problems.push("the kept connector index differed from a rebuild; rebuilt".into());
+        }
+        // A project naming or description default redraws the connectors that inherit it.
+        let named = self.connectors.pages_for(ops);
+        if !named.is_empty() {
+            out.pages = out.pages.map(|mut p| {
+                p.extend(named);
+                p
+            });
+        }
         for line in std::mem::take(&mut out.problems) {
             self.events.record(EventKind::IndexRebuilt, None, head, None, line);
         }
@@ -2924,11 +2950,8 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
             // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
             // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {
-                if crate::defaults::connectors::is_naming_key(key) || key.ends_with(".description") {
-                    out.extend(crate::connectors::pages_inheriting(doc, key));
-                }
-            }
+            // Their pages come from the connector index after the commit (`Project::finish_watch`).
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}

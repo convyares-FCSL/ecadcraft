@@ -408,7 +408,8 @@ fn place_row(
             Some((c, _, _)) => (*c, false),
             None => {
                 let pins_prop = Some(n);
-                let (c, tag) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, pins_prop, &mut ops)?;
+                let list = matches!(names, Names::List(_)).then_some(pin_names.as_slice());
+                let (c, tag) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, pins_prop, list, &mut ops)?;
                 made = Some((c, tag, true));
                 (c, true)
             }
@@ -474,7 +475,8 @@ fn place_pins(
                 (None, _) => maker_pins(doc).max(crossings.len().min(cn::MAX_PINS)),
             };
             let list = cn::names_for(names, n)?;
-            let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, Some(n), &mut ops)?;
+            let typed = matches!(names, Names::List(_)).then_some(list.as_slice());
+            let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, Some(n), typed, &mut ops)?;
             (c, t, true, list)
         }
     };
@@ -569,7 +571,27 @@ pub(crate) fn run_place_half(
             return Err("`tag` is for a new connector; `device` joins an existing one".into());
         }
         let mut new_tag = None;
-        if let Some(t) = &tag {
+        if let Some(t) = &tag
+            && let Some(found) = crate::connectors::resolve(doc, t)
+        {
+            // Brief 044 (tester D5): a half's tag (`-X01.P`) names its connector and that half.
+            let (c, half, _) = found?;
+            if let Some(h) = half
+                && side != Side::Both
+                && h != side
+            {
+                return Err(format!(
+                    "{} is the {} half of {}; this symbol is a {} half. Name -{}'s {} half, or Enter for a new connector.",
+                    t.trim(),
+                    h.word(),
+                    crate::devices::tag_words(doc, c),
+                    side.word(),
+                    crate::devices::tag_words(doc, c).trim_start_matches('-'),
+                    side.word()
+                ));
+            }
+            device = Some(c);
+        } else if let Some(t) = &tag {
             let t = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
             match crate::devices::holder_of(doc, &t, None) {
                 Some(c) => device = Some(c),
@@ -610,7 +632,7 @@ pub(crate) fn run_place_half(
             Some(c) => (c, crate::devices::tag_words(doc, c), false),
             None => {
                 let pins = cn::size_of(starter);
-                let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, new_tag, pins, &mut ops)?;
+                let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, new_tag, pins, None, &mut ops)?;
                 (c, t, true)
             }
         };
@@ -712,7 +734,7 @@ fn run_pinlabel(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         if to == old {
             return Ok(json!({"changed": false, "component": c.hex(), "to": to}));
         }
-        if doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(to.as_str())) {
+        if doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(to.as_str())) || cn::pin_names(doc, c).is_some_and(|l| l.contains(&to)) {
             return Err(format!("{tag} already has a pin {to}. Pick another name, or rename that pin first."));
         }
         let mut ops = Vec::new();
@@ -721,6 +743,19 @@ fn run_pinlabel(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         }
         for (t, x) in targets {
             ops.push(Op::AddTerminal { id: t, terminal: Terminal { label: Some(to.clone()), ..x } });
+        }
+        // A typed list keeps the pin's place under its new name.
+        if let Some(list) = cn::pin_names(doc, c)
+            && list.contains(&old)
+        {
+            let after: Vec<String> = list.iter().map(|n| if *n == old { to.clone() } else { n.clone() }).collect();
+            let before = doc.components.get(&c).and_then(|x| x.properties.get(cn::PIN_NAMES_KEY)).cloned();
+            ops.push(Op::SetProperty {
+                object: ecad_model::ObjectRef::Component(c),
+                key: cn::PIN_NAMES_KEY.into(),
+                before,
+                after: Some(after.join(",")),
+            });
         }
         p.apply_edit(pg, "pinlabel", &format!("Rename pin {tag}:{old}"), ops)?;
         let doc = p.ledger.document();

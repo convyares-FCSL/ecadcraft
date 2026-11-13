@@ -312,8 +312,9 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let c: ComponentId = id(&row(&mut h, json!({})), "component");
     let d = h.doc();
     let t = pin(&d, c, ".s", "2");
-    assert_eq!(ecad_cadcraft::terminal_types::shown_label(&d, t).as_deref(), Some("2"));
-    assert_eq!(ecad_cadcraft::interact::terminal_name(&d, t), "2");
+    let tag = ecad_cadcraft::devices::tag_words(&d, c);
+    assert_eq!(ecad_cadcraft::terminal_types::shown_label(&d, t), Some(format!("{tag}.S:2")));
+    assert_eq!(ecad_cadcraft::interact::terminal_name(&d, t), format!("{tag}.S:2"));
 }
 
 #[test]
@@ -352,4 +353,109 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
     let mut d = symbols::by_key("plug4").unwrap().definition().unwrap().clone();
     d.bridges = vec![vec![".s".into(), ".x".into()]];
     assert!(!symbols::bridge_key_ok(&d, ".x"));
+}
+
+// ------------------------------------------------------------------------------- fix round 1
+
+/// Review of #81, 1: a half's BOM location follows a box and a page `location` on its own page,
+/// also when that page is not the connector's first.
+#[test]
+fn a_half_location_follows_its_own_page() {
+    let mut h = H::new(4420);
+    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket"})), "component");
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.activate(p2);
+    row(&mut h, json!({"halves": "plug", "device": c.hex()}));
+    let plug_location = |h: &mut H| -> Value {
+        let rows = h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
+        rows.into_iter().find(|r| r["tags"].as_str().is_some_and(|t| t.ends_with(".P"))).map(|r| r["location"].clone()).unwrap_or(Value::Null)
+    };
+    h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
+    assert_eq!(plug_location(&mut h), "+FIELD", "a page location on the plug's page");
+    h.run("locationbox", json!({"location": "+JB1", "corners": [[0, 0], [300, 200]]})).unwrap();
+    assert_eq!(plug_location(&mut h), "+JB1", "a box around the plug");
+}
+
+/// Review of #81, 2: the half rows' groups are kept; an unrelated edit groups nothing, and the
+/// kept counts equal a rebuild.
+#[test]
+fn half_row_groups_are_kept_not_regrouped() {
+    let mut h = H::new(4421);
+    row(&mut h, json!({}));
+    let count = |h: &mut H| h.cfg(|p| p.outputs().bom_count(ecad_cadcraft::outputs::Group::Location));
+    let n = count(&mut h);
+    let g0 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
+    h.run("wire", json!({"points": pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
+    assert_eq!(count(&mut h), n);
+    let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
+    assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
+    let rebuilt = h.p(|p| ecad_cadcraft::outputs::Outputs::build(p.ledger.document()).bom_count(ecad_cadcraft::outputs::Group::Location));
+    assert_eq!(count(&mut h), rebuilt);
+}
+
+/// Review of #81, 4 (design 044 §11.1, acceptance 8 and 11): the connector index is kept per
+/// commit, recomputes only the connectors an op names, and equals a rebuild.
+#[test]
+fn the_connector_index_is_kept_from_the_ops() {
+    let mut h = H::new(4422);
+    let a: ComponentId = id(&row(&mut h, json!({})), "component");
+    let b: ComponentId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
+    h.run("setprop", json!({"component": b.hex(), "key": "connector.side.socket", "value": "F"})).unwrap();
+    let key = ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key;
+    let inh = h.p(|p| p.connectors.inheriting(key));
+    assert!(inh.contains(&a) && !inh.contains(&b), "{inh:?}");
+    h.run("wire", json!({"points": pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
+    assert_eq!(connectors::index_work(), 0, "an unrelated edit recomputes no connector");
+    h.run("setprop", json!({"component": a.hex(), "key": "half.s.maker", "value": "ACME"})).unwrap();
+    assert_eq!(connectors::index_work(), 1, "an edit of one connector recomputes that one");
+    // The project's side name: only the inheriting connector's half tag changes.
+    h.run("setdefault", json!({"key": key, "value": "B"})).unwrap();
+    let d = h.doc();
+    assert!(connectors::half_tag(&d, a, Side::Socket).ends_with(".B"));
+    assert!(connectors::half_tag(&d, b, Side::Socket).ends_with(".F"));
+    let (kept, built) = h.p(|p| (p.connectors.clone(), connectors::Index::build(p.ledger.document())));
+    assert!(kept == built, "the kept index equals a rebuild");
+    h.cmdline("u");
+    let (kept, built) = h.p(|p| (p.connectors.clone(), connectors::Index::build(p.ledger.document())));
+    assert!(kept == built, "also after undo");
+}
+
+/// Fix round 1: a typed pin list is kept, in order; its undrawn names come next; pinlabel keeps
+/// the list in step (tester D7).
+#[test]
+fn a_typed_pin_list_is_kept_in_order() {
+    let mut h = H::new(4423);
+    three_wires(&mut h);
+    let v = h
+        .run("connector", json!({"halves": "socket", "pins": 4, "names": ["L", "N", "PE", "SH"], "layout": "pins", "line": [[90, 200], [125, 200]]}))
+        .unwrap();
+    let c: ComponentId = id(&v, "component");
+    assert_eq!(h.doc().components[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,SH"));
+    let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [200, 50]})).unwrap();
+    assert_eq!(v["terminals"][0]["pin"], "PE", "the next listed name, never lost");
+    h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [220, 50]})).unwrap();
+    let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [240, 50]})).unwrap_err();
+    assert!(e.contains("(L, N, PE, SH)"), "names in pin order: {e}");
+    h.run("pinlabel", json!({"device": c.hex(), "pin": "SH", "to": "S"})).unwrap();
+    assert_eq!(h.doc().components[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,S"));
+}
+
+/// Fix round 1: Ignore and Place mates on the Checks rows; Ctrl+K's device search finds a typed
+/// half or pin name.
+#[test]
+fn checks_fixes_and_typed_search() {
+    let mut h = H::new(4424);
+    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
+    h.run("place", json!({"symbol": "m12p5", "device": c.hex(), "at": [50, 150]})).unwrap();
+    let rows = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
+    let fam = rows.iter().find(|r| r.kind.name() == "connector-family").expect("family row");
+    assert!(matches!(fam.fix, Some(ecad_cadcraft::checks::Fix::IgnoreConnector(..))));
+    h.run("setprop", json!({"component": c.hex(), "key": "ignore.connector-family", "value": "yes"})).unwrap();
+    assert!(ecad_cadcraft::checks::all(&h.doc(), 1e-6).iter().all(|r| r.kind.name() != "connector-family"));
+    let lone = ecad_cadcraft::checks::all(&h.doc(), 1e-6).into_iter().find(|r| r.kind.name() == "connector-lone-pin").expect("lone row");
+    assert_eq!(lone.fix, Some(ecad_cadcraft::checks::Fix::PlaceMates(c, Side::Plug)));
+    let d = h.doc();
+    let tag = ecad_cadcraft::devices::tag_words(&d, c);
+    assert_eq!(ecad_cadcraft::devices::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
+    assert_eq!(ecad_cadcraft::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
 }
