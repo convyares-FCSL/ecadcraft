@@ -21,6 +21,8 @@
 
 mod accessories;
 mod connectors;
+// Brief 047: Reports ▸ BOM ▸ + Item.
+mod bom_item;
 mod devices;
 // Brief 041: what is under the cursor (the wheel) and the running tool's intent.
 mod forms;
@@ -49,6 +51,7 @@ use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
 pub(crate) use accessories::{accessory, jumper};
+pub(crate) use bom_item::bomitem;
 pub(crate) use connectors::connector;
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};

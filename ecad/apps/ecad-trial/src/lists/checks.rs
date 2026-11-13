@@ -38,7 +38,17 @@ pub fn columns() -> Vec<Column> {
 
 /// Whether a check's row shows a count rather than a place (`12 wires`).
 pub fn count_row(k: Kind) -> bool {
-    matches!(k, Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount | Kind::NoAccessoryPart)
+    matches!(
+        k,
+        Kind::Unnumbered
+            | Kind::ProvisionalWires
+            | Kind::NoPartNumber
+            | Kind::NoLocation
+            | Kind::NoCoreCount
+            | Kind::NoAccessoryPart
+            | Kind::ItemNoPartNumber
+            | Kind::FuseNoInsert
+    )
 }
 
 /// The button labels of a fix.
@@ -69,6 +79,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::SetPins(..) => cp::SET_PINS,
         Fix::PlaceMates(..) => cp::PLACE_MATES,
         Fix::IgnoreConnector(..) => cp::IGNORE,
+        Fix::UseArticle(..) => cp::USE_FOR_ALL,
+        Fix::DropMissingFor(..) => cp::REMOVE,
     }]
 }
 

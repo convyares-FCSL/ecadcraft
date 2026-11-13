@@ -791,7 +791,8 @@ fn k_bom_one_row_per_device() {
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
-    let allowed = ["flags", "location", "qty", "tags", "description", "maker", "part_number", "devices", "accessory", "strip"];
+    // Brief 047 added `unit` and `entries`.
+    let allowed = ["flags", "location", "qty", "unit", "tags", "description", "maker", "part_number", "devices", "accessory", "strip", "entries"];
     for r in &rows {
         for k in r.as_object().unwrap().keys() {
             assert!(allowed.contains(&k.as_str()), "new BOM column {k}: {r}");

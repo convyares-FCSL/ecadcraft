@@ -155,10 +155,20 @@ pub enum Kind {
     ConnectorLonePin,
     /// A connector pin numbered beyond its `pins`.
     ConnectorOver,
+    /// Brief 047 (design 047 §9): items without a part number (one count row).
+    ItemNoPartNumber,
+    /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
+    FuseNoInsert,
+    /// One part number with two article numbers.
+    ArticleConflict,
+    /// A part line's `for` names a fuse or position the device does not have.
+    PartForMissing,
+    /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
+    BadPartKey,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 48] = [
+    pub const ALL: [Kind; 53] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -207,6 +217,11 @@ impl Kind {
         Kind::ConnectorSize,
         Kind::ConnectorLonePin,
         Kind::ConnectorOver,
+        Kind::ItemNoPartNumber,
+        Kind::FuseNoInsert,
+        Kind::ArticleConflict,
+        Kind::PartForMissing,
+        Kind::BadPartKey,
     ];
 
     /// The JSON name.
@@ -260,6 +275,11 @@ impl Kind {
             Kind::ConnectorSize => "connector-size",
             Kind::ConnectorLonePin => "connector-lone-pin",
             Kind::ConnectorOver => "connector-over",
+            Kind::ItemNoPartNumber => "item-no-part-number",
+            Kind::FuseNoInsert => "fuse-no-insert",
+            Kind::ArticleConflict => "article-conflict",
+            Kind::PartForMissing => "part-for-missing",
+            Kind::BadPartKey => "bad-part-key",
         }
     }
 
@@ -319,6 +339,11 @@ impl Kind {
             Kind::ConnectorSize => "Connector halves of two sizes",
             Kind::ConnectorLonePin => "Connector pins without a mate",
             Kind::ConnectorOver => "Connector pin beyond its pin count",
+            Kind::ItemNoPartNumber => "Items without a part number",
+            Kind::FuseNoInsert => "Fuses without an insert",
+            Kind::ArticleConflict => "One part number, two article numbers",
+            Kind::PartForMissing => "Part line names a fuse or position the device lacks",
+            Kind::BadPartKey => "Part line or item value ECAD does not read",
         }
     }
 
@@ -356,7 +381,9 @@ impl Kind {
             | Kind::LevelMissing
             | Kind::DashesLeftOut
             | Kind::ConnectorFamily
-            | Kind::ConnectorSize => Severity::Warning,
+            | Kind::ConnectorSize
+            | Kind::ArticleConflict
+            | Kind::PartForMissing => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -433,6 +460,12 @@ pub enum Fix {
     PlaceMates(ComponentId, crate::symbols::Side),
     /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
     IgnoreConnector(ComponentId, Kind),
+    /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
+    /// `n` of the component (`article`).
+    UseArticle(ComponentId, u8),
+    /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
+    /// (`partline set for`).
+    DropMissingFor(ComponentId, u8),
 }
 
 /// One row of the Checks list.

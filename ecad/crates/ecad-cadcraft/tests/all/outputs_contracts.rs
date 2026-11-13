@@ -240,7 +240,8 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     assert_eq!(r["rows"], 2);
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.starts_with('\u{feff}'));
-    assert!(text.contains(&format!("'+CP1,1,'{ta},")), "{text}");
+    // Brief 047 (design 047 §6.4): a Unit column after Qty.
+    assert!(text.contains(&format!("'+CP1,1,pcs,'{ta},")), "{text}");
     assert!(text.contains("\r\n"));
     let _ = std::fs::remove_dir_all(&dir);
     // Nothing recorded by reading.

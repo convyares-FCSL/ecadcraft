@@ -86,6 +86,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
 /// `ecad.origin.<key>` (its badge), `ecad.inspector.reset.<key>`.
 pub const DEFAULTS_TITLE: &str = "ecad.inspector";
 pub const PLACEMENTS: &str = "ecad.inspector.placements";
+/// Brief 047: the part set section; its rows are `ecad.inspector.parts.row.<n>` (0 the main part).
+pub const PARTS: &str = "ecad.inspector.parts";
 
 /// What the inspector shows defaults for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,6 +260,9 @@ pub struct Inspector {
     pub errors: BTreeMap<&'static str, String>,
     /// Full builds of the rows (tests: the update map).
     pub rebuilds: u64,
+    /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
+    /// no part lines.
+    pub parts: Vec<ecad_cadcraft::bom::PartSetRow>,
 }
 
 /// The kinds of a symbol's own texts.
@@ -275,7 +280,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::lists::standards::value_text(e, r)
 }
 
-type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>);
+type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>);
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let mut deps = BTreeSet::from([ObjectRef::Project]);
@@ -334,7 +339,12 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, rep) => connector_rows(doc, c, rep),
         _ => Vec::new(),
     };
-    (rows, deps, placements, connector)
+    // Brief 047: the part set reads the device's own properties (already a dependency).
+    let parts = match what {
+        What::Symbol(c, _) => ecad_cadcraft::bom::part_set(doc, c),
+        _ => Vec::new(),
+    };
+    (rows, deps, placements, connector, parts)
 }
 
 /// Bring the inspector's rows up to date (its update map).
@@ -380,8 +390,8 @@ fn sync(t: &mut Trial) {
                 i.errors.clear();
             }
             i.what = what;
-            let (rows, deps, placements, connector) = rows.unwrap_or_default();
-            (i.rows, i.deps, i.placements, i.connector) = (rows, deps, placements, connector);
+            let (rows, deps, placements, connector, parts) = rows.unwrap_or_default();
+            (i.rows, i.deps, i.placements, i.connector, i.parts) = (rows, deps, placements, connector, parts);
             i.connector_edits.clear();
             i.rebuilds += 1;
             i.seen = Some((serial, count, page, selection));
@@ -429,6 +439,7 @@ impl Inspector {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<InspectorAction> {
         let mut out = Vec::new();
         self.show_connector(ui, writable, &mut out);
+        self.show_parts(ui);
         if self.rows.is_empty() {
             return out;
         }
@@ -553,6 +564,41 @@ impl Inspector {
                     }
                 }
             }
+        }
+    }
+
+    /// Brief 047 (design 047 §6.2): the part set, one grey row per line, line 0 first; nothing to
+    /// click until 2.3's catalogue. A line with no part number shows `?` in the warning colour.
+    fn show_parts(&self, ui: &mut egui::Ui) {
+        if self.parts.is_empty() {
+            return;
+        }
+        ui.add_space(space::M);
+        ecad_ui::prim::read_value(ui, "PARTS").widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, PARTS));
+        let weak = ui.visuals().weak_text_color();
+        let warning = ui.visuals().warn_fg_color;
+        for p in &self.parts {
+            let name = format!("{PARTS}.row.{}", p.n);
+            let r = ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(&p.qty).small().color(weak));
+                ui.label(RichText::new(p.maker.as_deref().unwrap_or("")).small().color(weak));
+                match &p.part_number {
+                    Some(pn) => ui.label(RichText::new(pn).small().color(weak)),
+                    None => ui.label(RichText::new("?").small().color(warning)).on_hover_text(if p.n == 0 {
+                        "The device has no part number.".to_string()
+                    } else {
+                        format!("Line {} has no part number.", p.n)
+                    }),
+                };
+                ui.label(RichText::new(p.description.as_deref().unwrap_or("")).small().color(weak));
+                if let Some(a) = &p.article_number {
+                    ui.label(RichText::new(a).small().color(weak));
+                }
+                if let Some(n) = &p.note {
+                    ui.label(RichText::new(n).small().italics().color(weak));
+                }
+            });
+            r.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
         }
     }
 }

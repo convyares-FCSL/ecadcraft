@@ -111,6 +111,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "toposition",
     "setdefault",
     "canvassheet",
+    // Brief 047.
+    "partline",
+    "bomitem",
+    "article",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

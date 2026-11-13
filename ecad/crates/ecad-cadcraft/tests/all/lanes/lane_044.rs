@@ -489,3 +489,29 @@ fn pin_names_and_ignore_keys_round_trip() {
     drop(project);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Merge with 047 (design 044 §8.3): a connector's part line goes under the half `part.<n>.half`
+/// names (else its first drawn half), with that half's tag and location; nested, it follows that
+/// half's row.
+#[test]
+fn part_lines_go_under_their_half() {
+    let mut h = H::new(4427);
+    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    h.run("setprop", json!({"component": c.hex(), "key": "half.p.location", "value": "+FIELD"})).unwrap();
+    h.run("partline", json!({"component": c.hex(), "add": {"part_number": "CRIMP-1", "description": "Crimp contact", "qty": "4"}})).unwrap();
+    h.run("setprop", json!({"component": c.hex(), "key": "part.1.half", "value": "p"})).unwrap();
+    let tag = ecad_cadcraft::devices::tag_words(&h.doc(), c);
+    let rows = |h: &mut H| h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
+    let flat = rows(&mut h);
+    let line = flat.iter().find(|r| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{flat:?}"));
+    assert_eq!(line["location"], "+FIELD", "the plug half's location: {line}");
+    let e = h.run("setprop", json!({"component": c.hex(), "key": "part.1.half", "value": "x"})).unwrap_err();
+    assert!(e.contains("s (the socket half) or p"), "{e}");
+    h.run("setdefault", json!({"key": "bom.lines", "value": "nested"})).unwrap();
+    let nested = rows(&mut h);
+    let at = |pred: &dyn Fn(&Value) -> bool| nested.iter().position(pred);
+    let plug = at(&|r: &Value| r["tags"].as_str().is_some_and(|t| t == format!("{tag}.P"))).unwrap_or_else(|| panic!("{nested:?}"));
+    let crimp = at(&|r: &Value| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{nested:?}"));
+    assert_eq!(crimp, plug + 1, "the line follows the plug half's row: {nested:?}");
+    assert_eq!(h.p(|p| p.ledger.document().components[&c].properties.get("part.1.half").cloned()).as_deref(), Some("p"));
+}
