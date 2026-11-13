@@ -1,7 +1,9 @@
 # Brief 049: Continuation cross-references
 
-Status: Draft (designer, 2026-11-13). FP1–FP5 approved by the overseer (2026-11-13, design §12.1).
-Waits on the owner questions in design §13.
+Status: Approved (2026-11-13). The owner answered all 12 questions of design §13 "as recommended"
+on 2026-11-13, Q11 included: no tester; the worker's tests and the reviewer's update-map check
+cover it. The overseer approved FP1–FP5 (2026-11-13, design §12.1); for FP3, unrotated output stays
+byte-identical.
 Branch: `feature/continuation-refs`, from `origin/dev` `f26c8f53`.
 Designer: **yes** (`docs/design/049.md`) · Size: M (the roadmap's estimate)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.9**, lane **D**, after 1.3 PLC
