@@ -1,6 +1,6 @@
 # Brief 037: UI tokens, primitives and fonts (U1)
 
-Status: Draft (U0, 2026-11-13), for the overseer and the owner.
+Status: Approved (owner, 2026-11-13: U0 questions Q1–Q4 as recommended, except Q1: fonts live in ECAD's repo, not craft-fonts).
 Branch: `feature/ui-tokens`, from `origin/dev` once this brief is approved.
 Designer: done (`docs/design/ui-architecture.md` §2–§4; the look is spec §4) · Size: M
 Roadmap: M1 **1.5** (UI shell), first part; the U programme's foundation lane, which merges into
@@ -25,10 +25,10 @@ widget that is explicitly listed below.
 | `crates/ui-egui/src/theme.rs` (**upstream seam US2**, `// ECAD-SEAM(owner): font definitions builder.`) | `pub fn font_definitions(language) -> FontDefinitions`; `install_fonts` becomes `ctx.set_fonts(font_definitions(language))`, behaviour unchanged |
 | `crates/ui-egui/tests/` (one module) | US2: `install_fonts` sets exactly `font_definitions`'s result |
 | `ecad/UPSTREAM-PATCHES.md` | Seam US2 |
-| `ecad/apps/ecad-trial/src/main.rs`, `lib.rs` | Call `ecad_ui::style::apply` and `ecad_ui::fonts::install` at start (after CADCraft's); pass craft-fonts bytes found by family name |
+| `ecad/assets/fonts/` (new: IBM Plex Sans 400/500/600, Barlow Semi Condensed 400/600, `OFL.txt` for each family) | The five faces, taken unmodified from the official sources (`github.com/IBM/plex` releases, `github.com/google/fonts` `ofl/barlowsemicondensed`); record the source URL, version and SHA-256 of each file in `ecad/assets/fonts/README.md` |
+| `ecad/apps/ecad-trial/src/main.rs`, `lib.rs` | Call `ecad_ui::style::apply` and `ecad_ui::fonts::install` at start (after CADCraft's) |
 | `ecad/docs/design/tokens.md` | Rewritten to spec §4's names, keeping every existing `ecad.*` row (design §12 O6) |
-| `ATTRIBUTION.md` | Nothing: icons are drawn in code, fonts live in craft-fonts |
-| Outside this repository: `storytold/craft-fonts` | IBM Plex Sans 400/500/600 and Barlow Semi Condensed 400/600, `OFL.txt`, manifest lines (owner question Q1 of the design). Separate pull request |
+| `ATTRIBUTION.md` | IBM Plex Sans and Barlow Semi Condensed, SIL OFL 1.1 (icons are drawn in code) |
 
 Not touched: `ecad-cadcraft`, the canvas, the shell layout, any command. `Embedding` (US1) is
 U2's.
@@ -42,9 +42,10 @@ U2's.
 2. **`ecad-ui::style`**: egui visuals, spacing and text styles for both egui themes from
    `GRAPHITE`; one appearance (no OS light or dark following).
 3. **`ecad-ui::fonts`**: register IBM Plex Sans as the first `Proportional` face and families
-   `ui` and `sheet`, on top of CADCraft's `font_definitions(language)`. Bytes come from
-   `cadcraft_fonts::CRAFT_FONTS` found by family name, handed in by the trial. Missing faces: keep
-   CADCraft's definitions and record one line in the command history ("UI font not embedded").
+   `ui` and `sheet`, on top of CADCraft's `font_definitions(language)`. Bytes are embedded from
+   `ecad/assets/fonts/` with `include_bytes!` (native and wasm), so the faces are always present;
+   no craft-fonts dependency and no fallback path. Offering them to `storytold/craft-fonts` is a
+   later, owner-approved upstream step.
 4. **Primitives**: button, icon button, pill, chip, badge, field, segmented control, key cap,
    row; plus `read_value` and `provisional` (design §3.3). Each has an accessible label.
 5. **Icons**: painter functions for the shell's icons (design §3.4).
@@ -79,10 +80,9 @@ No view: tokens are constants and styles are applied once at start. Nothing reac
 4. `cargo xtask wasm` builds `ecad-tokens` and `ecad-ui`.
 5. US2: CADCraft's own tests pass unchanged; the new US2 test passes; `cargo xtask patches`
    passes.
-6. With craft-fonts (Plex and Barlow in the manifest) and `CRAFT_FONTS_DIR` set: the trial's UI
-   text is drawn in IBM Plex Sans (screenshot of the showcase, read by eye); without it, the trial
-   starts, its UI uses CADCraft's fonts, and the command history has the one line of scope item 3.
-   A test checks registration only when the faces are embedded, and says it skipped otherwise.
+6. The trial's UI text is drawn in IBM Plex Sans (screenshot of the showcase, read by eye), and a
+   test checks that `ui` and `sheet` families are registered with the embedded faces. The
+   `README.md` hashes match the committed files (test).
 7. The trial's existing tests pass unchanged (`cargo xtask test-changed`), apart from tests that
    asserted a style value a primitive replaced, each named in the PR.
 8. The PR records the measured size of the five font faces.
