@@ -859,9 +859,11 @@ impl Trial {
         if given.len() > MAX_NAME_BYTES || agent_name(given) != s.name {
             return Err(not_run("this call's agent name is not the one this session said hello with"));
         }
+        let Some(line) = params.get("line").and_then(Value::as_u64) else {
+            return Err(not_run("`line` must be a whole number (the request line's counter)"));
+        };
         s.last_call = Instant::now();
         s.finished = false;
-        let line = params.get("line").and_then(Value::as_u64).unwrap_or(0);
         if line != s.line {
             s.line = line;
             s.line_used = 0;
@@ -871,6 +873,12 @@ impl Trial {
 
     /// `ecad.execute` and `ecad.tool` through the gate, as the agent, for this call only.
     fn agent_call(&mut self, method: &str, params: &Value) -> Value {
+        if method == "ecad.execute" && !params.get("command").is_some_and(Value::is_string) {
+            return not_run("`command` must be a command name (text)");
+        }
+        if method == "ecad.tool" && !params.get("tool").is_some_and(Value::is_string) {
+            return not_run("`tool` must be a tool name (text)");
+        }
         let (session, name) = match self.agent_session_check(params) {
             Ok(x) => x,
             Err(v) => return v,

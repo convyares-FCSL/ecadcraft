@@ -71,14 +71,37 @@ pub fn not_answering(port: u16) -> String {
     format!("The ECAD window at {} is not answering (closed?). Reopen ECAD with agent access on; nothing was changed.", addr(port))
 }
 
-/// Upstream's [`Remote`] wording turned into ECAD's: `CADCraft at <addr>` becomes `The ECAD window
-/// at <addr>`, a refusal the window says did not run loses upstream's resend note (the window's
-/// own text already says nothing was changed), and a lost reply adds `check ecad_history`.
-pub fn reword(method: &str, e: &str) -> String {
+/// Upstream's [`Remote`] wording turned into ECAD's (design 035 §9.2, §11), for the window on
+/// `port`:
+/// - a refusal the window says did not run keeps the window's own sentence (it already says
+///   nothing was changed); upstream's bare transport words (`timeout`, `busy`, `unauthorized`)
+///   become sentences saying what happened, that nothing was changed and that it is safe to send
+///   again;
+/// - `CADCraft at <addr>` becomes `The ECAD window at <addr>`;
+/// - a lost or late reply keeps its advice, names the window, and adds `check ecad_history`.
+pub fn reword(port: u16, method: &str, e: &str) -> String {
+    let at = addr(port);
     let not_run = format!(": CADCraft did not start `{method}` and won't; it is safe to send again");
-    let mut e = e.strip_suffix(&not_run).map_or_else(|| e.to_string(), str::to_string);
-    e = e.replace("CADCraft at ", "The ECAD window at ");
+    if let Some(head) = e.strip_suffix(&not_run) {
+        let safe = "nothing was changed, so it is safe to send it again";
+        return match head.trim() {
+            "timeout" => format!("The ECAD window at {at} did not start the call within 60 s (it may be stuck or closing); {safe}."),
+            h if h.starts_with("busy") => {
+                let why = h.trim_start_matches("busy").trim_start_matches(':').trim();
+                let why = if why.is_empty() { "too many queued requests" } else { why };
+                format!("The ECAD window at {at} is busy ({why}); {safe}.")
+            }
+            h if h.starts_with("unauthorized") => {
+                format!("The ECAD window at {at} refused this server's token ({h}); {safe} once ECAD is restarted with agent access on.")
+            }
+            h => h.to_string(),
+        };
+    }
+    let mut e = e.replace("CADCraft at ", "The ECAD window at ");
     if e.contains("may or may not have been applied") {
+        if let Some(rest) = e.strip_prefix("timeout: ") {
+            e = format!("The ECAD window at {at} started the call but did not answer within 60 s: {rest}");
+        }
         e.push_str("; check ecad_history");
     }
     e
@@ -150,7 +173,7 @@ impl Link {
             if e.contains("not answering") || e.contains("connection refused") || e.contains("actively refused") {
                 not_answering(port)
             } else {
-                reword(method, &e)
+                reword(port, method, &e)
             }
         })
     }
@@ -254,10 +277,19 @@ mod tests {
 
     #[test]
     fn upstream_words_become_ecads() {
-        let e = "busy: CADCraft did not start `ecad.execute` and won't; it is safe to send again";
-        assert_eq!(reword("ecad.execute", e), "busy");
-        assert_eq!(reword("x", "CADCraft at 127.0.0.1:1: reset"), "The ECAD window at 127.0.0.1:1: reset");
-        assert!(reword("x", "`x` may or may not have been applied. Inspect the drawing first").ends_with("check ecad_history"));
+        let tail = ": CADCraft did not start `ecad.execute` and won't; it is safe to send again";
+        for word in ["busy", "busy: too many queued requests", "timeout", "unauthorized: missing or invalid control token"] {
+            let r = reword(47823, "ecad.execute", &format!("{word}{tail}"));
+            assert!(r.starts_with("The ECAD window at 127.0.0.1:47823 "), "{word}: {r}");
+            assert!(r.contains("nothing was changed") && r.contains("safe to send it again"), "{word}: {r}");
+        }
+        // The window's own refusals keep their sentence.
+        let own = "Refused: paused by the designer; nothing was changed.";
+        assert_eq!(reword(1, "ecad.execute", &format!("{own}{tail}")), own);
+        assert_eq!(reword(1, "x", "CADCraft at 127.0.0.1:1: reset"), "The ECAD window at 127.0.0.1:1: reset");
+        let late = reword(1, "x", "timeout: `x` may or may not have been applied. Inspect the drawing first");
+        assert!(late.starts_with("The ECAD window at 127.0.0.1:1 started the call"), "{late}");
+        assert!(late.ends_with("check ecad_history"), "{late}");
         assert_eq!(new_session_id().len(), 16);
         assert!(not_offered("cmdline.input").contains("execute only"));
         assert!(not_offered("ui.click").contains("mouse and keyboard"));

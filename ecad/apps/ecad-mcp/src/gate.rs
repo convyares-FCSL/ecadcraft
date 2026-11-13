@@ -200,9 +200,43 @@ pub fn not_own_step(seq: u64, label: &str) -> String {
     format!("Refused: the last step (#{seq} \"{label}\") is the designer's; an agent undoes only its own steps.")
 }
 
+/// Said when an agent on the bridge would restore a point of another branch.
+pub const RESTORE_OTHER_BRANCH: &str =
+    "Refused: restoring a point of another branch would take back steps that are not this agent's; an agent undoes only its own steps.";
+
+/// The agent-undo rule for `restore` (review of PR #69, 2): the step it records takes back every
+/// step after the target, so every step after it on the branch shown must be the session's own.
+/// A target the engine cannot find is left to the engine's own refusal; a preview records nothing.
+fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &OwnedSteps) -> Result<(), String> {
+    if params.get("preview").and_then(Value::as_bool) == Some(true) {
+        return Ok(());
+    }
+    p.read(s, |p, _| {
+        let Ok(pt) = ecad_cadcraft::history::point(p, params) else { return Ok(()) };
+        if pt.branch != ecad_cadcraft::history::current(p) {
+            return Err(RESTORE_OTHER_BRANCH.to_string());
+        }
+        let log = p.ledger.log();
+        // Steps after the target that are no longer held in memory cannot be shown to be its own.
+        if log.first().is_some_and(|t| t.seq > pt.seq.saturating_add(1)) {
+            let first = log.first().map_or((pt.seq.saturating_add(1), String::new()), |t| (t.seq, t.label.clone()));
+            return Err(not_own_step(first.0, &first.1));
+        }
+        match log.iter().rev().take_while(|t| t.seq > pt.seq).find(|t| !owned.contains(&t.id)) {
+            Some(t) => Err(not_own_step(t.seq, &t.label)),
+            None => Ok(()),
+        }
+    })
+    .map_err(|_| UNREADABLE.to_string())?
+}
+
 /// The agent-undo rule (design 035 §8.1): `u` (and its confirming forms) only when the step it
-/// would take back is the session's; `redo` only when the undo it would redo is.
-fn check_own_step(s: &mut Session, p: &ProjectHandle, id: &str, owned: &OwnedSteps) -> Result<(), String> {
+/// would take back is the session's; `redo` only when the undo it would redo is; `restore` only
+/// when every step it takes back is.
+fn check_own_step(s: &mut Session, p: &ProjectHandle, id: &str, params: &Value, owned: &OwnedSteps) -> Result<(), String> {
+    if id == "restore" {
+        return check_restore(s, p, params, owned);
+    }
     let undo = matches!(id, "undo" | "u" | "undomerge" | "undoissue");
     let redo = matches!(id, "redo" | "mredo");
     if !undo && !redo {
@@ -246,7 +280,7 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
     let writes_off = call.writes_off();
     policy::check(&id, &params, call.write, ro.as_deref()).map_err(|e| if e == policy::WRITES_OFF { writes_off } else { e })?;
     if let Some(owned) = call.owned.as_deref() {
-        check_own_step(s, p, &id, owned)?;
+        check_own_step(s, p, &id, &params, owned)?;
     }
     // Fail closed: a call whose transactions cannot be counted does not run.
     let before = log_len(s, p)?;

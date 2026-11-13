@@ -157,12 +157,32 @@ impl State {
         self.local.as_mut().ok_or_else(|| NO_LOCAL.to_string())
     }
 
-    /// Whether the next call goes to the window (probing while undecided).
+    /// Whether the next call goes to the window (probing while undecided). Bridging closes the
+    /// headless project, so its file's writer lock is released (review of PR #69, 1).
     fn bridged(&mut self) -> Result<bool, String> {
         let (agent, write) = (self.agent.clone(), self.write);
-        match self.link.as_mut() {
-            None => Ok(false),
-            Some(l) => l.decide(&agent, write),
+        let b = match self.link.as_mut() {
+            None => false,
+            Some(l) => l.decide(&agent, write)?,
+        };
+        if b {
+            self.local = None;
+        }
+        Ok(b)
+    }
+
+    /// A `--connect` server keeps a headless project **file** open only once headless has
+    /// recorded something (it then sticks). Until then the file is closed after every request
+    /// line, so it is not locked while the person opens it in the window (review of PR #69, 1). A
+    /// project in memory locks nothing and stays open.
+    fn release_unstuck(&mut self) {
+        if !self.link.as_ref().is_some_and(|l| l.mode != bridge::Mode::Headless { stuck: true }) {
+            return;
+        }
+        let file =
+            self.local.as_mut().is_some_and(|l| l.project.read(&mut l.headless.session, |p, _| p.file_status().path.is_some()).unwrap_or(true));
+        if file {
+            self.local = None;
         }
     }
 
@@ -568,13 +588,23 @@ impl EcadMcp {
             Ok(msg) => self.handle_one(msg),
             Err(e) => Some(error(Value::Null, PARSE_ERROR, format!("parse error: {e}"))),
         };
+        self.end_line();
         reply.map(|r| r.to_string())
     }
 
     /// Answer one JSON-RPC message, as one call (its own request line).
     pub fn handle(&mut self, msg: Value) -> Option<Value> {
         self.new_line();
-        self.handle_one(msg)
+        let r = self.handle_one(msg);
+        self.end_line();
+        r
+    }
+
+    /// A request line was answered.
+    fn end_line(&mut self) {
+        if let Ok(mut st) = self.state_mut() {
+            st.release_unstuck();
+        }
     }
 
     /// Answer one message of the request line being answered.

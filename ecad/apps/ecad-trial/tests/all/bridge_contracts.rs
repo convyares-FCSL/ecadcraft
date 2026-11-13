@@ -523,3 +523,80 @@ fn an_agent_author_found_between_frames_is_reset_and_access_stays_on() {
     assert_eq!(authors(&mut h).last(), Some(&Author::User));
     a.exec(&mut h, "wire", wire(10.0));
 }
+
+// ---------- review of PR #69, 1: a headless read does not keep the file locked ----------
+
+#[test]
+fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recorded() {
+    let dir = std::env::temp_dir().join(format!("ecad-035-lock-{}", ecad_cadcraft::session_seed()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("lock.ecad").to_string_lossy().into_owned();
+    drop(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
+    let port = free_port();
+    // The server is given the file, and its first call is a read while no window is open.
+    let (tx, req_rx) = channel::<Value>();
+    let (rep_tx, rx) = channel::<Value>();
+    let file = path.clone();
+    std::thread::spawn(move || {
+        let opts = Options { write: true, agent: Some("tester".into()) };
+        let mut s = EcadMcp::connect(port, false, ecad_mcp::opener(Some(file), false, true), opts).unwrap();
+        for msg in req_rx {
+            let r = s.handle_line(&msg.to_string()).map_or(Value::Null, |r| serde_json::from_str(&r).unwrap());
+            if rep_tx.send(r).is_err() {
+                break;
+            }
+        }
+    });
+    let mut a = Server { tx, rx, next: 1 };
+    a.tx.send(json!({"jsonrpc": "2.0", "id": 0, "method": "tools/call", "params": {"name": "ecad_project", "arguments": {}}})).unwrap();
+    let r = a.rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("\"path\""), "a headless read: {r}");
+    // The person opens the same file in the window, writable.
+    ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
+    let mut t = Trial::with_file(None, &path).unwrap();
+    assert!(t.notice().is_none(), "{:?}", t.notice());
+    assert_eq!(t.status().unwrap().file.read_only, None, "the window has the file writable");
+    t.agent.control_flag(port);
+    let mut h: H = Harness::builder().build_ui_state(
+        |ui, t: &mut Trial| {
+            t.logic(&ui.ctx().clone());
+            t.ui(ui);
+        },
+        t,
+    );
+    h.run_steps(3);
+    let before = conductors(&mut h);
+    let w = a.exec(&mut h, "wire", wire(0.0));
+    assert_eq!(w["ecadTransactions"][0]["author"], json!("agent tester"), "{w}");
+    assert_eq!(conductors(&mut h), before + 1);
+    a.ok(&mut h, "save", json!({}));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------- review of PR #69, 2: `restore` keeps to the agent's own steps ----------
+
+#[test]
+fn an_agent_restore_over_the_persons_steps_is_refused_and_over_its_own_works() {
+    let (mut h, port) = live_trial();
+    // Restore works on a saved project (branches live in its file).
+    let dir = std::env::temp_dir().join(format!("ecad-035-restore-{}", ecad_cadcraft::session_seed()));
+    std::fs::create_dir_all(&dir).unwrap();
+    h.state_mut().save_as(&dir.join("restore.ecad").to_string_lossy()).unwrap();
+    h.run_steps(1);
+    let mut a = server(port, true, "tester");
+    let start = log_len(&mut h) as u64;
+    a.exec(&mut h, "wire", wire(0.0));
+    person_wire(&mut h, 5.0);
+    a.exec(&mut h, "wire", wire(10.0));
+    let before = log_len(&mut h);
+    let e = a.exec_refused(&mut h, "restore", json!({"seq": start}));
+    assert_eq!(e, ecad_mcp::gate::not_own_step(start + 2, "Wire"), "the person's #{} is in the way", start + 2);
+    assert_eq!(log_len(&mut h), before, "nothing recorded");
+    assert_eq!(conductors(&mut h), 3);
+    // Back to just before the agent's own last wire: only its own step is taken back.
+    let r = a.exec(&mut h, "restore", json!({"seq": start + 2}));
+    assert_eq!(r["ecadTransactions"][0]["author"], json!("agent tester"), "{r}");
+    assert_eq!(conductors(&mut h), 2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
