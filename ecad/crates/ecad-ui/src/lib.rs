@@ -7,6 +7,8 @@
 //!   control, key cap, row) and [`prim::read_value`], [`prim::provisional`].
 //! - [`icons`]: the shell's icons, painted in code.
 //! - [`showcase`]: one page drawing every primitive in every state (for screenshots).
+//! - [`table`]: the one table every manager uses (brief 039): sort, filter, group, multi-select,
+//!   inline edit, go-to, change tint, CSV; virtualised.
 //!
 //! From brief 037 on, ECAD UI code takes colours, sizes and fonts from here, never locally
 //! (`cargo xtask layers` checks it).
@@ -20,6 +22,7 @@ pub mod icons;
 pub mod prim;
 pub mod showcase;
 pub mod style;
+pub mod table;
 
 pub use ecad_tokens as tokens;
 pub use ecad_tokens::Icon;
