@@ -15,6 +15,8 @@ ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
 ecad-inspect = { workspace = true }
 ecad-model = { workspace = true }
 ecad-file = { workspace = true }
+# Brief 037: the style, fonts and primitives of ECAD's interface.
+ecad-ui = { path = "../../crates/ecad-ui" }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`

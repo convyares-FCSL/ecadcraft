@@ -299,6 +299,9 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
     }
 }
 
+/// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
+type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>);
+
 /// The harness state around CADCraft's [`CadApp`].
 pub struct Trial {
     pub cad: CadApp,
@@ -325,6 +328,11 @@ pub struct Trial {
     /// The Project panel's Developer section: the command field's reply, the inline debugger and
     /// the project summary.
     pub developer: developer::Developer,
+    /// Brief 037: what ECAD's fonts and style were last installed for (CADCraft's interface
+    /// language, theme choice and the system theme), and whether the style is applied once more
+    /// in the next pass, when ECAD's fonts are in.
+    ecad_style: Option<EcadStyleKey>,
+    ecad_style_again: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
     /// The Project panel (brief 016).
@@ -507,6 +515,8 @@ impl Trial {
             command_hint: None,
             focus_command: false,
             developer: developer::Developer::default(),
+            ecad_style: None,
+            ecad_style_again: false,
             debugger: Debugger::default(),
             panel: ProjectPanel::default(),
             preview: None,
@@ -1435,6 +1445,7 @@ impl Trial {
             (esc, click)
         });
         self.cad.ui(ui);
+        self.ecad_style(ui.ctx());
         self.agent_banner_ui(ui.ctx());
         self.clear_goto_ring(ring_input);
         self.take_props();
@@ -1456,6 +1467,24 @@ impl Trial {
             });
         }
         self.hover_tooltip(ui.ctx());
+    }
+
+    /// Brief 037: ECAD's fonts (IBM Plex Sans for the interface, Barlow Semi Condensed for the
+    /// sheet) on top of CADCraft's font set for the language (upstream seam US2), and ECAD's style
+    /// from the tokens. Runs after CADCraft's frame start, which installs its own fonts and style
+    /// when the language or theme changes; ECAD's then replace them, in the same pass. The style
+    /// is applied again in the next pass, once ECAD's font families exist.
+    fn ecad_style(&mut self, ctx: &egui::Context) {
+        let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme());
+        if self.ecad_style != Some(key) {
+            ecad_ui::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
+            ecad_ui::style::apply(ctx);
+            self.ecad_style = Some(key);
+            self.ecad_style_again = true;
+            ctx.request_repaint();
+        } else if std::mem::take(&mut self.ecad_style_again) {
+            ecad_ui::style::apply(ctx);
+        }
     }
 
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the

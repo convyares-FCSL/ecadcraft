@@ -7,6 +7,8 @@
 //! - **Inspect Project**: a readable, copyable summary of the project;
 //! - **Agent access** (brief 035, design §3.2): Off, Read only or Read and change, the port, and
 //!   what listens (until the UI shell gives settings a home).
+//! - `ui.primitives`: the hidden page showing every primitive of `ecad-ui` in every state (brief
+//!   037), for screenshots; it needs no project.
 //!
 //! Everything here reads, except the command field, which runs commands through the ordinary
 //! command path. Excluded: a separate debugger panel or command window.
@@ -34,6 +36,8 @@ pub const AGENT_PORT_RANGE: &str = "1024–65535";
 pub const AGENT_RESTART: &str = "The new port is used the next time ECAD starts.";
 /// The mode's tooltip under `--control`.
 pub const AGENT_THIS_RUN: &str = "Set by --control for this run.";
+/// The primitives showcase's button (brief 037), named as its page.
+pub const PRIMITIVES: &str = ecad_ui::showcase::PAGE;
 
 /// What the section asks the trial for.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +84,8 @@ pub enum Body {
     None,
     Debugger,
     Inspect,
+    /// The primitives showcase (brief 037).
+    Primitives,
 }
 
 /// The section's state (the command field's text lives in the trial, as the template buttons
@@ -92,6 +98,8 @@ pub struct Developer {
     pub reply: Vec<String>,
     /// The project summary, from Inspect Project.
     pub inspect: Option<String>,
+    /// What the primitives showcase's live widgets edit.
+    pub showcase: ecad_ui::showcase::Showcase,
 }
 
 /// Everything the section draws, borrowed from the trial.
@@ -186,6 +194,10 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
                     out.push(Action::Snapshot);
                 }
             }
+            let showing = p.dev.body == Body::Primitives;
+            if ui.selectable_label(showing, RichText::new(PRIMITIVES).small()).on_hover_text("Every interface primitive in every state").clicked() {
+                p.dev.body = if showing { Body::None } else { Body::Primitives };
+            }
         });
         if toggled {
             p.dev.open = !p.dev.open;
@@ -242,6 +254,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
                     });
                 }
             }
+            Body::Primitives => ecad_ui::showcase::show(ui, &mut p.dev.showcase),
             _ => {}
         }
     });

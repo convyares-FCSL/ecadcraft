@@ -1,0 +1,23 @@
+[package]
+name = "ecad-ui"
+description = "ECAD's interface kit: the egui style from ecad-tokens, the embedded fonts, the primitives and the icon painters (brief 037)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# UiKit (ecad xtask layers): egui and ecad-tokens only; no `cadcraft-*` crate and no other ECAD
+# crate, so the widgets stay swappable, build for wasm and test without wgpu. `egui_extras` joins
+# with the table (U3).
+[dependencies]
+ecad-tokens = { path = "../ecad-tokens" }
+egui = { version = "0.37", default-features = false }
+
+[dev-dependencies]
+# Headless widget tests by accessible label; no renderer (no `wgpu` feature).
+egui_kittest = "=0.37.0"
+# The fonts README's SHA-256 column is checked against the embedded bytes (already in the lock).
+sha2 = "0.10"
