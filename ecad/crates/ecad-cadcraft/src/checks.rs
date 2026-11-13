@@ -751,6 +751,22 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
     out
 }
 
+/// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
+/// spare connector pin, fuse output or card supply point may stay unwired without an
+/// `Unconnected` check. Every other check on it still runs.
+fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
+    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return false };
+    doc.representations_of(Subject::Component(c)).any(|(_, r)| {
+        let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
+        let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
+        crate::devices::shown_terminals(doc, c, r)
+            .iter()
+            .filter(|(x, _)| *x == t)
+            .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
+            .any(|td| crate::symbols::is_quiet(s, &td.key))
+    })
+}
+
 /// The checks of connection point `t`: a device point with nothing attached.
 pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
@@ -760,6 +776,9 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
     if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.conductors.is_empty()) {
+        return Vec::new();
+    }
+    if is_quiet_point(doc, t) {
         return Vec::new();
     }
     let (page, at) = terminal_place(doc, t);

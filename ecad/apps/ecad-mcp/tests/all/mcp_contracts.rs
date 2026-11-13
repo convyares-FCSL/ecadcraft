@@ -795,7 +795,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     // Reading.
     let s = c.exec("symbols", json!({"query": "-Q"}));
     let keys: Vec<&str> = s["symbols"].as_array().unwrap().iter().map(|x| x["key"].as_str().unwrap()).collect();
-    assert_eq!(keys, ["mcb1", "mcb2"]);
+    assert_eq!(keys, ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
     let devices = c.exec("devices", json!({"tag": "-K05"}));
     assert_eq!(devices["devices"][0]["representations"].as_array().unwrap().len(), 2);
 
