@@ -21,7 +21,10 @@
 
 mod accessories;
 mod devices;
+// Brief 041: what is under the cursor (the wheel) and the running tool's intent.
 mod forms;
+pub mod intent;
+pub mod kind;
 mod location_form;
 mod refs;
 mod terminals;

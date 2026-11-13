@@ -29,6 +29,7 @@ ecad-store = { workspace = true }
 ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }
 # Brief 040: canvas colours and markers (`look::sheet`, `overlay_marks`) from the tokens.
+# Brief 041: the action table names its icons (ecad-tokens is plain data, no UI toolkit).
 ecad-tokens = { path = "../ecad-tokens" }
 cadcraft-engine = { path = "../../../crates/engine" }
 # Brief 024: Print Book installs CADCraft's PDF plotter as the engine's plot hook (no PDF code in

@@ -256,6 +256,29 @@ Tool icons echo the schematic.
 | `icon.chevron_right` | Chevron right | A chevron |
 | `icon.chevron_up` | Chevron up | A chevron |
 | `icon.chevron_down` | Chevron down | A chevron |
+| `icon.delete` | Delete | A bin with a lid (041: an action) |
+| `icon.go_to` | Go to | An arrow leaving a box (041: an action) |
+| `icon.show_row` | Show row | Rows, the middle one marked (041: an action) |
+| `icon.edit` | Edit | A pencil (041: an action) |
+| `icon.properties` | Properties | A list in a box (041: an action) |
+| `icon.rotate` | Rotate | An open circle with an arrow head (041: an action) |
+| `icon.mirror` | Mirror | Two triangles about a dashed axis (041: an action) |
+| `icon.duplicate` | Duplicate | Two overlapping boxes (041: an action) |
+| `icon.connect` | Connect | A lead into a ring (041: an action) |
+| `icon.disconnect` | Disconnect | A lead apart from a ring (041: an action) |
+| `icon.number` | Number | A hash (041: an action) |
+| `icon.move` | Move | A cross with four arrow heads (041: an action) |
+| `icon.paste` | Paste | A sheet on a board with a clip (041: an action) |
+| `icon.new_page` | New page | A sheet with a plus (041: an action) |
+| `icon.line` | Line | A diagonal with end points (041: an action) |
+| `icon.polyline` | Polyline | A bent line (041: an action) |
+| `icon.rectangle` | Rectangle | A rectangle (041: an action) |
+| `icon.circle` | Circle | A circle (041: an action) |
+| `icon.arc` | Arc | A half circle with its centre (041: an action) |
+| `icon.terminal` | Terminal | A block with a screw ring between two leads (041: an action) |
+| `icon.junction` | Junction | A dot where a line meets a line (041: an action) |
+| `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
+| `icon.eye` | Show or hide | An eye (041: an action) |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

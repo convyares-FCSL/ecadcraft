@@ -342,9 +342,40 @@ pub const TOOLS: &[Tool] = &[
     },
 ];
 
-/// The tab as CADCraft's Tool Sets panel shows it.
+/// The tab as CADCraft's Tool Sets panel shows it (developer switch only). Brief 041: every
+/// button's command is now reachable from an action ([`covered`]); the buttons stay here, behind
+/// the developer switch, until the tests that drive the forms through them move to the actions.
 pub fn tab() -> ExtraToolTab {
     ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
+}
+
+/// The command a button reaches (brief 041): its own for Start and Run, the template's, the
+/// symbol search's, or the dialog's. `None` for the developer tools.
+pub fn command_of(t: &Tool) -> Option<&'static str> {
+    Some(match t.kind {
+        Kind::Start(c) => c,
+        Kind::Run(line) => line.split_whitespace().next()?,
+        Kind::Search => "symbols",
+        Kind::Template => match t.id {
+            "ecad.setprop" => "setprop",
+            "ecad.cableadd" => "cableadd",
+            "ecad.delete" => "ecaddelete",
+            _ => return None,
+        },
+        Kind::Trial => match t.id {
+            "ecad.renumber" => "renumber",
+            "ecad.renumberwires" => "renumberwires",
+            "ecad.finalise" => "finalise",
+            // Preview Reference is the reference wheel's Preview (an action with no command).
+            "ecad.cablepreview" => return ecad_cadcraft::actions::find("reference.preview").map(|_| "reference.preview"),
+            _ => return None,
+        },
+    })
+}
+
+/// Whether an action covers the button (brief 041): its command, or Preview Reference's action.
+pub fn covered(t: &Tool) -> bool {
+    command_of(t).is_some_and(|c| ecad_cadcraft::actions::covers(c) || ecad_cadcraft::actions::find(c).is_some())
 }
 
 /// The tools of the Project panel's Developer section, in order; Export Inspector Snapshot only

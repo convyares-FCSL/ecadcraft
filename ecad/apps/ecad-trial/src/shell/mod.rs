@@ -3,7 +3,7 @@
 //!
 //! - top bar: the project menu, the four workspaces (Ctrl+1–4), search (Ctrl+K), the Checks,
 //!   revision and agent pills ([`top_bar`]);
-//! - the agent banner while an agent is connected (035's banner, unchanged);
+//! - the agent banner while an agent is connected (035's banner, styled by 043);
 //! - left panel: Pages, Devices and History, navigation only ([`left`]);
 //! - tool strip in Draw: seven groups whose flyouts list today's tools ([`tool_strip`]);
 //! - main view: the page (CADCraft's drawing through upstream seam US1, `CadApp::ui_embedded`),
@@ -11,9 +11,9 @@
 //!   it splits for a companion view ([`layout`]);
 //! - drawer: Checks ([`drawer`]); right panel: the ECAD properties ([`right`]), with the Text
 //!   panel over it (Ctrl+/; [`text_panel`]); status bar ([`status_bar`]);
-//! - Settings, an overlay opened from the project menu: a Developer section with the developer
-//!   switch, which shows CADCraft's own interface inside the main view (`--cad-ui`,
-//!   `ui.cadchrome`).
+//! - Settings, a full-window overlay opened from the project menu ([`crate::settings`], brief
+//!   042); its Developer section has the developer switch, which shows CADCraft's own interface
+//!   inside the main view (`--cad-ui`, `ui.cadchrome`).
 //!
 //! Panels keep their contents (design §5.6); only their framing is the shell's. The shell's state
 //! and the per-project page views persist in eframe's storage ([`state`]).
@@ -23,6 +23,7 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod drawer;
+pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
@@ -32,6 +33,7 @@ pub mod status_bar;
 pub mod text_panel;
 pub mod tool_strip;
 pub mod top_bar;
+pub mod wheel;
 
 use std::collections::BTreeSet;
 
@@ -290,9 +292,12 @@ impl Trial {
         // The Developer section and the Text panel are one: either opened opens both.
         let open = self.developer.open || self.shell.state.text_panel;
         (self.developer.open, self.shell.state.text_panel) = (open, open);
-        let agent = self.agent.banner.is_some();
+        // The banner's slot while an agent is shown, unless the agent pill hid it (brief 043).
+        let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
+        // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
+        crate::settings::show(self, ui);
         keys::handle(self, ui.ctx(), &slots);
         self.refresh_panel();
         self.sync_props();
@@ -302,8 +307,8 @@ impl Trial {
         // CADCraft's interface stays behind the developer switch (US1); ECAD owns the style.
         let chrome = self.shell.state.cad_chrome;
         self.cad.embedding = Embedding { chrome, idle_typing: chrome, canvas_menus: chrome, style: false };
-        // The command line shows only while a command prompts (until U4b's intent line).
-        self.cad.ui.show_command_line = chrome || self.cad.session.prompting();
+        // Brief 041: the intent line replaces the command line, at rest and while prompting.
+        self.cad.ui.show_command_line = chrome;
 
         let s = ecad_ui::SHELL;
         top_bar::show(self, ui, slots.top_bar);
@@ -311,14 +316,14 @@ impl Trial {
             fill(ui, r, s.panel);
             let banner = self.agent.banner.clone();
             let busy = self.cad.session.running.is_some();
-            let act = in_rect(ui, r, "ecad.shell.banner", |ui| {
-                ui.add_space(ecad_ui::tokens::space::XS);
-                banner.and_then(|b| crate::agent::banner::show_line(ui, &b, busy))
-            });
+            let since = banner.as_ref().and_then(|b| self.agent.sessions.get(&b.session)).map(|x| crate::agent::last_write::wall_ms(x.since));
+            let act = in_rect(ui, r, "ecad.shell.banner", |ui| banner.and_then(|b| crate::agent::banner::show(ui, &b, busy, since)));
             if let Some(a) = act {
                 self.agent_action(a);
             }
         }
+        // History's session groups and their Undo session (brief 043).
+        self.history_agent_sync();
         status_bar::show(self, ui, slots.status);
         left::show(self, ui, &slots);
         right::show(self, ui, &slots);
@@ -329,9 +334,6 @@ impl Trial {
         self.shell.frame_ms = cadcraft_ui_egui::now_ms() - t0;
         self.main_view(ui, &slots);
         self.take_props();
-        let t1 = cadcraft_ui_egui::now_ms();
-        self.settings_overlay(ui.ctx());
-        self.shell.frame_ms += cadcraft_ui_egui::now_ms() - t1;
     }
 
     /// The main view (and the companion half): the page through US1, or a hosted body.
@@ -360,9 +362,10 @@ impl Trial {
             self.cad.ui_embedded(ui);
         });
         crate::canvas::paint(self, ui, page_rect);
+        crate::agent::last_write::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
-        // Right-click on the page does nothing in U2 except while a command runs (the wheel is U4b).
-        let _ = self.cad.take_secondary_click();
+        // Brief 041: right-click opens the wheel (no tool running); then the intent line.
+        self.wheel_frame(ui);
         if let Some(h) = slots.handle {
             self.split_handle(ui, h, slots);
         }
@@ -529,24 +532,6 @@ impl Trial {
             self.open_release(None);
         }
         self.shell.publish = if i == 0 { PublishTab::Release } else { PublishTab::PrintBook };
-    }
-
-    /// Settings, over the window: a Developer section with the developer switch (U4c fills the
-    /// rest; 035's Agent access moves here in U4d).
-    fn settings_overlay(&mut self, ctx: &egui::Context) {
-        if !self.shell.settings_open {
-            return;
-        }
-        let mut open = true;
-        let mut on = self.shell.state.cad_chrome;
-        egui::Window::new(SETTINGS).id(egui::Id::unique("ecad.settings")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
-            ui.label(egui::RichText::new("Developer").strong());
-            ui.checkbox(&mut on, DEVELOPER_SWITCH).on_hover_text(
-                "CADCraft's menus, toolbar, Tool Sets, layers, layouts and command line, inside the main view. Also --cad-ui or ui.cadchrome.",
-            );
-        });
-        self.shell.state.cad_chrome = on;
-        self.shell.settings_open = open;
     }
 
     /// The dots on pages changed while another page was shown (design §8.2, Pages): from the

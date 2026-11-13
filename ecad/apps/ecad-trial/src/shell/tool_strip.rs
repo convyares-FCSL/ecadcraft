@@ -2,140 +2,51 @@
 //! group's last-used tool and a click starts it; hovering it opens the flyout listing the group's
 //! tools; the group's key starts the last-used tool, and pressed again steps to the next.
 //!
-//! In U2 the flyouts list today's tools that fit each group: the ECAD Tool Sets tab's buttons
-//! ([`crate::tools::TOOLS`]) and, for Draw and Text, CADCraft's own drawing commands. Select's
-//! flyout also holds the tools that act on existing things until U4b moves them to the wheel.
-//! Every ECAD Tool Sets button is in exactly one flyout (a test checks it).
+//! Brief 041: the groups and their tools come from the action table
+//! ([`ecad_cadcraft::actions`]): a tool is an action with a group, and a tool whose command does
+//! not exist yet is not listed. Tools only start new things; what acts on an existing thing is on
+//! that thing's wheel ([`super::wheel`]).
+//!
+//! [`ToolStrip`] also keeps lane U4b's other state between frames: the open wheel and the intent
+//! line's cache and refusal.
 
+use ecad_cadcraft::actions::{Action, ToolGroup};
 use ecad_ui::tokens::{Icon, size, space};
 use eframe::egui::{self, Key, Rect, pos2, vec2};
 
 use crate::Trial;
 
-/// One flyout entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Entry {
-    /// Back to selecting: ends the running command.
-    Select,
-    /// An ECAD Tool Sets button, by id ([`crate::tools::TOOLS`]).
-    Ecad(&'static str),
-    /// A CADCraft command started by name, with its label.
-    Cad(&'static str, &'static str),
-}
-
-impl Entry {
-    /// Its label in the flyout.
-    pub fn label(self) -> &'static str {
-        match self {
-            Entry::Select => "Select",
-            Entry::Ecad(id) => crate::tools::find(id).map_or(id, |t| t.label),
-            Entry::Cad(_, label) => label,
-        }
-    }
-
-    /// Whether the group key steps to it (tools that start at the page; not dialogs or
-    /// templates).
-    fn steps(self) -> bool {
-        match self {
-            Entry::Select | Entry::Cad(..) => true,
-            Entry::Ecad(id) => crate::tools::find(id).is_some_and(|t| matches!(t.kind, crate::tools::Kind::Start(_))),
-        }
-    }
-}
-
-/// A tool group.
+/// A tool group as the strip shows it.
 #[derive(Debug, Clone, Copy)]
 pub struct Group {
+    pub group: ToolGroup,
     pub letter: char,
     pub key: Key,
     pub icon: Icon,
     /// Its accessible label, with the key: `Wire (W)`.
     pub label: &'static str,
-    pub entries: &'static [Entry],
 }
 
-use Entry::{Cad, Ecad};
+impl Group {
+    /// Its tools, in flyout order (the action table's).
+    pub fn tools(&self) -> Vec<&'static Action> {
+        self.group.tools()
+    }
+}
+
+const fn group(group: ToolGroup, key: Key, label: &'static str) -> Group {
+    Group { group, letter: group.letter(), key, icon: group.icon(), label }
+}
 
 /// The seven groups, in strip order (spec §2).
 pub const GROUPS: [Group; 7] = [
-    Group {
-        letter: 'V',
-        key: Key::V,
-        icon: Icon::Select,
-        label: "Select (V)",
-        entries: &[
-            Entry::Select,
-            Ecad("ecad.deviceprops"),
-            Ecad("ecad.setprop"),
-            Ecad("ecad.devicedelete"),
-            Ecad("ecad.delete"),
-            Ecad("ecad.renumber"),
-            Ecad("ecad.finalise"),
-        ],
-    },
-    Group {
-        letter: 'W',
-        key: Key::W,
-        icon: Icon::Wire,
-        label: "Wire (W)",
-        entries: &[
-            Ecad("ecad.wire"),
-            Ecad("ecad.junction"),
-            Ecad("ecad.joinwires"),
-            Ecad("ecad.connect"),
-            Ecad("ecad.disconnect"),
-            Ecad("ecad.tool.jumper"),
-            Ecad("ecad.wirenumber"),
-            Ecad("ecad.renumberwires"),
-        ],
-    },
-    Group {
-        letter: 'P',
-        key: Key::P,
-        icon: Icon::Place,
-        label: "Place (P)",
-        entries: &[
-            Ecad("ecad.place"),
-            Ecad("ecad.findsymbol"),
-            Ecad("ecad.terminals"),
-            Ecad("ecad.bridge"),
-            Ecad("ecad.tool.accessory"),
-            Ecad("ecad.addterminal"),
-            Ecad("ecad.convertcomponent"),
-        ],
-    },
-    Group {
-        letter: 'C',
-        key: Key::C,
-        icon: Icon::Cable,
-        label: "Cable (C)",
-        entries: &[
-            Ecad("ecad.cableslash"),
-            Ecad("ecad.cablecontinue"),
-            Ecad("ecad.cableadd"),
-            Ecad("ecad.cablefan"),
-            Ecad("ecad.cableref"),
-            Ecad("ecad.cablecore"),
-            Ecad("ecad.cableview"),
-            Ecad("ecad.cablegoto"),
-            Ecad("ecad.cablepreview"),
-        ],
-    },
-    Group {
-        letter: 'D',
-        key: Key::D,
-        icon: Icon::Draw,
-        label: "Draw (D)",
-        entries: &[Cad("line", "Line"), Cad("pline", "Polyline"), Cad("rectang", "Rectangle"), Cad("circle", "Circle"), Cad("arc", "Arc")],
-    },
-    Group { letter: 'B', key: Key::B, icon: Icon::Box, label: "Box (B)", entries: &[Ecad("ecad.tool.locationbox"), Ecad("ecad.mirrormove")] },
-    Group {
-        letter: 'T',
-        key: Key::T,
-        icon: Icon::Text,
-        label: "Text (T)",
-        entries: &[Cad("text", "Text"), Ecad("ecad.tool.showtext"), Ecad("ecad.tool.movetext"), Ecad("ecad.view.hiddentext")],
-    },
+    group(ToolGroup::Select, Key::V, "Select (V)"),
+    group(ToolGroup::Wire, Key::W, "Wire (W)"),
+    group(ToolGroup::Place, Key::P, "Place (P)"),
+    group(ToolGroup::Cable, Key::C, "Cable (C)"),
+    group(ToolGroup::Draw, Key::D, "Draw (D)"),
+    group(ToolGroup::Box, Key::B, "Box (B)"),
+    group(ToolGroup::Text, Key::T, "Text (T)"),
 ];
 
 /// The flyout's accessible label for group `g`.
@@ -143,35 +54,28 @@ pub fn flyout_label(g: &Group) -> String {
     format!("{} tools", g.label)
 }
 
-/// The strip's state: each group's last-used entry, the open flyout, and the group whose tool
-/// the last group key started (pressing it again steps).
+/// The strip's state: each group's last-used tool, the open flyout, and the group whose tool
+/// the last group key started (pressing it again steps); and lane U4b's wheel and intent line.
 #[derive(Debug, Clone, Default)]
 pub struct ToolStrip {
     pub last: [usize; 7],
     pub flyout: Option<usize>,
     stepping: Option<usize>,
+    /// The wheel, while it is open.
+    pub wheel: Option<super::wheel::Open>,
+    /// A command was running at the end of the last frame (a right-click then finishes its step
+    /// and opens no wheel).
+    pub was_running: bool,
+    /// The intent line's state, and its text last frame (tests read it).
+    pub intent: super::intent::Intent,
+    pub intent_text: String,
 }
 
 impl Trial {
-    /// Start a flyout entry.
-    pub fn start_entry(&mut self, e: Entry) {
-        match e {
-            Entry::Select => {
-                if self.cad.session.running.is_some() {
-                    self.cad.session.cancel();
-                }
-            }
-            Entry::Ecad(id) => {
-                if let Err(err) = self.tool(id) {
-                    self.cad.session.echo(err);
-                }
-            }
-            Entry::Cad(name, _) => {
-                if self.cad.session.running.is_some() {
-                    self.cad.session.cancel();
-                }
-                self.cad.start(name);
-            }
+    /// Start a tool (an action with a group): its command, with nothing picked yet.
+    pub fn start_tool(&mut self, a: &'static Action) {
+        if let Err(e) = self.run_action(a, None, None) {
+            self.cad.session.echo(e);
         }
     }
 
@@ -181,14 +85,8 @@ impl Trial {
             return false;
         }
         let last = self.shell.tools.last.get(gi).copied().unwrap_or(0);
-        let command = GROUPS.get(gi).and_then(|g| g.entries.get(last)).and_then(|e| match e {
-            Entry::Ecad(id) => crate::tools::find(id).and_then(|t| match t.kind {
-                crate::tools::Kind::Start(c) => Some(c),
-                _ => None,
-            }),
-            Entry::Cad(name, _) => Some(*name),
-            Entry::Select => None,
-        });
+        let tools = GROUPS.get(gi).map(Group::tools).unwrap_or_default();
+        let command = tools.get(last).map(|a| a.command).filter(|c| !c.is_empty());
         command.is_some_and(|c| self.cad.session.running.as_ref().is_some_and(|r| r.id.eq_ignore_ascii_case(c)))
     }
 
@@ -197,20 +95,19 @@ impl Trial {
     pub fn group_key(&mut self, letter: char) {
         let Some(gi) = GROUPS.iter().position(|g| g.letter == letter) else { return };
         let Some(g) = GROUPS.get(gi) else { return };
-        let steps: Vec<usize> = g.entries.iter().enumerate().filter(|(_, e)| e.steps()).map(|(i, _)| i).collect();
-        if steps.is_empty() {
+        let tools = g.tools();
+        if tools.is_empty() {
             return;
         }
-        let last = self.shell.tools.last.get(gi).copied().unwrap_or(0);
+        let last = self.shell.tools.last.get(gi).copied().unwrap_or(0).min(tools.len() - 1);
         let again = self.shell.tools.stepping == Some(gi) && self.cad.session.running.is_some();
-        let at = steps.iter().position(|i| *i == last).unwrap_or(0);
-        let next = if again { steps.get((at + 1) % steps.len()) } else { steps.get(at) }.copied().unwrap_or(0);
+        let next = if again { (last + 1) % tools.len() } else { last };
         if let Some(slot) = self.shell.tools.last.get_mut(gi) {
             *slot = next;
         }
         self.shell.tools.stepping = Some(gi);
-        if let Some(e) = g.entries.get(next).copied() {
-            self.start_entry(e);
+        if let Some(a) = tools.get(next).copied() {
+            self.start_tool(a);
         }
     }
 }
@@ -224,18 +121,21 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let x = rect.center().x - size::TOOL_BUTTON / 2.0;
     let mut hovered_any = false;
     for (gi, g) in GROUPS.iter().enumerate() {
+        let tools = g.tools();
         let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON, size::TOOL_BUTTON));
         y += size::TOOL_BUTTON + space::XS;
         let last = t.shell.tools.last.get(gi).copied().unwrap_or(0);
-        let tip = g.entries.get(last).map_or(g.label.to_string(), |e| format!("{}: {}", g.label, e.label()));
+        let current = tools.get(last).or(tools.first()).copied();
+        let tip = current.map_or(g.label.to_string(), |a| format!("{}: {}", g.label, a.label));
+        // The button shows the last-used tool's icon (spec §2).
+        let icon = current.map_or(g.icon, |a| a.icon);
+        let running = t.group_tool_running(gi);
         let resp = super::in_rect(ui, r, g.label, |ui| {
-            ui.add(ecad_ui::prim::IconButton::new(g.icon, g.label).tool().selected(t.shell.tools.flyout == Some(gi)))
+            ui.add(ecad_ui::prim::IconButton::new(icon, g.label).tool().selected(t.shell.tools.flyout == Some(gi) || running))
         });
         let resp = resp.on_hover_text(tip);
         if resp.clicked() {
-            if let Some(e) = g.entries.get(last).copied() {
-                start = Some(e);
-            }
+            start = current.map(|a| (gi, last, a));
             t.shell.tools.flyout = None;
         }
         if resp.hovered() {
@@ -243,13 +143,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             hovered_any = true;
         }
         if t.shell.tools.flyout == Some(gi) {
-            let (chosen, over) = flyout(ui, g, r);
+            let (chosen, over) = flyout(ui, g, &tools, r);
             hovered_any |= over;
             if let Some(i) = chosen {
-                if let Some(slot) = t.shell.tools.last.get_mut(gi) {
-                    *slot = i;
-                }
-                start = g.entries.get(i).copied();
+                start = tools.get(i).map(|a| (gi, i, *a));
                 t.shell.tools.flyout = None;
             }
         }
@@ -257,14 +154,17 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     if !hovered_any {
         t.shell.tools.flyout = None;
     }
-    if let Some(e) = start {
+    if let Some((gi, i, a)) = start {
+        if let Some(slot) = t.shell.tools.last.get_mut(gi) {
+            *slot = i;
+        }
         t.shell.tools.stepping = None;
-        t.start_entry(e);
+        t.start_tool(a);
     }
 }
 
-/// The flyout of `g` beside its button: the entry clicked, and whether the pointer is over it.
-fn flyout(ui: &mut egui::Ui, g: &Group, button: Rect) -> (Option<usize>, bool) {
+/// The flyout of `g` beside its button: the tool clicked, and whether the pointer is over it.
+fn flyout(ui: &mut egui::Ui, g: &Group, tools: &[&'static Action], button: Rect) -> (Option<usize>, bool) {
     let label = flyout_label(g);
     let area = egui::Area::new(egui::Id::unique(("ecad.shell.flyout", g.letter)))
         .order(egui::Order::Foreground)
@@ -275,13 +175,8 @@ fn flyout(ui: &mut egui::Ui, g: &Group, button: Rect) -> (Option<usize>, bool) {
                     ui.set_min_width(180.0);
                     let mut chosen = None;
                     ecad_ui::prim::read_value(ui, &label);
-                    for (i, e) in g.entries.iter().enumerate() {
-                        let b = ui.add(ecad_ui::prim::Button::new(e.label()).kind(ecad_ui::prim::Kind::Quiet).small());
-                        let b = match e {
-                            Entry::Ecad(id) => b.on_hover_text(crate::tools::find(id).map_or("", |t| t.tooltip)),
-                            _ => b,
-                        };
-                        if b.clicked() {
+                    for (i, a) in tools.iter().enumerate() {
+                        if ui.add(ecad_ui::prim::Button::new(a.label).kind(ecad_ui::prim::Kind::Quiet).small()).clicked() {
                             chosen = Some(i);
                         }
                     }

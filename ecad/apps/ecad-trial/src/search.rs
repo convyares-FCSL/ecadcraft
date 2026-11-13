@@ -8,6 +8,10 @@
 //!
 //! It only reads the project, under the handle's short lock, and only when the query or the
 //! project's head changed.
+//!
+//! Brief 041 (Ctrl+K): the same field also finds pages (by number or title) and actions (the
+//! action table, by label and search words). Picking one of those runs it at once: a page is
+//! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
 use ecad_cadcraft::devices;
 use ecad_cadcraft::symbols;
@@ -34,7 +38,15 @@ pub enum Pick {
     Symbol(&'static str),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
+    /// Brief 041: show this page.
+    Page(ecad_model::PageId),
+    /// Brief 041: run this action (its id in the action table).
+    Action(&'static str),
 }
+
+/// Most pages and most actions Ctrl+K lists before the symbols.
+pub const MAX_PAGES: usize = 3;
+pub const MAX_ACTIONS: usize = 4;
 
 /// One result row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +60,22 @@ pub struct Row {
 pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<String>) {
     let q: String = query.trim().chars().take(symbols::MAX_QUERY).collect();
     let mut out = Vec::new();
+    if let Some(doc) = doc
+        && !q.is_empty()
+    {
+        let ql = q.to_lowercase();
+        let pages = ecad_cadcraft::tree_rows(doc, |_| false).into_iter().filter_map(|r| match r {
+            ecad_cadcraft::TreeRow::Page(p) => Some(p),
+            ecad_cadcraft::TreeRow::Folder { .. } => None,
+        });
+        for p in pages.filter(|p| p.number.to_lowercase() == ql || p.title.to_lowercase().contains(&ql)).take(MAX_PAGES) {
+            out.push(Row { text: format!("{:<6} {:<26}  (page)", p.number, clip(&p.title, 26)), pick: Pick::Page(p.id) });
+        }
+    }
+    for a in ecad_cadcraft::actions::search(&q, MAX_ACTIONS) {
+        let key = a.key.map(|k| format!(" {}", k.words())).unwrap_or_default();
+        out.push(Row { text: format!("{:<33}{key}  (action)", a.label), pick: Pick::Action(a.id) });
+    }
     if let Some(doc) = doc
         && !q.is_empty()
     {
@@ -141,6 +169,7 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
             found.sort_by_key(|(rank, _)| *rank);
             found.into_iter().take(MAX_CHOICES).map(|(_, c)| c).collect()
         }
+        Pick::Page(_) | Pick::Action(_) => Vec::new(),
     }
 }
 
@@ -197,6 +226,9 @@ pub struct SymbolSearch {
     pub rebuilds: u64,
     /// The row picked: the window then shows its second step ([`choices`]).
     pub picked: Option<Pick>,
+    /// Brief 041: a page or action row picked, for the shell to act on ([`Pick::Page`],
+    /// [`Pick::Action`]).
+    pub ran: Option<Pick>,
 }
 
 impl SymbolSearch {
@@ -252,6 +284,7 @@ impl SymbolSearch {
                 let what = match p {
                     Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
                     Pick::Device(t) => format!("Add to {t}:"),
+                    Pick::Page(_) | Pick::Action(_) => String::new(),
                 };
                 ui.label(what);
                 ui.push_id(CHOICES_ID, |ui| {
@@ -315,6 +348,13 @@ impl SymbolSearch {
             });
         });
         self.open = open;
+        // Brief 041: a page or an action runs at once (no second step).
+        if let Some(p @ (Pick::Page(_) | Pick::Action(_))) = picked {
+            self.ran = Some(p);
+            self.open = false;
+            self.query.clear();
+            return None;
+        }
         if picked.is_some() {
             self.picked = picked;
         }
