@@ -12,7 +12,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | --- | --- |
 | `README.md` | ECAD repository front page |
 | `.git-blame-ignore-revs` | Commits `git blame` skips: the ECAD workspace reformat (PR #46) |
-| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
+| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy, fast tests of changed crates and their dependents) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
 | `docs/decisions.md` | ECAD decision log |
@@ -92,3 +92,13 @@ decisions, 2026-11-09):
 guard autosaves open drawings through `autosave::plan_with`, which skips owned documents (X5), so
 an ECAD page's unsaved work is not saved when the UI panics (the app keeps running, so the
 project can still be saved). A generic `DocumentOwner::emergency_save` hook would close that gap.
+
+## Code patches to upstream crates: PDF window culling (brief 033, owner answer Q1, 2026-11-12)
+
+Generic and not ECAD-specific: a page of a `pages` plot writes only what lies in its window. To
+be offered upstream to CADCraft (design 033 FU2).
+
+| File | What changes |
+| --- | --- |
+| `crates/io/src/pdf.rs` | `marks` skips a polyline, fill, mask or point primitive whose page-point bounds miss the plot area grown by its stroke width and `CULL_MARGIN_PT` (`outside_plot_area`); infinite lines and images are unchanged. Each page of a `pages` plot builds the whole model, so before this every page's content stream held every page's geometry and the file grew with pages squared. The page clips to the same area, so what shows is unchanged |
+| `crates/io/src/tests.rs` | tests: a page of a `pages` plot holds only its window's paths; 20 pages are at most 2.2 times 10; a culled page's content stream equals that of its sheet plotted alone; a wide stroke whose edge reaches the window and text running into it are kept, text wholly outside is culled; a plot without a window draws everything |

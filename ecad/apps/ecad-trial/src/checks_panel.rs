@@ -21,6 +21,8 @@ pub const CHECKS_TAB: &str = "Checks";
 pub const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
 pub const ADD_JUNCTION: &str = "Add junction";
+/// Brief 032: the Looks connected row's fix (`joinwires {at}`).
+pub const JOIN: &str = "Join";
 pub const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
@@ -35,6 +37,10 @@ pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
 pub const REMOVE: &str = "Remove";
+/// Brief 033: start Move Mirror Table for a table over the title block.
+pub const MOVE_TABLE: &str = "Move table…";
+/// Brief 033: open a page's number field (a continuation sheet took its number).
+pub const RENUMBER_PAGE: &str = "Renumber…";
 pub const SPLIT_LINK: &str = "Split link";
 pub const REMOVE_PARTITION: &str = "Remove partition";
 pub const DROP_MISSING: &str = "Drop missing";
@@ -275,6 +281,7 @@ impl ChecksPanel {
                     let b = egui::Rect::from_min_size(pos2(rect.right() - bw - 4.0, rect.top() + 2.0), vec2(bw, ROW_H - 4.0));
                     let name = match f {
                         Fix::AddJunction(_) => ADD_JUNCTION,
+                        Fix::Join(_) => JOIN,
                         Fix::NumberThem => NUMBER_THEM,
                         Fix::Finalise => FINALISE,
                         Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
@@ -284,10 +291,13 @@ impl ChecksPanel {
                         Fix::SetCores(_) => SET_CORES,
                         Fix::NextFreeCore(_) => NEXT_FREE_CORE,
                         Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
+                        Fix::MoveTable(_) => MOVE_TABLE,
+                        Fix::RenumberPage(_) => RENUMBER_PAGE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
                             (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
+                            (Fix::Join(at), Some(page)) => out.push(Action::JoinWires(page, at)),
                             (Fix::NumberThem, _) => out.push(Action::NumberThem),
                             (Fix::Finalise, _) => out.push(Action::Finalise),
                             (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),
@@ -298,6 +308,8 @@ impl ChecksPanel {
                             (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
                             (Fix::ShowCables, _) => out.push(Action::ShowCables),
                             (Fix::LinkOnNonStrip(_), _) => out.push(Action::AccessoryFix(f, 0)),
+                            (Fix::MoveTable(_), _) => out.push(Action::MoveTable(Box::new(r.check.clone()))),
+                            (Fix::RenumberPage(page), _) => out.push(Action::RenumberPage(page)),
                             _ => {}
                         }
                         continue;

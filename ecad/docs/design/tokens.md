@@ -24,6 +24,9 @@ CADCraft's own colour handling. Values are for the dark canvas.
 | `ecad.cable` | 6 (magenta) | `#FF00FF` | Cables: crossing dots where a slash crosses its members (004), the reserved layer `ECAD-CABLES` (005) and everything computed on it: label box, trunk, spine, bends, tails, core labels, wire numbers and reference flags (009) |
 | `ecad.refuse-preview` | 1 (red) | `#FF0000` | "Will be refused" ring and text while a command runs (a slash across a wire already in a cable, 004) |
 | `ecad.reference` | 6 (magenta) | `#FF00FF` | A linked cable reference: its ring and its derived `/page.column` text (010); same colour as `ecad.cable` |
+| `ecad.agent` (035) | `cad.accent` | — | Agent banner's left bar while connected (the styled banner, UI shell) |
+| `ecad.agent-write` (035) | 3 (green) | `#00FF00` | Agent banner's left bar for 1 s after an accepted agent write; same as `ecad.attached` |
+| `ecad.agent-bar` (035) | `cad.chrome_dark` | — | The agent banner strip: fill, 3 px left bar, 24 px high (the revision and branch bar pattern) |
 | `ecad.orphan` | 1 (red) | `#FF0000` | A cable reference with no other end: ring and `/?` text (010), the concept spec's red orphan marker |
 | `ecad.wire-label` | 7 (white), ByLayer on `ECAD-WIRE-LABELS` | `#FFFFFF` | Conductor labels: wire number, cross-section, colour (022) |
 | `ecad.check-error` | 1 (red) | `#FF0000` | Checks error glyph and go-to ring (022); same as `ecad.orphan` |
@@ -144,3 +147,27 @@ colours) and this is a known limitation.
 | `ecad.generated` | ACI 7, layer `ECAD-GENERATED` (locked) | Tables and text of generated pages |
 | `ecad.table-row` / `ecad.table-header` | 5 mm / 7 mm | Generated table rows |
 | `ecad.flagged` | `ecad.check-warning` | `?` values on screen and in Reports |
+
+## Print and project (033, `design/033.md` §13)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.flagged-print` | ACI 7 | A missing value's `?` and its box when printed with screen colours |
+| `ecad.missing-box` | `ecad.wire-weight`, inset 0.5 mm, colour of its `?` | The box round a missing value in a generated table |
+
+## Text styles (031, `design/031.md` §3 and §9)
+
+Text sizes and weights come from the project's style table through `text_style::text_style(doc,
+kind)`; the values below are its defaults (millimetres, divided by 25.4 in an inch project). They
+replace `ecad.tag-height`, `ecad.term-label-height`, `ecad.label-height`, `ecad.ref-text-height`
+and 024's location label height when 031 lands.
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.text-tag` | 2.5 mm, bold | Device tags |
+| `ecad.text-point-label` | 1.5 mm | Connection point labels |
+| `ecad.text-label` | 1.6 mm | Wire labels, cable text, location labels, descriptions, part numbers |
+| `ecad.text-reference` | 2.0 mm | Cross-reference texts and continuation names |
+| `ecad.tag-gap` (031) | 0.6 × tag height | Gap between a symbol's box and its tag block |
+| `ecad.hidden-text` | ACI 8, on `ECAD-HIDDEN-TEXT` | Hidden derived texts while Show Hidden Text is on; never printed |
+| `ecad.stroke-bold` | lineweight 0.35 mm | Bold text drawn in the stroke-font fallback |

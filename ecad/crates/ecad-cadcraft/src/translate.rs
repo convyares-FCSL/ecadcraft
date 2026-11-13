@@ -525,6 +525,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let (more, notes) = crate::devices::erase_followups(cx.ledger.document(), &unlinked);
     t.ops.extend(more);
     t.notes.extend(notes);
+    // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
+    t.ops.extend(crate::references::slash_erase_followups(cx.ledger.document(), &unlinked));
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {
@@ -633,6 +635,15 @@ fn copy_batch(
             cps.insert(nt, at);
             t.new_markers.push(((new_rep, nt), nh));
             consumed.insert(nh);
+        }
+        // Brief 031 (FP5): the copy keeps its symbol's own text keys, under the new representation.
+        for op in t.ops.iter_mut().rev() {
+            if let Op::CreateComponent { id, component } = op
+                && *id == new_comp
+            {
+                crate::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
+                break;
+            }
         }
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,

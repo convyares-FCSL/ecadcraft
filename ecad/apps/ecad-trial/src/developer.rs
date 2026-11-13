@@ -4,11 +4,14 @@
 //! - the ECAD command field (`name {json}` forms) with **Run** and the reply under it (the
 //!   template buttons of Tool Sets fill this field);
 //! - the read-only debugger ([`crate::debugger`]) drawn inline;
-//! - **Inspect Project**: a readable, copyable summary of the project.
+//! - **Inspect Project**: a readable, copyable summary of the project;
+//! - **Agent access** (brief 035, design §3.2): Off, Read only or Read and change, the port, and
+//!   what listens (until the UI shell gives settings a home).
 //!
 //! Everything here reads, except the command field, which runs commands through the ordinary
 //! command path. Excluded: a separate debugger panel or command window.
 
+use ecad_cadcraft::agent_access::Mode;
 use eframe::egui::{self, RichText};
 
 use crate::debugger::{self, Debugger};
@@ -21,6 +24,16 @@ pub const FIELD: &str = "ECAD command";
 pub const DEBUGGER: &str = "Debugger";
 pub const INSPECT: &str = "Inspect Project";
 pub const SNAPSHOT: &str = "Export Inspector Snapshot";
+/// Element names of the Agent access row (brief 035, design §13).
+pub const AGENT_MODE: &str = "agent.access.mode";
+pub const AGENT_PORT: &str = "agent.access.port";
+pub const AGENT_STATUS: &str = "agent.access.status";
+/// The port field's tooltip and warning.
+pub const AGENT_PORT_RANGE: &str = "1024–65535";
+/// Said when the port changes while the listener runs on another.
+pub const AGENT_RESTART: &str = "The new port is used the next time ECAD starts.";
+/// The mode's tooltip under `--control`.
+pub const AGENT_THIS_RUN: &str = "Set by --control for this run.";
 
 /// What the section asks the trial for.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +48,29 @@ pub enum Action {
     Snapshot,
     /// A debugger action that needs the project.
     Debugger(debugger::Action),
+    /// Agent access: the mode chosen.
+    AgentMode(Mode),
+    /// Agent access: the port field was applied (Enter or focus loss).
+    AgentPort,
+    /// A control of the agent banner's line.
+    Banner(crate::agent::BannerAction),
+}
+
+/// The Agent access row's state, borrowed from the trial.
+pub struct AgentRow<'a> {
+    pub mode: Mode,
+    pub port: &'a mut String,
+    pub status: String,
+    /// The status dot's warning colour (port in use, stopped).
+    pub warning: bool,
+    /// Set by `--control`: the mode is shown, not changed.
+    pub locked: bool,
+    pub port_warning: bool,
+    pub restart_note: bool,
+    /// The agent banner, drawn as one line under the row while an agent is shown.
+    pub banner: Option<crate::agent::AgentBanner>,
+    /// A command is running (Undo session is disabled).
+    pub busy: bool,
 }
 
 /// What the section shows under its tools.
@@ -68,6 +104,53 @@ pub struct Parts<'a> {
     pub running: bool,
     pub snapshots: bool,
     pub project: bool,
+    pub agent: AgentRow<'a>,
+}
+
+/// The Agent access row: mode, port and status (design 035 §3.2).
+fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Agent access").small());
+        let mut mode = a.mode;
+        let combo = ui.add_enabled_ui(!a.locked, |ui| {
+            egui::ComboBox::from_id_salt("ecad.agent.access.mode").selected_text(mode.label()).show_ui(ui, |ui| {
+                for m in [Mode::Off, Mode::Read, Mode::Write] {
+                    ui.selectable_value(&mut mode, m, m.label());
+                }
+            })
+        });
+        let r = combo.inner.response;
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, !a.locked, AGENT_MODE));
+        if a.locked {
+            r.on_disabled_hover_text(AGENT_THIS_RUN);
+        }
+        if mode != a.mode {
+            out.push(Action::AgentMode(mode));
+        }
+        ui.label(RichText::new("Port").small());
+        let port = ui.add_enabled(!a.locked, egui::TextEdit::singleline(a.port).desired_width(52.0).char_limit(5));
+        port.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !a.locked, AGENT_PORT));
+        if port.changed() {
+            a.port.retain(|c| c.is_ascii_digit());
+        }
+        if port.lost_focus() {
+            out.push(Action::AgentPort);
+        }
+        let status =
+            ui.label(RichText::new(&a.status).small().color(if a.warning { ui.visuals().warn_fg_color } else { ui.visuals().weak_text_color() }));
+        status.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, AGENT_STATUS));
+    });
+    if a.port_warning {
+        ui.label(RichText::new(AGENT_PORT_RANGE).small().color(ui.visuals().warn_fg_color));
+    }
+    if a.restart_note {
+        ui.label(RichText::new(AGENT_RESTART).small());
+    }
+    if let Some(b) = &a.banner
+        && let Some(act) = crate::agent::banner::show_line(ui, b, a.busy)
+    {
+        out.push(Action::Banner(act));
+    }
 }
 
 /// Draw the section at the bottom of the panel's `ui`. Returns what was asked for.
@@ -110,6 +193,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
         if !p.dev.open {
             return;
         }
+        agent_row(ui, p.agent, &mut out);
         // The command field and Run, the template's note and the last reply.
         let mut submit = None;
         ui.horizontal(|ui| {

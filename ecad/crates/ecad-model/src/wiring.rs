@@ -163,10 +163,30 @@ pub struct WiringSettings {
     /// Text height of conductor labels, millimetres ([`DEFAULT_LABEL_HEIGHT`]; read through
     /// [`WiringSettings::label_height`], which keeps it in range).
     pub label_height: f64,
+    /// Brief 032 (FP-W1): which wires get a label, [`LABEL_RULE_NET`] (one per net per page) or
+    /// [`LABEL_RULE_EACH`] ([`DEFAULT_LABEL_RULE`]; registered as `wiring.label_rule`).
+    pub label_rule: String,
+    /// Brief 032 (FP-W1): with `each`, the shortest labelled wire (its longest segment),
+    /// millimetres, in [`LABEL_MIN_LENGTHS`] ([`DEFAULT_LABEL_MIN_LENGTH`]; registered as
+    /// `wiring.label_min_length`).
+    pub label_min_length: f64,
 }
 
-/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags).
-pub const DEFAULT_LABEL_HEIGHT: f64 = 1.8;
+/// Brief 032: one label per net per page.
+pub const LABEL_RULE_NET: &str = "net";
+/// Brief 032: a label on every wire long enough.
+pub const LABEL_RULE_EACH: &str = "each";
+/// Brief 032 (owner Q6): the label rule of every project that does not set one.
+pub const DEFAULT_LABEL_RULE: &str = LABEL_RULE_NET;
+/// Brief 032: the default shortest labelled wire, millimetres.
+pub const DEFAULT_LABEL_MIN_LENGTH: f64 = 0.0;
+/// Brief 032: the shortest labelled wire lengths a project may set, millimetres.
+pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
+
+/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags; 1.8
+/// until brief 031, FP6: 1.6, the dense-schematic size). Lane T's registry entry
+/// `text.wire_label.height` names it as its built-in.
+pub const DEFAULT_LABEL_HEIGHT: f64 = 1.6;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
@@ -202,6 +222,8 @@ impl Default for WiringSettings {
             potentials: default_potentials(),
             colour_style: ColourStyle::default(),
             label_height: DEFAULT_LABEL_HEIGHT,
+            label_rule: DEFAULT_LABEL_RULE.to_string(),
+            label_min_length: DEFAULT_LABEL_MIN_LENGTH,
         }
     }
 }

@@ -33,8 +33,13 @@
 //!   transactions with before/after values → saved record offsets and bytes, with pending
 //!   changes kept apart from durably saved history.
 //!
+//! - **live agent access** ([`agent`], brief 035): off by default; when the person turns it on
+//!   (ECAD Dev ▸ Agent access, or `--control PORT` for one run), an agent connected through
+//!   `ecad-mcp --connect` changes the open project between frames, recorded as the agent's, while
+//!   the person watches; a minimal banner names it and offers Undo session, Pause and Disconnect.
+//!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
-//! written), autosave, the control channel, saved window or profile state and ECAD menus
+//! written), autosave, CADCraft's raw control channel, saved window or profile state and ECAD menus
 //! (CADCraft shows no top-level menu supplied by an embedder). The JSON forms of ECAD commands are
 //! typed in the ECAD command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
 //! own command line takes a space as Enter, so it cannot take a JSON argument with spaces); a bare
@@ -46,6 +51,7 @@
 //! unverified.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod agent;
 pub mod checks_panel;
 pub mod debugger;
 pub mod developer;
@@ -60,6 +66,7 @@ pub mod renumber_dialog;
 pub mod search;
 pub mod sheets_ui;
 pub mod startup;
+pub mod text_ui;
 pub mod tools;
 pub mod window;
 
@@ -117,19 +124,21 @@ pub const PROJECT_NAME: &str = "Untitled";
 pub const DEFAULT_FOLDER: &str = default_folder!();
 /// Command-line usage.
 pub const USAGE: &str = concat!(
-    "usage: ecad-trial [--snapshots <dir>] [<project.ecad>]\n\n\
+    "usage: ecad-trial [--snapshots <dir>] [--control <port>] [<project.ecad>]\n\n\
 ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
 project. Save and Save As write .ecad project files; keep them in a local folder such as ",
     default_folder!(),
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
+--control <port>   agent access on for this run (Read and change, 127.0.0.1:<port>; not remembered)\n\
 See ecad/docs/quick-start.md."
 );
 
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invocation {
-    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given.
-    Run { snapshots: Option<PathBuf>, project: Option<String> },
+    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given, and
+    /// turn agent access on for this run on port `control` if given (brief 035).
+    Run { snapshots: Option<PathBuf>, project: Option<String>, control: Option<u16> },
     /// Print [`USAGE`].
     Help,
     /// Print the version.
@@ -144,12 +153,17 @@ pub enum Invocation {
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, String> {
     let mut snapshots = None;
     let mut project: Option<String> = None;
+    let mut control = None;
     let mut args = args.into_iter();
     while let Some(a) = args.next() {
         match a.to_str() {
             Some("--snapshots") => match args.next() {
                 Some(d) => snapshots = Some(PathBuf::from(d)),
                 None => return Err("--snapshots needs a folder".into()),
+            },
+            Some("--control") => match args.next().and_then(|p| p.to_str().and_then(ecad_cadcraft::agent_access::parse_port)) {
+                Some(p) => control = Some(p),
+                None => return Err("--control needs a port from 1024 to 65535".into()),
             },
             Some("--help" | "-h") => return Ok(Invocation::Help),
             Some("--version" | "-V") => return Ok(Invocation::Version),
@@ -161,7 +175,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
             }
         }
     }
-    Ok(Invocation::Run { snapshots, project })
+    Ok(Invocation::Run { snapshots, project, control })
 }
 
 /// The project's status line at the top of the Project panel, for example
@@ -382,6 +396,8 @@ pub struct Trial {
     revisions_seen: u64,
     /// The selection last checked for frame objects.
     frame_checked: Vec<Handle>,
+    /// Brief 035: live agent access (preference, listener, bridge sessions, banner).
+    pub agent: agent::Agent,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -467,7 +483,12 @@ impl Trial {
 
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
-        let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
+        // Brief 035: CadApp's own control channel is fed only by the trial's agent drain, with
+        // the allowlisted reads; the port's requests never reach it directly.
+        let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
+        let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
+        let mut agent = agent::Agent::from_settings(ecad_cadcraft::views::Settings::from_env());
+        agent.set_cad_channel(cad_tx);
         cad.extra_tool_tabs = vec![tools::tab()];
         let props: sheets_ui::Shared = Arc::default();
         cad.owner_properties = Some(sheets_ui::section(Arc::clone(&props)));
@@ -521,6 +542,7 @@ impl Trial {
             panel_revision: None,
             revisions_seen: 0,
             frame_checked: Vec::new(),
+            agent,
         }
     }
 
@@ -1209,6 +1231,8 @@ impl Trial {
 
     /// Per-frame logic (before layout).
     pub fn logic(&mut self, ctx: &egui::Context) {
+        // Brief 035: the author check and the agent's calls, before any input of this frame.
+        self.agent_frame(ctx);
         if ctx.input(|i| i.viewport().close_requested()) {
             self.prepare_quit();
         }
@@ -1358,6 +1382,9 @@ impl Trial {
                 }
             }
             developer::Action::ToggleDebugger => self.toggle_debugger(),
+            developer::Action::AgentMode(m) => self.agent_set_mode(m),
+            developer::Action::AgentPort => self.agent_apply_port(),
+            developer::Action::Banner(a) => self.agent_action(a),
             developer::Action::Inspect => self.inspect_project(),
             developer::Action::Snapshot => {
                 let _ = self.trial_tool("ecad.dev.snapshot");
@@ -1408,6 +1435,7 @@ impl Trial {
             (esc, click)
         });
         self.cad.ui(ui);
+        self.agent_banner_ui(ui.ctx());
         self.clear_goto_ring(ring_input);
         self.take_props();
         self.drop_frame_selection();
@@ -1553,6 +1581,22 @@ impl Trial {
         if self.snapshots.is_some() && self.project_open() {
             let _ = self.export_snapshot("exit");
         }
+        self.agent.shut_down();
+    }
+
+    /// Brief 035: the Undo agent session confirmation, while open (the banner itself is one line
+    /// in the Developer section until the UI shell).
+    fn agent_banner_ui(&mut self, ctx: &egui::Context) {
+        self.agent_undo_window(ctx);
+    }
+
+    /// Open History with `seq` selected (the banner's last change).
+    pub fn open_history_at(&mut self, seq: u64) {
+        let Some(p) = self.project.clone() else { return };
+        let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::history::current(p)) else { return };
+        self.panel.tab = project_panel::Tab::History;
+        self.panel.history.steps_open = true;
+        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_cadcraft::history::NodeKind::Fork, name: None });
     }
 
     /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
@@ -1681,6 +1725,17 @@ impl Trial {
                             running,
                             snapshots: header.snapshots,
                             project,
+                            agent: developer::AgentRow {
+                                mode: self.agent.pref.mode,
+                                status: self.agent.status_text(),
+                                warning: self.agent.author_pending || matches!(self.agent.listen(), agent::Listen::InUse(_)),
+                                locked: self.agent.this_run,
+                                port_warning: self.agent.port_warning,
+                                restart_note: self.agent.restart_note,
+                                banner: self.agent.banner.clone(),
+                                busy: self.cad.session.running.is_some(),
+                                port: &mut self.agent.port_text,
+                            },
                         },
                     );
                     (self.panel.show(ui, &header), dev)
@@ -1748,9 +1803,31 @@ impl Trial {
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
             }
+            A::RenumberPage(page) => {
+                if self.show_page(page).is_ok() {
+                    self.panel.tab = project_panel::Tab::Pages;
+                    self.panel.start_number_edit(page);
+                }
+            }
+            A::MoveTable(check) => {
+                if self.goto_check(&check).is_ok() {
+                    if self.cad.session.running.is_some() {
+                        self.cad.session.cancel();
+                    }
+                    if let Err(e) = self.cad.session.start("mirrormove") {
+                        self.cad.session.echo(e.to_string());
+                    }
+                    self.after_logic();
+                }
+            }
             A::AddJunction(page, at) => {
                 if self.show_page(page).is_ok() {
                     let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
+                }
+            }
+            A::JoinWires(page, at) => {
+                if self.show_page(page).is_ok() {
+                    let _ = self.run_line(&format!("joinwires {}", json!({"at": [at.x, at.y]})));
                 }
             }
             A::NumberThem => {
@@ -2417,7 +2494,16 @@ impl Trial {
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
+            Ok(v) => {
+                let mut d = sheets_ui::ProjectProps::from_json(&v, read_only, popout);
+                // Brief 031: the Text section reads `textstyle {}` (reads only).
+                if popout == sheets_ui::Popout::Settings {
+                    d.text = self.run_value("textstyle", json!({})).ok().map(|t| text_ui::TextSection::from_json(&t));
+                    // Brief 032 §4.4: the wire label rows read `wiresettings {}` (reads only).
+                    d.labels = self.run_value("wiresettings", json!({})).ok().map(|w| sheets_ui::WireLabels::from_json(&w));
+                }
+                self.project_props = Some(d);
+            }
             Err(e) => self.cad.session.echo(e),
         }
     }
@@ -2956,6 +3042,12 @@ impl Trial {
             d.unknown = unknown;
             d.flagged = flagged;
         }
+        if let Some(p) = self.project.clone()
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_cadcraft::printbook::notes(p, &scope))
+            && let Some(d) = &mut self.print_book
+        {
+            d.notes = notes;
+        }
         let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(true) => {
@@ -2971,7 +3063,9 @@ impl Trial {
     fn sheet_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.project_props {
             match d.show(ctx) {
-                Some(sheets_ui::Out::Run(line)) => match self.run_line(&line) {
+                // Brief 031: OK may write two lines (`projectprops`, `textstyle`); the first refusal
+                // stops and is shown.
+                Some(sheets_ui::Out::Run(lines)) => match lines.lines().find_map(|l| self.run_line(l)) {
                     None => self.project_props = None,
                     Some(e) => {
                         if let Some(d) = &mut self.project_props {

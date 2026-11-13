@@ -35,18 +35,16 @@ use crate::symbols::{self, Kind, STARTERS, Starter};
 pub const TAG_LAYER: &str = "ECAD-TAGS";
 /// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
 pub const PROVISIONAL_ACI: u8 = 30;
-/// `ecad.tag-height`, millimetres.
+/// The tag height before brief 031, millimetres. **Not used for drawing**: a derived text's height
+/// comes from [`crate::text_style::text_style`] (`texts_on_page` restyles every text it returns).
+/// Kept only because `wires::continuation_texts` (lane W's file) still names it.
 pub const TAG_HEIGHT: f64 = 3.5;
-/// `ecad.term-label-height`, millimetres.
-pub const LABEL_HEIGHT: f64 = 2.0;
-/// `ecad.tag-gap`, millimetres.
-pub const TAG_GAP: f64 = 2.0;
 /// Tag numbers are padded to this many digits unless the project says otherwise (owner, 2026-11-08).
 pub const DEFAULT_PADDING: u8 = ecad_model::DEFAULT_TAG_PADDING;
 /// Most letters in a tag prefix a project may set.
 pub const MAX_PREFIX_LETTERS: usize = 10;
 /// Refusal of an edit of a derived tag text or terminal label.
-pub const TAG_DERIVED: &str = "The tag text is derived; change the tag with Device Properties.";
+pub const TAG_DERIVED: &str = "The tag text is derived: change the tag with Device Properties, or move it with Move Text.";
 /// Most characters in a property value (design 018 §6.1).
 pub const MAX_PROPERTY_CHARS: usize = 200;
 /// Most devices a JSON list returns.
@@ -80,7 +78,7 @@ pub fn valid_prefix(text: &str) -> Option<String> {
 /// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
 /// stored that is not a valid prefix is ignored.
 pub fn prefix_for(doc: &Document, s: &Starter) -> String {
-    doc.settings.tag_prefixes.get(s.key).and_then(|p| valid_prefix(p)).unwrap_or_else(|| s.prefix.to_string())
+    crate::defaults::symbols::prefix(doc, s.key)
 }
 
 // ---------------------------------------------------------------- numbering
@@ -156,7 +154,7 @@ impl TagHigh {
         let in_use = tag::provisional(&ecad_model::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
         let n = in_use.max(self.prov.get(&p).map_or(0, |g| g.saturating_add(1)));
         self.prov.insert(p.clone(), n);
-        tag::format_provisional(&p, n)
+        crate::defaults::print::tag_style(doc).provisional(&p, n)
     }
 
     /// The automatic tag a new device of `prefix` would get, without using it up (prompts).
@@ -203,7 +201,7 @@ impl TagHigh {
         let first = self.high.get(&prefix).copied().unwrap_or(0).saturating_add(1);
         // Bounded: a hostile file may hold many tags above the highest the log shows.
         for n in (first..=tag::MAX_TAG_NUMBER).take(10_000) {
-            let t = tag::format(&prefix, n, padding(doc));
+            let t = tag::format(&prefix, n, crate::defaults::print::tag_style(doc));
             // Devices and cables share one namespace (brief 026).
             if !doc.tag_taken(&t) {
                 return Ok((prefix, n, t));
@@ -336,7 +334,7 @@ pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -
     let doc = ledger.document();
     match typed {
         Some(t) => {
-            let t = tag::normalise(t, padding(doc))?;
+            let t = tag::normalise(t, crate::defaults::print::tag_style(doc))?;
             if let Some((p, 0)) = tag::provisional(&t) {
                 return Ok(high.next_provisional_in(doc, &p));
             }
@@ -392,19 +390,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             if let Some(labels) = crate::xref::offer_labels(doc, c, make, &used) {
                 return Ok(labels);
             }
-            let highest = used
-                .iter()
-                .filter_map(|l| match l.as_bytes() {
-                    [s @ b'1'..=b'9', b'1'..=b'4'] => Some(u32::from(s - b'0')),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let next = highest + 1;
-            if next > 9 {
-                return Err(format!("{who} already has 9 contacts."));
-            }
-            Ok(if make { vec![format!("{next}3"), format!("{next}4")] } else { vec![format!("{next}1"), format!("{next}2")] })
+            // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
+            symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), if make { &['3', '4'] } else { &['1', '2'] }, &who)
         }
         Kind::Terminal => {
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
@@ -424,6 +411,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
         }
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
+        // Brief 034: the label rule lives in the catalogue.
+        Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
         Kind::Fixed { exclusive } => {
             if exclusive {
                 let has = doc
@@ -626,6 +615,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     };
     let reps: Vec<(RepresentationId, Representation)> = doc.representations_of(Subject::Component(from)).map(|(id, r)| (id, r.clone())).collect();
     let from_words = tag_words(doc, from);
+    // Brief 031 (FP5): each symbol's own text keys move with it to its new representation.
+    let mut renamed: Vec<(RepresentationId, RepresentationId)> = Vec::new();
     for (rid, r) in &reps {
         let shown = shown_terminals(doc, from, r);
         // A symbol whose device's connection points do not match its definition (an old or
@@ -672,6 +663,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         }
         let role = if r.role == "main" { starter.map_or_else(|| r.role.clone(), |s| s.key.to_string()) } else { r.role.clone() };
         let nr: RepresentationId = ids.fresh();
+        renamed.push((*rid, nr));
         ops_reps.push((
             Op::UnlinkRepresentation { id: *rid, rep: r.clone() },
             Op::LinkRepresentation { id: nr, rep: Representation { subject: Subject::Component(into), role, connection_points: cps, ..r.clone() } },
@@ -700,6 +692,16 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     }
     for (t, term) in doc.terminals_of(from) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+    }
+    let into_props = doc.components.get(&into).map(|c| &c.properties);
+    for (old, new) in renamed {
+        for (key, value) in crate::text_style::symbol_text_keys(&from_c.properties, old) {
+            let moved = crate::text_style::rename_symbol_key(&key, old, new);
+            let before = into_props.and_then(|p| p.get(&moved)).cloned();
+            if before.as_ref() != Some(&value) {
+                ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(into), key: moved, before, after: Some(value) });
+            }
+        }
     }
     ops.push(Op::DeleteComponent { id: from, component: from_c });
     Ok(ops)
@@ -771,6 +773,12 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             ops.push(Op::DeleteComponent { id: c, component: component.clone() });
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
         } else {
+            // Brief 031 (FP5): an erased symbol's own text keys go with it.
+            for (rid, _) in &reps {
+                for (key, value) in crate::text_style::symbol_text_keys(&component.properties, *rid) {
+                    ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, before: Some(value), after: None });
+                }
+            }
             for (_, r) in &reps {
                 let name = rep_starter(doc, r).map_or("symbol", |s| s.name);
                 let labels: Vec<String> = shown_terminals(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
@@ -811,6 +819,10 @@ pub enum TextOf {
     Name,
     /// A continuation's other places (brief 022).
     Places,
+    /// A device's description under its tag (brief 031, hidden by default).
+    Description,
+    /// A device's part number under its tag (brief 031, hidden by default).
+    PartNumber,
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -845,10 +857,43 @@ pub(crate) fn vertical(pl: &Placement) -> bool {
     q < std::f64::consts::FRAC_PI_4 || q > 3.0 * std::f64::consts::FRAC_PI_4
 }
 
+/// The sizes of a symbol's tag and connection point labels in a project (design 031 §3.2, §6.2):
+/// heights from the style table, the gap between the box and the tag as `text.tag.gap` × the
+/// tag height.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TagSizes {
+    pub tag: f64,
+    pub label: f64,
+    pub gap: f64,
+}
+
+impl TagSizes {
+    /// The sizes of `doc`.
+    pub fn of(doc: &Document) -> TagSizes {
+        use crate::text_style::{TextKind, text_style};
+        let tag = text_style(doc, TextKind::Tag).height;
+        let factor = crate::defaults::resolve(doc, &crate::defaults::text::TAG_GAP, crate::defaults::Scope::project()).number();
+        TagSizes { tag, label: text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
+    }
+}
+
+/// The kind of text (design 031 §3.1) a derived text is.
+pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
+    use crate::text_style::TextKind;
+    match of {
+        TextOf::Tag => TextKind::Tag,
+        TextOf::Terminal(_) => TextKind::PointLabel,
+        TextOf::Name => TextKind::ContinuationName,
+        TextOf::Places => TextKind::Reference,
+        TextOf::Description => TextKind::Description,
+        TextOf::PartNumber => TextKind::PartNumber,
+    }
+}
+
 /// The texts of one symbol representation at `pl` (also used by the placing preview): its
-/// device's tag and the labels `labels` at their page positions.
+/// device's tag and the labels `labels` at their page positions, at `sizes`.
 pub fn texts_for(
-    def: &Definition, pl: &Placement, tag: Option<&str>, labels: &[(TextOf, String, Pt)],
+    def: &Definition, pl: &Placement, tag: Option<&str>, labels: &[(TextOf, String, Pt)], sizes: TagSizes,
 ) -> Vec<(TextOf, String, Pt, f64, HAlign, VAlign)> {
     let Some((lo, hi)) = placed_box(def, pl) else { return Vec::new() };
     let centre = Pt::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0);
@@ -856,11 +901,11 @@ pub fn texts_for(
     let mut out = Vec::new();
     if let Some(t) = tag {
         let (at, h, v) = if vert {
-            (Pt::new(lo.x - TAG_GAP, centre.y), HAlign::Right, VAlign::Middle)
+            (Pt::new(lo.x - sizes.gap, centre.y), HAlign::Right, VAlign::Middle)
         } else {
-            (Pt::new(centre.x, hi.y + TAG_GAP), HAlign::Center, VAlign::Bottom)
+            (Pt::new(centre.x, hi.y + sizes.gap), HAlign::Center, VAlign::Bottom)
         };
-        out.push((TextOf::Tag, t.to_string(), at, TAG_HEIGHT, h, v));
+        out.push((TextOf::Tag, t.to_string(), at, sizes.tag, h, v));
     }
     for (of, label, at) in labels {
         if !at.is_finite() {
@@ -873,15 +918,59 @@ pub fn texts_for(
             let dx = if at.x > centre.x { -2.5 } else { 2.5 };
             (Pt::new(at.x + dx, at.y + 1.0), HAlign::Center, VAlign::Bottom)
         };
-        out.push((*of, label.clone(), p, LABEL_HEIGHT, h, v));
+        out.push((*of, label.clone(), p, sizes.label, h, v));
     }
     out
 }
 
-/// Every derived text on `page`: for each symbol representation of a component, its device's tag
-/// (when it has one) and its terminals' labels. Hostile values (non-finite placements) draw
-/// nothing for that representation.
+/// Every derived text shown on `page` (what the page draws and prints): [`all_texts_on_page`]'s
+/// shown ones.
 pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
+    all_texts_on_page(doc, page).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
+}
+
+/// A derived text and whether it is shown (design 031 §5): hidden texts are still data, listed by
+/// `pagetexts` and drawn dimmed by Show Hidden Text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageText {
+    pub text: DerivedText,
+    pub shown: bool,
+    /// Its place is stored (Move Text, design 031 §6.4).
+    pub moved: bool,
+    /// Its tag block found no free candidate (§6.3).
+    pub overlaps: bool,
+}
+
+thread_local! {
+    /// How many times [`all_texts_on_page`] ran per page on this thread: the update-map tests
+    /// count it (a change elsewhere must not work a page's texts out again).
+    static TEXT_PASSES: std::cell::RefCell<BTreeMap<PageId, u64>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+/// How many times this thread has worked out `page`'s derived texts (see `TEXT_PASSES`).
+pub fn text_passes(page: PageId) -> u64 {
+    TEXT_PASSES.with(|c| c.borrow().get(&page).copied().unwrap_or(0))
+}
+
+/// The run rule of a symbol (design 031 §5.3), from its starter kind.
+pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRule {
+    use crate::text_style::RunRule;
+    match rep_starter(doc, r).map(|s| s.kind) {
+        Some(Kind::Terminal) => RunRule::Strip,
+        Some(Kind::Plc { .. }) => RunRule::Plc,
+        _ => RunRule::None,
+    }
+}
+
+/// Every derived text on `page`, shown or hidden: for each symbol representation of a component,
+/// its device's tag block (the tag, then its description and part number when they have values)
+/// and its terminals' labels; a continuation's name and other places. Visibility follows design
+/// 031 §5.2 (symbol, device, page, project, built-in) and a tag set to once per run is shown on
+/// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
+/// for that representation.
+pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
+    TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
+    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
         if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
@@ -889,8 +978,19 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
         }
     }
     let mut out = Vec::new();
+    let sizes = TagSizes::of(doc);
+    let look = crate::text_style::Look::new(doc);
+    let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
+    let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
+    // Tag blocks wait for placement (design 031 §6), after every fixed text is known.
+    struct Pending {
+        block: Block,
+        lines: Vec<(TextOf, String, f64, bool, Option<u8>)>,
+    }
+    let mut pending: Vec<Pending> = Vec::new();
+    let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -901,25 +1001,120 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
             continue;
         }
         let labels = by_rep.remove(&rid).unwrap_or_default();
-        // A continuation shows its name and its other places instead (brief 022).
+        let target = TextTarget { page: Some(page), component: Some(c), representation: Some(rid), conductor: None, run: run_rule(doc, r) };
+        let shown = |kind: TextKind| match text_shown(doc, target, kind) {
+            Shown::On => true,
+            Shown::Off => false,
+            Shown::First => firsts.contains(&rid),
+        };
+        // A continuation shows its name and its other places instead (brief 022). Their sizes
+        // and visibility come from the style table (design 031 §7.1): restyled here, by kind.
         if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
-            out.extend(texts);
+            out.extend(texts.into_iter().map(|mut t| {
+                t.height = text_style(doc, kind_of(t.of)).height;
+                let shown = shown(kind_of(t.of));
+                PageText { text: t, shown, moved: false, overlaps: false }
+            }));
             continue;
         }
+        // Connection point labels keep their fixed rule (or a stored place, §6.4) and are obstacles.
+        let labels_shown = shown(TextKind::PointLabel);
+        let label_style = text_style(doc, TextKind::PointLabel);
+        let props = doc.components.get(&c).map(|x| &x.properties);
+        for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
+            let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
+            if let TextOf::Terminal(t) = of
+                && let Some((p, h, v)) = props
+                    .and_then(|p| p.get(&point_label_key(doc, rid, t)))
+                    .and_then(|s| crate::text_style::parse_at(s))
+                    .map(|(p, h, v)| (pl.apply(p), h, v))
+                    .filter(|(p, _, _)| p.is_finite())
+            {
+                (at, halign, valign, moved) = (p, h, v, true);
+            }
+            if labels_shown {
+                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value);
+                fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
+            }
+            out.push(PageText {
+                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None },
+                shown: labels_shown,
+                moved,
+                overlaps: false,
+            });
+        }
+        // The tag block (design 031 §6.1): the tag, then the description and part number.
+        let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
         let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
-        let tag = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes));
-        for (of, value, at, height, halign, valign) in texts_for(def, &pl, tag.as_deref(), &labels) {
-            let aci = (prov && of == TextOf::Tag).then_some(PROVISIONAL_ACI);
-            out.push(DerivedText { rep: rid, of, value, at, height, halign, valign, aci });
+        let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
+        if let Some(t) = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, &mut boxes)) {
+            lines.push((TextOf::Tag, t, sizes.tag, shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
+        }
+        for (of, key, kind) in
+            [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
+        {
+            if let Some(v) = props.and_then(|p| p.get(key)).map(|v| v.trim()).filter(|v| !v.is_empty()) {
+                lines.push((of, v.to_string(), text_style(doc, kind).height, shown(kind), None));
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        // Shown lines first; the size is theirs (all of them when none is shown, for Show Hidden
+        // Text).
+        lines.sort_by_key(|l| !l.3);
+        let any = lines.iter().any(|l| l.3);
+        let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
+        let w = sized
+            .iter()
+            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
+            .fold(0.0, f64::max);
+        // Line tops are `text.line_pitch` × each line's height apart.
+        let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
+        pending.push(Pending { block: Block { rep: rid, component: c, lo, hi, vertical: vertical(&pl), placement: pl, w, h }, lines });
+    }
+    let placed = crate::text_style::place_blocks(
+        doc,
+        page,
+        &pending.iter().filter(|p| p.lines.iter().any(|l| l.3)).map(|p| p.block.clone()).collect::<Vec<_>>(),
+        &fixed,
+    );
+    for p in pending {
+        let place = placed.get(&p.block.rep).copied().unwrap_or_else(|| {
+            // Nothing shown: the first candidate, for Show Hidden Text only.
+            let gap = sizes.gap;
+            let (rect, halign) = crate::text_style::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
+            crate::text_style::BlockPlace { rect, halign, moved: false, overlaps: false }
+        });
+        let mut top = place.rect.1.y;
+        for (of, value, height, shown, aci) in p.lines {
+            let at = place.line_at(top);
+            out.push(PageText {
+                text: DerivedText { rep: p.block.rep, of, value, at, height, halign: place.halign, valign: VAlign::Top, aci },
+                shown,
+                moved: place.moved,
+                overlaps: place.overlaps && shown,
+            });
+            top -= pitch * height;
         }
     }
     out
 }
 
-/// A derived text as an entity on [`TAG_LAYER`].
-pub fn text_entity(t: &DerivedText, handle: Handle) -> Entity {
+/// The key a connection point label's stored place is kept under (design 031 §6.4):
+/// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
+/// label.
+pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
+    let term = doc.terminals.get(&t);
+    let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
+    format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
+}
+
+/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
+pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
+    look.apply(&mut e, kind_of(t.of));
     if let Some(aci) = t.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
     }
@@ -1086,7 +1281,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, String> {
 pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if key == TAG_KEY {
-        return tag::normalise(v, padding(doc)).map(Some);
+        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some);
     }
     if v.chars().count() > MAX_PROPERTY_CHARS || v.chars().any(char::is_control) {
         return Err(format!("`{key}` can be at most {MAX_PROPERTY_CHARS} characters, with no control characters"));
@@ -1157,6 +1352,16 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
         lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)));
+        // Brief 031 (design §5.4): a tag hidden here is still data; the lens names it. (Descriptions
+        // and part numbers are hidden by default, so naming them would add a line to every lens.)
+        let hidden: Vec<String> = all_texts_on_page(doc, r.page)
+            .into_iter()
+            .filter(|t| t.text.rep == here && !t.shown && t.text.of == TextOf::Tag)
+            .map(|t| format!("Tag {} (hidden here)", t.text.value))
+            .collect();
+        if !hidden.is_empty() {
+            lines.push(hidden.join("; "));
+        }
     }
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let mut others: Vec<(usize, RepresentationId, String)> = doc

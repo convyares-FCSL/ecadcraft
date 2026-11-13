@@ -460,6 +460,9 @@ pub struct PrintBook {
     pub sheets: usize,
     pub unknown: Vec<String>,
     pub flagged: usize,
+    /// Brief 033: what Print Book will note (a continuation number prints its whole page; the
+    /// drawing changed since the newest issue).
+    pub notes: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -536,6 +539,9 @@ impl PrintBook {
                     });
                     ui.end_row();
                 });
+                for n in &self.notes {
+                    ui.label(RichText::new(n).small().color(WARNING)).accessible_name("ecad.printbook.note");
+                }
                 if self.flagged > 0 {
                     let n = if self.flagged == 1 { "1 value".to_string() } else { format!("{} values", self.flagged) };
                     ui.label(RichText::new(format!("{n} marked ? on generated pages.")).small().color(t.text_dim));

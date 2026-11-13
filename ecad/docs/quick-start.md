@@ -19,6 +19,85 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 
 ## Which revision this describes, and what has been tried
 
+**Brief 035 (design `ecad/docs/design/035.md`), on `feature/mcp-bridge`, not yet in `dev`:**
+an agent drives the running trial over MCP while you watch (section 7D). Agent access is off by
+default and set in the Developer section (or `--control PORT` for one run); `ecad-mcp --connect
+47823` is headless until the window answers and live once it does; each agent call is one
+transaction recorded as the agent's, and you are the author again after it. A plain line in
+the Developer section names the agent, its last change and its steps, with Undo session, Pause
+and Disconnect; the banner's look and place come with the new UI shell.
+- *Automated checks:* see section 7D.
+- *Agent-observed:* none yet; no agent has watched the live window with Claude Code.
+
+**Brief 033 (design `ecad/docs/design/033.md`), on `feature/print-project`, not yet in `dev`:**
+Print Book's PDF holds on each page only what lies on that page (an approved upstream patch to
+CADCraft's PDF writer), so a book grows in step with its sheets: the 25-page bench book went from
+7,897 KB to 335 KB. A missing value in a generated table is `?` in a thin box, yellow on screen and
+black when printed in either colour mode. An automatic contact table that would run into the title
+block goes right of its coil, else is lifted above the title block; a table placed by hand stays
+and Checks lists `Contact table over the title block` with **Move table…**. `table` on an ECAD
+page is refused, nothing written: `Tables can't be placed on ECAD pages yet. Draw it with lines
+and text, or add a generated page for lists (New Page ▸ Generated).` Generated pages number their
+continuation sheets in sequence (`400, 401`). Project settings gain **Tags** (leading `-`, case
+as typed; changing the dash rewrites every tag in one undoable step) and **Revisions** (pending
+changes marker `D*` / `E (draft)` / off, and the revision table's columns with custom fields such
+as ECR). The Rev box shows `D*` when the drawing changed after the newest issue. Section 5-033
+describes it.
+- *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
+  20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
+  `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
+  colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
+  `table`, the Checks row, `table` refused, writes off), `print_project_q7_contracts.rs` (pending
+  marker with undo and save/reopen, revision columns and custom fields, tag style and its
+  rewrite, renumber under `typed`, writes off), unit tests in `revisions.rs` (column grammar,
+  hostile settings) and `ecad-model/src/tag.rs` (the tag style table).
+- *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
+- *Owner-tried:* not yet.
+
+**Brief 034 (design `ecad/docs/design/034.md`), on `feature/component-library`, not yet in
+`dev`:** the built-in symbols grow from 21 to 81 so a control-panel pack needs no hand-drawn boxes:
+change-over contacts (`co`, `swco`: `11`/`12`/`14`, then `21`/`22`/`24`… when joined), 4-pole power
+contacts, RCBO and RCDs, SSR input and output, a fuse terminal and fuse banks of 4 to 12 ways;
+proximity, float, roller and interlock switches, single and dual solenoid valves, a thermocouple
+and a heater; plugs, sockets, D-sub and M12 halves, RJ45 and USB bulkheads; PLC card bodies
+(CPU, PS, DI, DQ, AI, AO, RTD, IO-Link). Find Symbol also finds a family word (`protection`,
+`sensors`, `connectors`, `plc`…). Any device takes a `rating`; a fuse bank takes `rating.<n>` per
+fuse. Spare connector pins, a fuse bank's `M` and outputs and an I/O card's supply points are not
+flagged as unconnected. Ratings are stored and listed but not drawn yet (lane T draws text);
+contact tables do not count change-over contacts yet (stage 4, after brief 033). Section 5-034.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/symbols.rs` (every symbol on the grid, its
+  hash, box and labels, the change-over rule, quiet points, anchors, search),
+  `ecad/crates/ecad-cadcraft/tests/all/library_contracts.rs` (placing, joining, ratings, nets,
+  quiet points, BOM rows) and `ecad/apps/ecad-mcp/tests/all/library_contracts.rs` (every new symbol,
+  a change-over join and ratings through `execute` as the agent; writes off; hostile input).
+- *Agent-observed:* the worker looked at a drawing of every new definition; no agent has clicked
+  through the live window.
+
+**Brief 031 (design `ecad/docs/design/031.md`), on `feature/text-styles`, not yet in `dev`,
+steps Q1 (text styles), Q3 (show and hide) and Q2 (placement):** every derived text takes its size and weight from one style table per
+project: tags 2.5 mm bold, connection point labels 1.5 mm, location labels 1.6 mm, continuation
+names and references 2.0 mm, wire labels 1.6 mm (was 1.8). One project font (`BIZ UDPGothic` by
+default) draws them when the build embeds craft-fonts or the machine has it; otherwise the stroke
+font draws, and bold is a heavier line. **Project settings ▸ Text** sets the font and each kind's
+height, bold and shown state in one transaction; `textstyle` does the same typed, and the
+read-only `defaults` lists every registered default and where its value comes from. Section 5-031.
+Tags, connection point labels, descriptions and part numbers (new, hidden by default) can be
+hidden or shown per symbol, device, page or project (**Show/Hide Text**, Properties ▸ Texts,
+`showtext`); a strip's tag prints once per run of adjacent terminals and a PLC device's once per
+run of its channels; continuation names are hidden by default. **Show Hidden Text** draws hidden
+texts dimmed, never printed. Tags (with any shown description and part number under them) are
+placed beside their symbol where they cross no wire, symbol or other text; **Move Text** and
+`movetext` store a place that follows the symbol; `text` with `justify` is recorded. The cable look's texts (core labels, label box) are drawn at the cable text height (1.6 mm) and
+reference ends at the reference height (2.0 mm); a copied symbol keeps its own text settings.
+- *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
+  registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
+  (drawn sizes and styles, redraw, a font change then an edit),
+  `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
+  refusals, writes off) and `ecad/apps/ecad-trial/tests/all/text_ui.rs` (the Text section).
+- *Agent-observed:* the worker looked at the headless screenshot `031-text-section.png`; no agent
+  has clicked through the live window.
+- *Owner-tried:* not yet.
+
 **Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
 numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
 group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
@@ -993,7 +1072,7 @@ shows the same facts.
    `0V-01 0.5 BU` on both; the cable cores below the contactor show their number only
    (`L1-02`). Page 1 shows `L-01 2.5 BN`, `N-01 2.5 BU`, `PE 2.5 GNYE`,
    `24V-01 0.5 BU`, `0V-01 0.5 BU`. Colours are IEC 60757 codes (`BN`, `BU`, `BK`, `GY`,
-   `GNYE`…); labels are small (1.8 mm) and no two touch. Switch cable `-W01` to fan view
+   `GNYE`…); labels are small (1.6 mm, brief 031) and no two touch. Switch cable `-W01` to fan view
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
@@ -1038,7 +1117,7 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.6 mm since brief 031). By clicking, both are in
 **Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
 GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
@@ -1189,7 +1268,8 @@ by location**. The trial has no file dialogs: where a file is asked for, type it
    **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
    cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
    its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
-   number is listed under the field and left out.
+   number is listed under the field and left out. A device without a part number shows `?` in a
+   box in the BOM, black in the PDF (brief 033); the file is a few hundred KB, not megabytes.
 
 Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
 `setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
@@ -1414,6 +1494,145 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
 
+## 5-031. Text styles (by clicking)
+
+Brief 031, design `ecad/docs/design/031.md`. Sizes and the font are one table per project.
+
+**The font.** The default font, BIZ UDPGothic, comes from the craft-fonts repository and is built
+in only when the build is told where it is. To see it, clone `storytold/craft-fonts` next to this
+checkout and build with `CRAFT_FONTS_DIR` set to that folder (PowerShell:
+`$env:CRAFT_FONTS_DIR = "C:\dev\craft-fonts"`; bash: `export CRAFT_FONTS_DIR=~/craft-fonts`).
+Without it, texts are drawn in CADCraft's stroke font and bold tags are drawn with a heavier line;
+nothing else changes, and the project's stored font is kept.
+
+1. Place a `coil` (5F). Expected: its tag `-K01` is small and bold (2.5 mm) and its `A1`/`A2`
+   are smaller still (1.5 mm).
+2. **Project panel ▸ Project settings**, scroll to **Text**. The line under **Font** says `drawn
+   with BIZ UDPGothic`, or, in yellow, why another font draws.
+3. Set **Tag** to `3`, untick its **Bold**, OK. Expected: the tag redraws at once, larger and
+   regular; one `u` puts both back. A height of `11` shows `A text height is 0.5 to 10 mm.` and
+   OK is disabled. **Defaults** puts every row back (written only on OK).
+4. **Once per run.** Place a `terminal`, then nine more of the same strip in a row 10 mm apart
+   (**Place**, answer the device prompt with the strip). Expected: `-X01` is drawn once, over the
+   leftmost terminal. A group of the same strip further along the line (more than 15 mm between
+   boxes) prints it once more.
+5. **Show/Hide Text** (ECAD tab ▸ **Text**): click a coil's tag. Expected: it disappears and the
+   command line says `Tag -K01 hidden on this symbol.`; type `D` (Device), `P` (Page) or `PR`
+   (Project) first to hide it wider. Click the symbol to show its hidden tag again. Hover the
+   symbol: the lens lists `Tag -K01 (hidden here)`. Esc or Enter ends the tool.
+6. **Show Hidden Text** (ECAD tab ▸ **Text**): hidden tags and labels are drawn dimmed (grey);
+   click it again to stop. It records nothing and is never printed. Properties of a device, a
+   symbol or a page has a **Texts** group (`Default (shown)`, Shown, Hidden, Once per run).
+7. **Placement.** Place two `no` contacts 10 mm apart and draw a wire through where a tag sits:
+   the tags move to the next free place (left top, left middle, right, above, below) and never
+   overlap each other while a free place exists.
+8. **Move Text** (ECAD tab ▸ **Text**): click a tag, then click where it goes (`J` first to type
+   its alignment, e.g. `LT`). Expected: `Tag -K01 moved. Reset puts it back.` Move the symbol: the
+   tag follows. Start Move Text again, type `R` (Reset) and click the tag: placed automatically
+   again. `text {"at":[100,100],"text":"X","justify":"MC"}` now draws X centred (older builds
+   cannot open a project with such a text).
+
+Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
+`textstyle {"kind":"tag","height":3,"weight":"regular"}`, `textstyle {"font":"Arial"}`,
+`textstyle {"kind":"wire_label","height":2}` (the same value as **Wires ▸ Label height**),
+`defaults {"group":"Text"}` (every registered default, its value and where it comes from).
+`showtext {"kind":"tag","show":"off"}` (the project; add `"page"`, `"component"` or
+`"representation"` for narrower), `showtext {"kind":"description","show":"on","component":"<id>"}`,
+`hiddentext {}` (toggles), `pagetexts {}` (every derived text on the page, hidden ones too, with
+`moved` and `overlaps`), `movetext {"representation":"<id>","kind":"tag","to":[130,170],"justify":"LT"}`
+(`"reset":true` instead of `to` puts it back).
+`projectprops`, `pageprops` and `setprop` refuse `text.` keys.
+
+## 5-032. Wires join, cables cross pages, wire labels (by clicking)
+
+Brief 032, design `ecad/docs/design/032.md`. Checked by the automated tests named in the design
+(§12); the steps below have not been tried by the owner yet.
+
+1. **Wire** tool: draw a wire from `0,0` to `50,0`, Enter; then start **Wire** again and click
+   on the first wire's open end, then `50,-20`, Enter. Expected: the echo says `end A joins wire …
+   (now one wire)`; the two parts are one wire with one label; Checks has no Open end row for the
+   corner. While the cursor is over an open end the Wire tool shows a green ring and `join`.
+2. Type `J` while drawing: the prompt reads `Specify next point (join off) [Undo/Join]:` and ends
+   that meet another wire stay open. Expected after the wire: a yellow ring on the open end, a
+   **Looks connected** row in Checks with **Join**; **Join** makes them one wire.
+3. **Join Wires** (Wiring tools): click where two open ends meet. Expected: one wire; on an open
+   end lying on a wire's middle, a junction.
+4. A wire drawn from a `0V` wire's open end with potential `24V` is refused: `That wire carries
+   0V and this one 24V; joining them would short them. …`; nothing is drawn.
+5. Cable across pages: on one page wires from a terminal to continuations `A1…A3`, slashed as
+   `-W04`; on another page continuations `A1…A3` and wires on. Slash them there with tag `-W04`.
+   Expected: no new cable; Reports ▸ Cables shows `-W04` with 3 cores from the first page's
+   terminals to the second's.
+6. **Project panel ▸ Project settings ▸ Wires**: **Labels** `One per net per page` (default) or
+   `Every wire`, and **Shortest labelled wire** (enabled with Every wire). Expected: with the
+   default a net is labelled once per page; Every wire with 10 mm leaves short drops unlabelled.
+
+Typed instead: `wire {"points":[[0,0],[50,0]]}`, `wire {"points":[[50,0],[50,-20]],"join":false}`,
+`joinwires {"at":[50,0]}`, `cableslash {"from":[50,-5],"to":[50,25],"tag":"-W04"}`,
+`wiresettings {"label_rule":"each","label_min_length":10}`. `defaults {"group":"Wires"}` lists
+`wire.join`.
+
+## 5-033. Print and project (by clicking)
+
+Brief 033, on `feature/print-project`. Start from the demo project of section 5K (it has a BOM
+page and devices without part numbers).
+
+1. **Book size.** Click **Print Book**, keep **All pages**, check **File**, **Print**. Expected:
+   `Printed n sheets (… generated) to … (… KB).`: a few hundred KB, not megabytes. Each PDF page
+   looks as before.
+2. **Missing values.** Show the BOM page: a missing part number is `?` in a thin yellow box. Print
+   Book with **Colour: Screen**: in the PDF the `?` and its box are black.
+3. **Contact table and the title block.** On a drawing page place a coil low on the sheet (just
+   above the title block) with two contacts on another page. Expected: its contact table sits to
+   the right of the coil, or is lifted above the title block; never over it. Move the table into
+   the title block with **Move Mirror Table**: it stays there, and Checks lists `Contact table over
+   the title block` with **Move table…**.
+4. **Continuation numbers.** Number the BOM page `400` (Pages list, double-click its number). With
+   enough devices for two sheets, the second sheet's Page box reads `401` and the first sheet's
+   Next reads `401`; Contents lists `400–401`. Typing `401` as another page's number is refused:
+   `Number 401 is sheet 2 of page 400 (BOM by location).` Print Book **Pages** `401` prints the
+   whole BOM page and says why.
+5. **`table`.** Type `table` on a drawing page and place it: refused, `Tables can't be placed on
+   ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸
+   Generated).` Nothing is added.
+
+6. **Tag style.** Project settings ▸ Tags: untick **Leading - on tags** (the line under it reads
+   `k5 is written K05`), **OK**. Every device and cable tag loses its `-` in one step (`Tag style:
+   no leading -. n tags rewritten.`); one **u** puts them all back. **Case ▸ As typed**: tags
+   typed from then on keep their letters (`M02a`); existing tags stay upper case.
+7. **Revision columns.** Project settings ▸ Revisions ▸ **Columns**: type
+   `rev, date, ecr:ECR, description, drawn`, **OK**. The title block's revision table now has an
+   ECR column and no Checked or Approved. In the Revisions window the pending row has an ECR
+   input. A wrong list says why under the field and is not written.
+8. **Pending changes.** Issue Rev A, then draw a line: the Rev box reads `A*`, the cover
+   `Revision A, … (changed since)`, and the Print Book dialog (and its result) notes `The drawing
+   has changed since Rev A; the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
+   does not count. **Pending changes ▸ E (draft)** shows `B (draft)`; **Off** shows `A`.
+
+Typed instead: `projectprops {"tag_dash":false}`, `projectprops {"tag_case":"typed"}`,
+`projectprops {"revision_columns":"rev, date, ecr:ECR, description, drawn"}`,
+`revision {"fields":{"ecr":"ECR-114"}}`, `projectprops {"revision_pending":"draft"}`,
+`contacts {"component":"<id>"}` (its `table` says where the table went and why),
+`pageprops {"page":"<id>"}` (`sheet_numbers`), `printbook {"scope":{"pages":"401"}}` (`notes`).
+
+## 5-034. Component library (by clicking)
+
+Brief 034, design `ecad/docs/design/034.md`. Any project; open the **ECAD** tab first.
+
+1. **Change-over contacts.** Place a new coil. In Find Symbol type `change`, click
+   **Change-over contact**, then that coil's device line, and click beside the coil. Expected: it
+   joins as `11/12/14`; a second one joins as `21/22/24`, and a NO contact after that as `33/34`.
+2. **Families.** In Find Symbol type `protection`. Expected: the RCBO, the RCDs, the fuse terminal
+   and the five fuse banks. `sensors`, `connectors` and `plc` list theirs.
+3. **A fuse bank.** Place a **Fuse bank, 8-way** as a new device. Expected: `-F01` with connection
+   points `L+`, `M`, `1`…`8`. Typed: `setprop {"component":"<its id>","key":"rating.3","value":"2A"}`
+   stores fuse 3's rating; `rating.13` is refused with `-F01 has no fuse 13.` Checks does not list
+   its unwired `M` and outputs, only `L+`.
+4. **Prefixes are registered defaults.** Typed: `defaults {"group":"Tag prefixes"}` lists every
+   symbol's built-in prefix (`symbol.fusebank8.prefix` = `F`, from `builtin`). Set the fuse bank's
+   prefix to `FB` in **Project settings ▸ Tags** (or `tagsettings {"prefixes":{"fusebank8":"FB"}}`).
+   Expected: `defaults` now says `FB`, from `project`, and the next fuse bank placed is `-FB01`.
+
 ## 6. Check connected movement, undo/redo and pages
 
 1. **Connected movement.** Select the rectangle and its marker with a window selection, type
@@ -1540,8 +1759,8 @@ that file is not a version 1 project.
 
 `ecad-mcp` (brief 011) lets an AI agent such as Claude Code read and change an ECAD project
 through the Model Context Protocol. It runs **headless**: no window; the agent works on the
-project file in a process of its own. Watching an agent work in the running trial (bridged mode)
-is a later brief.
+project file in a process of its own. To watch an agent work in the running trial, see section
+7D.
 
 Every step below uses the **same project file**: `C:\dev\ecad-projects\agent.ecad` on native
 Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your system.
@@ -1638,6 +1857,77 @@ What the agent can and cannot do:
   name is taken from the first `initialize` only.
 - Quitting the server cleanly (the client closes it) releases the writer lock; the
   `agent.ecad.lock` file stays beside the project, empty, as the trial leaves it.
+
+## 7D. Watch an agent draw (live, brief 035)
+
+The same `ecad-mcp`, started with `--connect`, drives the **running** trial: you watch the
+drawing appear, every agent change is recorded as `agent <name>` and every change of yours as
+`user`. One registered server does both: it is headless while no ECAD window answers on the port
+and live once one does (`ecad_connection` tells the agent which). Agent access is **off** until
+you turn it on; when off, nothing listens.
+
+1. **Build once** (from `ecad/`):
+
+   ```sh
+   cargo build --release -p ecad-mcp -p ecad-trial
+   ```
+2. **Turn agent access on in the trial.** Open the trial, unfold **Developer** at the bottom of
+   the Project panel, and set **Agent access** to **Read and change** (port 47823). The status
+   says `● Listening on 127.0.0.1:47823`. Once only: it is remembered in `agent-access.json` in
+   your ECAD settings folder (never in a project). `ecad-trial --control 47823` turns it on for
+   one run instead, without remembering it. **Read only** lets an agent read but not change or
+   save.
+3. **Register the server for every folder** (user scope). Native Windows:
+
+   ```powershell
+   claude mcp add --scope user ecad -- C:\dev\ecadcraft\ecad\target\release\ecad-mcp.exe --connect 47823 --write
+   ```
+
+   Linux or WSL:
+
+   ```sh
+   claude mcp add --scope user ecad -- ~/ecadcraft/ecad/target/release/ecad-mcp --connect 47823 --write
+   ```
+
+   Add `--launch` to let Claude open ECAD when it is closed (Windows, and Linux with a display;
+   WSL needs WSLg). Leave out `--write` for read-only. A project path at the end chooses what the
+   server opens headless when ECAD is closed (without one, headless works on an unsaved project).
+4. **Ask:** *"With the ecad tools, draw three wires from 0,0 to 60,0, 0,5 to 60,5, 0,10 to
+   60,10."* Expected: the wires appear one by one; the Developer section unfolds and shows a line
+   with **Undo session**, **Pause**, **Disconnect** and `Agent claude-code changing last: #3 Wire …
+   3 steps`; History shows each by
+   `agent claude-code`; the command history has a line `Agent claude-code: WIRE  #… "Wire …"`
+   per call.
+5. **Start `wire` yourself and leave it half done**, then ask for another wire. Expected: the
+   line says `waiting for you to finish WIRE`; after 5 s the agent reports *"Refused: the
+   designer is in the middle of WIRE; nothing was changed. Try again when they finish."*. Finish
+   or press Esc, then ask again.
+6. **Pause** on that line refuses agent changes (*"paused by the designer"*) until **Resume**;
+   reads go on. **Disconnect** ends this agent's session (restart the MCP server to connect
+   again).
+7. **Undo session** takes back the agent's steps; History has the undos by `user`. If you made
+   changes after the agent's, it asks first and names them (**Undo all**, **Undo the agent's
+   steps after my last one**, **Cancel**).
+8. **Close ECAD and ask again:** the agent says *"The ECAD window at 127.0.0.1:47823 is not
+   answering (closed?)…"* (once live, the server stays live). Reopen ECAD and it reconnects.
+
+What the agent may do is 7A's: the same tools, checks, caps and refusals, one transaction per
+call. Over the port it can also take a `screenshot` of the window. It can never turn agent
+access on, widen it or move the port (`agentaccess` is refused to agents), never use your mouse,
+keyboard or command line, and never open, save as or close files. An agent's `u` and `redo`
+take back only its own steps. One agent changes the project at a time; others read.
+
+The line is deliberately plain: the agent banner's look and place come with the new UI shell.
+
+- *Automated checks:* `ecad/apps/ecad-trial/tests/all/bridge_contracts.rs` (a live trial and an
+  `ecad-mcp --connect` server: authors per call, refusals byte-identical to headless, the person
+  restored after refused, failing and panicking calls, the cap with batches, Read only and no
+  `--write`, the busy rule, raw methods and the token, the agent-undo rule, one writer, modes,
+  off by default), `agent_ui.rs` (the Developer row, the settings file, Pause, Disconnect, Undo
+  session with and without your steps on top), `ecad/apps/ecad-mcp/tests/all/connect_contracts.rs`
+  and `ecad/apps/ecad-mcp/src/launch.rs` (path order, arguments, no display).
+- *Agent-observed:* none yet; registering with Claude Code and watching it draw (steps 3 to 8) is
+  the owner's check on Windows.
 
 ## 8. Diagnostics and the debugger
 
@@ -1969,6 +2259,9 @@ Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 
+- **Live agent access (brief 035):** one agent changes the project at a time (others read); the
+  port is loopback only (`127.0.0.1`); `--launch` opens the trial on Windows and on Linux with a
+  display (WSL needs WSLg), not on macOS; the banner is a plain line in the Developer section until the UI shell.
 - **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
@@ -2060,7 +2353,8 @@ Your table of three clean runs goes here once you have run it.
   - Set Property, Add to Cable and Delete still open the ECAD command field with a template.
 - **Devices and tags** (brief 018):
   - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
-    boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
+    boxes (F6), no `.ecadlib` symbol libraries: 81 symbols are built in (21 since brief 018, 60
+    more since brief 034).
   - Tag texts and connection point labels are placed automatically (left of a symbol, or above it when
     rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
   - Tag padding and each symbol's prefix are project settings, changed by typing

@@ -5,7 +5,7 @@
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
-use ecad_cadcraft::{Mapped, PagesRef, Project, ProjectHandle, project_page_with};
+use ecad_cadcraft::{Mapped, PagesRef, Project, ProjectHandle};
 use ecad_model::derive::mismatches;
 use ecad_model::{ComponentId, ConductorId, Document, ItemKind, PageId, Pt, TerminalId};
 use serde_json::{Value, json};
@@ -196,7 +196,9 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 continue;
             }
             // 1. projecting the document equals the engine drawing.
-            let (d, map) = project_page_with(doc, *page, &st.doc, &view.map, &p.views, p.tolerance).unwrap();
+            let (d, map) =
+                ecad_cadcraft::project::project_page_pending(doc, *page, &st.doc, &view.map, &p.views, p.tolerance, p.show_hidden_text, p.pending)
+                    .unwrap();
             assert!(d.model == st.doc.model, "page {page}: drawing differs from the projection");
             assert_eq!(map, view.map, "page {page}: handle map differs from a fresh projection");
             // 3. the map is one-to-one and every mapped handle exists (and every entity is mapped).

@@ -677,7 +677,7 @@ pub(crate) fn run_set_tag(s: &mut Session, params: &Value, o: ObjectRef) -> cadc
         let value = match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
             None => None,
             Some(v) => {
-                let t = tag::normalise(v, devices::padding(doc))?;
+                let t = tag::normalise(v, crate::defaults::print::tag_style(doc))?;
                 match tag::provisional(&t) {
                     Some((px, 0)) => Some(p.tag_high.next_provisional_in(doc, &px)),
                     _ => Some(t),

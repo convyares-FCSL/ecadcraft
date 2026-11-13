@@ -65,6 +65,8 @@ fn row(variant: &str, open_ms: f64) -> Row {
         outputs: None,
         strips: None,
         release: None,
+        text: None,
+        wires: None,
         measured: Measured {
             bytes: 1000,
             transactions: 10,

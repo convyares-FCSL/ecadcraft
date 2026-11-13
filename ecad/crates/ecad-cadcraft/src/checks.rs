@@ -127,10 +127,14 @@ pub enum Kind {
     LinkOrphan,
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
     LinkOnNonStrip,
+    /// Brief 033: a contact table the user placed overlaps the title block.
+    TableOverTitle,
+    /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
+    ContinuationClash,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 34] = [
+    pub const ALL: [Kind; 36] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -165,6 +169,8 @@ impl Kind {
         Kind::LinkAcrossPartition,
         Kind::LinkOrphan,
         Kind::LinkOnNonStrip,
+        Kind::TableOverTitle,
+        Kind::ContinuationClash,
     ];
 
     /// The JSON name.
@@ -204,6 +210,8 @@ impl Kind {
             Kind::LinkAcrossPartition => "link-across-partition",
             Kind::LinkOrphan => "link-orphan",
             Kind::LinkOnNonStrip => "link-on-non-strip",
+            Kind::TableOverTitle => "table-over-title",
+            Kind::ContinuationClash => "continuation-clash",
         }
     }
 
@@ -220,7 +228,7 @@ impl Kind {
             Kind::TwoFixed => "One net, two fixed numbers",
             Kind::OpenEnd => "Open end",
             Kind::LooseWire => "Loose wire",
-            Kind::LooksConnected => "Looks connected, no junction",
+            Kind::LooksConnected => looks_connected_words(),
             Kind::DrawnAway => "End drawn away from its connection point",
             Kind::SinglePoint => "Net with a single connection point",
             Kind::ThinJunction => "Junction with fewer than three wires",
@@ -249,6 +257,8 @@ impl Kind {
             Kind::LinkAcrossPartition => "Link crosses a partition",
             Kind::LinkOrphan => "Link names positions the strip lacks",
             Kind::LinkOnNonStrip => "Link on a device that is not a strip",
+            Kind::TableOverTitle => "Contact table over the title block",
+            Kind::ContinuationClash => "Continuation sheet has another page's number",
         }
     }
 
@@ -273,7 +283,9 @@ impl Kind {
             | Kind::AccessoryOrphan
             | Kind::LinkAcrossPartition
             | Kind::LinkOrphan
-            | Kind::LinkOnNonStrip => Severity::Warning,
+            | Kind::LinkOnNonStrip
+            | Kind::TableOverTitle
+            | Kind::ContinuationClash => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -296,6 +308,8 @@ pub enum Object {
 pub enum Fix {
     /// `junction {at}` on the row's page.
     AddJunction(Pt),
+    /// 032: `joinwires {at}` on the row's page (Looks connected: **Join**).
+    Join(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
     /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
@@ -324,6 +338,10 @@ pub enum Fix {
     LinkOrphan(ComponentId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
     LinkOnNonStrip(ComponentId),
+    /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
+    MoveTable(ComponentId),
+    /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
+    RenumberPage(PageId),
 }
 
 /// One row of the Checks list.
@@ -694,6 +712,17 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     out
 }
 
+// 032: the Looks connected row's words and fix (design 032 §2.7): two open ends that meet are
+// joined by merging them (`joinwires`), not by a junction.
+fn looks_connected_words() -> &'static str {
+    "Looks connected"
+}
+
+// 032: see `looks_connected_words`.
+fn looks_connected_fix(at: Pt) -> Fix {
+    Fix::Join(at)
+}
+
 /// The checks of conductor `c`: open end, loose wire, looks connected, drawn away.
 pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
@@ -727,7 +756,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
                     at: Some(at),
                     object: Object::Conductor(c),
                     which: which.clone(),
-                    fix: Some(Fix::AddJunction(at)),
+                    fix: Some(looks_connected_fix(at)),
                 });
             }
         }
@@ -751,6 +780,22 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
     out
 }
 
+/// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
+/// spare connector pin, fuse output or card supply point may stay unwired without an
+/// `Unconnected` check. Every other check on it still runs.
+fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
+    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return false };
+    doc.representations_of(Subject::Component(c)).any(|(_, r)| {
+        let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
+        let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
+        crate::devices::shown_terminals(doc, c, r)
+            .iter()
+            .filter(|(x, _)| *x == t)
+            .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
+            .any(|td| crate::symbols::is_quiet(s, &td.key))
+    })
+}
+
 /// The checks of connection point `t`: a device point with nothing attached.
 pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
@@ -760,6 +805,9 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
     if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.conductors.is_empty()) {
+        return Vec::new();
+    }
+    if is_quiet_point(doc, t) {
         return Vec::new();
     }
     let (page, at) = terminal_place(doc, t);
@@ -820,6 +868,17 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
+    }
+    // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
+    if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
+        out.push(Check {
+            kind: Kind::TableOverTitle,
+            page: Some(page),
+            at: Some(at),
+            object: Object::Component(c),
+            which,
+            fix: Some(Fix::MoveTable(c)),
+        });
     }
     out
 }
@@ -1196,6 +1255,11 @@ impl Scope {
                 // numbering and reference style change where rows say they are; label looks
                 // (colour style, height), tag settings and units change nothing here.
                 Op::SetProjectSettings { before, after } => {
+                    // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
+                    // title block when the project's sheet changes.
+                    if before.sheet != after.sheet {
+                        self.components.extend(crate::xref::placed_tables(doc));
+                    }
                     let (b, a) = (&before.wiring, &after.wiring);
                     if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
                     {
@@ -1205,6 +1269,16 @@ impl Scope {
                         || before.reference_style != after.reference_style
                     {
                         self.relocate = true;
+                    }
+                }
+                // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
+                // are checked again for a table over the title block.
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
+                    self.relocate = true;
+                    for (_, r) in doc.representations_on(*p) {
+                        if let Subject::Component(c) = r.subject {
+                            self.components.insert(c);
+                        }
                     }
                 }
                 // Page numbers, folders and the page order change where rows say they are (brief

@@ -81,7 +81,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
                 }
                 Target::Join(c)
             }
-            (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, devices::padding(doc))?)),
+            (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?)),
             (None, None) => Target::New(None),
         };
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
@@ -288,7 +288,7 @@ pub(crate) fn apply_tag_settings(after: &mut ecad_model::ProjectSettings, paddin
     }
     for (k, v) in changes {
         match v {
-            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix == px) => after.tag_prefixes.remove(&k),
+            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix() == px) => after.tag_prefixes.remove(&k),
             Some(px) => after.tag_prefixes.insert(k, px),
             None => after.tag_prefixes.remove(&k),
         };

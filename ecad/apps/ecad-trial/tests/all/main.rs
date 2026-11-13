@@ -3,7 +3,9 @@
 //! `cargo test -p ecad-trial <name>` still runs one file's tests. One executable links the
 //! dependencies once instead of once per file.
 
+mod agent_ui;
 mod args_contracts;
+mod bridge_contracts;
 mod cable_look_tester;
 mod cable_references;
 mod cable_references_tester;
@@ -30,6 +32,7 @@ mod startup_contracts;
 mod startup_tester;
 mod strips_ui;
 mod tester_035_bridge;
+mod text_ui;
 mod tools;
 mod trial;
 mod windows_trial_contracts;

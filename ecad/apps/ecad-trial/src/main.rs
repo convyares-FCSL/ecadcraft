@@ -73,8 +73,8 @@ impl eframe::App for App {
 
 fn main() -> eframe::Result {
     let mut timing = StartupTiming::from_env();
-    let (snapshots, project) = match parse_args(std::env::args_os().skip(1)) {
-        Ok(Invocation::Run { snapshots, project }) => (snapshots, project),
+    let (snapshots, project, control) = match parse_args(std::env::args_os().skip(1)) {
+        Ok(Invocation::Run { snapshots, project, control }) => (snapshots, project, control),
         Ok(Invocation::Help) => {
             println!("{USAGE}");
             return Ok(());
@@ -132,6 +132,10 @@ fn main() -> eframe::Result {
                 }
             }
             let mut trial = Trial::start(snapshots, project.as_deref(), timing.as_mut())?;
+            // Brief 035: agent access on for this run (not remembered).
+            if let Some(port) = control {
+                trial.agent.control_flag(port);
+            }
             if let Some(rs) = &cc.wgpu_render_state {
                 trial.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }

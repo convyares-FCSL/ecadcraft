@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use cadcraft_engine::doc::{Drawing, EntityStore};
+use cadcraft_engine::doc::{Drawing, EntityStore, color::Color};
 use cadcraft_engine::geom::{Mat3, Vec2};
 use ecad_model::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
@@ -48,6 +48,8 @@ pub enum Scope {
 pub struct Resolved {
     pub pages: Vec<PageId>,
     pub unknown: Vec<String>,
+    /// Brief 033: notes on what was chosen (a continuation sheet's number prints its whole page).
+    pub notes: Vec<String>,
 }
 
 fn folder_pages(doc: &Document, f: FolderId, out: &mut BTreeSet<PageId>) {
@@ -62,25 +64,42 @@ fn folder_pages(doc: &Document, f: FolderId, out: &mut BTreeSet<PageId>) {
 /// # Errors
 /// An unknown folder.
 pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
+    resolve_with(doc, scope, None)
+}
+
+/// [`resolve`] knowing the generated pages' sheets (`outputs`): a continuation sheet's number
+/// (`401`, sheet 2 of page `400`) chooses its whole page, with a note (design 033 §5.2).
+///
+/// # Errors
+/// An unknown folder.
+pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&Outputs>) -> Result<Resolved, String> {
     let b = Book::of(doc);
     match scope {
-        Scope::All => Ok(Resolved { pages: b.order.clone(), unknown: Vec::new() }),
+        Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
         Scope::Folder(f) => {
             if !doc.folders.contains_key(f) {
                 return Err("no such folder".into());
             }
             let mut set = BTreeSet::new();
             folder_pages(doc, *f, &mut set);
-            Ok(Resolved { pages: b.order.iter().copied().filter(|p| set.contains(p)).collect(), unknown: Vec::new() })
+            Ok(Resolved { pages: b.order.iter().copied().filter(|p| set.contains(p)).collect(), ..Resolved::default() })
         }
         Scope::Pages(text) => {
             let numbers: Vec<String> = b.order.iter().map(|p| b.number(doc, *p)).collect();
             let find = |n: &str| numbers.iter().position(|x| x.eq_ignore_ascii_case(n.trim()));
             let mut keep = BTreeSet::new();
             let mut unknown = Vec::new();
+            let mut notes = Vec::new();
             for token in text.split(',').map(str::trim).filter(|t| !t.is_empty()) {
                 if let Some(i) = find(token) {
                     keep.insert(i);
+                    continue;
+                }
+                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, outputs)
+                    && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
+                {
+                    keep.insert(at);
+                    notes.push(format!("{token} is sheet {} of page {}; the whole page is printed.", i + 1, b.number(doc, owner)));
                     continue;
                 }
                 match token.split_once('-').map(|(a, z)| (find(a), find(z), a, z)) {
@@ -96,7 +115,7 @@ pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
                     None => unknown.push(token.to_string()),
                 }
             }
-            Ok(Resolved { pages: keep.into_iter().filter_map(|i| b.order.get(i).copied()).collect(), unknown })
+            Ok(Resolved { pages: keep.into_iter().filter_map(|i| b.order.get(i).copied()).collect(), unknown, notes })
         }
     }
 }
@@ -132,13 +151,26 @@ pub struct Sheet {
 pub fn build(
     doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
+    build_pending(doc, pages, fan, tol, outputs, false)
+}
+
+/// [`build`] with the project's pending flag (design 033 §6): the title blocks and the cover
+/// show the pending marker.
+///
+/// # Errors
+/// A page that cannot be projected.
+pub fn build_pending(
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool,
+) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
+    // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
+    crate::text_style::install(&mut scratch, doc);
     crate::locations::add_linetype(&mut scratch);
     let mut store = EntityStore::new();
     let mut sheets = Vec::new();
     let mut x = 0.0;
     for page in pages {
-        let parts = crate::generated::parts_of(doc, *page, outputs);
+        let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
         let (d, _) = project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts)?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
@@ -157,6 +189,10 @@ pub fn build(
         for e in d.model.iter() {
             let mut e = (**e).clone();
             e.kind.transform(&m);
+            // Design 033 §3.1: a missing value prints black in either colour mode.
+            if e.common.layer == crate::generated::LAYER && e.common.color == Color::Index(crate::generated::FLAGGED_ACI) {
+                e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
+            }
             e.handle = scratch.new_handle();
             store.push(e);
         }
@@ -203,11 +239,14 @@ pub struct Options {
     /// Black on white (`monochrome.ctb`), else as on screen.
     pub mono: bool,
     pub lineweights: bool,
+    /// Brief 033 (design 033 §6.2): the drawing changed since the newest issue, so the title
+    /// blocks and cover show the pending marker and the notes say so.
+    pub pending: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { mono: true, lineweights: true }
+        Options { mono: true, lineweights: true, pending: false }
     }
 }
 
@@ -278,8 +317,10 @@ pub fn print(
     if pages.is_empty() {
         return Err("No page matches.".into());
     }
-    let (scratch, sheets) = build(doc, pages, fan, tol, outputs)?;
+    let (scratch, sheets) = build_pending(doc, pages, fan, tol, outputs, o.pending)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
+    // Design 033 §6.2: nobody prints a pending book by mistake.
+    done.notes.extend(pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
     done.flagged = crate::generated::flagged(doc, &generated, outputs);
@@ -326,6 +367,30 @@ pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
+/// Print Book's note for a project whose drawing changed since its newest issue (design 033
+/// §6.2), unless the marker is off.
+pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
+    let newest = crate::revisions::issued(doc).into_iter().next()?;
+    if !pending || crate::revisions::PendingStyle::of(doc) == crate::revisions::PendingStyle::Off {
+        return None;
+    }
+    let shown = crate::revisions::rev_box(doc, true);
+    Some(format!("The drawing has changed since Rev {}; the title block shows {shown}.", newest.rev()))
+}
+
+/// The dialog's notes for printing `scope` of `p` (brief 033): a continuation sheet's number
+/// chooses its whole page, and the pending-revision note. Reads only.
+pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
+    if crate::generated::has_bom_page(p.ledger.document()) {
+        p.outputs();
+    }
+    p.refresh_pending();
+    let doc = p.ledger.document();
+    let mut out = resolve_with(doc, scope, p.outputs.as_ref()).map(|r| r.notes).unwrap_or_default();
+    out.extend(pending_note(doc, p.pending));
+    out
+}
+
 /// What printing `scope` of `p` would give, for the dialog's live counts: sheets, numbers that
 /// match no page, `?` values on generated pages. Reads pages only (and the kept report models).
 pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usize) {
@@ -333,7 +398,7 @@ pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usiz
         p.outputs();
     }
     let doc = p.ledger.document();
-    let Ok(r) = resolve(doc, scope) else { return (0, Vec::new(), 0) };
+    let Ok(r) = resolve_with(doc, scope, p.outputs.as_ref()) else { return (0, Vec::new(), 0) };
     let sheets = r.pages.iter().map(|pg| crate::generated::sheets(doc, *pg, p.outputs.as_ref())).sum();
     let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
     (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.outputs.as_ref()))

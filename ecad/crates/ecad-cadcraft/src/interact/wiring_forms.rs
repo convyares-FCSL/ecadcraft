@@ -81,6 +81,55 @@ impl Interactive for Junction {
     }
 }
 
+// ---------------------------------------------------------------- Join Wires (brief 032 §2.5)
+
+/// `joinwires`: click where wire ends meet, until Enter.
+pub(crate) fn joinwires(s: &Session) -> R<Box<dyn Interactive>> {
+    can_start(s)?;
+    Ok(Box::new(Safe(JoinWires)))
+}
+
+struct JoinWires;
+
+impl JoinWires {
+    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        match i {
+            Input::Point(p) => {
+                if !in_range(p) {
+                    return Err(other(OUT_OF_RANGE));
+                }
+                let r = commit(s, "joinwires", &json!({"at": [p.x, p.y]}))?;
+                let line = if r.get("how").and_then(Value::as_str) == Some("merged") {
+                    "The two wires are now one wire."
+                } else {
+                    "A junction joins the wires there."
+                };
+                s.echo(line);
+                Ok(Step::Continue)
+            }
+            Input::Enter | Input::Cancel => Ok(Step::Done),
+            Input::Text(t) => Err(not_a_point(&t)),
+            _ => Ok(Step::Continue),
+        }
+    }
+}
+
+impl Interactive for JoinWires {
+    fn name(&self) -> &'static str {
+        "JOINWIRES"
+    }
+    fn prompt(&self, _s: &Session) -> Prompt {
+        Prompt::new("Click where wire ends meet", Accept::POINT)
+    }
+    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        paper_guard(s, &i)?;
+        safely(s, "joinwires", |s| self.step(s, i))
+    }
+    fn preview(&self, _s: &Session, _cursor: Vec2) -> Vec<EntityKind> {
+        Vec::new()
+    }
+}
+
 // ---------------------------------------------------------------- Fix Wire Number
 
 /// `wirenumber`: click a wire, type its number; a number another net uses offers the choices.
