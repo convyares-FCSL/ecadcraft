@@ -47,8 +47,10 @@ fn last_label(h: &mut Harness<'static, Trial>) -> String {
 
 /// The Properties palette is shown with the ECAD section on top of it.
 fn show_properties(h: &mut Harness<'static, Trial>) {
+    // Brief 038: the section is the shell's right panel, which a 1280 px window shows as its
+    // rail (design §5.2), so the window is widened.
     if h.state().props.lock().unwrap().frames == 0 {
-        ok(h, "properties");
+        h.set_size(eframe::egui::vec2(1920.0, 800.0));
         h.run_steps(3);
     }
 }
@@ -97,7 +99,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(h.state().panel.rebuilds, tree_builds, "a line does not rebuild the tree");
 
     // Project Properties: one transaction; Cancel writes nothing.
-    click(&mut h, project_panel::PROJECT_INFO);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     assert!(h.state().project_props.is_some());
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
@@ -113,12 +115,12 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
     assert_eq!(doc(&mut h).properties.get("customer").map(String::as_str), Some("ACME"));
-    click(&mut h, project_panel::PROJECT_INFO);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
 
     // Project settings: the reference style and the tag digits in one transaction; `u` undoes both.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         assert_eq!(d.popout, sheets_ui::Popout::Settings);
@@ -198,7 +200,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     // Revisions (the panel's Revisions popout): the pending row, Issue Rev A (asks first), the
     // title block, Reopen Rev A.
     let p = h.state().project().unwrap().clone();
-    click(&mut h, project_panel::REVISIONS);
+    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     {
         let r = h.state_mut().revisions.as_mut().unwrap();
         assert_eq!(r.pending[0], "A");
@@ -277,7 +279,7 @@ fn the_demo_on_its_sheets() {
 fn the_revisions_dialog_follows_undo_and_redo() {
     let mut h = build(trial(), None);
     let _ = fixture_p(&mut h);
-    click(&mut h, project_panel::REVISIONS);
+    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
     ok(&mut h, "issuerevision {}");
     h.run_steps(2);

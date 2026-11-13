@@ -43,7 +43,7 @@ pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
-    let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0));
+    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
     if let Some(d) = deltas {
         b = b.renderer(Collect(d));
     }
@@ -54,6 +54,9 @@ pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }

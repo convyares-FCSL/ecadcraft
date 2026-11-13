@@ -8,6 +8,7 @@
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
+use crate::shell::Hosted;
 use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::outputs::{Group, Table};
 use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
@@ -86,6 +87,10 @@ pub enum Out {
 /// The Reports window's state.
 #[derive(Debug, Default)]
 pub struct Reports {
+    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Brief 038: its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
     pub tab: Tab,
     pub group: Group,
     pub find: String,
@@ -228,6 +233,7 @@ impl Reports {
             .resizable(true)
             .collapsible(false)
             .open(&mut open)
+            .hosted(self.host)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     for (i, tab) in TABS.into_iter().enumerate() {
@@ -475,6 +481,10 @@ pub enum ScopeKind {
 /// The Print Book dialog (design 024 §4.1).
 #[derive(Debug, Clone, Default)]
 pub struct PrintBook {
+    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Brief 038: its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
     pub scope: ScopeKind,
     /// The folders to choose from: (id hex, path), and the chosen one.
     pub folders: Vec<(String, String)>,
@@ -517,6 +527,7 @@ impl PrintBook {
             .resizable(false)
             .default_width(420.0)
             .open(&mut open)
+            .hosted(self.host)
             .show(ctx, |ui| {
                 egui::Grid::new("ecad.printbook.grid").num_columns(2).show(ui, |ui| {
                     ui.label("Pages");

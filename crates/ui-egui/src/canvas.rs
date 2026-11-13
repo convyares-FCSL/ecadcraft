@@ -543,7 +543,10 @@ fn paint_pointer_overlay(
     }
     viewport_label(painter, rect);
     // Typing and Escape reach the command line even when its overlay is hidden.
-    crate::cmdline::keyboard(app, ui.ctx());
+    // ECAD-SEAM(owner): embedded drawing view. Without idle typing, only while a command prompts.
+    if app.embedding.idle_typing || app.session.prompting() || app.cmd.options.is_some() {
+        crate::cmdline::keyboard(app, ui.ctx());
+    }
     // Command line overlay.
     if app.ui.show_command_line {
         crate::cmdline::show(app, ui, full);
@@ -952,20 +955,27 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     // command menu); otherwise it opens the shortcut menu (Repeat, Clipboard, …).
     // Shift/Ctrl+right-click opens the object snap menu.
     let idle = !app.session.prompting();
+    // ECAD-SEAM(owner): embedded drawing view. Without canvas menus, an idle right-click is
+    // reported to the embedder and opens no menu; while a command runs nothing changes.
+    let menus = app.embedding.canvas_menus || !idle;
     if inside && pressed_secondary {
-        app.canvas.snap_menu = mods.shift || mods.ctrl;
+        if menus {
+            app.canvas.snap_menu = mods.shift || mods.ctrl;
+        } else {
+            app.secondary_click = hover_pos;
+        }
     }
     if crate::context_menu::in_command(app, ui, inside, pressed_secondary) {
         let _ = app.session.input(Input::Enter);
     }
     // Right-click on a grip with options (polyline vertex, line end…) opens the grip menu.
-    if inside && pressed_secondary && idle && !app.canvas.snap_menu {
+    if inside && pressed_secondary && idle && menus && !app.canvas.snap_menu {
         app.canvas.grip_menu = grip_at(app, &xf, hover_pos).filter(|g| !grip_options(app, *g).is_empty());
     }
     crate::dyngrips::menu(app, ui.ctx(), &xf);
-    if idle && !app.canvas.snap_menu && app.canvas.grip_menu.is_some() {
+    if idle && menus && !app.canvas.snap_menu && app.canvas.grip_menu.is_some() {
         grip_menu(app, &resp);
-    } else if idle || app.canvas.snap_menu {
+    } else if menus && (idle || app.canvas.snap_menu) {
         crate::context_menu::show(app, &resp);
     }
 

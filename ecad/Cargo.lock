@@ -1467,6 +1467,7 @@ dependencies = [
  "egui_kittest",
  "log",
  "ron",
+ "serde",
  "serde_json",
 ]
 

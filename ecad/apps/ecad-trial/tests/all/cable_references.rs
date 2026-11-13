@@ -17,13 +17,16 @@ fn trial() -> Trial {
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 1000.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1200.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }

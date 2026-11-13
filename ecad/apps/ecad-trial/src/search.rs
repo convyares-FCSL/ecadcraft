@@ -181,6 +181,8 @@ impl<K: PartialEq, V: Clone> Cached<K, V> {
 /// The search window's state.
 #[derive(Debug, Default)]
 pub struct SymbolSearch {
+    /// Brief 038: the Library workspace's main view it fills, or `None` to float.
+    pub host: Option<egui::Rect>,
     pub open: bool,
     pub query: String,
     /// The highlighted row (Up/Down, Enter).
@@ -239,79 +241,79 @@ impl SymbolSearch {
         let mut picked = None;
         let mut back = false;
         let mut open = self.open;
-        egui::Window::new(TITLE)
+        let window = egui::Window::new(TITLE)
             .id(egui::Id::unique("ecad.symbolsearch.window"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
-            .default_pos(egui::pos2(260.0, 120.0))
-            .show(ctx, |ui| {
-                if let Some(p) = &self.picked {
-                    let what = match p {
-                        Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
-                        Pick::Device(t) => format!("Add to {t}:"),
-                    };
-                    ui.label(what);
-                    ui.push_id(CHOICES_ID, |ui| {
-                        for c in choices {
-                            if ui.button(egui::RichText::new(&c.text).monospace()).clicked() {
-                                chosen = Some(c.clone());
-                            }
-                        }
-                        if choices.is_empty() {
-                            ui.weak("Nothing can be added to that device.");
-                        }
-                    });
-                    if ui.button("Back").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        back = true;
-                    }
-                    return;
-                }
-                let label = ui.label(FIELD_LABEL);
-                let field = egui::TextEdit::singleline(&mut self.query)
-                    .id_salt(FIELD_ID)
-                    .hint_text("Find symbol or device…")
-                    .char_limit(symbols::MAX_QUERY)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(420.0);
-                let r = ui.add(field).labelled_by(label.id);
-                if std::mem::take(&mut self.focus) {
-                    r.request_focus();
-                }
-                if r.changed() {
-                    self.selected = 0;
-                }
-                let (list, more, nothing) = rows;
-                let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::Escape)));
-                if r.has_focus() || r.lost_focus() {
-                    if keys.0 && self.selected + 1 < list.len() {
-                        self.selected += 1;
-                    }
-                    if keys.1 {
-                        self.selected = self.selected.saturating_sub(1);
-                    }
-                    if keys.2 {
-                        self.query.clear();
-                    }
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        picked = list.get(self.selected).map(|row| row.pick.clone());
-                    }
-                }
-                ui.push_id(RESULTS_ID, |ui| {
-                    for (i, row) in list.iter().enumerate() {
-                        let text = egui::RichText::new(&row.text).monospace();
-                        if ui.selectable_label(i == self.selected, text).clicked() {
-                            picked = Some(row.pick.clone());
+            .default_pos(egui::pos2(260.0, 120.0));
+        crate::shell::hosted(window, self.host).show(ctx, |ui| {
+            if let Some(p) = &self.picked {
+                let what = match p {
+                    Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
+                    Pick::Device(t) => format!("Add to {t}:"),
+                };
+                ui.label(what);
+                ui.push_id(CHOICES_ID, |ui| {
+                    for c in choices {
+                        if ui.button(egui::RichText::new(&c.text).monospace()).clicked() {
+                            chosen = Some(c.clone());
                         }
                     }
-                    if *more > 0 {
-                        ui.weak(format!("and {more} more"));
-                    }
-                    if let Some(n) = nothing {
-                        ui.weak(n);
+                    if choices.is_empty() {
+                        ui.weak("Nothing can be added to that device.");
                     }
                 });
+                if ui.button("Back").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    back = true;
+                }
+                return;
+            }
+            let label = ui.label(FIELD_LABEL);
+            let field = egui::TextEdit::singleline(&mut self.query)
+                .id_salt(FIELD_ID)
+                .hint_text("Find symbol or device…")
+                .char_limit(symbols::MAX_QUERY)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(420.0);
+            let r = ui.add(field).labelled_by(label.id);
+            if std::mem::take(&mut self.focus) {
+                r.request_focus();
+            }
+            if r.changed() {
+                self.selected = 0;
+            }
+            let (list, more, nothing) = rows;
+            let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::Escape)));
+            if r.has_focus() || r.lost_focus() {
+                if keys.0 && self.selected + 1 < list.len() {
+                    self.selected += 1;
+                }
+                if keys.1 {
+                    self.selected = self.selected.saturating_sub(1);
+                }
+                if keys.2 {
+                    self.query.clear();
+                }
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    picked = list.get(self.selected).map(|row| row.pick.clone());
+                }
+            }
+            ui.push_id(RESULTS_ID, |ui| {
+                for (i, row) in list.iter().enumerate() {
+                    let text = egui::RichText::new(&row.text).monospace();
+                    if ui.selectable_label(i == self.selected, text).clicked() {
+                        picked = Some(row.pick.clone());
+                    }
+                }
+                if *more > 0 {
+                    ui.weak(format!("and {more} more"));
+                }
+                if let Some(n) = nothing {
+                    ui.weak(n);
+                }
             });
+        });
         self.open = open;
         if picked.is_some() {
             self.picked = picked;

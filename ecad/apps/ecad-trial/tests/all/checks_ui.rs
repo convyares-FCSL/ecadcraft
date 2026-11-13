@@ -156,7 +156,12 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // The Checks tab: -M01:PE, a click goes to page 3, centres it, selects the motor, rings PE.
     click(&mut h, checks_panel::CHECKS_TAB);
-    assert_eq!(h.state().panel.tab, project_panel::Tab::Checks);
+    // Brief 038: Checks is the shell's drawer, open; the whole list (the drawer shows a few rows)
+    // is Lists ▸ Check list.
+    assert!(h.state().shell_state().drawer_open);
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Lists);
+    h.state_mut().shell.lists = ecad_trial::shell::ListsView::Checks;
+    h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
     // Four rows of brief 022, and brief 024's count of devices without a part number.
     assert_eq!(rows.len(), 5, "{rows:?}");
@@ -184,6 +189,9 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert_eq!(ring_of(&mut h), None, "Esc clears the ring");
     click(&mut h, &checks_panel::row_label(&pe));
     assert!(ring_of(&mut h).is_some());
+    // Brief 038: the page is shown in Draw (Lists ▸ Check list went to the row).
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Draw);
+    h.run_steps(3);
     let empty = screen(&h, pe.check.at.unwrap().x + 40.0, pe.check.at.unwrap().y + 40.0);
     pointer_to(&mut h, empty);
     assert!(h.state().cad.canvas.hover.is_none(), "nothing under the pointer");
@@ -192,6 +200,9 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert_eq!(ring_of(&mut h), None, "a click on empty space clears the ring");
     // The click started a selection window; Esc ends it.
     h.key_press(eframe::egui::Key::Escape);
+    h.run_steps(3);
+    // Back to Lists ▸ Check list for the rows.
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Lists);
     h.run_steps(3);
     click(&mut h, &checks_panel::row_label(&pe));
 
@@ -233,7 +244,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // Project settings popout, Wires (owner, 2026-11-09): colours three-letter, label height 2.5;
     // one transaction, labels follow, `u` takes both back.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("iec", "1.6"));
@@ -259,7 +270,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
     // `wiresettings` line.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     h.get_by_label("ecad.projectsettings.label_rule.each").scroll_to_me();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.label_rule.net").is_some());

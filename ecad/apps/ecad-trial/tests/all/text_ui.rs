@@ -30,9 +30,15 @@ fn click(h: &mut H, label: &str) {
 fn the_text_section_writes_one_textstyle_transaction() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
+    // Brief 038: the shell's own interface (the harness turns the developer switch on).
+    h.state_mut().set_cad_chrome(false);
+    // The size this test was written at: the Project settings popout grows a row a frame until it
+    // reaches the window's bottom, so in a taller window its OK button moves under the click.
+    h.set_size(eframe::egui::vec2(1280.0, 800.0));
+    h.run_steps(3);
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         let t = d.text.as_mut().expect("the Text section");
@@ -59,7 +65,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     assert!(!doc(&mut h).properties.contains_key("text.tag.height"));
 
     // An out-of-range height keeps OK disabled: nothing is written.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     h.state_mut().project_props.as_mut().unwrap().text.as_mut().unwrap().rows[0].height = "11".into();
     h.run_steps(2);
     assert!(h.state().project_props.as_ref().unwrap().line().is_err());
