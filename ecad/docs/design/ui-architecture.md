@@ -1,6 +1,6 @@
 # UI architecture (U0)
 
-Status: Draft for the overseer and the owner (2026-11-13). Docs only.
+Status: Owner questions answered (2026-11-13, §13); briefs 038 and 039 still Draft. Docs only.
 Branch: `feature/ui-foundation`, from `origin/dev` `ee7bf71f`.
 Inputs: [`ui-design-spec.md`](../discussions/ui-2026-11/ui-design-spec.md) (the design, decided),
 [`owner-answers.md`](../discussions/ui-2026-11/owner-answers.md) (Carl's answers, decided), the
@@ -21,7 +21,7 @@ Standards, **U4d** agent banner and authors. Briefs: [037](../briefs/037-ui-toke
 | --- | --- | --- |
 | 1 | What ECAD owns, what needs a seam | ECAD owns the whole window except the drawing area. Two new upstream seams, both generic: **US1 embedded drawing view** (CADCraft draws only its canvas into a rect the embedder gives it, with four switches), and **US2 font definitions builder** (CADCraft's UI font set as a value the embedder extends). The existing seams (owner overlay marks, owned documents, Tool Sets tabs, Properties section) stay; the last two fall out of use. §1 |
 | 2 | Theme module and token table | Two new crates. **`ecad-tokens`** (Core: no dependencies) holds the one token table, used by the shell and by `ecad-cadcraft`'s canvas marks. **`ecad-ui`** (a new layer class, UiKit: egui, egui_extras, epaint and `ecad-tokens` only) holds the egui style, the nine primitives, the icon painters and, from U3, the table. §2, §3 |
-| 3 | Fonts | IBM Plex Sans (UI) and Barlow Semi Condensed (sheet) go into `storytold/craft-fonts`, never this repo, and reach the binary through CADCraft's existing embedding (`CRAFT_FONTS_DIR`). OFL-1.1, on the allowlist. About 0.8 MB for five faces (estimate; U1 records the measured size). Builds without craft-fonts still run: egui's default font for the UI, CADCraft's stroke font on the sheet. §4 |
+| 3 | Fonts | IBM Plex Sans (UI) and Barlow Semi Condensed (sheet) are committed in `ecad/assets/fonts/` and embedded by `ecad-ui` with `include_bytes!` (owner, Q1: an exception to the craft-fonts rule; offering them to craft-fonts comes later). OFL-1.1, on the allowlist, with `ATTRIBUTION.md` rows. About 0.8 MB for five faces (estimate; U1 measures it). Always present, no fallback path. The page draws Barlow only from U4a, which needs CADCraft's text resolver to see ECAD's bytes (US3, §4). §4 |
 | 4 | Shell layout | A pure layout function `layout(window, ShellState) -> Slots` (rects only, no egui context), drawn by `ecad-trial`'s `shell` module. State persists in eframe storage under its own key; per-page zoom is kept per project in the same storage, never in the `.ecad` file. Companion view is a split of the main view; pop-out to a second window is later. §5 |
 | 5 | Table | One generic `Table<S: TableSource>` in `ecad-ui` on `egui_extras::TableBuilder` with virtualised rows. Sources are column sets in `ecad-trial` (Checks, Devices, then 036's Terminals). Rows are keyed by object ID, so selection and change tint survive sorting and updates. §6 |
 | 6 | Command registry | Commands stay defined once, as CADCraft `CommandSpec`s installed by `ecad_cadcraft::install`; MCP already lists and runs exactly those (`list_commands`, `execute`). U4b adds an **action table** (UI-free, in `ecad-cadcraft`) that only says where a command appears: tool group, wheel slot per object kind, key, search words. A test fails if an action names a command that does not exist. §7 |
@@ -161,7 +161,7 @@ to copy them.
 Both seams are listed in `UPSTREAM-PATCHES.md` in the brief that adds them (US1 in 038, US2 in
 037) and pass `cargo xtask patches`. Each comes with CADCraft-side tests (default unchanged;
 embedded mode draws no chrome; idle typing off ignores letters but takes a prompt value; right
-click reported and no menu). Whether to offer them to upstream CADCraft is owner question Q2.
+click reported and no menu). Both are offered upstream together once U4b has used every switch (owner, Q2).
 
 ## 2. Crates and layering
 
@@ -268,37 +268,39 @@ their own in the same module.
 | Licence | SIL Open Font License 1.1 (`OFL-1.1`, on the house allowlist) | `OFL-1.1` |
 | Size (estimate) | about 0.2 MB per face as TTF | about 0.1 MB per face |
 
-**Where the files live.** House rule (Rust block 3) and the root `AGENTS.md`: font files live in
-`storytold/craft-fonts`, never in this repository. U1 therefore needs a craft-fonts change: the
-five TTF files, their `OFL.txt`, manifest lines (`family | style | file | scripts`) and
-craft-fonts' own attribution rows. That is a pull request to another repository (owner question
-Q1). Until it merges, U1 builds and tests against the fallback, and the brief says so.
+**Where the files live (owner, 2026-11-13, Q1).** In ECAD's own repository, under
+`ecad/assets/fonts/`: the five TTF files taken unmodified from the official sources (IBM Plex
+releases, Google Fonts' `ofl/barlowsemicondensed`), each family's `OFL.txt`, and a `README.md`
+with each file's source URL, version and SHA-256. Each family has a row in `ATTRIBUTION.md`.
+Offering them to `storytold/craft-fonts` is a later step, approved separately.
 
-**How they reach the binary.** CADCraft already embeds every craft-fonts face listed in the
-manifest when `CRAFT_FONTS_DIR` is set (`crates/fonts/build.rs`, `cadcraft_fonts::CRAFT_FONTS`).
-Owner decision 031 Q2 already set `CRAFT_FONTS_DIR` for ECAD's local builds and asked for a
-craft-common-actions issue for CI. `ecad-ui::fonts` finds the two families in `CRAFT_FONTS` by
-name (it receives the byte slices from the trial, so `ecad-ui` itself does not depend on
-`cadcraft-fonts`), registers them with egui through US2's builder, and exposes two egui families,
-`ui` (Plex) and `sheet` (Barlow). No bytes are embedded twice. Nothing is read from disk at run
-time.
+This is an owner exception to the house rule (Rust block 3) and the root `AGENTS.md` ("font files
+live in `storytold/craft-fonts`, never in this repo"). It is recorded here and in brief 037's
+status line. When the fonts move to craft-fonts, `ecad/assets/fonts/` goes and the bytes come from
+there.
 
-**The sheet font** is a CADCraft text style concern: 031 resolves its project font by family
-name through CADCraft's resolver, which finds embedded craft-fonts faces. Switching the default
-from BIZ UDPGothic to Barlow Semi Condensed is U4a (owner answer), a default in 031's registry, so
-no stored project changes.
+**How they reach the binary.** `ecad-ui::fonts` embeds them with `include_bytes!` (native and
+wasm), so they are always present: no build input, no `CRAFT_FONTS_DIR` dependency, and no
+fallback path. It registers them with egui through US2's builder, on top of CADCraft's
+definitions for the language (which keep their script fallbacks), and exposes two egui families,
+`ui` (Plex, also first in `Proportional`) and `sheet` (Barlow). Nothing is read from disk at run
+time. A test checks both families are registered, and that the `README.md` hashes match the
+committed files.
 
-**Without craft-fonts** (a contributor's build without `CRAFT_FONTS_DIR`): the UI uses
-CADCraft's definitions as they are (system UI font or egui's default), the sheet uses CADCraft's
-stroke font as 031 already does. Tests never depend on the fonts being present; a test that
-checks the families are registered runs only when `CRAFT_FONTS` contains them and says so when
-it skips.
+**The sheet font on the page (U4a).** The page text is drawn by CADCraft's text renderer. 031
+resolves the project font by family name through CADCraft's resolver
+(`cadcraft_fonts::TextFont::resolve_style`), which finds only faces in its own static
+`CRAFT_FONTS` table (built from `CRAFT_FONTS_DIR`), and has no way to register a face at run time
+(checked: `crates/fonts/src/craft_fonts.rs`). So egui can show Barlow in the shell from U1, but the
+**page** can draw Barlow only once U4a gives the resolver ECAD's bytes. U4a's designer chooses
+between a small generic upstream seam (US3: faces an embedder registers before first use, found
+by family name like craft-fonts faces) and waiting for the craft-fonts move; the seam is the
+recommendation, since it keeps the bytes in one place. Until then, the page keeps 031's font chain
+(BIZ UDPGothic when craft-fonts is embedded, otherwise the stroke font). Switching the default to
+Barlow Semi Condensed is a default in 031's registry, so no stored project changes.
 
-**Size.** About 0.8 MB added to every craft app that embeds the craft-fonts manifest (the
-manifest is shared). On wasm, CADCraft's `build.rs` embeds only a few web faces, so these fonts
-are not in the web build; the ECAD app is native only, so nothing is lost today. If ECAD ships on
-the web later, the web face list in `build.rs` needs these two families: a one-line upstream
-change, not part of this programme.
+**Size.** About 0.8 MB (estimate; U1 records the measured size), in ECAD's binaries only, and in
+the wasm build of `ecad-ui` too.
 
 **Size on screen.** Body text is 13 px; egui renders at the monitor's `pixels_per_point`. Sheet
 text sizes are millimetres on paper (cap heights), never enlarged for the screen; a page opens at
@@ -359,8 +361,8 @@ strip): 1316 wide. With the left panel at 420 (History), Draw's main view is 111
 **Smaller windows.** The minimum window stays 900 × 560 (`window.rs`). When the main view would
 fall below 760 px wide, the shell collapses, in this order: the right panel to its rail, then the
 left panel to its rail, then the drawer. Each collapse is a view state, not a saved preference:
-widening the window restores what the user had. Owner question Q3 asks whether 1366 × 768 must be
-comfortable rather than merely usable.
+widening the window restores what the user had. 1366 × 768 is usable, not specially designed
+(owner, Q3).
 
 ### 5.3 Resizing
 
@@ -639,8 +641,8 @@ but CADCraft's canvas.
 
 | Lane | Scope | Depends on | Touches |
 | --- | --- | --- | --- |
-| **U4a Canvas** | Paper sheet (CADCraft's canvas preferences) and the dark sheet as a second token set; ink versus overlay split, so overlay never prints; the spec's markers and selection with related placements (§1.5); two-colour wires and cores drawn in both colours; Barlow Semi Condensed as the sheet font (registry default); 031's sizes converted to cap heights (owner answer 9: font size = cap / 0.70); text styles defined once against the Standards registry; page opens at the readable zoom and remembers it (§5.4); mono or colour print as a registry setting (owner answer 1). | U1; U2 (page view slot); the redraw fix (O1) | `ecad-cadcraft` (look, overlay, text styles, defaults), `ecad-trial` page view |
-| **U4b Wheel, intent line, tools** | The action table (§7); the wheel widget (`ecad-ui`) with slot tables per object kind; the seven tool groups with flyouts and last-used memory; the intent line (output only) with the electrical preview text; the refusal line; Ctrl+K over actions; removing old Tool Sets buttons as their actions land. Right-click while a tool runs: owner question Q4. | U1; U2 (tool strip, US1's `canvas_menus` and `idle_typing`) | `ecad-cadcraft/src/actions.rs`, `ecad-ui` wheel, `ecad-trial` shell and tools |
+| **U4a Canvas** | Paper sheet (CADCraft's canvas preferences) and the dark sheet as a second token set; ink versus overlay split, so overlay never prints; the spec's markers and selection with related placements (§1.5); two-colour wires and cores drawn in both colours; Barlow Semi Condensed as the sheet font (registry default); 031's sizes converted to cap heights (owner answer 9: font size = cap / 0.70); text styles defined once against the Standards registry; page opens at the readable zoom and remembers it (§5.4); mono or colour print as a registry setting (owner answer 1). | U1; U2 (page view slot); the redraw fix (O1); US3 or the craft-fonts move for the page font (§4) | `ecad-cadcraft` (look, overlay, text styles, defaults), `ecad-trial` page view |
+| **U4b Wheel, intent line, tools** | The action table (§7); the wheel widget (`ecad-ui`) with slot tables per object kind; the seven tool groups with flyouts and last-used memory; the intent line (output only) with the electrical preview text; the refusal line; Ctrl+K over actions; removing old Tool Sets buttons as their actions land. Right-click while a tool runs finishes the current step; the wheel opens only when idle (owner, Q4). | U1; U2 (tool strip, US1's `canvas_menus` and `idle_typing`) | `ecad-cadcraft/src/actions.rs`, `ecad-ui` wheel, `ecad-trial` shell and tools |
 | **U4c Inspector and Standards** | Right panel as the inspector: origin badges from 031's registry (built-in → standard → project → page → object, page level only for function, location and sheet, owner answer 4), overridden and reset; part sets display. Settings over the window with the **Standards** screen (roadmap 1.13(b)): the U3 table listing every default with its origin, the detail chain on the right, consequences stated before a change. | U1; U2 (right panel, Settings overlay); U3 (table); roadmap 1.13(a) style model for catalogues beyond what 031's registry already holds | `ecad-trial` inspector and settings; read-only use of `defaults/` |
 | **U4d Agent banner and authors** | Restyle 035's banner (its data contract, design 035 §7.1, element names kept) into the shell's banner slot and top-bar agent pill; History rows show author chips and group an agent session for Undo session; "agent's last write" outline on the page (with U4a's marker). | 035 merged; U1; U2 (banner slot) | `ecad-trial/src/agent/banner.rs` (from 035), History tab |
 
@@ -679,10 +681,29 @@ state for list import (M2).
 - **O7. 035's Agent access setting** sits in ECAD Dev "until the UI shell gives settings a home"
   (design 035 §3.2). Its home is Settings ▸ Agent access (spec §3, M1); U2 builds the Settings
   overlay as a slot only, and U4d moves the setting into it.
-- **O5. CI.** The craft-fonts embedding in CI is already an open item from 031 Q2 (a
-  craft-common-actions issue). Nothing in this programme changes CI.
+- **O5. CI.** Nothing in this programme changes CI. The UI fonts need no build input (§4); 031
+  Q2's craft-common-actions issue for embedding craft-fonts in CI still matters for the page font
+  until U4a.
 
-## 13. Owner questions
+## 13. Owner questions (answered)
+
+Answered by the owner on 2026-11-13 (relayed by the overseer): Q2–Q4 as recommended; Q1 changed,
+as below. The overseer accepted O1–O7 as written.
+
+1. **Q1. Fonts.** **Decided:** the fonts are embedded in ECAD's own repository
+   (`ecad/assets/fonts/`, `include_bytes!`), not added to `storytold/craft-fonts`; offering them
+   upstream comes later (§4). This was the overseer's change to the recommendation, accepted by
+   the owner.
+2. **Q2. Seams upstream.** **Decided as recommended:** US1 and US2 stay ECAD patches during this
+   programme and are offered to upstream CADCraft together once U4b has used every switch.
+3. **Q3. Smaller screens.** **Decided as recommended:** 1920 × 1080 is the design target; at
+   1366 × 768 the shell stays usable by collapsing the right panel, then the left, then the drawer
+   (§5.2); no screen is designed specially for it.
+4. **Q4. Right-click while a tool runs.** **Decided as recommended:** it finishes the current
+   step (as Enter, as today); the wheel opens only when no tool is running; Esc ends the tool.
+
+The questions as they were put:
+
 
 Only what the spec and the answers leave open. Each has a recommendation; nothing is blocked if
 the recommendation is accepted.
