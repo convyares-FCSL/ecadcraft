@@ -1,6 +1,6 @@
 # Brief 041: Wheel, intent line and the seven tool groups (U4b)
 
-Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
+Status: Approved (Carl, 2026-11-13).
 Branch: `feature/ui-wheel`, from `origin/dev` (no wait: U2 and U3 have merged).
 Designer: done (`docs/design/ui-architecture.md` §7, §11; the look and rules are spec §2 "Tool
 groups", §5 "The radial wheel", "Keyboard that remains", "Refusals and errors") · Size: L, in
