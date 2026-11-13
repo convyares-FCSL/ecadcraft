@@ -24,6 +24,14 @@ eframe = { version = "0.37", default-features = false, features = ["clipboard", 
 # version eframe uses, so nothing is built twice.
 ron = "0.12"
 serde_json = { workspace = true }
+# Brief 035: the shared write gate and tools (the bridge's app side), and upstream's control
+# token; the included upstream control server names `egui` and `log` directly (eframe's versions).
+ecad-mcp = { path = "../ecad-mcp" }
+cadcraft-mcp = { path = "../../../crates/mcp" }
+egui = { version = "0.37", default-features = false }
+log = "0.4"
+# The banner's clock (house rule: time goes through chrono).
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
@@ -33,5 +41,3 @@ ecad-store = { workspace = true }
 ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
-# Brief 022: the UI test of the Checks tab opens the demo project, built as `cargo xtask demo` builds it.
-ecad-mcp = { path = "../ecad-mcp" }

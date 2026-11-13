@@ -33,6 +33,7 @@
 mod access;
 pub mod accessories;
 pub mod accessory_cmds;
+pub mod agent_access;
 pub mod checks;
 pub mod commands;
 pub mod convert;

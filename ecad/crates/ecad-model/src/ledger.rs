@@ -1222,6 +1222,19 @@ impl Ledger {
         self.top(&self.stacks.undo)
     }
 
+    /// The undo held by the step [`Ledger::redo`] would redo, when held in memory (brief 035: an
+    /// agent redoes only its own undos).
+    pub fn redo_top(&self) -> Option<&Transaction> {
+        self.top(&self.stacks.redo)
+    }
+
+    /// The steps [`Ledger::undo`] would take back, oldest first (`(seq, id)`; the last is the next
+    /// one). Only the entries known in memory: a snapshot's older entries may not be read yet
+    /// (brief 035: Undo session looks only at an agent session's recent steps).
+    pub fn undo_stack(&self) -> &[(u64, TxId)] {
+        &self.stacks.undo
+    }
+
     /// Label of the step [`Ledger::undo`] would undo.
     pub fn undo_label(&self) -> Option<&str> {
         self.top(&self.stacks.undo).map(|t| t.label.as_str())

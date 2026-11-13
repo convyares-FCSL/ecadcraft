@@ -1448,7 +1448,9 @@ name = "ecad-trial"
 version = "0.1.0-dev"
 dependencies = [
  "cadcraft-engine",
+ "cadcraft-mcp",
  "cadcraft-ui-egui",
+ "chrono",
  "ecad-cadcraft",
  "ecad-file",
  "ecad-inspect",
@@ -1456,7 +1458,9 @@ dependencies = [
  "ecad-model",
  "ecad-store",
  "eframe",
+ "egui",
  "egui_kittest",
+ "log",
  "ron",
  "serde_json",
 ]
