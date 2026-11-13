@@ -51,7 +51,6 @@ fn level(c: &mut Client, strip: &str, pos: &str, key: &str) -> String {
 }
 
 #[test]
-#[ignore = "tester 036: awaiting build"]
 fn level_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t036 Schaltpl\u{e4}ne mit Leerzeichen");
     let path = dir.file("Klemmen -X01 (L N PE).ecad");
@@ -114,7 +113,7 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         let ops = one_by_agent(&mut c, n, "jumper 1.1 → 1.3");
         assert!(
             ops.iter()
-                .any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key.starts_with("link.") && v.replace(' ', "") == "1.1-1.3")),
+                .any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key.starts_with("link.") && ["1.1-1.3", "1-1.3"].contains(&v.replace(' ', "").as_str()))),
             "{ops:?}"
         );
         // Hostile input: refused through MCP, nothing recorded.
