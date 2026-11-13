@@ -370,7 +370,8 @@ impl Scope {
                     if key == LOCATION_KEY {
                         self.project_location = true;
                     }
-                    if key.starts_with("strip_") {
+                    // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
+                    if key.starts_with("strip_") || key.starts_with("terminal.") {
                         self.strip_keys.insert(key.clone());
                     }
                 }
@@ -1274,31 +1275,22 @@ impl Outputs {
         self.devices.len()
     }
 
-    /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
+    /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
+    /// in positions (a three-level terminal is one part), in catalogue order.
     fn strip_bom(&self, s: &crate::strips::StripData, location: Option<String>) -> Vec<BomRow> {
-        let (ft, pe) = s.quantities();
         let mut out = Vec::new();
-        if ft > 0 {
+        for t in &s.types {
+            if t.qty() == 0 {
+                continue;
+            }
             out.push(BomRow {
                 location: location.clone(),
-                qty: ft,
+                qty: t.qty(),
                 tags: vec![s.tag.clone()],
                 devices: vec![s.component],
-                description: s.description.clone(),
-                maker: s.maker.clone(),
-                part_number: s.part_number.clone(),
-                accessory: None,
-            });
-        }
-        if pe > 0 {
-            out.push(BomRow {
-                location: location.clone(),
-                qty: pe,
-                tags: vec![s.tag.clone()],
-                devices: vec![s.component],
-                description: Some("PE terminal".into()),
-                maker: s.maker_pe.clone(),
-                part_number: s.part_number_pe.clone(),
+                description: Some(t.description.clone()),
+                maker: t.maker.clone(),
+                part_number: t.part_number.clone(),
                 accessory: None,
             });
         }

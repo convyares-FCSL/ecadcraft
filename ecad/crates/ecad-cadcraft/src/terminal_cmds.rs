@@ -564,7 +564,10 @@ fn run_terminals(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     let position = opt_typed(params, "position", "a position label", Value::as_str).map_err(err)?.map(str::to_string);
     let ty = match ty_word {
         Some(w) => tt::by_word(w).ok_or_else(|| {
-            err(format!("No terminal type \"{}\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.", w.chars().take(24).collect::<String>()))
+            err(format!(
+                "No terminal type \"{}\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
+                w.chars().take(24).collect::<String>()
+            ))
         })?,
         None if pe => tt::by_code("pe").ok_or_else(|| err("no PE type"))?,
         None => tt::feedthrough(),
@@ -630,7 +633,10 @@ fn run_terminals(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
 /// The net number of conductor `w`, else its name.
 fn wire_words(doc: &Document, w: ConductorId) -> String {
     let conn = doc.connectivity();
-    conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_else(|| crate::slash::wire_name(doc, w))
+    conn.net_of_conductor(w)
+        .and_then(|n| conn.net(n))
+        .and_then(|n| ecad_model::wiring::net_number(doc, n))
+        .unwrap_or_else(|| crate::slash::wire_name(doc, w))
 }
 
 /// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}` (brief 036

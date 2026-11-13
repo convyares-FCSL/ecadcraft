@@ -973,7 +973,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
-        if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
+        // Brief 036: a strip level shows its shown label (`1.L`), not its position.
+        if let Some(label) = crate::terminal_types::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
         }
     }

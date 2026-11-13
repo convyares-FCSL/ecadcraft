@@ -383,6 +383,27 @@ pub struct LinkInfo {
     pub missing: Vec<String>,
     /// Partitions inside its span, by the label they follow (`link-across-partition`).
     pub crosses: Vec<String>,
+    /// Brief 036: the level it runs on (`None` for a cross-level link).
+    pub level: Option<u32>,
+    /// Brief 036: a cross-level link's levels (one position, `1.1-1.3`).
+    pub cross: Option<(u32, u32)>,
+}
+
+impl LinkInfo {
+    /// Whether the link runs through rows of level `n` (its level; a cross-level link through its
+    /// levels).
+    pub fn runs_on(&self, n: u32) -> bool {
+        match (self.level, self.cross) {
+            (Some(l), _) => l == n,
+            (None, Some((lo, hi))) => lo <= n && n <= hi,
+            (None, None) => true,
+        }
+    }
+
+    /// Whether the link names level `n` of the positions it names.
+    pub fn names_level(&self, n: u32) -> bool {
+        self.runs_on(n)
+    }
 }
 
 /// One accessory BOM row of a strip.
@@ -504,8 +525,21 @@ impl Parts<'_> {
 /// A strip's accessories on `doc`, from its properties and its plan rows (label order).
 pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
     let mut a = StripAcc::default();
-    let order: Vec<String> = rows.iter().map(|r| r.label.clone()).collect();
+    // Brief 036: one entry per position (rows are levels; plan order).
+    let mut order: Vec<String> = Vec::with_capacity(rows.len());
+    for r in rows {
+        if order.last() != Some(&r.label) {
+            order.push(r.label.clone());
+        }
+    }
     let index: BTreeMap<&str, usize> = order.iter().enumerate().map(|(i, l)| (l.as_str(), i)).collect();
+    // A position's last row (its PE-ness for end plates) and its levels.
+    let mut last_row: BTreeMap<&str, &TermRow> = BTreeMap::new();
+    let mut levels_at: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
+    for r in rows {
+        last_row.insert(r.label.as_str(), r);
+        levels_at.entry(r.label.as_str()).or_default().insert(r.level);
+    }
     // Places.
     for (k, v) in props.range(ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(ACC_PREFIX)) {
         let Some(spot) = spot_of(k) else { continue };
@@ -557,11 +591,33 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     let mut infos: Vec<LinkInfo> = Vec::new();
     let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| links::natural_key(l)).collect() };
     for (n, p, text) in found {
-        let labels: Vec<String> = p.select_keyed(&order, &keys).into_iter().cloned().collect();
+        // Brief 036: a link runs on one level (positions without it are skipped); a cross-level
+        // link joins levels of one position and is one bridge.
+        let cross = p.spans().into_iter().find_map(|sp| match sp {
+            links::Span::Levels { lo, hi, .. } => Some((lo, hi)),
+            links::Span::Positions { .. } => None,
+        });
+        let level = if cross.is_some() { None } else { Some(p.level().unwrap_or(1)) };
+        let labels: Vec<String> = p
+            .select_keyed(&order, &keys)
+            .into_iter()
+            .filter(|l| match level {
+                Some(n) => levels_at.get(l.as_str()).is_some_and(|v| v.contains(&n)),
+                None => true,
+            })
+            .cloned()
+            .collect();
         let missing = p.missing(&order);
         let idx: Vec<usize> = labels.iter().filter_map(|l| index.get(l.as_str()).copied()).collect();
         let (first, last) = (idx.first().copied().unwrap_or(0), idx.last().copied().unwrap_or(0));
-        let span = if idx.is_empty() { 0 } else { last - first + 1 };
+        let span = match (idx.is_empty(), level) {
+            (true, _) => 0,
+            (false, None) => 1,
+            // Positions on that level from the first to the last.
+            (false, Some(n)) => {
+                order.get(first..=last).map_or(0, |run| run.iter().filter(|l| levels_at.get(l.as_str()).is_some_and(|v| v.contains(&n))).count())
+            }
+        };
         let crosses = partitions.iter().filter(|i| **i >= first && **i < last).filter_map(|i| order.get(*i).cloned()).collect();
         let own = |f: &str| props.get(&format!("{}.{f}", links::key(n))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let (pn, mk, ds) = (own("part_number"), own("maker"), own("description"));
@@ -577,21 +633,29 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             last,
             span,
             lane: 0,
-            bars: span.div_ceil(a.bar),
+            bars: if cross.is_some() { usize::from(span > 0) } else { span.div_ceil(a.bar) },
             part_number,
             maker,
             description,
             missing,
             crosses,
+            level,
+            cross,
         });
     }
-    // Lanes: greedy by first position, then link number (stable).
+    // Lanes: greedy by first position, then link number (stable); per level (brief 036: links on
+    // different levels run through different symbols), cross-level links in lane 0.
     let mut by_first: Vec<usize> = (0..infos.len()).collect();
-    by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.first, l.n)));
+    by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.level, l.first, l.n)));
+    let mut lane_level: Option<Option<u32>> = None;
     for i in by_first {
         let Some(l) = infos.get_mut(i) else { continue };
-        if l.span == 0 {
+        if l.span == 0 || l.cross.is_some() {
             continue;
+        }
+        if lane_level != Some(l.level) {
+            lanes.clear();
+            lane_level = Some(l.level);
         }
         match lanes.iter().position(|end| *end < l.first) {
             Some(k) => {
@@ -608,7 +672,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     }
     a.links = infos;
     // BOM rows: per accessory part, only what is placed (§7.4).
-    let pe_at = |label: Option<&str>| label.and_then(|l| index.get(l)).and_then(|i| rows.get(*i)).is_some_and(|r| r.pe);
+    let pe_at = |label: Option<&str>| label.and_then(|l| last_row.get(l)).is_some_and(|r| r.pe);
     let mut plates: [usize; 2] = [0, 0];
     let mut count_plates = |items: &[Acc], pe: bool| {
         let n = items.iter().filter(|x| **x == Acc::EndPlate).count();
@@ -656,7 +720,8 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             push(&mut bom, &mut no_part, acc.key(), n, p, acc.description());
         }
     }
-    let markers = a.markers.len();
+    // Brief 036 (Q10): one marker per level of a marked position.
+    let markers: usize = a.markers.iter().map(|l| levels_at.get(l.as_str()).map_or(1, BTreeSet::len)).sum();
     if markers > 0 {
         let p = parts.part("marker");
         match p.0 {
