@@ -743,6 +743,7 @@ const fn search_only(
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("setdefault", "Settings ▸ Standards (U4c)"),
+    ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),
     ("devices", "a read; the Devices tab and Lists show it"),

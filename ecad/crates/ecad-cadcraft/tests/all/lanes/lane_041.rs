@@ -107,6 +107,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "termlabel",
     "toposition",
     "setdefault",
+    "canvassheet",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
