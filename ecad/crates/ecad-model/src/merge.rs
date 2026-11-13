@@ -336,6 +336,20 @@ fn shown(v: Option<&String>) -> String {
     v.map_or_else(|| "(none)".to_string(), Clone::clone)
 }
 
+/// A property value as a person reads it (brief 045, FP1 condition 1): a value that is a
+/// component's ID (32 hex digits, a component of one of `docs`) is shown as that component's tag,
+/// never as the ID; any other value as stored.
+pub fn value_words(docs: &[&Document], v: &str) -> String {
+    let t = v.trim();
+    if t.len() == 32
+        && let Some(c) = ComponentId::parse(t)
+        && docs.iter().any(|d| d.components.contains_key(&c))
+    {
+        return name_of(docs, Obj::Component(c));
+    }
+    v.to_string()
+}
+
 /// Merge property maps: per key (design §5.1).
 fn merge_props(
     ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, a: &Properties, t: &Properties, s: &Properties, keep: &dyn Fn(&str) -> bool,
@@ -354,8 +368,9 @@ fn merge_props(
                     kind: ConflictKind::Value,
                     object: obj,
                     what: format!("{what} · {}", key_words(k)),
-                    target: shown(t.get(k)),
-                    source: shown(s.get(k)),
+                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    target: shown(t.get(k).map(|v| value_words(&[ctx.inp.target, ctx.inp.source, ctx.inp.ancestor], v)).as_ref()),
+                    source: shown(s.get(k).map(|v| value_words(&[ctx.inp.source, ctx.inp.target, ctx.inp.ancestor], v)).as_ref()),
                     choices: vec![Choice::Target, Choice::Source, Choice::Value(String::new())],
                     chosen: None,
                 };
@@ -1646,7 +1661,8 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
             match keys.first() {
                 Some(k) => {
-                    let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{v}\""));
+                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{}\"", value_words(&[s, a], v)));
                     let more = if keys.len() > 1 { format!(" (+{} more)", keys.len() - 1) } else { String::new() };
                     format!("· {} {} → {}{more}", key_words(k), q(pa.get(*k)), q(ps.get(*k)))
                 }

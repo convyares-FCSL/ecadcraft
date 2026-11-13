@@ -73,18 +73,21 @@ pub enum ListsView {
     #[default]
     Devices,
     Terminals,
+    /// Brief 045c: Lists ▸ I/O.
+    Io,
     Checks,
     Reports,
 }
 
 impl ListsView {
-    pub const ALL: [ListsView; 4] = [ListsView::Devices, ListsView::Terminals, ListsView::Checks, ListsView::Reports];
+    pub const ALL: [ListsView; 5] = [ListsView::Devices, ListsView::Terminals, ListsView::Io, ListsView::Checks, ListsView::Reports];
 
     /// Its name in Lists' switch (apart from the left panel's Devices tab).
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
             ListsView::Terminals => LISTS_TERMINALS,
+            ListsView::Io => LISTS_IO,
             ListsView::Checks => LISTS_CHECKS,
             ListsView::Reports => LISTS_REPORTS,
         }
@@ -93,6 +96,8 @@ impl ListsView {
 
 pub const LISTS_DEVICES: &str = "Device list";
 pub const LISTS_TERMINALS: &str = "Terminal plan";
+/// Brief 045c: the I/O list.
+pub const LISTS_IO: &str = "I/O";
 pub const LISTS_CHECKS: &str = "Check list";
 pub const LISTS_REPORTS: &str = "Reports";
 /// Said in the drawer while Lists shows the Check list.
@@ -394,6 +399,7 @@ impl Trial {
         let tab = match self.shell.lists {
             ListsView::Devices => crate::lists::Tab::Devices,
             ListsView::Terminals => crate::lists::Tab::Terminals,
+            ListsView::Io => crate::lists::Tab::Io,
             ListsView::Checks => crate::lists::Tab::Checks,
             ListsView::Reports => return,
         };
@@ -411,7 +417,13 @@ impl Trial {
             reports.tab = crate::outputs_ui::Tab::Terminals;
             reports.invalidate();
         }
-        let lists = crate::lists::Lists { checks: &mut self.panel.checks, devices: &mut self.panel.devices, terminals: &mut reports.terminals };
+        reports.io_shown = tab == crate::lists::Tab::Io;
+        let lists = crate::lists::Lists {
+            checks: &mut self.panel.checks,
+            devices: &mut self.panel.devices,
+            terminals: &mut reports.terminals,
+            io: &mut reports.io,
+        };
         let actions = in_rect(ui, body.shrink(ecad_ui::tokens::space::S), "ecad.shell.lists.body", |ui| crate::lists::show(ui, tab, lists, writable));
         for a in actions {
             match a {

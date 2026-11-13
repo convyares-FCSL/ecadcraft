@@ -71,6 +71,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     if crate::terminal_types::is_level_starter(starter.key) {
         return crate::terminal_cmds::run_place_level(s, params, starter, at, degrees, mirror);
     }
+    // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
+    if crate::plc::channels::cell_type(starter).is_some() {
+        return crate::plc::channels::run_place_channel(s, params, starter, at, degrees, mirror);
+    }
     // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
     if let crate::symbols::Kind::ConnectorHalf { .. } = starter.kind {
         return crate::connector_cmds::run_place_half(s, params, starter, at, degrees, mirror);
@@ -123,6 +127,18 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             }
             _ => None,
         };
+        // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
+        let card_slot = match crate::plc::rack::CardType::of_body(starter.key) {
+            Some(t) if !t.is_rack() && !plan.joined => {
+                let last = p.last_placed.as_ref().map(|(_, c)| *c);
+                let at = crate::plc::rack::place_target(p.ledger.document(), params, last)?;
+                if let Some((r, s)) = at {
+                    plan.ops.extend(crate::plc::rack::new_card_ops(plan.component, r, s));
+                }
+                at.map(|x| (t, x))
+            }
+            _ => None,
+        };
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
         p.last_placed = Some((starter.key.to_string(), plan.component));
@@ -146,6 +162,13 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
+        if let Some((t, (r, slot))) = card_slot {
+            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));
+            v["rack"] = json!(r.hex());
+            v["slot"] = json!(slot);
+            v["message"] = json!(message);
+            pg.echo(message);
+        }
         if let Some((fields, message)) = landed {
             if let (Some(o), Some(f)) = (v.as_object_mut(), fields.as_object()) {
                 o.extend(f.clone());
