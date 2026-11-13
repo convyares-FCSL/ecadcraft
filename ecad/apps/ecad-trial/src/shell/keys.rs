@@ -1,17 +1,33 @@
-//! The shell's keys (spec §5, "Keyboard that remains"), those that exist today: the tool group
-//! keys V W P C D B T, Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right, Esc and Del
-//! (erase the selection; CADCraft's command line did it, and hears no idle keys in the shell).
-//! Ctrl+Z and Ctrl+Y stay CADCraft's shortcuts (they reach the command path as before).
+//! The shell's keys (spec §5, "Keyboard that remains"): the tool group keys V W P C D B T,
+//! Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right and Esc; and, from the action table
+//! (brief 041, [`ecad_cadcraft::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
+//! Ctrl+Y. Undo and redo are keys only (owner answer 8).
 //!
 //! The keys are taken before CADCraft's drawing reads the frame's input, so Ctrl+1 opens no
 //! CADCraft palette and a group letter starts no command. Single letters count only while the
 //! pointer is over the main view and no text field has the keyboard (and never while a command
 //! prompts: its keywords are typed letters).
 
+use ecad_cadcraft::actions::{self, Key as ActionKey};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
 use super::{Slots, Workspace};
 use crate::Trial;
+
+/// The egui key and modifiers of an action key.
+pub fn shortcut(k: ActionKey) -> (Modifiers, Key) {
+    match k {
+        ActionKey::Delete => (Modifiers::NONE, Key::Delete),
+        ActionKey::F2 => (Modifiers::NONE, Key::F2),
+        ActionKey::R => (Modifiers::NONE, Key::R),
+        ActionKey::X => (Modifiers::NONE, Key::X),
+        ActionKey::CtrlC => (Modifiers::COMMAND, Key::C),
+        ActionKey::CtrlV => (Modifiers::COMMAND, Key::V),
+        ActionKey::CtrlD => (Modifiers::COMMAND, Key::D),
+        ActionKey::CtrlZ => (Modifiers::COMMAND, Key::Z),
+        ActionKey::CtrlY => (Modifiers::COMMAND, Key::Y),
+    }
+}
 
 /// Take the shell's keys from this frame's input and act on them.
 pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
@@ -28,8 +44,9 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
         t.toggle_text_panel();
     }
     if take(Modifiers::COMMAND, Key::K) {
-        // Search: today's symbol search, for now (spec §5's search over everything is U4b).
+        // Search pages, tags, symbols and actions (brief 041).
         t.search.open = !t.search.open || t.shell.state.workspace == Workspace::Library;
+        t.search.focus = t.search.open;
     }
     if take(Modifiers::ALT, Key::ArrowLeft) {
         t.go_back(false);
@@ -49,13 +66,8 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
     }
     let over_main = ctx.pointer_hover_pos().is_some_and(|p| slots.main.contains(p));
     let prompting = t.cad.session.prompting();
-    // Del (and plain Backspace on macOS) erases the selection while no command runs, as
-    // CADCraft's command line does; with idle typing off (US1) it no longer hears these keys.
-    if draw && !prompting && !t.shell.state.cad_chrome && !t.cad.session.selection().is_empty() {
-        let mac = ctx.os() == egui::os::OperatingSystem::Mac;
-        if take(Modifiers::NONE, Key::Delete) || (mac && take(Modifiers::NONE, Key::Backspace)) {
-            let _ = t.cad.run("erase.selection", serde_json::json!({}));
-        }
+    if draw && !t.shell.state.cad_chrome {
+        action_keys(t, ctx, over_main, prompting);
     }
     if !draw || !over_main || t.shell.state.cad_chrome {
         return;
@@ -78,13 +90,48 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
         if take(Modifiers::NONE, Key::F) {
             t.zoom_to_drawing();
         }
-        // Esc while idle: close a flyout, clear the selection (CADCraft's command line hears no
-        // idle keys in the shell).
+        // Esc while idle: close the wheel or a flyout, clear the selection (CADCraft's command
+        // line hears no idle keys in the shell).
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             t.shell.tools.flyout = None;
             if !t.cad.session.selection().is_empty() {
                 t.cad.session.set_selection(Vec::new());
             }
+        }
+    }
+}
+
+/// The action table's keys. Undo and redo work while a tool runs (as CADCraft's shortcuts did:
+/// inside LINE, Ctrl+Z takes back a segment); the others act on the selection with nothing
+/// prompting, the single letters and Del only over the page.
+fn action_keys(t: &mut Trial, ctx: &egui::Context, over_main: bool, prompting: bool) {
+    let take = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
+    for k in [ActionKey::CtrlZ, ActionKey::CtrlY] {
+        let (m, key) = shortcut(k);
+        if let Some(a) = actions::on_key(k)
+            && take(m, key)
+        {
+            t.cad.start(a.command);
+            t.after_logic();
+        }
+    }
+    if prompting || t.shell.tools.wheel.is_some() {
+        return;
+    }
+    for k in [ActionKey::CtrlC, ActionKey::CtrlV, ActionKey::CtrlD, ActionKey::Delete, ActionKey::F2, ActionKey::R, ActionKey::X] {
+        let Some(a) = actions::on_key(k) else { continue };
+        let (m, key) = shortcut(k);
+        let selection = !t.cad.session.selection().is_empty();
+        // Paste needs no selection; the rest act on it. Plain keys only over the page.
+        let wanted = (k == ActionKey::CtrlV || selection) && (m != Modifiers::NONE || over_main);
+        // Backspace deletes too on macOS (as CADCraft's command line did).
+        let mac_delete = k == ActionKey::Delete && ctx.os() == egui::os::OperatingSystem::Mac && wanted && take(Modifiers::NONE, Key::Backspace);
+        if !(wanted && (take(m, key) || mac_delete)) {
+            continue;
+        }
+        let target = t.target_from_selection();
+        if let Err(why) = t.run_action(a, target.as_ref(), None) {
+            t.refuse(a.label, why, target.as_ref());
         }
     }
 }

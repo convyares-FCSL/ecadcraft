@@ -175,6 +175,8 @@ pub enum Action {
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 041: a page row's right-click opens its wheel here (screen point).
+    PageWheel(PageId, egui::Pos2),
 }
 
 /// A field typed in place over a row: a page number or a folder name.
@@ -996,41 +998,13 @@ impl ProjectPanel {
                 out.push(Action::Open(row.id));
             }
         }
+        // Brief 041: the page row's wheel (Open, Rename, Page properties, Preview, New page, New
+        // folder); moving stays Alt+Up/Down and drag.
         if resp.secondary_clicked() {
             self.armed = true;
             self.cursor = Some(i);
+            out.push(Action::PageWheel(row.id, resp.interact_pointer_pos().unwrap_or(resp.rect.center())));
         }
-        resp.context_menu(|ui| {
-            if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
-                out.push(if row.folder.is_some() { Action::NewPageIn(row.folder) } else { Action::New });
-                ui.close();
-            }
-            if ui.add_enabled(writable, egui::Button::new(NEW_FOLDER)).clicked() {
-                out.push(Action::NewFolder(row.folder));
-                ui.close();
-            }
-            if ui.button("Open").clicked() {
-                out.push(Action::Open(row.id));
-                ui.close();
-            }
-            if ui.button("Preview").clicked() {
-                out.push(Action::Preview(row.id));
-                ui.close();
-            }
-            if ui.add_enabled(writable, egui::Button::new("Rename…")).clicked() {
-                out.push(Action::RenameInBox(row.id));
-                ui.close();
-            }
-            let n = self.rows.len();
-            if ui.add_enabled(writable && i > 0, egui::Button::new("Move up").shortcut_text("Alt+Up")).clicked() {
-                self.move_row(i, i - 1, out);
-                ui.close();
-            }
-            if ui.add_enabled(writable && i + 1 < n, egui::Button::new("Move down").shortcut_text("Alt+Down")).clicked() {
-                self.move_row(i, i + 1, out);
-                ui.close();
-            }
-        });
     }
 
     /// Ask to move row `from` to index `to` (0-based); the cursor follows it.

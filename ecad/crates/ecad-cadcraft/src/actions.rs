@@ -258,6 +258,10 @@ pub enum App {
     NewPage,
     /// Rename the page (the Pages tab's rename).
     RenamePage,
+    /// Preview the page without leaving the one shown.
+    PreviewPage,
+    /// A new folder beside the page's row.
+    NewFolder,
     /// Open the symbol search (Place ▸ Symbol's finder).
     FindSymbol,
     /// The Renumber dialog (devices; wires; finalising).
@@ -679,6 +683,8 @@ pub const ACTIONS: &[Action] = &[
     slot("page.new", "newpage", Params::App(App::NewPage), "New page", Icon::NewPage, &[(K::EmptyPage, S::Left), (K::PageRow, S::Left)], write),
     slot("page.open", "openpage", Params::App(App::OpenPage), "Open", Icon::GoTo, &[(K::PageRow, S::Right)], ok),
     slot("page.rename", "renamepage", Params::App(App::RenamePage), "Rename", Icon::Edit, &[(K::PageRow, S::Top)], write),
+    slot("page.preview", "", Params::App(App::PreviewPage), "Preview", Icon::Eye, &[(K::PageRow, S::TopLeft)], ok),
+    slot("page.folder", "newfolder", Params::App(App::NewFolder), "New folder", Icon::Pages, &[(K::PageRow, S::BottomLeft)], write),
     // ---- Found with Ctrl+K only (no slot yet, or not about one object).
     Action {
         id: "find.symbol",
@@ -768,7 +774,6 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("prerelease", "Publish ▸ Release"),
     ("release", "Publish ▸ Release"),
     ("projectprops", "Project menu ▸ Project info"),
-    ("newfolder", "the Pages tab"),
     ("renamefolder", "the Pages tab"),
     ("movefolder", "the Pages tab"),
     ("deletefolder", "the Pages tab"),

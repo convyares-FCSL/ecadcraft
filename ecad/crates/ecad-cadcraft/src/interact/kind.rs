@@ -40,6 +40,9 @@ pub struct Target {
     pub free_text: bool,
     /// A device's symbols on other pages; a cable's references.
     pub others: usize,
+    /// `at` is where the person pointed (the wheel's right-click), so a form may take it as its
+    /// click; otherwise (a key or Ctrl+K on the selection) the object is given by its handle.
+    pub pointed: bool,
 }
 
 impl Target {
@@ -59,6 +62,7 @@ impl Target {
             handles: Vec::new(),
             free_text: false,
             others: 0,
+            pointed: false,
         }
     }
 }
@@ -73,7 +77,9 @@ pub fn under_cursor(s: &Session, cursor: Vec2) -> Result<Target, String> {
     });
     let selection = s.selection();
     let uid = s.state().map_err(|e| e.to_string())?.uid;
-    read(s, |p, _| Ok(classify(p, uid, cursor, aperture, picked, &selection, free_text)))
+    let mut t = read(s, |p, _| Ok(classify(p, uid, cursor, aperture, picked, &selection, free_text)))?;
+    t.pointed = true;
+    Ok(t)
 }
 
 /// Most handles a mixed target carries (a large selection keeps the first).
