@@ -500,6 +500,7 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
             xref_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
+            crate::plc::channel_rows(doc, c, symbol, &mut rows);
         }
         _ => {}
     }

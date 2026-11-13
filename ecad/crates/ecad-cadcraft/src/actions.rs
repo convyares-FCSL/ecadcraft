@@ -729,6 +729,16 @@ pub const ACTIONS: &[Action] = &[
     search_only("numbering.finalise", "finalise", Params::App(App::Finalise), "Finalise numbering", Icon::Number, &["provisional"]),
     // Brief 045 (design 045 §2.6, §4.8): the card commands, found with Ctrl+K until a card wheel.
     search_only("plc.slot", "plcslot", Params::App(App::Template), "Card slot", Icon::Devices, &["plc", "rack", "card", "move card"]),
+    search_only(
+        "plc.channels",
+        "plcchannels",
+        Params::App(App::Template),
+        "Place channels",
+        Icon::Connect,
+        &["plc", "channel", "fence", "spare", "remaining"],
+    ),
+    search_only("plc.channel", "plcchannel", Params::App(App::Template), "Channel data", Icon::Edit, &["plc", "channel", "description", "pin"]),
+    search_only("plc.address", "plcaddress", Params::App(App::Template), "PLC addresses", Icon::Number, &["plc", "address", "fix addresses", "pin"]),
 ];
 
 const fn search_only(

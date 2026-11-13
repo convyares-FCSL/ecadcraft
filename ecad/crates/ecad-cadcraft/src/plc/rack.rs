@@ -145,6 +145,19 @@ impl CardType {
         }
     }
 
+    /// Its channel cell's starter key (design 045 §4.1); empty for a type without channels.
+    pub fn cell(self) -> &'static str {
+        match self {
+            CardType::Di => "chdi",
+            CardType::Dq => "chdq",
+            CardType::Ai => "chai",
+            CardType::Ao => "chao",
+            CardType::Rtd => "chrtd",
+            CardType::Iol => "chiol",
+            _ => "",
+        }
+    }
+
     /// Whether it has channels.
     pub fn has_channels(self) -> bool {
         !self.roles().is_empty()

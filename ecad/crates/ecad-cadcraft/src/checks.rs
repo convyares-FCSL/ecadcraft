@@ -153,10 +153,24 @@ pub enum Kind {
     SlotRange,
     /// PLC cards in no rack (one count row).
     Unracked,
+    /// Brief 045b: one channel drawn twice.
+    ChannelTwice,
+    /// A channel drawn beyond its card's channel count.
+    ChannelOver,
+    /// A channel drawn by a symbol of another card type.
+    ChannelType,
+    /// Two cards' address blocks overlap.
+    AddressOverlap,
+    /// One address given to two channels (one typed).
+    AddressTwice,
+    /// A block past byte 65 535.
+    AddressOverflow,
+    /// Used channels with no address (one count row).
+    NoAddress,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 47] = [
+    pub const ALL: [Kind; 54] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -204,6 +218,13 @@ impl Kind {
         Kind::RackMissing,
         Kind::SlotRange,
         Kind::Unracked,
+        Kind::ChannelTwice,
+        Kind::ChannelOver,
+        Kind::ChannelType,
+        Kind::AddressOverlap,
+        Kind::AddressTwice,
+        Kind::AddressOverflow,
+        Kind::NoAddress,
     ];
 
     /// The JSON name.
@@ -256,6 +277,13 @@ impl Kind {
             Kind::RackMissing => "rack-missing",
             Kind::SlotRange => "slot-range",
             Kind::Unracked => "unracked",
+            Kind::ChannelTwice => "channel-twice",
+            Kind::ChannelOver => "channel-over",
+            Kind::ChannelType => "channel-type",
+            Kind::AddressOverlap => "address-overlap",
+            Kind::AddressTwice => "address-twice",
+            Kind::AddressOverflow => "address-overflow",
+            Kind::NoAddress => "no-address",
         }
     }
 
@@ -314,6 +342,13 @@ impl Kind {
             Kind::RackMissing => "Card names a rack that is not in the project",
             Kind::SlotRange => "Card in a slot its rack does not have",
             Kind::Unracked => "PLC cards in no rack",
+            Kind::ChannelTwice => "Channel drawn twice",
+            Kind::ChannelOver => "Channel beyond the card's count",
+            Kind::ChannelType => "Channel drawn as another card type",
+            Kind::AddressOverlap => "Address blocks overlap",
+            Kind::AddressTwice => "Address given twice",
+            Kind::AddressOverflow => "Address block past byte 65535",
+            Kind::NoAddress => "Used channels with no address",
         }
     }
 
@@ -325,7 +360,8 @@ impl Kind {
             | Kind::DuplicateTag
             | Kind::TerminalTwice
             | Kind::LevelTwice
-            | Kind::SlotTwice => Severity::Error,
+            | Kind::SlotTwice
+            | Kind::ChannelTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -351,7 +387,12 @@ impl Kind {
             | Kind::LevelMissing
             | Kind::DashesLeftOut
             | Kind::RackMissing
-            | Kind::SlotRange => Severity::Warning,
+            | Kind::SlotRange
+            | Kind::ChannelOver
+            | Kind::ChannelType
+            | Kind::AddressOverlap
+            | Kind::AddressTwice
+            | Kind::AddressOverflow => Severity::Warning,
             _ => Severity::Info,
         }
     }

@@ -397,19 +397,8 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
             Ok(vec![(highest + 1).to_string()])
         }
-        Kind::Plc { letter } => {
-            let highest = used
-                .iter()
-                .filter_map(|l| {
-                    let rest = l.strip_prefix(letter)?;
-                    let (a, b) = rest.split_once('.')?;
-                    let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
-                    (a < 10_000 && b < 8).then_some(a * 8 + b)
-                })
-                .max();
-            let n = highest.map_or(0, |h| h + 1);
-            Ok(vec![format!("{letter}{}.{}", n / 8, n % 8)])
-        }
+        // Brief 045 (FP7): a channel joins a card as its next free channel; its labels are pins.
+        Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra),
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
         // Brief 034: the label rule lives in the catalogue.
         Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
@@ -843,6 +832,13 @@ pub enum TextOf {
     PartNumber,
     /// Brief 045 (design 045 §7.2): a PLC card body's caption, its rack and slot.
     Caption,
+    /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description
+    /// (written turned 90° when `rotated`).
+    ChannelNo,
+    Address,
+    ChannelText {
+        rotated: bool,
+    },
 }
 
 /// One derived text on a page: a device's tag beside one of its symbols, or a terminal label.
@@ -905,7 +901,8 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
-        TextOf::Description | TextOf::Caption => TextKind::Description,
+        TextOf::Description | TextOf::Caption | TextOf::ChannelText { .. } => TextKind::Description,
+        TextOf::ChannelNo | TextOf::Address => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
     }
 }
@@ -977,7 +974,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
     use crate::text_style::RunRule;
     match rep_starter(doc, r).map(|s| s.kind) {
         Some(Kind::Terminal) => RunRule::Strip,
-        Some(Kind::Plc { .. }) => RunRule::Plc,
+        Some(Kind::Channel(_)) => RunRule::Plc,
         _ => RunRule::None,
     }
 }
@@ -1005,6 +1002,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
+    // Brief 045: the racks' address blocks, worked out once per draw.
+    let mut plc_blocks = std::collections::BTreeMap::new();
     // Tag blocks wait for placement (design 031 §6), after every fixed text is known.
     struct Pending {
         block: Block,
@@ -1068,6 +1067,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         if let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
         }
+        // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
+        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, &mut plc_blocks));
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
@@ -1140,6 +1141,10 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
     look.apply(&mut e, kind_of(t.of));
+    // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
+    if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
+        x.rotation = std::f64::consts::FRAC_PI_2;
+    }
     if let Some(aci) = t.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
     }

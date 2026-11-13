@@ -8,6 +8,10 @@
 //!   opened again, so the measured project starts clean.
 //! - **plcbuild**: the PLC model built from scratch (the report models already built), as on first
 //!   show. Target < 30 ms.
+//! - **slotmove**: a card moved from slot 2 to 20 (the cards after it change address), committed
+//!   and updated. Target < 16 ms.
+//! - **chfence**: Place Channels across 16 wires (a new DI card), committed and updated. < 16 ms.
+//! - **plcstyle**: one rack's address style changed (`plcaddress`), committed and updated. < 16 ms.
 //! - **work**: how many racks and cards a slot move recomputed (never all of them).
 //!
 //! Each edit is undone after it is measured.
@@ -37,6 +41,10 @@ pub struct MeasuredPlc {
     /// Racks and cards one slot move recomputed.
     pub work: usize,
     pub slotmove_ms: f64,
+    /// Brief 045b: Place Channels across 16 wires (a new DI card), committed and updated.
+    pub chfence_ms: f64,
+    /// One rack's address style changed, committed and updated.
+    pub plcstyle_ms: f64,
 }
 
 fn ms(t: Instant) -> f64 {
@@ -155,6 +163,28 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);
+        // 16 wires on the page shown, for the fence (setup, not timed).
+        for i in 0..16 {
+            let x = 900.0 + 10.0 * f64::from(i);
+            run(&mut s, "wire", json!({"points": [[x, 250.0], [x, 150.0]]}))?;
+        }
+        let mut fences = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1055.0, 200.0]}))?;
+            fences.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.chfence_ms = median(&mut fences);
+        let rack = project.read(&mut s, |p, _| p.outputs.as_ref().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
+        let mut styles = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcaddress", json!({"rack": rack.hex(), "style": "iec"}))?;
+            styles.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.plcstyle_ms = median(&mut styles);
         Ok(out)
     })();
     crate::measure::release_lock_file(&copy);

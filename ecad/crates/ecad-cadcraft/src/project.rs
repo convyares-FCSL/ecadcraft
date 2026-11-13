@@ -2903,10 +2903,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, .. } => {
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, after, .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
-                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions.
-                out.extend(crate::plc::pages_touched(doc, *c, key));
+                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
+                // card's slot or size moves the addresses of the cards after it.
+                out.extend(crate::plc::pages_touched(doc, *c, key, after.as_deref()));
             }
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {

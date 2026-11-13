@@ -168,7 +168,145 @@ prefixes! {
     PLCIM = "plcim", "A", "PLC head module";
     PLCPM = "plcpm", "A", "PLC power module";
     PLCCM = "plccm", "A", "PLC communication module";
+    CHDI = "chdi", "A", "PLC digital input channel";
+    CHDQ = "chdq", "A", "PLC digital output channel";
+    CHAI = "chai", "A", "PLC analogue input channel";
+    CHAO = "chao", "A", "PLC analogue output channel";
+    CHRTD = "chrtd", "A", "PLC RTD channel";
+    CHIOL = "chiol", "A", "PLC IO-Link port";
 }
+
+pub static CHANNEL_FIRST: Entry = Entry {
+    key: "plc.channel.first",
+    label: "Number of a card's first channel",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(&["0", "1"]),
+    builtin: Value::Choice("0"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static PINS: Entry = Entry {
+    key: "plc.pins",
+    label: "Pin layout of a card",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(&["role", "channel"]),
+    builtin: Value::Choice("role"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static ADDRESS_STYLE: Entry = Entry {
+    key: "plc.address.style",
+    label: "Address style",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(&["byte.bit", "iec", "slot", "none"]),
+    builtin: Value::Choice("byte.bit"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static START_INPUT: Entry = Entry {
+    key: "plc.address.start.input",
+    label: "First input byte of a rack",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Number { min: 0.0, max: 65535.0 },
+    builtin: Value::Number(0.0),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static START_OUTPUT: Entry = Entry {
+    key: "plc.address.start.output",
+    label: "First output byte of a rack",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Number { min: 0.0, max: 65535.0 },
+    builtin: Value::Number(0.0),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static ANALOG_BYTES: Entry = Entry {
+    key: "plc.address.analog.bytes",
+    label: "Bytes per analogue channel",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Number { min: 1.0, max: 16.0 },
+    builtin: Value::Number(2.0),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static IOL_BYTES: Entry = Entry {
+    key: "plc.address.iol.bytes",
+    label: "Bytes per IO-Link port",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Number { min: 1.0, max: 32.0 },
+    builtin: Value::Number(2.0),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static SPARE_TEXT: Entry = Entry {
+    key: "plc.spare.text",
+    label: "Text under a spare channel",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Text { max_chars: 16 },
+    builtin: Value::Text("Spare"),
+    levels: SP,
+    project: ProjectSource::Property,
+};
+
+pub static CHANNEL_SHOW: Entry = Entry {
+    key: "plc.text.channel.show",
+    label: "Show channel numbers",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(ON_OFF),
+    builtin: Value::Choice("on"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static ADDRESS_SHOW: Entry = Entry {
+    key: "plc.text.address.show",
+    label: "Show addresses on channels",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(ON_OFF),
+    builtin: Value::Choice("on"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static ROTATION: Entry = Entry {
+    key: "plc.text.channel.rotation",
+    label: "Channel description rotation",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(&["90", "0"]),
+    builtin: Value::Choice("90"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static XREF_TABLE: Entry = Entry {
+    key: "plc.xref.table",
+    label: "Channel table under a card body",
+    group: GROUP,
+    brief: "045",
+    kind: Kind::Choice(ON_OFF),
+    builtin: Value::Choice("off"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
 
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
@@ -185,6 +323,25 @@ pub static ENTRIES: &[&Entry] = &[
     &PLCIM,
     &PLCPM,
     &PLCCM,
+    // Brief 045b.
+    &CHANNEL_FIRST,
+    &PINS,
+    &ADDRESS_STYLE,
+    &START_INPUT,
+    &START_OUTPUT,
+    &ANALOG_BYTES,
+    &IOL_BYTES,
+    &SPARE_TEXT,
+    &CHANNEL_SHOW,
+    &ADDRESS_SHOW,
+    &ROTATION,
+    &XREF_TABLE,
+    &CHDI,
+    &CHDQ,
+    &CHAI,
+    &CHAO,
+    &CHRTD,
+    &CHIOL,
 ];
 
 #[cfg(test)]
