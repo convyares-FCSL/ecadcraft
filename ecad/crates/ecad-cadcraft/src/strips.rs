@@ -178,6 +178,38 @@ pub fn offer_value(value: Option<&str>) -> Result<Option<String>, String> {
     }
 }
 
+/// The offer Checks' **Offer drawn** writes (design 028 §8, brief 036 §7.1): every type at
+/// least its drawn positions; with no type codes, 028's rule (every drawn terminal, PE kept).
+pub fn offer_drawn_value(doc: &Document, c: ComponentId) -> String {
+    use crate::terminal_types as tt;
+    let ps = tt::positions(doc, c);
+    let mut drawn: tt::Counts = [0; tt::TYPE_COUNT];
+    for p in &ps {
+        if let Some(n) = drawn.get_mut(tt::index_of(p.ty)) {
+            *n = n.saturating_add(1);
+        }
+    }
+    let offer = offer_of(doc, c);
+    let legacy = offer.is_none_or(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && ps.iter().all(|p| p.ty.legacy());
+    let mut counts: tt::Counts = [0; tt::TYPE_COUNT];
+    if legacy {
+        let total = u32::try_from(ps.len()).unwrap_or(MAX_POSITIONS).min(MAX_POSITIONS);
+        let pe = offer.map_or(0, |o| o.pe).max(drawn.get(1).copied().unwrap_or(0)).min(total);
+        if let Some(x) = counts.get_mut(0) {
+            *x = total - pe;
+        }
+        if let Some(x) = counts.get_mut(1) {
+            *x = pe;
+        }
+    } else {
+        for (i, x) in counts.iter_mut().enumerate() {
+            let offered = offer.and_then(|o| o.counts.get(i).copied()).unwrap_or(0);
+            *x = offered.max(drawn.get(i).copied().unwrap_or(0));
+        }
+    }
+    tt::counts_text(&counts)
+}
+
 /// A strip's stored offer, if readable.
 pub fn offer_of(doc: &Document, c: ComponentId) -> Option<Offer> {
     doc.components.get(&c)?.properties.get(OFFER_KEY).and_then(|v| parse_offer(v).ok())
@@ -664,8 +696,14 @@ pub struct StripData {
     pub types: Vec<TypeCount>,
     /// Positions whose levels are drawn by symbols of another type: (position, a terminal).
     pub mixed: Vec<(String, TerminalId)>,
+    /// Links naming levels their positions lack: (link number, the items as written).
+    pub level_missing: Vec<(u32, Vec<String>)>,
+    /// Fuse positions with no rating.
+    pub no_rating: usize,
     /// Each row's position index (brief 036).
     pos_of_row: Vec<usize>,
+    /// The type word of each `mixed` terminal's own symbol.
+    mixed_types: BTreeMap<TerminalId, &'static str>,
     /// Sheets of its terminal plan section and rows of its BOM (review of PR #55, finding 1):
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
@@ -710,7 +748,7 @@ impl StripData {
     /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` and `position-mixed`
     /// warnings).
     pub fn check_rows(&self) -> (usize, usize) {
-        (self.twice.len(), self.over_offer().len() + self.mixed.len() + self.acc.warnings())
+        (self.twice.len(), self.over_offer().len() + self.mixed.len() + self.level_missing.len() + self.acc.warnings())
     }
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
@@ -726,6 +764,11 @@ impl StripData {
     /// The plan index of row `i`'s position (rows of one position share it).
     pub fn position_index(&self, i: usize) -> usize {
         self.pos_of_row.get(i).copied().unwrap_or(0)
+    }
+
+    /// The type word of the symbol that draws terminal `t` (`position-mixed`).
+    pub fn other_type_word(&self, t: TerminalId) -> &'static str {
+        self.mixed_types.get(&t).copied().unwrap_or("?")
     }
 
     /// Whether row `i` is the first row of its position.
@@ -816,6 +859,8 @@ pub struct Strips {
     inherits: BTreeMap<String, BTreeSet<ComponentId>>,
     /// Brief 030: placed accessories with no part number, over every strip (one info row).
     pub acc_no_part: usize,
+    /// Brief 036: brief 034's fuse terminal devices (the `fuse-device` Info row).
+    pub fuse_devices: BTreeSet<ComponentId>,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
     /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
@@ -870,8 +915,21 @@ impl Strips {
             if is_strip(doc, *c) {
                 s.set(doc, *c, o, cx);
             }
+            if crate::level_cmds::is_fuse_device(doc, *c) {
+                s.fuse_devices.insert(*c);
+            }
         }
         s
+    }
+
+    /// Brief 036: keep the fuse terminal devices among `devices` (the ops' devices) up to date.
+    /// Returns whether the set changed.
+    pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<ComponentId>) -> bool {
+        let mut changed = false;
+        for c in devices {
+            changed |= if crate::level_cmds::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+        }
+        changed
     }
 
     /// The strips `scope` touches, before recomputing.
@@ -1026,6 +1084,7 @@ impl Strips {
             && self.by_cable == other.by_cable
             && self.inherits == other.inherits
             && self.acc_no_part == other.acc_no_part
+            && self.fuse_devices == other.fuse_devices
             && self.sheets_total == other.sheets_total
             && self.check_errors == other.check_errors
             && self.check_warnings == other.check_warnings
@@ -1123,7 +1182,10 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         twice: Vec::new(),
         types: Vec::new(),
         mixed: Vec::new(),
+        level_missing: Vec::new(),
+        no_rating: 0,
         pos_of_row: Vec::new(),
+        mixed_types: BTreeMap::new(),
         sheets: 1,
         bom_rows: 0,
         acc: crate::accessories::StripAcc::default(),
@@ -1221,6 +1283,10 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         }
         if let Some(t) = pos.mixed.first() {
             d.mixed.push((pos.label.clone(), *t));
+            d.mixed_types.insert(*t, tt::type_of_terminal(doc, *t).word);
+        }
+        if ty.code == "fuse" && clean(props.get(&tt::rating_key(&pos.label))).is_none() {
+            d.no_rating += 1;
         }
         let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
         if ty.multi() {
@@ -1397,6 +1463,31 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
             n += 1;
         }
         d.pos_of_row.push(n);
+    }
+    // Links naming levels their positions lack (`level-missing`, §8).
+    let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
+    let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
+    for (n, p) in ecad_model::links::of(&props) {
+        let mut items = Vec::new();
+        for item in &p.0 {
+            let Some(sp) = item.span() else { continue };
+            let missing = match &sp {
+                ecad_model::links::Span::Levels { position, hi, .. } => count_of.get(position.as_str()).is_some_and(|c| hi > c),
+                ecad_model::links::Span::Positions { level, .. } => {
+                    let one = ecad_model::links::Positions(vec![item.clone()]);
+                    one.select(&order).iter().any(|l| count_of.get(l.as_str()).is_some_and(|c| level > c))
+                }
+            };
+            if missing {
+                items.push(match item {
+                    ecad_model::links::Item::One(x) => x.clone(),
+                    ecad_model::links::Item::Range(a, b) => format!("{a}-{b}"),
+                });
+            }
+        }
+        if !items.is_empty() {
+            d.level_missing.push((n, items));
+        }
     }
     d.rows = rows;
     d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);

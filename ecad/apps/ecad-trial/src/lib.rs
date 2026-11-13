@@ -1775,11 +1775,8 @@ impl Trial {
             A::OfferDrawn(c) => {
                 let value = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
-                        let doc = p.ledger.document();
-                        let drawn = ecad_cadcraft::strips::drawn_terminals(doc, c);
-                        let pe = ecad_cadcraft::strips::offer_of(doc, c).map_or(0, |o| o.pe);
-                        let drawn_pe = drawn.iter().filter(|(_, _, pe)| *pe).count() as u32;
-                        ecad_cadcraft::strips::Offer { positions: drawn.len() as u32, pe: pe.max(drawn_pe).min(drawn.len() as u32) }.text()
+                        // Brief 036: every type at least its drawn positions.
+                        ecad_cadcraft::strips::offer_drawn_value(p.ledger.document(), c)
                     })
                     .ok()
                 });

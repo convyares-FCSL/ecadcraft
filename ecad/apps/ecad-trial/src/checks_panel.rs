@@ -39,6 +39,11 @@ pub const SPLIT_LINK: &str = "Split link";
 pub const REMOVE_PARTITION: &str = "Remove partition";
 pub const DROP_MISSING: &str = "Drop missing";
 pub const DELETE_LINK: &str = "Delete link";
+/// Brief 036's fix buttons (design 036 §8).
+pub const MOVE_NEXT_FREE: &str = "Move to next free";
+pub const MOVE_NEW_POSITION: &str = "Move to new position";
+pub const DROP_MISSING_LEVELS: &str = "Drop missing levels";
+pub const MAKE_STRIP_POSITION: &str = "Make strip position";
 
 /// The two buttons of a brief 030 fix.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
@@ -46,6 +51,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::AccessoryOrphan(..) => Some([MOVE_TO_END, REMOVE]),
         Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
         Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
+        Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         _ => None,
     }
 }
@@ -284,6 +290,11 @@ impl ChecksPanel {
                         Fix::SetCores(_) => SET_CORES,
                         Fix::NextFreeCore(_) => NEXT_FREE_CORE,
                         Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
+                        Fix::MoveToNextFree(_) => MOVE_NEXT_FREE,
+                        Fix::MoveToNewPosition(_) => MOVE_NEW_POSITION,
+                        Fix::LevelMissing(..) => DROP_MISSING_LEVELS,
+                        // One device per click; the row's count goes down as each one moves.
+                        Fix::FuseDevices => MAKE_STRIP_POSITION,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
@@ -297,7 +308,9 @@ impl ChecksPanel {
                             (Fix::SetCores(k), _) => out.push(Action::SetCores(k)),
                             (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
                             (Fix::ShowCables, _) => out.push(Action::ShowCables),
-                            (Fix::LinkOnNonStrip(_), _) => out.push(Action::AccessoryFix(f, 0)),
+                            (Fix::LinkOnNonStrip(_) | Fix::MoveToNextFree(_) | Fix::MoveToNewPosition(_) | Fix::FuseDevices, _) => {
+                                out.push(Action::AccessoryFix(f, 0))
+                            }
                             _ => {}
                         }
                         continue;

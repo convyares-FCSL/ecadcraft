@@ -329,6 +329,21 @@ pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
     })
 }
 
+/// A link value without the items written as `drop` (brief 036: **Drop missing levels**); empty
+/// when nothing is left.
+pub fn drop_items(text: &str, drop: &[String]) -> String {
+    let Ok(p) = links::parse(text) else { return text.to_string() };
+    let kept: Vec<String> =
+        p.0.iter()
+            .map(|i| match i {
+                links::Item::One(x) => x.clone(),
+                links::Item::Range(a, b) => format!("{a}-{b}"),
+            })
+            .filter(|x| !drop.contains(x))
+            .collect();
+    kept.join(", ")
+}
+
 /// The `setprop` rule for strip keys (FP1, FP2, FP5, FP6): `Ok(None)` when `key` is not one of
 /// them (or a part key on another device, which stays free text), else the value to store.
 ///

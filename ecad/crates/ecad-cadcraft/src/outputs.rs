@@ -665,6 +665,9 @@ impl Outputs {
                 project_keys: &scope.strip_keys,
             },
         );
+        if strips.note_devices(doc, &scope.devices) {
+            self.checks_changed += 1;
+        }
         let acc_only = strips.touched_acc(&scope.strip_keys, &which);
         if which.is_empty() {
             strips.last_work = 0;
@@ -1113,31 +1116,89 @@ impl Outputs {
     pub fn strip_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         for s in self.strips.strips.values() {
-            if let Some(off) = s.offer
-                && s.drawn > off.positions as usize
-            {
-                let hi = s.highest();
+            // Brief 036 (§7.1): per type; with no type codes, 028's row for the whole strip.
+            for (tc, offered) in s.over_offer() {
+                let legacy = s.offer.is_some_and(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && s.types.iter().all(|t| t.ty.legacy());
+                let hi = if legacy { s.highest() } else { s.highest_of(tc.ty) };
+                let which = if legacy {
+                    format!("{}: {} terminals drawn, strip offers {offered}", s.tag, s.drawn)
+                } else {
+                    format!("{}: {} {} terminals drawn, strip offers {offered}", s.tag, tc.drawn, tc.ty.word)
+                };
                 out.push(Check {
                     kind: Kind::TooManyTerminals,
                     page: hi.and_then(|r| r.go).map(|(p, _)| p),
                     at: hi.and_then(|r| r.go).map(|(_, a)| a),
                     object: hi.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal),
-                    which: format!("{}: {} terminals drawn, strip offers {}", s.tag, s.drawn, off.positions),
+                    which,
                     fix: Some(Fix::OfferDrawn(s.component)),
                 });
             }
             for (label, t) in &s.twice {
-                let go = s.row_of(*t).and_then(|r| r.go);
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                // Brief 036: a level of a multi-level position drawn twice goes to the next free one.
+                let multi = row.is_some_and(|r| r.ty.multi() || r.ty.breaks);
                 out.push(Check {
-                    kind: Kind::TerminalTwice,
+                    kind: if multi { Kind::LevelTwice } else { Kind::TerminalTwice },
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
                     object: Object::Terminal(*t),
                     which: format!("{}:{label} is drawn twice", s.tag),
-                    fix: Some(Fix::RenumberStrip(s.component)),
+                    fix: Some(if multi { Fix::MoveToNextFree(*t) } else { Fix::RenumberStrip(s.component) }),
+                });
+            }
+            for (pos, t) in &s.mixed {
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                let first = s.rows.iter().find(|r| r.label == *pos).map_or("?", |r| r.ty.word);
+                let other = s.other_type_word(*t);
+                out.push(Check {
+                    kind: Kind::PositionMixed,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Terminal(*t),
+                    which: format!("{}:{pos} mixes {first} and {other} symbols", s.tag),
+                    fix: Some(Fix::MoveToNewPosition(*t)),
+                });
+            }
+            for (n, items) in &s.level_missing {
+                let go = s.rows.iter().find(|r| r.go.is_some()).and_then(|r| r.go);
+                let first = items.first().cloned().unwrap_or_default();
+                let pos = ecad_model::links::split_level(&first).map(|(p, _)| p.to_string()).unwrap_or_default();
+                let levels = s.rows.iter().filter(|r| r.label == pos).count();
+                out.push(Check {
+                    kind: Kind::LevelMissing,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Component(s.component),
+                    which: format!(
+                        "{}: link {n} names {}, but {}:{pos} has {levels} level{}",
+                        s.tag,
+                        items.join(", "),
+                        s.tag,
+                        if levels == 1 { "" } else { "s" }
+                    ),
+                    fix: Some(Fix::LevelMissing(s.component, u16::try_from(*n).unwrap_or(u16::MAX))),
                 });
             }
             out.extend(accessory_checks(s));
+        }
+        // Brief 036 (§8): fuse terminals that are devices of their own, and fuse positions with no
+        // rating: one Info row each.
+        let fuses = self.strips.fuse_devices.len();
+        if fuses > 0 {
+            let which = if fuses == 1 {
+                "1 fuse terminal is a device of its own".to_string()
+            } else {
+                format!("{fuses} fuse terminals are devices of their own")
+            };
+            out.push(Check { kind: Kind::FuseDevice, page: None, at: None, object: Object::None, which, fix: Some(Fix::FuseDevices) });
+        }
+        let unrated: usize = self.strips.strips.values().map(|s| s.no_rating).sum();
+        if unrated > 0 {
+            let which = if unrated == 1 { "1 fuse position has no rating".to_string() } else { format!("{unrated} fuse positions have no rating") };
+            out.push(Check { kind: Kind::NoFuseRating, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         for c in &self.links_off_strip {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
@@ -1889,6 +1950,31 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
             ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
+        // Brief 036 (design 036 §8).
+        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "next"}))],
+        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "new"}))],
+        Fix::LevelMissing(c, n) => {
+            let Some(s) = o.strips.get(c) else { return Vec::new() };
+            let key = ecad_model::links::key(u32::from(n));
+            let kept = s.level_missing.iter().find(|(m, _)| *m == u32::from(n)).map(|(_, items)| items.clone()).unwrap_or_default();
+            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::accessories::drop_items(&l.text, &kept));
+            let mut out = Vec::new();
+            if let Some(v) = after {
+                let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
+                out.push(("Drop missing levels".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": v})));
+            }
+            out.push(("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})));
+            out
+        }
+        Fix::FuseDevices => o
+            .strips
+            .fuse_devices
+            .iter()
+            .map(|d| {
+                let tag = o.devices.get(d).map_or_else(|| "?".to_string(), |x| x.tag.clone());
+                (format!("Make {tag} a strip position"), "toposition", json!({"device": d.hex()}))
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }

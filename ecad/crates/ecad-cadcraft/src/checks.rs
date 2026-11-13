@@ -127,10 +127,20 @@ pub enum Kind {
     LinkOrphan,
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
     LinkOnNonStrip,
+    /// Brief 036 (design 036 §8): a level of a multi-level position drawn twice.
+    LevelTwice,
+    /// A position whose levels are drawn by symbols of two types.
+    PositionMixed,
+    /// A link naming a level its position does not have.
+    LevelMissing,
+    /// Fuse terminals that are devices of their own (one count row).
+    FuseDevice,
+    /// Fuse positions with no rating (one count row).
+    NoFuseRating,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 34] = [
+    pub const ALL: [Kind; 39] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -165,6 +175,11 @@ impl Kind {
         Kind::LinkAcrossPartition,
         Kind::LinkOrphan,
         Kind::LinkOnNonStrip,
+        Kind::LevelTwice,
+        Kind::PositionMixed,
+        Kind::LevelMissing,
+        Kind::FuseDevice,
+        Kind::NoFuseRating,
     ];
 
     /// The JSON name.
@@ -204,6 +219,11 @@ impl Kind {
             Kind::LinkAcrossPartition => "link-across-partition",
             Kind::LinkOrphan => "link-orphan",
             Kind::LinkOnNonStrip => "link-on-non-strip",
+            Kind::LevelTwice => "level-twice",
+            Kind::PositionMixed => "position-mixed",
+            Kind::LevelMissing => "level-missing",
+            Kind::FuseDevice => "fuse-device",
+            Kind::NoFuseRating => "no-fuse-rating",
         }
     }
 
@@ -249,12 +269,19 @@ impl Kind {
             Kind::LinkAcrossPartition => "Link crosses a partition",
             Kind::LinkOrphan => "Link names positions the strip lacks",
             Kind::LinkOnNonStrip => "Link on a device that is not a strip",
+            Kind::LevelTwice => "Terminal level drawn twice",
+            Kind::PositionMixed => "Position mixes terminal types",
+            Kind::LevelMissing => "Link names a level the position lacks",
+            Kind::FuseDevice => "Fuse terminals that are devices of their own",
+            Kind::NoFuseRating => "Fuse positions without a rating",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice => Severity::Error,
+            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice | Kind::LevelTwice => {
+                Severity::Error
+            }
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -273,7 +300,9 @@ impl Kind {
             | Kind::AccessoryOrphan
             | Kind::LinkAcrossPartition
             | Kind::LinkOrphan
-            | Kind::LinkOnNonStrip => Severity::Warning,
+            | Kind::LinkOnNonStrip
+            | Kind::PositionMixed
+            | Kind::LevelMissing => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -324,6 +353,17 @@ pub enum Fix {
     LinkOrphan(ComponentId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
     LinkOnNonStrip(ComponentId),
+    /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
+    /// with that level free; `termlabel {terminal, move_to: "next"}`).
+    MoveToNextFree(TerminalId),
+    /// Brief 036: **Move to new position** (the other type's levels; `termlabel {terminal,
+    /// move_to: "new"}`).
+    MoveToNewPosition(TerminalId),
+    /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.
+    LevelMissing(ComponentId, u16),
+    /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
+    /// (`toposition`).
+    FuseDevices,
 }
 
 /// One row of the Checks list.
