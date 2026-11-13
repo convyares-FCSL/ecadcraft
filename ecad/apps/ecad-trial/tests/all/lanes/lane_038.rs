@@ -346,3 +346,54 @@ fn a_page_changed_elsewhere_gets_a_dot_without_a_rebuild_and_views_are_kept_per_
     assert!(line.is_none());
     assert!(restored.projects.values().any(|p| p.pages.get(&p1.hex()).is_some_and(|pv| (pv.height - v.height).abs() < 1e-9)));
 }
+
+/// The four workspaces at 1920 × 1080 on the demo project, for the owner to compare with the
+/// mock-up's screens (written only when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter
+/// exists; nothing is asserted about the pictures).
+#[test]
+fn screenshots_of_the_four_workspaces() {
+    let Some(out) = crate::project_panel::shots() else { return };
+    let dir = std::env::temp_dir().join(format!("ecad-038-shots-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = crate::checks_ui::demo_file(&dir);
+    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+        |ui, t: &mut Trial| {
+            t.logic(&ui.ctx().clone());
+            t.ui(ui);
+        },
+        trial(),
+    );
+    h.run_steps(3);
+    h.state_mut().close_project();
+    h.run_steps(2);
+    h.state_mut().open_project(&path).unwrap();
+    h.run_steps(3);
+    let first = doc(&mut h).page_order[0];
+    h.state_mut().show_page(first).unwrap();
+    h.run_steps(3);
+    h.state_mut().zoom_to_drawing();
+    h.run_steps(5);
+    for (w, name) in [(Workspace::Draw, "draw"), (Workspace::Lists, "lists"), (Workspace::Library, "library"), (Workspace::Publish, "publish")] {
+        h.state_mut().set_workspace(w);
+        h.run_steps(6);
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join(format!("038-{name}.png")));
+    }
+    // The flyout, the Text panel and the developer switch.
+    h.state_mut().set_workspace(Workspace::Draw);
+    h.run_steps(3);
+    h.get_by_label(tool_strip::GROUPS[1].label).hover();
+    h.run_steps(3);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-flyout.png"));
+    let centre = h.state().shell.slots.map(|s| s.main.center()).unwrap_or_default();
+    h.event(Event::PointerMoved(centre));
+    h.run_steps(3);
+    h.state_mut().toggle_text_panel();
+    h.run_steps(3);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-text-panel.png"));
+    h.state_mut().toggle_text_panel();
+    h.state_mut().set_cad_chrome(true);
+    h.run_steps(6);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-developer.png"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -98,6 +98,8 @@ pub struct Shell {
     pub tools: tool_strip::ToolStrip,
     pub settings_open: bool,
     pub publish: PublishTab,
+    /// Library opened the symbol search: it closes again when another workspace is shown.
+    search_from_library: bool,
     /// The right panel's ECAD properties (the same section CADCraft's Properties palette drew).
     right_section: Box<dyn FnMut(&mut egui::Ui)>,
     /// The project whose views were applied, and the page whose view is shown.
@@ -129,6 +131,7 @@ impl Shell {
             tools: tool_strip::ToolStrip::default(),
             settings_open: false,
             publish: PublishTab::default(),
+            search_from_library: false,
             right_section: crate::sheets_ui::section(props),
             view_of: None,
             frame_ms: 0.0,
@@ -351,7 +354,10 @@ impl Trial {
         }
         self.search.host = (w == Workspace::Library).then_some(slots.main);
         if w == Workspace::Library {
+            self.shell.search_from_library |= !self.search.open;
             self.search.open = true;
+        } else if std::mem::take(&mut self.shell.search_from_library) {
+            self.search.open = false;
         }
         let body = Rect::from_min_max(slots.main.min + egui::vec2(0.0, ecad_ui::tokens::size::PANEL_HEADER), slots.main.max);
         if let Some(d) = &mut self.release {

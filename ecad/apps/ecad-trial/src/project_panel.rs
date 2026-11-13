@@ -1197,8 +1197,6 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
     Some((text, true))
 }
 
-/// `ecad.orphan` red (design tokens).
-
 /// An 18 × 18 icon button, as CADCraft's file tabs draw them, with an accessible label.
 fn icon_button(ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, enabled: bool) -> egui::Response {
     let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());

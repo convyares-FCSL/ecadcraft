@@ -161,14 +161,11 @@ fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
     }
 }
 
-/// Draw the section at the bottom of the panel's `ui`. Returns what was asked for.
+/// Draw the section in `ui`, filling it (brief 038: the Text panel's Commands tab; it was the
+/// lower part of the Project panel). Returns what was asked for.
 pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
     let mut out = Vec::new();
-    let panel_h = ui.available_height();
-    let open = p.dev.open;
-    let mut bottom = egui::Panel::bottom("ecad.project.developer").resizable(open);
-    bottom = if open { bottom.default_size(panel_h * 0.6).min_size(120.0).max_size(panel_h * 0.9) } else { bottom.exact_size(24.0) };
-    bottom.show(ui, |ui| {
+    {
         let mut toggled = false;
         ui.horizontal_wrapped(|ui| {
             let arrow = if p.dev.open { "v" } else { ">" };
@@ -203,7 +200,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
             p.dev.open = !p.dev.open;
         }
         if !p.dev.open {
-            return;
+            return out;
         }
         agent_row(ui, p.agent, &mut out);
         // The command field and Run, the template's note and the last reply.
@@ -257,6 +254,6 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
             Body::Primitives => ecad_ui::showcase::show(ui, &mut p.dev.showcase),
             _ => {}
         }
-    });
+    }
     out
 }
