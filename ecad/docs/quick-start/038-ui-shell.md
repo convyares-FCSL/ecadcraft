@@ -9,6 +9,11 @@ sections.
 ECADCraft's shell now. CADCraft's menus, toolbar, Tool Sets, layers, layout tabs and idle command
 line are hidden behind a developer switch; nothing was deleted.
 
+The first launch (no saved window) opens at the largest size that fits the monitor, so on a
+1920 × 1080 screen the left panel, the page and the open right panel all show; after that the
+window comes back at the size and place you left it. A smaller window still collapses the right
+panel to its rail first (follow-up to 038).
+
 | Region | What is there |
 | --- | --- |
 | Top bar | The project menu under the project name: New project, Open project…, Save, Save As…, Close project, Project info, Project settings, Revisions, Settings. Then the workspaces Draw, Lists, Library and Publish; the search field (it types into the symbol search); and the Checks, revision (`Rev A`) and agent pills |

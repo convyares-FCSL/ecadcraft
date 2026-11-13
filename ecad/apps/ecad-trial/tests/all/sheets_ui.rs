@@ -294,3 +294,31 @@ fn the_revisions_dialog_follows_undo_and_redo() {
     h.run_steps(2);
     assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
 }
+
+/// The Project info and Project settings popouts size to their content: they reach their size in
+/// a few frames and keep it (they used to grow a row a frame down to the window's bottom, which a
+/// tall window shows).
+#[test]
+fn the_project_popouts_keep_their_size() {
+    let mut h = build(trial(), None);
+    let tall = 2000.0;
+    h.set_size(egui::vec2(1920.0, tall));
+    h.run_steps(3);
+    for (label, id) in [(project_panel::PROJECT_INFO, sheets_ui::PROJECT_INFO_ID), (project_panel::PROJECT_SETTINGS, sheets_ui::PROJECT_SETTINGS_ID)]
+    {
+        click(&mut h, ecad_trial::shell::top_bar::PROJECT_MENU);
+        click(&mut h, label);
+        let rect = |h: &Harness<'static, Trial>| h.ctx.memory(|m| m.area_rect(egui::Id::unique(id)));
+        h.run_steps(4);
+        let settled = rect(&h).unwrap_or_else(|| panic!("{label} is open"));
+        let mut heights = Vec::new();
+        for _ in 0..30 {
+            h.run_steps(1);
+            heights.push(rect(&h).map(|r| r.height()));
+        }
+        assert!(heights.iter().all(|x| *x == Some(settled.height())), "{label}: {} then {heights:?}", settled.height());
+        assert!(settled.bottom() < tall - 200.0, "{label} ends above the window's bottom: {settled:?}");
+        click(&mut h, "ecad.projectprops.cancel");
+        assert!(h.state().project_props.is_none(), "{label} closed");
+    }
+}
