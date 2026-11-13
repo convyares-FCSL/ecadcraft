@@ -143,7 +143,9 @@ fn request(doc: &Document, params: &Value) -> Result<Request, String> {
         Some(v) => Some(v.as_u64().and_then(|d| u8::try_from(d).ok()).ok_or(numbering::BAD_DIGITS)?),
     };
     let strips = if kinds.contains(&Kind::Terminals) { strips_param(doc, params, &scope)? } else { BTreeSet::new() };
-    Ok(Request { kinds, scope, start, digits, strips })
+    // Brief 036 (FP8c): each strip's positions, numbered as groups.
+    let positions = strips.iter().map(|c| (*c, crate::terminal_types::position_groups(doc, *c))).collect();
+    Ok(Request { kinds, scope, start, digits, strips, positions })
 }
 
 /// Brief 028 (design 028 §9.5): the strips a terminal renumber covers, from the scope: every
@@ -310,6 +312,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
                 start: None,
                 digits: None,
                 strips: BTreeSet::new(),
+                positions: Default::default(),
             }
         } else {
             request(doc, params)?
@@ -552,6 +555,7 @@ pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue,
                 start: None,
                 digits: None,
                 strips: BTreeSet::new(),
+                positions: Default::default(),
             };
             let plan = plan_for(p, &req)?;
             Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })

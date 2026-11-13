@@ -125,8 +125,13 @@ impl Starter {
     }
 
     fn build(&self) -> Result<Definition, String> {
-        let mut d =
-            Definition { bridges: Vec::new(), name: self.name.into(), origin: None, graphics: graphics(self.key), terminals: terminals(self.key) };
+        let mut d = Definition {
+            bridges: crate::terminal_types::bridges(self.key),
+            name: self.name.into(),
+            origin: None,
+            graphics: graphics(self.key),
+            terminals: terminals(self.key),
+        };
         let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: 1, content_hash });
         Ok(d)
@@ -312,7 +317,45 @@ pub const STARTERS: &[Starter] = &[
     card("plcao", "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
     card("plcrtd", "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card("plciol", "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
+    // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
+    // `terminal_types`; `termfuse` shares `fuseterm`'s drawing.
+    lvl("term2.1", "Two-level terminal, level 1", TWO, mt(1)),
+    lvl("term2.2", "Two-level terminal, level 2", TWO, mt(2)),
+    lvl("term2", "Two-level terminal", TWO, mt(3)),
+    lvl("term2b.1", "Two-level terminal, bridged, level 1", TWO, mt(4)),
+    lvl("term2b.2", "Two-level terminal, bridged, level 2", TWO, mt(5)),
+    lvl("term2b", "Two-level terminal, bridged", TWO, mt(6)),
+    lvl("term3.1", "Three-level terminal, level 1", THREE, mt(7)),
+    lvl("term3.2", "Three-level terminal, level 2", THREE, mt(8)),
+    lvl("term3.3", "Three-level terminal, level 3", THREE, mt(9)),
+    lvl("term3", "Three-level terminal", THREE, mt(10)),
+    lvl("termlnpe.1", "L/N/PE terminal, level L", LNPE, mt(11)),
+    lvl("termlnpe.2", "L/N/PE terminal, level N", LNPE, mt(12)),
+    lvl("termlnpe.3", "L/N/PE terminal, level PE", LNPE, mt(13)),
+    lvl("termlnpe", "L/N/PE terminal", LNPE, mt(14)),
+    lvl("termsensor.1", "Sensor terminal, level S", SENSOR, mt(15)),
+    lvl("termsensor.2", "Sensor terminal, level +", SENSOR, mt(16)),
+    lvl("termsensor.3", "Sensor terminal, level -", SENSOR, mt(17)),
+    lvl("termsensor", "Sensor terminal", SENSOR, mt(18)),
+    lvl("termdisc", "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
+    lvl("termfuse", "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
 ];
+
+// Brief 036's aliases.
+const TWO: &[&str] = &["two-level", "double-deck", "stacked", "terminal"];
+const THREE: &[&str] = &["three-level", "stacked", "terminal"];
+const LNPE: &[&str] = &["installation terminal", "l/n/pe", "stacked", "terminal"];
+const SENSOR: &[&str] = &["sensor terminal", "three-level", "stacked", "terminal"];
+
+/// Multi-level terminal starters (brief 036): `0x500 + n`.
+const fn mt(n: u128) -> DefinitionId {
+    def_id(0x500 + n)
+}
+
+/// A multi-level terminal starter (brief 036): joins a strip as a level.
+const fn lvl(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+    st(key, name, aliases, Kind::Terminal, id)
+}
 
 /// The starter symbol with key `key` (case-insensitive).
 pub fn by_key(key: &str) -> Option<&'static Starter> {
@@ -898,6 +941,11 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
     g
 }
 
+/// The graphics of starter `key` (brief 036: `termfuse` draws `fuseterm`'s).
+pub(crate) fn graphics_of(key: &str) -> Vec<Primitive> {
+    graphics(key)
+}
+
 fn graphics(key: &str) -> Vec<Primitive> {
     match key {
         "coil" => vec![rect((-6.0, -3.0), (6.0, 3.0)), line((0.0, 3.0), (0.0, 10.0)), line((0.0, -3.0), (0.0, -10.0))],
@@ -1095,7 +1143,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
         // ---- Brief 034 stage 3b (design 034 §6).
         "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
         k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
-        _ => sized_graphics(key),
+        _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -1153,7 +1201,7 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         // ---- Brief 034 stage 3b.
         "plcps" => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
         "plccpu" | "plcdi" | "plcdq" | "plcai" | "plcao" | "plcrtd" | "plciol" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
-        _ => sized_terminals(key, &t),
+        _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 

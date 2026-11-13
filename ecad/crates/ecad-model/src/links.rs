@@ -10,6 +10,12 @@
 //!   (code, not format). ECAD's commands write link keys only on terminal strips; this crate does
 //!   not know what a strip is and reads them on any component.
 //! - Unreadable values join nothing; they are never an error here.
+//! - **Levels (brief 036, FP3, FP8b).** An endpoint whose text ends in `.` + digits (+ an optional
+//!   `i` or `o`) names a level of a position: `4.2` is position 4, level 2; `7.1o` the out point of
+//!   a two-point level. Without a level an endpoint means level 1 (roadmap question 5). A range whose
+//!   two ends have the same position is a **level range** (`1.1-1.3`, a cross-level link); any other
+//!   range is a **position range** whose ends name the same level (`1.2-8.2`). A terminal's level
+//!   comes from its key ([`level_of_key`]): `.n`, `.ni`, `.no`; any other key is level 1.
 //!
 //! This module reads text; it holds no I/O and does not depend on any CADCraft crate.
 
@@ -28,6 +34,41 @@ pub const MAX_ITEMS: usize = 999;
 pub const MAX_LABEL_CHARS: usize = 16;
 /// Most characters of a link value read.
 pub const MAX_TEXT_CHARS: usize = 20_000;
+
+/// The highest level number a link or a level key may name.
+pub const MAX_LEVEL: u32 = 99;
+
+/// A terminal's level from its key (brief 036, FP2): `.2` → (2, none), `.1i` → (1, `i`). Any key
+/// that does not start with `.` is level 1 of a one-level position; a dotted key that does not
+/// read (`.0`, `.-1`, `.x`) is `None`.
+pub fn level_of_key(key: Option<&str>) -> Option<(u32, Option<char>)> {
+    let Some(k) = key.and_then(|k| k.strip_prefix('.')) else { return Some((1, None)) };
+    level_text(k)
+}
+
+/// `2`, `1i`, `1o` → (level, point); `None` when it does not read or is out of range.
+fn level_text(k: &str) -> Option<(u32, Option<char>)> {
+    let (digits, point) = match k.chars().last() {
+        Some(c @ ('i' | 'o')) => (k.get(..k.len() - 1)?, Some(c)),
+        _ => (k, None),
+    };
+    if digits.is_empty() || digits.len() > 2 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let n: u32 = digits.parse().ok()?;
+    (1..=MAX_LEVEL).contains(&n).then_some((n, point))
+}
+
+/// An endpoint split into its position and level (brief 036 §5.1): the last `.digits` (+ `i`/`o`)
+/// is the level. `Err` when that tail looks like a level but is not one (`1.0`, `1.999`).
+pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), ()> {
+    let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
+    let core = tail.strip_suffix(['i', 'o']).unwrap_or(tail);
+    if pos.is_empty() || core.is_empty() || !core.bytes().all(|b| b.is_ascii_digit()) {
+        return Ok((end, None));
+    }
+    level_text(tail).map(|l| (pos, Some(l))).ok_or(())
+}
 
 /// The natural sort key of a label: digit runs compare as numbers (`2` before `10`).
 pub fn natural_key(s: &str) -> Vec<(u8, u128, String)> {
@@ -103,6 +144,10 @@ fn label(s: &str, text: &str) -> Result<String, String> {
     Ok(l.to_string())
 }
 
+fn level_refusal(end: &str) -> String {
+    format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2.")
+}
+
 /// Read a link's positions (spaces ignored).
 ///
 /// # Errors
@@ -124,26 +169,60 @@ pub fn parse(text: &str) -> Result<Positions, String> {
                 if b.contains('-') {
                     return Err(refusal(text));
                 }
-                items.push(match cmp_labels(&a, &b) {
+                let (pa, la) = split_level(&a).map_err(|()| level_refusal(&a))?;
+                let (pb, lb) = split_level(&b).map_err(|()| level_refusal(&b))?;
+                if pa != pb && la.unwrap_or((1, None)).0 != lb.unwrap_or((1, None)).0 {
+                    return Err(format!(
+                        "\"{a}-{b}\" joins different levels at different positions. Write {pa}.1-{pb}.1, or {pa}.1-{pa}.2 for levels of one position."
+                    ));
+                }
+                let ord = if pa == pb { la.unwrap_or((1, None)).cmp(&lb.unwrap_or((1, None))) } else { cmp_labels(pa, pb) };
+                items.push(match ord {
                     Ordering::Less => Item::Range(a, b),
                     Ordering::Equal => Item::One(a),
                     Ordering::Greater => Item::Range(b, a),
                 });
             }
-            None => items.push(Item::One(label(part, text)?)),
+            None => {
+                let l = label(part, text)?;
+                split_level(&l).map_err(|()| level_refusal(&l))?;
+                items.push(Item::One(l));
+            }
         }
     }
     Ok(Positions(items))
 }
 
+/// One item of a link, read for matching (brief 036 §5.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Span {
+    /// Positions `a` to `b` (natural order; equal for one position) on one level and point.
+    Positions { a: String, b: String, level: u32, point: Option<char> },
+    /// Levels `lo` to `hi` of one position: a cross-level link.
+    Levels { position: String, lo: u32, hi: u32 },
+}
+
+impl Item {
+    /// The item read for matching; `None` when an end does not read (never for a parsed item).
+    pub fn span(&self) -> Option<Span> {
+        let (a, b) = match self {
+            Item::One(x) => (x.as_str(), x.as_str()),
+            Item::Range(a, b) => (a.as_str(), b.as_str()),
+        };
+        let (pa, la) = split_level(a).ok()?;
+        let (pb, lb) = split_level(b).ok()?;
+        let (la, lb) = (la.unwrap_or((1, None)), lb.unwrap_or((1, None)));
+        if pa == pb && la.0 != lb.0 {
+            return Some(Span::Levels { position: pa.to_string(), lo: la.0.min(lb.0), hi: la.0.max(lb.0) });
+        }
+        Some(Span::Positions { a: pa.to_string(), b: pb.to_string(), level: la.0, point: la.1.or(lb.1) })
+    }
+}
+
 impl Positions {
-    /// Whether the link names the position labelled `l`.
+    /// Whether the link names the position labelled `l` (on any level).
     pub fn contains(&self, l: &str) -> bool {
-        let k = natural_key(l);
-        self.0.iter().any(|i| match i {
-            Item::One(x) => x == l,
-            Item::Range(a, b) => natural_key(a) <= k && k <= natural_key(b),
-        })
+        Matcher::of(self).matches(l)
     }
 
     /// As stored: `1-4`, `7, 9, 11`.
@@ -158,6 +237,29 @@ impl Positions {
             .join(", ")
     }
 
+    /// The items read for matching.
+    pub fn spans(&self) -> Vec<Span> {
+        self.0.iter().filter_map(Item::span).collect()
+    }
+
+    /// The one level every item names, when the link is on one level and crosses none (`1-4`: 1;
+    /// `1.2-8.2`: 2; `1.1-1.3`: `None`).
+    pub fn level(&self) -> Option<u32> {
+        let mut out = None;
+        for sp in self.spans() {
+            match sp {
+                Span::Positions { level, .. } if out.is_none_or(|l| l == level) => out = Some(level),
+                _ => return None,
+            }
+        }
+        out
+    }
+
+    /// Whether the link joins levels of one position (`1.1-1.3`).
+    pub fn crosses_levels(&self) -> bool {
+        self.spans().iter().any(|s| matches!(s, Span::Levels { .. }))
+    }
+
     /// Every label the link names out of `order` (labels in plan order), in that order.
     pub fn select<'a>(&self, order: &'a [String]) -> Vec<&'a String> {
         let keys: Vec<Vec<(u8, u128, String)>> = order.iter().map(|l| natural_key(l)).collect();
@@ -166,38 +268,24 @@ impl Positions {
 
     /// [`Positions::select`] with the natural keys of `order` given (`keys[i]` is `order[i]`'s).
     pub fn select_keyed<'a>(&self, order: &'a [String], keys: &[Vec<(u8, u128, String)>]) -> Vec<&'a String> {
-        let ranges: Vec<(Vec<(u8, u128, String)>, Vec<(u8, u128, String)>)> = self
-            .0
-            .iter()
-            .filter_map(|i| match i {
-                Item::Range(a, b) => Some((natural_key(a), natural_key(b))),
-                Item::One(_) => None,
-            })
-            .collect();
-        order
-            .iter()
-            .zip(keys)
-            .filter(|(l, k)| self.0.iter().any(|i| matches!(i, Item::One(x) if x == *l)) || ranges.iter().any(|(a, b)| a <= *k && *k <= b))
-            .map(|(l, _)| l)
-            .collect()
+        let m = Matcher::of(self);
+        order.iter().zip(keys).filter(|(l, k)| m.matches_keyed(l, k)).map(|(l, _)| l).collect()
     }
 
-    /// The labels the items name that are not in `order` (a single label missing, or a range end
-    /// missing).
+    /// The positions the items name that are not in `order` (a single position missing, or a
+    /// range end missing).
     pub fn missing(&self, order: &[String]) -> Vec<String> {
-        let has = |l: &String| order.iter().any(|o| o == l);
-        let mut out = Vec::new();
-        for i in &self.0 {
-            match i {
-                Item::One(x) if !has(x) => out.push(x.clone()),
-                Item::Range(a, b) => {
-                    for e in [a, b] {
-                        if !has(e) && !out.contains(e) {
-                            out.push(e.clone());
-                        }
-                    }
+        let has = |l: &str| order.iter().any(|o| o == l);
+        let mut out: Vec<String> = Vec::new();
+        for sp in self.spans() {
+            let ends = match &sp {
+                Span::Positions { a, b, .. } => vec![a.clone(), b.clone()],
+                Span::Levels { position, .. } => vec![position.clone()],
+            };
+            for e in ends {
+                if !has(&e) && !out.contains(&e) {
+                    out.push(e);
                 }
-                _ => {}
             }
         }
         out
@@ -245,40 +333,78 @@ pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
         .collect()
 }
 
-/// A link's positions ready for many lookups: single labels hashed, range ends keyed once
+/// A link's positions ready for many lookups: single positions hashed, range ends keyed once
 /// (review of PR #57, 2: a lookup costs the link's ranges, never its whole text).
 pub struct Matcher {
-    ones: std::collections::HashSet<String>,
-    ranges: Vec<(NaturalKey, NaturalKey)>,
+    /// Single positions: position → (level, point) items.
+    ones: std::collections::HashMap<String, Vec<(u32, Option<char>)>>,
+    ranges: Vec<(NaturalKey, NaturalKey, u32, Option<char>)>,
+    /// Cross-level items: position → level ranges.
+    levels: std::collections::HashMap<String, Vec<(u32, u32)>>,
 }
 
 /// A label's natural sort key ([`natural_key`]).
 pub type NaturalKey = Vec<(u8, u128, String)>;
 
+/// Whether an item's point names a terminal's point: an item without a point names every one-point
+/// level and the in point of a two-point level.
+fn point_ok(item: Option<char>, term: Option<char>) -> bool {
+    match (item, term) {
+        (None, None | Some('i')) => true,
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
 impl Matcher {
     pub fn of(p: &Positions) -> Matcher {
-        let mut m = Matcher { ones: Default::default(), ranges: Vec::new() };
-        for i in &p.0 {
-            match i {
-                Item::One(x) => {
-                    m.ones.insert(x.clone());
-                }
-                Item::Range(a, b) => m.ranges.push((natural_key(a), natural_key(b))),
+        let mut m = Matcher { ones: Default::default(), ranges: Vec::new(), levels: Default::default() };
+        for sp in p.spans() {
+            match sp {
+                Span::Positions { a, b, level, point } if a == b => m.ones.entry(a).or_default().push((level, point)),
+                Span::Positions { a, b, level, point } => m.ranges.push((natural_key(&a), natural_key(&b), level, point)),
+                Span::Levels { position, lo, hi } => m.levels.entry(position).or_default().push((lo, hi)),
             }
         }
         m
     }
 
-    /// Whether the link names the position labelled `l`.
+    /// Whether the link names the position labelled `l` (on any level).
     pub fn matches(&self, l: &str) -> bool {
-        if self.ones.contains(l) {
+        if self.ones.contains_key(l) || self.levels.contains_key(l) {
+            return true;
+        }
+        if self.ranges.is_empty() {
+            return false;
+        }
+        self.matches_keyed(l, &natural_key(l))
+    }
+
+    fn matches_keyed(&self, l: &str, k: &NaturalKey) -> bool {
+        self.ones.contains_key(l) || self.levels.contains_key(l) || self.ranges.iter().any(|(a, b, _, _)| a <= k && k <= b)
+    }
+
+    /// Whether the link names the terminal at position `l`, level `level`, point `point` (brief
+    /// 036, FP8b).
+    pub fn matches_level(&self, l: &str, level: u32, point: Option<char>) -> bool {
+        if self.ones.get(l).is_some_and(|v| v.iter().any(|(n, p)| *n == level && point_ok(*p, point))) {
+            return true;
+        }
+        if self.levels.get(l).is_some_and(|v| v.iter().any(|(lo, hi)| *lo <= level && level <= *hi && point_ok(None, point))) {
             return true;
         }
         if self.ranges.is_empty() {
             return false;
         }
         let k = natural_key(l);
-        self.ranges.iter().any(|(a, b)| *a <= k && k <= *b)
+        self.ranges.iter().any(|(a, b, n, p)| *n == level && point_ok(*p, point) && *a <= k && k <= *b)
+    }
+
+    /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
+    pub fn matches_terminal(&self, t: &crate::doc::Terminal) -> bool {
+        let Some(l) = t.label.as_deref() else { return false };
+        let Some((n, p)) = level_of_key(t.key.as_deref()) else { return false };
+        self.matches_level(l, n, p)
     }
 }
 
@@ -291,20 +417,20 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
     v.into_iter().map(|(_, l)| l).collect()
 }
 
-/// The terminals of `component` joined to `t` by its links (not `t` itself). One pass over the
+/// The terminals of `component` joined to `t` by its links (not `t` itself), level by level
+/// (brief 036). One pass over the
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    let Some(l) = term.label.as_deref() else { return Vec::new() };
     let Some(comp) = doc.components.get(&term.component) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
         let m = Matcher::of(&p);
-        if !m.matches(l) {
+        if !m.matches_terminal(term) {
             continue;
         }
         for (id, x) in doc.terminals_of(term.component) {
-            if id != t && x.label.as_deref().is_some_and(|y| m.matches(y)) {
+            if id != t && m.matches_terminal(x) {
                 out.insert(id);
             }
         }
@@ -316,7 +442,7 @@ pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 pub fn terminals_named(doc: &Document, component: ComponentId, value: Option<&str>) -> Vec<TerminalId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
-    doc.terminals_of(component).filter(|(_, x)| x.label.as_deref().is_some_and(|l| m.matches(l))).map(|(id, _)| id).collect()
+    doc.terminals_of(component).filter(|(_, x)| m.matches_terminal(x)).map(|(id, _)| id).collect()
 }
 
 #[cfg(test)]

@@ -66,6 +66,7 @@ pub mod slash;
 pub mod strips;
 pub mod symbols;
 pub mod terminal_cmds;
+pub mod terminal_types;
 pub mod text_cmds;
 pub mod text_style;
 mod translate;

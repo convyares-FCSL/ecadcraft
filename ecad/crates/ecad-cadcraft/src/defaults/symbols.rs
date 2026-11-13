@@ -142,6 +142,27 @@ prefixes! {
     PLCAO = "plcao", "A", "PLC analogue output card";
     PLCRTD = "plcrtd", "A", "PLC RTD card";
     PLCIOL = "plciol", "A", "PLC IO-Link master";
+    // ---- Brief 036: multi-level terminal starters (design 036 §3.1, §12).
+    TERM2_1 = "term2.1", "X", "Two-level terminal, level 1";
+    TERM2_2 = "term2.2", "X", "Two-level terminal, level 2";
+    TERM2 = "term2", "X", "Two-level terminal";
+    TERM2B_1 = "term2b.1", "X", "Two-level terminal, bridged, level 1";
+    TERM2B_2 = "term2b.2", "X", "Two-level terminal, bridged, level 2";
+    TERM2B = "term2b", "X", "Two-level terminal, bridged";
+    TERM3_1 = "term3.1", "X", "Three-level terminal, level 1";
+    TERM3_2 = "term3.2", "X", "Three-level terminal, level 2";
+    TERM3_3 = "term3.3", "X", "Three-level terminal, level 3";
+    TERM3 = "term3", "X", "Three-level terminal";
+    TERMLNPE_1 = "termlnpe.1", "X", "L/N/PE terminal, level L";
+    TERMLNPE_2 = "termlnpe.2", "X", "L/N/PE terminal, level N";
+    TERMLNPE_3 = "termlnpe.3", "X", "L/N/PE terminal, level PE";
+    TERMLNPE = "termlnpe", "X", "L/N/PE terminal";
+    TERMSENSOR_1 = "termsensor.1", "X", "Sensor terminal, level S";
+    TERMSENSOR_2 = "termsensor.2", "X", "Sensor terminal, level +";
+    TERMSENSOR_3 = "termsensor.3", "X", "Sensor terminal, level -";
+    TERMSENSOR = "termsensor", "X", "Sensor terminal";
+    TERMDISC = "termdisc", "X", "Disconnect terminal";
+    TERMFUSE = "termfuse", "X", "Fuse terminal (strip position)";
 }
 
 /// The tag prefix a new device of symbol `key` gets in this project (letters, upper case, without

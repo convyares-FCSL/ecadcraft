@@ -500,6 +500,12 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     }
                 }
             }
+            // Brief 036 (FP8a): a bridged level symbol joins or parts its position's levels.
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                for t in crate::connectivity::Connectivity::bridged_shown(doc, rep) {
+                    add(Node::Terminal(t), &mut nets);
+                }
+            }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 for comp in doc.components_using(*id) {
                     for (t, _) in doc.terminals_of(comp) {
@@ -596,6 +602,7 @@ pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
         start: None,
         digits: None,
         strips: Default::default(),
+        positions: Default::default(),
     };
     crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
