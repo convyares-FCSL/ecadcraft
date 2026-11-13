@@ -126,7 +126,7 @@ fn kind_change(params: &Value) -> Result<Option<KindChange>, String> {
     // With a kind, `font` is that kind's own font.
     let font = field(params, "font", |v| v.as_str().map(str::trim).map(str::to_string), BAD_FONT)?;
     if let Field::Set(f) = &font
-        && kind.font_entry().parse(f).is_none()
+        && defaults::parse_value(defaults::Kind::Text { max_chars: 64 }, f).is_none()
     {
         return Err(BAD_FONT.into());
     }
@@ -139,17 +139,25 @@ fn kind_change(params: &Value) -> Result<Option<KindChange>, String> {
     Ok(Some(KindChange { kind, font, height, weight, show }))
 }
 
-/// The ops of one kind's changes.
-fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>) {
+/// The ops of one kind's changes. Height, weight and font are fields of the text style the kind
+/// uses at project level (brief 050a, design 050 §6.6), gathered in `style` per style and written
+/// as one record each by [`style_ops`]; the wire label height stays in `settings.wiring`.
+fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut StyleFields) {
     let k = c.kind;
+    let id = crate::text_style::style_of(doc, k, Scope::project());
+    let mut put = |field: &str, v: Option<String>| {
+        let fields = style.entry(id.clone()).or_default();
+        fields.retain(|(f, _)| f != field);
+        fields.push((field.to_string(), v));
+    };
     let h = match c.height {
         Field::Absent => None,
         Field::Clear => Some(None),
         Field::Set(h) => Some(Some(h)),
     };
     if let Some(h) = h {
-        if k == TextKind::WireLabel {
-            // One stored value (§3.4): the wiring setting, never a property. A later row of the
+        if k == TextKind::WireLabel && id == k.builtin_style() {
+            // One stored value (§3.4): the wiring setting, never a record. A later row of the
             // same call replaces an earlier one.
             ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
             let before = doc.settings.clone();
@@ -159,24 +167,40 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>) {
                 ops.push(Op::SetProjectSettings { before, after });
             }
         } else {
-            set_project(doc, k.height_entry().key, h.map(number_text), ops);
+            put("height", h.map(number_text));
         }
     }
     match &c.font {
         Field::Absent => {}
-        Field::Clear => set_project(doc, k.font_entry().key, None, ops),
-        Field::Set(f) => set_project(doc, k.font_entry().key, Some(f.clone()), ops),
+        Field::Clear => put("font", None),
+        Field::Set(f) => put("font", Some(f.clone())),
     }
     match &c.weight {
         Field::Absent => {}
-        Field::Clear => set_project(doc, k.weight_entry().key, None, ops),
-        Field::Set(w) => set_project(doc, k.weight_entry().key, Some(w.clone()), ops),
+        Field::Clear => put("weight", None),
+        Field::Set(w) => put("weight", Some(w.clone())),
     }
     if let Some(entry) = k.show_entry() {
         match &c.show {
             Field::Absent => {}
             Field::Clear => set_project(doc, entry.key, None, ops),
             Field::Set(w) => set_project(doc, entry.key, Some(w.clone()), ops),
+        }
+    }
+}
+
+/// Field changes per text style, gathered over a `textstyle` call.
+type StyleFields = std::collections::BTreeMap<ecad_model::StyleRef, Vec<(String, Option<String>)>>;
+
+/// One project-level `SetStyle` per style whose record changes (brief 050a).
+fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
+    use ecad_model::StyleLayer;
+    for (id, fields) in style {
+        let before = ecad_model::style::record(doc, StyleLayer::Project, "text", id).cloned();
+        let rec = crate::styles::with_fields(before.as_ref(), None, fields);
+        let after = (!rec.name.is_empty() || !rec.fields.is_empty() || !id.is_builtin()).then_some(rec);
+        if after != before {
+            ops.push(Op::SetStyle { layer: StyleLayer::Project, catalogue: "text".into(), id: id.clone(), before, after });
         }
     }
 }
@@ -223,9 +247,11 @@ fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             Field::Clear => set_project(doc, defaults::text::FONT.key, None, &mut ops),
             Field::Set(f) => set_project(doc, defaults::text::FONT.key, Some(f.clone()), &mut ops),
         }
+        let mut style = StyleFields::new();
         for c in &changes {
-            kind_ops(doc, c, &mut ops);
+            kind_ops(doc, c, &mut ops, &mut style);
         }
+        style_ops(doc, &style, &mut ops);
         // A key given twice (two rows of one kind): the last value wins, in one op.
         let mut seen = std::collections::BTreeSet::new();
         let mut kept: Vec<Op> = Vec::new();
@@ -255,21 +281,28 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
     let kinds: Vec<Value> = TextKind::ALL
         .iter()
         .map(|k| {
-            let h = defaults::resolve(doc, k.height_entry(), Scope::project());
-            let w = defaults::resolve(doc, k.weight_entry(), Scope::project());
+            let id = crate::text_style::style_of(doc, *k, Scope::project());
+            let f = |key: &str| crate::styles::field_of(doc, "text", &id, key, None);
+            let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
+            let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
+            let colour = f("colour").map(|r| r.text());
             let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
             let builtin = |e: &Entry| Resolved { value: e.builtin, from: Source::Builtin };
+            let cat = crate::styles::catalogue("text");
+            let b = |key: &str| cat.and_then(|c| c.builtin(&k.builtin_style())).and_then(|s| s.value(key));
             json!({
                 "kind": k.word(),
+                "style": id.text(),
                 "height": h.number(),
                 "weight": w.word(),
+                "colour": colour,
                 "font": crate::text_style::kind_font(doc, *k),
                 "show": sh.map(|r| r.word()),
                 "default": default,
                 "builtin": {
-                    "height": builtin(k.height_entry()).number(),
-                    "weight": builtin(k.weight_entry()).word(),
+                    "height": b("height").map_or(0.0, |v| Resolved { value: v, from: Source::Builtin }.number()),
+                    "weight": b("weight").map_or("regular", |v| Resolved { value: v, from: Source::Builtin }.word()),
                     "show": k.show_entry().map(|e| builtin(e).word()),
                 },
             })
@@ -474,7 +507,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
         ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
         ObjectRef::Project => Some(&doc.properties),
-        ObjectRef::Cable(_) => None,
+        ObjectRef::Cable(_) | ObjectRef::Standard => None,
     }
     .ok_or("No such object.")?;
     let before = props.get(&key).cloned();

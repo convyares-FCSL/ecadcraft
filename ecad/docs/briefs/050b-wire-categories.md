@@ -1,7 +1,8 @@
 # Brief 050b: wire categories
 
-Status: Draft (designer, 2026-11-13). FP items approved by the overseer (2026-11-13, design §13). Not approved: it needs the owner's answers to design 050 §14
-(questions 2–5).
+Status: Approved (owner, 2026-11-13: design 050 §14 Q1–Q15 answered as recommended, including
+roadmap Q25–29; overseer FP rulings of design §13: FP6 with one `ignored-old-setting` Checks row
+for a potential's old `colour` / `cross_section`, no conversion).
 Branch: `feature/style-model`, after 050a's commits on the same branch.
 Designer: **yes** (`docs/design/050.md` §5, §6.9, §7.5) · Size: M
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.4**, lane D, last. It depends on

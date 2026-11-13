@@ -115,6 +115,12 @@ const ECAD_COMMANDS: &[&str] = &[
     "partline",
     "bomitem",
     "article",
+    // Brief 050a.
+    "standard",
+    "setstyle",
+    "deletestyle",
+    "promote",
+    "styles",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

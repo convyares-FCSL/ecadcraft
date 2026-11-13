@@ -222,7 +222,8 @@ fn text_heights_follow_the_text_styles() {
     let page = strip_page(&mut g);
     let height = |p: &[Part]| texts(p).into_iter().find(|(t, _)| t == "+CP1").map(|(_, h)| h).unwrap();
     let before = height(&parts(&mut g.h, page));
-    g.h.run("setdefault", json!({"key": "text.table.height", "level": "project", "value": "3.5"})).unwrap();
+    // Brief 050a: the table text's height is its text style's.
+    g.h.run("setstyle", json!({"catalogue": "text", "id": "table", "fields": {"height": 3.5}})).unwrap();
     let after = height(&parts(&mut g.h, page));
     assert!((after - 3.5).abs() < 1e-9 && (before - 2.5).abs() < 1e-9, "{before} → {after}");
 }

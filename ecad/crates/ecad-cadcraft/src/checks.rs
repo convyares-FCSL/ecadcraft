@@ -165,10 +165,17 @@ pub enum Kind {
     PartForMissing,
     /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
     BadPartKey,
+    /// Brief 050a: an object's style choice names no style (drawn with the next level's).
+    StyleUnknown,
+    /// Brief 050a (FP4 ruling): 031's text sizes, weights or fonts set as project properties in
+    /// an older build, no longer read. One row per kind of key.
+    IgnoredOldSetting,
+    /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
+    StyleLimits,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 53] = [
+    pub const ALL: [Kind; 56] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -222,6 +229,9 @@ impl Kind {
         Kind::ArticleConflict,
         Kind::PartForMissing,
         Kind::BadPartKey,
+        Kind::StyleUnknown,
+        Kind::IgnoredOldSetting,
+        Kind::StyleLimits,
     ];
 
     /// The JSON name.
@@ -280,6 +290,9 @@ impl Kind {
             Kind::ArticleConflict => "article-conflict",
             Kind::PartForMissing => "part-for-missing",
             Kind::BadPartKey => "bad-part-key",
+            Kind::StyleUnknown => "style-unknown",
+            Kind::IgnoredOldSetting => "ignored-old-setting",
+            Kind::StyleLimits => "style-limits",
         }
     }
 
@@ -344,6 +357,9 @@ impl Kind {
             Kind::ArticleConflict => "One part number, two article numbers",
             Kind::PartForMissing => "Part line names a fuse or position the device lacks",
             Kind::BadPartKey => "Part line or item value ECAD does not read",
+            Kind::StyleUnknown => "Style not found; drawn without it",
+            Kind::IgnoredOldSetting => "Set in an older build, now ignored: set it in Standards",
+            Kind::StyleLimits => "Style records past the limits are ignored",
         }
     }
 
@@ -466,6 +482,8 @@ pub enum Fix {
     /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
     /// (`partline set for`).
     DropMissingFor(ComponentId, u8),
+    /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
+    OpenStandards(&'static str),
 }
 
 /// One row of the Checks list.
@@ -489,7 +507,14 @@ impl Check {
     /// 044 §6.3): a connector row's text names its connector (`-X10's halves differ: …`).
     pub fn what(&self) -> String {
         match self.kind {
-            Kind::ConnectorPinTwice | Kind::ConnectorFamily | Kind::ConnectorSize | Kind::ConnectorLonePin | Kind::ConnectorOver
+            Kind::ConnectorPinTwice
+            | Kind::ConnectorFamily
+            | Kind::ConnectorSize
+            | Kind::ConnectorLonePin
+            | Kind::ConnectorOver
+            | Kind::StyleUnknown
+            | Kind::IgnoredOldSetting
+            | Kind::StyleLimits
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -553,6 +578,8 @@ pub enum Key {
     Project,
     /// Brief 040: a page's dash budget.
     Page(PageId),
+    /// Brief 050a: the style rows (unknown styles, old settings, limits).
+    Styles,
 }
 
 type Cell = (PageId, i64, i64);
@@ -1118,6 +1145,7 @@ impl Checks {
         for page in doc.pages.keys() {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
+        ch.set(Key::Styles, crate::styles::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1283,6 +1311,9 @@ impl Checks {
             let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);
         }
+        if scope.styles {
+            self.set(Key::Styles, crate::styles::checks::rows(doc));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1307,6 +1338,8 @@ pub struct Scope {
     cable_references: BTreeSet<CableId>,
     /// Cables to re-check (brief 026: provisional and shared tags).
     cables: BTreeSet<ecad_model::CableId>,
+    /// Brief 050a: the style rows (`crate::styles::checks::touches`).
+    styles: bool,
 }
 
 impl Scope {
@@ -1324,6 +1357,7 @@ impl Scope {
             s.nodes.insert(n);
         };
         for op in ops {
+            self.styles |= crate::styles::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                     self.conductors.insert(*id);
@@ -1449,7 +1483,7 @@ impl Scope {
                 }
                 // Page numbers, folders and the page order change where rows say they are (brief
                 // 019), not what they find: the rows are copied again.
-                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project, .. }
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. }
                 | Op::AddFolder { .. }
                 | Op::RemoveFolder { .. }
                 | Op::ModifyFolder { .. }
@@ -1464,6 +1498,8 @@ impl Scope {
                     }
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+                // Brief 050a: style records and the standard reach only the style rows (above).
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
             }
         }
     }

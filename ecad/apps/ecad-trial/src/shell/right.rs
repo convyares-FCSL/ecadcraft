@@ -108,6 +108,11 @@ pub struct Row {
     pub here: Option<(Level, Target)>,
     /// The words a choice entry takes.
     pub choices: &'static [&'static str],
+    /// Brief 050a: a style choice's styles, (ID, name), for its value list; empty otherwise.
+    pub styles: Vec<(String, String)>,
+    /// Brief 050a (design 050 §8): the object's own choice names no style ("Not found: drawn as
+    /// Tag").
+    pub dangling: Option<String>,
 }
 
 impl Row {
@@ -280,6 +285,23 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::lists::standards::value_text(e, r)
 }
 
+/// A style choice's row (brief 050a): the chosen style's name, the catalogue's styles, and the
+/// warning of an own choice naming no style.
+fn style_row(
+    doc: &ecad_model::Document, e: &Entry, cat: &str, scope: Scope, r: &defaults::Resolved<'_>,
+) -> (String, Vec<(String, String)>, Option<String>) {
+    use ecad_cadcraft::styles;
+    let id = styles::chosen(doc, e, scope);
+    let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
+    let own = match scope.component {
+        Some(c) => doc.components.get(&c).and_then(|x| x.properties.get(e.key)),
+        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.properties.get(e.key)),
+    };
+    let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
+    let _ = r;
+    (styles::name(doc, cat, &id), list, dangling)
+}
+
 type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>);
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
@@ -292,10 +314,14 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, rep) => {
             deps.insert(ObjectRef::Component(c));
             let mut es: Vec<&'static Entry> = Vec::new();
+            // Brief 050a (design 050 §7.4): a Style row per text kind, chosen for the device.
             for k in SYMBOL_KINDS {
-                es.push(k.height_entry());
-                es.push(k.weight_entry());
+                es.push(k.style_entry());
                 es.extend(k.show_entry());
+            }
+            // A location box shows its Box style.
+            if ecad_cadcraft::locations::is_box(doc, c) {
+                es.push(&defaults::styles::LOCATION);
             }
             let starter = doc
                 .components
@@ -318,16 +344,30 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         .into_iter()
         .map(|e| {
             let r = defaults::resolve(doc, e, scope);
+            // A style choice is set on the device (its component), not on one symbol.
+            let target = match (e.kind, here) {
+                (Kind::Style(_), Some((Level::Object, Target::Symbol(_)))) => match what {
+                    What::Symbol(c, _) => Some((Level::Object, Target::Component(c))),
+                    _ => here,
+                },
+                _ => here,
+            };
+            let (value, styles, dangling) = match e.kind {
+                Kind::Style(cat) => style_row(doc, e, cat, scope, &r),
+                _ => (shown(e, &r), Vec::new(), None),
+            };
             Row {
                 key: e.key,
                 label: e.label.to_string(),
-                value: shown(e, &r),
+                value,
                 from: r.from,
-                here: here.filter(|(l, _)| e.allows(*l)),
+                here: target.filter(|(l, _)| e.allows(*l)),
                 choices: match e.kind {
                     Kind::Choice(w) => w,
                     _ => &[],
                 },
+                styles,
+                dangling,
             }
         })
         .collect();
@@ -476,6 +516,23 @@ impl Inspector {
             let name = format!("ecad.inspector.{}", row.key);
             let width = ui.available_width();
             match row.here.filter(|_| writable) {
+                // Brief 050a (design 050 §7.4): a style choice's value list of the catalogue's
+                // styles, by name; choosing runs `setdefault … level object` with the ID.
+                Some((level, target)) if !row.styles.is_empty() => {
+                    let name = format!("ecad.inspector.style.{}", row.key);
+                    let mut pick = None;
+                    let combo = egui::ComboBox::from_id_salt(&name).selected_text(&row.value).width(width.min(240.0)).show_ui(ui, |ui| {
+                        for (id, n) in &row.styles {
+                            if ui.selectable_label(*n == row.value, n).clicked() {
+                                pick = Some(id.clone());
+                            }
+                        }
+                    });
+                    combo.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &name));
+                    if let Some(id) = pick {
+                        out.push(InspectorAction::Run(row.key, default_cmds::line(row.key, level, target, Some(&id))));
+                    }
+                }
                 Some((level, target)) if !row.choices.is_empty() => {
                     let mut pick = None;
                     let combo = egui::ComboBox::from_id_salt(&name).selected_text(&row.value).width(width.min(240.0)).show_ui(ui, |ui| {
@@ -505,6 +562,9 @@ impl Inspector {
                         out.push(InspectorAction::Standards(row.key));
                     }
                 }
+            }
+            if let Some(d) = &row.dangling {
+                ui.label(RichText::new(d).small().color(ui.visuals().warn_fg_color));
             }
             if let Some(e) = self.errors.get(row.key) {
                 ui.label(RichText::new(e).small().color(ui.visuals().error_fg_color));

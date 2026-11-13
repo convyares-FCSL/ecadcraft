@@ -94,6 +94,8 @@ typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
     LibraryId, "lib");
 typed_id!(/// A project, stable across renaming or moving its file (the file header records it).
     ProjectId, "prj");
+typed_id!(/// A standard (brief 050a, FP1): kept when a project copies it.
+    StandardId, "std");
 
 /// Allocates fresh IDs.
 ///

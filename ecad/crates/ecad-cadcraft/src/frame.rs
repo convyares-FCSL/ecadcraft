@@ -99,6 +99,8 @@ pub struct FrameInput {
     pub pending: bool,
     /// The frame's text looks, from lane T's getter (design 033 §1.2).
     pub text: FrameText,
+    /// Brief 050a: the page's frame style (line weights, colour, grid labels).
+    pub look: crate::styles::frame::FrameLook,
 }
 
 /// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
@@ -185,6 +187,7 @@ impl FrameInput {
             rev_columns,
             pending: false,
             text: FrameText::of(doc),
+            look: crate::styles::frame::frame_look(doc, page),
         }
     }
 }
@@ -211,7 +214,12 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).
-        Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::text_style::is_reserved_key(key) => true,
+        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::text_style::is_reserved_key(key) => true,
+        // Brief 050a: the frame style choice, and any frame or text style record (the frame's
+        // look and its texts' styles).
+        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
+        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
+        Op::SetStandard { before, after } => before.is_none() != after.is_none(),
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
                 // Brief 033 (design 033 §9.1).
@@ -262,6 +270,25 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
         },
         kind: part.kind.clone(),
     }
+}
+
+/// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
+pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
+    crate::styles::colour_rgb(&crate::styles::frame::frame_look(doc, page).colour, crate::look::projection_sheet())
+}
+
+/// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;
+/// texts and parts with a colour of their own keep theirs.
+pub fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::doc::color::Rgb>) -> Entity {
+    let mut e = entity(part, handle);
+    if let Some(rgb) = rgb
+        && part.layer == LAYER
+        && part.aci.is_none()
+        && !matches!(part.kind, EntityKind::Text(_))
+    {
+        e.common.color = Color::True(rgb);
+    }
+    e
 }
 
 /// Draws in the frame's own coordinates (origin at the top-left corner of the title block, the
@@ -375,9 +402,11 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     let left = (HAlign::Left, VAlign::Baseline);
     let tl = (HAlign::Left, VAlign::Top);
     // Paper edge, frame, title block's top line.
-    d.rect((-MARGIN_MM, -TITLE_BLOCK_MM - MARGIN_MM), (w - MARGIN_MM, h - TITLE_BLOCK_MM - MARGIN_MM), THIN_WEIGHT, Some(LABEL_ACI));
-    d.rect((0.0, -TITLE_BLOCK_MM), (a, top), FRAME_WEIGHT, None);
-    d.line((0.0, 0.0), (a, 0.0), FRAME_WEIGHT, None);
+    // Brief 050a: the frame style's weights (019's FRAME_WEIGHT and THIN_WEIGHT in the built-in).
+    let (border, inner) = (input.look.border, input.look.inner);
+    d.rect((-MARGIN_MM, -TITLE_BLOCK_MM - MARGIN_MM), (w - MARGIN_MM, h - TITLE_BLOCK_MM - MARGIN_MM), inner, Some(LABEL_ACI));
+    d.rect((0.0, -TITLE_BLOCK_MM), (a, top), border, None);
+    d.line((0.0, 0.0), (a, 0.0), border, None);
     // Grid: zones over the whole frame (title-block area included), counted from the top-left;
     // ticks and labels on all four sides.
     let (cw, rh) = (grid.column_width(), grid.row_height());
@@ -385,23 +414,27 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         let x0 = f64::from(ci) * cw;
         let c = grid.column_number(ci);
         if ci > 0 {
-            d.line((x0, top), (x0, top + 3.0), THIN_WEIGHT, None);
-            d.line((x0, bottom), (x0, bottom - 3.0), THIN_WEIGHT, None);
+            d.line((x0, top), (x0, top + 3.0), inner, None);
+            d.line((x0, bottom), (x0, bottom - 3.0), inner, None);
         }
-        let label = grid.column_label(c);
-        d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
-        d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
+        if input.look.grid_labels {
+            let label = grid.column_label(c);
+            d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
+            d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
+        }
     }
     for ri in 0..s.rows {
         let y1 = top - f64::from(ri) * rh;
         let r = grid.row_number(ri);
         if ri > 0 {
-            d.line((0.0, y1), (-3.0, y1), THIN_WEIGHT, None);
-            d.line((a, y1), (a + 3.0, y1), THIN_WEIGHT, None);
+            d.line((0.0, y1), (-3.0, y1), inner, None);
+            d.line((a, y1), (a + 3.0, y1), inner, None);
         }
-        let label = grid.row_label(r);
-        d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
-        d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
+        if input.look.grid_labels {
+            let label = grid.row_label(r);
+            d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
+            d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
+        }
     }
 
     // Title block (design 019 §4): the revision table stretches; the middle and right blocks keep
@@ -416,7 +449,7 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
         let last = cols.last().copied().unwrap_or(0.0);
         cols.push(last + w);
     }
-    let thin = THIN_WEIGHT;
+    let thin = inner;
     for x in cols.iter().skip(1) {
         d.line((*x, -TITLE_BLOCK_MM), (*x, 0.0), thin, None);
     }

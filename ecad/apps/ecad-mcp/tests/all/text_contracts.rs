@@ -4,7 +4,7 @@
 //! property commands refuse `text.` keys.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{AGENT, Client, reader};
@@ -35,7 +35,8 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.label, "Text styles");
     assert!(
-        matches!(last.ops.as_slice(), [Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }] if key == "text.tag.height" && v == "3"),
+        // Brief 050a: the tag text style's record, at project level.
+        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if catalogue == "text" && id.text() == "tag" && r.fields.get("height").map(String::as_str) == Some("3")),
         "{:?}",
         last.ops
     );
@@ -51,10 +52,11 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     // Several kinds (the Text section's OK): one transaction.
     one_by_agent(&mut c, "textstyle", json!({"kinds": [{"kind": "point_label", "height": 2}, {"kind": "location", "weight": "bold"}]}));
     let d = c.doc();
-    assert_eq!(
-        (d.properties.get("text.point_label.height").map(String::as_str), d.properties.get("text.location.weight").map(String::as_str)),
-        (Some("2"), Some("bold"))
-    );
+    // Brief 050a: each kind's text style record.
+    let field = |kind: &str, f: &str| {
+        d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into()))).and_then(|r| r.fields.get(f)).cloned()
+    };
+    assert_eq!((field("point_label", "height").as_deref(), field("location", "weight").as_deref()), (Some("2"), Some("bold")));
     let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));
     assert!(m.contains("height, weight and show need a kind."), "{m}");
     // The same value again writes nothing.
@@ -125,19 +127,20 @@ fn defaults_lists_the_registry_with_writes_off() {
     let n = r.log().len();
     let all = r.exec("defaults", json!({}));
     let rows = all["defaults"].as_array().unwrap();
-    assert!(rows.iter().any(|d| d["key"] == "text.tag.height"), "{all}");
+    assert!(rows.iter().any(|d| d["key"] == "text.tag.style"), "{all}");
     let page = r.doc().page_order[0].hex();
     let text = r.exec("defaults", json!({"group": "Text", "page": page}));
     for d in text["defaults"].as_array().unwrap() {
         assert_eq!(d["from"], json!("builtin"), "{d}");
         assert_eq!(d["value"], d["builtin"], "{d}");
     }
-    let one = r.exec("defaults", json!({"key": "text.tag.height"}));
+    // Brief 050a: the tag's entry is its text style choice (S P O, a style of the text catalogue).
+    let one = r.exec("defaults", json!({"key": "text.tag.style"}));
     assert_eq!(
         one["defaults"],
         json!([{
-            "key": "text.tag.height", "label": "Tag cap height", "group": "Text", "brief": "031", "kind": "length",
-            "builtin": 2.5, "levels": ["standard", "project"], "value": 2.5, "from": "builtin",
+            "key": "text.tag.style", "label": "Tag style", "group": "Styles", "brief": "050", "kind": "style",
+            "builtin": "tag", "levels": ["standard", "project", "object"], "value": "tag", "from": "builtin",
         }])
     );
     let m = r.refused("execute", json!({"command": "defaults", "params": {"key": "text.nope"}}));
@@ -146,8 +149,8 @@ fn defaults_lists_the_registry_with_writes_off() {
 
     // After a project change, the value and where it comes from follow.
     let mut c = writer();
-    c.exec("textstyle", json!({"kind": "tag", "height": 3}));
-    let one = c.exec("defaults", json!({"key": "text.tag.height"}));
+    c.exec("setdefault", json!({"key": "text.run.gap", "value": 3}));
+    let one = c.exec("defaults", json!({"key": "text.run.gap"}));
     assert_eq!((one["defaults"][0]["value"].as_f64(), one["defaults"][0]["from"].as_str()), (Some(3.0), Some("project")));
 }
 

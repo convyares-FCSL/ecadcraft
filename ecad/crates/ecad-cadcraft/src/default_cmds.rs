@@ -10,8 +10,11 @@
 //! that changes nothing records nothing. `reset: true` removes the level's value, so the entry
 //! resolves one level further out.
 //!
-//! Excluded: the standard level (reserved until named standards, roadmap 1.13(a): the standard is
-//! IEC, built in, and read only), and any entry's levels, which only the registry sets.
+//! Brief 050a: `level: "standard"` writes the project's standard's value
+//! (`SetProperty` on `ObjectRef::Standard`); it is refused while the project uses IEC (built in).
+//! A style choice ([`defaults::Kind::Style`]) takes a style's ID or name and stores the ID.
+//!
+//! Excluded: any entry's levels, which only the registry sets.
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_model::{ComponentId, ConductorId, Document, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
@@ -21,7 +24,7 @@ use crate::commands::{err, opt_id, with_project};
 use crate::defaults::{self, Entry, Level, ProjectSource, Scope};
 
 /// Refusals, in words.
-pub const STANDARD_READ_ONLY: &str = "The standard is IEC (built in) and cannot be changed yet: set the value for the project instead.";
+pub const STANDARD_READ_ONLY: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
 pub const NEEDS_VALUE: &str = "Give a `value`, or `reset: true` to remove this level's value.";
 pub const NEEDS_OBJECT: &str = "The object level needs a `component`, `conductor` or `representation`.";
 
@@ -30,7 +33,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("setdefault", "Set Default", run_setdefault)
             .params(
-                "{key, level: \"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, \
+                "{key, level: \"standard\"|\"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, \
 value: string|number | reset: true} (writes a default at that level; page: the page shown if not given; one transaction)",
             )
             .noundo(),
@@ -98,6 +101,7 @@ fn bad_value(entry: &Entry) -> String {
         defaults::Kind::Text { max_chars } | defaults::Kind::Parsed { max_chars, .. } => {
             format!("`{}` is 1 to {max_chars} characters with no control characters, in its own form.", entry.key)
         }
+        defaults::Kind::Style(cat) => format!("`{}` is a style of the {cat} catalogue: its ID or name (see `styles`).", entry.key),
     }
 }
 
@@ -142,7 +146,7 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
 /// # Errors
 /// A level the entry does not allow, the standard level, or a missing target, in words.
 pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: Option<String>) -> Result<Vec<Op>, String> {
-    if level == Level::Standard {
+    if level == Level::Standard && doc.standard.is_none() {
         return Err(STANDARD_READ_ONLY.into());
     }
     if !entry.allows(level) {
@@ -179,7 +183,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
         }
         (Level::Object, _) => Err(NEEDS_OBJECT.into()),
         (Level::Page, _) => Err("The page level needs a `page`.".into()),
-        (Level::Standard, _) => Err(STANDARD_READ_ONLY.into()),
+        (Level::Standard, _) => property(ObjectRef::Standard, doc.standard.as_ref().map(|s| &s.values), entry.key.to_string()),
     }
 }
 
@@ -215,11 +219,17 @@ fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     let key = params.get("key").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`key` (a default's key, see `defaults`) is required."))?;
     let entry = defaults::find(key).ok_or_else(|| err(format!("No default \"{key}\".")))?;
     let level = match params.get("level").and_then(Value::as_str) {
-        Some(w) => level_of(w).ok_or_else(|| err(format!("Unknown level \"{w}\". Levels: project, page, object.")))?,
+        Some(w) => level_of(w).ok_or_else(|| err(format!("Unknown level \"{w}\". Levels: standard, project, page, object.")))?,
         None => Level::Project,
     };
     let reset = params.get("reset").and_then(Value::as_bool).unwrap_or(false);
+    // A style choice names a style by ID or name, resolved in the project below (brief 050a).
+    let style_name = match (entry.kind, params.get("value")) {
+        (defaults::Kind::Style(cat), Some(Value::String(v))) if !reset => Some((cat, v.clone())),
+        _ => None,
+    };
     let value = match (params.get("value"), reset) {
+        (Some(_), false) if style_name.is_some() => None,
         (Some(v), false) if !v.is_null() => Some(stored_text(entry, v).map_err(err)?),
         (None | Some(Value::Null), true) => None,
         (Some(_), true) => return Err(err("Give either `value` or `reset: true`, not both.")),
@@ -231,6 +241,10 @@ fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     let page: Option<PageId> = opt_id(params, "page").map_err(err)?;
     with_project(s, |p, pg, shown| {
         let doc = p.ledger.document();
+        let value = match &style_name {
+            Some((cat, v)) => Some(crate::styles::find(doc, cat, v)?.text()),
+            None => value,
+        };
         let target = match level {
             Level::Project | Level::Standard => Target::Project,
             Level::Page => Target::Page(page.unwrap_or(shown)),

@@ -146,6 +146,11 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
                 out.insert(ObjectRef::Project);
             }
+            // Brief 050a: styles and the standard show in the property views of the project (the
+            // inspector's style rows re-read through it).
+            Op::SetStyle { .. } | Op::SetStandard { .. } => {
+                out.insert(ObjectRef::Project);
+            }
             Op::EmbedDefinition { .. } | Op::RemoveDefinition { .. } | Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
             Op::AddPage { .. }
             | Op::RemovePage { .. }

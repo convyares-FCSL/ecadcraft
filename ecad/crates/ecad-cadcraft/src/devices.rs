@@ -857,6 +857,9 @@ pub struct DerivedText {
     pub valign: VAlign,
     /// A colour of its own (ACI), else ByLayer.
     pub aci: Option<u8>,
+    /// Brief 050a: the object's own text style (its `text.<kind>.style`), drawn instead of the
+    /// kind's project style; `None` for the kind's.
+    pub own: Option<crate::text_style::TextStyle>,
 }
 
 /// The page box of a placed definition.
@@ -1028,6 +1031,15 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     }
     let mut pending: Vec<Pending> = Vec::new();
     let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
+    // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
+    // `text.<kind>.style`), else `None` (the kind's project style).
+    let own = |c: ComponentId, kind: TextKind| -> Option<crate::text_style::TextStyle> {
+        let e = kind.style_entry();
+        let props = &doc.components.get(&c)?.properties;
+        props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
+        Some(crate::text_style::text_style_at(doc, kind, crate::defaults::Scope::component(c)))
+    };
+    let height_of = |c: ComponentId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.height);
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -1048,7 +1060,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         // and visibility come from the style table (design 031 §7.1): restyled here, by kind.
         if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
             out.extend(texts.into_iter().map(|mut t| {
-                t.height = text_style(doc, kind_of(t.of)).height;
+                t.height = height_of(c, kind_of(t.of), text_style(doc, kind_of(t.of)).height);
+                t.own = own(c, kind_of(t.of));
                 let shown = shown(kind_of(t.of));
                 PageText { text: t, shown, moved: false, overlaps: false }
             }));
@@ -1059,6 +1072,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         let label_style = text_style(doc, TextKind::PointLabel);
         let props = doc.components.get(&c).map(|x| &x.properties);
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
+            let height = height_of(c, kind_of(of), height);
             let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
             if let TextOf::Terminal(t) = of
                 && let Some((p, h, v)) = props
@@ -1074,7 +1088,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
                 fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
-                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None },
+                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None, own: own(c, kind_of(of)) },
                 shown: labels_shown,
                 moved,
                 overlaps: false,
@@ -1092,7 +1106,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
             None => tag_of(doc, c).map(str::to_string),
         };
         if let Some(t) = tag_text.map(|t| crate::locations::shown_tag(doc, c, r, &t, &mut boxes)) {
-            lines.push((TextOf::Tag, t, sizes.tag, shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
+            lines.push((TextOf::Tag, t, height_of(c, TextKind::Tag, sizes.tag), shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
         }
         for (of, key, kind) in
             [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
@@ -1103,7 +1117,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
                 None => props.and_then(|p| p.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
-                lines.push((of, v, text_style(doc, kind).height, shown(kind), None));
+                lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
             }
         }
         if lines.is_empty() {
@@ -1139,7 +1153,17 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
         for (of, value, height, shown, aci) in p.lines {
             let at = place.line_at(top);
             out.push(PageText {
-                text: DerivedText { rep: p.block.rep, of, value, at, height, halign: place.halign, valign: VAlign::Top, aci },
+                text: DerivedText {
+                    rep: p.block.rep,
+                    of,
+                    value,
+                    at,
+                    height,
+                    halign: place.halign,
+                    valign: VAlign::Top,
+                    aci,
+                    own: own(p.block.component, kind_of(of)),
+                },
                 shown,
                 moved: place.moved,
                 overlaps: place.overlaps && shown,
@@ -1162,7 +1186,11 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
-    look.apply(&mut e, kind_of(t.of));
+    match t.own {
+        // Brief 050a: the device's own text style (its height is already the text's).
+        Some(s) => look.apply_style(&mut e, kind_of(t.of), s),
+        None => look.apply(&mut e, kind_of(t.of)),
+    }
     if let Some(aci) = t.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
     }

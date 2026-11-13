@@ -1448,7 +1448,14 @@ impl Scope {
                     self.devices.extend(doc.components_using(*id));
                 }
                 // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if table_text_key(key) => {
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key) => {
+                    self.wide = true;
+                }
+                // Brief 050a: a change of the text style the table text uses (its height, weight).
+                Op::SetStyle { catalogue, id, .. }
+                    if catalogue == "text"
+                        && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+                {
                     self.wide = true;
                 }
                 Op::SetProjectSettings { before, after }
@@ -1866,10 +1873,11 @@ pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageI
 }
 
 /// Whether a project key sizes every contact table's text, so every table is placed again (the
-/// xref map's wide case, design 033 §9.3): the table text's height and weight, and the font.
+/// xref map's wide case, design 033 §9.3): the table text's style choice (brief 050a; its height
+/// and weight are the style's) and the font.
 pub fn table_text_key(key: &str) -> bool {
-    use crate::defaults::text::{FONT, TABLE_HEIGHT, TABLE_WEIGHT};
-    [TABLE_HEIGHT.key, TABLE_WEIGHT.key, FONT.key].contains(&key)
+    use crate::defaults::text::FONT;
+    [crate::defaults::styles::TABLE.key, FONT.key].contains(&key)
 }
 
 /// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
@@ -1909,10 +1917,10 @@ mod tests {
 
     #[test]
     fn the_table_text_keys_are_the_wide_case() {
-        for k in ["text.table.height", "text.table.weight", "text.font"] {
+        for k in ["text.table.style", "text.font"] {
             assert!(table_text_key(k), "{k}");
         }
-        assert!(!table_text_key("text.tag.height"));
+        assert!(!table_text_key("text.tag.style"));
     }
 
     #[test]

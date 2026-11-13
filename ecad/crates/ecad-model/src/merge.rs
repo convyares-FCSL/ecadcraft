@@ -42,6 +42,7 @@ use crate::doc::{
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
+use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 use crate::tag::{self, HighWater};
 
 /// An object a merge compares.
@@ -109,7 +110,13 @@ impl Scope {
     pub fn add_ops(&mut self, ops: &[Op]) {
         for op in ops {
             self.touched.add(op);
-            if matches!(op, Op::SetProperty { object: ObjectRef::Project, .. } | Op::SetProjectSettings { .. }) {
+            if matches!(
+                op,
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, .. }
+                    | Op::SetProjectSettings { .. }
+                    | Op::SetStyle { .. }
+                    | Op::SetStandard { .. }
+            ) {
                 self.project = true;
             }
         }
@@ -550,7 +557,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Conductor(i) => a.conductors.get(&i) != b.conductors.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
-        Obj::Project => a.properties != b.properties || a.settings != b.settings,
+        Obj::Project => a.properties != b.properties || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles,
     }
 }
 
@@ -720,9 +727,93 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     field(ctx, obj, "settings", "Project settings · changed on both".into(), &a.settings, &t.settings, &s.settings, &|_| {
                         "its settings".into()
                     });
+                merge_standard(ctx, m, obj);
             }
         }
     }
+}
+
+/// The standard and the style records (brief 050a, design 050 §3.5): the standard's header is
+/// one unit, its values merge per key like project properties, and each style record
+/// `(layer, catalogue, id)` is one unit. A standard removed on one side and kept on the other is
+/// the header's conflict; without a header the result holds no standard at all.
+fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
+    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
+    let all = |_: &str| true;
+    let header = |d: &Document| d.standard.as_ref().map(|x| x.header.clone());
+    let head = field(ctx, obj, "standard", "Standard · changed on both".into(), &header(a), &header(t), &header(s), &|h| {
+        h.as_ref().map_or_else(|| "IEC (built in)".into(), |h| format!("\"{}\"", h.name))
+    });
+    let empty = Properties::new();
+    fn values<'d>(d: &'d Document, empty: &'d Properties) -> &'d Properties {
+        d.standard.as_ref().map_or(empty, |x| &x.values)
+    }
+    let merged_values = merge_props(ctx, obj, "Standard", values(a, &empty), values(t, &empty), values(s, &empty), &all);
+    let no_cats = StyleCatalogues::new();
+    fn std_cats<'d>(d: &'d Document, none: &'d StyleCatalogues) -> &'d StyleCatalogues {
+        d.standard.as_ref().map_or(none, |x| &x.styles)
+    }
+    let std_styles = merge_style_layer(ctx, StyleLayer::Standard, std_cats(a, &no_cats), std_cats(t, &no_cats), std_cats(s, &no_cats));
+    m.styles = merge_style_layer(ctx, StyleLayer::Project, &a.styles, &t.styles, &s.styles);
+    m.standard = head.map(|header| Standard { header, values: merged_values, styles: std_styles });
+}
+
+/// A style record's name in texts: `Text style "Tag large"` (`Wire category "24 V DC"`).
+pub fn style_words(catalogue: &str, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+    let kind = match catalogue {
+        "text" => "Text style",
+        "location" => "Location box style",
+        "frame" => "Frame style",
+        "wire" => "Wire category",
+        _ => "Style",
+    };
+    match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
+        Some(n) => format!("{kind} \"{n}\""),
+        None => format!("{kind} {id}"),
+    }
+}
+
+/// Merge one layer's style records, each record whole.
+fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogues, t: &StyleCatalogues, s: &StyleCatalogues) -> StyleCatalogues {
+    let mut out = t.clone();
+    let cats: BTreeSet<&String> = a.keys().chain(t.keys()).chain(s.keys()).collect();
+    for cat in cats {
+        let get = |c: &'_ StyleCatalogues| c.get(cat).cloned().unwrap_or_default();
+        let (ra, rt, rs) = (get(a), get(t), get(s));
+        let ids: BTreeSet<&StyleRef> = ra.keys().chain(rt.keys()).chain(rs.keys()).collect();
+        for id in ids {
+            let (x, y, z) = (ra.get(id), rt.get(id), rs.get(id));
+            let v = match pick(x, y, z) {
+                Some(v) => v,
+                None => {
+                    let what = style_words(cat, id, y.or(z).or(x));
+                    let show = |r: Option<&StyleRecord>| match r {
+                        None => "removed".to_string(),
+                        Some(r) => {
+                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            if f.is_empty() { "no changes".into() } else { f.join(", ") }
+                        }
+                    };
+                    let c = Conflict {
+                        id: format!("project/style.{}.{cat}.{id}", layer.word()),
+                        kind: ConflictKind::Value,
+                        object: Obj::Project,
+                        what: format!("{what} · changed on both"),
+                        target: show(y),
+                        source: show(z),
+                        choices: vec![Choice::Target, Choice::Source],
+                        chosen: None,
+                    };
+                    match ctx.ask(c) {
+                        Some(Choice::Source) => z.cloned(),
+                        _ => y.cloned(),
+                    }
+                }
+            };
+            crate::style::put(&mut out, cat, id, v.as_ref());
+        }
+    }
+    out
 }
 
 /// A wire's drawing (its symbol or route item) changed on both sides while one of its ends is a
@@ -1651,10 +1742,12 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                     format!("· {} {} → {}{more}", key_words(k), q(pa.get(*k)), q(ps.get(*k)))
                 }
                 None if obj == Obj::Project => {
-                    if a.settings == s.settings {
-                        String::new()
-                    } else {
+                    if a.settings != s.settings {
                         "· settings changed".into()
+                    } else if a.standard != s.standard || a.styles != s.styles {
+                        "· standard or styles changed".into()
+                    } else {
+                        String::new()
                     }
                 }
                 None => "changed".into(),
