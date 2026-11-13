@@ -1384,6 +1384,7 @@ impl Trial {
             developer::Action::ToggleDebugger => self.toggle_debugger(),
             developer::Action::AgentMode(m) => self.agent_set_mode(m),
             developer::Action::AgentPort => self.agent_apply_port(),
+            developer::Action::Banner(a) => self.agent_action(a),
             developer::Action::Inspect => self.inspect_project(),
             developer::Action::Snapshot => {
                 let _ = self.trial_tool("ecad.dev.snapshot");
@@ -1583,16 +1584,9 @@ impl Trial {
         self.agent.shut_down();
     }
 
-    /// Brief 035: the agent banner (minimal, unstyled, over the top of the drawing area) and the
-    /// Undo agent session dialog.
+    /// Brief 035: the Undo agent session confirmation, while open (the banner itself is one line
+    /// in the Developer section until the UI shell).
     fn agent_banner_ui(&mut self, ctx: &egui::Context) {
-        if let Some(b) = self.agent.banner.clone() {
-            let at = self.cad.canvas.rect.map_or(egui::pos2(0.0, 0.0), |r| r.left_top() + egui::vec2(4.0, 4.0));
-            let busy = self.cad.session.running.is_some();
-            if let Some(a) = agent::banner::show(ctx, &b, at, busy) {
-                self.agent_action(a);
-            }
-        }
         self.agent_undo_window(ctx);
     }
 
@@ -1734,10 +1728,12 @@ impl Trial {
                             agent: developer::AgentRow {
                                 mode: self.agent.pref.mode,
                                 status: self.agent.status_text(),
-                                warning: self.agent.stopped.is_some() || matches!(self.agent.listen(), agent::Listen::InUse(_)),
+                                warning: self.agent.author_pending || matches!(self.agent.listen(), agent::Listen::InUse(_)),
                                 locked: self.agent.this_run,
                                 port_warning: self.agent.port_warning,
                                 restart_note: self.agent.restart_note,
+                                banner: self.agent.banner.clone(),
+                                busy: self.cad.session.running.is_some(),
                                 port: &mut self.agent.port_text,
                             },
                         },

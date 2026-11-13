@@ -23,7 +23,7 @@ use cadcraft_mcp::{Backend, Remote};
 use serde_json::{Value, json};
 
 /// The port the trial listens on by default (design 035 §17, 1).
-pub const DEFAULT_PORT: u16 = 47823;
+pub const DEFAULT_PORT: u16 = ecad_cadcraft::agent_access::DEFAULT_PORT;
 /// How long the probe waits for the window to accept.
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 /// How long `ecad.bye` may take when the server stops.

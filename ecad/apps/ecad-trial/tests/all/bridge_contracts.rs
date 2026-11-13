@@ -502,3 +502,24 @@ fn the_banner_follows_hello_writes_refusals_and_bye() {
     h.run_steps(2);
     assert_eq!(h.state().agent_banner().unwrap().state, BannerState::Finished);
 }
+
+// ---------- the frame check resets a stray author and keeps access on (M1 risk 1) ----------
+
+#[test]
+fn an_agent_author_found_between_frames_is_reset_and_access_stays_on() {
+    let (mut h, port) = live_trial();
+    let mut a = server(port, true, "tester");
+    a.exec(&mut h, "wire", wire(0.0));
+    {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.configure(&mut t.cad.session, |p| p.author = Author::Agent("stray".into())).unwrap();
+    }
+    h.run_steps(1);
+    assert_eq!(h.state().agent.frame_fixes, 1);
+    assert!(!h.state().agent.author_pending);
+    assert!(h.state().agent.on(), "access is not turned off");
+    person_wire(&mut h, 5.0);
+    assert_eq!(authors(&mut h).last(), Some(&Author::User));
+    a.exec(&mut h, "wire", wire(10.0));
+}

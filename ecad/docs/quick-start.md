@@ -23,9 +23,9 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 an agent drives the running trial over MCP while you watch (section 7D). Agent access is off by
 default and set in the Developer section (or `--control PORT` for one run); `ecad-mcp --connect
 47823` is headless until the window answers and live once it does; each agent call is one
-transaction recorded as the agent's, and you are the author again after it. A plain strip over
-the drawing names the agent, its last change and its steps, with Undo session, Pause and
-Disconnect; its look comes with the new UI shell.
+transaction recorded as the agent's, and you are the author again after it. A plain line in
+the Developer section names the agent, its last change and its steps, with Undo session, Pause
+and Disconnect; the banner's look and place come with the new UI shell.
 - *Automated checks:* see section 7D.
 - *Agent-observed:* none yet; no agent has watched the live window with Claude Code.
 
@@ -1893,15 +1893,16 @@ you turn it on; when off, nothing listens.
    WSL needs WSLg). Leave out `--write` for read-only. A project path at the end chooses what the
    server opens headless when ECAD is closed (without one, headless works on an unsaved project).
 4. **Ask:** *"With the ecad tools, draw three wires from 0,0 to 60,0, 0,5 to 60,5, 0,10 to
-   60,10."* Expected: the wires appear one by one; a small strip over the top of the drawing
-   reads `Agent claude-code · changing · last: #3 Wire … · 3 steps`; History shows each by
+   60,10."* Expected: the wires appear one by one; the Developer section unfolds and shows a line
+   with **Undo session**, **Pause**, **Disconnect** and `Agent claude-code changing last: #3 Wire …
+   3 steps`; History shows each by
    `agent claude-code`; the command history has a line `Agent claude-code: WIRE  #… "Wire …"`
    per call.
 5. **Start `wire` yourself and leave it half done**, then ask for another wire. Expected: the
-   strip says `waiting for you to finish WIRE`; after 5 s the agent reports *"Refused: the
+   line says `waiting for you to finish WIRE`; after 5 s the agent reports *"Refused: the
    designer is in the middle of WIRE; nothing was changed. Try again when they finish."*. Finish
    or press Esc, then ask again.
-6. **Pause** on the strip refuses agent changes (*"paused by the designer"*) until **Resume**;
+6. **Pause** on that line refuses agent changes (*"paused by the designer"*) until **Resume**;
    reads go on. **Disconnect** ends this agent's session (restart the MCP server to connect
    again).
 7. **Undo session** takes back the agent's steps; History has the undos by `user`. If you made
@@ -1916,7 +1917,7 @@ access on, widen it or move the port (`agentaccess` is refused to agents), never
 keyboard or command line, and never open, save as or close files. An agent's `u` and `redo`
 take back only its own steps. One agent changes the project at a time; others read.
 
-The strip is deliberately plain: its look and place come with the new UI shell.
+The line is deliberately plain: the agent banner's look and place come with the new UI shell.
 
 - *Automated checks:* `ecad/apps/ecad-trial/tests/all/bridge_contracts.rs` (a live trial and an
   `ecad-mcp --connect` server: authors per call, refusals byte-identical to headless, the person
@@ -2260,7 +2261,7 @@ Your table of three clean runs goes here once you have run it.
 
 - **Live agent access (brief 035):** one agent changes the project at a time (others read); the
   port is loopback only (`127.0.0.1`); `--launch` opens the trial on Windows and on Linux with a
-  display (WSL needs WSLg), not on macOS; the banner is a plain strip until the UI shell.
+  display (WSL needs WSLg), not on macOS; the banner is a plain line in the Developer section until the UI shell.
 - **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix

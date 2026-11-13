@@ -26,7 +26,6 @@ pub mod undo_session;
 
 // Upstream's loopback control server, unchanged (design 035 §17, 2): the same bounds, token and
 // replies as CADCraft's own. `#[path]` is relative to this file's folder (`src/agent`).
-#[allow(dead_code)]
 #[path = "../../../../../apps/cadcraft/src/control_server.rs"]
 mod control_server;
 
@@ -68,10 +67,11 @@ pub const READ_ONLY: &str = "Agent access in the ECAD window is Read only.";
 pub const PAUSED: &str = "Refused: paused by the designer; nothing was changed.";
 /// Said to a session the designer disconnected.
 pub const DISCONNECTED: &str = "the designer disconnected this agent; restart the MCP server to connect again";
-/// Said when the author could not be reset (access stops for this run).
-pub const STOPPED: &str = "agent access stopped in the ECAD window";
-/// Logged when access stops because the author could not be reset.
-pub const STOPPED_LOG: &str = "Agent access stopped: the author could not be reset.";
+/// Said to agent calls while the person is not yet the author again (the project stayed busy
+/// through every attempt after the last call; the next frames keep trying).
+pub const RESETTING: &str = "Refused: ECAD is still making the designer the author again after the last agent call; nothing was changed. Try again.";
+/// Logged once when the reset has to wait.
+pub const RESETTING_LOG: &str = "Agent access: the project was busy, so you are not yet the author again; ECAD keeps trying, and agent calls wait.";
 
 /// Said to a write by a session that is not the writer.
 pub fn not_writer(writer: &str) -> String {
@@ -139,8 +139,9 @@ pub struct Agent {
     pub sessions: BTreeMap<String, BridgeSession>,
     pub writer: Option<String>,
     pub paused: bool,
-    /// Access stopped for this run (the author could not be reset).
-    pub stopped: Option<String>,
+    /// The person is not yet the author again (the reset met a busy project); retried at the top
+    /// of every frame, and agent calls are refused unrun until it worked.
+    pub author_pending: bool,
     pub banner: Option<AgentBanner>,
     /// How many times the frame check found the author not reset (tests read it; 0 normally).
     pub frame_fixes: u64,
@@ -176,7 +177,7 @@ impl Agent {
             sessions: BTreeMap::new(),
             writer: None,
             paused: false,
-            stopped: None,
+            author_pending: false,
             banner: None,
             frame_fixes: 0,
             port_text: loaded.preference.port.to_string(),
@@ -214,7 +215,7 @@ impl Agent {
 
     /// Whether access is on now.
     pub fn on(&self) -> bool {
-        self.pref.mode != Mode::Off && self.stopped.is_none()
+        self.pref.mode != Mode::Off
     }
 
     /// What the ECAD Dev row's status says.
@@ -228,9 +229,6 @@ impl Agent {
 
     /// The status text (design §3.2).
     pub fn status_text(&self) -> String {
-        if let Some(why) = &self.stopped {
-            return format!("● {why}");
-        }
         match self.listen() {
             Listen::Off => "Off".into(),
             Listen::InUse(p) => format!("● Port {p} is in use by another program; agent access is off in this window"),
@@ -574,31 +572,34 @@ impl Trial {
         if !p.is_attached(&self.cad.session) {
             return;
         }
-        if gate::author_is_user(&mut self.cad.session, &p) == Some(false) {
-            self.agent.frame_fixes = self.agent.frame_fixes.saturating_add(1);
-            if gate::restore_user(&mut self.cad.session, &p) {
-                self.cad.session.echo("Agent access: the author was found set to the agent between frames and was reset to you.".to_string());
-            } else {
-                self.agent_stop();
+        let pending = self.agent.author_pending;
+        match gate::author_is_user(&mut self.cad.session, &p) {
+            Some(true) => {
+                self.agent.author_pending = false;
+                return;
             }
+            // The project is busy just now: only a pending reset needs another try.
+            None if !pending => return,
+            Some(false) if !pending => self.agent.frame_fixes = self.agent.frame_fixes.saturating_add(1),
+            None | Some(false) => {}
+        }
+        if gate::restore_user_retrying(&mut self.cad.session, &p) {
+            self.agent.author_pending = false;
+            if !pending {
+                self.cad.session.echo("Agent access: the author was found set to the agent between frames and was reset to you.".to_string());
+            }
+        } else {
+            self.agent_reset_pending();
         }
     }
 
-    /// Access stops for this run: the author could not be reset.
-    fn agent_stop(&mut self) {
-        self.agent.stopped = Some("agent access stopped: the author could not be reset".into());
-        self.cad.session.echo(STOPPED_LOG.to_string());
-        let sessions: Vec<String> = self.agent.sessions.keys().cloned().collect();
-        for k in sessions {
-            if let Some(s) = self.agent.sessions.get_mut(&k) {
-                s.finished = true;
-            }
+    /// The reset met a busy project: keep agent access on, refuse agent calls and try again at the
+    /// top of every frame (never turn access off for the run: the reviewer's M1 risk 1).
+    fn agent_reset_pending(&mut self) {
+        if !self.agent.author_pending {
+            self.cad.session.echo(RESETTING_LOG.to_string());
         }
-        self.agent.writer = None;
-        if let Some(b) = &mut self.agent.banner {
-            b.state = BannerState::Error;
-            b.error = Some("the author could not be reset".into());
-        }
+        self.agent.author_pending = true;
     }
 
     /// Apply what `agentaccess {mode?, port?}` asked for.
@@ -643,6 +644,10 @@ impl Trial {
         }
         if let Some(title) = self.open_dialog_title() {
             return Some(format!("the designer has the {title} dialog open"));
+        }
+        // CADCraft's own dialogs (Options, Layer Properties…): `UiState::dialog` names the open one.
+        if let Some(d) = &self.cad.ui.dialog {
+            return Some(format!("the designer has the {d} dialog open"));
         }
         let dragging =
             ctx.input(|i| i.pointer.any_down() && i.pointer.interact_pos().is_some_and(|at| self.cad.canvas.rect.is_some_and(|r| r.contains(at))));
@@ -699,8 +704,10 @@ impl Trial {
         let method = req.method.clone();
         let params = req.params.clone();
         if !self.agent.on() {
-            let why = if self.agent.stopped.is_some() { STOPPED } else { ACCESS_OFF };
-            return Some((req, not_run(why)));
+            return Some((req, not_run(ACCESS_OFF)));
+        }
+        if self.agent.author_pending && matches!(method.as_str(), "ecad.execute" | "ecad.tool") {
+            return Some((req, not_run(RESETTING)));
         }
         let v = match method.as_str() {
             "ecad.hello" => self.agent_hello(&params),
@@ -789,6 +796,8 @@ impl Trial {
         };
         if replace {
             self.agent.banner = Some(AgentBanner::new(&session, &name));
+            // The banner's line is in the Developer section until the UI shell: show it.
+            self.developer.open = true;
         }
         if let Some(b) = &mut self.agent.banner
             && b.session == session
@@ -903,7 +912,7 @@ impl Trial {
             Err(e) => Err(e),
             Ok(sc) => {
                 if !sc.restored {
-                    self.agent_stop();
+                    self.agent_reset_pending();
                 }
                 sc.result
                     .unwrap_or_else(|| Err("Refused: the call failed unexpectedly inside ECAD (the failure was caught); check ecad_history.".into()))

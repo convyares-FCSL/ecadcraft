@@ -52,6 +52,8 @@ pub enum Action {
     AgentMode(Mode),
     /// Agent access: the port field was applied (Enter or focus loss).
     AgentPort,
+    /// A control of the agent banner's line.
+    Banner(crate::agent::BannerAction),
 }
 
 /// The Agent access row's state, borrowed from the trial.
@@ -65,6 +67,10 @@ pub struct AgentRow<'a> {
     pub locked: bool,
     pub port_warning: bool,
     pub restart_note: bool,
+    /// The agent banner, drawn as one line under the row while an agent is shown.
+    pub banner: Option<crate::agent::AgentBanner>,
+    /// A command is running (Undo session is disabled).
+    pub busy: bool,
 }
 
 /// What the section shows under its tools.
@@ -139,6 +145,11 @@ fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
     }
     if a.restart_note {
         ui.label(RichText::new(AGENT_RESTART).small());
+    }
+    if let Some(b) = &a.banner
+        && let Some(act) = crate::agent::banner::show_line(ui, b, a.busy)
+    {
+        out.push(Action::Banner(act));
     }
 }
 

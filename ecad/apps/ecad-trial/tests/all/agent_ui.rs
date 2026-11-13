@@ -111,6 +111,8 @@ fn pause_refuses_agent_writes_until_resumed_and_disconnect_ends_the_session() {
     assert_eq!(h.state().agent_banner().unwrap().state, BannerState::Paused);
     assert_eq!(a.exec_refused(&mut h, "wire", wire(5.0)), agent::PAUSED);
     assert!(a.ok(&mut h, "ecad_project", json!({}))["pages"].is_object(), "reads continue");
+    // Past egui's double-click window (simulated time), so the second click is a click.
+    h.run_steps(60);
     h.get_by_label(b::PAUSE).click();
     h.run_steps(2);
     assert!(!h.state().agent.paused, "resumed: {:?}", h.state().agent_banner());

@@ -314,8 +314,9 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
 pub struct Scoped<R> {
     /// The call's result; `None` when it panicked (the panic was caught).
     pub result: Option<R>,
-    /// Whether the person was recorded as the author again after the call. `false` means the
-    /// host must stop agent access: the next edit could be recorded as the agent's.
+    /// Whether the person was recorded as the author again after the call. `false` (the project
+    /// stayed busy through every attempt) means the host must keep trying before the person's next
+    /// edit, and refuse agent calls until it has.
     pub restored: bool,
 }
 
@@ -328,7 +329,7 @@ pub struct Scoped<R> {
 pub fn as_agent<R>(s: &mut Session, p: &ProjectHandle, name: &str, f: impl FnOnce(&mut Session) -> R) -> Result<Scoped<R>, String> {
     p.configure(s, |p| p.author = Author::Agent(name.to_string())).map_err(|_| UNREADABLE.to_string())?;
     let result = catch_unwind(AssertUnwindSafe(|| f(s))).ok();
-    let restored = restore_user(s, p);
+    let restored = restore_user_retrying(s, p);
     Ok(Scoped { result, restored })
 }
 
@@ -339,6 +340,22 @@ pub fn restore_user(s: &mut Session, p: &ProjectHandle) -> bool {
         p.tx_budget = None;
     })
     .is_ok()
+}
+
+/// How many times [`restore_user_retrying`] tries.
+pub const RESTORE_ATTEMPTS: usize = 3;
+
+/// [`restore_user`], tried up to [`RESTORE_ATTEMPTS`] times: the project lock can be held for a
+/// moment (the read-only debugger copies under `try_lock`), and a busy lock must not leave the
+/// agent as the author.
+pub fn restore_user_retrying(s: &mut Session, p: &ProjectHandle) -> bool {
+    for _ in 0..RESTORE_ATTEMPTS {
+        if restore_user(s, p) {
+            return true;
+        }
+        std::thread::yield_now();
+    }
+    false
 }
 
 /// Whether the project records the person as the author with no budget (the trial checks it at
