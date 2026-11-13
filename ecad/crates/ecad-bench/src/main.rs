@@ -65,6 +65,30 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 048: only the symbol rows (symbolnew, symbolimpact, symboledit, wiredraw) on one
+    // version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--symbols"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-symbols-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::symbols::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "symbolnew {:.2} ms, symbolimpact {:.2} ms, symboledit {:.1} ms, wiredraw {:.2} ms ({} copies on {} pages, 50 lineages)",
+                    t.symbolnew_ms, t.symbolimpact_ms, t.symboledit_ms, t.wiredraw_ms, t.copies, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 031: only the text rows (textplace, textstyle, propredraw) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--text"

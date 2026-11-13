@@ -492,12 +492,147 @@ pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
 
 /// The kind of a stored definition: its starter's, except that a connector half embedded before
 /// brief 044 (no side bridges, version 1) is the exclusive head it was then (design 044 §3.1).
+/// A project symbol (brief 048, design §5.2): an edited starter keeps its starter's kind; any
+/// other is a device of its own (`join: device`) or part of a named device (`join: part`), with
+/// fixed labels.
 pub fn kind_of_definition(d: &Definition) -> Option<Kind> {
+    if is_project_symbol(d) {
+        if let Some(k) = d.derived_from.as_ref().and_then(|o| starter_of_origin(o)).map(|s| s.kind) {
+            return Some(k);
+        }
+        return Some(Kind::Fixed { exclusive: join_of(d) != Join::Part });
+    }
     let s = of_definition(d)?;
     Some(match s.kind {
         Kind::ConnectorHalf { .. } if !is_mating(d) => HEAD,
         k => k,
     })
+}
+
+// ---------------------------------------------------------------- project symbols (brief 048)
+
+/// The library ID of symbols made in a project (design 048 §2.2, FP3): one fixed ID, so a project
+/// symbol pasted into another project stays a project symbol there.
+pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000_0000_0001);
+
+/// Most characters of a project symbol's key (design 048 §2.4).
+pub const MAX_KEY: usize = 16;
+
+/// How a project symbol joins a device (design 048 §5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Join {
+    /// A device of its own: a new tag on each placement.
+    Device,
+    /// Part of a named device.
+    Part,
+}
+
+impl Join {
+    /// The word stored in `defaults.join`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Join::Device => "device",
+            Join::Part => "part",
+        }
+    }
+}
+
+/// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
+pub fn is_project_symbol(d: &Definition) -> bool {
+    d.origin.as_ref().is_some_and(|o| o.library == PROJECT_SYMBOLS)
+}
+
+/// How project symbol `d` joins a device: `part` only when its defaults say so.
+pub fn join_of(d: &Definition) -> Join {
+    match d.defaults.get("join").map(|j| j.trim().to_ascii_lowercase()) {
+        Some(j) if j == "part" => Join::Part,
+        _ => Join::Device,
+    }
+}
+
+/// The starter an origin names (by library and ID).
+pub fn starter_of_origin(o: &Origin) -> Option<&'static Starter> {
+    (o.library == STARTER_LIBRARY).then(|| STARTERS.iter().find(|s| s.id == o.definition)).flatten()
+}
+
+/// Whether `key` is a valid symbol key (design 048 §2.4): 1 to [`MAX_KEY`] letters, digits, `-`
+/// and `_`, starting with a letter or digit.
+pub fn valid_key(key: &str) -> bool {
+    (1..=MAX_KEY).contains(&key.len())
+        && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && key.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
+}
+
+/// One embedded version of a project symbol.
+#[derive(Debug, Clone, Copy)]
+pub struct Version<'a> {
+    pub id: DefinitionId,
+    pub def: &'a Definition,
+    /// Its lineage (`origin.definition`).
+    pub lineage: DefinitionId,
+    /// Its version (`origin.library_seq`).
+    pub seq: u64,
+}
+
+impl<'a> Version<'a> {
+    /// `def` as a project-symbol version, if it is one.
+    pub fn of(id: DefinitionId, def: &'a Definition) -> Option<Self> {
+        let o = def.origin.as_ref().filter(|o| o.library == PROJECT_SYMBOLS)?;
+        Some(Version { id, def, lineage: o.definition, seq: o.library_seq })
+    }
+
+    /// Its key (`defaults.key`), if it has one.
+    pub fn key(&self) -> Option<&'a str> {
+        self.def.defaults.get("key").map(|k| k.trim()).filter(|k| !k.is_empty())
+    }
+}
+
+/// Every embedded project-symbol version (a pass over the project's definitions, which are few: the
+/// symbols it uses, not its objects).
+pub fn project_versions(doc: &Document) -> impl Iterator<Item = Version<'_>> {
+    doc.definitions.iter().filter_map(|(id, d)| Version::of(*id, d))
+}
+
+/// The versions of `lineage`, oldest first.
+pub fn versions_of(doc: &Document, lineage: DefinitionId) -> Vec<Version<'_>> {
+    let mut v: Vec<Version<'_>> = project_versions(doc).filter(|x| x.lineage == lineage).collect();
+    v.sort_by_key(|x| (x.seq, x.id));
+    v
+}
+
+/// The newest version of `lineage` (highest version; the higher ID on a tie, from a merge).
+pub fn newest(doc: &Document, lineage: DefinitionId) -> Option<Version<'_>> {
+    versions_of(doc, lineage).pop()
+}
+
+/// The newest version of every lineage, by name then lineage.
+pub fn project_symbols(doc: &Document) -> Vec<Version<'_>> {
+    let mut by: BTreeMap<DefinitionId, Version<'_>> = BTreeMap::new();
+    for v in project_versions(doc) {
+        match by.get(&v.lineage) {
+            Some(cur) if (cur.seq, cur.id) >= (v.seq, v.id) => {}
+            _ => {
+                by.insert(v.lineage, v);
+            }
+        }
+    }
+    let mut out: Vec<Version<'_>> = by.into_values().collect();
+    out.sort_by(|a, b| a.def.name.cmp(&b.def.name).then(a.lineage.cmp(&b.lineage)));
+    out
+}
+
+/// The project symbol whose newest version has key `key` (case-insensitive), as that version.
+pub fn project_by_key<'a>(doc: &'a Document, key: &str) -> Option<Version<'a>> {
+    let k = key.trim();
+    project_symbols(doc).into_iter().find(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
+}
+
+/// The key a symbol's registry entries use: a starter's catalogue key, else a project symbol's own.
+pub fn registry_key(d: &Definition) -> Option<String> {
+    if let Some(s) = of_definition(d) {
+        return Some(s.key.to_string());
+    }
+    d.defaults.get("key").map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
 }
 
 /// Whether `d` is a brief-044 connector half or pin: a connector starter whose bridges join the

@@ -45,7 +45,11 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         .get("symbol")
         .and_then(Value::as_str)
         .ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
-    let starter = devices::starter(key).map_err(err)?;
+    // Brief 048: a project symbol's key places its newest version.
+    let starter = match devices::starter(key) {
+        Ok(st) => st,
+        Err(e) => return crate::symbol_cmds::place_project_key(s, params, key)?.ok_or_else(|| err(e)),
+    };
     let at = params.get("at").ok_or_else(|| err("`at` [x,y] is required"))?;
     let at = at.as_array().and_then(|a| Some(Pt::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?))).ok_or_else(|| err("`at` [x,y] is required"))?;
     if !(at.is_finite() && at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {

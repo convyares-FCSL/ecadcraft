@@ -149,11 +149,202 @@ prefixes! {
     PLCIOL = "plciol", "A", "PLC IO-Link master";
 }
 
+// ---------------------------------------------------------------- the builder (brief 048)
+
+/// The point grid connection points of a new symbol snap to (design 048 §7.1, owner answer 6):
+/// 5 mm, 2.5 mm allowed for dense pin rows. The key uses `_`, as every registry key (the key rule).
+pub static POINT_GRID: Entry = Entry {
+    key: "symbol.point_grid",
+    label: "Symbol connection point grid",
+    group: "Symbols",
+    brief: "048",
+    kind: Kind::Length { min: 1.0, max: 10.0 },
+    builtin: Value::Length(crate::symbol_cmds::POINT_GRID_MM),
+    levels: SP,
+    project: ProjectSource::Property,
+};
+
+/// Brief 048's entries (listed in [`super::all`]).
+pub static BUILDER_ENTRIES: &[&Entry] = &[&POINT_GRID];
+
+/// The point grid of `doc`, millimetres.
+pub fn point_grid(doc: &Document) -> f64 {
+    super::resolve(doc, &POINT_GRID, Scope::project()).number()
+}
+
+// ---------------------------------------------------------------- family entries (brief 048, FP6)
+
+/// A field of a symbol's family entries, `symbol.<key>.<field>` (design 048 §7.1): one entry per
+/// symbol the project can place. A starter's prefix is its static entry above; the other fields,
+/// and every field of a project symbol, resolve through [`resolve_for`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    Prefix,
+    Description,
+    Rating,
+    Join,
+}
+
+impl Field {
+    pub const ALL: [Field; 4] = [Field::Prefix, Field::Description, Field::Rating, Field::Join];
+
+    /// The last part of its key.
+    pub fn word(self) -> &'static str {
+        match self {
+            Field::Prefix => "prefix",
+            Field::Description => "description",
+            Field::Rating => "rating",
+            Field::Join => "join",
+        }
+    }
+
+    /// Its words on the Standards screen and in `defaults`.
+    pub fn label(self) -> &'static str {
+        match self {
+            Field::Prefix => "Tag prefix",
+            Field::Description => "Description",
+            Field::Rating => "Rating",
+            Field::Join => "Joins a device as",
+        }
+    }
+
+    /// Most characters of a value (design 048 §2.4).
+    pub fn max_chars(self) -> usize {
+        match self {
+            Field::Prefix => crate::devices::MAX_PREFIX_LETTERS + 1,
+            Field::Description => 200,
+            Field::Rating => 40,
+            Field::Join => 6,
+        }
+    }
+
+    /// Whether a project level may override it (`join` is the definition's only).
+    pub fn overridable(self) -> bool {
+        self != Field::Join
+    }
+
+    /// Whether `value` is a valid value of this field, trimmed.
+    pub fn accepts(self, value: &str) -> bool {
+        let v = value.trim();
+        let plain = !v.is_empty() && v.chars().count() <= self.max_chars() && !v.chars().any(char::is_control);
+        plain
+            && match self {
+                Field::Prefix => crate::devices::valid_prefix(v).is_some(),
+                Field::Join => v.eq_ignore_ascii_case("device") || v.eq_ignore_ascii_case("part"),
+                Field::Description | Field::Rating => true,
+            }
+    }
+}
+
+/// The key `symbol.<key>.<field>` of a family entry.
+pub fn family_key(symbol: &str, field: Field) -> String {
+    format!("symbol.{symbol}.{}", field.word())
+}
+
+/// A family entry's key split into the symbol's key and the field, when `key` names one of a
+/// symbol the project can place (a starter, or a project symbol's newest version).
+pub fn family(doc: &Document, key: &str) -> Option<(String, Field)> {
+    let rest = key.trim().strip_prefix("symbol.")?;
+    let (symbol, field) = rest.rsplit_once('.')?;
+    let field = Field::ALL.into_iter().find(|f| f.word() == field)?;
+    if let Some(s) = crate::symbols::by_key(symbol) {
+        // A starter's prefix is its static entry; a starter has no `join`.
+        return (field != Field::Join && field != Field::Prefix && s.kind != crate::symbols::Kind::Tagless).then(|| (s.key.to_string(), field));
+    }
+    let v = crate::symbols::project_by_key(doc, symbol)?;
+    Some((v.key()?.to_string(), field))
+}
+
+/// The family entries `defaults` lists: every field of every project symbol (newest version), by
+/// name; (symbol key, field).
+pub fn family_lines(doc: &Document) -> Vec<(String, Field)> {
+    crate::symbols::project_symbols(doc)
+        .into_iter()
+        .filter_map(|v| v.key().map(str::to_string))
+        .flat_map(|k| Field::ALL.into_iter().map(move |f| (k.clone(), f)))
+        .collect()
+}
+
+/// One family entry as `defaults` lists it (the fields of an ordinary entry's line).
+pub fn family_json(doc: &Document, symbol: &str, field: Field) -> serde_json::Value {
+    let r = resolve_for(doc, symbol, field);
+    let builtin = own_value(doc, symbol, field).map(|(v, _)| v);
+    serde_json::json!({
+        "key": family_key(symbol, field),
+        "label": format!("{}: {symbol}", field.label()),
+        "group": "Project symbols",
+        "brief": "048",
+        "kind": "text",
+        "builtin": builtin,
+        "levels": if field.overridable() { serde_json::json!(["standard", "project"]) } else { serde_json::json!([]) },
+        "value": r.as_ref().map(|(v, _)| v.clone()),
+        "from": r.map(|(_, s)| s.as_str()),
+    })
+}
+
+/// The project property a family entry's project level is stored under (description and rating);
+/// a prefix is stored in `settings.tag_prefixes[key]` (one project path, as 034).
+pub fn family_property(symbol: &str, field: Field) -> Option<String> {
+    matches!(field, Field::Description | Field::Rating).then(|| family_key(symbol, field))
+}
+
+/// The value of `symbol`'s `field` and where it came from (design 048 §7.1): the project's
+/// override, else the definition's own value of a project symbol ([`Source::Definition`](super::Source::Definition)),
+/// else a starter's built-in (its prefix, its name as description). `None` when nothing gives one.
+/// A hostile stored value counts as absent.
+pub fn resolve_for(doc: &Document, symbol: &str, field: Field) -> Option<(String, super::Source)> {
+    project_value(doc, symbol, field).map(|v| (v, super::Source::Project)).or_else(|| own_value(doc, symbol, field))
+}
+
+/// The project's override of `symbol`'s `field`, if it holds a valid one.
+pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<String> {
+    if !field.overridable() {
+        return None;
+    }
+    match field {
+        Field::Prefix => doc.settings.tag_prefixes.get(symbol).and_then(|v| crate::devices::valid_prefix(v)),
+        _ => family_property(symbol, field).and_then(|k| doc.properties.get(&k)).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
+    }
+}
+
+/// `field` of definition `d` itself (a project symbol's own default), if valid.
+pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<String> {
+    match field {
+        Field::Join => Some(crate::symbols::join_of(d).word().to_string()),
+        Field::Prefix => d.defaults.get("prefix").and_then(|p| crate::devices::valid_prefix(p)),
+        _ => d.defaults.get(field.word()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
+    }
+}
+
+/// `symbol`'s own value of `field`, without the project's override: a starter's built-in, or a
+/// project symbol's definition value.
+pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, super::Source)> {
+    let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
+    if let Some(s) = crate::symbols::by_key(symbol) {
+        return match field {
+            Field::Prefix => prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), super::Source::Builtin)).filter(|(p, _)| !p.is_empty()),
+            Field::Description => Some((s.name.to_string(), super::Source::Builtin)),
+            Field::Rating | Field::Join => None,
+        };
+    }
+    let v = crate::symbols::project_by_key(doc, symbol)?;
+    let own = v.def.defaults.get(field.word()).and_then(|x| ok(x));
+    let own = match field {
+        Field::Prefix => own.and_then(|p| crate::devices::valid_prefix(&p)),
+        Field::Join => Some(crate::symbols::join_of(v.def).word().to_string()),
+        _ => own,
+    };
+    own.map(|x| (x, super::Source::Definition))
+}
+
 /// The tag prefix a new device of symbol `key` gets in this project (letters, upper case, without
 /// `-`): the project's `tag_prefixes`, else the built-in. Empty for a tagless symbol (junction,
 /// continuation) or an unknown key. A hostile stored value that is not a prefix counts as absent.
+/// A project symbol's key resolves through [`resolve_for`] (brief 048).
 pub fn prefix(doc: &Document, key: &str) -> String {
-    let Some(entry) = prefix_entry(key) else { return String::new() };
+    let Some(entry) = prefix_entry(key) else {
+        return resolve_for(doc, key, Field::Prefix).map(|(p, _)| p).unwrap_or_default();
+    };
     let resolved = super::resolve(doc, entry, Scope::project()).text();
     crate::devices::valid_prefix(&resolved).unwrap_or_else(|| builtin_prefix(entry).to_string())
 }

@@ -132,3 +132,16 @@ are.
 | **family** | Plain, D-sub, M12, RJ45 bulkhead, USB-A or USB-B bulkhead; both halves of a connector have one. |
 | **pin pair** | A symbol showing one pin on both halves at once (socket cup over plug pin), as drawn in wire runs. |
 | **bulkhead** | A one-piece through-panel connector: one point per pin that wires reach from both sides; it has no halves. |
+
+## Symbols (brief 048)
+
+| Word | Means |
+| --- | --- |
+| **symbol** | An embedded definition people can place: built-in (a starter), project (made here) or, later, from a library. |
+| **project symbol** | A symbol made or edited in this project. Its source reads "Project". |
+| **version** | One saved content of a symbol. Versions of one symbol share a **lineage**; the newest is what Place uses. |
+| **placed copy** | One symbol representation showing a version of a symbol. |
+| **text slot** | Where a device text (tag, description, rating…) of a placed copy goes, in the symbol's frame. |
+| **origin** (tool) | The symbol's base point, (0, 0) of its frame: the point the cursor holds when placing. Where provenance is shown it is called **source**, never origin. |
+| **update available** | A placed copy whose symbol has a newer version in the project. |
+| **clash** | A change an update cannot make to a placed copy without losing a connection. |

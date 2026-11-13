@@ -806,6 +806,12 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
     ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
+    // Brief 048 (design 048 §9.6): the builder's Save and the review drawer (048b).
+    ("symbolnew", "the builder's Save"),
+    ("symboledit", "the builder's Save"),
+    ("symbolimpact", "the builder's review drawer"),
+    ("symbolupdate", "the command line until 048b's Update symbol action"),
+    ("makesymbol", "the builder's Save (048c's Make symbol)"),
 ];
 
 /// The action with this id.

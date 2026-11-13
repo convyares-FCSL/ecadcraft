@@ -125,6 +125,9 @@ pub enum Source {
     Object,
     /// The symbol's key on its component (`text.<rep>.<rest>`).
     Symbol,
+    /// A project symbol's own value in its definition (brief 048, FP6): the built-in of a
+    /// `symbol.<key>.*` entry of a symbol made in the project ([`symbols::resolve_for`]).
+    Definition,
 }
 
 impl Source {
@@ -137,6 +140,7 @@ impl Source {
             Source::Page => "page",
             Source::Object => "object",
             Source::Symbol => "symbol",
+            Source::Definition => "definition",
         }
     }
 }
@@ -317,6 +321,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         connectors::ENTRIES,
         strip_pages::ENTRIES,
         bom::ENTRIES,
+        symbols::BUILDER_ENTRIES,
     ]
     .into_iter()
     .flatten()

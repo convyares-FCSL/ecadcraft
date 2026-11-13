@@ -24,6 +24,7 @@ pub mod outputs;
 pub mod release;
 pub mod report;
 pub mod strips;
+pub mod symbols;
 pub mod text;
 pub mod v2;
 pub mod wires_nets;
