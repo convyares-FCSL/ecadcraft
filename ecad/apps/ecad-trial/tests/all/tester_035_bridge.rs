@@ -1367,7 +1367,8 @@ fn the_ecad_dev_row_shows_mode_port_and_status() {
     use ecad_trial::developer;
     let dir = settings_dir("row");
     let mut h = trial_in(&dir);
-    h.state_mut().developer.open = true;
+    // Brief 042: the row is in Settings ▸ Agent access.
+    h.state_mut().open_settings(ecad_trial::settings::Section::AgentAccess);
     h.run_steps(3);
     assert!(h.query_by_label(developer::AGENT_MODE).is_some());
     assert!(h.query_by_label(developer::AGENT_STATUS).is_some());

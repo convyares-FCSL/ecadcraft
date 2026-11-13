@@ -2,9 +2,9 @@
 //!
 //! Every default a v0.15 lane adds (a size, a weight, a show rule, a gap…) is **one entry** here.
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
-//! [`crate::text_style::text_style`]); it never writes the number where it is used. A later
-//! Standards screen lists and overrides the entries; today the read-only `defaults` command lists
-//! them.
+//! [`crate::text_style::text_style`]); it never writes the number where it is used. The read-only
+//! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
+//! ([`crate::default_cmds`]) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
 //! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
@@ -328,6 +328,80 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     }
     // Level::Standard: reserved, no source until the Standards brief.
     Resolved { value: entry.builtin, from: Source::Builtin }
+}
+
+/// The chain of `entry` at `at`, broadest first (brief 042, screen e): the built-in, then each
+/// level that holds a value at `at` or that the entry allows (push-back 8), with the value it holds
+/// there, if any. The standard (reserved: IEC, built in) holds none of its own yet. The object
+/// level is the symbol's own value when `at` names a representation and it holds one, else the
+/// component's or conductor's. [`resolve`] uses the narrowest level that holds a valid value.
+/// Read only; allocates the list and at most one symbol key.
+pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Option<Value<'a>>)> {
+    let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse(v.as_str()));
+    let mut out = vec![(Source::Builtin, Some(entry.builtin))];
+    if entry.allows(Level::Standard) {
+        out.push((Source::Standard, None));
+    }
+    let project = match entry.project {
+        ProjectSource::Property => stored(&doc.properties, entry.key),
+        ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
+    };
+    if entry.allows(Level::Project) || project.is_some() {
+        out.push((Source::Project, project.filter(|_| entry.allows(Level::Project))));
+    }
+    let page = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| stored(&p.properties, entry.key));
+    if entry.allows(Level::Page) || page.is_some() {
+        out.push((Source::Page, page.filter(|_| entry.allows(Level::Page))));
+    }
+    let component = at.component.and_then(|c| doc.components.get(&c));
+    let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
+    let object = component
+        .and_then(|c| stored(&c.properties, entry.key))
+        .or_else(|| at.conductor.and_then(|c| doc.conductors.get(&c)).and_then(|c| stored(&c.properties, entry.key)));
+    if entry.allows(Level::Object) || object.is_some() {
+        out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
+    }
+    if at.rep.is_some() && (entry.allows(Level::Object) || symbol.is_some()) {
+        out.push((Source::Symbol, symbol.filter(|_| entry.allows(Level::Object))));
+    }
+    out
+}
+
+/// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
+pub fn users_noun(entry: &Entry) -> &'static str {
+    let area = entry.key.split('.').next().unwrap_or_default();
+    match area {
+        "text" | "symbol" | "terminal" | "tags" if entry.key != text::WIRE_LABEL_HEIGHT.key => "devices",
+        "wire" | "wiring" | "text" => "wires",
+        _ => "pages",
+    }
+}
+
+/// How many objects use the project's value of `entry` (brief 042, "consequences said first"):
+/// for a tag prefix, the devices whose tag starts with the prefix the project resolves to; for
+/// another entry counted by device or wire ([`users_noun`]), the devices or conductors with no
+/// value of their own; otherwise the pages. Read only; one pass over the project's devices,
+/// conductors or pages (asked for one entry at a time, never per frame).
+pub fn users(doc: &Document, entry: &Entry) -> usize {
+    if entry.key.ends_with(".prefix") && matches!(entry.kind, Kind::Parsed { .. }) {
+        let px = resolve(doc, entry, Scope::project()).text();
+        let px = px.trim().trim_start_matches('-').to_ascii_uppercase();
+        return doc
+            .components
+            .values()
+            .filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY))
+            .filter(|t| {
+                let t = t.trim_start_matches('-').to_ascii_uppercase();
+                t.strip_prefix(px.as_str()).is_some_and(|rest| rest.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '?'))
+            })
+            .count();
+    }
+    let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
+    match users_noun(entry) {
+        "devices" => doc.components.values().filter(|c| !own(&c.properties)).count(),
+        "wires" => doc.conductors.values().filter(|c| !own(&c.properties)).count(),
+        _ => doc.pages.len(),
+    }
 }
 
 #[cfg(test)]

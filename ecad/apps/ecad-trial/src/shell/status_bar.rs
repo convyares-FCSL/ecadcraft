@@ -1,4 +1,5 @@
-//! The status bar (spec §2: 26 px): save state, the page shown, the standard, the zone under the
+//! The status bar (spec §2: 26 px): save state, the page shown, the standard (opens Settings ▸
+//! Standards, brief 042), the zone under the
 //! cursor, zoom, the agent bridge's state, and the Commands button (the Text panel).
 
 use ecad_ui::tokens::space;
@@ -9,6 +10,8 @@ use crate::Trial;
 /// Accessible labels.
 pub const COMMANDS: &str = "Commands";
 pub const SAVE_STATE: &str = "Save state";
+/// The standard (brief 042): opens Settings ▸ Standards.
+pub const STANDARD: &str = "Standard: IEC (built in)";
 
 /// Draw the status bar in `rect`.
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
@@ -21,6 +24,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let zoom = t.cad.canvas.xf.map(|xf| xf.scale);
     let mcp = t.agent.status_text();
     let mut commands = false;
+    let mut standards = false;
     super::in_rect(ui, rect.shrink2(egui::vec2(space::M, 0.0)), "ecad.shell.status", |ui| {
         ui.horizontal_centered(|ui| {
             let r = ecad_ui::prim::read_value(ui, &save);
@@ -28,8 +32,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             if let Some(p) = &page {
                 ecad_ui::prim::read_value(ui, p);
             }
-            // The built-in defaults registry (031); named standards come with U4c.
-            ecad_ui::prim::read_value(ui, "Standard: built-in");
+            // Brief 042: the standard opens Settings ▸ Standards (named standards come later).
+            let std = ui.add(ecad_ui::prim::Button::new(STANDARD).kind(ecad_ui::prim::Kind::Quiet).small());
+            standards |= std.clicked();
             if let Some(z) = &zone {
                 ecad_ui::prim::read_value(ui, &format!("Zone {z}"));
             }
@@ -45,6 +50,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     });
     if commands {
         t.toggle_text_panel();
+    }
+    if standards {
+        t.open_standards(None);
     }
 }
 

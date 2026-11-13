@@ -41,6 +41,7 @@ pub mod checks;
 pub mod commands;
 pub mod convert;
 pub mod debug;
+pub mod default_cmds;
 pub mod defaults;
 mod device_cmds;
 pub mod device_list;

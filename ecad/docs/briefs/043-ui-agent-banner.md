@@ -1,6 +1,6 @@
 # Brief 043: Agent banner and authors in History (U4d)
 
-Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
+Status: Approved (Carl, 2026-11-13).
 Branch: `feature/ui-agent`, from `origin/dev` (no wait: 035 and U2 have merged).
 Designer: done (`docs/design/ui-architecture.md` §11, §12 O2; the look and rules are spec §1
 principle 8, §2 "Agent banner", §4 `agent` colour and "Agent's last write", screen f; design 035
@@ -119,6 +119,8 @@ None (no format, op or store change; the bridge's behaviour is 035's, unchanged)
    initials per transaction is a format change (a field on the author) and puts a personal detail
    in the file. **Recommend:** show "You" now; decide a named author together with multi-user work
    later, as its own FP item.
+   **Answer (Carl, 2026-11-13):** History shows **"You"** for the person, not initials. No name
+   is stored: no format change and no personal detail in the file.
 
 ## Owner check
 
