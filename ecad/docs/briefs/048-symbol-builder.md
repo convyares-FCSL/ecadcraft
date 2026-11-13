@@ -1,7 +1,7 @@
 # Brief 048: Symbol builder
 
-Status: **Draft** (designer, 2026-11-13). Not approved: FP1–FP8 wait for the overseer and
-questions Q1–Q10 of design §14 for the owner.
+Status: **Draft** (designer, 2026-11-13). FP1–FP8 ruled by the overseer (2026-11-13; FP5 is a
+new op). Questions Q1–Q10 of design §14 wait for the owner.
 Branch: `feature/symbol-builder`, from `origin/dev` `f26c8f53`.
 Designer: **yes** (`docs/design/048.md`) · Size: **XL**, split into three parts (below)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.1**, lane **S**, after 1.11
@@ -83,7 +83,7 @@ every placed copy before anything is saved.
 - Deleting a project symbol from the library browser (design §14 Q9).
 - Import of KiCad symbols (after v1).
 
-## Format and ops (design §13, the overseer decides)
+## Format and ops (design §13, overseer rulings 2026-11-13)
 
 All additive and absent by default, so existing content hashes do not change. Pre-v1: no
 compatibility work.
@@ -93,11 +93,12 @@ compatibility work.
 - **FP3** Project-symbol origins: a fixed library ID for "made in a project", the lineage ID as
   `origin.definition`, the version as `library_seq`.
 - **FP4** `Definition.derived_from`: the origin of the definition an edited copy came from.
-- **FP5** No new op: a component's definition changes by `DeleteComponent` + `CreateComponent` of
-  the same ID in one transaction; a connection point is rekeyed by `RemoveTerminal` +
-  `AddTerminal` of one ID (036's pattern).
+- **FP5** A new op, `SetComponentDefinition { id, before, after }` (ruling: not Delete + Create,
+  which would conflict with another branch's `SetProperty` in a merge). It needs apply, inverse,
+  diff, merge, invariants and the file arms, plus round-trip and merge tests. A connection point
+  is still rekeyed by `RemoveTerminal` + `AddTerminal` of one ID (036's pattern).
 - **FP6** Registry family entries `symbol.<key>.description`, `.rating`, `.join` (registry code,
-  not the file).
+  not the file). The Standards screen's (042) reader learns `Source::Definition` in the same PR.
 - **FP7** One key namespace: a project symbol's key cannot be a starter's.
 - **FP8** Superseded project versions that nothing uses are removed in the updating transaction.
 
@@ -136,8 +137,8 @@ The full table is design §12. In short:
 
 ## Tester
 
-**Yes.** The brief adds fields to the definition record and its content hash, a project-symbol
-origin, and updates that rewrite placed copies across pages while keeping IDs and wires: each
+**Yes.** The brief adds fields to the definition record and its content hash, a new op,
+a project-symbol origin, and updates that rewrite placed copies across pages while keeping IDs and wires: each
 must be checked from outside, not only by the worker's tests.
 
 ## Needs owner check
