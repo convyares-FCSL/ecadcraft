@@ -60,7 +60,7 @@ pub struct Row {
 }
 
 /// The place of a symbol representation, in the project's reference style.
-fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Option<String>, Option<Pt>) {
+pub(crate) fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Option<String>, Option<Pt>) {
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
     let place = at
         .and_then(|a| ecad_model::wiring::place(doc, r.page, a))

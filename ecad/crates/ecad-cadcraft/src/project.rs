@@ -2355,6 +2355,8 @@ impl Project {
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
             // Brief 045c: the I/O list when a card's rows changed.
             Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
+            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
+            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty(),
             _ => false,
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();

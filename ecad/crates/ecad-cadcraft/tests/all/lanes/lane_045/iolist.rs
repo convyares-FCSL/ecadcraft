@@ -83,7 +83,8 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
         let o = p.outputs.as_ref().unwrap();
         (ecad_cadcraft::generated::sheets(&d, page, Some(o)), ecad_cadcraft::plc::iolist::page_lines(&d, &o.plc))
     });
-    assert_eq!(sheets, 3, "each card from a new sheet");
+    // Brief 051 (design 051 §4.1, W7): cards are packed on sheets; these 44 lines fit one.
+    assert_eq!(sheets, 1, "cards packed on one sheet");
     let heads: Vec<&String> = lines.iter().filter(|(h, _)| *h).filter_map(|(_, c)| c.first()).collect();
     assert_eq!(heads.len(), 3);
     assert!(heads[0].starts_with("-A01 slot 1  -A02  DI 16"), "{heads:?}");

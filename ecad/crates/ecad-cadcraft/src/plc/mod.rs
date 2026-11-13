@@ -13,7 +13,10 @@
 pub mod address;
 pub mod channels;
 pub mod iolist;
+pub mod overview;
+pub mod page;
 pub mod rack;
+pub mod sheets;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -868,20 +871,22 @@ impl Plc {
     }
 
     /// How many sheets the I/O page needs at `per` lines a sheet, from the kept row counts (no rows
-    /// made): each card with channels from a new sheet, its heading repeated on each sheet it runs
-    /// onto, as [`crate::generated::paginate_with`] lays them out.
+    /// made): brief 051's packing (design 051 §4.1), [`sheets::pack`].
     pub fn iolist_sheets(&self, per: usize) -> usize {
-        let per = per.max(2);
-        let n: usize = self
-            .cards
-            .values()
-            .filter(|c| c.ty.has_channels())
-            .map(|c| {
-                let lines = c.rows + 1;
-                1 + lines.saturating_sub(per).div_ceil(per - 1)
-            })
-            .sum();
-        n.max(1)
+        let rows: Vec<usize> = iolist::cards_in_order(self).iter().map(|c| c.rows).collect();
+        sheets::pack(&rows, 2.0, 1.0, 1.0, per.max(3) as f64).len().max(1)
+    }
+
+    /// Brief 051: the Checks rows about device `c` (a card or a rack), from its own group and its
+    /// rack's group (slot rows sit there).
+    pub fn checks_naming(&self, c: ComponentId) -> impl Iterator<Item = &Check> {
+        let rack = self.cards.get(&c).and_then(|x| match x.rack {
+            RackRef::Rack(r) | RackRef::Missing(r) => Some(r),
+            _ => None,
+        });
+        let own = self.checks.get(&c).into_iter().flatten();
+        let more = rack.filter(|r| *r != c).and_then(|r| self.checks.get(&r)).into_iter().flatten();
+        own.chain(more).filter(move |k| overview::names(&k.object, c))
     }
 
     /// The racks by tag.
@@ -907,8 +912,11 @@ impl Plc {
     }
 
     /// One card as `plcracks` lists it.
-    pub fn card_json(&self, _doc: &Document, c: ComponentId) -> Value {
+    pub fn card_json(&self, doc: &Document, c: ComponentId) -> Value {
         let Some(card) = self.cards.get(&c) else { return Value::Null };
+        // Brief 051 (design 051 §7): the tile's data.
+        let tile = overview::card_tile(doc, self, card, String::new());
+        let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
             RackRef::Rack(r) => json!(self.tag_of(r)),
             RackRef::Missing(_) | RackRef::Bad => json!("missing"),
@@ -929,6 +937,9 @@ impl Plc {
             "pinned": self.blocks.get(&c).is_some_and(|b| b.pinned),
             "part_number": card.part_number,
             "maker": card.maker,
+            "pages": tile.json(doc)["pages"],
+            "checks": tile.checks,
+            "range": json!({"inputs": inputs, "outputs": outputs}),
         })
     }
 

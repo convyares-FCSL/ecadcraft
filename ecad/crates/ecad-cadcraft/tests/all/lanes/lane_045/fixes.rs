@@ -171,8 +171,12 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
         let (kept, laid) = h.cfg(|p| {
             p.outputs();
             let o = p.outputs.as_ref().unwrap();
-            let heads = ecad_cadcraft::plc::iolist::page_heads(&o.plc);
-            (o.plc.iolist_sheets(ecad_cadcraft::generated::ROWS_PER_SHEET), ecad_cadcraft::generated::paginate_with(&heads, true).len())
+            // Brief 051 (design 051 §4.1): the packing of the rows as made.
+            let d = p.ledger.document();
+            let made: Vec<usize> =
+                ecad_cadcraft::plc::iolist::cards_in_order(&o.plc).iter().map(|c| ecad_cadcraft::plc::iolist::rows_of(d, &o.plc, c).len()).collect();
+            let per = ecad_cadcraft::generated::ROWS_PER_SHEET;
+            (o.plc.iolist_sheets(per), ecad_cadcraft::plc::sheets::pack(&made, 2.0, 1.0, 1.0, per as f64).len())
         });
         assert_eq!(kept, laid, "{n} channels");
     }

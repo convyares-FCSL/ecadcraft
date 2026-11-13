@@ -308,6 +308,49 @@ pub static XREF_TABLE: Entry = Entry {
     project: ProjectSource::Property,
 };
 
+// ---------------------------------------------------------------- Brief 051 (design 051 §6)
+
+/// Whether `t` is a page-title pattern: text whose only `{…}` parts are `{tag}`, `{type}`,
+/// `{channels}`, `{rack}`, `{slot}` and `{slot:02}`, with no stray brace.
+pub fn page_title_ok(t: &str) -> bool {
+    let mut rest = t;
+    while let Some(i) = rest.find(['{', '}']) {
+        let after = rest.get(i..).unwrap_or_default();
+        if after.starts_with('}') {
+            return false;
+        }
+        let Some(end) = after.find('}') else { return false };
+        let name = after.get(1..end).unwrap_or_default();
+        if !matches!(name, "tag" | "type" | "channels" | "rack" | "slot" | "slot:02") {
+            return false;
+        }
+        rest = after.get(end + 1..).unwrap_or_default();
+    }
+    true
+}
+
+pub static FRAME_SHOW: Entry = Entry {
+    key: "plc.frame.show",
+    label: "Draw a frame around a card's cells",
+    group: GROUP,
+    brief: "051",
+    kind: Kind::Choice(ON_OFF),
+    builtin: Value::Choice("on"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+pub static PAGE_TITLE: Entry = Entry {
+    key: "plc.page.title",
+    label: "Title of a card's page (Make its page)",
+    group: GROUP,
+    brief: "051",
+    kind: Kind::Parsed { max_chars: 40, parse: page_title_ok },
+    builtin: Value::Text("{tag} {type} {channels}"),
+    levels: SP,
+    project: ProjectSource::Property,
+};
+
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
     &SLOTS,
@@ -342,6 +385,9 @@ pub static ENTRIES: &[&Entry] = &[
     &CHAO,
     &CHRTD,
     &CHIOL,
+    // Brief 051.
+    &FRAME_SHOW,
+    &PAGE_TITLE,
 ];
 
 #[cfg(test)]

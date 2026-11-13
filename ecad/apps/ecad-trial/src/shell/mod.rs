@@ -73,21 +73,21 @@ pub enum ListsView {
     #[default]
     Devices,
     Terminals,
-    /// Brief 045c: Lists ▸ I/O.
-    Io,
+    /// Brief 051: Lists ▸ PLC (045c's Lists ▸ I/O).
+    Plc,
     Checks,
     Reports,
 }
 
 impl ListsView {
-    pub const ALL: [ListsView; 5] = [ListsView::Devices, ListsView::Terminals, ListsView::Io, ListsView::Checks, ListsView::Reports];
+    pub const ALL: [ListsView; 5] = [ListsView::Devices, ListsView::Terminals, ListsView::Plc, ListsView::Checks, ListsView::Reports];
 
     /// Its name in Lists' switch (apart from the left panel's Devices tab).
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
             ListsView::Terminals => LISTS_TERMINALS,
-            ListsView::Io => LISTS_IO,
+            ListsView::Plc => LISTS_PLC,
             ListsView::Checks => LISTS_CHECKS,
             ListsView::Reports => LISTS_REPORTS,
         }
@@ -96,8 +96,8 @@ impl ListsView {
 
 pub const LISTS_DEVICES: &str = "Device list";
 pub const LISTS_TERMINALS: &str = "Terminal plan";
-/// Brief 045c: the I/O list.
-pub const LISTS_IO: &str = "I/O";
+/// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
+pub const LISTS_PLC: &str = "PLC";
 pub const LISTS_CHECKS: &str = "Check list";
 pub const LISTS_REPORTS: &str = "Reports";
 /// Said in the drawer while Lists shows the Check list.
@@ -399,7 +399,7 @@ impl Trial {
         let tab = match self.shell.lists {
             ListsView::Devices => crate::lists::Tab::Devices,
             ListsView::Terminals => crate::lists::Tab::Terminals,
-            ListsView::Io => crate::lists::Tab::Io,
+            ListsView::Plc => crate::lists::Tab::Plc,
             ListsView::Checks => crate::lists::Tab::Checks,
             ListsView::Reports => return,
         };
@@ -417,7 +417,7 @@ impl Trial {
             reports.tab = crate::outputs_ui::Tab::Terminals;
             reports.invalidate();
         }
-        reports.io_shown = tab == crate::lists::Tab::Io;
+        reports.io_shown = tab == crate::lists::Tab::Plc;
         let lists = crate::lists::Lists {
             checks: &mut self.panel.checks,
             devices: &mut self.panel.devices,
@@ -435,7 +435,53 @@ impl Trial {
                     }
                 }
                 crate::lists::ListAction::GoTo(page, at) => self.goto_place(page, at),
+                other => self.plc_action(other),
             }
+        }
+    }
+
+    /// Brief 051: what Lists ▸ PLC asks the trial for (design 051 §3.4, §3.5).
+    pub fn plc_action(&mut self, a: crate::lists::ListAction) {
+        use crate::lists::ListAction;
+        match a {
+            ListAction::Say(t) => self.cad.session.echo(t),
+            ListAction::GoToCard(page, card) => {
+                // The card's first drawing on that page, else the page.
+                let at = match (self.project.clone(), card) {
+                    (Some(p), Some(c)) => {
+                        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::plc::overview::at_on(p.ledger.document(), c, page)).ok().flatten()
+                    }
+                    _ => None,
+                };
+                match at {
+                    Some(at) => self.goto_place(page, at),
+                    None => {
+                        let _ = self.show_page(page);
+                    }
+                }
+            }
+            ListAction::ChecksOf(c) => {
+                let tag = self
+                    .project
+                    .clone()
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_words(p.ledger.document(), c)).ok());
+                self.shell.lists = ListsView::Checks;
+                if let Some(t) = tag {
+                    self.panel.checks.table.query = t;
+                }
+            }
+            ListAction::PlaceCard(slot) => {
+                if self.cad.session.running.is_some() {
+                    self.cad.session.cancel();
+                }
+                match self.cad.session.start("place") {
+                    Ok(()) => self.cad.session.echo(format!("Search \"card\" and pick a card body: it goes in the next free slot ({slot}).")),
+                    Err(e) => self.cad.session.echo(e.to_string()),
+                }
+                self.focus_drawing = true;
+                self.after_logic();
+            }
+            _ => {}
         }
     }
 
