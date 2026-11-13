@@ -1,7 +1,7 @@
 # Brief 050b: wire categories
 
-Status: Draft (designer, 2026-11-13). Not approved: it needs the owner's answers to design 050 §14
-(questions 2–5) and the overseer's ruling on FP5–FP6 (§13).
+Status: Draft (designer, 2026-11-13). FP items approved by the overseer (2026-11-13, design §13). Not approved: it needs the owner's answers to design 050 §14
+(questions 2–5).
 Branch: `feature/style-model`, after 050a's commits on the same branch.
 Designer: **yes** (`docs/design/050.md` §5, §6.9, §7.5) · Size: M
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.4**, lane D, last. It depends on
@@ -61,7 +61,7 @@ Design 050 §0.2 is the full table.
 6. **Standards and the inspector:** the Wire categories table and detail (the consequence line
    counts users and overrides), and the wire inspector's Category, Colour and Cross-section rows
    with Overridden and Reset (design §7.5).
-7. **Checks:** `category-unknown` and `category-potential-twice` (design §5.7).
+7. **Checks:** `category-unknown`, `category-potential-twice`, and the potential kind of `ignored-old-setting` (overseer ruling on FP6, design §5.7).
 8. **Bench** rows of design §11 for categories.
 
 ## Out of scope
@@ -75,8 +75,8 @@ follow-up; the command line and MCP work regardless).
 
 FP5 (`wire.category`, a conductor property and registry choice) and FP6 (`PotentialDef` loses
 `colour` and `cross_section`; old files open with them ignored), from design 050 §13. Category
-records use 050a's `SetStyle`, with no new op. Pre-v1, so no migration. **The overseer approves
-them before step 2.**
+records use 050a's `SetStyle`, with no new op. Pre-v1, so no migration. **Approved by the overseer
+(2026-11-13), with the old-key check (design §13).**
 
 ## Update map
 

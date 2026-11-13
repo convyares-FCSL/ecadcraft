@@ -1,7 +1,7 @@
 # Brief 050a: the style model (standards and style catalogues)
 
-Status: Draft (designer, 2026-11-13). Not approved: it needs the owner's answers to design 050 §14
-and the overseer's ruling on FP1–FP5 (§13).
+Status: Draft (designer, 2026-11-13). FP items approved by the overseer (2026-11-13, design §13). Not approved: it needs the owner's answers to design 050 §14
+(questions 1, 6–15).
 Branch: `feature/style-model`, from `origin/dev` after 049 (1.9 continuation references) has
 merged, because lane D is sequential.
 Designer: **yes** (`docs/design/050.md`) · Size: L
@@ -70,7 +70,7 @@ Design 050 §0.1 is the full table. In short:
 5. **Standards screen and inspector:** the standard header, the catalogue tables and the shared
    style detail, with the consequence line first, and inspector style rows with Reset (design §7).
    No new panel, screen or dialog.
-6. **Checks:** `style-unknown`, and bound breaches from hostile files.
+6. **Checks:** `style-unknown`; `ignored-old-setting` for 031's old text properties (overseer ruling on FP4, design §3.4); bound breaches from hostile files.
 7. **Bench** rows of design §11 (medium while building; large once at the end).
 
 ## Out of scope
@@ -85,8 +85,7 @@ compatibility work).
 FP1 `Document.standard`, FP2 `Document.styles`, FP3 `SetStyle` / `SetStandard` /
 `ObjectRef::Standard`, FP4 031's text height, weight and font properties no longer read, and FP5
 style choices as properties with the new area `location` (design 050 §13). All are additive in the
-file, and none needs migration (pre-v1). **The overseer approves them before the worker starts
-step 1.**
+file, and none needs migration (pre-v1). **Approved by the overseer (2026-11-13), with the old-key check (design §13).**
 
 ## Update map
 
