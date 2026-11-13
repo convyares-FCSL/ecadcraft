@@ -644,10 +644,15 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                     }
                     _ => BTreeSet::new(),
                 };
-                // The first terminal per definition key, as the symbol shows it (brief 036 §10.3).
+                // One terminal per definition key, as the symbol shows it (brief 036 §10.3): a
+                // terminal no other symbol shows first (a joined terminal's key can equal the
+                // definition key, review M1 2.1), else the first.
                 let mut shown = Vec::new();
                 for k in keys {
-                    if let Some((t, _)) = doc.terminals_of(*strip).find(|(_, t)| t.key.as_deref() == Some(k)) {
+                    let mut with_key = doc.terminals_of(*strip).filter(|(_, t)| t.key.as_deref() == Some(k)).map(|(t, _)| t);
+                    let first = with_key.next();
+                    let free = first.into_iter().chain(with_key).find(|t| doc.representations_showing(*t).next().is_none());
+                    if let Some(t) = free.or(first) {
                         shown.push(t);
                     }
                 }

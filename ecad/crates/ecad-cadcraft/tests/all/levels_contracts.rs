@@ -235,3 +235,38 @@ fn offers_by_type_give_spare_positions_and_bom_rows() {
     assert_eq!(qty, [12, 2, 4]);
     same_as_built(&mut h);
 }
+
+/// Review M1 (risk 2.1): the planner's empty-points branch takes the first terminal per definition
+/// key (FP8c). A 028 strip whose joined terminal's key collides with the first symbol's key (`1`:
+/// joined terminals got `key = label`) is numbered by each terminal's own symbol; a strip without
+/// a collision numbers exactly as before (drawing order).
+#[test]
+fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
+    let mut h = H::new(0x0360_0008);
+    for x in [10.0, 20.0, 30.0] {
+        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 40.0)])})).unwrap();
+    }
+    // Right to left: the first (main) symbol is at x = 30, the joined ones at 20 and 10.
+    let v = h.run("terminals", json!({"from": [40, 20], "to": [0, 20]})).unwrap();
+    let x1: ComponentId = id(&v, "strip");
+    let ts = terminals(&v);
+    let labels = |h: &mut H| ts.iter().map(|t| h.doc().terminals[t].label.clone().unwrap_or_default()).collect::<Vec<_>>();
+    assert_eq!(labels(&mut h), ["1", "2", "3"]);
+    // No collision: renumbering numbers in drawing order (left to right), as 028 did.
+    h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()]})).unwrap();
+    assert_eq!(labels(&mut h), ["3", "2", "1"]);
+    h.run("undo", json!({})).unwrap();
+    // A collision: the joined terminal at x = 20 keyed `1`, as the first symbol's.
+    h.cfg(|p| {
+        let doc = p.ledger.document();
+        let before = doc.terminals[&ts[1]].clone();
+        let mut after = before.clone();
+        after.key = Some("1".into());
+        let ops = vec![ecad_model::Op::RemoveTerminal { id: ts[1], terminal: before }, ecad_model::Op::AddTerminal { id: ts[1], terminal: after }];
+        p.ledger.commit(ecad_model::Author::User, "collide", ops).unwrap();
+    });
+    // The page is not reprojected after that direct commit, so the session runs the command
+    // without the harness's page check (as release_contracts does).
+    h.s.execute("renumber", &json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()]})).unwrap();
+    assert_eq!(labels(&mut h), ["3", "2", "1"], "each terminal numbered at its own symbol");
+}

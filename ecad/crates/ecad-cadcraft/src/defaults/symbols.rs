@@ -56,7 +56,8 @@ macro_rules! prefixes {
         pub fn prefix_entry(key: &str) -> Option<&'static Entry> {
             match key {
                 $($key => Some(&$name),)*
-                _ => None,
+                // Brief 036: the multi-level terminal starters register theirs as `terminal.<key>.prefix`.
+                _ => super::terminals::prefix_entry(key),
             }
         }
     };
@@ -142,27 +143,6 @@ prefixes! {
     PLCAO = "plcao", "A", "PLC analogue output card";
     PLCRTD = "plcrtd", "A", "PLC RTD card";
     PLCIOL = "plciol", "A", "PLC IO-Link master";
-    // ---- Brief 036: multi-level terminal starters (design 036 §3.1, §12).
-    TERM2_1 = "term2.1", "X", "Two-level terminal, level 1";
-    TERM2_2 = "term2.2", "X", "Two-level terminal, level 2";
-    TERM2 = "term2", "X", "Two-level terminal";
-    TERM2B_1 = "term2b.1", "X", "Two-level terminal, bridged, level 1";
-    TERM2B_2 = "term2b.2", "X", "Two-level terminal, bridged, level 2";
-    TERM2B = "term2b", "X", "Two-level terminal, bridged";
-    TERM3_1 = "term3.1", "X", "Three-level terminal, level 1";
-    TERM3_2 = "term3.2", "X", "Three-level terminal, level 2";
-    TERM3_3 = "term3.3", "X", "Three-level terminal, level 3";
-    TERM3 = "term3", "X", "Three-level terminal";
-    TERMLNPE_1 = "termlnpe.1", "X", "L/N/PE terminal, level L";
-    TERMLNPE_2 = "termlnpe.2", "X", "L/N/PE terminal, level N";
-    TERMLNPE_3 = "termlnpe.3", "X", "L/N/PE terminal, level PE";
-    TERMLNPE = "termlnpe", "X", "L/N/PE terminal";
-    TERMSENSOR_1 = "termsensor.1", "X", "Sensor terminal, level S";
-    TERMSENSOR_2 = "termsensor.2", "X", "Sensor terminal, level +";
-    TERMSENSOR_3 = "termsensor.3", "X", "Sensor terminal, level -";
-    TERMSENSOR = "termsensor", "X", "Sensor terminal";
-    TERMDISC = "termdisc", "X", "Disconnect terminal";
-    TERMFUSE = "termfuse", "X", "Fuse terminal (strip position)";
 }
 
 /// The tag prefix a new device of symbol `key` gets in this project (letters, upper case, without
@@ -192,12 +172,18 @@ mod tests {
         for s in STARTERS {
             let e = prefix_entry(s.key);
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
+            // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
+            let area = if crate::terminal_types::is_level_starter(s.key) { "terminal" } else { "symbol" };
             if let Some(e) = e {
-                assert_eq!(e.key, format!("symbol.{}.prefix", s.key));
-                assert!(ENTRIES.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
+                assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
+                let list = if area == "terminal" { super::super::terminals::ENTRIES } else { ENTRIES };
+                assert!(list.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
             }
         }
-        assert_eq!(ENTRIES.len(), STARTERS.iter().filter(|s| s.kind != SymbolKind::Tagless).count());
+        assert_eq!(
+            ENTRIES.len(),
+            STARTERS.iter().filter(|s| s.kind != SymbolKind::Tagless && !crate::terminal_types::is_level_starter(s.key)).count()
+        );
     }
 
     #[test]

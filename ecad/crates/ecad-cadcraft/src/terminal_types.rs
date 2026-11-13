@@ -629,6 +629,37 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32) -> String {
     out.join(", ")
 }
 
+/// A typed link value with level names (`1.N-3.N`) written with level numbers (`1.2-3.2`), by
+/// the names of each position's type on strip `c` (§5.1: names are accepted when typed and stored
+/// as numbers, so renaming a level never breaks a link). An end that already reads as a level, or
+/// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
+/// terminal's `-`) is written by its number.
+pub fn link_names_to_numbers(doc: &Document, c: ComponentId, text: &str) -> String {
+    if text.chars().count() > ecad_model::links::MAX_TEXT_CHARS {
+        return text.to_string();
+    }
+    let ps = positions(doc, c);
+    let end = |e: &str| -> String {
+        let e = e.trim();
+        let Some((pos, tail)) = e.rsplit_once('.') else { return e.to_string() };
+        if ecad_model::links::split_level(e).is_ok_and(|(_, l)| l.is_some()) {
+            return e.to_string();
+        }
+        let Some(p) = ps.iter().find(|p| p.label == pos) else { return e.to_string() };
+        match level_names(doc, c, p.ty).iter().position(|n| n.eq_ignore_ascii_case(tail)) {
+            Some(i) => format!("{pos}.{}", i + 1),
+            None => e.to_string(),
+        }
+    };
+    text.split(',')
+        .map(|item| match item.split_once('-') {
+            Some((a, b)) => format!("{}-{}", end(a), end(b)),
+            None => end(item),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 // ---------------------------------------------------------------- geometry (§3.1)
 
 fn p(x: f64, y: f64) -> Pt {

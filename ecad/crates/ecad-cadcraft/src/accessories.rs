@@ -367,7 +367,9 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         if !strip {
             return Err(not_strip());
         }
-        return link_value(doc, c, value).map(Some);
+        // Brief 036 (§5.1): level names typed (`1.N-3.N`) are stored as numbers.
+        let named = value.map(|v| crate::terminal_types::link_names_to_numbers(doc, c, v));
+        return link_value(doc, c, named.as_deref()).map(Some);
     }
     if key.starts_with(links::PREFIX) {
         if !strip {

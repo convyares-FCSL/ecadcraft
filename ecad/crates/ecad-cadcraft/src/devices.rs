@@ -568,9 +568,16 @@ pub(crate) fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation
         Form::Symbol => {
             let Some((def, _)) = rep_definition(doc, r) else { return Vec::new() };
             if r.connection_points.is_empty() {
+                // A terminal no other symbol shows first (a joined terminal's key can equal the
+                // definition key, review M1 2.1), else the first with the key.
                 def.terminals
                     .iter()
-                    .filter_map(|td| doc.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| (t, td.at)))
+                    .filter_map(|td| {
+                        let with_key: Vec<TerminalId> =
+                            doc.terminals_of(c).filter(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| t).collect();
+                        let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
+                        Some((*t, td.at))
+                    })
                     .collect()
             } else {
                 let mut v: Vec<(TerminalId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
