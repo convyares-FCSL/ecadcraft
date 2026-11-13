@@ -2306,10 +2306,8 @@ impl Project {
         // Every such page says whether it was rewritten (overseer item O1), from the kept set.
         let rewritten = |p: PageId| match crate::generated::kind_of(doc, p) {
             Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
-            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, p) {
-                Some(c) => o.strips.last_changed.contains(&c),
-                None => !o.strips.last_changed.is_empty(),
-            },
+            // Brief 046 (design 046 §9): either style, by its own kept change set.
+            Some(crate::generated::GenKind::Terminals) => crate::generated::terminals_rewritten(doc, p, &o),
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
             _ => false,
         };

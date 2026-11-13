@@ -24,11 +24,28 @@
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`, and `terminal.` (brief 036). Keys already approved before the registry keep their
+/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `strippage.` (brief 046,
+/// design 046 §7.2) and `bom.` (brief 047). Keys already approved before the registry keep their
 /// names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal"];
+/// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
+/// this file with `merge=union`.
+#[rustfmt::skip]
+pub const AREAS: &[&str] = &[
+    "text",
+    "wiring",
+    "wire",
+    "tags",
+    "revisions",
+    "print",
+    "symbol",
+    "terminal",
+    "strippage",
+    "bom",
+];
 
+pub mod bom;
 pub mod print;
+pub mod strip_pages;
 pub mod symbols;
 pub mod terminals;
 pub mod text;
@@ -285,9 +302,22 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
     }
 }
 
-/// Every registered entry, lane by lane.
+/// Every registered entry, lane by lane: one line per area (overseer ruling, 2026-11-13), so lanes
+/// adding an area each add one line and merge without conflict.
+#[rustfmt::skip]
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    text::ENTRIES.iter().chain(wires::ENTRIES).chain(print::ENTRIES).chain(symbols::ENTRIES).chain(terminals::ENTRIES).copied()
+    [
+        text::ENTRIES,
+        wires::ENTRIES,
+        print::ENTRIES,
+        symbols::ENTRIES,
+        terminals::ENTRIES,
+        strip_pages::ENTRIES,
+        bom::ENTRIES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
 }
 
 /// The entry with this key.
@@ -370,6 +400,10 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
 /// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
 pub fn users_noun(entry: &Entry) -> &'static str {
     let area = entry.key.split('.').next().unwrap_or_default();
+    // Brief 046: a page style is counted by page, though its key is in the `terminal` area.
+    if entry.key == strip_pages::STYLE.key {
+        return "pages";
+    }
     match area {
         "text" | "symbol" | "terminal" | "tags" if entry.key != text::WIRE_LABEL_HEIGHT.key => "devices",
         "wire" | "wiring" | "text" => "wires",

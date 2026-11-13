@@ -1900,6 +1900,14 @@ impl Trial {
                 }
                 let _ = self.run_line(&format!("newpage {v}"));
             }
+            // Brief 046: New page ▸ Terminal strips.
+            A::NewStripPage => {
+                let mut v = json!({"generated": "terminals", "style": "graphic"});
+                if let Some(f) = self.panel.target_folder() {
+                    v["folder"] = json!(f.hex());
+                }
+                let _ = self.run_line(&format!("newpage {v}"));
+            }
             A::MoveInto { page, folder, index } => {
                 let mut v = json!({"page": page.hex(), "folder": folder.map(|f| f.hex())});
                 if let Some(i) = index {
@@ -2754,7 +2762,9 @@ impl Trial {
         {
             self.reports_view();
         }
+        let writable = !self.header().read_only;
         if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            r.writable = writable;
             let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
         }
         let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));

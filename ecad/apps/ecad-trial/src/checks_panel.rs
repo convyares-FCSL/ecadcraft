@@ -49,6 +49,8 @@ pub const DELETE_LINK: &str = "Delete link";
 pub const MOVE_NEXT_FREE: &str = "Move to next free";
 pub const MOVE_NEW_POSITION: &str = "Move to new position";
 pub const DROP_MISSING_LEVELS: &str = "Drop missing levels";
+/// Brief 047's fix button for two article numbers of one part (design 047 §9).
+pub const USE_FOR_ALL: &str = "Use for all";
 pub const MAKE_STRIP_POSITION: &str = "Make strip position";
 
 /// The two buttons of a brief 030 fix.
@@ -220,7 +222,9 @@ impl ChecksPanel {
                 | Fix::AccessoryOrphan(..)
                 | Fix::LinkAcrossPartition(..)
                 | Fix::LinkOrphan(..)
-                | Fix::LevelMissing(..),
+                | Fix::LevelMissing(..)
+                | Fix::UseArticle(..)
+                | Fix::DropMissingFor(..),
                 _,
             ) => Action::AccessoryFix(f, 0),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
