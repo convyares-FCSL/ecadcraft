@@ -84,26 +84,43 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
 
 /// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
 /// §3.2, brief 037): colours, sizes and fonts come from `ecad-tokens` through `ecad-ui`.
-const LOCAL_STYLE: &[&str] = &["Color32::from_rgb", "Color32::from_gray", "FontId::new", "CornerRadius", "Rounding::"];
-
-/// ECAD UI files that still style locally, with the brief that restyles them (design §3.2). This
-/// list only shrinks: an entry whose file no longer needs it fails `layers`, and a new file that
-/// styles locally is a violation.
-const STYLE_ALLOWLIST: &[(&str, &str)] = &[
-    ("apps/ecad-trial/src/checks_panel.rs", "039 (U3): Checks becomes a table"),
-    ("apps/ecad-trial/src/debugger.rs", "developer tool: restyled when U2 moves the Developer section"),
-    ("apps/ecad-trial/src/devices_panel.rs", "039 (U3): Devices becomes a table"),
-    ("apps/ecad-trial/src/history_panel.rs", "038 (U2) moves it; restyled by U4d"),
-    ("apps/ecad-trial/src/merge_dialog.rs", "restyled with History (U4d)"),
-    ("apps/ecad-trial/src/outputs_ui.rs", "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/preview.rs", "restyled with the page view (U4a)"),
-    ("apps/ecad-trial/src/project_panel.rs", "038 (U2): the left panel"),
-    ("apps/ecad-trial/src/release_ui.rs", "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/renumber_dialog.rs", "restyled with Lists (after U3)"),
-    ("apps/ecad-trial/src/sheets_ui.rs", "restyled with Publish (after U2)"),
+/// `Tokens::get` reads CADCraft's theme colours directly; `from_rgba` covers every RGBA
+/// constructor (`Color32::from_rgba_unmultiplied`, `Rgba::from_rgba_premultiplied`, …).
+const LOCAL_STYLE: &[&str] = &[
+    "Color32::from_rgb",
+    "Color32::from_gray",
+    "from_rgba",
+    "FontId::new",
+    "FontId::proportional",
+    "FontId::monospace",
+    "CornerRadius",
+    "Rounding::",
+    "Tokens::get",
 ];
 
-const UI_CRATES: &[&str] = &["cadcraft-ui-egui", "craft-ui", "egui", "eframe", "egui-wgpu", "wgpu", "winit", "rfd"];
+/// ECAD UI files that still style locally: the number of lines that do, and the brief that
+/// restyles the file (design §3.2). The counts only fall: more lines than the count fail `layers`,
+/// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
+/// that styles locally is a violation.
+const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
+    ("apps/ecad-trial/src/checks_panel.rs", 4, "039 (U3): Checks becomes a table"),
+    ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
+    ("apps/ecad-trial/src/devices_panel.rs", 5, "039 (U3): Devices becomes a table"),
+    ("apps/ecad-trial/src/history_panel.rs", 7, "038 (U2) moves it; restyled by U4d"),
+    ("apps/ecad-trial/src/lib.rs", 2, "038 (U2): the shell replaces the trial's panels and tooltips"),
+    ("apps/ecad-trial/src/merge_dialog.rs", 2, "restyled with History (U4d)"),
+    ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
+    ("apps/ecad-trial/src/preview.rs", 5, "restyled with the page view (U4a)"),
+    ("apps/ecad-trial/src/project_panel.rs", 18, "038 (U2): the left panel"),
+    ("apps/ecad-trial/src/release_ui.rs", 4, "restyled with Publish (after U2)"),
+    ("apps/ecad-trial/src/renumber_dialog.rs", 2, "restyled with Lists (after U3)"),
+    ("apps/ecad-trial/src/sheets_ui.rs", 5, "restyled with Publish (after U2)"),
+];
+
+/// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
+/// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
+const UI_CRATES: &[&str] =
+    &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-ui"];
 
 /// Library crates that must build for wasm.
 const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-cadcraft", "ecad-tokens", "ecad-ui"];
@@ -177,7 +194,7 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             let dev = d["kind"].as_str() == Some("dev");
-            let ui = UI_CRATES.contains(&dep);
+            let ui = UI_CRATES.contains(&dep) || class_of(dep) == Some(Class::UiKit);
             let cadcraft = dep.starts_with("cadcraft-");
             let bad = match class {
                 Class::Core => (cadcraft || ui) && !dev,
@@ -249,6 +266,19 @@ fn local_style_places(rel: &str, text: &str) -> Vec<String> {
         .filter(|(_, l)| LOCAL_STYLE.iter().any(|p| l.contains(p)))
         .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
         .collect()
+}
+
+/// What is wrong with an allowlisted file that has `found` locally styled lines against its
+/// `allowed` count, if anything: more is a violation; fewer means the count must come down.
+fn style_count_problem(path: &str, found: usize, allowed: usize, brief: &str) -> Option<String> {
+    match found.cmp(&allowed) {
+        std::cmp::Ordering::Greater => {
+            Some(format!("{path}: {found} locally styled lines, the allowlist allows {allowed} ({brief}); take the new ones from ecad-ui"))
+        }
+        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer styles locally; remove its allowlist entry ({brief})")),
+        std::cmp::Ordering::Less => Some(format!("{path}: {found} locally styled lines, fewer than the allowlist's {allowed}; lower the count")),
+        std::cmp::Ordering::Equal => None,
+    }
 }
 
 /// A path as components, `.` and `..` resolved (never above the start).
@@ -375,7 +405,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
-    let mut style_used: BTreeSet<&str> = BTreeSet::new();
+    let mut style_seen: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
@@ -398,18 +428,19 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
             out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
             if class == Some(Class::Ui) {
                 let places = local_style_places(&rel, &text);
-                match STYLE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
-                    Some((path, _)) if !places.is_empty() => {
-                        style_used.insert(path);
+                match STYLE_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
+                    Some((path, allowed, brief)) => {
+                        style_seen.insert(path);
+                        out.extend(style_count_problem(path, places.len(), *allowed, brief));
                     }
-                    _ => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from ecad-tokens through ecad-ui)"))),
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from ecad-tokens through ecad-ui)"))),
                 }
             }
         }
     }
-    for (path, brief) in STYLE_ALLOWLIST {
-        if !style_used.contains(path) {
-            out.push(format!("{path}: in the local-styling allowlist ({brief}) but no longer needs it; remove the entry"));
+    for (path, _, brief) in STYLE_ALLOWLIST {
+        if !style_seen.contains(path) {
+            out.push(format!("{path}: in the local-styling allowlist ({brief}) but not found; remove the entry"));
         }
     }
     for (path, brief) in DEV_FEATURE_ALLOWLIST {
@@ -1038,6 +1069,11 @@ let f = FontId::new(12.0, FontFamily::Proportional);",
                 2,
             ),
             ("let r = egui::CornerRadius::same(4);", 1),
+            ("let c = egui::Color32::from_rgba_unmultiplied(1, 2, 3, 4);", 1),
+            ("let f = egui::FontId::proportional(12.0);", 1),
+            ("let f = egui::FontId::monospace(12.0);", 1),
+            ("let r = egui::Rounding::same(2.0);", 1),
+            ("let c = theme::Tokens::get().text;", 1),
             (
                 "// Color32::from_rgb(1, 2, 3) in a comment
 let c = ecad_ui::color(SHELL.text);",
@@ -1075,6 +1111,35 @@ let c = ecad_ui::color(SHELL.text);",
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(!v.iter().any(|m| m.starts_with("apps/ecad-trial/src/checks_panel.rs:")), "allowlisted: {v:?}");
+        assert!(!v.iter().any(|m| m.contains("checks_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+    }
+
+    /// Core and Adapter crates may not depend on ECAD's UI kit or the egui family (design §2).
+    #[test]
+    fn core_and_adapter_crates_may_not_use_the_ui_kit() {
+        let rows: &[(&str, &str, usize)] = &[
+            ("ecad-model", "ecad-ui", 1),
+            ("ecad-cadcraft", "ecad-ui", 1),
+            ("ecad-bench", "ecad-ui", 1),
+            ("ecad-cadcraft", "epaint", 1),
+            ("ecad-mcp", "egui_extras", 1),
+            ("ecad-model", "ecad-tokens", 0),
+            ("ecad-cadcraft", "ecad-tokens", 0),
+            ("ecad-trial", "ecad-ui", 0),
+        ];
+        for (krate, dep, n) in rows {
+            let meta = serde_json::json!({"packages": [{"name": krate, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});
+            assert_eq!(layer_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
+        }
+    }
+
+    /// The allowlist's counts only fall: more fails, fewer asks for a lower count, none asks for
+    /// the entry to go.
+    #[test]
+    fn local_styling_counts_only_fall() {
+        assert_eq!(style_count_problem("a.rs", 3, 3, "U2"), None);
+        assert!(style_count_problem("a.rs", 4, 3, "U2").is_some_and(|m| m.contains("allows 3")));
+        assert!(style_count_problem("a.rs", 2, 3, "U2").is_some_and(|m| m.contains("lower the count")));
+        assert!(style_count_problem("a.rs", 0, 3, "U2").is_some_and(|m| m.contains("remove its allowlist entry")));
     }
 }
