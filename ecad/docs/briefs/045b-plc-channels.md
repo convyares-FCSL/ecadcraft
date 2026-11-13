@@ -1,6 +1,7 @@
 # Brief 045b: PLC channels and addressing
 
-Status: Draft (designer, 2026-11-13)
+Status: Approved (owner, 2026-11-13: design 045 §15 Q1–Q17 answered "as recommended"; FP1–FP7
+approved by the overseer, 2026-11-13, design §14; FP1's four conditions are 045a's criterion 10)
 Branch: `feature/plc`, after 045a.
 Designer: **yes** (`docs/design/045.md`, §4–§7, §9 b-rows, §10, §12) · Size: L
 Roadmap: M1 item **1.3(b)**, lane D. Decided: roadmap question 6 (free-text address per channel,
