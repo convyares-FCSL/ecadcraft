@@ -592,6 +592,9 @@ pub struct Project {
     pending_known: bool,
     /// How many times a frame was worked out again (tests and bench: only when it can differ).
     pub frame_builds: u64,
+    /// How many times a page in the window was projected again after a change or a view switch
+    /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
+    pub projections: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
     pub revision_view: Option<crate::sheet_cmds::RevisionView>,
     /// How many transactions the command now running may record, when its caller caps them (an
@@ -1132,6 +1135,7 @@ impl Project {
             pending: false,
             pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1222,6 +1226,7 @@ impl Project {
             pending: false,
             pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1353,6 +1358,7 @@ impl Project {
             pending: false,
             pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1957,6 +1963,7 @@ impl Project {
         let base = committed.map(|(d, _)| d.clone()).or(current).unwrap_or_else(|| Arc::new(base_drawing()));
         let prev = view.map.clone();
         let head = self.ledger.head();
+        self.projections += 1;
         let first = if self.take_projection_fault() { Err("injected projection failure".to_string()) } else { self.project(page, &base, &prev) };
         // Only a normal projection keeps the engine's handles, so only then is fidelity comparable.
         let normal = first.is_ok();
@@ -2075,6 +2082,44 @@ impl Project {
         self.sync_saved(pg);
     }
 
+    /// After a commit, undo or redo whose touched pages are `pages` (`None`: any page): redraw the
+    /// active page only when the change could alter it (overseer item O1, design ui-architecture
+    /// §8.4). The touched set names the page's own objects, its references, its numbered wires and
+    /// the generated pages whose content changed ([`Project::generated_touched`]); the kept frame
+    /// (title block, Total, the pending Rev box) has its own update map, `frame_stale`. A frame
+    /// kept for another page means the active page's frame is not kept, so it is drawn.
+    fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
+        let active = self.active_page();
+        let frame_other = self.frame.as_ref().is_none_or(|(p, _, _)| Some(*p) != active);
+        let touched = match (pages, active) {
+            (Some(set), Some(a)) => set.contains(&a),
+            _ => true,
+        };
+        if touched || self.frame_stale || frame_other {
+            self.redraw_window(pg, command);
+        } else {
+            self.sync_saved(pg);
+        }
+    }
+
+    /// The generated pages whose content the last transaction changed, from the generators' own
+    /// update maps: `outputs`, the pages drawn from the report models
+    /// ([`Project::update_outputs`]), and the cover, contents and revision pages
+    /// ([`crate::generated::touches`] on the transaction's ops). The page list is read only when
+    /// the ops can change such a page.
+    fn generated_touched(&self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
+        use crate::generated::GenKind;
+        let mut out = outputs;
+        let doc = self.ledger.document();
+        let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        let kinds: Vec<GenKind> =
+            [GenKind::Cover, GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        if !kinds.is_empty() {
+            out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
+        }
+        out
+    }
+
     /// Commit ECAD-made ops (Path A) and refresh the open pages.
     ///
     /// # Errors
@@ -2145,9 +2190,11 @@ impl Project {
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
-        self.update_outputs(outputs);
-        self.record_change(touched(touched(pages, refs.pages), numbered), devices, props, tree);
-        self.redraw_window(pg, Some(command));
+        let generated = self.update_outputs(outputs);
+        let generated = Some(self.generated_touched(generated));
+        let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
+        self.record_change(pages.clone(), devices, props, tree);
+        self.redraw_touched(pg, Some(command), pages.as_ref());
         if let Some(line) = refs.orphaned {
             pg.echo(line);
         }
@@ -2195,9 +2242,10 @@ impl Project {
 
     /// Bring the kept report models (if shown once) in line with the last transaction, from its
     /// ops only (design 024 §9); `scope` was worked out before it. A change of a generated page's
-    /// sheet count marks the frame (its Total) stale.
-    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) {
-        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return };
+    /// sheet count marks the frame (its Total) stale. Returns the generated pages drawn from the
+    /// models whose content changed (overseer item O1: they join the commit's touched pages).
+    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) -> BTreeSet<PageId> {
+        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return BTreeSet::new() };
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
@@ -2218,19 +2266,23 @@ impl Project {
         // The shown generated page redraws only when what it shows changed (tester 028, defect
         // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
         // a cable schedule when a cable row changed.
-        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| match crate::generated::kind_of(doc, *p) {
+        // Every such page says whether it was rewritten (overseer item O1), from the kept set.
+        let rewritten = |p: PageId| match crate::generated::kind_of(doc, p) {
             Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
-            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, *p) {
+            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, p) {
                 Some(c) => o.strips.last_changed.contains(&c),
                 None => !o.strips.last_changed.is_empty(),
             },
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
             _ => false,
-        });
+        };
+        let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
+        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| rewritten(*p));
         if sheets(&o) != before || shown_changed {
             self.frame_stale = true;
         }
         self.outputs = Some(o);
+        changed
     }
 
     /// The report models, built whole on their first show (design 024 §8.1) and kept after that.
@@ -2498,8 +2550,9 @@ impl DocumentOwner for Project {
         // for a preview of one of them.
         let refs = self.finish_watch(watch);
         self.update_checks(checks);
-        self.update_outputs(outputs);
-        let changed = touched(refs.pages, self.numbered_pages(n)).map(|mut c| {
+        let generated = self.update_outputs(outputs);
+        let generated = Some(self.generated_touched(generated));
+        let changed = touched(touched(refs.pages, self.numbered_pages(n)), generated).map(|mut c| {
             c.insert(page);
             c
         });
@@ -2717,10 +2770,12 @@ impl Project {
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs = self.finish_watch(watch);
                 self.update_checks(checks);
-                self.update_outputs(outputs);
+                let generated = self.update_outputs(outputs);
+                let generated = Some(self.generated_touched(generated));
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
-                self.record_change(touched(pages, refs.pages), devices, props, tree);
+                let pages = touched(touched(pages, refs.pages), generated);
+                self.record_change(pages.clone(), devices, props, tree);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
@@ -2732,7 +2787,7 @@ impl Project {
                         let words = crate::references::page_words(self.ledger.document(), page);
                         pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
                     }
-                    _ => self.redraw_window(pg, Some(command)),
+                    _ => self.redraw_touched(pg, Some(command), pages.as_ref()),
                 }
                 if let Some(line) = refs.orphaned {
                     pg.echo(line);
