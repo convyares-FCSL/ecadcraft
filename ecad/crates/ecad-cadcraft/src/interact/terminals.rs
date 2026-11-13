@@ -1,4 +1,5 @@
 //! The interactive forms of brief 028 (design 028 §3.2, §4): Place Terminals and Draw Bridge.
+//! Brief 036 (design 036 §3.2) adds Place Terminals' type, level and position prompts.
 //! Like every ECAD form they only collect and resolve values; each commit runs the command's JSON
 //! form (`terminals`, `bridge`).
 
@@ -15,26 +16,39 @@ use super::{
 };
 use crate::strips;
 use crate::terminal_cmds::{self, MAX_FENCE};
+use crate::terminal_types as tt;
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
 
-/// `terminals`: which strip (Enter: the last one used, or a new one), then a line across the wires.
+/// `terminals`: which strip (Enter: the last one used, or a new one), the terminal type and level
+/// (brief 036), then a line across the wires.
 pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let last = read(s, |p, _| {
+    let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
-        Ok(p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::is_strip(doc, *c)).map(|c| (c, crate::devices::tag_words(doc, c))))
+        let strip = p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::is_strip(doc, *c)).map(|c| (c, crate::devices::tag_words(doc, c)));
+        let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(k)).map(|(t, _)| t);
+        Ok((strip, ty))
     })
-    .ok()
-    .flatten();
-    Ok(Box::new(Safe(PlaceTerminals { stage: Stage::Strip, last, strip: None, pe: false, first: None })))
+    .unwrap_or((None, None));
+    let ty = last_type.unwrap_or_else(tt::feedthrough);
+    Ok(Box::new(Safe(PlaceTerminals { stage: Stage::Strip, last, strip: None, pe: false, ty, level: Some(1), position: None, first: None })))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Stage {
     Strip,
+    /// Brief 036: the terminal type.
+    Type,
+    /// Brief 036: the level of a multi-level type.
+    Level,
+    /// Brief 036: the position of the first crossing (Enter: the next free one).
+    Position,
     Line,
 }
+
+/// The type keywords of the Type prompt.
+const TYPE_WORDS: &[&str] = &["Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE"];
 
 struct PlaceTerminals {
     stage: Stage,
@@ -43,6 +57,10 @@ struct PlaceTerminals {
     /// The chosen strip (`None`: a new one).
     strip: Option<ComponentId>,
     pe: bool,
+    /// Brief 036: the type, its level (`None`: whole terminals), and a typed position.
+    ty: &'static tt::TermType,
+    level: Option<u32>,
+    position: Option<String>,
     first: Option<Pt>,
 }
 
@@ -68,7 +86,42 @@ impl PlaceTerminals {
                 }
             }
         }
-        self.stage = Stage::Line;
+        // `PE` at the strip prompt is 028's shortcut: a PE terminal, no type prompt.
+        if self.pe {
+            self.ty = tt::by_code("pe").unwrap_or_else(tt::feedthrough);
+            self.stage = Stage::Line;
+        } else {
+            self.stage = Stage::Type;
+        }
+        Ok(Step::Continue)
+    }
+
+    /// The level names of the chosen type on the chosen strip.
+    fn level_names(&self, s: &Session) -> Vec<String> {
+        match self.strip {
+            Some(c) => read(s, |p, _| Ok(tt::level_names(p.ledger.document(), c, self.ty))).unwrap_or_default(),
+            None => self.ty.levels.iter().map(|x| x.to_string()).collect(),
+        }
+    }
+
+    fn choose_type(&mut self, text: &str) -> R<Step> {
+        let t = tt::by_word(text).ok_or_else(|| other(format!("No terminal type \"{}\". Type one of {}.", text.trim(), TYPE_WORDS.join(", "))))?;
+        self.ty = t;
+        self.level = Some(1);
+        self.stage = if t.multi() {
+            Stage::Level
+        } else if t.legacy() {
+            Stage::Line
+        } else {
+            Stage::Position
+        };
+        Ok(Step::Continue)
+    }
+
+    fn choose_level(&mut self, s: &Session, text: &str) -> R<Step> {
+        let level = read(s, |p, _| terminal_cmds::level_word(p.ledger.document(), self.strip, self.ty, text)).map_err(other)?;
+        self.level = level;
+        self.stage = if level.is_some() { Stage::Position } else { Stage::Line };
         Ok(Step::Continue)
     }
 
@@ -91,13 +144,29 @@ impl PlaceTerminals {
             if n == 0 {
                 return Ok(Some((Vec::new(), "-> no wires".into(), true)));
             }
-            let next = match self.strip {
-                Some(c) => {
-                    crate::devices::labels_of(doc, c).iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0) + 1
+            let rings: Vec<(Pt, String)> = if self.ty.legacy() {
+                let next = self.strip.map_or(1, |c| tt::highest_number(doc, c) + 1);
+                found.members.iter().take(MAX_FENCE).zip(next..).map(|(m, n)| (m.at, n.to_string())).collect()
+            } else {
+                // Brief 036: the label each crossing would get, by §3.3's rule.
+                let mut chooser = tt::Chooser::new(doc, self.strip);
+                let mut named = self.position.clone();
+                let mut out = Vec::new();
+                for m in found.members.iter().take(MAX_FENCE) {
+                    let Ok(pos) = chooser.choose(doc, self.strip, self.ty, self.level, named.take().as_deref()) else { break };
+                    let label = match (self.strip, self.level) {
+                        (Some(c), Some(n)) => tt::derived_label(doc, c, self.ty, &pos, n),
+                        (None, Some(n)) if self.ty.multi() => format!(
+                            ".{}",
+                            self.ty.levels.get(n.saturating_sub(1) as usize).copied().unwrap_or("?")
+                        )
+                        .replacen('.', &format!("{pos}."), 1),
+                        _ => pos,
+                    };
+                    out.push((m.at, label));
                 }
-                None => 1,
+                out
             };
-            let rings: Vec<(Pt, String)> = found.members.iter().take(MAX_FENCE).zip(next..).map(|(m, n)| (m.at, n.to_string())).collect();
             let words = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };
             Ok(Some((rings, format!("-> {words}"), false)))
         })
@@ -110,6 +179,14 @@ impl PlaceTerminals {
         if let Some(c) = self.strip {
             params["strip"] = Value::String(c.hex());
         }
+        // Brief 036: the type, level and position (a legacy type keeps 028's call).
+        if !self.ty.legacy() {
+            params["type"] = json!(self.ty.code);
+            params["level"] = json!(self.level.map_or_else(|| "All".to_string(), |n| n.to_string()));
+            if let Some(p) = &self.position {
+                params["position"] = json!(p);
+            }
+        }
         commit(s, "terminals", &params)?;
         Ok(Step::Done)
     }
@@ -118,10 +195,34 @@ impl PlaceTerminals {
         match (self.stage, i) {
             (Stage::Strip, Input::Enter) => {
                 self.strip = self.last.as_ref().map(|(c, _)| *c);
-                self.stage = Stage::Line;
+                self.stage = Stage::Type;
                 Ok(Step::Continue)
             }
             (Stage::Strip, Input::Keyword(k) | Input::Text(k)) => self.choose(s, &k),
+            (Stage::Type, Input::Enter) => self.choose_type(self.ty.code),
+            (Stage::Type, Input::Keyword(k) | Input::Text(k)) => self.choose_type(&k),
+            (Stage::Level, Input::Enter) => {
+                self.stage = Stage::Position;
+                Ok(Step::Continue)
+            }
+            (Stage::Level, Input::Keyword(k) | Input::Text(k)) => self.choose_level(s, &k),
+            (Stage::Position, Input::Enter) => {
+                self.position = None;
+                self.stage = Stage::Line;
+                Ok(Step::Continue)
+            }
+            (Stage::Position, Input::Keyword(k) | Input::Text(k)) => {
+                let t = k.trim().to_string();
+                if t.is_empty() || t.chars().count() > tt::MAX_POSITION_CHARS || t.chars().any(char::is_whitespace) {
+                    return Err(other(format!(
+                        "A position label is 1 to {} characters, without spaces. Enter for the next free one.",
+                        tt::MAX_POSITION_CHARS
+                    )));
+                }
+                self.position = Some(t);
+                self.stage = Stage::Line;
+                Ok(Step::Continue)
+            }
             (Stage::Line, Input::Point(p)) => {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
@@ -147,8 +248,27 @@ impl Interactive for PlaceTerminals {
     fn name(&self) -> &'static str {
         "TERMINALS"
     }
-    fn prompt(&self, _s: &Session) -> Prompt {
+    fn prompt(&self, s: &Session) -> Prompt {
+        let text = Accept { point: false, number: false, text: true, select: false, enter: true };
         match (self.stage, self.first) {
+            (Stage::Type, _) => {
+                let mut p = Prompt::new("Type", text).kw(TYPE_WORDS);
+                p.default = Some(if self.ty.legacy() && self.ty.code == "ft" { "Feedthrough".to_string() } else { self.ty.offer.to_string() });
+                p
+            }
+            (Stage::Level, _) => {
+                let mut words = self.level_names(s);
+                words.push("All".into());
+                let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+                let mut p = Prompt::new("Level", text).kw(&refs);
+                p.default = words.first().cloned();
+                p
+            }
+            (Stage::Position, _) => {
+                let mut p = Prompt::new("Position", text);
+                p.default = Some("next free".into());
+                p
+            }
             (Stage::Strip, _) => {
                 let mut p =
                     Prompt::new("Terminal strip", Accept { point: false, number: false, text: true, select: false, enter: true }).kw(&["New", "PE"]);

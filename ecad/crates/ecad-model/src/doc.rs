@@ -707,6 +707,20 @@ impl Document {
         referrers(&self.index.page_reps, &page).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
 
+    /// Representations that show `terminal` through an explicit connection point, in ID order
+    /// (brief 036: a level terminal is always shown that way).
+    pub fn representations_showing(&self, terminal: TerminalId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
+        referrers(&self.index.terminal_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// The definition a symbol representation places (its one symbol instance), if any.
+    pub fn rep_definition(&self, r: &Representation) -> Option<&Definition> {
+        r.items.iter().find_map(|i| match &self.items.get(i)?.kind {
+            ItemKind::Symbol(s) => self.definitions.get(&s.definition),
+            ItemKind::Primitive(_) => None,
+        })
+    }
+
     /// Terminals of `component`, in ID order.
     pub fn terminals_of(&self, component: ComponentId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
         referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))

@@ -24,12 +24,13 @@
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`. Keys already approved before the registry keep their
+/// `tags.`, `revisions.`, `print.`, `symbol.`, and `terminal.` (brief 036). Keys already approved before the registry keep their
 /// names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol"];
+pub const AREAS: &[&str] = &["text", "wiring", "wire", "tags", "revisions", "print", "symbol", "terminal"];
 
 pub mod print;
 pub mod symbols;
+pub mod terminals;
 pub mod text;
 pub mod wires;
 
@@ -286,7 +287,7 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
 
 /// Every registered entry, lane by lane.
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    text::ENTRIES.iter().chain(wires::ENTRIES).chain(print::ENTRIES).chain(symbols::ENTRIES).copied()
+    text::ENTRIES.iter().chain(wires::ENTRIES).chain(print::ENTRIES).chain(symbols::ENTRIES).chain(terminals::ENTRIES).copied()
 }
 
 /// The entry with this key.

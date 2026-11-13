@@ -463,7 +463,8 @@ fn hostile_strip_input_is_refused_or_checked_without_panic() {
         ("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "1000"})),
         ("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "-1"})),
         ("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "18446744073709551616"})),
-        ("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "2PE+3"})),
+        // Brief 036 (FP1): `2PE+3` is an offer now (items in any order); an unknown code is not.
+        ("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "2PE+3Q"})),
         ("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "101"})),
         ("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "0"})),
         ("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "99999999999999999999G"})),

@@ -29,6 +29,15 @@
 //!   its transaction, the page redrawn); **linkpage**: the link lines of page 1 worked out. Each
 //!   committed and updated, then undone.
 //!
+//! - Brief 036 (design 036 §11.3), on page 1's 20 bench wires: **lvlfence**: Place Terminals
+//!   `LNPE` level `L` across them (a new strip); **lvlplace**: a `termlnpe.2` level placed on a wire
+//!   with that strip (the free-level search, the split); **lvlsep**: the project's
+//!   `terminal.level.separator` changed (only strips with multi-level positions inherit it);
+//!   **toposition**: a fuse terminal device turned into a fuse position; **lvltrenum**: the L/N
+//!   strip (20 positions, links on levels 1 and 2) renumbered. Each undone (the strip kept).
+//!   The design's large-tier population (50 L/N/PE strips, 50 sensor strips, 25 fuse strips) is
+//!   not added, so 028's and 030's rows stay comparable with their baselines.
+//!
 //! Each edit is undone after it is measured.
 
 use std::path::Path;
@@ -70,6 +79,13 @@ pub struct MeasuredStrips {
     pub accproj_work: usize,
     pub linkset_ms: f64,
     pub linkpage_ms: f64,
+    /// Brief 036.
+    pub lvlfence_ms: f64,
+    pub lvlplace_ms: f64,
+    pub lvlsep_ms: f64,
+    pub lvlsep_work: usize,
+    pub toposition_ms: f64,
+    pub lvltrenum_ms: f64,
     /// Strips, terminals and cables in the project.
     pub strips: usize,
     pub terminals: usize,
@@ -370,6 +386,47 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.linkpage_ms = median(&mut lp);
+        // Brief 036 (design 036 §11.3).
+        let lv_line = |y: f64| json!({"type": "LNPE", "level": "L", "from": [X0 - 5.0, y], "to": [X0 + PITCH * TERMINALS as f64, y]});
+        out.lvlfence_ms = timed(&mut s, "terminals", lv_line(120.0))?;
+        let lv = run(&mut s, "terminals", lv_line(120.0))?;
+        let lv: ComponentId = hex(&lv, "strip")?;
+        out.lvlplace_ms = timed(&mut s, "place", json!({"symbol": "termlnpe.2", "at": [X0 + PITCH, 80.0], "device": lv.hex()}))?;
+        let mut sep = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "projectprops", json!({"props": {"terminal.level.separator": if i % 2 == 0 { "" } else { "-" }}}))?;
+            sep.push(ms(t));
+            out.lvlsep_work = out.lvlsep_work.max(work(&project, &mut s));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.lvlsep_ms = median(&mut sep);
+        let mut topo = Vec::new();
+        for _ in 0..runs {
+            let f = run(&mut s, "place", json!({"symbol": "fuseterm", "at": [X0 - 40.0, 150.0]}))?;
+            let f: ComponentId = hex(&f, "component")?;
+            let t = Instant::now();
+            run(&mut s, "toposition", json!({"device": f.hex(), "strip": lv.hex()}))?;
+            topo.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.toposition_ms = median(&mut topo);
+        run(
+            &mut s,
+            "terminals",
+            json!({"strip": lv.hex(), "type": "LNPE", "level": "N", "from": [X0 - 5.0, 60.0], "to": [X0 + PITCH * TERMINALS as f64, 60.0]}),
+        )?;
+        run(&mut s, "setprop", json!({"component": lv.hex(), "key": "link.1", "value": "1-10"}))?;
+        run(&mut s, "setprop", json!({"component": lv.hex(), "key": "link.2", "value": "1.2-10.2"}))?;
+        let mut lt = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "renumber", json!({"kind": "terminals", "scope": "selection", "strips": [lv.hex()], "start": 201 + i}))?;
+            lt.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.lvltrenum_ms = median(&mut lt);
         // A far device: a lamp at the top end of the first wire, connected, in +FIELD; the strip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;

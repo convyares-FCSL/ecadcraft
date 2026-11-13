@@ -23,7 +23,7 @@ fn picked(s: &Session, p: Vec2) -> R<(TerminalId, ComponentId, String, Pt)> {
     };
     let found = read(s, |p, _| {
         let doc = p.ledger.document();
-        Ok(strips::strip_of_terminal(doc, t).map(|c| (c, crate::interact::terminal_name(doc, t))))
+        Ok(strips::strip_of_terminal(doc, t).map(|c| (c, crate::interact::position_label(doc, t))))
     })
     .ok()
     .flatten();

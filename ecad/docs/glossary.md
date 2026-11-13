@@ -107,3 +107,15 @@ are.
 | **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
 | **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
 | **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |
+
+## Multi-level terminals (brief 036)
+
+| Word | Means |
+| --- | --- |
+| **position** | One terminal block on the rail: the strip terminals that share one position label (`1`, `2.1`). |
+| **level** | One deck of a position: one connection point, or two for a fuse or disconnect level (in and out). Numbered 1… from the top deck. |
+| **terminal type** | What a position is: feed-through, PE, two-level, two-level bridged, three-level, L/N/PE, sensor, disconnect, fuse. |
+| **level name** | A level's short name in its label: `L`, `N`, `PE`; `S`, `+`, `-`; `1`, `2`, `3`. A default a project or strip can change. |
+| **terminal label** | What the page and the plan show for one level: the position, the separator and the level name (`1.L`), or the level's own label. |
+| **internal bridge** | Levels of one position joined inside the block by its type (a bridged two-level terminal). |
+| **free level** | A level of a drawn position that no symbol draws yet. |

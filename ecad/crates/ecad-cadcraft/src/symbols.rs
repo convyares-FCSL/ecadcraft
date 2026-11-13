@@ -125,8 +125,13 @@ impl Starter {
     }
 
     fn build(&self) -> Result<Definition, String> {
-        let mut d =
-            Definition { bridges: Vec::new(), name: self.name.into(), origin: None, graphics: graphics(self.key), terminals: terminals(self.key) };
+        let mut d = Definition {
+            bridges: crate::terminal_types::bridges(self.key),
+            name: self.name.into(),
+            origin: None,
+            graphics: graphics(self.key),
+            terminals: terminals(self.key),
+        };
         let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: 1, content_hash });
         Ok(d)
@@ -312,7 +317,45 @@ pub const STARTERS: &[Starter] = &[
     card("plcao", "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
     card("plcrtd", "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card("plciol", "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
+    // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
+    // `terminal_types`; `termfuse` shares `fuseterm`'s drawing.
+    lvl("term2.1", "Two-level terminal, level 1", TWO, mt(1)),
+    lvl("term2.2", "Two-level terminal, level 2", TWO, mt(2)),
+    lvl("term2", "Two-level terminal", TWO, mt(3)),
+    lvl("term2b.1", "Two-level terminal, bridged, level 1", TWO, mt(4)),
+    lvl("term2b.2", "Two-level terminal, bridged, level 2", TWO, mt(5)),
+    lvl("term2b", "Two-level terminal, bridged", TWO, mt(6)),
+    lvl("term3.1", "Three-level terminal, level 1", THREE, mt(7)),
+    lvl("term3.2", "Three-level terminal, level 2", THREE, mt(8)),
+    lvl("term3.3", "Three-level terminal, level 3", THREE, mt(9)),
+    lvl("term3", "Three-level terminal", THREE, mt(10)),
+    lvl("termlnpe.1", "L/N/PE terminal, level L", LNPE, mt(11)),
+    lvl("termlnpe.2", "L/N/PE terminal, level N", LNPE, mt(12)),
+    lvl("termlnpe.3", "L/N/PE terminal, level PE", LNPE, mt(13)),
+    lvl("termlnpe", "L/N/PE terminal", LNPE, mt(14)),
+    lvl("termsensor.1", "Sensor terminal, level S", SENSOR, mt(15)),
+    lvl("termsensor.2", "Sensor terminal, level +", SENSOR, mt(16)),
+    lvl("termsensor.3", "Sensor terminal, level -", SENSOR, mt(17)),
+    lvl("termsensor", "Sensor terminal", SENSOR, mt(18)),
+    lvl("termdisc", "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
+    lvl("termfuse", "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
 ];
+
+// Brief 036's aliases.
+const TWO: &[&str] = &["two-level", "double-deck", "stacked", "terminal"];
+const THREE: &[&str] = &["three-level", "stacked", "terminal"];
+const LNPE: &[&str] = &["installation terminal", "l/n/pe", "stacked", "terminal"];
+const SENSOR: &[&str] = &["sensor terminal", "three-level", "stacked", "terminal"];
+
+/// Multi-level terminal starters (brief 036): `0x500 + n`.
+const fn mt(n: u128) -> DefinitionId {
+    def_id(0x500 + n)
+}
+
+/// A multi-level terminal starter (brief 036): joins a strip as a level.
+const fn lvl(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+    st(key, name, aliases, Kind::Terminal, id)
+}
 
 /// The starter symbol with key `key` (case-insensitive).
 pub fn by_key(key: &str) -> Option<&'static Starter> {
@@ -473,6 +516,14 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
         let long = n.chars().nth(MAX_FUSE_LABEL).is_some();
         let more = if long { "…" } else { "" };
+        // Brief 036 (FP5): on a terminal strip, `rating.<p>` is a fuse position's rating.
+        if crate::strips::is_strip(doc, c) {
+            let fuse = !long && crate::terminal_types::positions(doc, c).iter().any(|p| p.label == n && p.ty.code == "fuse");
+            if !fuse {
+                return Err(format!("{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."));
+            }
+            return crate::devices::property_value(doc, key, value);
+        }
         // The device's head (its one exclusive symbol), and only when that is a fuse bank.
         let bank = doc
             .representations_of(Subject::Component(c))
@@ -898,6 +949,11 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
     g
 }
 
+/// The graphics of starter `key` (brief 036: `termfuse` draws `fuseterm`'s).
+pub(crate) fn graphics_of(key: &str) -> Vec<Primitive> {
+    graphics(key)
+}
+
 fn graphics(key: &str) -> Vec<Primitive> {
     match key {
         "coil" => vec![rect((-6.0, -3.0), (6.0, 3.0)), line((0.0, 3.0), (0.0, 10.0)), line((0.0, -3.0), (0.0, -10.0))],
@@ -1095,7 +1151,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
         // ---- Brief 034 stage 3b (design 034 §6).
         "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
         k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
-        _ => sized_graphics(key),
+        _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -1153,7 +1209,7 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         // ---- Brief 034 stage 3b.
         "plcps" => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
         "plccpu" | "plcdi" | "plcdq" | "plcai" | "plcao" | "plcrtd" | "plciol" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
-        _ => sized_terminals(key, &t),
+        _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 
@@ -1219,8 +1275,9 @@ mod tests {
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
-        // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8);
+        // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
+        // multi-level terminals (20).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1337,7 +1394,8 @@ mod tests {
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
-        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic).collect();
+        // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.
+        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_types::is_level_starter(s.key)).collect();
         assert_eq!(basic.len(), want.len());
         for (key, hash) in want {
             let o = by_key(key).unwrap().definition().unwrap().origin.clone().unwrap();
@@ -1438,7 +1496,7 @@ mod tests {
         assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq"]);
         assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol"]);
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
-        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
+        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
         assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
         assert!(keys("xyz").is_empty());
         assert!(keys("basic").is_empty());

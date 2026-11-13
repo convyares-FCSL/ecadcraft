@@ -56,7 +56,8 @@ macro_rules! prefixes {
         pub fn prefix_entry(key: &str) -> Option<&'static Entry> {
             match key {
                 $($key => Some(&$name),)*
-                _ => None,
+                // Brief 036: the multi-level terminal starters register theirs as `terminal.<key>.prefix`.
+                _ => super::terminals::prefix_entry(key),
             }
         }
     };
@@ -171,12 +172,18 @@ mod tests {
         for s in STARTERS {
             let e = prefix_entry(s.key);
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
+            // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
+            let area = if crate::terminal_types::is_level_starter(s.key) { "terminal" } else { "symbol" };
             if let Some(e) = e {
-                assert_eq!(e.key, format!("symbol.{}.prefix", s.key));
-                assert!(ENTRIES.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
+                assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
+                let list = if area == "terminal" { super::super::terminals::ENTRIES } else { ENTRIES };
+                assert!(list.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
             }
         }
-        assert_eq!(ENTRIES.len(), STARTERS.iter().filter(|s| s.kind != SymbolKind::Tagless).count());
+        assert_eq!(
+            ENTRIES.len(),
+            STARTERS.iter().filter(|s| s.kind != SymbolKind::Tagless && !crate::terminal_types::is_level_starter(s.key)).count()
+        );
     }
 
     #[test]
