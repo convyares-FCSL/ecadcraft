@@ -348,8 +348,12 @@ pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     pub numbered: bool,
-    pub colour: String,
-    pub cross_section: String,
+    /// Brief 050b (FP6): read from an older file and kept, never written by this build unless
+    /// the project still holds it. Empty counts as absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_section: Option<String>,
 }
 
 /// How label colours are written (brief 022 fix round).
@@ -437,8 +441,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     name: p.name.clone(),
                     prefix: p.prefix.clone(),
                     numbered: p.numbered,
-                    colour: p.colour.clone(),
-                    cross_section: p.cross_section.clone(),
+                    colour: p.legacy_colour.clone(),
+                    cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
             colour_style: match w.colour_style {
@@ -520,8 +524,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     name: p.name,
                     prefix: p.prefix,
                     numbered: p.numbered,
-                    colour: p.colour,
-                    cross_section: p.cross_section,
+                    legacy_colour: p.colour.filter(|v| !v.trim().is_empty()),
+                    legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
             colour_style: match w.colour_style {
