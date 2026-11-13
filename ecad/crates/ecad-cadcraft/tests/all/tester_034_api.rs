@@ -86,6 +86,11 @@ fn kinds() {
         assert_eq!(s(k).kind, Kind::Contact { make: false }, "{k}");
     }
     for e in catalogue() {
+        // Brief 044 (design 044 §3.1): the 24 mating halves became connector halves.
+        if let Kind::ConnectorHalf { .. } = s(&e.key).kind {
+            assert!(e.key.contains("socket") || e.key.contains("plug") || e.key.starts_with("dsub") || e.key.starts_with("m12"), "{}", e.key);
+            continue;
+        }
         if !["co", "swco", "power4", "ssrout", "floatno", "rollerno", "interlockno", "floatnc", "rollernc", "interlocknc"].contains(&e.key.as_str()) {
             assert_eq!(s(&e.key).kind, Kind::Fixed { exclusive: true }, "{}", e.key);
         }
@@ -96,7 +101,8 @@ fn kinds() {
 #[test]
 fn quiet_lists() {
     let cat = catalogue();
-    for st in STARTERS {
+    // Brief 044's pins are quiet like 034's connector bodies (design 044 §3.2).
+    for st in STARTERS.iter().filter(|s| !matches!(s.key, "pinpair" | "pins" | "pinp")) {
         // Brief 045's starters are design 045's.
         if crate::tester_034_library::BRIEF_045.contains(&st.key) {
             continue;
@@ -158,8 +164,9 @@ fn anchors() {
             assert!(v.is_empty(), "{}", st.key);
             continue;
         }
-        // Brief 045's channel cells have design 045 §7.1's anchors (`lanes::lane_045`).
-        if crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch") {
+        // Brief 044's pins (design 044 §3.2) show their half's tag only; brief 045's channel cells
+        // have design 045 §7.1's anchors (`lanes::lane_045`).
+        if matches!(st.key, "pinpair" | "pins" | "pinp") || (crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch")) {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };

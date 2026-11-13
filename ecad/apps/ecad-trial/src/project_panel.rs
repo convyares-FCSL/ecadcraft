@@ -166,6 +166,8 @@ pub enum Action {
     Release,
     /// Brief 024: `newpage {generated}`.
     NewGenerated(ecad_cadcraft::generated::GenKind),
+    /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
+    NewStripPage,
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
     /// **Show** (Reports ▸ Cables, Only ?).
     OfferDrawn(ecad_model::ComponentId),
@@ -176,6 +178,8 @@ pub enum Action {
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
+    PlaceMates(ecad_model::ComponentId, ecad_cadcraft::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
 }
@@ -601,6 +605,14 @@ impl ProjectPanel {
                             if b.clicked() {
                                 out.push(Action::NewGenerated(k));
                                 ui.close();
+                            }
+                            // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
+                            if k == ecad_cadcraft::generated::GenKind::Terminals {
+                                let b = ui.button(ecad_cadcraft::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
+                                if b.clicked() {
+                                    out.push(Action::NewStripPage);
+                                    ui.close();
+                                }
                             }
                         }
                     })

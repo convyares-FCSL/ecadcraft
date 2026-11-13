@@ -20,7 +20,7 @@ fn other_value(e: &Entry) -> Option<String> {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
-            ["ZZ", "X", "Y", "1,N,3", "1,2,3", "1,2", "A,B", "none", "rev, date, description", "rev@12, description", "Plex"]
+            ["ZZ", "X", "Y", "1,N,3", "1,2,3", "1,2", "A,B", "none", "rev, date, description", "rev@12, description", "Plex", "-"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect()

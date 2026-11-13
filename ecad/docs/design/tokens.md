@@ -279,6 +279,7 @@ Tool icons echo the schematic.
 | `icon.junction` | Junction | A dot where a line meets a line (041: an action) |
 | `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
 | `icon.eye` | Show or hide | An eye (041: an action) |
+| `icon.connector` | Connector | A socket's cup over a plug's pin, each on its lead (044: Place ▸ Connector) |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

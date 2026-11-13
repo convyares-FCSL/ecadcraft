@@ -20,7 +20,10 @@ pub fn specs() -> Vec<CommandSpec> {
             .interactive(crate::interact::locationbox)
             .noundo(),
         CommandSpec::new("bom", "Bill of Materials", run_bom)
-            .params("{group?: \"location\"|\"part\", path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
+            .params(
+                "{group?: \"location\"|\"part\", columns?: [\"article\"], lines?: \"flat\"|\"nested\", path?: csv file, excel_safe?: bool (true), \
+limit?: n (500, max 5000), after?: n} (columns and lines override the project's report settings for this call; nothing written)",
+            )
             .noundo(),
         CommandSpec::new("wirelist", "Wire Report", run_wirelist)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
@@ -144,12 +147,35 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
         None => Group::Location,
         Some(t) => Group::parse(t).ok_or_else(|| err("`group` is \"location\" or \"part\""))?,
     };
+    // Brief 047 (design 047 §7.4): the report settings for this call only.
+    let columns = match params.get("columns") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(a)) => {
+            let mut article = false;
+            for c in a {
+                match c.as_str() {
+                    Some("article") => article = true,
+                    _ => return Err(err("`columns` lists optional columns: [\"article\"]")),
+                }
+            }
+            Some(article)
+        }
+        Some(_) => return Err(err("`columns` lists optional columns: [\"article\"]")),
+    };
+    let lines = match params.get("lines").and_then(Value::as_str) {
+        None => None,
+        Some("flat") => Some(false),
+        Some("nested") => Some(true),
+        Some(_) => return Err(err("`lines` is \"flat\" or \"nested\"")),
+    };
     let pg = paging(params).map_err(err)?;
     with_any_page(s, |p, _| {
         let o = p.outputs();
-        let t = o.bom_table(group);
+        let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
+        let nested = view.nested && group == Group::Location;
+        let t = o.bom_table_with(group, view, true);
         let ids: Vec<Value> = o
-            .bom(group)
+            .bom_with(group, nested)
             .iter()
             .map(|r| {
                 let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
@@ -158,10 +184,38 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
                     v["accessory"] = json!(a);
                     v["strip"] = json!(c.hex());
                 }
+                // Brief 047: what the row counts.
+                let entries: Vec<Value> = r
+                    .entries
+                    .iter()
+                    .filter_map(|(c, n)| o.entry(*c, *n))
+                    .map(|e| {
+                        let mut x = json!({"component": e.component.hex(), "line": e.line});
+                        if e.item {
+                            x["item"] = json!(true);
+                        }
+                        if !e.subs.is_empty() || !e.missing.is_empty() {
+                            x["sub"] = json!(e.subs);
+                        }
+                        x
+                    })
+                    .collect();
+                v["entries"] = json!(entries);
+                if nested && let Some(k) = &r.kit {
+                    v["kit"] = json!(k);
+                }
                 v
             })
             .collect();
-        report_result(&t, &["location", "qty", "tags", "description", "maker", "part_number"], &ids, &pg, "BOM")
+        let mut keys = vec!["location", "qty", "unit", "tags"];
+        if nested {
+            keys.push("line");
+        }
+        keys.extend(["description", "maker", "part_number"]);
+        if view.article {
+            keys.push("article_number");
+        }
+        report_result(&t, &keys, &ids, &pg, "BOM")
     })
 }
 

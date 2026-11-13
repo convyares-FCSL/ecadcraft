@@ -57,6 +57,10 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
 /// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
 fn point_words(doc: &Document, t: TerminalId) -> String {
     let name = super::terminal_name(doc, t);
+    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    if let Some(n) = crate::connectors::pin_name(doc, t) {
+        return n;
+    }
     match doc.terminals.get(&t).map(|x| x.component) {
         Some(c) if crate::strips::is_strip(doc, c) => format!("{}:{name}", crate::devices::tag_words(doc, c)),
         Some(c) => match crate::devices::tag_of(doc, c) {

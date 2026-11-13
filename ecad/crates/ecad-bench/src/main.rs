@@ -41,6 +41,30 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 044: only the connector rows (connplace, connpins, connside, pinlabel) on one version 2
+    // file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--connectors"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-connectors-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::connectors::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "connplace {:.2} ms, connpins {:.2} ms, connside {:.2} ms, pinlabel {:.2} ms ({} connectors on {} pages)",
+                    t.connplace_ms, t.connpins_ms, t.connside_ms, t.pinlabel_ms, t.connectors, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 031: only the text rows (textplace, textstyle, propredraw) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--text"

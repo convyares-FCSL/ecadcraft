@@ -33,6 +33,12 @@ pub const SHOW: &str = "Show";
 pub const OFFER: &str = "Offer drawn";
 pub const RENUMBER_STRIP: &str = "Renumber strip";
 pub const SET_CORES: &str = "Set cores\u{2026}";
+/// Brief 044: `connector-over`'s fix.
+pub const SET_PINS: &str = "Set pins";
+/// Brief 044: `connector-lone-pin`'s fix.
+pub const PLACE_MATES: &str = "Place mates";
+/// Brief 044: `connector-family` / `connector-size`'s fix.
+pub const IGNORE: &str = "Ignore";
 pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
@@ -49,6 +55,8 @@ pub const DELETE_LINK: &str = "Delete link";
 pub const MOVE_NEXT_FREE: &str = "Move to next free";
 pub const MOVE_NEW_POSITION: &str = "Move to new position";
 pub const DROP_MISSING_LEVELS: &str = "Drop missing levels";
+/// Brief 047's fix button for two article numbers of one part (design 047 §9).
+pub const USE_FOR_ALL: &str = "Use for all";
 pub const MAKE_STRIP_POSITION: &str = "Make strip position";
 /// Brief 045 (design 045 §9): the PLC rows' buttons.
 pub const MOVE_TO_FREE_SLOT: &str = "Move to free slot";
@@ -225,12 +233,18 @@ impl ChecksPanel {
                 | Fix::MoveToNewPosition(_)
                 | Fix::FuseDevices
                 | Fix::Plc(..)
+                | Fix::ConnectorNextPin(_)
+                | Fix::SetPins(..)
+                | Fix::IgnoreConnector(..)
                 | Fix::AccessoryOrphan(..)
                 | Fix::LinkAcrossPartition(..)
                 | Fix::LinkOrphan(..)
-                | Fix::LevelMissing(..),
+                | Fix::LevelMissing(..)
+                | Fix::UseArticle(..)
+                | Fix::DropMissingFor(..),
                 _,
             ) => Action::AccessoryFix(f, 0),
+            (Fix::PlaceMates(c, side), _) => Action::PlaceMates(c, side),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
             (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
             (Fix::AddJunction(_) | Fix::Join(_), None) => return None,

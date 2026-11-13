@@ -47,7 +47,74 @@ pub enum Kind {
     /// A tagless component of its own, never part of a device: a junction or a continuation
     /// (brief 022, FP4).
     Tagless,
+    /// A connector half, or one pin of one or both halves (brief 044, design 044 §3.3): its
+    /// connection points are written as the side keys `.s` / `.p` with the pin names as labels,
+    /// and it joins a connector by [`crate::connectors`]' rules. Catalogue code, never stored.
+    ConnectorHalf { side: Side },
 }
+
+/// Which half of a connector a symbol draws (brief 044).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Side {
+    /// The socket half (female contacts): side key `.s`.
+    Socket,
+    /// The plug half (male contacts): side key `.p`.
+    Plug,
+    /// Both halves of one pin (the pin pair): `.s` and `.p`.
+    Both,
+}
+
+impl Side {
+    /// The side key a pin of this side is stored under (`.s` / `.p`); `None` for [`Side::Both`].
+    pub fn key(self) -> Option<&'static str> {
+        match self {
+            Side::Socket => Some(SOCKET_KEY),
+            Side::Plug => Some(PLUG_KEY),
+            Side::Both => None,
+        }
+    }
+
+    /// The side of a side key.
+    pub fn of_key(key: &str) -> Option<Side> {
+        match key {
+            SOCKET_KEY => Some(Side::Socket),
+            PLUG_KEY => Some(Side::Plug),
+            _ => None,
+        }
+    }
+
+    /// The other half.
+    pub fn other(self) -> Side {
+        match self {
+            Side::Socket => Side::Plug,
+            Side::Plug => Side::Socket,
+            Side::Both => Side::Both,
+        }
+    }
+
+    /// `socket`, `plug` or `both`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Side::Socket => "socket",
+            Side::Plug => "plug",
+            Side::Both => "both",
+        }
+    }
+
+    /// The side letter of the per-half property keys (`half.s.*`); `None` for [`Side::Both`].
+    pub fn letter(self) -> Option<char> {
+        match self {
+            Side::Socket => Some('s'),
+            Side::Plug => Some('p'),
+            Side::Both => None,
+        }
+    }
+}
+
+/// The terminal key of a socket pin (design 044 FP1).
+pub const SOCKET_KEY: &str = ".s";
+/// The terminal key of a plug pin (design 044 FP1).
+pub const PLUG_KEY: &str = ".p";
 
 /// One starter symbol in the catalogue.
 #[derive(Debug, Clone)]
@@ -126,16 +193,32 @@ impl Starter {
     }
 
     fn build(&self) -> Result<Definition, String> {
-        let mut d = Definition {
-            bridges: crate::terminal_types::bridges(self.key),
-            name: self.name.into(),
-            origin: None,
-            graphics: graphics(self.key),
-            terminals: terminals(self.key),
+        // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
+        let bridges = match self.kind {
+            Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY.to_string(), PLUG_KEY.to_string()]],
+            _ => crate::terminal_types::bridges(self.key),
         };
+        let mut d = Definition { bridges, name: self.name.into(), origin: None, graphics: graphics(self.key), terminals: terminals(self.key) };
         let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
-        d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: 1, content_hash });
+        d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: self.library_seq(), content_hash });
         Ok(d)
+    }
+
+    /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief
+    /// 044 changed (FP3), 1 for every other.
+    pub fn library_seq(&self) -> u64 {
+        match self.kind {
+            Kind::ConnectorHalf { side: Side::Socket | Side::Plug } if !matches!(self.key, "pins" | "pinp") => 2,
+            _ => 1,
+        }
+    }
+
+    /// The side of a connector half or pin starter.
+    pub fn side(&self) -> Option<Side> {
+        match self.kind {
+            Kind::ConnectorHalf { side } => Some(side),
+            _ => None,
+        }
     }
 
     /// Its built-in tag prefix (IEC 81346), without `-`, as the defaults registry holds it
@@ -195,11 +278,23 @@ const DSUB_P: &[&str] = &["d-sub", "dsub", "sub-d", "plug", "fieldbus", "profibu
 const M12_S: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "socket", "connector"];
 const M12_P: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "plug", "connector"];
 const USB: &[&str] = &["usb", "bulkhead", "connector"];
+// Brief 044's aliases.
+const PINPAIR: &[&str] = &["pin pair", "mated pin", "plug and socket", "connector pin", "connector"];
+const PIN_S: &[&str] = &["socket pin", "female pin", "connector pin", "connector"];
+const PIN_P: &[&str] = &["plug pin", "male pin", "connector pin", "connector"];
 
 /// A connector body (stage 3a): a head, every pin quiet (prefix `X`, `defaults::symbols`).
 const fn conn(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
     st(key, name, aliases, HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
+
+/// A mating connector half or pin (brief 044, design 044 §3.1): every pin quiet.
+const fn half(key: &'static str, name: &'static str, aliases: &'static [&'static str], side: Side, id: DefinitionId) -> Starter {
+    st(key, name, aliases, Kind::ConnectorHalf { side }, id).of(Family::Connectors).quiet_at(Quiet::All)
+}
+
+const S: Side = Side::Socket;
+const P: Side = Side::Plug;
 
 /// Contacts and protection (brief 034 stage 1): definition IDs `0x100 + n`.
 const fn cp(n: u128) -> DefinitionId {
@@ -282,33 +377,38 @@ pub const STARTERS: &[Starter] = &[
     st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], HEAD, sa(10)).of(Family::Sensors),
     st("heater", "Heater", &["heater", "heating element", "heat"], HEAD, sa(11)).of(Family::Actuators),
     // ---- Brief 034 stage 3a: connector bodies (design 034 §5); halves only, mating is M1 1.11.
-    conn("socket2", "Socket, 2-pin", SOCKET, cn(1)),
-    conn("socket3", "Socket, 3-pin", SOCKET, cn(2)),
-    conn("socket4", "Socket, 4-pin", SOCKET, cn(3)),
-    conn("socket6", "Socket, 6-pin", SOCKET, cn(4)),
-    conn("socket8", "Socket, 8-pin", SOCKET, cn(5)),
-    conn("socket12", "Socket, 12-pin", SOCKET, cn(6)),
-    conn("plug2", "Plug, 2-pin", PLUG, cn(7)),
-    conn("plug3", "Plug, 3-pin", PLUG, cn(8)),
-    conn("plug4", "Plug, 4-pin", PLUG, cn(9)),
-    conn("plug6", "Plug, 6-pin", PLUG, cn(10)),
-    conn("plug8", "Plug, 8-pin", PLUG, cn(11)),
-    conn("plug12", "Plug, 12-pin", PLUG, cn(12)),
-    conn("dsub9s", "D-sub socket, 9-way", DSUB_S, cn(13)),
-    conn("dsub15s", "D-sub socket, 15-way", DSUB_S, cn(14)),
-    conn("dsub25s", "D-sub socket, 25-way", DSUB_S, cn(15)),
-    conn("dsub9p", "D-sub plug, 9-way", DSUB_P, cn(16)),
-    conn("dsub15p", "D-sub plug, 15-way", DSUB_P, cn(17)),
-    conn("dsub25p", "D-sub plug, 25-way", DSUB_P, cn(18)),
-    conn("m12s4", "M12 socket, 4-pin", M12_S, cn(19)),
-    conn("m12s5", "M12 socket, 5-pin", M12_S, cn(20)),
-    conn("m12s8", "M12 socket, 8-pin", M12_S, cn(21)),
-    conn("m12p4", "M12 plug, 4-pin", M12_P, cn(22)),
-    conn("m12p5", "M12 plug, 5-pin", M12_P, cn(23)),
-    conn("m12p8", "M12 plug, 8-pin", M12_P, cn(24)),
+    // Brief 044 (design 044 §3.1): the mating halves are connector halves, version 2.
+    half("socket2", "Socket, 2-pin", SOCKET, S, cn(1)),
+    half("socket3", "Socket, 3-pin", SOCKET, S, cn(2)),
+    half("socket4", "Socket, 4-pin", SOCKET, S, cn(3)),
+    half("socket6", "Socket, 6-pin", SOCKET, S, cn(4)),
+    half("socket8", "Socket, 8-pin", SOCKET, S, cn(5)),
+    half("socket12", "Socket, 12-pin", SOCKET, S, cn(6)),
+    half("plug2", "Plug, 2-pin", PLUG, P, cn(7)),
+    half("plug3", "Plug, 3-pin", PLUG, P, cn(8)),
+    half("plug4", "Plug, 4-pin", PLUG, P, cn(9)),
+    half("plug6", "Plug, 6-pin", PLUG, P, cn(10)),
+    half("plug8", "Plug, 8-pin", PLUG, P, cn(11)),
+    half("plug12", "Plug, 12-pin", PLUG, P, cn(12)),
+    half("dsub9s", "D-sub socket, 9-way", DSUB_S, S, cn(13)),
+    half("dsub15s", "D-sub socket, 15-way", DSUB_S, S, cn(14)),
+    half("dsub25s", "D-sub socket, 25-way", DSUB_S, S, cn(15)),
+    half("dsub9p", "D-sub plug, 9-way", DSUB_P, P, cn(16)),
+    half("dsub15p", "D-sub plug, 15-way", DSUB_P, P, cn(17)),
+    half("dsub25p", "D-sub plug, 25-way", DSUB_P, P, cn(18)),
+    half("m12s4", "M12 socket, 4-pin", M12_S, S, cn(19)),
+    half("m12s5", "M12 socket, 5-pin", M12_S, S, cn(20)),
+    half("m12s8", "M12 socket, 8-pin", M12_S, S, cn(21)),
+    half("m12p4", "M12 plug, 4-pin", M12_P, P, cn(22)),
+    half("m12p5", "M12 plug, 5-pin", M12_P, P, cn(23)),
+    half("m12p8", "M12 plug, 8-pin", M12_P, P, cn(24)),
     conn("rj45", "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
     conn("usba", "USB-A bulkhead", USB, cn(26)),
     conn("usbb", "USB-B bulkhead", USB, cn(27)),
+    // ---- Brief 044: connector pins (design 044 §3.2), drawn one by one across wires.
+    half("pinpair", "Connector pin pair", PINPAIR, Side::Both, cn(28)),
+    half("pins", "Connector socket pin", PIN_S, S, cn(29)),
+    half("pinp", "Connector plug pin", PIN_P, P, cn(30)),
     // ---- Brief 034 stage 3b: PLC card bodies (design 034 §6); channels join as `di`/`do`.
     card("plccpu", "PLC CPU", &["plc", "cpu", "controller", "card"], pc(1)),
     card("plcps", "PLC power supply", &["plc", "power", "card"], pc(2)),
@@ -433,9 +533,46 @@ pub fn of_definition(d: &Definition) -> Option<&'static Starter> {
     STARTERS.iter().find(|s| s.id == o.definition)
 }
 
-/// The project's embedded copy of `s`, found by origin (library and definition).
+/// The project's embedded copy of `s` as this catalogue builds it, found by origin: library,
+/// definition **and content hash** (brief 044, FP3), so a project holding an older version of a
+/// starter embeds the current one beside it for new placements.
 pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
-    doc.definitions.iter().find(|(_, d)| d.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id)).map(|(id, _)| *id)
+    let hash = s.definition().ok()?.origin.as_ref()?.content_hash;
+    doc.definitions
+        .iter()
+        .find(|(_, d)| d.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id && o.content_hash == hash))
+        .map(|(id, _)| *id)
+}
+
+/// The kind of a stored definition: its starter's, except that a connector half embedded before
+/// brief 044 (no side bridges, version 1) is the exclusive head it was then (design 044 §3.1).
+pub fn kind_of_definition(d: &Definition) -> Option<Kind> {
+    let s = of_definition(d)?;
+    Some(match s.kind {
+        Kind::ConnectorHalf { .. } if !is_mating(d) => HEAD,
+        k => k,
+    })
+}
+
+/// Whether `d` is a brief-044 connector half or pin: a connector starter whose bridges join the
+/// side keys.
+pub fn is_mating(d: &Definition) -> bool {
+    of_definition(d).is_some_and(|s| matches!(s.kind, Kind::ConnectorHalf { .. }))
+        && d.bridges.iter().any(|g| g.iter().any(|k| k == SOCKET_KEY) && g.iter().any(|k| k == PLUG_KEY))
+}
+
+/// Whether bridge key `k` of definition `d` is one a placement can write (overseer condition on
+/// FP2): one of the definition's own terminal keys, a side key on a connector half, or a level
+/// key of its multi-level terminal type.
+pub fn bridge_key_ok(d: &Definition, k: &str) -> bool {
+    if d.terminals.iter().any(|t| t.key == k) {
+        return true;
+    }
+    match of_definition(d) {
+        Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => k == SOCKET_KEY || k == PLUG_KEY,
+        Some(s) => crate::terminal_types::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(&k))),
+        None => false,
+    }
 }
 
 /// Most symbols one search lists.
@@ -694,6 +831,8 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             rating,
             a(TextRole::Caption, lo.x, lo.y - ANCHOR_GAP, HAlign::Left, VAlign::Top),
         ],
+        // Brief 044 (design 044 §3.2): a pin shows its half's tag only, beside it.
+        _ if matches!(s.key, "pinpair" | "pins" | "pinp") => vec![a(TextRole::Tag, -2.5, 0.0, HAlign::Right, VAlign::Middle)],
         _ if s.family == Family::Connectors => vec![tag, description],
         _ => vec![tag, description, rating],
     };
@@ -1009,6 +1148,16 @@ fn sized_terminals(key: &str, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<
     Connector::of(key).map(|c| c.terminals(t)).unwrap_or_default()
 }
 
+/// A socket pin (brief 044): its lead from (0, 5) and 034's cup, open downwards, centre (0, 0).
+fn socket_pin() -> Vec<Primitive> {
+    vec![line((0.0, 5.0), (0.0, 1.5)), half_circle_up((0.0, 0.0), 1.5, 6)]
+}
+
+/// A plug pin (brief 044): its lead from (0, −5) and the pin.
+fn plug_pin() -> Vec<Primitive> {
+    vec![line((0.0, -5.0), (0.0, -1.5)), rect((-0.5, -1.5), (0.5, 1.0))]
+}
+
 fn contact_no() -> Vec<Primitive> {
     vec![line((0.0, 10.0), (0.0, 4.0)), line((0.0, -10.0), (0.0, -4.0)), line((0.0, -4.0), (-4.0, 5.0))]
 }
@@ -1235,6 +1384,14 @@ fn graphics(key: &str) -> Vec<Primitive> {
         "plccm" => card_body("CM", &[(-5.0, -25.0), (5.0, -25.0)]),
         k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
         k if cell_shape(k).is_some() => cell_graphics(k),
+        // ---- Brief 044 (design 044 §3.2): connector pins, 034's cup and pin, no body.
+        "pinpair" => {
+            let mut g = socket_pin();
+            g.extend(plug_pin());
+            g
+        }
+        "pins" => socket_pin(),
+        "pinp" => plug_pin(),
         _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
@@ -1303,6 +1460,10 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
                 pts.iter().map(|(role, x)| TerminalDef { key: format!(".{role}"), label: Some((*role).to_string()), at: p(*x, 5.0) }).collect()
             })
             .unwrap_or_default(),
+        // ---- Brief 044: a pin's definition keys are its side keys.
+        "pinpair" => vec![t(SOCKET_KEY, 0.0, 5.0), t(PLUG_KEY, 0.0, -5.0)],
+        "pins" => vec![t(SOCKET_KEY, 0.0, 5.0)],
+        "pinp" => vec![t(PLUG_KEY, 0.0, -5.0)],
         _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
@@ -1370,8 +1531,9 @@ mod tests {
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
         // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
-        // multi-level terminals (20), brief 045's modules (3) and channel cells (6).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3 + 6);
+        // multi-level terminals (20), brief 044's connector pins (3), brief 045's modules (3) and
+        // channel cells (6).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3 + 3 + 6);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1458,6 +1620,10 @@ mod tests {
         ("chao", 20.0, 20.0, ".+/.-"),
         ("chrtd", 40.0, 20.0, ".I+/.S+/.S-/.I-"),
         ("chiol", 30.0, 20.0, ".L+/.C/Q/.L-"),
+        // Brief 044 (design 044 §3.2): the definition keys are the side keys.
+        ("pinpair", 3.0, 10.0, ".s/.p"),
+        ("pins", 3.0, 5.0, ".s"),
+        ("pinp", 1.0, 6.0, ".p"),
     ];
 
     #[test]

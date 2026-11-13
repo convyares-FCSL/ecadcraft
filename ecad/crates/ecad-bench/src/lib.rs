@@ -15,6 +15,8 @@
 //! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod bom;
+pub mod connectors;
 pub mod generate;
 pub mod history;
 pub mod measure;

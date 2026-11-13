@@ -499,6 +499,13 @@ fn template(a: &Action, target: Option<&Target>, picked: &crate::tools::Picked) 
     if let Some((line, _)) = crate::tools::template(tool, picked) {
         return line;
     }
+    // Brief 044: a connector pin's new name.
+    if a.command == "pinlabel" {
+        return match target.and_then(|t| t.terminal) {
+            Some(term) => format!(r#"pinlabel {{"terminal":"{}","to":"<new pin name>"}}"#, term.hex()),
+            None => r#"pinlabel {"device":"<connector tag>","pin":"<pin name>","to":"<new pin name>"}"#.to_string(),
+        };
+    }
     match target.and_then(|t| t.terminal) {
         Some(term) => format!(r#"{} {{"terminal":"{}","position":"<new label>"}}"#, a.command, term.hex()),
         None => format!(r#"{} {{"terminal":"<terminal id>","position":"<new label>"}}"#, a.command),

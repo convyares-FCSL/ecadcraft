@@ -167,10 +167,30 @@ pub enum Kind {
     AddressOverflow,
     /// Used channels with no address (one count row).
     NoAddress,
+    /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
+    ConnectorPinTwice,
+    /// A connector whose whole halves are of two families.
+    ConnectorFamily,
+    /// A connector whose whole halves differ in size.
+    ConnectorSize,
+    /// A connector's pins with no mate (one count row per connector).
+    ConnectorLonePin,
+    /// A connector pin numbered beyond its `pins`.
+    ConnectorOver,
+    /// Brief 047 (design 047 §9): items without a part number (one count row).
+    ItemNoPartNumber,
+    /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
+    FuseNoInsert,
+    /// One part number with two article numbers.
+    ArticleConflict,
+    /// A part line's `for` names a fuse or position the device does not have.
+    PartForMissing,
+    /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
+    BadPartKey,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 54] = [
+    pub const ALL: [Kind; 64] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -225,6 +245,16 @@ impl Kind {
         Kind::AddressTwice,
         Kind::AddressOverflow,
         Kind::NoAddress,
+        Kind::ConnectorPinTwice,
+        Kind::ConnectorFamily,
+        Kind::ConnectorSize,
+        Kind::ConnectorLonePin,
+        Kind::ConnectorOver,
+        Kind::ItemNoPartNumber,
+        Kind::FuseNoInsert,
+        Kind::ArticleConflict,
+        Kind::PartForMissing,
+        Kind::BadPartKey,
     ];
 
     /// The JSON name.
@@ -284,6 +314,16 @@ impl Kind {
             Kind::AddressTwice => "address-twice",
             Kind::AddressOverflow => "address-overflow",
             Kind::NoAddress => "no-address",
+            Kind::ConnectorPinTwice => "connector-pin-twice",
+            Kind::ConnectorFamily => "connector-family",
+            Kind::ConnectorSize => "connector-size",
+            Kind::ConnectorLonePin => "connector-lone-pin",
+            Kind::ConnectorOver => "connector-over",
+            Kind::ItemNoPartNumber => "item-no-part-number",
+            Kind::FuseNoInsert => "fuse-no-insert",
+            Kind::ArticleConflict => "article-conflict",
+            Kind::PartForMissing => "part-for-missing",
+            Kind::BadPartKey => "bad-part-key",
         }
     }
 
@@ -349,6 +389,16 @@ impl Kind {
             Kind::AddressTwice => "Address given twice",
             Kind::AddressOverflow => "Address block past byte 65535",
             Kind::NoAddress => "Used channels with no address",
+            Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
+            Kind::ConnectorFamily => "Connector halves of two families",
+            Kind::ConnectorSize => "Connector halves of two sizes",
+            Kind::ConnectorLonePin => "Connector pins without a mate",
+            Kind::ConnectorOver => "Connector pin beyond its pin count",
+            Kind::ItemNoPartNumber => "Items without a part number",
+            Kind::FuseNoInsert => "Fuses without an insert",
+            Kind::ArticleConflict => "One part number, two article numbers",
+            Kind::PartForMissing => "Part line names a fuse or position the device lacks",
+            Kind::BadPartKey => "Part line or item value ECAD does not read",
         }
     }
 
@@ -361,7 +411,8 @@ impl Kind {
             | Kind::TerminalTwice
             | Kind::LevelTwice
             | Kind::SlotTwice
-            | Kind::ChannelTwice => Severity::Error,
+            | Kind::ChannelTwice
+            | Kind::ConnectorPinTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -392,7 +443,11 @@ impl Kind {
             | Kind::ChannelType
             | Kind::AddressOverlap
             | Kind::AddressTwice
-            | Kind::AddressOverflow => Severity::Warning,
+            | Kind::AddressOverflow
+            | Kind::ConnectorFamily
+            | Kind::ConnectorSize
+            | Kind::ArticleConflict
+            | Kind::PartForMissing => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -463,6 +518,21 @@ pub enum Fix {
     /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
     /// ([`crate::plc::Plc::fix_commands`]).
     Plc(ComponentId, crate::plc::PlcFix),
+    /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
+    ConnectorNextPin(TerminalId),
+    /// Brief 044: **Set pins to n** (`setprop pins`).
+    SetPins(ComponentId, u32),
+    /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
+    /// the lone pins lack (§4.4 gives them first).
+    PlaceMates(ComponentId, crate::symbols::Side),
+    /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
+    IgnoreConnector(ComponentId, Kind),
+    /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
+    /// `n` of the component (`article`).
+    UseArticle(ComponentId, u8),
+    /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
+    /// (`partline set for`).
+    DropMissingFor(ComponentId, u8),
 }
 
 /// One row of the Checks list.
@@ -482,9 +552,17 @@ impl Check {
         self.kind.severity()
     }
 
-    /// The row's text: the kind's words, or for the unnumbered row its count.
+    /// The row's text: the kind's words, or for the unnumbered row its count. Brief 044 (design
+    /// 044 §6.3): a connector row's text names its connector (`-X10's halves differ: …`).
     pub fn what(&self) -> String {
-        self.kind.words().to_string()
+        match self.kind {
+            Kind::ConnectorPinTwice | Kind::ConnectorFamily | Kind::ConnectorSize | Kind::ConnectorLonePin | Kind::ConnectorOver
+                if !self.which.is_empty() =>
+            {
+                self.which.clone()
+            }
+            _ => self.kind.words().to_string(),
+        }
     }
 
     /// Where the row is, as references name a place (`3-D-5`, or `/3.D` in that style); the page
@@ -1009,6 +1087,8 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
     }
+    // Brief 044 (design 044 §6.3): a connector's mating checks.
+    out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
     if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
         out.push(Check {

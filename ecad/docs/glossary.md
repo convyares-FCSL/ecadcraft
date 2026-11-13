@@ -135,3 +135,16 @@ are.
 | **address** | What the PLC program calls the channel: automatic by slot and channel (`I2.3`, `%IX2.3`, `I:3/03`), or typed. |
 | **spare** | A channel with no wire and no description. **Reserved**: no wire, but a description. |
 | **I/O list** | One row per channel of every card: rack, slot, card, channel, address, pins, description, what it is wired to, wire number, place. |
+
+## Connectors (brief 044)
+
+| Word | Means |
+| --- | --- |
+| **connector** | One device (`-X10`) with up to two halves that mate. |
+| **half** | The socket side or the plug side of a connector, shown and typed as `-X10.S` / `-X10.P`. A half is a BOM row and has its own location, not a tag of its own. |
+| **side** | Which half a pin belongs to: socket (female contacts) or plug (male contacts). |
+| **pin** | One contact position of a connector (`1`, `A`, `PE`); one connection point on each half that draws it. |
+| **mate** | The pin of the same name on the other half; mated pins are one net. |
+| **family** | Plain, D-sub, M12, RJ45 bulkhead, USB-A or USB-B bulkhead; both halves of a connector have one. |
+| **pin pair** | A symbol showing one pin on both halves at once (socket cup over plug pin), as drawn in wire runs. |
+| **bulkhead** | A one-piece through-panel connector: one point per pin that wires reach from both sides; it has no halves. |

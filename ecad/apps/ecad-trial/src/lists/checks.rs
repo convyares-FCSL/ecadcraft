@@ -47,6 +47,8 @@ pub fn count_row(k: Kind) -> bool {
             | Kind::NoCoreCount
             | Kind::NoAccessoryPart
             | Kind::Unracked
+            | Kind::ItemNoPartNumber
+            | Kind::FuseNoInsert
     )
 }
 
@@ -76,6 +78,13 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         // Brief 045: the pairs are in `cp::pair`.
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
         Fix::Plc(..) => cp::MOVE_TO_FREE_SLOT,
+        // Brief 044.
+        Fix::ConnectorNextPin(_) => cp::MOVE_NEXT_FREE,
+        Fix::SetPins(..) => cp::SET_PINS,
+        Fix::PlaceMates(..) => cp::PLACE_MATES,
+        Fix::IgnoreConnector(..) => cp::IGNORE,
+        Fix::UseArticle(..) => cp::USE_FOR_ALL,
+        Fix::DropMissingFor(..) => cp::REMOVE,
     }]
 }
 

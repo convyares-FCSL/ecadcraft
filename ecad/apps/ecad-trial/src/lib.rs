@@ -1862,6 +1862,21 @@ impl Trial {
             }
             // Brief 041: the page row's wheel.
             A::PageWheel(page, at) => self.open_page_wheel(page, at),
+            // Brief 044: the lone pins' mates, through Place ▸ Connector's prompts (connector,
+            // halves, draw), as a person answers them.
+            A::PlaceMates(c, side) => {
+                let tag = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                });
+                if let Some(tag) = tag {
+                    let half = if side == ecad_cadcraft::symbols::Side::Socket { "Socket" } else { "Plug" };
+                    for line in ["connector", tag.as_str(), half, "Pins"] {
+                        if self.run_line(line).is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
             A::AccessoryFix(fix, i) => {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {
@@ -1895,6 +1910,14 @@ impl Trial {
             }
             A::NewGenerated(kind) => {
                 let mut v = json!({"generated": kind.value()});
+                if let Some(f) = self.panel.target_folder() {
+                    v["folder"] = json!(f.hex());
+                }
+                let _ = self.run_line(&format!("newpage {v}"));
+            }
+            // Brief 046: New page ▸ Terminal strips.
+            A::NewStripPage => {
+                let mut v = json!({"generated": "terminals", "style": "graphic"});
                 if let Some(f) = self.panel.target_folder() {
                     v["folder"] = json!(f.hex());
                 }
@@ -2754,7 +2777,9 @@ impl Trial {
         {
             self.reports_view();
         }
+        let writable = !self.header().read_only;
         if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            r.writable = writable;
             let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
         }
         let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));

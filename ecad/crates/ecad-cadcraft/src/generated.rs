@@ -229,6 +229,10 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Contents) => doc.page_order.len(),
         Some(GenKind::Revisions) => crate::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
+        // Brief 046: a graphic page counts its strips' kept graphic sheets.
+        Some(GenKind::Terminals) if crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic => {
+            return outputs.map_or(1, |o| crate::strip_page::sheets(doc, page, o));
+        }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
         // Brief 045c: each card from a new sheet, as the terminal plan.
@@ -347,6 +351,28 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
     })
 }
 
+/// Whether the content of `terminals` page `page` changed in the last update of `o` (design 046
+/// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
+/// shows was drawn again, or the layout settings changed. Either style redraws when the project's
+/// style changed and the page has no style of its own. O(strips shown).
+pub fn terminals_rewritten(doc: &Document, page: PageId, o: &Outputs) -> bool {
+    let sp = &o.strip_pages;
+    let style = &crate::defaults::strip_pages::STYLE;
+    let own_style = doc.pages.get(&page).and_then(|p| p.properties.get(style.key)).is_some_and(|v| style.parse(v).is_some());
+    if sp.style_changed && !own_style {
+        return true;
+    }
+    let (changed, layout) = match crate::strip_page::style_of(doc, page) {
+        crate::strip_page::Style::Table => (&o.strips.last_changed, false),
+        crate::strip_page::Style::Graphic => (&sp.last_changed, sp.layout_changed),
+    };
+    layout
+        || match strip_of(doc, page) {
+            Some(c) => changed.contains(&c),
+            None => !changed.is_empty(),
+        }
+}
+
 /// The refusal of `ops` when they would draw on a generated page (design 024 §5.3), before
 /// anything is written.
 pub fn refusal(doc: &Document, ops: &[Op]) -> Option<String> {
@@ -436,7 +462,7 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextLook) -> V
 }
 
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
-fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
+pub(crate) fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
     (MARGIN_MM + 5.0, MARGIN_MM + TITLE_BLOCK_MM + 5.0, w - MARGIN_MM - 5.0, h - TOP_MARGIN_MM - 5.0)
 }
@@ -544,7 +570,14 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
             (cols, rows)
         }
         GenKind::BomLocation => {
-            let cols = vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)];
+            // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
+            // others narrower, still 390 mm), Qty with its unit, nested lines indented.
+            let article = outputs.is_some_and(|o| o.view.article);
+            let cols = if article {
+                vec![("Qty", 15.0), ("Tags", 60.0), ("Description", 120.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
+            } else {
+                vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)]
+            };
             let Some(o) = outputs else { return (cols, Vec::new()) };
             let mut rows = Vec::new();
             let mut last: Option<Option<String>> = None;
@@ -554,7 +587,11 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
                     rows.push(TRow { cells: vec![q(&r.location)], heading: true, ..TRow::default() });
                     last = Some(r.location.clone());
                 }
-                rows.push(row(vec![r.qty.to_string(), r.tags.join(", "), q(&r.description), q(&r.maker), q(&r.part_number)]));
+                let mut cells = vec![r.qty_text(), r.tags.join(", "), q(&r.description_text()), q(&r.maker), q(&r.part_number)];
+                if article {
+                    cells.push(r.article_number.clone().unwrap_or_default());
+                }
+                rows.push(row(cells));
             }
             if rows.is_empty() {
                 rows.push(row(vec![String::new(), "No devices yet.".into()]));
@@ -793,6 +830,10 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
         }
         return d.out;
     }
+    // Brief 046: a graphic terminal plan draws its strip sheet.
+    if kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic {
+        return outputs.map_or_else(Vec::new, |o| crate::strip_page::content(doc, page, input, i, x0, o));
+    }
     let (cols, mut rows) = table(doc, kind, outputs);
     if kind == GenKind::Terminals
         && let Some(o) = outputs
@@ -878,11 +919,20 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     let Some(kind) = kind_of(doc, page) else { return crate::frame::parts(input) };
     let n = sheets(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
+    // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
+    let graphic =
+        (kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic).then_some(outputs).flatten();
     let mut out = Vec::new();
     for i in 0..n {
         let mut inp = input.clone();
-        if n > 1 {
+        if let Some(o) = graphic {
+            if let Some(t) = crate::strip_page::sheet_title(doc, page, o, i) {
+                inp.page_title = format!("{}: {t}", input.page_title);
+            }
+        } else if n > 1 {
             inp.page_title = format!("{} ({}/{n})", input.page_title, i + 1);
+        }
+        if n > 1 {
             // Design 033 §5.2: each sheet its own number; Next is the next sheet's.
             inp.page = sheet_number(&input.page, i);
             if i + 1 < n {

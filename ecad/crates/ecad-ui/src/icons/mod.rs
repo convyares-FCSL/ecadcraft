@@ -70,6 +70,8 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::Junction => tools::junction(&mut pen),
         Icon::Cloud => tools::cloud(&mut pen),
         Icon::Eye => tools::eye(&mut pen),
+        // 044
+        Icon::Connector => tools::connector(&mut pen),
     }
     pen.out
 }

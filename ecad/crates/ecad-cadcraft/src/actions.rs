@@ -455,8 +455,8 @@ use Slot as S;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[
-    // ---- Tool groups (spec §2). Lasso, Branch, Potential or bus line, Jump, Connector,
-    // Continuation arrow, Function box and Device or PLC outline have no command yet.
+    // ---- Tool groups (spec §2). Lasso, Branch, Potential or bus line, Jump, Continuation
+    // arrow, Function box and Device or PLC outline have no command yet.
     Action {
         id: "select",
         command: "",
@@ -473,6 +473,16 @@ pub const ACTIONS: &[Action] = &[
     tool("wire.tool", "wire", "Wire", Icon::Wire, ToolGroup::Wire, 0, &["draw wire", "conductor"]),
     tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Place, 0, &["place symbol", "device", "coil", "contact"]),
     tool("place.terminal", "terminals", "Terminal", Icon::Terminal, ToolGroup::Place, 1, &["place terminals", "strip"]),
+    // Brief 044 (design 044 §4.1): Place ▸ Connector.
+    tool(
+        "place.connector",
+        "connector",
+        "Connector",
+        Icon::Connector,
+        ToolGroup::Place,
+        2,
+        &["connector", "plug", "socket", "d-sub", "m12", "mated"],
+    ),
     tool("cable.slash", "cableslash", "Cable slash", Icon::Cable, ToolGroup::Cable, 0, &["new cable"]),
     tool("cable.continue", "cablecontinue", "Continue cable", Icon::GoTo, ToolGroup::Cable, 1, &["cable on another page"]),
     tool("draw.line", "line", "Line", Icon::Line, ToolGroup::Draw, 0, &["geometry"]),
@@ -710,6 +720,9 @@ pub const ACTIONS: &[Action] = &[
     search_only("wire.disconnecttool", "disconnect", Params::Start, "Disconnect", Icon::Disconnect, &["detach"]),
     search_only("wire.numbertool", "wirenumber", Params::Start, "Fix wire number", Icon::Number, &["number"]),
     search_only("terminal.bridge", "bridge", Params::Start, "Draw bridge", Icon::Connect, &["terminal", "link"]),
+    // Brief 044 (design 044 §9.3): the terminal wheel holds strip terminals only (its jumper, plan
+    // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
+    search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
     search_only("terminal.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
     search_only("terminal.accessorytool", "accessory", Params::Start, "Strip accessory", Icon::Terminal, &["endplate", "partition", "marker"]),
     search_only("terminal.toposition", "toposition", Params::Start, "Make strip position", Icon::Terminal, &["fuse terminal"]),
@@ -803,6 +816,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("xrefs", "a read for agents"),
     ("plcracks", "a read; the PLC manager (2.8) draws it"),
     ("iolist", "a read; Lists ▸ I/O shows it"),
+    // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
+    ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
+    ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
+    ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
 ];
 
 /// The action with this id.

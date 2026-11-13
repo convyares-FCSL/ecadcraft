@@ -336,6 +336,13 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             o.wireupd_ms,
             o.work
         ));
+        // Brief 047 (design 047 §10).
+        let b = &o.bom;
+        out.push_str(&format!(
+            "BOM lines on {} {}: bomline {:.2} ms (< 16), bomkit {:.2} ms (50 devices, < 30), bomitem {:.2} ms (< 16), \
+             bomart {:.2} ms ({} entries, < 30), bomcols {:.2} ms ({} sheets, < 50)\n",
+            r.tier, r.variant, b.bomline_ms, b.bomkit_ms, b.bomitem_ms, b.bomart_ms, b.art_entries, b.bomcols_ms, b.sheets
+        ));
     }
     for r in rows {
         let Some(t) = &r.text else { continue };
@@ -387,6 +394,12 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
             "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
              toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
             t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
+        ));
+        // Brief 046 (design 046 §10).
+        out.push_str(&format!(
+            "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1), \
+             spagetype {:.2} ms (< 16; {} strips marked), spbuild {:.2} ms (part of stripbuild; growth < 10 %)\n",
+            t.spage_ms, t.spageupd_ms, t.spageoff_ms, t.spageoff_projections, t.spagetype_ms, t.spagetype_work, t.spbuild_ms
         ));
     }
     for r in rows {
@@ -592,6 +605,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "work": t.work,
                     // Brief 030.
                     "acc": acc_json(t),
+                    // Brief 046.
+                    "spage": spage_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
@@ -623,6 +638,14 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
                     "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
                     "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows})
+            });
+            // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
+            row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {
+                let b = &o.bom;
+                json!({
+                    "bomline_ms": b.bomline_ms, "bomkit_ms": b.bomkit_ms, "bomitem_ms": b.bomitem_ms,
+                    "bomart_ms": b.bomart_ms, "art_entries": b.art_entries, "bomcols_ms": b.bomcols_ms, "sheets": b.sheets,
+                })
             });
             row
         }).collect::<Vec<_>>(),
@@ -679,6 +702,14 @@ fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
     json!({
         "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
         "symbols": t.symbols, "texts": t.texts,
+    })
+}
+
+/// Brief 046's rows (its own object: one `json!` would pass the macro's recursion limit).
+fn spage_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
+    json!({
+        "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
+        "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work, "spbuild_ms": t.spbuild_ms,
     })
 }
 

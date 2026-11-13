@@ -401,9 +401,11 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
                 && !ecad_cadcraft::terminal_types::is_level_starter(k)
                 && !BRIEF_045.contains(k)
         })
+        // Brief 044's connector pins (design 044 §3.2).
+        .filter(|k| !matches!(*k, "pinpair" | "pins" | "pinp"))
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key)).count());
+    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key)).count());
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.
@@ -798,7 +800,8 @@ fn k_bom_one_row_per_device() {
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
-    let allowed = ["flags", "location", "qty", "tags", "description", "maker", "part_number", "devices", "accessory", "strip"];
+    // Brief 047 added `unit` and `entries`.
+    let allowed = ["flags", "location", "qty", "unit", "tags", "description", "maker", "part_number", "devices", "accessory", "strip", "entries"];
     for r in &rows {
         for k in r.as_object().unwrap().keys() {
             assert!(allowed.contains(&k.as_str()), "new BOM column {k}: {r}");

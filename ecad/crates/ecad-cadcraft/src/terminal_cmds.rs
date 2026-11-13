@@ -105,6 +105,10 @@ pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<Termina
 /// `-X01:3`.
 pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
     let c = doc.terminals.get(&t).map(|x| x.component);
+    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    if let Some(name) = crate::connectors::pin_name(doc, t) {
+        return name;
+    }
     let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("?");
     format!("{tag}:{}", crate::interact::terminal_name(doc, t))
 }
