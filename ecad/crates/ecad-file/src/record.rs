@@ -160,6 +160,8 @@ pub const OP_NAMES: &[&str] = &[
     "AddFolder",
     "RemoveFolder",
     "ModifyFolder",
+    "SetStyle",
+    "SetStandard",
 ];
 
 /// Why a record could not be decoded; the reader maps these to its checks (§20.6).

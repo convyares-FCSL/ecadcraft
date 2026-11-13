@@ -455,7 +455,7 @@ fn object_hex(o: ObjectRef) -> u128 {
         ObjectRef::Cable(c) => c.0,
         ObjectRef::Conductor(c) => c.0,
         ObjectRef::Page(p) => p.0,
-        ObjectRef::Project => 0,
+        ObjectRef::Project | ObjectRef::Standard => 0,
     }
 }
 

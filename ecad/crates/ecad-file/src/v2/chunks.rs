@@ -3,7 +3,8 @@
 //!
 //! - `page:<PageId>`: the page, the items on it and the representations on it.
 //! - `model:project`: page order, settings, named versions, project properties, folders and
-//!   folder order.
+//!   folder order, and (brief 050a, left out while empty) the standard and the project's style
+//!   records.
 //! - `model:<kind>:<b>`: the layers, components, terminals, conductors, cables or definitions
 //!   whose ID falls in bucket `b` of that kind. A kind with `n` objects has `B` buckets, the
 //!   smallest power of two with `B × 1 024 ≥ n` (at least 1), and an object's bucket is a mix of
@@ -18,7 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, Folder, FolderId, Item, ItemId, Layer,
-    LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation, RepresentationId, Terminal, TerminalId, Touched,
+    LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId,
+    Touched,
 };
 use serde::{Deserialize, Serialize};
 
@@ -203,6 +205,11 @@ struct ProjectChunkRef<'a> {
     properties: &'a BTreeMap<String, String>,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a Vec<FolderId>,
+    /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    standard: &'a Option<Standard>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    styles: &'a StyleCatalogues,
 }
 
 #[derive(Deserialize)]
@@ -214,6 +221,10 @@ struct ProjectChunk {
     properties: BTreeMap<String, String>,
     folders: BTreeMap<FolderId, Folder>,
     folder_order: Vec<FolderId>,
+    #[serde(default)]
+    standard: Option<Standard>,
+    #[serde(default)]
+    styles: StyleCatalogues,
 }
 
 /// A chunk's bytes, ready to store (it may already be stored: chunks are inserted only if absent).
@@ -289,6 +300,8 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, String> {
         properties: &doc.properties,
         folders: &doc.folders,
         folder_order: &doc.folder_order,
+        standard: &doc.standard,
+        styles: &doc.styles,
     })
 }
 
@@ -375,7 +388,8 @@ fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32
 /// One chunk, parsed and checked on its own (every object in the chunk its key names).
 enum Parsed {
     Meta(ModelMeta),
-    Project(ProjectChunk),
+    // Boxed: the project chunk holds the standard and the style records (brief 050a).
+    Project(Box<ProjectChunk>),
     Page(PageId, PageChunk),
     Layer(BTreeMap<LayerId, Layer>),
     Component(BTreeMap<ComponentId, Component>),
@@ -412,7 +426,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String>
         return serde_json::from_slice(body).map(Parsed::Meta).map_err(json);
     }
     if key == PROJECT_KEY {
-        return serde_json::from_slice(body).map(Parsed::Project).map_err(json);
+        return serde_json::from_slice::<ProjectChunk>(body).map(|p| Parsed::Project(Box::new(p))).map_err(json);
     }
     if let Some(hex) = key.strip_prefix("page:") {
         let id = PageId::parse(hex).ok_or_else(|| format!("chunk key {key:?} names no page"))?;
@@ -520,6 +534,8 @@ fn merge_parsed(parsed: Vec<Result<Parsed, String>>) -> Result<(Document, Option
                 doc.properties = p.properties;
                 doc.folders = p.folders;
                 doc.folder_order = p.folder_order;
+                doc.standard = p.standard;
+                doc.styles = p.styles;
                 project = true;
             }
             Parsed::Page(id, p) => {
