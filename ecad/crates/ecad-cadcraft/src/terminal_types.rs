@@ -632,11 +632,11 @@ pub fn link_end(p: &str, n: u32, point: Option<char>) -> String {
     }
 }
 
-/// Canonical link text on level `n` for `labels` (plan order) out of `order`: runs become ranges,
-/// each end written with [`link_end`].
-pub fn link_text(labels: &[&String], order: &[String], n: u32) -> String {
+/// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
+/// runs become ranges, each end written with [`link_end`] (review 036, 2: the point is kept).
+pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::links::canonical(labels, order);
-    if n == 1 && !labels.iter().any(|l| l.contains('.')) {
+    if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
         return base;
     }
     // Rebuild from the runs: canonical() never puts a level in, and its items are positions.
@@ -645,8 +645,8 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32) -> String {
     let mut run: Vec<(usize, &String)> = Vec::new();
     let flush = |run: &mut Vec<(usize, &String)>, out: &mut Vec<String>| {
         match (run.first(), run.last()) {
-            (Some((_, a)), Some((_, b))) if run.len() >= 2 => out.push(format!("{}-{}", link_end(a, n, None), link_end(b, n, None))),
-            (Some((_, a)), _) => out.push(link_end(a, n, None)),
+            (Some((_, a)), Some((_, b))) if run.len() >= 2 => out.push(format!("{}-{}", link_end(a, n, point), link_end(b, n, point))),
+            (Some((_, a)), _) => out.push(link_end(a, n, point)),
             _ => {}
         }
         run.clear();
@@ -661,7 +661,7 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32) -> String {
             }
             None => {
                 flush(&mut run, &mut out);
-                out.push(link_end(l, n, None));
+                out.push(link_end(l, n, point));
             }
         }
     }
@@ -698,6 +698,27 @@ pub fn link_names_to_numbers(doc: &Document, c: ComponentId, text: &str) -> Stri
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// When link value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
+/// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
+pub fn dotted_position_words(doc: &Document, c: ComponentId, text: &str) -> Option<String> {
+    let p = ecad_model::links::parse(text).ok()?;
+    let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let mut words = Vec::new();
+    for item in &p.0 {
+        let ends: Vec<&String> = match item {
+            ecad_model::links::Item::One(x) => vec![x],
+            ecad_model::links::Item::Range(a, b) => vec![a, b],
+        };
+        for e in ends {
+            let Ok((pos, Some((n, _)))) = ecad_model::links::split_level(e) else { continue };
+            if labels.contains(e.as_str()) {
+                words.push(format!("{e} (position {pos}, level {n}); position {e} is written {}", link_end(e, 1, None)));
+            }
+        }
+    }
+    (!words.is_empty()).then(|| format!("Link {} {}.", crate::devices::tag_words(doc, c), words.join("; ")))
 }
 
 // ---------------------------------------------------------------- geometry (§3.1)
@@ -836,7 +857,8 @@ mod tests {
         assert_eq!(link_end("2.1", 1, None), "2.1.1");
         let order: Vec<String> = ["1", "2", "3", "4"].iter().map(|s| s.to_string()).collect();
         let sel: Vec<&String> = order.iter().collect();
-        assert_eq!(link_text(&sel, &order, 2), "1.2-4.2");
-        assert_eq!(link_text(&sel, &order, 1), "1-4");
+        assert_eq!(link_text(&sel, &order, 2, None), "1.2-4.2");
+        assert_eq!(link_text(&sel, &order, 1, None), "1-4");
+        assert_eq!(link_text(&sel, &order, 1, Some('o')), "1.1o-4.1o", "review 036, 2: the point is kept");
     }
 }

@@ -670,6 +670,28 @@ impl Outputs {
             scope.devices.extend(self.from_project.iter().copied());
             scope.devices.extend(self.from_none.iter().copied());
         }
+        // Brief 036 (tester 036 j, o): a level's label, or a separator or level names a strip
+        // reads, change the wire rows ending on that strip's terminals (only the position named by
+        // a `term_label.<p>.<n>` key).
+        for op in ops {
+            let Op::SetProperty { object: ObjectRef::Component(c), key, .. } = op else { continue };
+            let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
+            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || !crate::strips::is_strip(doc, *c) {
+                continue;
+            }
+            for (t, x) in doc.terminals_of(*c) {
+                if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
+        for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
+            for c in self.strips.inheriting(k) {
+                for (t, _) in doc.terminals_of(c) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
         let mut cache = BoxCache::default();
         for c in &scope.devices {
             let before = self.devices.get(c).map(|d| (d.tag.clone(), d.location.value.clone()));

@@ -543,7 +543,9 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     {
         return crate::device_cmds::run_setprop(s, params, c, key);
     }
-    with_project(s, |p, pg, _page| {
+    let v = with_project(s, |p, pg, _page| {
+        // The value as typed (the rules below may store it canonically).
+        let typed = value.clone();
         let doc = p.ledger.document();
         // Brief 022: numbering keys go through their commands; label values are checked.
         let value = match crate::wire_cmds::setprop_rule(doc, object, &key, value.as_deref())? {
@@ -600,9 +602,23 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if before == value {
             return Ok(json!({"changed": false}));
         }
+        // Brief 036 (§5.1): a typed `2.1` is position 2, level 1, also when a position `2.1` exists.
+        let note = match (object, &value) {
+            (ObjectRef::Component(c), Some(_)) if ecad_model::links::link_number(&key).is_some() => {
+                typed.as_deref().and_then(|v| crate::terminal_types::dotted_position_words(doc, c, v))
+            }
+            _ => None,
+        };
         p.apply_edit(pg, "setprop", "Set property", vec![Op::SetProperty { object, key, before, after: value }])?;
-        Ok(json!({"changed": true}))
-    })
+        Ok(match note {
+            Some(m) => json!({"changed": true, "message": m}),
+            None => json!({"changed": true}),
+        })
+    })?;
+    if let Some(m) = v.get("message").and_then(Value::as_str) {
+        s.echo(m.to_string());
+    }
+    Ok(v)
 }
 
 /// `setprop {components: [id…], key, value}`: a device property written to several devices in

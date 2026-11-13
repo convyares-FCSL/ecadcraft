@@ -930,6 +930,11 @@ impl Strips {
         s
     }
 
+    /// Brief 036: the strips that read project key `key` (no value of their own).
+    pub fn inheriting(&self, key: &str) -> Vec<ComponentId> {
+        self.inherits.get(key).map(|s| s.iter().copied().collect()).unwrap_or_default()
+    }
+
     /// Brief 036: keep the fuse terminal devices among `devices` (the ops' devices) up to date.
     /// Returns whether the set changed.
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<ComponentId>) -> bool {
@@ -1438,6 +1443,17 @@ fn strip_data(doc: &Document, c: ComponentId, o: &Outputs, cx: &PageCx) -> Strip
         }
         for (i, want) in wanted {
             let Some(ty) = tt::TYPES.get(i) else { continue };
+            // Review 036, 3: spare multi-level positions read the separator and level names too.
+            if want > 0 && ty.multi() {
+                if !own(crate::defaults::terminals::SEPARATOR.key) {
+                    inherits.insert(crate::defaults::terminals::SEPARATOR.key.to_string());
+                }
+                if let Some(e) = crate::defaults::terminals::levels_entry(ty.code)
+                    && !own(e.key)
+                {
+                    inherits.insert(e.key.to_string());
+                }
+            }
             let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
             for _ in 0..want {
                 let Some(n) = free.pop_front() else { break };

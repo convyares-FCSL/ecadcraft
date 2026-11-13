@@ -259,6 +259,20 @@ impl Positions {
         out
     }
 
+    /// The one point every item names (`Some(None)`: none, as a one-point level or the in point;
+    /// `Some(Some('o'))`: every item on the out points), or `None` when items differ or a
+    /// cross-level item is present (review 036, 2).
+    pub fn point(&self) -> Option<Option<char>> {
+        let mut out: Option<Option<char>> = None;
+        for sp in self.spans() {
+            match sp {
+                Span::Positions { point, .. } if out.is_none_or(|p| p == point) => out = Some(point),
+                _ => return None,
+            }
+        }
+        out
+    }
+
     /// Whether the link joins levels of one position (`1.1-1.3`).
     pub fn crosses_levels(&self) -> bool {
         self.spans().iter().any(|s| matches!(s, Span::Levels { .. }))

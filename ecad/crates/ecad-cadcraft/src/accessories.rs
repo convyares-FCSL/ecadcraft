@@ -323,8 +323,8 @@ pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
     }
     // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
     // whose items name different levels, stays as written.
-    Ok(match (missing.is_empty(), p.crosses_levels(), p.level()) {
-        (true, false, Some(n)) => crate::terminal_types::link_text(&sel, order, n),
+    Ok(match (missing.is_empty(), p.crosses_levels(), p.level(), p.point()) {
+        (true, false, Some(n), Some(pt)) => crate::terminal_types::link_text(&sel, order, n, pt),
         _ => p.text(),
     })
 }
@@ -908,27 +908,36 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
         for (n, p) in links::of(props) {
             let key = links::key(n);
             let Some(before) = props.get(&key).cloned() else { continue };
-            // Brief 036: a cross-level link follows its position.
-            if p.crosses_levels() {
-                let after = p
-                    .spans()
-                    .iter()
-                    .map(|sp| match sp {
+            // Brief 036 (review 036, 1): a link that is not on one level and one point (a
+            // cross-level link, items on different levels or points) is rewritten span by span,
+            // each on its own level and point, both ends of each range kept.
+            let (Some(level), Some(point), false) = (p.level(), p.point(), p.crosses_levels()) else {
+                let mut parts: Vec<String> = Vec::new();
+                for (item, sp) in p.0.iter().zip(p.spans()) {
+                    match sp {
                         links::Span::Levels { position, lo, hi } => {
-                            let q = moved(position);
-                            format!("{}-{}", crate::terminal_types::link_end(&q, *lo, None), crate::terminal_types::link_end(&q, *hi, None))
+                            let q = moved(&position);
+                            // A cross-level link names both levels (`1.1-1.3`).
+                            parts.push(format!("{q}.{lo}-{q}.{hi}"));
                         }
-                        links::Span::Positions { a, level, point, .. } => crate::terminal_types::link_end(&moved(a), *level, *point),
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                        links::Span::Positions { level, point, .. } => {
+                            let one = links::Positions(vec![item.clone()]);
+                            let mut sel: Vec<String> = one.select(&old_order).into_iter().map(|l| moved(l)).collect();
+                            sel.extend(one.missing(&old_order));
+                            let mut refs: Vec<&String> = sel.iter().collect();
+                            refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+                            refs.dedup();
+                            parts.push(crate::terminal_types::link_text(&refs, &new_order, level, point));
+                        }
+                    }
+                }
+                let after = parts.join(", ");
                 if after != before {
                     lines.push(format!("{tag}: link {before} \u{2192} {after}"));
                     out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
                 }
                 continue;
-            }
-            let level = p.level().unwrap_or(1);
+            };
             let selected: Vec<&String> = p.select(&old_order);
             let dropped: Vec<&String> = selected.iter().copied().filter(|l| taken.contains(l)).collect();
             let mut labels: Vec<String> = selected.iter().filter(|l| !taken.contains(*l)).map(|l| moved(l)).collect();
@@ -950,7 +959,7 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             let mut refs: Vec<&String> = labels.iter().collect();
             refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
             refs.dedup();
-            let after = crate::terminal_types::link_text(&refs, &new_order, level);
+            let after = crate::terminal_types::link_text(&refs, &new_order, level, point);
             if after != before {
                 lines.push(format!("{tag}: link {before} \u{2192} {after}"));
                 out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });

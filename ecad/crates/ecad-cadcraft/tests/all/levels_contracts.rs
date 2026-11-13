@@ -362,3 +362,87 @@ fn update_map_counters() {
     assert_eq!(work(&mut h), 0, "a strip with its own separator no longer inherits it");
     same_as_built(&mut h);
 }
+
+/// Review 036, 1: a link on several levels, and a cross-level link holding a position range, keep
+/// every span's level, point and both range ends through `termlabel` and through `renumber`.
+#[test]
+fn relabel_and_renumber_keep_mixed_and_cross_level_links() {
+    for via_renumber in [false, true] {
+        let mut h = H::new(0x0360_000c);
+        wires(&mut h, 0.0);
+        wires(&mut h, 100.0);
+        // An x2 strip: positions 1-3, both levels drawn; one more wire for position 4.
+        let a = fence(&mut h, None, "x2", "1", 20.0);
+        let x1: ComponentId = id(&a, "strip");
+        fence(&mut h, Some(x1), "x2", "2", 120.0);
+        h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.2, 3.1"})).unwrap();
+        h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1.1-1.2, 2-3"})).unwrap();
+        let (l1, l2) = if via_renumber {
+            // Renumber from 7: positions 1, 2, 3 become 7, 8, 9.
+            h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()], "start": 7})).unwrap();
+            ("7.2, 9", "7.1-7.2, 8-9")
+        } else {
+            h.run("termlabel", json!({"strip": x1.hex(), "at": "1", "position": "9"})).unwrap();
+            ("9.2, 3", "9.1-9.2, 2-3")
+        };
+        let props = h.doc().components[&x1].properties.clone();
+        assert_eq!(props.get("link.1").map(String::as_str), Some(l1), "renumber {via_renumber}: levels kept per span");
+        assert_eq!(props.get("link.2").map(String::as_str), Some(l2), "renumber {via_renumber}: the range keeps both ends");
+        same_as_built(&mut h);
+    }
+}
+
+/// Review 036, 2: a link on the out points stays on the out points; the out cells share one wire
+/// number and the in cells keep theirs.
+#[test]
+fn a_link_on_out_points_keeps_its_point() {
+    let mut h = H::new(0x0360_000d);
+    for x in [10.0, 20.0, 30.0] {
+        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 80.0)])})).unwrap();
+    }
+    let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [40, 40]})).unwrap();
+    let x1: ComponentId = id(&f, "strip");
+    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.1o-3.1o"})).unwrap();
+    assert_eq!(h.doc().components[&x1].properties.get("link.1").map(String::as_str), Some("1.1o-3.1o"));
+    let s = plan(&mut h, x1);
+    let rows = s["rows"].as_array().unwrap();
+    let wire = |r: &Value, side: &str| r[side][0]["wire"].as_str().map(str::to_string);
+    let outs: std::collections::BTreeSet<_> = rows.iter().map(|r| wire(r, "outside")).collect();
+    let ins: std::collections::BTreeSet<_> = rows.iter().map(|r| wire(r, "inside")).collect();
+    assert_eq!(outs.len(), 1, "the out points are one net: {s}");
+    assert_eq!(ins.len(), 3, "the in points keep three nets: {s}");
+    same_as_built(&mut h);
+}
+
+/// Review 036, 3: a strip whose only multi-level positions are spares follows a project separator
+/// change (it inherits the key), and only the inheriting strips are recomputed.
+#[test]
+fn spare_only_multi_level_strips_inherit_the_separator() {
+    let mut h = H::new(0x0360_000e);
+    wires(&mut h, 0.0);
+    let v = fence(&mut h, None, "Feedthrough", "1", 20.0);
+    let x1: ComponentId = id(&v, "strip");
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "3+2x3"})).unwrap();
+    let labels = |h: &mut H| plan(h, x1)["rows"].as_array().unwrap().iter().map(|r| r["label"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert!(labels(&mut h).contains(&"4.1".to_string()));
+    h.run("projectprops", json!({"props": {"terminal.level.separator": "-"}})).unwrap();
+    assert_eq!(h.cfg(|p| p.outputs().strips.last_work), 1, "the spare-only strip recomputed");
+    assert!(labels(&mut h).contains(&"4-1".to_string()), "{:?}", labels(&mut h));
+    same_as_built(&mut h);
+}
+
+/// Open point 6 (§5.1, Q5): a typed `2.1` is position 2, level 1; when a position labelled `2.1`
+/// exists, the echo says so and how to write that position.
+#[test]
+fn a_typed_dotted_end_says_which_position_it_is() {
+    let mut h = H::new(0x0360_000f);
+    wires(&mut h, 0.0);
+    let v = fence(&mut h, None, "Feedthrough", "1", 20.0);
+    let x1: ComponentId = id(&v, "strip");
+    let t3 = terminals(&v)[2];
+    h.run("termlabel", json!({"terminal": t3.hex(), "position": "2.1"})).unwrap();
+    let r = h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1, 2.1"})).unwrap();
+    assert_eq!(r["message"], "Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.", "{r}");
+    let r = h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1, 2"})).unwrap();
+    assert!(r.get("message").is_none(), "{r}");
+}

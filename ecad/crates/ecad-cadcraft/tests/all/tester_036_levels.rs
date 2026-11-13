@@ -198,7 +198,7 @@ fn read_everything(h: &mut H) {
     let d = h.doc();
     let _ = d.connectivity();
     let _ = ecad_cadcraft::checks::all(&d, 1e-6);
-    same_as_built_with(h, false);
+    same_as_built(h);
 }
 
 /// The representation (symbol) that shows terminal `t`, and its item.
@@ -719,7 +719,7 @@ fn j_termlabel_position_and_level_text() {
     m.h.run("accessory", json!({"strip": x2.hex(), "at": "2", "items": ["partition"]})).unwrap();
     m.h.run("setprop", json!({"component": x2.hex(), "key": "term_label.2.3", "value": "MINUS2"})).unwrap();
     let plus_net = net(&mut m.h, pos["1"][".2"]);
-    let v = step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "position": "2.1"}), false);
+    let v = step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "position": "2.1"}), true);
     let d = m.h.doc();
     for k in [".1", ".2", ".3"] {
         assert_eq!(label(&d, pos["2"][k]), "2.1", "every level relabelled ({k}): {v}");
@@ -742,19 +742,19 @@ fn j_termlabel_position_and_level_text() {
     let labels: Vec<String> = rows.iter().filter(|r| s(&r["position"]) == "2.1").map(|r| s(&r["label"])).collect();
     assert_eq!(labels[0], "2.1.S", "{labels:?}");
     // One level's text.
-    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": "2.1S"}), false);
+    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": "2.1S"}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1").as_deref(), Some("2.1S"));
     let r = level_rows(&plan(&mut m.h, x2)).into_iter().find(|r| s(&r["position"]) == "2.1" && r["level"].as_u64() == Some(1)).unwrap();
     assert_eq!(s(&r["label"]), "2.1S");
     assert_eq!(r["label_overridden"], true);
-    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": null}), false);
+    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": null}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1"), None);
     // A single one-level terminal reads `1.L` by an override.
     let (xf, tf) = {
         let v = m.h.run("terminals", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
         (id::<ComponentId>(&v, "strip"), ids(&v))
     };
-    step_with(&mut m.h, "termlabel", json!({"terminal": tf[0].hex(), "text": "1.L"}), false);
+    step_with(&mut m.h, "termlabel", json!({"terminal": tf[0].hex(), "text": "1.L"}), true);
     assert_eq!(s(&level_rows(&plan(&mut m.h, xf))[0]["label"]), "1.L");
     // Refusals.
     survives(&mut m.h, "termlabel", json!({"strip": x2.hex(), "position": "3", "to": "4"}));
@@ -934,22 +934,22 @@ fn n_registry_defaults_recompute_inheriting_strips() {
     m.h.run("setprop", json!({"component": x2.hex(), "key": "terminal.level.separator", "value": "/"})).unwrap();
     assert_eq!(s(&level_rows(&plan(&mut m.h, x2))[0]["label"]), "1/S");
     m.h.run("projectprops", json!({"props": {"terminal.level.separator": "none"}})).unwrap();
-    same_as_built_with(&mut m.h, false);
+    same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1L", "§13 N (worker: the word `none`): no separator gives 1L");
     assert_eq!(s(&level_rows(&plan(&mut m.h, x2))[0]["label"]), "1/S", "own value kept");
     m.h.run("projectprops", json!({"props": {"terminal.level.separator": "-"}})).unwrap();
-    same_as_built_with(&mut m.h, false);
+    same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1-L");
     // Level names.
     m.h.run("projectprops", json!({"props": {"terminal.lnpe.levels": "L1,N,PE"}})).unwrap();
-    same_as_built_with(&mut m.h, false);
+    same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1-L1");
     // A wrong count or a too-long value is absent: the built-in names.
     for bad in ["L,N".to_string(), "x".repeat(10_000), "L,,PE".into(), "LLLLLLL,N,PE".into()] {
         survives(&mut m.h, "projectprops", json!({"props": {"terminal.lnpe.levels": bad}}));
         let l = s(&level_rows(&plan(&mut m.h, x1))[0]["label"]);
         assert!(l == "1-L" || l == "1-L1", "bad level names never reach a label: {l}");
-        same_as_built_with(&mut m.h, false);
+        same_as_built(&mut m.h);
     }
     // The registry lists the group.
     let d = m.h.run("defaults", json!({"group": "Terminals"})).unwrap();
@@ -1084,7 +1084,6 @@ fn q_hostile_input_never_panics() {
 /// O (part): no ordinary edit rebuilds the strips; a strip's level edit leaves other strips'
 /// kept rows equal to a rebuild. The bench rows themselves run with `cargo xtask bench` (phase 2).
 #[test]
-#[ignore = "tester 036: defect, the kept wire report keeps the old terminal label after term_label/termlabel/separator changes"]
 fn o_kept_strips_equal_a_rebuild_through_level_edits() {
     let (mut m, x1) = with_lnpe(0x7036_0017);
     let x2 = with_sensor(&mut m);
@@ -1111,7 +1110,6 @@ fn o_kept_strips_equal_a_rebuild_through_level_edits() {
 /// C (§5.3: typed positions accept §5.1's grammar): the Jumper tool's typed `positions` keep their
 /// level.
 #[test]
-#[ignore = "tester 036: defect, jumper `positions` drops the level (1.3-4.3 stored 1-4)"]
 fn c_jumper_typed_positions_keep_their_level() {
     let mut m = fixture_m(0x7036_0018);
     let x2 = with_sensor(&mut m);
@@ -1125,7 +1123,6 @@ fn c_jumper_typed_positions_keep_their_level() {
 /// J / AC 7 (the shown label everywhere) and AC 10 (update maps): after `termlabel {text}` and a
 /// project separator change, the kept wire report equals a rebuild.
 #[test]
-#[ignore = "tester 036: defect, the kept wire report keeps the old terminal label after term_label/termlabel/separator changes"]
 fn j_wire_report_follows_label_changes() {
     let mut m = fixture_m(0x7036_0019);
     let x2 = with_sensor(&mut m);
