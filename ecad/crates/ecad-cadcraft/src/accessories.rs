@@ -288,7 +288,7 @@ pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Re
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
 pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
     let mut labels: BTreeSet<String> =
-        crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::terminal_name(doc, t)).collect();
+        crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::position_label(doc, t)).collect();
     if let Some(o) = crate::strips::offer_of(doc, c) {
         labels.extend((1..=o.positions).map(|n| n.to_string()));
     }
@@ -790,7 +790,7 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
         // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
         // one would silently join that terminal's net, so the position leaves the link.
         let drawn_before: BTreeSet<String> =
-            crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::terminal_name(doc, t)).collect();
+            crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::position_label(doc, t)).collect();
         let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
         for (n, p) in links::of(props) {
             let key = links::key(n);

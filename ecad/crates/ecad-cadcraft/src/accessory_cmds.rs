@@ -48,7 +48,7 @@ fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<Termina
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
             let term = doc.terminals.get(&t).ok_or("No such terminal.")?;
-            (term.component, Some(crate::interact::terminal_name(doc, t)))
+            (term.component, Some(crate::interact::position_label(doc, t)))
         }
         (None, None) => return Err("`strip` or `terminal` (hex id) is required".into()),
     };
@@ -409,7 +409,7 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                         strip_words(doc, c)
                     ));
                 }
-                let l = crate::interact::terminal_name(doc, *t);
+                let l = crate::interact::position_label(doc, *t);
                 let add = match (&prev, skip) {
                     (Some(a), false) => range_between(&order, a, &l),
                     _ => vec![l.clone()],

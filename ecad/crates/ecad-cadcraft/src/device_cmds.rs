@@ -63,6 +63,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     if starter.kind == crate::symbols::Kind::Tagless {
         return crate::wire_cmds::place_tagless(s, params, starter, at, degrees, mirror);
     }
+    // Brief 036: a level, a whole terminal, a disconnect or fuse terminal joins a strip as a position.
+    if crate::terminal_types::is_level_starter(starter.key) {
+        return crate::terminal_cmds::run_place_level(s, params, starter, at, degrees, mirror);
+    }
     let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
     let tag = match params.get("tag") {
         None | Some(Value::Null) => None,

@@ -70,7 +70,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
         let here: BTreeMap<String, Pt> = crate::strips::drawn_points(doc, c)
             .into_iter()
             .filter(|(_, _, p, _)| *p == page)
-            .map(|(t, _, _, at)| (crate::interact::terminal_name(doc, t), at))
+            .map(|(t, _, _, at)| (crate::interact::position_label(doc, t), at))
             .collect();
         // Lanes over the whole strip, as the plan's (§5.3).
         let mut spans: Vec<(usize, usize, u32, Vec<String>)> = found
