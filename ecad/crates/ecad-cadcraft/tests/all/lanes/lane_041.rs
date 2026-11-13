@@ -294,7 +294,8 @@ fn wire_intent_names_the_connection_point_under_the_cursor() {
     let u = uid(&h);
     let s = h.p(|p| intent::sentence(p, u, "wire", Vec2::new(p2.x, p2.y), 0.5, None));
     assert_eq!(s.as_deref(), Some("joins A2 of -K01"));
-    let wire = ecad_cadcraft::slash::wire_name(&doc, w);
+    let wire = kind::wire_words(&doc, w);
+    assert!(wire.starts_with("wire "), "{wire}");
     let s = h.p(|p| intent::sentence(p, u, "wire", Vec2::new(p1.x, p1.y), 0.5, None));
     assert_eq!(s, Some(format!("joins A1 of -K01 to {wire}")));
     let s = h.p(|p| intent::sentence(p, u, "line", Vec2::new(p1.x, p1.y), 0.5, None));

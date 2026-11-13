@@ -36,7 +36,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
             Some(c) => {
                 let mut s = format!("joins {}", point_words(doc, c.terminal));
                 if let Some(w) = wire_ending_at(doc, page, c.at, aperture) {
-                    s.push_str(&format!(" to {}", crate::slash::wire_name(doc, w)));
+                    s.push_str(&format!(" to {}", super::kind::wire_words(doc, w)));
                 }
                 Some(s)
             }
@@ -44,7 +44,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 let h = picked?;
                 let Some(Mapped::Item(i)) = p.pages.get(&page)?.map.get(h) else { return None };
                 match doc.representation_of_item(i)?.1.subject {
-                    Subject::Conductor(w) => Some(format!("joins {} with a junction", crate::slash::wire_name(doc, w))),
+                    Subject::Conductor(w) => Some(format!("joins {} with a junction", super::kind::wire_words(doc, w))),
                     _ => None,
                 }
             }

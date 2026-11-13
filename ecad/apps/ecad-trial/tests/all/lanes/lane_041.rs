@@ -380,11 +380,6 @@ fn screenshots_for_the_owner() {
     let Some(out) = crate::project_panel::shots() else { return };
     let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
     let F { mut h, coil_at, a1, wire, .. } = fixture_with(Some(deltas.clone()));
-    let mut v = h.state().cad.session.state().unwrap().view();
-    v.height *= 0.35;
-    v.center = Vec2::new(a1.x + 20.0, a1.y);
-    h.state_mut().cad.session.state_mut().unwrap().set_view(v);
-    h.run_steps(3);
     let shot = |h: &H, name: &str| {
         let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
     };

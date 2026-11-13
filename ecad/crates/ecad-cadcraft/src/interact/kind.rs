@@ -123,7 +123,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.kind = ObjectKind::WireEnd;
             t.conductor = Some(w);
             t.end = Some(end);
-            t.name = format!("end of {}", crate::slash::wire_name(doc, w));
+            t.name = format!("end of {}", wire_words(doc, w));
             t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Conductor(w));
             return t;
         }
@@ -168,16 +168,17 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Label(w)) => {
             t.kind = ObjectKind::Text;
             t.conductor = Some(w);
-            t.name = format!("label of {}", crate::slash::wire_name(doc, w));
+            t.name = format!("label of {}", wire_words(doc, w));
             t.handles = vec![h];
         }
         Some(Mapped::Link(strip, _)) => return terminal(p, page, t, strip, None),
         Some(Mapped::Marker(rep, term)) => match crate::strips::strip_of_terminal(doc, term) {
             Some(strip) => return terminal(p, page, t, strip, Some(term)),
-            None => match doc.representations.get(&rep).map(|r| r.subject) {
-                Some(Subject::Component(c)) => return device(p, page, t, c, Some(rep)),
-                _ => {}
-            },
+            None => {
+                if let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) {
+                    return device(p, page, t, c, Some(rep));
+                }
+            }
         },
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
             Some((rid, r)) if crate::references::is_reference(r) => return reference(doc, map, page, t, rid),
@@ -187,7 +188,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                 Subject::Conductor(w) => {
                     t.kind = ObjectKind::Wire;
                     t.conductor = Some(w);
-                    t.name = crate::slash::wire_name(doc, w);
+                    t.name = wire_words(doc, w);
                     t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Conductor(w));
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
@@ -266,4 +267,13 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
     }
     t.name = crate::references::hover_lines(doc, r).and_then(|l| l.into_iter().next()).unwrap_or_else(|| "reference".into());
     t
+}
+
+/// A wire as a person names it: `wire 01` (its net's number), else its tag or short ID.
+pub fn wire_words(doc: &Document, w: ConductorId) -> String {
+    let conn = doc.connectivity();
+    match conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)) {
+        Some(n) => format!("wire {n}"),
+        None => crate::slash::wire_name(doc, w),
+    }
 }
