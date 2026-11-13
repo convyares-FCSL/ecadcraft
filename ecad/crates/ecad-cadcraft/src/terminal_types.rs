@@ -356,7 +356,7 @@ pub fn orphaned_key_ops(doc: &Document, c: ComponentId, dropped: &[TerminalId]) 
     let left: Vec<(String, u32)> =
         doc.terminals_of(c).filter(|(t, _)| !gone.contains(t)).filter_map(|(t, x)| Some((x.label.clone()?, level_of(doc, t).0))).collect();
     let tag = crate::devices::tag_words(doc, c);
-    let mut remove = |key: String, ops: &mut Vec<ecad_model::Op>, notes: &mut Vec<String>| {
+    let remove = |key: String, ops: &mut Vec<ecad_model::Op>, notes: &mut Vec<String>| {
         if let Some(v) = props.get(&key)
             && !ops.iter().any(|o| matches!(o, ecad_model::Op::SetProperty { key: k, .. } if *k == key))
         {

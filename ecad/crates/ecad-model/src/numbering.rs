@@ -381,7 +381,7 @@ pub fn next_provisional(doc: &Document, prefix: &str) -> String {
             top = top.max(n);
         }
     }
-    tag::format_provisional(&p, top.saturating_add(1))
+    tag::Style::of(doc).provisional(&p, top.saturating_add(1))
 }
 
 /// The highest number of `prefix` in use by any device or cable tag in the usual form.
@@ -499,6 +499,7 @@ fn plan_tags(
         });
     }
     let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding.min(tag::MAX_PADDING));
+    let style = tag::Style::of(doc);
     // Which items are numbered: in a chosen kind, in scope, not fixed, in a numberable form.
     let mut chosen: Vec<(usize, String)> = Vec::new(); // (item index, prefix)
     // Numbers taken per prefix by everything not renumbered.
@@ -595,7 +596,13 @@ fn plan_tags(
                 rows.push(row_of(places, it, old.clone(), old, Mark::Skipped("no number left")));
                 continue;
             }
-            let new = tag::format(p, next, digits);
+            // Brief 033 (design 033 §8.3): the project's dash; under `typed` a tag keeps its own
+            // letters (`k05` → `k03`).
+            let letters = match style.case {
+                tag::Case::Typed => it.tag.as_deref().and_then(tag::typed_prefix).unwrap_or(p.as_str()),
+                tag::Case::Upper => p.as_str(),
+            };
+            let new = tag::format(letters, next, tag::Style { padding: digits, ..style });
             top = top.max(next);
             next = next.saturating_add(1);
             if new == old {

@@ -314,7 +314,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut upd = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
-            run(&mut s, "wire", json!({"points": [[last + 30.0, 130.0], [last + 5.0, 100.0], [last, 100.0]]}))?;
+            // Brief 032: no joining at the free end, in both rows (the baseline's free end lies on
+            // a cable core, where a join is refused), so the two stay comparable.
+            run(&mut s, "wire", json!({"points": [[last + 30.0, 130.0], [last + 5.0, 100.0], [last, 100.0]], "join": false}))?;
             upd.push(ms(t));
             out.work = out.work.max(work(&project, &mut s));
             run(&mut s, "undo", json!({}))?;
@@ -336,7 +338,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let mut base = Vec::new();
             for _ in 0..runs {
                 let t = Instant::now();
-                run(&mut s, "wire", json!({"points": [[at.x + 30.0, at.y + 30.0], [at.x + 5.0, at.y], [at.x, at.y]]}))?;
+                run(&mut s, "wire", json!({"points": [[at.x + 30.0, at.y + 30.0], [at.x + 5.0, at.y], [at.x, at.y]], "join": false}))?;
                 base.push(ms(t));
                 run(&mut s, "undo", json!({}))?;
             }

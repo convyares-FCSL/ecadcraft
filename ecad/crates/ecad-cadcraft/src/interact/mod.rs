@@ -50,7 +50,7 @@ pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, 
 pub(crate) use location_form::locationbox;
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use terminals::{bridge, terminals};
-pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
+pub(crate) use wiring_forms::{joinwires, junction, renumberwires, wirenumber};
 pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
@@ -76,6 +76,11 @@ pub(crate) const LOOSE_ACI: u8 = 9;
 const TERMINAL_RGB: Rgb = Rgb(0x00, 0xff, 0xff);
 const ATTACHED_RGB: Rgb = Rgb(0x00, 0xff, 0x00);
 const LOOSE_RGB: Rgb = Rgb(0xc0, 0xc0, 0xc0);
+/// `ecad.looks-connected` (design 032 §6): `ecad.check-warning`, ACI 2.
+const LOOKS_CONNECTED_RGB: Rgb = Rgb(0xff, 0xff, 0x00);
+/// The looks-connected ring's size and stroke, pixels (design 032 §6).
+const LOOKS_CONNECTED_PX: f32 = 10.0;
+const LOOKS_CONNECTED_STROKE: f32 = 1.5;
 /// Cables (`ecad.cable`, ACI 6, magenta); also `ecad.reference`.
 const CABLE_RGB: Rgb = Rgb(0xff, 0x00, 0xff);
 /// `ecad.orphan` (ACI 1, red).
@@ -413,6 +418,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             }
         }
     }
+    // Brief 032 §2.6: a yellow ring over an open end lying on another wire (computed with the
+    // page's projection, kept in its map).
+    let looks = p.pages.get(&page).map(|v| v.map.looks_connected()).unwrap_or_default();
+    out.extend(looks.iter().map(|at| Mark {
+        at: v2(*at),
+        shape: MarkShape::Ring,
+        size: LOOKS_CONNECTED_PX,
+        stroke: LOOKS_CONNECTED_STROKE,
+        color: LOOKS_CONNECTED_RGB,
+    }));
     let map = p.pages.get(&page).map(|v| &v.map);
     let shown = |i| map.is_some_and(|m| m.item(i).is_some());
     out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
@@ -718,6 +733,23 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
             }
             None => format!("End {end:?}: not connected"),
         });
+    }
+    // Brief 032 §2.6: an open end lying on another wire says so, and how to join them.
+    if let (Some(cond), Some((a, b))) = (conductor, ecad_model::derive::route_ends_on(doc, w, page)) {
+        for (end, at) in [(End::A, a), (End::B, b)] {
+            if cond.end(end).is_some() {
+                continue;
+            }
+            if let Some(on) = crate::wires::wire_at(doc, page, at, crate::wires::ON_WIRE, Some(w)) {
+                let conn = doc.connectivity();
+                let number = conn
+                    .net_of_conductor(on.conductor)
+                    .and_then(|n| conn.net(n))
+                    .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                    .unwrap_or_else(|| "?".into());
+                lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
+            }
+        }
     }
     // Brief 010: a wire continued on other pages says where.
     let others: Vec<String> =

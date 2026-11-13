@@ -160,6 +160,14 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click a wire where a T joins it: a junction dot, and the wire is split there",
         kind: Kind::Start("junction"),
     },
+    // Brief 032: repair wire ends that meet.
+    Tool {
+        id: "ecad.joinwires",
+        group: "Wiring",
+        label: "Join Wires",
+        tooltip: "Click where wire ends meet: two ends become one wire; an end on a wire gets a junction",
+        kind: Kind::Start("joinwires"),
+    },
     Tool {
         id: "ecad.wirenumber",
         group: "Wiring",
