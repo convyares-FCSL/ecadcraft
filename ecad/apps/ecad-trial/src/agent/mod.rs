@@ -22,6 +22,7 @@
 //! the banner's final look (the UI shell).
 
 pub mod banner;
+pub mod last_write;
 pub mod undo_session;
 
 // Upstream's loopback control server, unchanged (design 035 §17, 2): the same bounds, token and
@@ -796,8 +797,6 @@ impl Trial {
         };
         if replace {
             self.agent.banner = Some(AgentBanner::new(&session, &name));
-            // The banner's line is in the Developer section until the UI shell: show it.
-            self.developer.open = true;
         }
         if let Some(b) = &mut self.agent.banner
             && b.session == session
