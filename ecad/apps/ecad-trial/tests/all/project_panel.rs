@@ -322,8 +322,13 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert!(h.state().name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
-    click(&mut h, "New page…");
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row menu's New page too");
+    {
+        // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
+        let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
+        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_ui::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+    }
+    h.run_steps(3);
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row wheel's New page too");
     key(&mut h, Key::Enter, Modifiers::NONE);
     assert!(h.state().name_box.is_none());
     assert_eq!(head(&mut h), before + 1, "one transaction");

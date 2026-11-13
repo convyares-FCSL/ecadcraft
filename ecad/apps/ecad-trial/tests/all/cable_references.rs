@@ -91,11 +91,11 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     let mut h = harness(trial());
     h.run_steps(3);
     let before = head(h.state_mut());
-    // The row's right-click menu: Rename… asks the new title in a name box, prefilled with the
-    // current one (owner, 2026-11-08): OK renames, one transaction.
+    // The row's right-click (brief 041: its wheel): Rename asks the new title in a name box,
+    // prefilled with the current one (owner, 2026-11-08): OK renames, one transaction.
     h.get_by_label("Page 1: 1").click_secondary();
     h.run_steps(3);
-    h.get_by_label("Rename…").click();
+    h.get_by_label("Rename").click();
     h.run_steps(4);
     let t = h.state_mut();
     assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
@@ -108,10 +108,14 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     assert!(t.name_box.is_none());
     assert_eq!(head(t), before + 1);
     assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
-    // New page from the same menu: the name box with the next number; OK adds it.
+    // New page from the same wheel: the name box with the next number; OK adds it.
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
-    h.get_by_label("New page…").click();
+    {
+        // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
+        let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
+        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_ui::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+    }
     h.run_steps(3);
     assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
     h.get_by_label("OK").click();

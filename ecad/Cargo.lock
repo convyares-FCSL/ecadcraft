@@ -1362,6 +1362,7 @@ dependencies = [
  "ecad-inspect",
  "ecad-model",
  "ecad-store",
+ "ecad-tokens",
  "serde",
  "serde_json",
 ]

@@ -1221,6 +1221,8 @@ impl Trial {
         let text = match pick {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,
+            // Brief 041: pages and actions are run by the shell, not placed.
+            search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
         };
         let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
@@ -1857,6 +1859,8 @@ impl Trial {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
+            // Brief 041: the page row's wheel.
+            A::PageWheel(page, at) => self.open_page_wheel(page, at),
             A::AccessoryFix(fix, i) => {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {

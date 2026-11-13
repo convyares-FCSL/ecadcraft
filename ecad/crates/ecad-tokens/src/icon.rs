@@ -54,11 +54,59 @@ pub enum Icon {
     ChevronUp,
     /// Chevron pointing down.
     ChevronDown,
+
+    // 041 (brief 041, U4b): the actions' icons (wheel slots, flyouts, search).
+    /// Delete: a bin.
+    Delete,
+    /// Go to: an arrow out of a box.
+    GoTo,
+    /// Show its row: table rows with one marked.
+    ShowRow,
+    /// Edit: a pencil.
+    Edit,
+    /// Properties: a list with a pointer.
+    Properties,
+    /// Rotate: a turning arrow.
+    Rotate,
+    /// Mirror: two halves about an axis.
+    Mirror,
+    /// Duplicate: two overlapping boxes.
+    Duplicate,
+    /// Connect: a lead into a ring.
+    Connect,
+    /// Disconnect: a lead apart from a ring.
+    Disconnect,
+    /// Number: a hash.
+    Number,
+    /// Move: four arrows.
+    Move,
+    /// Paste: a sheet on a board.
+    Paste,
+    /// New page: a sheet with a plus.
+    NewPage,
+    /// Line: a diagonal line with end points.
+    Line,
+    /// Polyline: a bent line.
+    Polyline,
+    /// Rectangle.
+    Rectangle,
+    /// Circle.
+    Circle,
+    /// Arc.
+    Arc,
+    /// Terminal: a terminal block with a screw ring.
+    Terminal,
+    /// Junction: a dot where lines meet.
+    Junction,
+    /// Revision cloud: a scalloped outline.
+    Cloud,
+    /// Show or hide: an eye.
+    Eye,
 }
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 23] = [
+    pub const ALL: [Icon; 46] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -82,6 +130,30 @@ impl Icon {
         Icon::ChevronRight,
         Icon::ChevronUp,
         Icon::ChevronDown,
+        // 041
+        Icon::Delete,
+        Icon::GoTo,
+        Icon::ShowRow,
+        Icon::Edit,
+        Icon::Properties,
+        Icon::Rotate,
+        Icon::Mirror,
+        Icon::Duplicate,
+        Icon::Connect,
+        Icon::Disconnect,
+        Icon::Number,
+        Icon::Move,
+        Icon::Paste,
+        Icon::NewPage,
+        Icon::Line,
+        Icon::Polyline,
+        Icon::Rectangle,
+        Icon::Circle,
+        Icon::Arc,
+        Icon::Terminal,
+        Icon::Junction,
+        Icon::Cloud,
+        Icon::Eye,
     ];
 
     /// A readable name, used as the accessible label of an icon with no label of its own.
@@ -110,6 +182,30 @@ impl Icon {
             Icon::ChevronRight => "Chevron right",
             Icon::ChevronUp => "Chevron up",
             Icon::ChevronDown => "Chevron down",
+            // 041
+            Icon::Delete => "Delete",
+            Icon::GoTo => "Go to",
+            Icon::ShowRow => "Show row",
+            Icon::Edit => "Edit",
+            Icon::Properties => "Properties",
+            Icon::Rotate => "Rotate",
+            Icon::Mirror => "Mirror",
+            Icon::Duplicate => "Duplicate",
+            Icon::Connect => "Connect",
+            Icon::Disconnect => "Disconnect",
+            Icon::Number => "Number",
+            Icon::Move => "Move",
+            Icon::Paste => "Paste",
+            Icon::NewPage => "New page",
+            Icon::Line => "Line",
+            Icon::Polyline => "Polyline",
+            Icon::Rectangle => "Rectangle",
+            Icon::Circle => "Circle",
+            Icon::Arc => "Arc",
+            Icon::Terminal => "Terminal",
+            Icon::Junction => "Junction",
+            Icon::Cloud => "Revision cloud",
+            Icon::Eye => "Show or hide",
         }
     }
 }

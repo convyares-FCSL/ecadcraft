@@ -33,6 +33,7 @@
 mod access;
 pub mod accessories;
 pub mod accessory_cmds;
+pub mod actions;
 // Brief 035: a per-user settings file and a window's port; nothing of it on the web build.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod agent_access;

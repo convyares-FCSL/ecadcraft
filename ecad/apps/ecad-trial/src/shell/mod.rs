@@ -23,6 +23,7 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod drawer;
+pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
@@ -32,6 +33,7 @@ pub mod status_bar;
 pub mod text_panel;
 pub mod tool_strip;
 pub mod top_bar;
+pub mod wheel;
 
 use std::collections::BTreeSet;
 
@@ -305,8 +307,8 @@ impl Trial {
         // CADCraft's interface stays behind the developer switch (US1); ECAD owns the style.
         let chrome = self.shell.state.cad_chrome;
         self.cad.embedding = Embedding { chrome, idle_typing: chrome, canvas_menus: chrome, style: false };
-        // The command line shows only while a command prompts (until U4b's intent line).
-        self.cad.ui.show_command_line = chrome || self.cad.session.prompting();
+        // Brief 041: the intent line replaces the command line, at rest and while prompting.
+        self.cad.ui.show_command_line = chrome;
 
         let s = ecad_ui::SHELL;
         top_bar::show(self, ui, slots.top_bar);
@@ -361,8 +363,8 @@ impl Trial {
         });
         crate::agent::last_write::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
-        // Right-click on the page does nothing in U2 except while a command runs (the wheel is U4b).
-        let _ = self.cad.take_secondary_click();
+        // Brief 041: right-click opens the wheel (no tool running); then the intent line.
+        self.wheel_frame(ui);
         if let Some(h) = slots.handle {
             self.split_handle(ui, h, slots);
         }

@@ -218,14 +218,19 @@ fn group_keys_start_tools_over_the_page_but_not_while_a_field_has_focus() {
     over_page(&mut h);
     keys(&mut h, Modifiers::NONE, Key::W);
     assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("wire"), "W: Wire");
-    // Pressed again while Wire runs: the next tool of the group.
-    keys(&mut h, Modifiers::NONE, Key::W);
-    assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("junction"), "W again steps");
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    // Brief 041: Draw's tools step (Wire is alone in its group until Branch and Jump exist).
+    keys(&mut h, Modifiers::NONE, Key::D);
+    assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("line"), "D: Line");
+    // Pressed again while Line runs: the next tool of the group.
+    keys(&mut h, Modifiers::NONE, Key::D);
+    assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("pline"), "D again steps");
     // Later, with nothing running: the group's last-used tool.
     h.state_mut().cad.session.cancel();
     h.run_steps(2);
-    keys(&mut h, Modifiers::NONE, Key::W);
-    assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("junction"), "the last used");
+    keys(&mut h, Modifiers::NONE, Key::D);
+    assert_eq!(h.state().cad.session.running.as_ref().map(|r| r.id.clone()).as_deref(), Some("pline"), "the last used");
     h.state_mut().cad.session.cancel();
     h.run_steps(2);
     // The search field has the keyboard: the letters are typed, no tool starts.
@@ -243,10 +248,10 @@ fn group_keys_start_tools_over_the_page_but_not_while_a_field_has_focus() {
 
 #[test]
 fn nothing_from_the_old_panels_is_lost() {
-    // Every ECAD Tool Sets button is in exactly one flyout; the developer ones are in the Text panel.
+    // Brief 041 replaced "every ECAD Tool Sets button is in one flyout": every button's command
+    // is reachable from an action (lane_041); the developer ones are in the Text panel.
     for t in tools::TOOLS.iter().filter(|t| t.group != tools::DEV_GROUP) {
-        let n = tool_strip::GROUPS.iter().flat_map(|g| g.entries.iter()).filter(|e| **e == tool_strip::Entry::Ecad(t.id)).count();
-        assert_eq!(n, 1, "{} ({})", t.label, t.id);
+        assert!(tools::covered(t), "{} ({})", t.label, t.id);
     }
     let mut h = shell_harness();
     // The Project panel header: file actions and popouts in the project menu.
@@ -291,8 +296,8 @@ fn nothing_from_the_old_panels_is_lost() {
     for g in tool_strip::GROUPS {
         h.get_by_label(g.label).hover();
         h.run_steps(2);
-        for e in g.entries {
-            assert!(h.query_by_label(e.label()).is_some(), "{} lists {}", g.label, e.label());
+        for a in g.tools() {
+            assert!(h.query_by_label(a.label).is_some(), "{} lists {}", g.label, a.label);
         }
     }
 }
