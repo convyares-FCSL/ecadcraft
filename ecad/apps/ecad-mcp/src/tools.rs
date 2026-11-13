@@ -4,10 +4,31 @@ use ecad_cadcraft::debug::tx_kind;
 use ecad_model::{Author, derive};
 use serde_json::{Map, Value, json};
 
-use crate::{MAX_TRANSACTIONS_PER_CALL, State, author_text, tx_summary};
+use cadcraft_engine::Session;
+use ecad_cadcraft::ProjectHandle;
+
+use crate::gate::{self, Call, tx_summary};
+use crate::{MAX_TRANSACTIONS_PER_CALL, author_text};
 
 /// Names of the tools this module answers.
-pub const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save"];
+pub const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
+
+/// Said by `screenshot` when no ECAD window is connected.
+pub const NO_WINDOW: &str = "No ECAD window is connected; use render.";
+
+/// Where an ECAD tool runs: the session and project, the call's write gate and the agent's name.
+pub struct Host<'a> {
+    pub session: &'a mut Session,
+    pub project: &'a ProjectHandle,
+    pub call: Call<'a>,
+    pub agent: &'a str,
+}
+
+/// Whether the ECAD tool `name` may change the project (the bridge holds it while the person is
+/// busy).
+pub fn is_write_tool(name: &str) -> bool {
+    name == "save"
+}
 
 /// Default and largest `limit` of the list tools.
 const DEFAULT_LIMIT: u64 = 500;
@@ -20,15 +41,16 @@ pub fn is_ecad_tool(name: &str) -> bool {
 }
 
 /// What the server says about itself at `initialize`.
-pub fn instructions(writes: bool, agent: &str) -> String {
+pub fn instructions(writes: bool, agent: &str, live: bool) -> String {
     let mode = if writes {
         "Writes are ON: ECAD commands through `execute` change the project, and `save` writes it to its file."
     } else {
         "Writes are OFF: the project can be read but not changed or saved (the server was started without --write, \
          or the project opened read-only)."
     };
+    let where_ = if live { " ECAD may be headless (no window) or live (the person watches). Call ecad_connection to know which." } else { "" };
     format!(
-        "ECAD electrical design project (headless; CADCraft drawing engine). Read it with ecad_project (pages, \
+        "ECAD electrical design project (headless; CADCraft drawing engine).{where_} Read it with ecad_project (pages, \
          components, terminals, conductors, cables, nets), ecad_history (transactions and their authors) and \
          ecad_inspect, and look at the active page with render, query_entities and inspect_drawing. Change it only with \
          `execute` and an ECAD command (list_commands shows them with their parameters: wire, place, \
@@ -52,14 +74,14 @@ pub fn execute_description(writes: bool) -> String {
     )
 }
 
-/// The ECAD tool definitions.
-pub fn definitions(writes: bool) -> Vec<Value> {
+/// The ECAD tool definitions (`live`: a `--connect` server, which also lists `screenshot`).
+pub fn definitions(writes: bool, live: bool) -> Vec<Value> {
     let save = if writes {
         "Save the project to its .ecad file (QSAVE). Save As, open, new and close stay with the person who started the server."
     } else {
         "Save the project to its .ecad file. Refused now: writes are off (start the server with --write)."
     };
-    vec![
+    let mut v = vec![
         json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`terminals`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
             "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_history", "description": "The project's transactions in order: seq, id, label, kind (edit, undo of #n, redo of #n), author (`user` or `agent <name>`), time and op count. Page with offset and limit (default: the last 100).",
@@ -67,14 +89,23 @@ pub fn definitions(writes: bool) -> Vec<Value> {
         json!({"name": "ecad_inspect", "description": "ecadinspect's read-only JSON snapshot of the project (live, or at transaction `seq`).",
             "inputSchema": {"type": "object", "properties": {"seq": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "save", "description": save, "inputSchema": {"type": "object", "properties": {}}}),
-    ]
+        json!({"name": "ecad_connection", "description": "Where this server's calls go: `mode` headless (no window) or bridged (the ECAD window, the person watches), the port, the window's project and whether it lets this agent write (`app.writes`, `app.why`), the agent name, the session id and whether this session is the window's writer.",
+            "inputSchema": {"type": "object", "properties": {}}}),
+    ];
+    if live {
+        // A `--connect` server lists it in both modes, so its tool list never changes with the mode.
+        v.push(json!({"name": "screenshot", "description": "A PNG of the ECAD window (live mode only; headless, use render).", "inputSchema": {"type": "object", "properties": {}}}));
+    }
+    v
 }
 
-fn text(v: &Value) -> Value {
+/// A JSON value as a text tool result.
+pub fn text(v: &Value) -> Value {
     json!({"content": [{"type": "text", "text": serde_json::to_string_pretty(v).unwrap_or_default()}]})
 }
 
-fn err_text(e: &str) -> Value {
+/// An `isError` tool result.
+pub fn err_text(e: &str) -> Value {
     json!({"content": [{"type": "text", "text": e}], "isError": true})
 }
 
@@ -102,7 +133,7 @@ fn int(o: &Map<String, Value>, k: &str) -> Option<u64> {
 
 /// Run an ECAD tool. `Err` is a protocol error (invalid arguments); a failing tool is an
 /// `isError` result.
-pub fn call(st: &mut State, name: &str, args: &Value) -> Result<Value, String> {
+pub fn call(st: &mut Host<'_>, name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "ecad_project" => {
             let o = object(name, args, &["limit"])?;
@@ -122,7 +153,7 @@ pub fn call(st: &mut State, name: &str, args: &Value) -> Result<Value, String> {
         "ecad_inspect" => {
             let o = object(name, args, &["seq"])?;
             let params = int(&o, "seq").map_or_else(|| json!({}), |s| json!({ "seq": s }));
-            Ok(match st.session().execute("ecadinspect", &params) {
+            Ok(match st.session.execute("ecadinspect", &params) {
                 Ok(v) => text(&v),
                 Err(e) => err_text(&e.to_string()),
             })
@@ -144,12 +175,11 @@ pub fn call(st: &mut State, name: &str, args: &Value) -> Result<Value, String> {
     }
 }
 
-fn save(st: &mut State) -> Result<Value, String> {
-    st.may_write()?;
-    st.focus_project()?;
-    st.session().execute("qsave", &json!({})).map_err(|e| e.to_string())?;
-    let p = st.project.clone();
-    p.read(st.session(), |p, _| {
+fn save(st: &mut Host<'_>) -> Result<Value, String> {
+    gate::may_write(st.session, st.project, &st.call)?;
+    gate::focus_project(st.session)?;
+    st.session.execute("qsave", &json!({})).map_err(|e| e.to_string())?;
+    st.project.read(st.session, |p, _| {
         json!({
             "saved": true,
             "path": p.file_status().path,
@@ -166,12 +196,11 @@ fn listed(items: impl Iterator<Item = Value>, count: usize, limit: u64) -> Value
     json!({ "count": count, "truncated": items.len() < count, "items": items })
 }
 
-fn project(st: &mut State, limit: u64) -> Result<Value, String> {
-    let write = st.write;
-    let read_only = st.read_only()?;
-    let agent = st.agent.clone();
-    let p = st.project.clone();
-    p.read(st.session(), |p, _| {
+fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
+    let write = st.call.write;
+    let read_only = gate::read_only(st.session, st.project)?;
+    let agent = st.agent.to_string();
+    st.project.read(st.session, |p, _| {
         let doc = p.ledger.document();
         let pages = doc.page_order.iter().map(|id| {
             json!({
@@ -224,9 +253,8 @@ fn project(st: &mut State, limit: u64) -> Result<Value, String> {
     })
 }
 
-fn history(st: &mut State, offset: Option<u64>, limit: Option<u64>) -> Result<Value, String> {
-    let p = st.project.clone();
-    p.read(st.session(), |p, _| {
+fn history(st: &mut Host<'_>, offset: Option<u64>, limit: Option<u64>) -> Result<Value, String> {
+    st.project.read(st.session, |p, _| {
         let log = p.ledger.log();
         let n = log.len();
         let limit = usize::try_from(limit.unwrap_or(DEFAULT_HISTORY).min(MAX_HISTORY)).unwrap_or(usize::MAX);
