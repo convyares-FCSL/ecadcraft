@@ -183,6 +183,30 @@ fn patching_a_key_moves_it_without_a_rebuild() {
     assert_eq!(v.builds, builds);
 }
 
+/// Review of PR #73: with no sort column, a patch follows the source's new order, also for rows
+/// that moved without being touched (a renamed device re-sorted in its list).
+#[test]
+fn patching_under_the_source_order_follows_a_reordered_source() {
+    let mut src = demo();
+    let mut v = ViewModel::default();
+    v.rebuild(&src);
+    assert_eq!(tags(&v, &src), ["-K10", "-K2", "-Q1", "-K1", "-S3"]);
+    // -S3 renamed -A1: the source lists it first; -Q1 also moves behind -K1 untouched.
+    src.set(5, 0, "-A1");
+    src.keys = vec![5, 1, 2, 4, 3];
+    let builds = v.builds;
+    let changed = v.patch(&src, &[5]);
+    assert_eq!(changed, [(5, TAG)]);
+    assert_eq!(tags(&v, &src), ["-A1", "-K10", "-K2", "-K1", "-Q1"], "the source's order");
+    assert_eq!(v.builds, builds, "no rebuild");
+    // A row added in the middle of the source.
+    src.keys = vec![5, 1, 6, 2, 4, 3];
+    src.rows.insert(6, ["-B2".into(), "New".into(), "2".into(), "coil".into()]);
+    v.patch(&src, &[6]);
+    assert_eq!(tags(&v, &src), ["-A1", "-K10", "-B2", "-K2", "-K1", "-Q1"]);
+    assert_eq!(v.item_count(), 6);
+}
+
 /// Criterion 1: the tint lasts 1.2 s and is only on the changed cells.
 #[test]
 fn the_tint_lasts_1_2_s_on_changed_cells_only() {

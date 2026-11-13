@@ -133,6 +133,8 @@ pub struct ViewModel<K> {
     pub patches: u64,
     /// Visible rows laid out again (filter, collapse, patch).
     pub layouts: u64,
+    /// Rows that pass the filter (group headings left out, folded rows counted), kept at layout.
+    items: usize,
 }
 
 impl<K> Default for ViewModel<K> {
@@ -149,6 +151,7 @@ impl<K> Default for ViewModel<K> {
             builds: 0,
             patches: 0,
             layouts: 0,
+            items: 0,
         }
     }
 }
@@ -159,7 +162,13 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
         &self.rows
     }
 
-    /// The keys shown, in order (group headings left out).
+    /// How many rows pass the filter (kept at layout, not counted per frame).
+    pub fn item_count(&self) -> usize {
+        self.items
+    }
+
+    /// The keys shown, in order (group headings left out). Built on each call: for a click or a
+    /// key, not for every frame.
     pub fn visible_keys(&self) -> Vec<K> {
         self.rows
             .iter()
@@ -322,29 +331,38 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
     }
 
     /// Re-read `keys` from `src` and move each to its sorted place (added, changed, removed): no
-    /// other row is read. Returns the cells whose look changed, for the change tint.
+    /// other row's cells are read. Every row's place in the source's order is refreshed in one pass
+    /// over [`TableSource::keys`] (no cell reads), so a source that reordered (a renamed device
+    /// re-sorted in its list) keeps its order with no sort column too. Returns the cells whose look
+    /// changed, for the change tint.
     pub fn patch<S: TableSource<Key = K>>(&mut self, src: &S, keys: &[K]) -> Vec<(K, ColumnId)> {
+        let touched: BTreeSet<K> = keys.iter().copied().collect();
+        let mut old: HashMap<K, Entry<K>> = HashMap::with_capacity(touched.len());
+        for k in &touched {
+            if let Some(e) = self.entries.remove(k) {
+                old.insert(*k, e);
+            }
+        }
+        if !old.is_empty() {
+            self.order.retain(|x| !touched.contains(x));
+        }
+        // One pass over the source's order: each row's place in it now.
+        let pos: HashMap<K, usize> = src.keys().iter().enumerate().map(|(i, k)| (*k, i)).collect();
+        let mut moved = false;
+        for e in self.entries.values_mut() {
+            if let Some(i) = pos.get(&e.key)
+                && e.idx != *i
+            {
+                e.idx = *i;
+                moved = true;
+            }
+        }
         let mut changed = Vec::new();
-        let mut seen = BTreeSet::new();
-        for k in keys {
-            if !seen.insert(*k) {
-                continue;
-            }
-            let old = self.entries.remove(k);
-            if let Some(old) = &old {
-                // Its place under the old values, found by binary search (falls back to a scan).
-                let at = self.order.binary_search_by(|x| if x == k { Ordering::Equal } else { self.cmp_with(x, old) }).ok();
-                if let Some(i) = at.filter(|i| self.order.get(*i) == Some(k)).or_else(|| self.order.iter().position(|x| x == k)) {
-                    self.order.remove(i);
-                }
-            }
+        for k in &touched {
             self.patches += 1;
-            if !src.contains(*k) {
-                continue;
-            }
-            let idx = src.keys().iter().position(|x| x == k).unwrap_or(usize::MAX);
+            let Some(idx) = pos.get(k).copied().filter(|_| src.contains(*k)) else { continue };
             let new = self.entry(src, *k, idx);
-            if let Some(old) = &old {
+            if let Some(old) = old.get(k) {
                 let cols = src.columns();
                 for (i, (a, b)) in old.prints.iter().zip(&new.prints).enumerate() {
                     if a != b
@@ -354,17 +372,19 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
                     }
                 }
             }
-            let at = self.order.partition_point(|x| self.entries.get(x).is_some_and(|e| self.cmp_entries(e, &new) == Ordering::Less));
-            self.order.insert(at, *k);
+            if moved {
+                self.order.push(*k);
+            } else {
+                let at = self.order.partition_point(|x| self.entries.get(x).is_some_and(|e| self.cmp_entries(e, &new) == Ordering::Less));
+                self.order.insert(at, *k);
+            }
             self.entries.insert(*k, new);
+        }
+        if moved {
+            self.resort();
         }
         self.layout(src);
         changed
-    }
-
-    /// How `x` (a held row) compares with the entry `e` (not held any more).
-    fn cmp_with(&self, x: &K, e: &Entry<K>) -> Ordering {
-        self.entries.get(x).map_or(Ordering::Less, |xe| self.cmp_entries(xe, e))
     }
 
     fn passes<S: TableSource<Key = K>>(&self, src: &S, e: &Entry<K>) -> bool {
@@ -384,6 +404,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
         let grouped = self.group_by.is_some();
         let mut current: Option<(usize, String)> = None;
         let mut count = 0usize;
+        let mut items = 0usize;
         fn close<K>(rows: &mut [Row<K>], current: &Option<(usize, String)>, count: usize) {
             if let Some((at, _)) = current
                 && let Some(Row::Group { count: c, .. }) = rows.get_mut(*at)
@@ -396,6 +417,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
             if !self.passes(src, e) {
                 continue;
             }
+            items += 1;
             if grouped {
                 if current.as_ref().is_none_or(|(_, g)| *g != e.group) {
                     close(&mut rows, &current, count);
@@ -413,6 +435,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
         }
         close(&mut rows, &current, count);
         self.rows = rows;
+        self.items = items;
         self.layouts += 1;
     }
 }

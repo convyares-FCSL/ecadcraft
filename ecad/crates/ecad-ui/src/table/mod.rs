@@ -213,7 +213,8 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                 i.key_pressed(Key::Escape),
             )
         });
-        let shown = self.view.visible_keys();
+        // The shown keys are listed only when a key needs them, never every frame.
+        let shown = if up || down || all { self.view.visible_keys() } else { Vec::new() };
         if up || down {
             self.refusal = None;
             if let Some(k) = self.selection.step(&shown, if up { -1 } else { 1 }, shift) {
@@ -290,7 +291,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                     let keys = self.view.visible_keys();
                     out.push(TableEvent::Export(export::csv(src, src.columns(), &keys)));
                 }
-                let n = self.view.visible_keys().len();
+                let n = self.view.item_count();
                 let g = cells::fitted(ui, &format!("{n} row{}", if n == 1 { "" } else { "s" }), ui_type::SMALL, color(GRAPHITE.text_3), 200.0);
                 let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
                 ui.painter().galley(r.min, g, color(GRAPHITE.text_3));
@@ -405,8 +406,8 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                 });
             }
         });
-        let rows = self.view.rows().to_vec();
-        let shown = self.view.visible_keys();
+        let rows = self.view.rows();
+        let grouped = self.view.group_by().is_some();
         let mut drawn = 0usize;
         let mut clicked: Option<(K, Option<ColumnId>, bool, Modifiers)> = None;
         let mut toggle: Option<String> = None;
@@ -418,11 +419,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
             // Row hit areas span every column: registered under the body's clip, not the cell's.
             let body_clip = body.ui_mut().clip_rect();
             let total: f32 = widths.iter().sum();
-            let heights = rows.iter().map(|r| match r {
-                Row::Group { .. } => size::ROW_GROUP,
-                Row::Item(_) => size::ROW_TABLE,
-            });
-            body.heterogeneous_rows(heights, |mut row| {
+            let draw_row = |mut row: egui_extras::TableRow<'_, '_>| {
                 drawn += 1;
                 let Some(r) = rows.get(row.index()) else { return };
                 match r {
@@ -471,8 +468,8 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                                     // own clicks; anywhere else selects the row.
                                     let full = Rect::from_min_size(rect.min, vec2(total, rect.height()));
                                     let resp = interact_unclipped(ui, full, body_clip, self.id.with(("row", k)));
-                                    let label = src.row_label(k);
-                                    resp.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &label));
+                                    // The label is made only when accessibility asks for it.
+                                    resp.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, src.row_label(k)));
                                     row_resp = Some(resp);
                                 }
                                 let hovered = row_resp.as_ref().is_some_and(Response::contains_pointer);
@@ -540,7 +537,18 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                         }
                     }
                 }
-            });
+            };
+            // Without groups every row is 30 px: egui_extras then visits only the visible rows.
+            // With groups the heights differ, and it sums one height per row (no cell is read).
+            if grouped {
+                let heights = rows.iter().map(|r| match r {
+                    Row::Group { .. } => size::ROW_GROUP,
+                    Row::Item(_) => size::ROW_TABLE,
+                });
+                body.heterogeneous_rows(heights, draw_row);
+            } else {
+                body.rows(size::ROW_TABLE, rows.len(), draw_row);
+            }
         });
         self.rows_drawn = drawn;
 
@@ -585,6 +593,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                     out.push(TableEvent::Open(k));
                 }
             } else {
+                let shown = self.view.visible_keys();
                 if m.shift {
                     self.selection.extend_to(k, &shown);
                 } else if m.command {
