@@ -361,6 +361,7 @@ impl Trial {
             }
             self.cad.ui_embedded(ui);
         });
+        crate::canvas::paint(self, ui, page_rect);
         crate::agent::last_write::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
         // Brief 041: right-click opens the wheel (no tool running); then the intent line.

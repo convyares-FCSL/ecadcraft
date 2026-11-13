@@ -63,6 +63,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     for a in actions {
         match a {
             developer::Action::Run(line) if is_cad_chrome(&line) => t.cad_chrome_command(&line),
+            developer::Action::Run(line) if crate::canvas::is_sheet_command(&line) => t.sheet_command(&line),
             a => t.developer_action(a),
         }
     }

@@ -1,6 +1,6 @@
 # Brief 040: The canvas (U4a)
 
-Status: Draft (U0 designer, 2026-11-13), for the overseer and the owner.
+Status: Approved (Carl, 2026-11-13).
 Branch: `feature/ui-canvas`, from `origin/dev` **after the redraw fix has merged** (below).
 Designer: done (`docs/design/ui-architecture.md` §1.5, §4, §11; the look is spec §4 "Canvas
 colours", "Type", "Line weights") · Size: L, in five steps
@@ -53,6 +53,7 @@ This lane **owns** the files marked ●; ○ are shared, with the hunk named.
 | ○ `ecad/apps/ecad-trial/src/lib.rs` (one `pub mod canvas;` line; `main.rs` start-up: one `register_faces` call beside `ecad_cadcraft::install()`) | `fix/ui-followups` edits `main.rs`'s window options and timing; this lane's line is not in those hunks |
 | ● `ecad/crates/ecad-cadcraft/src/interact/mod.rs` (`overlay_marks` body only) | Mark colours and sizes from `ecad-tokens` (`sheet`, `marker`) by the sheet in use |
 | ● `ecad/crates/ecad-cadcraft/src/look.rs`, `wires.rs` (drawing of conductor and core colours) | Two-colour wires and cores (step 3) |
+| ○ `ecad/crates/ecad-cadcraft/src/project.rs` (agreed shared hunk, overseer 2026-11-13: wire colours are ink, so they belong in the projection) | `HandleMap`: the dash and coloured-route entries; `project_page_framed`: one `wires::colour_routes` call after the items |
 | ● `ecad/crates/ecad-cadcraft/src/text_style.rs`, `defaults/text.rs` (labels and the font default) | "cap height" in labels; `text.font` default Barlow Semi Condensed |
 | ● `ecad/crates/ecad-cadcraft/src/defaults/print.rs` | `print.colour` `mono` \| `colour` (owner answer 1) |
 | ○ `ecad/apps/ecad-trial/src/shell/state.rs` (one field) | `sheet: Sheet { Paper, Dark }`, a viewing preference kept with the shell state, not in the project; switched by the `ui.sheet` Text panel command (042's Settings adds a control for it later) |

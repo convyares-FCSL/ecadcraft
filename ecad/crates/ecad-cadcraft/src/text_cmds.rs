@@ -22,7 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("textstyle", "Text Styles", run_textstyle)
             .params(
-                "{font?: string|null, kind?: word, height?: number|null (mm, 0.5-10), weight?: \"regular\"|\"bold\"|null, \
+                "{font?: string|null, kind?: word, height?: number|null (cap height, mm, 0.5-10), weight?: \"regular\"|\"bold\"|null, \
 show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields are one transaction; null: back to the default)",
             )
             .noundo(),
@@ -247,7 +247,9 @@ fn run_textstyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     })
 }
 
-/// The style table as `textstyle` returns it: `{font, drawn_with, status, kinds: [...], changed}`.
+/// The style table as `textstyle` returns it: `{font, drawn_with, status, height_is, kinds: [...],
+/// changed}`. Heights are cap heights (brief 040, owner answer 9): CADCraft draws a text's height
+/// as the height of its capitals, so `height` 2.5 is 2.5 mm from baseline to the top of a `K`.
 pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
     let fonts = Fonts::resolve(doc);
     let kinds: Vec<Value> = TextKind::ALL
@@ -277,6 +279,7 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
         "font": fonts.wanted,
         "drawn_with": fonts.drawn_with,
         "status": fonts.status(),
+        "height_is": "cap height",
         "kinds": kinds,
         "changed": changed,
     })

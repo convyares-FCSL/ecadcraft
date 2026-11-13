@@ -600,12 +600,13 @@ fn loose_ends_are_neutral_not_red_and_marks_keep_token_sizes() {
     let marks = h.s.owner_overlay();
     for m in &marks {
         match m.shape {
-            MarkShape::Ring => assert_eq!((m.color.0, m.color.1, m.color.2, m.size), (0, 255, 255, 8.0)),
-            MarkShape::Dot => assert_eq!((m.color.0, m.color.1, m.color.2, m.size), (0, 255, 0, 4.0)),
+            MarkShape::Ring => assert_eq!((m.color.0, m.color.1, m.color.2, m.size), (0x0a, 0x8f, 0x94, 8.0)),
+            // Brief 040: the token colours and sizes (paper sheet).
+            MarkShape::Dot => assert_eq!((m.color.0, m.color.1, m.color.2, m.size), (0x17, 0xa0, 0x5b, 5.0)),
             MarkShape::Square => {
                 assert_ne!((m.color.0, m.color.1, m.color.2), (255, 0, 0), "loose ends must not be red (Q3)");
                 assert!(m.color.0.abs_diff(m.color.1) < 32 && m.color.1.abs_diff(m.color.2) < 32, "neutral: {m:?}");
-                assert_eq!(m.size, 6.0);
+                assert_eq!(m.size, 7.0);
             }
         }
     }

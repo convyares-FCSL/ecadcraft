@@ -90,7 +90,8 @@ mod hover_and_marks {
         fn walk(s: &egui::Shape, out: &mut Vec<Pos2>) {
             match s {
                 egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
-                egui::Shape::Circle(c) if c.stroke.color == egui::Color32::from_rgb(0, 255, 255) => out.push(c.center),
+                // Brief 040: the connection point token colour (was cyan).
+                egui::Shape::Circle(c) if c.stroke.color == egui::Color32::from_rgb(0x0a, 0x8f, 0x94) => out.push(c.center),
                 _ => {}
             }
         }

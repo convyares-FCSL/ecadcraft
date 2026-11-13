@@ -100,6 +100,8 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 /// Install the ECAD commands into the engine's registry. Call once, before the engine's command
 /// list is first used. Returns `false` if it was too late or already done.
 pub fn install() -> bool {
+    // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
+    text_style::register_sheet_font();
     cadcraft_engine::cmd::set_extension_commands(commands::specs)
 }
 

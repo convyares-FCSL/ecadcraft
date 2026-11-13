@@ -130,6 +130,8 @@ pub struct ShellState {
     pub text_panel: bool,
     /// The developer switch: CADCraft's own interface inside the main view.
     pub cad_chrome: bool,
+    /// Brief 040: the sheet the page is drawn on (`ui.sheet`), per person.
+    pub sheet: crate::canvas::Sheet,
 }
 
 impl Default for ShellState {
@@ -142,6 +144,7 @@ impl Default for ShellState {
             companion: None,
             text_panel: false,
             cad_chrome: false,
+            sheet: crate::canvas::Sheet::Paper,
         }
     }
 }

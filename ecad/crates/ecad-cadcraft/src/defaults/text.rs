@@ -12,7 +12,8 @@ const SP: &[Level] = &[Level::Standard, Level::Project];
 const SPG: &[Level] = &[Level::Standard, Level::Project, Level::Page];
 /// Standard, project, page, object (device, symbol, conductor).
 const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Object];
-/// The heights a project may set, millimetres.
+/// The heights a project may set: cap heights (baseline to the top of a capital), millimetres
+/// (brief 040, owner answer 9; CADCraft draws a text height as its cap height).
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
 const WEIGHT: Kind = Kind::Choice(&["regular", "bold"]);
 const SHOW: Kind = Kind::Choice(&["on", "off"]);
@@ -30,7 +31,7 @@ const fn regular(key: &'static str, label: &'static str) -> Entry {
 /// A kind's own font (owner, 2026-11-12): its built-in is the project font's, and a kind with no
 /// value of its own uses the project font (`text.font`).
 const fn font(key: &'static str, label: &'static str) -> Entry {
-    entry(key, label, Kind::Text { max_chars: 64 }, Value::Text("BIZ UDPGothic"), SP)
+    entry(key, label, Kind::Text { max_chars: 64 }, Value::Text(SHEET_FONT), SP)
 }
 const fn bold(key: &'static str, label: &'static str) -> Entry {
     entry(key, label, WEIGHT, Value::Choice("bold"), SP)
@@ -46,20 +47,28 @@ fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
 // --- Font ------------------------------------------------------------------------------------
 
 /// The project font family (§2.1). Missing fonts fall back (§2.2); the stored value never changes.
-pub static FONT: Entry = entry("text.font", "Font", Kind::Text { max_chars: 64 }, Value::Text("BIZ UDPGothic"), SP);
+pub static FONT: Entry = entry("text.font", "Font", Kind::Text { max_chars: 64 }, Value::Text(SHEET_FONT), SP);
+
+/// The sheet font (brief 040, spec §4 "Type"): Barlow Semi Condensed, Regular and SemiBold, which
+/// the app registers with CADCraft's font table at start (US3). A project with its own
+/// `text.font` keeps it.
+pub const SHEET_FONT: &str = ecad_tokens::sheet_font::FAMILY;
+/// 031's built-in font, now the first fallback where the sheet font is not registered (a build
+/// or a test without it): drawn with when found, else the stroke font, as 031 did.
+pub const FALLBACK_FONT: &str = "BIZ UDPGothic";
 
 // --- Heights (§3.2) --------------------------------------------------------------------------
 
-pub static TAG_HEIGHT: Entry = height("text.tag.height", "Tag height", 2.5);
-pub static POINT_LABEL_HEIGHT: Entry = height("text.point_label.height", "Connection point label height", 1.5);
-pub static DESCRIPTION_HEIGHT: Entry = height("text.description.height", "Description height", 1.6);
-pub static PART_NUMBER_HEIGHT: Entry = height("text.part_number.height", "Part number height", 1.6);
-pub static CONTINUATION_NAME_HEIGHT: Entry = height("text.continuation_name.height", "Continuation name height", 2.0);
-pub static REFERENCE_HEIGHT: Entry = height("text.reference.height", "Reference height", 2.0);
+pub static TAG_HEIGHT: Entry = height("text.tag.height", "Tag cap height", 2.5);
+pub static POINT_LABEL_HEIGHT: Entry = height("text.point_label.height", "Connection point label cap height", 1.5);
+pub static DESCRIPTION_HEIGHT: Entry = height("text.description.height", "Description cap height", 1.6);
+pub static PART_NUMBER_HEIGHT: Entry = height("text.part_number.height", "Part number cap height", 1.6);
+pub static CONTINUATION_NAME_HEIGHT: Entry = height("text.continuation_name.height", "Continuation name cap height", 2.0);
+pub static REFERENCE_HEIGHT: Entry = height("text.reference.height", "Reference cap height", 2.0);
 /// Stored in `settings.wiring.label_height` (§3.4), never as a property.
 pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     key: "text.wire_label.height",
-    label: "Wire label height",
+    label: "Wire label cap height",
     group: GROUP,
     brief: BRIEF,
     kind: HEIGHT,
@@ -67,20 +76,20 @@ pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     levels: SP,
     project: ProjectSource::Settings(wire_label_height),
 };
-pub static CABLE_TEXT_HEIGHT: Entry = height("text.cable_text.height", "Cable text height", 1.6);
-pub static LOCATION_HEIGHT: Entry = height("text.location.height", "Location label height", 1.6);
-pub static TITLE_VALUE_HEIGHT: Entry = height("text.title_value.height", "Title block value height", 2.5);
-pub static TITLE_CAPTION_HEIGHT: Entry = height("text.title_caption.height", "Title block caption height", 1.8);
-pub static TITLE_MAIN_HEIGHT: Entry = height("text.title_main.height", "Title height", 3.5);
-pub static TITLE_PAGE_HEIGHT: Entry = height("text.title_page.height", "Title block page number height", 7.0);
-pub static TITLE_REV_HEIGHT: Entry = height("text.title_rev.height", "Title block revision height", 5.0);
-pub static GRID_HEIGHT: Entry = height("text.grid.height", "Grid label height", 3.0);
-pub static TABLE_HEIGHT: Entry = height("text.table.height", "Table text height", 2.5);
-pub static TABLE_HEADER_HEIGHT: Entry = height("text.table_header.height", "Table header height", 2.5);
-pub static TABLE_HEADING_HEIGHT: Entry = height("text.table_heading.height", "Table heading height", 3.5);
-pub static COVER_HEIGHT: Entry = height("text.cover.height", "Cover title height", 10.0);
+pub static CABLE_TEXT_HEIGHT: Entry = height("text.cable_text.height", "Cable text cap height", 1.6);
+pub static LOCATION_HEIGHT: Entry = height("text.location.height", "Location label cap height", 1.6);
+pub static TITLE_VALUE_HEIGHT: Entry = height("text.title_value.height", "Title block value cap height", 2.5);
+pub static TITLE_CAPTION_HEIGHT: Entry = height("text.title_caption.height", "Title block caption cap height", 1.8);
+pub static TITLE_MAIN_HEIGHT: Entry = height("text.title_main.height", "Title cap height", 3.5);
+pub static TITLE_PAGE_HEIGHT: Entry = height("text.title_page.height", "Title block page number cap height", 7.0);
+pub static TITLE_REV_HEIGHT: Entry = height("text.title_rev.height", "Title block revision cap height", 5.0);
+pub static GRID_HEIGHT: Entry = height("text.grid.height", "Grid label cap height", 3.0);
+pub static TABLE_HEIGHT: Entry = height("text.table.height", "Table text cap height", 2.5);
+pub static TABLE_HEADER_HEIGHT: Entry = height("text.table_header.height", "Table header cap height", 2.5);
+pub static TABLE_HEADING_HEIGHT: Entry = height("text.table_heading.height", "Table heading cap height", 3.5);
+pub static COVER_HEIGHT: Entry = height("text.cover.height", "Cover title cap height", 10.0);
 /// The height a free text gets when its command gives none (a typed height is always the user's).
-pub static FREE_HEIGHT: Entry = height("text.free.height", "Free text height", 2.5);
+pub static FREE_HEIGHT: Entry = height("text.free.height", "Free text cap height", 2.5);
 
 // --- Weights (§3.2) --------------------------------------------------------------------------
 

@@ -258,7 +258,8 @@ fn painted_near(img: &egui::ColorImage, at: Pos2, r: f32, want: egui::Color32) -
     (-ri..=ri).any(|dx| (-ri..=ri).any(|dy| close(pixel(img, at + egui::vec2(dx as f32, dy as f32)))))
 }
 
-const MAGENTA: egui::Color32 = egui::Color32::from_rgb(255, 0, 255);
+// Brief 040: the cable meaning's token colour (was magenta).
+const MAGENTA: egui::Color32 = egui::Color32::from_rgb(0x7a, 0x3f, 0xe0);
 const GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 0);
 const RED: egui::Color32 = egui::Color32::from_rgb(255, 0, 0);
 

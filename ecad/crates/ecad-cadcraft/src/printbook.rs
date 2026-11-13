@@ -162,6 +162,20 @@ pub fn build(
 pub fn build_pending(
     doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
+    build_in(doc, pages, fan, tol, outputs, pending, false)
+}
+
+/// [`build_pending`] for a print in `colour` (owner answer 1, `print.colour`): wires print in
+/// their colours (the paper sheet's), a two-colour wire with the second colour's dashes over the
+/// first, and everything else in ink, as the spec's "Prints" column says (cable, provisional
+/// text and terminal links in ink). Without `colour` (mono) the wires are ink and their dashes
+/// are left out; the colour code is in the wire label.
+///
+/// # Errors
+/// A page that cannot be projected.
+pub fn build_in(
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool, colour: bool,
+) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
     // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
     crate::text_style::install(&mut scratch, doc);
@@ -171,7 +185,8 @@ pub fn build_pending(
     let mut x = 0.0;
     for page in pages {
         let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
-        let (d, _) = project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts)?;
+        // Brief 040: a print is on white paper: wire colours for the paper sheet.
+        let (d, map) = crate::look::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
                 scratch.layers.push(l.clone());
@@ -187,11 +202,20 @@ pub fn build_pending(
         }
         let m = Mat3::translate(Vec2::new(x, 0.0));
         for e in d.model.iter() {
+            // Brief 040: mono leaves a two-colour wire's dashes out (ink on ink).
+            if !colour && e.common.layer == crate::wires::DASH_LAYER {
+                continue;
+            }
             let mut e = (**e).clone();
             e.kind.transform(&m);
             // Design 033 §3.1: a missing value prints black in either colour mode.
             if e.common.layer == crate::generated::LAYER && e.common.color == Color::Index(crate::generated::FLAGGED_ACI) {
                 e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
+            }
+            // Colour: everything but the wire colours prints in ink. Mono: the wires print in ink.
+            let wire_colour = e.common.layer == crate::wires::DASH_LAYER || map.is_coloured(e.handle);
+            if colour != wire_colour {
+                e.common.color = Color::Index(7);
             }
             e.handle = scratch.new_handle();
             store.push(e);
@@ -317,7 +341,9 @@ pub fn print(
     if pages.is_empty() {
         return Err("No page matches.".into());
     }
-    let (scratch, sheets) = build_pending(doc, pages, fan, tol, outputs, o.pending)?;
+    // Brief 040: a headless print draws in the sheet font too (a no-op once installed).
+    crate::text_style::register_sheet_font();
+    let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.
     done.notes.extend(pending_note(doc, o.pending));

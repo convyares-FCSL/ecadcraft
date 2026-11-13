@@ -125,9 +125,9 @@ fn a_cable_is_made_by_two_clicks_from_the_ecad_tab() {
         .session
         .owner_overlay()
         .into_iter()
-        .filter(|m| m.shape == MarkShape::Dot && (m.color.0, m.color.1, m.color.2) == (0xff, 0x00, 0xff))
+        .filter(|m| m.shape == MarkShape::Dot && (m.color.0, m.color.1, m.color.2) == (0x7a, 0x3f, 0xe0))
         .count();
-    assert_eq!(dots, 3, "a magenta dot on each member");
+    assert_eq!(dots, 3, "a cable-colour dot on each member (brief 040)");
     // `u` at the command line takes cable and slash in one step.
     type_enter(&mut h, "u");
     assert_eq!(head(&mut h), before + 2);

@@ -108,3 +108,16 @@ be offered upstream to CADCraft (design 033 FU2).
 | --- | --- |
 | `crates/io/src/pdf.rs` | `marks` skips a polyline, fill, mask or point primitive whose page-point bounds miss the plot area grown by its stroke width and `CULL_MARGIN_PT` (`outside_plot_area`); infinite lines and images are unchanged. Each page of a `pages` plot builds the whole model, so before this every page's content stream held every page's geometry and the file grew with pages squared. The page clips to the same area, so what shows is unchanged |
 | `crates/io/src/tests.rs` | tests: a page of a `pages` plot holds only its window's paths; 20 pages are at most 2.2 times 10; a culled page's content stream equals that of its sheet plotted alone; a wide stroke whose edge reaches the window and text running into it are kept, text wholly outside is culled; a plot without a window draws everything |
+
+## Code patches to upstream crates: the canvas (U4a, brief 040, 2026-11-13)
+
+Generic, nothing ECAD-specific; offered upstream with US1 and US2 (design `ui-architecture.md`
+§1.6). Defaults are unchanged: without `register_faces` the font table is as before, and
+`Embedding::default()` still draws the viewport label.
+
+| File | Seam | What changes |
+| --- | --- | --- |
+| `crates/fonts/src/ttf.rs` | US3 (embedder fonts, design `ui-architecture.md` §4) | `EmbeddedFace { family, style, bytes }` and `register_faces(&'static [EmbeddedFace]) -> Result<(), FacesAlreadyRegistered>`, called once at start-up: the faces are listed like the embedded craft-fonts fonts (in place of an installed file of the same stem, never of a font in the user's own folders, kept by a rescan) and found by family name, the regular face by the family alone and the others by family and style (`Db::embedder_face`); a second call is refused and the first faces stay; registering bumps the font generation. `embedder_faces()` lists them |
+| `crates/fonts/tests/embedder_faces.rs` | tests | **new file** (US3): unregistered, nothing is listed or found; a registered face is found by family and by family and style; a second call is refused, not a panic, and the first faces stay; a rescan keeps them |
+| `crates/ui-egui/src/canvas.rs` | US1 (one line) | the viewport label (`+ \| Top \| 2D Wireframe`) is drawn only with `Embedding::chrome`: an embedder without CADCraft's chrome labels its own view |
+| `crates/ui-egui/tests/embedded_view.rs` | tests | `the_viewport_label_is_drawn_only_with_cadcrafts_chrome`: drawn with the default and with chrome on, not without |

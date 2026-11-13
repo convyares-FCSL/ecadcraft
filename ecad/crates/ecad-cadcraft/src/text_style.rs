@@ -466,6 +466,24 @@ fn default_family() -> &'static str {
     }
 }
 
+/// The sheet font's faces as given to CADCraft's font table.
+static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
+    cadcraft_engine::fonts::ttf::EmbeddedFace { family: ecad_tokens::sheet_font::FAMILY, style: "Regular", bytes: ecad_tokens::sheet_font::REGULAR },
+    cadcraft_engine::fonts::ttf::EmbeddedFace {
+        family: ecad_tokens::sheet_font::FAMILY,
+        style: "SemiBold",
+        bytes: ecad_tokens::sheet_font::SEMIBOLD,
+    },
+];
+
+/// Give CADCraft's font table the sheet font, Barlow Semi Condensed Regular and SemiBold (brief
+/// 040, upstream seam US3), so every page ECAD draws or prints, in the window or headless (MCP,
+/// Print Book, release), uses it. Called by [`crate::install`] and before a print; idempotent.
+/// Whether the faces are registered (the same faces, or another embedder's, given first).
+pub fn register_sheet_font() -> bool {
+    cadcraft_engine::fonts::ttf::register_faces(&SHEET_FACES).is_ok() || !cadcraft_engine::fonts::ttf::embedder_faces().is_empty()
+}
+
 /// The fonts a project's texts are drawn with on this machine (design 031 §2.2).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fonts {
@@ -497,17 +515,13 @@ impl Fonts {
     /// Resolve the family `wanted` on this machine, with the fallbacks of §2.2.
     pub fn for_family(doc: &Document, wanted: String) -> Fonts {
         let found = |name: &str| cadcraft_engine::fonts::ttf::find(name).is_some();
-        let family = if found(&wanted) {
-            Some(wanted.clone())
-        } else if found(default_family()) {
-            Some(default_family().to_string())
-        } else {
-            None
-        };
+        // Brief 040: the wanted family, the sheet font (registered by the app), then 031's
+        // built-in font, then the stroke font.
+        let family = [wanted.as_str(), default_family(), d::FALLBACK_FONT].into_iter().find(|f| found(f)).map(str::to_string);
         match family {
             Some(f) => {
-                let bold_name = format!("{f} Bold");
-                let bold = if found(&bold_name) { bold_name } else { f.clone() };
+                // Bold is the family's Bold face, else its SemiBold (the sheet font's 600).
+                let bold = [format!("{f} Bold"), format!("{f} SemiBold")].into_iter().find(|n| found(n)).unwrap_or_else(|| f.clone());
                 Fonts { wanted, regular: f.clone(), bold, drawn_with: f, bold_lineweight: None }
             }
             None => {

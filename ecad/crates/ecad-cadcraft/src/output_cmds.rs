@@ -29,7 +29,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
             .noundo(),
         CommandSpec::new("printbook", "Print Book", run_printbook)
-            .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"screen\", lineweights?: bool}")
+            .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
             .noundo(),
         CommandSpec::new("reports", "Reports", run_reports).params("{} (opens the Reports window)").noundo(),
     ]
@@ -279,14 +279,13 @@ pub fn print_project(
 
 fn run_printbook(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let scope = scope_param(params).map_err(err)?;
-    let mono = match params.get("colour").and_then(Value::as_str) {
-        None | Some("mono") => true,
-        Some("screen") => false,
-        Some(_) => return Err(err("`colour` is \"mono\" (black on white) or \"screen\"")),
-    };
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     let path = opt_typed(params, "path", "a file path", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    let v = with_any_page(s, |p, _| print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true))?;
+    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
+    let v = with_any_page(s, |p, _| {
+        let mono = crate::defaults::print::mono_param(p.ledger.document(), params)?;
+        print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
+    })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
         s.echo(m.to_string());
     }

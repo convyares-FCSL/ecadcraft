@@ -310,8 +310,84 @@ fn lock() -> MutexGuard<'static, Db> {
                 g.paths.insert(stem, Source::Static(f.bytes));
             }
         }
+        // ECAD-SEAM(owner): embedder fonts. Listed like the embedded craft-fonts fonts.
+        add_embedder_faces(&mut g);
     }
     g
+}
+
+// ECAD-SEAM(owner): embedder fonts.
+/// A font face an embedding application compiles into its binary and gives the font table with
+/// [`register_faces`]. It is found by family name (`Barlow Semi Condensed`, `Barlow Semi
+/// Condensed SemiBold`) exactly like an embedded craft-fonts font, and copied out only when first
+/// used.
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddedFace {
+    /// The family name, as a text style names it (`Barlow Semi Condensed`).
+    pub family: &'static str,
+    /// The style (`Regular`, `SemiBold`); the regular face is found by the family name alone.
+    pub style: &'static str,
+    /// The font file's bytes (TrueType or OpenType).
+    pub bytes: &'static [u8],
+}
+
+impl EmbeddedFace {
+    /// The key the font table lists the face under, as for a craft-fonts font:
+    /// `Barlow Semi Condensed` `SemiBold` → `barlowsemicondensed-semibold`.
+    pub fn stem(&self) -> String {
+        format!("{}-{}", self.family, self.style).chars().filter(|c| *c != ' ').flat_map(char::to_lowercase).collect()
+    }
+}
+
+/// [`register_faces`] was already called: the faces given first stay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FacesAlreadyRegistered;
+
+impl std::fmt::Display for FacesAlreadyRegistered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("embedder font faces are already registered")
+    }
+}
+
+impl std::error::Error for FacesAlreadyRegistered {}
+
+/// The faces given by [`register_faces`] (none by default).
+static EMBEDDER_FACES: OnceLock<&'static [EmbeddedFace]> = OnceLock::new();
+
+/// Give the font table faces the embedding application compiles into its binary; call it once,
+/// at start-up, before text is drawn. They are listed with the installed and craft-fonts fonts
+/// and found by family name the same way: an embedded face takes the place of an installed file
+/// with the same stem, but not of a font in the user's own folders. Without a call nothing
+/// changes. A face whose bytes are not a font is never found and never a fallback.
+///
+/// # Errors
+/// [`FacesAlreadyRegistered`] on a second call; the first call's faces stay.
+pub fn register_faces(faces: &'static [EmbeddedFace]) -> Result<(), FacesAlreadyRegistered> {
+    EMBEDDER_FACES.set(faces).map_err(|_| FacesAlreadyRegistered)?;
+    // A table already scanned (text drawn before the call) gets them now; a later scan adds them
+    // in `lock`. Text drawn before may have been drawn with another font: count a change.
+    let mut g = lock();
+    add_embedder_faces(&mut g);
+    g.resolved.clear();
+    g.fallback = Fallback::default();
+    drop(g);
+    GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
+/// The faces given by [`register_faces`] (empty until then).
+pub fn embedder_faces() -> &'static [EmbeddedFace] {
+    EMBEDDER_FACES.get().copied().unwrap_or(&[])
+}
+
+fn add_embedder_faces(g: &mut Db) {
+    for f in embedder_faces() {
+        let stem = f.stem();
+        if !g.user.contains(&stem) && !g.registered.contains(&stem) {
+            g.files.remove(&stem);
+            g.paths.insert(stem, Source::Static(f.bytes));
+        }
+    }
 }
 
 /// The platform's system font directories, in search order.
@@ -633,7 +709,22 @@ impl Db {
                 return Some(face);
             }
         }
-        self.by_family(k).or_else(|| self.user_family(k))
+        self.embedder_face(k).or_else(|| self.by_family(k)).or_else(|| self.user_family(k))
+    }
+
+    // ECAD-SEAM(owner): embedder fonts.
+    /// A face given by [`register_faces`] named `k`: its family (the regular face) or its family
+    /// and style (`Barlow Semi Condensed SemiBold`), whatever names the font file holds.
+    fn embedder_face(&mut self, k: &str) -> Option<Face> {
+        let want = norm(k);
+        let f = embedder_faces().iter().find(|f| {
+            let family = norm(f.family);
+            want == format!("{family}{}", norm(f.style)) || (f.style.eq_ignore_ascii_case("regular") && want == family)
+        })?;
+        let stem = f.stem();
+        // Only while the table lists it (a font of the user's with the same stem wins).
+        matches!(self.paths.get(&stem), Some(Source::Static(_))).then_some(())?;
+        self.file(&stem).and_then(|b| faces(&b).into_iter().next())
     }
 
     /// A face in the user's font folders whose family or full name is `k`, whatever its file is

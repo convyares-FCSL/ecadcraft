@@ -1134,12 +1134,9 @@ fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
 
 // ---------------------------------------------------------------- release
 
-fn options(params: &Value) -> Result<Options, String> {
-    let mono = match params.get("colour").and_then(Value::as_str) {
-        None | Some("mono") => true,
-        Some("screen") => false,
-        Some(_) => return Err("`colour` is \"mono\" (black on white) or \"screen\"".into()),
-    };
+fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String> {
+    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
+    let mono = crate::defaults::print::mono_param(doc, params)?;
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
     Ok(Options { mono, lineweights, pending: false })
 }
@@ -1186,7 +1183,7 @@ pub(crate) fn release_pending(
     // 1. Refusals.
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
-    let o = options(params)?;
+    let o = options(p.ledger.document(), params)?;
     let rows = check_rows(p);
     if let Some(r) = pending_refusal(p, &rows, params) {
         return Err(r);
@@ -1393,7 +1390,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     }
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
-    let o = options(params)?;
+    let o = options(p.ledger.document(), params)?;
     let row = issued_row(p, rev)?;
     let rev = row.rev().to_string();
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
