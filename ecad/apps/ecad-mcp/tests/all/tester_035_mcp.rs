@@ -190,11 +190,14 @@ fn launch_finds_the_trial_in_order_and_starts_it_with_the_port() {
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
     let exe = launch::trial_file_name();
-    let env_path = PathBuf::from(r"C:\named by env").join(exe);
-    let server = PathBuf::from(r"C:\beside").join(if cfg!(windows) { "ecad-mcp.exe" } else { "ecad-mcp" });
-    let beside = PathBuf::from(r"C:\beside").join(exe);
-    let on_path = PathBuf::from(r"C:\on path").join(exe);
-    let path_var = std::env::join_paths([PathBuf::from(r"C:\nowhere"), PathBuf::from(r"C:\on path")]).unwrap();
+    // Folders under this platform's root: a `C:` folder holds the PATH separator on Unix, where
+    // `join_paths` refuses it.
+    let root = if cfg!(windows) { PathBuf::from(r"C:\") } else { PathBuf::from("/") };
+    let env_path = root.join("named by env").join(exe);
+    let server = root.join("beside").join(if cfg!(windows) { "ecad-mcp.exe" } else { "ecad-mcp" });
+    let beside = root.join("beside").join(exe);
+    let on_path = root.join("on path").join(exe);
+    let path_var = std::env::join_paths([root.join("nowhere"), root.join("on path")]).unwrap();
     let all = |p: &Path| p == env_path || p == beside || p == on_path;
     // ECAD_TRIAL first, then beside ecad-mcp, then PATH.
     assert_eq!(launch::find_trial(Some(env_path.clone().into()), Some(&server), Some(path_var.clone()), all), Some(env_path.clone()));
