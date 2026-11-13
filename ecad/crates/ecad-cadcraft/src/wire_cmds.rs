@@ -387,11 +387,15 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
     })
 }
 
-fn settings_json(w: &wiring::WiringSettings) -> Value {
+/// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
+fn settings_json(doc: &Document) -> Value {
+    let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
         "colour_style": w.colour_style.name(),
         "label_height": w.label_height(),
+        "label_rule": wires::label_rule_word(doc),
+        "label_min_length": wires::label_min_length(doc),
         "digits": w.digits,
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
@@ -402,13 +406,13 @@ fn settings_json(w: &wiring::WiringSettings) -> Value {
 
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?}`: no parameters reads.
 pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let given = ["scheme", "digits", "unclassified_prefix", "potentials", "colour_style", "label_height"]
+    let given = ["scheme", "digits", "unclassified_prefix", "potentials", "colour_style", "label_height", "label_rule", "label_min_length"]
         .iter()
         .any(|k| params.get(*k).is_some_and(|v| !v.is_null()));
     with_project(s, |p, pg, _| {
         let before = p.ledger.document().settings.clone();
         if !given {
-            return Ok(settings_json(&before.wiring));
+            return Ok(settings_json(p.ledger.document()));
         }
         let mut after = before.clone();
         let w = &mut after.wiring;
@@ -426,6 +430,18 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
         if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
             let hv = hv.as_f64().filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
             w.label_height = hv;
+        }
+        // Brief 032 §4: the label rule and the shortest labelled wire.
+        if let Some(r) = opt_str(params, "label_rule")? {
+            let r = r.trim().to_ascii_lowercase();
+            if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
+                return Err("`label_rule` must be \"net\" (one label per net per page) or \"each\" (every wire)".into());
+            }
+            w.label_rule = r;
+        }
+        if let Some(lv) = params.get("label_min_length").filter(|v| !v.is_null()) {
+            let lv = lv.as_f64().filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?;
+            w.label_min_length = lv;
         }
         if let Some(u) = opt_str(params, "unclassified_prefix")? {
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();
@@ -454,11 +470,10 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             w.potentials = rows;
         }
         if after == before {
-            return Ok(settings_json(&after.wiring));
+            return Ok(settings_json(p.ledger.document()));
         }
-        let shown = settings_json(&after.wiring);
         p.apply_edit(pg, "wiresettings", "Wire settings", vec![Op::SetProjectSettings { before, after }])?;
-        Ok(shown)
+        Ok(settings_json(p.ledger.document()))
     })
 }
 
@@ -492,42 +507,45 @@ pub(crate) fn run_renumberwires(s: &mut Session, params: &Value) -> cadcraft_eng
 pub(crate) fn run_junction(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
     with_project(s, |p, pg, page| {
-        let style = plain_style(p);
-        let doc = p.ledger.document();
-        // Loose ends that only meet (no wire runs through the point): a junction joins them, with
-        // nothing to split (the Checks row's Add junction, design 022 §8).
-        let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
-        let through = wires::wire_at(doc, page, at, ON_WIRE, None).filter(|on| {
-            wires::route_vertices(doc, on.conductor, page)
-                .is_some_and(|(_, _, v)| !v.first().is_some_and(|f| f.near(on.at, ON_WIRE)) && !v.last().is_some_and(|l| l.near(on.at, ON_WIRE)))
-        });
-        if through.is_none() && loose.len() >= 2 {
-            let starter = wires::junction_starter().ok_or("the junction symbol is missing")?;
-            let mut props = ecad_model::Properties::new();
-            props.insert(KIND.into(), ecad_model::connectivity::JUNCTION.into());
-            let snapped = loose
-                .first()
-                .and_then(|(c, e)| {
-                    wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
-                })
-                .unwrap_or(at);
-            let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
-            let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
-            let r = json!({"junction": t.component.hex(), "terminal": t.terminal.hex(), "conductor": null, "at": [snapped.x, snapped.y], "attached": t.attached.len()});
-            p.apply_edit(pg, "junction", "Junction", t.ops)?;
-            return Ok(r);
-        }
-        let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or("There is no wire there: click on a wire.")?;
-        let j = wires::plan_junction(doc, &mut p.ids, page, style, on)?;
-        let r = json!({
-            "junction": j.tagless.component.hex(),
-            "terminal": j.tagless.terminal.hex(),
-            "conductor": j.second.hex(),
-            "at": [j.at.x, j.at.y],
-        });
-        p.apply_edit(pg, "junction", "Junction", j.tagless.ops)?;
+        let (ops, r) = junction_at(p, page, at)?;
+        p.apply_edit(pg, "junction", "Junction", ops)?;
         Ok(r)
     })
+}
+
+/// The ops and result of a junction at `at` on `page` (design 022 §3.1): loose ends that only
+/// meet get a junction with nothing to split; otherwise the wire under the point is split.
+fn junction_at(p: &mut Project, page: PageId, at: Pt) -> Result<(Vec<Op>, Value), String> {
+    let style = plain_style(p);
+    let doc = p.ledger.document();
+    // Loose ends that only meet (no wire runs through the point): a junction joins them, with
+    // nothing to split (the Checks row's Add junction, design 022 §8).
+    let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
+    let through = wires::interior_wire_at(doc, page, at);
+    if through.is_none() && loose.len() >= 2 {
+        let starter = wires::junction_starter().ok_or("the junction symbol is missing")?;
+        let mut props = ecad_model::Properties::new();
+        props.insert(KIND.into(), ecad_model::connectivity::JUNCTION.into());
+        let snapped = loose
+            .first()
+            .and_then(|(c, e)| {
+                wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
+            })
+            .unwrap_or(at);
+        let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
+        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
+        let r = json!({"junction": t.component.hex(), "terminal": t.terminal.hex(), "conductor": null, "at": [snapped.x, snapped.y], "attached": t.attached.len()});
+        return Ok((t.ops, r));
+    }
+    let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or("There is no wire there: click on a wire.")?;
+    let j = wires::plan_junction(doc, &mut p.ids, page, style, on)?;
+    let r = json!({
+        "junction": j.tagless.component.hex(),
+        "terminal": j.tagless.terminal.hex(),
+        "conductor": j.second.hex(),
+        "at": [j.at.x, j.at.y],
+    });
+    Ok((j.tagless.ops, r))
 }
 
 /// `checks {kinds?, limit?, after?}` (read only).
@@ -633,4 +651,130 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
     let mut v = vec!["auto".to_string()];
     v.extend(p.ledger.document().settings.wiring.potentials.iter().map(|x| x.name.clone()));
     v
+}
+
+// ---------------------------------------------------------------- wire (brief 032 §2)
+
+/// The quiet wire ends on `page` (cable reference ends, brief 009/010): never joined. Derived
+/// from the document (review of #65, finding 5), not from what is on screen; only a page with a
+/// cable reference has any, so other pages cost nothing.
+pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
+    wires::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
+}
+
+/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
+/// the registered default `wire.join`.
+pub(crate) fn join_by_default(doc: &Document) -> bool {
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).word() == "on"
+}
+
+/// `join` (or its old name `junction`) of `wire`: `None` when neither is given.
+fn join_param(params: &Value) -> Result<Option<bool>, String> {
+    let flag = |k: &str| match params.get(k) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_bool().map(Some).ok_or_else(|| format!("`{k}` must be true or false")),
+    };
+    match (flag("join")?, flag("junction")?) {
+        (Some(a), Some(b)) if a != b => Err("`join` and `junction` disagree; give only `join`".into()),
+        (a, b) => Ok(a.or(b)),
+    }
+}
+
+/// `wire {points, potential?, join?: bool, junction?: bool}` (design 032 §2.3).
+pub(crate) fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let max = crate::commands::MAX_WIRE_POINTS;
+    let raw = params.get("points").and_then(Value::as_array).ok_or_else(|| err("`points` [[x,y], …] is required"))?;
+    if raw.len() > max {
+        return Err(err(format!("at most {max} points per wire")));
+    }
+    let pts: Vec<Pt> =
+        raw.iter().map(|v| point(v).ok_or_else(|| err(format!("`{v}` is not a finite [x,y] point")))).collect::<cadcraft_engine::Result<_>>()?;
+    if pts.len() < 2 {
+        return Err(err("`points` needs at least two [x,y] points"));
+    }
+    // Brief 022: the wire's potential.
+    let potential = match params.get("potential") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.trim().eq_ignore_ascii_case("auto") => None,
+        Some(Value::String(v)) => wiring::valid_text("potential", Some(v)).map_err(err)?,
+        Some(_) => return Err(err("`potential` must be a string")),
+    };
+    let join = join_param(params).map_err(err)?;
+    with_project(s, |p, pg, page| {
+        let style = plain_style(p);
+        let quiet = quiet_ends(p, page);
+        let doc = p.ledger.document();
+        let join = join.unwrap_or_else(|| join_by_default(doc));
+        let input =
+            wires::WireInput { page, style, points: pts, potential: potential.as_deref(), join, tol: p.tolerance, quiet: &quiet, max_points: max };
+        let plan = wires::plan_wire(doc, &mut p.ids, input)?;
+        p.apply_edit(pg, "wire", "Wire", plan.ops)?;
+        let doc = p.ledger.document();
+        let conn = doc.connectivity();
+        let number = conn.net_of_conductor(plan.conductor).and_then(|n| conn.net(n)).and_then(|n| wiring::net_number(doc, n));
+        let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "terminal": t.hex()})).collect();
+        let mut r = json!({
+            "conductor": plan.conductor.hex(),
+            "item": plan.item.hex(),
+            "created": plan.created,
+            "attached": attached,
+            "potential": potential,
+            "number": number,
+        });
+        if !plan.junctions.is_empty() {
+            r["junctions"] = json!(
+                plan.junctions.iter().map(|(e, j, at)| json!({"end": format!("{e:?}"), "junction": j.hex(), "at": [at.x, at.y]})).collect::<Vec<_>>()
+            );
+        }
+        if !plan.joined.is_empty() {
+            r["joined"] = json!(
+                plan.joined
+                    .iter()
+                    .map(|(e, c, how, n)| json!({"end": format!("{e:?}"), "conductor": c.hex(), "how": how, "wires": n}))
+                    .collect::<Vec<_>>()
+            );
+        }
+        if !plan.removed.is_empty() {
+            r["removed"] = json!(plan.removed.iter().map(|c| c.hex()).collect::<Vec<_>>());
+        }
+        if !plan.splits.is_empty() {
+            r["splits"] = json!(
+                plan.splits.iter().map(|(at, j, c)| json!({"at": [at.x, at.y], "junction": j.hex(), "conductor": c.hex()})).collect::<Vec<_>>()
+            );
+        }
+        Ok(r)
+    })
+}
+
+/// `joinwires {at: [x,y]}` on the active page (design 032 §2.5): two open ends that meet become
+/// one wire; an open end on a wire's interior, or three or more ends, get a junction.
+pub(crate) fn run_joinwires(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
+    with_project(s, |p, pg, page| {
+        let quiet = quiet_ends(p, page);
+        let doc = p.ledger.document();
+        let loose = wires::joinable_ends_at(doc, page, at, &quiet);
+        let through = wires::interior_wire_at(doc, page, at);
+        if let ([a, b], None) = (loose.as_slice(), through)
+            && let Some(j) = wires::plan_end_join(doc, page, *a, *b, crate::commands::MAX_WIRE_POINTS)?
+        {
+            let snapped = wires::route_vertices(doc, j.survivor, page)
+                .and_then(|(_, _, v)| {
+                    if (a.0 == j.survivor && a.1 == End::A) || (b.0 == j.survivor && b.1 == End::A) { v.first().copied() } else { v.last().copied() }
+                })
+                .unwrap_or(at);
+            p.apply_edit(pg, "joinwires", "Join wires", j.ops)?;
+            return Ok(json!({"how": "merged", "conductor": j.survivor.hex(), "removed": [j.removed.hex()], "at": [snapped.x, snapped.y]}));
+        }
+        if through.is_none() && loose.len() < 2 {
+            return Err("There are no wire ends to join here.".into());
+        }
+        if through.is_some() && loose.is_empty() {
+            return Err("There are no wire ends to join here.".into());
+        }
+        let (ops, mut r) = junction_at(p, page, at)?;
+        p.apply_edit(pg, "joinwires", "Join wires", ops)?;
+        r["how"] = json!("junction");
+        Ok(r)
+    })
 }

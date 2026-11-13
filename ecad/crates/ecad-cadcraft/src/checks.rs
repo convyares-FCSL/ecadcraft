@@ -228,7 +228,7 @@ impl Kind {
             Kind::TwoFixed => "One net, two fixed numbers",
             Kind::OpenEnd => "Open end",
             Kind::LooseWire => "Loose wire",
-            Kind::LooksConnected => "Looks connected, no junction",
+            Kind::LooksConnected => looks_connected_words(),
             Kind::DrawnAway => "End drawn away from its connection point",
             Kind::SinglePoint => "Net with a single connection point",
             Kind::ThinJunction => "Junction with fewer than three wires",
@@ -308,6 +308,8 @@ pub enum Object {
 pub enum Fix {
     /// `junction {at}` on the row's page.
     AddJunction(Pt),
+    /// 032: `joinwires {at}` on the row's page (Looks connected: **Join**).
+    Join(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
     /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
@@ -710,6 +712,17 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     out
 }
 
+// 032: the Looks connected row's words and fix (design 032 §2.7): two open ends that meet are
+// joined by merging them (`joinwires`), not by a junction.
+fn looks_connected_words() -> &'static str {
+    "Looks connected"
+}
+
+// 032: see `looks_connected_words`.
+fn looks_connected_fix(at: Pt) -> Fix {
+    Fix::Join(at)
+}
+
 /// The checks of conductor `c`: open end, loose wire, looks connected, drawn away.
 pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
@@ -743,7 +756,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
                     at: Some(at),
                     object: Object::Conductor(c),
                     which: which.clone(),
-                    fix: Some(Fix::AddJunction(at)),
+                    fix: Some(looks_connected_fix(at)),
                 });
             }
         }

@@ -1404,6 +1404,7 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
             parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')),
             "key rule: {key}"
         );
+        // The registry's own list of areas (it admits `wiring.` for lane W's keys, 032).
         assert!(ecad_cadcraft::defaults::AREAS.contains(&parts[0]), "area first: {key}");
         for f in ["label", "group", "brief", "kind", "builtin", "levels", "value", "from"] {
             assert!(r.get(f).is_some(), "{key} has {f}: {r}");

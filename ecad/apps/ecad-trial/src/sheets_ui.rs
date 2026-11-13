@@ -111,6 +111,8 @@ pub struct ProjectProps {
     pub rev_columns: String,
     /// Brief 031: the Text section (Project settings only), filled from `textstyle {}`.
     pub text: Option<crate::text_ui::TextSection>,
+    /// Brief 032 §4.4: the wire label rows (Project settings only), filled from `wiresettings {}`.
+    pub labels: Option<WireLabels>,
     pub read_only: bool,
     /// The command's refusal of the last OK.
     pub error: Option<String>,
@@ -216,6 +218,7 @@ impl ProjectProps {
             others,
             revision,
             text: None,
+            labels: None,
             read_only,
             error: None,
         }
@@ -245,6 +248,12 @@ impl ProjectProps {
         if self.popout == Popout::Settings
             && let Some(t) = &self.text
             && let Some(l) = t.line()?
+        {
+            lines.push(l);
+        }
+        if self.popout == Popout::Settings
+            && let Some(w) = &self.labels
+            && let Some(l) = w.line()?
         {
             lines.push(l);
         }
@@ -571,6 +580,9 @@ impl ProjectProps {
                                 .accessible_name("ecad.projectsettings.label_height");
                             ui.label(RichText::new("mm").small());
                         });
+                        if let Some(w) = &mut self.labels {
+                            w.show(ui);
+                        }
                     });
                 }
             });
@@ -1072,4 +1084,70 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
 /// `Rev A, 2026-11-08: read-only` (the revision bar's text).
 pub fn revision_bar(rev: &str, date: &str) -> String {
     if date.is_empty() { format!("Rev {rev}: read-only") } else { format!("Rev {rev}, {date}: read-only") }
+}
+
+// ---------------------------------------------------------------- wire labels (brief 032 §4.4)
+
+/// The Project Settings rows of the wire label rule: one label per net per page or every wire, and
+/// the shortest labelled wire (only with every wire). Committed as one `wiresettings` line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WireLabels {
+    rule_orig: String,
+    /// `net` or `each`.
+    pub rule: String,
+    min_orig: String,
+    /// Shortest labelled wire, millimetres, as typed.
+    pub min_length: String,
+}
+
+impl WireLabels {
+    /// From `wiresettings {}`.
+    pub fn from_json(v: &Value) -> Self {
+        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::wiring::DEFAULT_LABEL_RULE).to_string();
+        let min = v.get("label_min_length").and_then(Value::as_f64).unwrap_or(ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH).to_string();
+        WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min }
+    }
+
+    /// The `wiresettings` line of what changed, `None` when nothing did.
+    ///
+    /// # Errors
+    /// `Shortest labelled wire is 0 to 100 mm.`
+    pub fn line(&self) -> Result<Option<String>, String> {
+        let mut m = Map::new();
+        if self.rule != self.rule_orig {
+            m.insert("label_rule".into(), Value::String(self.rule.clone()));
+        }
+        if self.min_length.trim() != self.min_orig {
+            let v: f64 = self
+                .min_length
+                .trim()
+                .parse()
+                .ok()
+                .filter(|x| ecad_model::wiring::LABEL_MIN_LENGTHS.contains(x))
+                .ok_or_else(|| "Shortest labelled wire is 0 to 100 mm.".to_string())?;
+            m.insert("label_min_length".into(), json!(v));
+        }
+        Ok((!m.is_empty()).then(|| format!("wiresettings {}", Value::Object(m))))
+    }
+
+    fn show(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Labels");
+            for (word, shown, name) in [
+                (ecad_model::wiring::LABEL_RULE_NET, "One per net per page", "ecad.projectsettings.label_rule.net"),
+                (ecad_model::wiring::LABEL_RULE_EACH, "Every wire", "ecad.projectsettings.label_rule.each"),
+            ] {
+                if ui.radio(self.rule == word, shown).accessible_name(name).clicked() {
+                    self.rule = word.to_string();
+                }
+            }
+        });
+        ui.add_enabled_ui(self.rule == ecad_model::wiring::LABEL_RULE_EACH, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Shortest labelled wire");
+                ui.add(egui::TextEdit::singleline(&mut self.min_length).desired_width(40.0)).accessible_name("ecad.projectsettings.label_min_length");
+                ui.label(RichText::new("mm").small());
+            });
+        });
+    }
 }

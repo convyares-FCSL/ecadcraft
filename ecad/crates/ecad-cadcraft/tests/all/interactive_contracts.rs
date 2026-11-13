@@ -161,10 +161,10 @@ fn scene(h: &mut H, by_prompts: bool) {
     // Wire: captured first point, two bends typed, a click 3 pixels from the coil's A1 finishes.
     if by_prompts {
         start(h, "wire");
-        assert_eq!(prompt(h), "Specify first point of wire or [Potential] <auto>:");
+        assert_eq!(prompt(h), "Specify first point of wire or [Potential/Join] <auto>:");
         let p = px(h);
         click(h, Vec2::new(40.0 + 3.0 * p, 10.0 - 2.0 * p));
-        assert_eq!(prompt(h), "Specify next point or [Undo]:");
+        assert_eq!(prompt(h), "Specify next point or [Undo/Join]:");
         typed(h, "70,10");
         typed(h, "70,0");
         click(h, Vec2::new(90.0, 3.0 * p));
@@ -273,7 +273,7 @@ fn every_tool_names_its_first_prompt_and_refuses_off_an_ecad_page() {
         // No component on the page yet: the prompt promises no number (fix round 2, N3).
         ("addterminal", "Specify point for a connection point on a component or [Name]:"),
         ("place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
-        ("wire", "Specify first point of wire or [Potential] <auto>:"),
+        ("wire", "Specify first point of wire or [Potential/Join] <auto>:"),
         ("connect", "Select wire near the end to connect:"),
         ("disconnect", "Select wire near the end to disconnect:"),
     ];

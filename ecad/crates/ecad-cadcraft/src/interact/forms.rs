@@ -299,7 +299,9 @@ pub(super) fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
 /// point (or Enter) commits the wire.
 pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Safe(Wire::default())))
+    // Brief 032 §2.4: joining starts on (the registered default) every time the tool starts.
+    let join = read(s, |p, _| Ok(crate::wire_cmds::join_by_default(p.ledger.document()))).map_err(other)?;
+    Ok(Box::new(Safe(Wire { join, ..Wire::default() })))
 }
 
 #[derive(Default)]
@@ -309,6 +311,13 @@ struct Wire {
     first_on_terminal: bool,
     /// Asking for the potential of new wires (design 022 §6).
     asking_potential: bool,
+    /// Brief 032 §2.4: ends that meet other wires join them (the Join keyword turns it off).
+    join: bool,
+}
+
+/// The page's quiet ends (cable reference ends): never joined.
+fn quiet_on(p: &crate::project::Project, page: ecad_model::PageId) -> Vec<Pt> {
+    crate::wire_cmds::quiet_ends(p, page)
 }
 
 /// The Wire tool's potential for this session (`None`: auto).
@@ -317,13 +326,30 @@ fn wire_potential(s: &Session) -> Option<String> {
 }
 
 impl Wire {
+    /// The open end of another wire within the pick radius of `p` (design 032 §2.4).
+    fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
+        let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
+        read(s, |proj, page| Ok(crate::wires::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page)))).ok().flatten()
+    }
+
     fn finish(&mut self, s: &mut Session) -> R<Step> {
         let points: Vec<[f64; 2]> = self.points.iter().map(|p| [p.x, p.y]).collect();
         let mut params = json!({ "points": points });
         if let Some(pot) = wire_potential(s) {
             params["potential"] = json!(pot);
         }
-        let r = commit(s, "wire", &params)?;
+        if !self.join {
+            params["join"] = json!(false);
+        }
+        // A refusal (design 032 §2.4) draws nothing; the tool keeps its points, so the user can
+        // type J and finish.
+        let r = match commit(s, "wire", &params) {
+            Ok(r) => r,
+            Err(e) => {
+                s.echo(e.to_string());
+                return Ok(Step::Continue);
+            }
+        };
         let attached: Vec<(String, String)> =
             r.get("attached").and_then(Value::as_array).into_iter().flatten().map(|a| (hex_of(a, "end"), hex_of(a, "terminal"))).collect();
         let names = read(s, |p, _| {
@@ -337,16 +363,30 @@ impl Wire {
                 .collect::<Vec<_>>())
         })
         .unwrap_or_default();
+        let number = r.get("number").and_then(Value::as_str).unwrap_or("?");
+        let entry = |key: &str, e: &str| {
+            r.get(key).and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("end").and_then(Value::as_str) == Some(e)).cloned())
+        };
         let outcome: Vec<String> = ["A", "B"]
             .iter()
-            .map(|e| match names.iter().find(|(end, _)| end == e) {
-                Some((_, name)) => format!("end {e} attached to {name}"),
-                None => format!("end {e} not attached"),
+            .map(|e| {
+                if let Some(j) = entry("joined", e) {
+                    if j.get("how").and_then(Value::as_str) == Some("merged") {
+                        return format!("end {e} joins wire {number} (now one wire)");
+                    }
+                    let n = j.get("wires").and_then(Value::as_u64).unwrap_or(2);
+                    return format!("end {e} meets {n} wires at a junction");
+                }
+                if entry("junctions", e).is_some() {
+                    return format!("end {e} joins a wire at a junction");
+                }
+                match names.iter().find(|(end, _)| end == e) {
+                    Some((_, name)) => format!("end {e} attached to {name}"),
+                    None => format!("end {e} not attached"),
+                }
             })
             .collect();
-        let number = r.get("number").and_then(Value::as_str).unwrap_or("?");
-        let joined = if r.get("junctions").is_some() { "; a junction joins it to the wire it ends on" } else { "" };
-        s.echo(format!("Wire {number} drawn; {}{joined}.", outcome.join(", ")));
+        s.echo(format!("Wire {number} drawn; {}.", outcome.join(", ")));
         Ok(Step::Done)
     }
 
@@ -389,12 +429,19 @@ impl Wire {
                 self.asking_potential = true;
                 Ok(Step::Continue)
             }
+            Input::Keyword(k) if k == "Join" => {
+                self.join = !self.join;
+                s.echo(if self.join { "Joining is on." } else { "Joining is off: wire ends stay open where they meet other wires." });
+                Ok(Step::Continue)
+            }
             Input::Point(p) => {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
                 }
                 let (q, on_terminal) = match terminal_for(s, p) {
                     Some((_, at, _)) => (at, true),
+                    // Brief 032 §2.4: a click near another wire's open end lands on it.
+                    None if self.join => (self.open_end(s, p).unwrap_or_else(|| pt(p)), false),
                     None => (pt(p), false),
                 };
                 // The same point again adds no zero-length segment.
@@ -446,11 +493,14 @@ impl Interactive for Wire {
         }
         match self.points.last() {
             None => {
-                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential"]);
+                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential", "Join"]);
                 p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
                 p
             }
-            Some(last) => Prompt::new("Specify next point", Accept::POINT).kw(&["Undo"]).base(v2(*last)),
+            Some(last) => {
+                let text = if self.join { "Specify next point" } else { "Specify next point (join off)" };
+                Prompt::new(text, Accept::POINT).kw(&["Undo", "Join"]).base(v2(*last))
+            }
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -475,16 +525,27 @@ impl Interactive for Wire {
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let captured = capture_at(s, cursor);
         let mut out = captured.as_ref().map(|c| capture_preview(s, c, ATTACHED_ACI)).unwrap_or_default();
-        // An end on another wire's interior gets a junction (design 022 §3.1): the ring says so.
+        // Brief 032 §2.4: an end on another wire's open end joins it (`join`), on its interior or
+        // on two or more ends gets a junction (`junction`), a refused merge shows the reason in
+        // red; with Join off, nothing.
         if captured.is_none()
+            && self.join
             && in_range(cursor)
             && let Some(px) = pixel(s)
         {
-            let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE);
-            let on = read(s, |p, page| Ok(crate::wires::wire_at(p.ledger.document(), page, pt(cursor), tol, None)));
-            if let Ok(Some(on)) = on {
-                out.push(preview_entity(s, ring_kind(on.at, RING_PX, px), ATTACHED_ACI));
-                out.push(preview_text(s, on.at, px, "junction".into(), ATTACHED_ACI));
+            let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
+            let potential = wire_potential(s);
+            let seen = read(s, |p, page| {
+                let doc = p.ledger.document();
+                let quiet = quiet_on(p, page);
+                let at = crate::wires::open_end_near(doc, page, pt(cursor), tol, &quiet)
+                    .or_else(|| crate::wires::wire_at(doc, page, pt(cursor), tol, None).map(|on| on.at));
+                Ok(at.and_then(|at| crate::wires::join_preview(doc, page, at, &quiet, potential.as_deref())))
+            });
+            if let Ok(Some((at, text, refused))) = seen {
+                let aci = if refused { REFUSE_ACI } else { ATTACHED_ACI };
+                out.push(preview_entity(s, ring_kind(at, RING_PX, px), aci));
+                out.push(preview_text(s, at, px, text, aci));
             }
         }
         if let (true, Some(first), Some(px)) = (self.first_on_terminal, self.points.first(), pixel(s)) {

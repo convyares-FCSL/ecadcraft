@@ -32,7 +32,8 @@ struct F {
 
 fn wire(h: &mut H, pts: &[(f64, f64)]) -> ConductorId {
     let p: Vec<Value> = pts.iter().map(|(x, y)| json!([x, y])).collect();
-    id(&h.run("wire", json!({ "points": p })).unwrap(), "conductor")
+    // Brief 032: these fixtures stack wires on one another on purpose; they stay separate wires.
+    id(&h.run("wire", json!({ "points": p, "join": false })).unwrap(), "conductor")
 }
 
 fn fixture(seed: u64) -> F {
