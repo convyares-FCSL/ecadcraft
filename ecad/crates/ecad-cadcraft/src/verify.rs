@@ -157,6 +157,24 @@ pub fn verify_page_pending(
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
+    // Brief 040: a two-colour wire's dashes, derived from its route like the labels.
+    for r in crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet()) {
+        let Some(route) = r.handle.and_then(|h| entities.get(&h)) else { continue };
+        for e in crate::wires::route_dashes(&r, &route.common) {
+            *fan_expected.entry(computed_key(&e)).or_default() += 1;
+        }
+    }
+    // Brief 040: a route drawn in its wire colour reads back as its item in the item's own colour.
+    let plain = |e: &Entity| -> Entity {
+        let mut e = e.clone();
+        if map.is_coloured(e.handle)
+            && let Some(Mapped::Item(id)) = map.get(e.handle)
+            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+        {
+            e.common.color = own.common.color;
+        }
+        e
+    };
 
     // 1. Content: the drawing's entities, decoded, are exactly the page's items (as a multiset).
     let mut shown: BTreeMap<String, usize> = BTreeMap::new();
@@ -207,7 +225,7 @@ pub fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
-        match item_from(doc, page, e) {
+        match item_from(doc, page, &plain(e)) {
             Ok(item) => *shown.entry(serde_json::to_string(&item).unwrap_or_default()).or_default() += 1,
             Err(m) => problems.push(format!("an entity cannot be read back as an item: {m}")),
         }
@@ -235,7 +253,7 @@ pub fn verify_page_pending(
     }
     for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
         match map.item(*id).and_then(|h| entities.get(&h)) {
-            Some(e) if item_from(doc, page, e).is_ok_and(|x| x == *item) => {}
+            Some(e) if item_from(doc, page, &plain(e)).is_ok_and(|x| x == *item) => {}
             Some(_) => problems.push(format!("item {id} is mapped to an entity that shows something else")),
             None => problems.push(format!("item {id} is not drawn")),
         }

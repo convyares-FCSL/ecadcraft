@@ -1162,6 +1162,65 @@ pub fn sheet() -> &'static ecad_tokens::Sheet {
     if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_tokens::sheet::DARK } else { &ecad_tokens::sheet::PAPER }
 }
 
+thread_local! {
+    /// A sheet the projection uses instead of the one in use ([`with_paper`]: printing).
+    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_tokens::Sheet>> = const { std::cell::Cell::new(None) };
+}
+
+/// The sheet a page is projected for: [`sheet`], or paper while [`with_paper`] runs.
+pub fn projection_sheet() -> &'static ecad_tokens::Sheet {
+    PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
+}
+
+/// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
+/// the screen shows).
+pub fn with_paper<R>(f: impl FnOnce() -> R) -> R {
+    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_tokens::sheet::PAPER)));
+    let r = f();
+    PROJECTION_SHEET.with(|c| c.set(before));
+    r
+}
+
+/// The selection with every wire dash replaced by its wire's route (picking a dash picks the
+/// wire), or `None` when it holds no dash.
+pub fn pick_routes(p: &crate::Project, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> Option<Vec<cadcraft_engine::doc::Handle>> {
+    let map = &p.pages.get(&page)?.map;
+    if !selection.iter().any(|h| map.route_of_dash(*h).is_some()) {
+        return None;
+    }
+    let mut out: Vec<cadcraft_engine::doc::Handle> = Vec::with_capacity(selection.len());
+    for h in selection {
+        let h = map.route_of_dash(*h).unwrap_or(*h);
+        if !out.contains(&h) {
+            out.push(h);
+        }
+    }
+    Some(out)
+}
+
+/// `canvassheet {dark: bool}` (brief 040): the sheet the app shows, for the colours ECAD draws
+/// in; the open page is redrawn when it changes. Display only, nothing recorded.
+pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
+    vec![
+        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", run_canvassheet)
+            .params("{dark: bool} (display only: the sheet the page is drawn on)")
+            .noundo(),
+    ]
+}
+
+fn run_canvassheet(s: &mut cadcraft_engine::Session, params: &serde_json::Value) -> cadcraft_engine::Result<serde_json::Value> {
+    let dark = params.get("dark").and_then(serde_json::Value::as_bool).ok_or_else(|| crate::commands::err("`dark` is true or false."))?;
+    let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
+    if changed {
+        // The open page only: there is one page window, and a page is projected afresh when shown.
+        let _ = crate::commands::with_any_page(s, |p, pg| {
+            p.redraw_window(pg, Some("canvassheet"));
+            Ok(())
+        });
+    }
+    Ok(serde_json::json!({"dark": dark, "changed": changed}))
+}
+
 /// A token colour as CADCraft's RGB.
 pub fn rgb(c: ecad_tokens::Color) -> cadcraft_engine::doc::color::Rgb {
     cadcraft_engine::doc::color::Rgb(c.r, c.g, c.b)
@@ -1260,6 +1319,8 @@ pub fn conductor_colour(doc: &Document, c: ConductorId) -> Option<String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColouredRoute {
     pub conductor: ConductorId,
+    /// The route representation.
+    pub rep: ecad_model::RepresentationId,
     /// The handle the route is drawn with on the page (to leave a selected wire to CADCraft).
     pub handle: Option<cadcraft_engine::doc::Handle>,
     pub points: Vec<Pt>,
@@ -1275,7 +1336,7 @@ pub const MAX_COLOURED_ROUTES: usize = 20_000;
 /// Display and print only; nothing is stored.
 pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_tokens::Sheet) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
-    for (_, r) in doc.representations_on(page) {
+    for (rep, r) in doc.representations_on(page) {
         let Subject::Conductor(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
             continue;
@@ -1294,7 +1355,7 @@ pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project
         if colours.solid == sheet.ink && colours.dashes.is_none() {
             continue;
         }
-        out.push(ColouredRoute { conductor: c, handle, points, colours });
+        out.push(ColouredRoute { conductor: c, rep, handle, points, colours });
         if out.len() >= MAX_COLOURED_ROUTES {
             break;
         }

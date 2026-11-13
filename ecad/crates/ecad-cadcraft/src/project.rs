@@ -90,6 +90,13 @@ pub struct HandleMap {
     xref_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
     links: BTreeMap<(ComponentId, u32, u32), Handle>,
+    /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
+    /// the conductor as its label is (derived: left out of an edit with other objects, refused
+    /// alone), and each dash's route handle.
+    dashes: BTreeMap<(RepresentationId, u32), Handle>,
+    dash_routes: HashMap<Handle, Handle>,
+    /// Brief 040: the route handles drawn in a wire colour.
+    coloured: BTreeSet<Handle>,
 }
 
 impl HandleMap {
@@ -208,6 +215,31 @@ impl HandleMap {
         self.links.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::Link(strip, n));
     }
+    /// Brief 040: the handle of dash `index` of route `rep`.
+    pub fn dash(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
+        self.dashes.get(&(rep, index)).copied()
+    }
+    pub fn insert_dash(&mut self, rep: RepresentationId, conductor: ConductorId, index: u32, h: Handle, route: Handle) {
+        self.dashes.insert((rep, index), h);
+        self.dash_routes.insert(h, route);
+        self.by_handle.insert(h, Mapped::Label(conductor));
+    }
+    /// The route a dash is laid over (picking a dash picks the wire).
+    pub fn route_of_dash(&self, h: Handle) -> Option<Handle> {
+        self.dash_routes.get(&h).copied()
+    }
+    /// Every handle of a dash.
+    pub fn dash_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.dashes.values().copied()
+    }
+    /// Mark route handle `h` as drawn in a wire colour.
+    pub fn insert_coloured(&mut self, h: Handle) {
+        self.coloured.insert(h);
+    }
+    /// Whether route handle `h` is drawn in a wire colour.
+    pub fn is_coloured(&self, h: Handle) -> bool {
+        self.coloured.contains(&h)
+    }
     pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
         self.xrefs.insert((rep, index), h);
         self.xref_parts.insert(h, (rep, index));
@@ -251,6 +283,9 @@ impl HandleMap {
                 + self.frame.len()
                 + self.xrefs.len()
                 + self.links.len()
+                + self.dashes.len()
+            && self.dash_routes.len() == self.dashes.len()
+            && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
             && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
             && self.xref_parts.len() == self.xrefs.len()
             && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
@@ -943,6 +978,8 @@ pub fn project_page_shown(
         ents.push(e);
         map.insert_item(*id, h);
     }
+    // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
+    crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
     let mut groups = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: Vec<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();

@@ -99,17 +99,37 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     assert_eq!((r.colours.solid, r.colours.dashes), (ecad_tokens::wire::PE.paper.solid, ecad_tokens::wire::PE.paper.dashes));
     assert!(r.handle.is_some(), "drawn on the page");
 
-    // Colour print: green copies and yellow dashes on the wire colour layer, the rest in ink.
+    // On the page (the projection, so it is ink: drawn, picked and printed like the wire): the
+    // route in green, yellow dashes over it mapped to the conductor; picking a dash picks the wire.
+    let (green, yellow) = (Color::True(rgb(ecad_tokens::wire::PE.paper.solid)), Color::True(rgb(ecad_tokens::wire::PE.paper.dashes.unwrap())));
+    let ents = h.pv(|p, pg| pg.entities_of(p, page));
+    let route = r.handle.unwrap();
+    assert_eq!(ents.iter().find(|e| e.handle == route).map(|e| e.common.color), Some(green));
+    let dashes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::DASH_LAYER).collect();
+    assert!(dashes.len() >= 10 && dashes.iter().all(|e| e.common.color == yellow), "{} dashes", dashes.len());
+    let dash = dashes[0].handle;
+    assert_eq!(h.mapped(page, dash), Some(ecad_cadcraft::project::Mapped::Label(w)));
+    assert_eq!(h.p(|p| look::pick_routes(p, page, &[dash])), Some(vec![route]));
+    assert_eq!(h.p(|p| look::pick_routes(p, page, &[route])), None);
+    // The recovery check (a page rebuilt from the document) accepts the coloured route and its
+    // dashes: it failed before `verify` knew them, so an opened project's page was unavailable.
+    let v = h.pv(|p, pg| {
+        let d = pg.drawing_of(p, page).unwrap();
+        ecad_cadcraft::verify::verify_page(p.ledger.document(), page, &d, &p.pages[&page].map)
+    });
+    assert!(v.ok(), "{}", v.summary());
+    // Colour print: the wire and its dashes in their (paper) colours, the rest in ink.
     let fan = Default::default();
     let (colour, _) = printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
-    let on_layer: Vec<_> = colour.model.iter().filter(|e| e.common.layer == printbook::WIRE_COLOUR_LAYER).collect();
-    let has = |c: ecad_tokens::Color| on_layer.iter().any(|e| e.common.color == Color::True(rgb(c)));
-    assert!(has(ecad_tokens::wire::PE.paper.solid) && has(ecad_tokens::wire::PE.paper.dashes.unwrap()), "both colours print");
-    assert!(colour.model.iter().filter(|e| e.common.layer != printbook::WIRE_COLOUR_LAYER).all(|e| e.common.color == Color::Index(7)));
-    // Mono (the default): nothing added; the label carries the code.
-    assert!(look::colour_code("GNYE").is_some());
+    let printed = |c: Color| colour.model.iter().filter(|e| e.common.color == c).count();
+    assert_eq!(printed(yellow), dashes.len(), "the dashes print");
+    assert_eq!(printed(green), 1, "the route prints green");
+    let wire = |e: &&std::sync::Arc<cadcraft_engine::doc::Entity>| e.common.color == green || e.common.color == yellow;
+    assert!(colour.model.iter().filter(|e| !wire(e)).all(|e| e.common.color == Color::Index(7)), "the rest in ink");
+    // Mono (the default): the wire in ink, no dashes; the label carries the code.
     let (mono, _) = printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
-    assert!(mono.model.iter().all(|e| e.common.layer != printbook::WIRE_COLOUR_LAYER));
+    assert!(mono.model.iter().all(|e| e.common.layer != ecad_cadcraft::wires::DASH_LAYER), "no dashes in mono");
+    assert!(mono.model.iter().all(|e| e.common.color != green), "the route prints in ink");
     let label = mono.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.contains("GNYE")));
     assert!(label, "the mono print's wire label says GNYE");
     assert!(ecad_cadcraft::defaults::print::mono(&doc), "print.colour is mono by default");

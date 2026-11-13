@@ -2,13 +2,14 @@
 //! US1 (design `ui-architecture.md` §1.5). It sets CADCraft's drawing-area preferences from the
 //! tokens (the paper or dark sheet, the selection colour, no ViewCube, UCS icon or grid), then
 //! paints what CADCraft's marks cannot: the sheet's surround and shadow, the 5 mm dot grid, the
-//! error and warning markers, the provisional underline, wires and cores in their colours, the
-//! dashed outlines of a device's other placements on the page, and the companion leader line.
+//! error and warning markers, the provisional underline, the dashed outlines of a device's other
+//! placements on the page, and the companion leader line. Wire colours are drawing content (they
+//! print in colour mode), so the page's projection draws them for the sheet in use
+//! (`canvassheet`); a picked dash is swapped for its wire here.
 //!
 //! # Semantics
 //! - Everything painted here is overlay: egui shapes over the page, never entities, so none of it
-//!   can reach a plot (spec principle 1). Wire colours print only through Print Book's colour
-//!   mode (`printbook::build_in`).
+//!   can reach a plot (spec principle 1).
 //! - **Update map.** What is painted from the project is cached per (project serial, change
 //!   count, page, selection, sheet), the key the trial already keeps for the Properties section
 //!   (`Trial::props_seen`), and read again only when that key moves: a frame with the same key
@@ -93,7 +94,6 @@ pub struct PageData {
     pub painted: Vec<ecad_cadcraft::look::Painted>,
     /// Provisional tag texts: their handles (bounds read from the drawing when painted).
     pub provisional: Vec<Handle>,
-    pub routes: Vec<ecad_cadcraft::look::ColouredRoute>,
     pub related: Related,
     /// The project's tag height, mm (the first-open zoom).
     pub tag_height: f64,
@@ -150,7 +150,10 @@ fn apply_preferences(t: &mut Trial) {
     let tokens = sheet.tokens();
     t.cad.options.model_background = Some(ecad_ui::color(tokens.sheet));
     t.cad.options.selection_color = Some(ecad_ui::color(tokens.selection));
-    ecad_cadcraft::look::set_dark_sheet(sheet == Sheet::Dark);
+    // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
+    if (ecad_cadcraft::look::sheet().sheet == ecad_ui::tokens::sheet::DARK.sheet) != (sheet == Sheet::Dark) {
+        let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet == Sheet::Dark }));
+    }
     let chrome = t.shell.state.cad_chrome;
     t.cad.ui.show_viewcube = chrome;
     t.cad.ui.show_ucs_icon = chrome;
@@ -174,24 +177,28 @@ fn refresh(t: &mut Trial, st: &mut State) -> bool {
     let picked = !selection.is_empty() && st.key.as_ref().is_some_and(|k| (k.0, k.1, k.2) == (serial, count, page) && k.3 != selection);
     let Some(p) = t.project.clone() else { return false };
     let Ok(uid) = t.cad.session.state().map(|s| s.uid) else { return false };
-    let sheet = t.shell.state.sheet.tokens();
     st.reads += 1;
     let read = p.read(&mut t.cad.session, |p, _| {
-        let Some(page) = p.page_of(uid) else { return PageData::default() };
+        let Some(page) = p.page_of(uid) else { return (PageData::default(), None) };
         let doc = p.ledger.document();
-        let map = p.pages.get(&page).map(|v| &v.map);
-        PageData {
+        let pick = ecad_cadcraft::look::pick_routes(p, page, &selection);
+        let data = PageData {
             frames: ecad_cadcraft::generated::sheet_windows(doc, page, p.outputs.as_ref()),
             painted: ecad_cadcraft::look::painted_marks(p, uid),
             provisional: ecad_cadcraft::look::provisional_tag_handles(p, page),
-            routes: ecad_cadcraft::look::coloured_routes(doc, page, map, sheet),
             related: related(p, page, &selection),
             tag_height: ecad_cadcraft::text_style::text_style(doc, ecad_cadcraft::text_style::TextKind::Tag).height,
-        }
+        };
+        (data, pick)
     });
-    if let Ok(data) = read {
-        st.page = data;
-        st.key = Some(key);
+    match read {
+        // A dash picked: select its wire instead (the next frame reads again for it).
+        Ok((_, Some(routes))) => t.cad.session.set_selection(routes),
+        Ok((data, None)) => {
+            st.page = data;
+            st.key = Some(key);
+        }
+        Err(_) => {}
     }
     picked
 }

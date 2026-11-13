@@ -1,9 +1,9 @@
 //! The markers ECAD paints over the page (brief 040, steps 2, 3 and 5), in the shapes and colours
 //! of `ecad-tokens` by meaning: an error is a filled disc with "!", a warning a filled triangle
 //! with "!", a provisional tag gets a dotted underline, a device's other placements on the page a
-//! dashed outline in the selection colour, and wires and cores are drawn in their colours, a
-//! two-colour one with the second colour's 2 mm dashes over the first. Markers keep their screen
-//! size at every zoom; wire colours and outlines scale with the sheet, with a 1 px floor.
+//! dashed outline in the selection colour. Markers keep their screen size at every zoom; outlines
+//! follow the sheet's line weights, with a 1 px floor. (Wire colours are ink, drawn by the page's
+//! projection: `ecad_cadcraft::wires::colour_routes`.)
 //!
 //! None of it is an entity: it is painted over CADCraft's drawing and never reaches a plot.
 
@@ -38,9 +38,6 @@ fn weight(xf: &Xf, mm: f32) -> f32 {
 
 /// Paint the page's markers.
 pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_ui::tokens::Sheet, t: &Trial, page: &PageData) {
-    let selection = t.cad.session.selection();
-    let hover = t.cad.canvas.hover;
-    wires(p, xf, page, &selection, hover);
     for m in &page.painted {
         match *m {
             Painted::Error(at) => error_disc(p, screen(xf, at), ecad_ui::color(sheet.error)),
@@ -63,32 +60,6 @@ pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_ui::tokens::Sheet, t: &Tri
     for group in &page.related.here {
         let Some(r) = group.iter().filter_map(&bounds).reduce(|a, b| a.union(b)) else { continue };
         dashed_rect(p, r.expand(OUTLINE_PAD_PX), stroke);
-    }
-}
-
-/// Wires and cores in their colours; a selected or hovered wire is left to CADCraft's highlight.
-fn wires(p: &egui::Painter, xf: &Xf, page: &PageData, selection: &[Handle], hover: Option<Handle>) {
-    let w = weight(xf, ecad_ui::tokens::line::CONTROL_WIRE_MM);
-    let (on, off) = (f64::from(ecad_ui::tokens::wire::DASH_ON_MM), f64::from(ecad_ui::tokens::wire::DASH_OFF_MM));
-    let clip = p.clip_rect();
-    for r in &page.routes {
-        if r.handle.is_some_and(|h| selection.contains(&h) || hover == Some(h)) {
-            continue;
-        }
-        let pts: Vec<Pos2> = r.points.iter().map(|q| screen(xf, *q)).collect();
-        let Some(b) = pts.iter().fold(None::<Rect>, |acc, q| Some(acc.map_or(Rect::from_pos(*q), |a| a.union(Rect::from_pos(*q))))) else {
-            continue;
-        };
-        if !b.expand(w).intersects(clip) {
-            continue;
-        }
-        p.add(egui::Shape::line(pts, Stroke::new(w, ecad_ui::color(r.colours.solid))));
-        if let Some(c) = r.colours.dashes {
-            let stroke = Stroke::new(w, ecad_ui::color(c));
-            for (a, b) in ecad_cadcraft::look::dash_segments(&r.points, on, off) {
-                p.line_segment([screen(xf, a), screen(xf, b)], stroke);
-            }
-        }
     }
 }
 

@@ -47,6 +47,63 @@ pub const LABEL_GAP: f64 = 0.8;
 /// The least space kept between two labels, and between a label and another wire, millimetres.
 pub const LABEL_CLEARANCE: f64 = 0.6;
 
+/// Brief 040: the layer of a two-colour wire's dashes (derived, plotted only in colour).
+pub const DASH_LAYER: &str = "ECAD-WIRE-COLOUR";
+
+/// Brief 040: draw the page's wires and cores in their colour codes (spec §4): the route entity
+/// takes the first colour, and a two-colour code adds the second colour's 2 mm on / 2 mm off
+/// dashes over it on [`DASH_LAYER`], mapped to the conductor like its label (picking a dash
+/// picks the wire, [`crate::look::pick_routes`]). Colours are those of the sheet the page is
+/// projected for ([`crate::look::projection_sheet`]). An unknown code leaves the route in ink.
+/// Derived on every projection of the page, never stored.
+pub(crate) fn colour_routes(
+    doc: &Document, page: PageId, d: &mut cadcraft_engine::doc::Drawing, ents: &mut Vec<Entity>, map: &mut crate::project::HandleMap,
+    prev: &crate::project::HandleMap,
+) {
+    use cadcraft_engine::doc::color::Color;
+    let routes = crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet());
+    if routes.is_empty() {
+        return;
+    }
+    if d.layer(DASH_LAYER).is_none() {
+        d.layers.push(cadcraft_engine::doc::Layer::new(DASH_LAYER));
+    }
+    let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
+    let mut dashes = Vec::new();
+    for r in routes {
+        let Some(route) = r.handle else { continue };
+        let Some(e) = index.get(&route).and_then(|i| ents.get_mut(*i)) else { continue };
+        e.common.color = Color::True(crate::look::rgb(r.colours.solid));
+        map.insert_coloured(route);
+        let common = e.common.clone();
+        for (i, mut dash) in route_dashes(&r, &common).into_iter().enumerate() {
+            let Ok(i) = u32::try_from(i) else { break };
+            dash.handle = prev.dash(r.rep, i).unwrap_or_else(|| d.new_handle());
+            map.insert_dash(r.rep, r.conductor, i, dash.handle, route);
+            dashes.push(dash);
+        }
+    }
+    ents.extend(dashes);
+}
+
+/// The dash entities of a two-colour route (handles unset): the second colour's 2 mm on / 2 mm
+/// off lines on [`DASH_LAYER`], with the route entity's `common` otherwise (its lineweight).
+/// None for a one-colour route. Also what the page check expects ([`crate::verify`]).
+pub(crate) fn route_dashes(r: &crate::look::ColouredRoute, route: &Common) -> Vec<Entity> {
+    use cadcraft_engine::doc::color::Color;
+    let Some(second) = r.colours.dashes else { return Vec::new() };
+    let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
+    let common = Common { layer: DASH_LAYER.into(), color: Color::True(crate::look::rgb(second)), ..route.clone() };
+    crate::look::dash_segments(&r.points, on, off)
+        .into_iter()
+        .map(|(a, b)| Entity {
+            handle: Handle::default(),
+            common: common.clone(),
+            kind: EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(a.x, a.y, 0.0), b: Vec3::new(b.x, b.y, 0.0) }),
+        })
+        .collect()
+}
+
 /// The clearance between a label of height `h` and its line.
 pub fn gap(h: f64) -> f64 {
     (0.5 * h).max(LABEL_GAP)

@@ -165,14 +165,11 @@ pub fn build_pending(
     build_in(doc, pages, fan, tol, outputs, pending, false)
 }
 
-/// Brief 040: the layer of the wire colours a colour print adds over the routes.
-pub const WIRE_COLOUR_LAYER: &str = "ECAD-WIRE-COLOUR";
-
 /// [`build_pending`] for a print in `colour` (owner answer 1, `print.colour`): wires print in
-/// their colours, a two-colour wire with the second colour's 2 mm dashes over the first, and
-/// everything else in ink, as the spec's "Prints" column says (cable, provisional text and
-/// terminal links in ink). Without `colour` the scratch drawing is [`build_pending`]'s, printed
-/// mono (black, the colour code in the wire label).
+/// their colours (the paper sheet's), a two-colour wire with the second colour's dashes over the
+/// first, and everything else in ink, as the spec's "Prints" column says (cable, provisional
+/// text and terminal links in ink). Without `colour` (mono) the wires are ink and their dashes
+/// are left out; the colour code is in the wire label.
 ///
 /// # Errors
 /// A page that cannot be projected.
@@ -188,7 +185,8 @@ pub fn build_in(
     let mut x = 0.0;
     for page in pages {
         let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
-        let (d, map) = project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts)?;
+        // Brief 040: a print is on white paper: wire colours for the paper sheet.
+        let (d, map) = crate::look::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
                 scratch.layers.push(l.clone());
@@ -204,26 +202,23 @@ pub fn build_in(
         }
         let m = Mat3::translate(Vec2::new(x, 0.0));
         for e in d.model.iter() {
+            // Brief 040: mono leaves a two-colour wire's dashes out (ink on ink).
+            if !colour && e.common.layer == crate::wires::DASH_LAYER {
+                continue;
+            }
             let mut e = (**e).clone();
             e.kind.transform(&m);
             // Design 033 §3.1: a missing value prints black in either colour mode.
             if e.common.layer == crate::generated::LAYER && e.common.color == Color::Index(crate::generated::FLAGGED_ACI) {
                 e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
             }
-            if colour {
-                // Ink: everything but the wire colours added below prints black on white.
+            // Colour: everything but the wire colours prints in ink. Mono: the wires print in ink.
+            let wire_colour = e.common.layer == crate::wires::DASH_LAYER || map.is_coloured(e.handle);
+            if colour != wire_colour {
                 e.common.color = Color::Index(7);
             }
             e.handle = scratch.new_handle();
             store.push(e);
-        }
-        if colour {
-            for e in wire_colour_entities(doc, *page, &d, &map) {
-                let mut e = e;
-                e.kind.transform(&m);
-                e.handle = scratch.new_handle();
-                store.push(e);
-            }
         }
         let windows = crate::generated::sheet_windows(doc, *page, outputs);
         let mut right = x;
@@ -234,38 +229,8 @@ pub fn build_in(
         }
         x = right + GAP;
     }
-    if colour && scratch.layer(WIRE_COLOUR_LAYER).is_none() {
-        scratch.layers.push(cadcraft_engine::doc::Layer::new(WIRE_COLOUR_LAYER));
-    }
     scratch.model = store;
     Ok((scratch, sheets))
-}
-
-/// The wire colours of `page` (projected as `d`, `map`) as entities on [`WIRE_COLOUR_LAYER`]: each
-/// coloured route again in its first colour, and the second colour's dashes over it, with the
-/// route's own lineweight. Black wires and unknown codes add nothing (they print in ink).
-fn wire_colour_entities(doc: &Document, page: PageId, d: &Drawing, map: &HandleMap) -> Vec<cadcraft_engine::doc::Entity> {
-    use cadcraft_engine::doc::{Common, Entity, EntityKind, Handle, Line};
-    let sheet = &ecad_tokens::sheet::PAPER;
-    let line = |common: &Common, c: ecad_tokens::Color, a: Pt, b: Pt| Entity {
-        handle: Handle::default(),
-        common: Common { layer: WIRE_COLOUR_LAYER.into(), color: Color::True(crate::look::rgb(c)), ..common.clone() },
-        kind: EntityKind::Line(Line { a: cadcraft_engine::geom::Vec3::new(a.x, a.y, 0.0), b: cadcraft_engine::geom::Vec3::new(b.x, b.y, 0.0) }),
-    };
-    let mut out = Vec::new();
-    for r in crate::look::coloured_routes(doc, page, Some(map), sheet) {
-        let common = r.handle.and_then(|h| d.model.get(h)).map(|e| e.common.clone()).unwrap_or_default();
-        for w in r.points.windows(2) {
-            if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
-                out.push(line(&common, r.colours.solid, *a, *b));
-            }
-        }
-        if let Some(c) = r.colours.dashes {
-            let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
-            out.extend(crate::look::dash_segments(&r.points, on, off).into_iter().map(|(a, b)| line(&common, c, a, b)));
-        }
-    }
-    out
 }
 
 /// Volumes of at most [`MAX_SHEETS`] sheets, breaking between pages where possible.
