@@ -217,9 +217,6 @@ pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
 pub(crate) fn project_menu(h: &mut Harness<'static, Trial>, label: &str) {
     click(h, ecad_trial::shell::top_bar::PROJECT_MENU);
     click(h, label);
-    // The Project info and settings popouts grow a row a frame up to their largest size; let
-    // them settle before their buttons are clicked.
-    h.run_steps(40);
 }
 
 pub(crate) fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
