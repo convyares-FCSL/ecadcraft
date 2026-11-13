@@ -23,6 +23,7 @@ pub mod prim;
 pub mod showcase;
 pub mod style;
 pub mod table;
+pub mod wheel;
 
 pub use ecad_tokens as tokens;
 pub use ecad_tokens::Icon;
