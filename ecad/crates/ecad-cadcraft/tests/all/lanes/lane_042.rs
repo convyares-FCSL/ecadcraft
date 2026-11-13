@@ -124,12 +124,9 @@ fn setdefault_is_one_undoable_transaction() {
     let (mut h, page, c, rep) = fixture();
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
-    for (key, value, (level, target, scope, source)) in [
-        ("text.tag.height", "3", t[0]),
-        ("wiring.label_rule", "each", t[0]),
-        ("text.tag.show", "off", t[1]),
-        ("text.tag.show", "first", t[3]),
-    ] {
+    for (key, value, (level, target, scope, source)) in
+        [("text.tag.height", "3", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
+    {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
         let base = defaults::resolve(&d0, e, scope);
