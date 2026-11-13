@@ -1,7 +1,11 @@
 # Brief 048: Symbol builder
 
-Status: **Draft** (designer, 2026-11-13). FP1–FP8 ruled by the overseer (2026-11-13; FP5 is a
-new op). Questions Q1–Q10 of design §14 wait for the owner.
+Status: **Approved** (owner, 2026-11-13). The owner answered all ten questions of design §14
+(Q1–Q10) "as recommended" on 2026-11-13. Overseer rulings on design §13 (2026-11-13): FP1–FP4,
+FP7 and FP8 approved as written; **FP5** is a new op, `SetComponentDefinition { id, before, after }`,
+not the Delete + Create pair, with every arm (apply, inverse, diff, merge, invariants, file) and
+round-trip and merge tests; **FP6** approved, and this brief's PR also updates 042's Standards
+screen reader for `Source::Definition` (badge word "definition").
 Branch: `feature/symbol-builder`, from `origin/dev` `f26c8f53`.
 Designer: **yes** (`docs/design/048.md`) · Size: **XL**, split into three parts (below)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.1**, lane **S**, after 1.11
