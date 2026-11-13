@@ -108,20 +108,15 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         let mut out = MeasuredConnectors::default();
-        {
-            let mut s = Session::empty();
-            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
-            let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
-            let first = *pages.first().ok_or("the project has no pages")?;
-            run(&mut s, "openpage", json!({"page": first.hex()}))?;
-            out.connectors = populate(&mut s, &pages)?;
-            out.pages = pages.len();
-            drop(project);
-        }
-        crate::measure::release_lock_file(&copy);
+        // Populated and measured in one session (the population's commands are ordinary
+        // commits; the measured edits are each undone).
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_cadcraft::views::Settings::none())?;
-        let page1 = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())?.ok_or("the project has no pages")?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
+        let page1 = *pages.first().ok_or("the project has no pages")?;
+        run(&mut s, "openpage", json!({"page": page1.hex()}))?;
+        out.connectors = populate(&mut s, &pages)?;
+        out.pages = pages.len();
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
         // The report models built first, as on first show (untimed).
         project.configure(&mut s, |p| {
