@@ -15,9 +15,8 @@ and the CSV) is in [024-outputs.md](024-outputs.md).
 | Reports ▸ BOM | **Columns ▾**: **Article number** and, By location, **Lines under devices** (each device's part lines listed under it, `↳`, with its kit). Both are project defaults (Settings ▸ Standards ▸ BOM). Qty reads `5.6 m` for metres. Clicking an item row says `Items are on no page.` |
 | CSV | A `Unit` column after `Qty` (`pcs` or `m`; Qty a plain number), a `Line` column in the nested layout, and `Article number` when the column is on |
 | Inspector | A selected device with part lines shows **Parts**: its main part, then each line (quantity, maker, part number, description, article number, kit or `for`), read only |
-| Checks | `5 devices and 3 part lines have no part number`, `2 items have no part number`, `6 fuses have no insert` (only once the project lists any insert), `AB-1NO has two article numbers` (**Use … for all**), a `for` naming a fuse the device lacks (**Remove 9**), and a `part.` key ECAD does not read |
-
 | BOM-by-location page | Qty with its unit (`2.5 m`), an **Article** column when the column is on (the others narrower), nested lines under their device. This branch carries brief 046 (strip pages) until 046's pull request merges |
+| Checks | `5 devices and 3 part lines have no part number`, `2 items have no part number`, `6 fuses have no insert` (only once the project lists any insert), `AB-1NO has two article numbers` (**Use … for all**), a `for` naming a fuse the device lacks (**Remove 9**), and a `part.` key ECAD does not read |
 
 Not in 047 (a follow-up after brief 045): article numbers on strip parts (terminal types,
 accessories, jumpers) and renumbering keeping a strip line's `for`. Until then `article` leaves
