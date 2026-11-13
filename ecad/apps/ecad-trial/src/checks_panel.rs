@@ -5,15 +5,15 @@
 //! The rows are a copy of [`ecad_cadcraft::checks::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
-//! The rows are virtualised, so a frame lays out only the visible ones.
+//! Brief 039: the rows are drawn by the one table ([`crate::lists::checks`]), patched with the rows
+//! that appeared or went; this tab is its host until the shell (U2) places it.
 
 use std::collections::BTreeSet;
 
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::checks::{Check, Fix, Kind, Severity};
-use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
+use eframe::egui::{self, RichText};
 
-use crate::project_panel::{Action, ROW_H};
+use crate::project_panel::Action;
 
 /// Accessible label of the tab.
 pub const CHECKS_TAB: &str = "Checks";
@@ -80,26 +80,8 @@ pub fn row_label(r: &Row) -> String {
     format!("{sev}: {}, {}, {}", r.check.what(), r.locator, r.check.which)
 }
 
-/// `text` cut with an ellipsis to fit `width` points.
-fn fit(p: &egui::Painter, text: &str, font: &egui::FontId, width: f32) -> String {
-    let w = |s: &str| p.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
-    if w(text) <= width {
-        return text.to_string();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut n = chars.len();
-    while n > 0 {
-        n -= 1;
-        let cut: String = chars.iter().take(n).collect::<String>() + "\u{2026}";
-        if w(&cut) <= width {
-            return cut;
-        }
-    }
-    String::new()
-}
-
 /// The tab's state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ChecksPanel {
     rows: Vec<Row>,
     /// (project serial, list revision, filter) the copy was taken at.
@@ -118,6 +100,32 @@ pub struct ChecksPanel {
     pub rows_drawn: usize,
     /// The project cannot be written: no fix buttons.
     pub read_only: bool,
+    /// Brief 039: the rows as a table source, and the table.
+    pub source: crate::lists::checks::ChecksSource,
+    pub table: ecad_ui::table::Table<crate::lists::checks::CheckKey>,
+    /// What the last copy did to the table (tests).
+    pub last_change: Option<ecad_ui::table::Changed<crate::lists::checks::CheckKey>>,
+}
+
+impl Default for ChecksPanel {
+    fn default() -> Self {
+        let mut table = ecad_ui::table::Table::new("ecad.checks", "Checks");
+        table.empty = NO_PROBLEMS;
+        Self {
+            rows: Vec::new(),
+            seen: None,
+            hidden: BTreeSet::new(),
+            selected: None,
+            armed: false,
+            counts: (0, 0),
+            copies: 0,
+            rows_drawn: 0,
+            read_only: false,
+            source: Default::default(),
+            table,
+            last_change: None,
+        }
+    }
 }
 
 impl ChecksPanel {
@@ -131,9 +139,11 @@ impl ChecksPanel {
         if self.rows.is_empty() { CHECKS_TAB.to_string() } else { format!("{CHECKS_TAB} ({})", self.rows.len()) }
     }
 
-    /// Forget the copy: the next [`ChecksPanel::sync`] takes it again.
+    /// Forget the copy: the next [`ChecksPanel::sync`] takes it again and the table is built
+    /// whole (shown again).
     pub fn invalidate(&mut self) {
         self.seen = None;
+        self.table.reset();
     }
 
     /// Bring the copy up to date with the project's kept list (built on the first call).
@@ -159,6 +169,13 @@ impl ChecksPanel {
             rows.iter().filter(|r| r.check.severity() == Severity::Error).count(),
             rows.iter().filter(|r| r.check.severity() == Severity::Warning).count(),
         );
+        // The update map: a new project or Show filter rebuilds; otherwise only the rows that
+        // appeared or went are patched.
+        let same_view = self.seen.as_ref().is_some_and(|(s, _, h)| *s == serial && *h == hidden);
+        let changed = self.source.set(&rows);
+        let changed = if same_view { changed } else { ecad_ui::table::Changed::All };
+        self.table.update(&self.source, changed.clone());
+        self.last_change = Some(changed);
         self.rows = rows;
         if self.selected.is_some_and(|i| i >= self.rows.len()) {
             self.selected = None;
@@ -167,24 +184,52 @@ impl ChecksPanel {
         self.copies += 1;
     }
 
-    fn colour(t: &Tokens, s: Severity) -> Color32 {
-        match s {
-            Severity::Error => Color32::from_rgb(0xFF, 0x00, 0x00),
-            Severity::Warning => Color32::from_rgb(0xFF, 0xFF, 0x00),
-            Severity::Info => t.text_dim,
-        }
-    }
-
     /// The go-to of row `i`.
     fn goto(&self, i: usize) -> Option<Action> {
         let r = self.rows.get(i)?;
         Some(Action::GotoCheck(Box::new(r.check.clone())))
     }
 
-    /// The tab's contents. Returns the actions asked for.
+    /// Button `k` of row `r`'s fix `f`, as an action.
+    fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
+        if pair(f).is_some() {
+            return Some(Action::AccessoryFix(f, k));
+        }
+        Some(match (f, r.check.page) {
+            (Fix::AddJunction(at), Some(page)) => Action::AddJunction(page, at),
+            (Fix::Join(at), Some(page)) => Action::JoinWires(page, at),
+            (Fix::NumberThem, _) => Action::NumberThem,
+            (Fix::Finalise, _) => Action::Finalise,
+            (Fix::UseBoxLocation(c), _) => Action::UseBoxLocation(c),
+            (Fix::ShowReports, _) => Action::ShowReports,
+            (Fix::OfferDrawn(c), _) => Action::OfferDrawn(c),
+            (Fix::RenumberStrip(c), _) => Action::RenumberStrip(c),
+            (Fix::SetCores(k), _) => Action::SetCores(k),
+            (Fix::NextFreeCore(w), _) => Action::NextFreeCore(w),
+            (Fix::ShowCables, _) => Action::ShowCables,
+            (
+                Fix::LinkOnNonStrip(_)
+                | Fix::MoveToNextFree(_)
+                | Fix::MoveToNewPosition(_)
+                | Fix::FuseDevices
+                | Fix::AccessoryOrphan(..)
+                | Fix::LinkAcrossPartition(..)
+                | Fix::LinkOrphan(..)
+                | Fix::LevelMissing(..),
+                _,
+            ) => Action::AccessoryFix(f, 0),
+            (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
+            (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
+            (Fix::AddJunction(_) | Fix::Join(_), None) => return None,
+        })
+    }
+
+    /// The tab's contents: the Show filter and counts, then the table. Returns the actions asked
+    /// for.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
+        use ecad_ui::table::TableEvent;
         let mut out = Vec::new();
-        let t = Tokens::get();
+        let dim = ecad_ui::color(ecad_ui::SHELL.text_2);
         ui.horizontal(|ui| {
             let label = if self.hidden.is_empty() { "All kinds" } else { "Some kinds" };
             ui.label(RichText::new("Show:").small());
@@ -202,143 +247,41 @@ impl ChecksPanel {
             });
             let (e, w) = self.counts;
             let words = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
-            ui.label(RichText::new(format!("{} \u{b7} {}", words(e, "error", "errors"), words(w, "warning", "warnings"))).small().color(t.text_dim));
+            ui.label(RichText::new(format!("{} \u{b7} {}", words(e, "error", "errors"), words(w, "warning", "warnings"))).small().color(dim));
         });
-        if self.rows.is_empty() {
-            ui.label(RichText::new(NO_PROBLEMS).color(t.text_dim));
-            self.rows_drawn = 0;
-            return out;
+        let fixes = writable && !self.read_only;
+        if self.source.fixes != fixes {
+            self.source.fixes = fixes;
+            self.table.update(&self.source, ecad_ui::table::Changed::All);
         }
-        if self.armed {
-            let (up, down, enter) =
-                ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::Enter)));
-            let n = self.rows.len();
-            if up || down {
-                let cur = self.selected.unwrap_or(0);
-                let next = if up { cur.saturating_sub(1) } else { (cur + 1).min(n.saturating_sub(1)) };
-                self.selected = Some(next);
-            }
-            if enter && let Some(a) = self.selected.and_then(|i| self.goto(i)) {
-                out.push(a);
-            }
-        }
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let mut drawn = 0;
-        let mut clicked: Option<usize> = None;
-        egui::ScrollArea::vertical().id_salt("ecad.checks.list").auto_shrink([false, false]).show_rows(ui, ROW_H, self.rows.len(), |ui, range| {
-            for i in range {
-                let Some(r) = self.rows.get(i).cloned() else { continue };
-                drawn += 1;
-                let fix = r.check.fix.filter(|_| writable && !self.read_only);
-                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-                let p = ui.painter_at(rect);
-                let selected = self.selected == Some(i);
-                if selected {
-                    p.rect_filled(rect, 0.0, t.tab_active);
-                } else if resp.hovered() {
-                    p.rect_filled(rect, 0.0, t.chrome);
-                }
-                let sev = r.check.severity();
-                let font = egui::FontId::monospace(12.0);
-                p.text(pos2(rect.left() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, sev.glyph(), font.clone(), Self::colour(&t, sev));
-                let count_row = matches!(
-                    r.check.kind,
-                    Kind::Unnumbered | Kind::ProvisionalWires | Kind::NoPartNumber | Kind::NoLocation | Kind::NoCoreCount | Kind::NoAccessoryPart
-                );
-                let what = if count_row { r.check.which.clone() } else { r.check.what() };
-                let colour = if selected { t.text } else { t.text_dim };
-                // Where and which, on the right; a fix button beside them when it has one. The
-                // description takes the room left, cut with an ellipsis.
-                let wide = matches!(fix, Some(Fix::UseBoxLocation(_) | Fix::NextFreeCore(_) | Fix::RenumberStrip(_)));
-                let two = fix.and_then(pair);
-                let bw = if two.is_some() {
-                    228.0
-                } else if wide {
-                    150.0
-                } else {
-                    84.0
-                };
-                let right = if fix.is_some() { rect.right() - bw - 8.0 } else { rect.right() - 4.0 };
-                let tail = if count_row { String::new() } else { format!("{} {}", r.locator, r.check.which) };
-                let tail_g = p.layout_no_wrap(tail, font.clone(), t.text_dim);
-                let tail_w = tail_g.size().x;
-                let room = (right - tail_w - 6.0 - (rect.left() + 18.0)).max(0.0);
-                let what = fit(&p, &what, &font, room);
-                p.text(pos2(rect.left() + 18.0, rect.center().y), egui::Align2::LEFT_CENTER, what, font.clone(), colour);
-                let top = rect.center().y - tail_g.size().y / 2.0;
-                p.galley(pos2(right - tail_w, top), tail_g, t.text_dim);
-                let label = row_label(&r);
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, &label));
-                if let (Some(f), Some(names)) = (fix, two) {
-                    let mut hit = None;
-                    for (k, name) in names.iter().enumerate() {
-                        let w = (bw - 4.0) / 2.0;
-                        let x = rect.right() - bw - 4.0 + (w + 4.0) * k as f32;
-                        let b = egui::Rect::from_min_size(pos2(x, rect.top() + 2.0), vec2(w, ROW_H - 4.0));
-                        if ui.put(b, egui::Button::new(RichText::new(*name).small())).clicked() {
-                            hit = Some(k);
-                        }
-                    }
-                    if let Some(k) = hit {
-                        out.push(Action::AccessoryFix(f, k));
-                        continue;
-                    }
-                } else if let Some(f) = fix {
-                    let b = egui::Rect::from_min_size(pos2(rect.right() - bw - 4.0, rect.top() + 2.0), vec2(bw, ROW_H - 4.0));
-                    let name = match f {
-                        Fix::AddJunction(_) => ADD_JUNCTION,
-                        Fix::Join(_) => JOIN,
-                        Fix::NumberThem => NUMBER_THEM,
-                        Fix::Finalise => FINALISE,
-                        Fix::UseBoxLocation(_) => USE_BOX_LOCATION,
-                        Fix::ShowReports | Fix::ShowCables => SHOW,
-                        Fix::OfferDrawn(_) => OFFER,
-                        Fix::RenumberStrip(_) => RENUMBER_STRIP,
-                        Fix::SetCores(_) => SET_CORES,
-                        Fix::NextFreeCore(_) => NEXT_FREE_CORE,
-                        Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
-                        Fix::MoveTable(_) => MOVE_TABLE,
-                        Fix::RenumberPage(_) => RENUMBER_PAGE,
-                        Fix::MoveToNextFree(_) => MOVE_NEXT_FREE,
-                        Fix::MoveToNewPosition(_) => MOVE_NEW_POSITION,
-                        Fix::LevelMissing(..) => DROP_MISSING_LEVELS,
-                        // One device per click; the row's count goes down as each one moves.
-                        Fix::FuseDevices => MAKE_STRIP_POSITION,
-                    };
-                    if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
-                        match (f, r.check.page) {
-                            (Fix::AddJunction(at), Some(page)) => out.push(Action::AddJunction(page, at)),
-                            (Fix::Join(at), Some(page)) => out.push(Action::JoinWires(page, at)),
-                            (Fix::NumberThem, _) => out.push(Action::NumberThem),
-                            (Fix::Finalise, _) => out.push(Action::Finalise),
-                            (Fix::UseBoxLocation(c), _) => out.push(Action::UseBoxLocation(c)),
-                            (Fix::ShowReports, _) => out.push(Action::ShowReports),
-                            (Fix::OfferDrawn(c), _) => out.push(Action::OfferDrawn(c)),
-                            (Fix::RenumberStrip(c), _) => out.push(Action::RenumberStrip(c)),
-                            (Fix::SetCores(k), _) => out.push(Action::SetCores(k)),
-                            (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
-                            (Fix::ShowCables, _) => out.push(Action::ShowCables),
-                            (Fix::LinkOnNonStrip(_) | Fix::MoveToNextFree(_) | Fix::MoveToNewPosition(_) | Fix::FuseDevices, _) => {
-                                out.push(Action::AccessoryFix(f, 0))
-                            }
-                            (Fix::MoveTable(_), _) => out.push(Action::MoveTable(Box::new(r.check.clone()))),
-                            (Fix::RenumberPage(page), _) => out.push(Action::RenumberPage(page)),
-                            _ => {}
-                        }
-                        continue;
+        let events = self.table.show(ui, &self.source);
+        self.rows_drawn = self.table.rows_drawn;
+        let index = |k: crate::lists::checks::CheckKey| self.source.row(k).and_then(|r| self.rows.iter().position(|x| x == r));
+        for e in events {
+            match e {
+                // One row clicked (or reached with the arrows): show it (design 022 §8).
+                TableEvent::Selected(keys) if keys.len() == 1 => {
+                    if let Some(i) = keys.first().and_then(|k| index(*k)) {
+                        self.selected = Some(i);
+                        self.armed = true;
+                        out.extend(self.goto(i));
                     }
                 }
-                if resp.on_hover_text("Show it: its page, centred, with a ring on it").clicked() {
-                    clicked = Some(i);
+                TableEvent::GoTo { key, .. } | TableEvent::Open(key) => {
+                    if let Some(i) = index(key) {
+                        self.selected = Some(i);
+                        out.extend(self.goto(i));
+                    }
                 }
-            }
-        });
-        self.rows_drawn = drawn;
-        if let Some(i) = clicked {
-            self.selected = Some(i);
-            self.armed = true;
-            if let Some(a) = self.goto(i) {
-                out.push(a);
+                TableEvent::Button { key, index: k, .. } => {
+                    if let Some(r) = self.source.row(key)
+                        && let Some(f) = r.check.fix
+                    {
+                        out.extend(Self::fix(r, f, k));
+                    }
+                }
+                TableEvent::Export(csv) => crate::lists::copy_csv(ui, csv),
+                TableEvent::Selected(_) | TableEvent::Commit { .. } => {}
             }
         }
         out

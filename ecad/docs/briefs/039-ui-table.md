@@ -1,6 +1,6 @@
 # Brief 039: The one table component (U3)
 
-Status: Draft (U0, 2026-11-13), for the overseer and the owner.
+Status: Approved (owner, 2026-11-13).
 Branch: `feature/ui-table`, from `origin/dev` after 037 has merged. Runs beside U2 (038).
 Designer: done (`docs/design/ui-architecture.md` §6, §8, §9, §10; the look is spec §2 and §5) ·
 Size: L, in three steps
@@ -18,16 +18,28 @@ plus a data source. Checks first because it is read-mostly, then Devices, then T
 | File | Change |
 | --- | --- |
 | `ecad/crates/ecad-ui/src/table/` (new: `mod.rs`, `source.rs`, `view_model.rs`, `selection.rs`, `tint.rs`, `edit.rs`, `cells.rs`, `export.rs`) | The table (design §6.1–§6.2) |
-| `ecad/crates/ecad-ui/tests/all/table.rs` (new module) | Model and widget tests |
+| `ecad/crates/ecad-ui/tests/all/lanes/lane_039.rs` (new lane module) | Model and widget tests, and the `ui` measure's generous timing check |
+| `ecad/crates/ecad-ui/benches/` or an ignored measure in `lane_039.rs` | The `ui` measure: a synthetic 10 000-row source, scroll, sort, filter (design §10) |
 | `ecad/apps/ecad-trial/src/lists/` (new: `mod.rs`, `checks.rs`, `devices.rs`, `terminals.rs`) | Column sets and sources; `lists::show(ui, tab, …)` for the shell (design §12 O4) |
 | `ecad/apps/ecad-trial/src/checks_panel.rs`, `devices_panel.rs` | Their row drawing replaced by the column sets; kept as thin hosts until U2 lands |
 | `ecad/apps/ecad-trial/src/outputs_ui.rs` | Reports ▸ Terminals uses the Terminals column set (step 3) |
 | `ecad/apps/ecad-trial/src/lib.rs` | One call site per converted view |
-| `ecad/apps/ecad-trial/tests/all/lists_ui.rs` (new module) | Column-set tests |
-| `ecad/crates/ecad-bench/` | A `ui` measure: a synthetic 10 000-row source, scroll, sort, filter (design §10) |
+| `ecad/apps/ecad-trial/tests/all/lanes/lane_039.rs` (new lane module) | Column-set tests |
+| `ecad/docs/quick-start/039-ui-table.md` (new) | What the owner runs and sees (per-lane quick start) |
+| `ecad/crates/ecad-cadcraft/src/lanes.rs` | Only if a new command module is added (one line, `("039", …)`); none is planned |
 
 Not touched: `ecad-cadcraft` (sources read the existing models: `checks`, `device_list`,
 `stripplan` rows); the shell (038); upstream.
+
+**Changes at approval (2026-11-13):**
+- File paths follow the per-lane layout (PR #72): tests in each crate's
+  `tests/all/lanes/lane_039.rs`, quick-start text in `docs/quick-start/039-ui-table.md`, any new
+  command module registered in `ecad-cadcraft/src/lanes.rs`.
+- The `ui` measure moves out of `ecad-bench`. `ecad-bench` is an Adapter crate and U1's layer rule
+  now refuses UiKit dependencies there, so the measure lives with `ecad-ui` itself (its own bench
+  or an ignored measure in its lane tests, run in release), against a synthetic source.
+- 036 has merged into `dev`, so step 4 (Terminals) runs now, in this PR, on 036's row model
+  (design 036 §9).
 
 ## Scope, in order
 
@@ -41,7 +53,7 @@ Not touched: `ecad-cadcraft` (sources read the existing models: `checks`, `devic
 3. **Devices** column set: tag (set), description (set), function and location (read, "from
    box" where it comes from a box), symbol, pages placed, part (read until part sets exist),
    provisional state; filter chips Provisional and Not on a page yet.
-4. **Terminals** column set, once 036 is in `dev`: design 036 §9's row model laid out as a
+4. **Terminals** column set (036 is in `dev`; this step runs now): design 036 §9's row model laid out as a
    terminal plan (inside right-aligned | strip | outside left-aligned); editable cells Position,
    Label, Rating, links and accessories as inputs; links as a `Lanes` cell. If 036 is not in
    `dev` when steps 1–3 are done, this PR merges without step 4 and step 4 follows on the same
@@ -82,7 +94,7 @@ Every other op: nothing. Full rebuild only on first show, reload or a feed that 
 5. **Terminals** (step 4): rows equal `stripplan` rows; only 036's editable fields are inputs;
    editing a label writes `termlabel` as one transaction; inside columns are right-aligned and
    outside left-aligned.
-6. **Performance** (`cargo xtask bench --tier medium` plus the `ui` measure, release): 10 000-row
+6. **Performance** (`cargo xtask bench --tier medium` plus `ecad-ui`'s `ui` measure, release): 10 000-row
    scroll with the table body ≤ 3 ms per frame and no frame over 16 ms; sort or group ≤ 20 ms;
    filter keystroke ≤ 10 ms; first show of Devices on the medium project ≤ 50 ms (design §10).
    The fast test suite contains no timing assertion tighter than 10× these.

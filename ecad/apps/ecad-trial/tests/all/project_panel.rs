@@ -684,7 +684,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
 /// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
-fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
+pub(crate) fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
     let page1 = {
@@ -712,25 +712,32 @@ fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId,
 fn devices_tab_goes_to_a_symbol_and_filters() {
     let deltas: Deltas = Arc::default();
     let mut h = build(trial(), Some(deltas.clone()));
-    let (coil, _page1, page2) = devices_fixture(&mut h);
+    let (coil, page1, page2) = devices_fixture(&mut h);
     assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
     click(&mut h, "Device -K01: Contactor / relay coil");
     assert_eq!(h.state().panel.devices.selected, Some(coil));
-    let row = "-K01 NO contact, 2-A-6";
-    assert!(h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(), "unfolded: {:?}", h.state().panel.devices.entries());
+    // Brief 039: the row is a table row; its Pages cell lists both symbols and goes to the first.
+    let pages = {
+        use ecad_ui::table::TableSource;
+        let d = &h.state().panel.devices;
+        d.source.cell(coil, ecad_trial::lists::devices::PAGES).text().into_owned()
+    };
+    assert_eq!(pages, "1-A-6, 2-A-6");
     let before = head(&mut h);
-    click(&mut h, row);
-    assert_eq!(active(&mut h), Some(page2), "the symbol's page is shown");
+    h.state_mut().show_page(page2).unwrap();
+    h.run_steps(2);
+    click(&mut h, "Device -K01: Contactor / relay coil");
+    assert_eq!(active(&mut h), Some(page1), "the first symbol's page is shown");
     let selected = h.state().cad.session.selection();
     assert!(!selected.is_empty(), "the symbol is selected");
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page2).unwrap().0;
+        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page1).unwrap().0;
         ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
     });
-    assert_eq!(selected, mapped.unwrap(), "exactly the contact's drawing is selected");
+    assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
     assert_eq!(head(&mut h), before, "a go to records nothing");
     assert_eq!(h.state().cad.session.docs.len(), 1, "one page window");
     let shot = take(&h, &deltas, "016-devices.png");
