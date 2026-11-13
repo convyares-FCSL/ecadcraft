@@ -742,6 +742,7 @@ const fn search_only(
 /// ECAD commands no action shows, each with the reason (design §7.2: nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
+    ("setdefault", "Settings ▸ Standards (U4c)"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),
     ("devices", "a read; the Devices tab and Lists show it"),
