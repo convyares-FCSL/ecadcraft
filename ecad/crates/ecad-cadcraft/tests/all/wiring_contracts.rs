@@ -50,7 +50,7 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let all = ecad_cadcraft::checks::all(&doc, 1e-6);
     let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "{all:?}");
-    let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
+    let Some(Fix::Join(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
     assert!(at.near(ecad_model::Pt::new(30.0, 0.0), 1e-9));
     // Add junction (the row's fix), then the T is one net with one number.
     let head = h.head();
@@ -401,7 +401,7 @@ fn add_junction_joins_loose_ends_that_only_meet() {
     assert_ne!(net_of(&doc, a), net_of(&doc, b));
     let looks: Vec<_> = ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "one row for the pair: {looks:?}");
-    let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("{looks:?}") };
+    let Some(Fix::Join(at)) = looks[0].fix else { panic!("{looks:?}") };
     let r = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
     assert_eq!(r["attached"], json!(2), "{r}");
     let doc = h.doc();
@@ -422,7 +422,8 @@ fn a_wires_properties_show_and_edit_its_net() {
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
     terminal(&mut h, (60.0, 0.0), "X1");
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
-    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({}));
+    // Brief 032: two wires that meet, joined later by a junction (else they would be one wire).
+    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({"join": false}));
     let view = |h: &mut H, w: ConductorId| {
         let route = h.route_handle(page, w);
         h.p(|p| props::view(p, Some(page), &[route]))

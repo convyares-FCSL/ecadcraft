@@ -148,6 +148,13 @@ colours) and this is a known limitation.
 | `ecad.table-row` / `ecad.table-header` | 5 mm / 7 mm | Generated table rows |
 | `ecad.flagged` | `ecad.check-warning` | `?` values on screen and in Reports |
 
+## Print and project (033, `design/033.md` §13)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.flagged-print` | ACI 7 | A missing value's `?` and its box when printed with screen colours |
+| `ecad.missing-box` | `ecad.wire-weight`, inset 0.5 mm, colour of its `?` | The box round a missing value in a generated table |
+
 ## Text styles (031, `design/031.md` §3 and §9)
 
 Text sizes and weights come from the project's style table through `text_style::text_style(doc,

@@ -714,7 +714,7 @@ fn json_calls_during_a_running_form_do_not_prompt_or_corrupt_it() {
     assert_eq!(h.head(), head, "no JSON call committed while the form was running");
     let still = h.s.running.as_ref().map(|r| r.id.clone());
     if still.as_deref() == Some("wire") {
-        assert_eq!(prompt(&h), "Specify next point or [Undo]:");
+        assert_eq!(prompt(&h), "Specify next point or [Undo/Join]:");
         typed(&mut h, "50,300");
         typed(&mut h, "");
     }

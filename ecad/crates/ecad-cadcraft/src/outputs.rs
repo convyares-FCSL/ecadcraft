@@ -21,6 +21,7 @@
 //! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
@@ -153,6 +154,8 @@ pub struct EndCell {
     pub device: Option<ComponentId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
+    /// Brief 032: the end is a continuation (a core chain's inner end, design 032 §3.2).
+    pub continuation: bool,
 }
 
 impl EndCell {
@@ -200,10 +203,13 @@ pub struct CableRow {
     pub go: Option<(PageId, Pt)>,
     /// Brief 028: how its members meet its core offer (design 028 §6.2).
     pub count: crate::strips::CoreCount,
-    /// The members (in member order), for the over and twice go-tos.
+    /// The first member of each core chain (design 032 §3.2; one member per chain without
+    /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<ConductorId>,
     /// Their stored core labels, in member order.
     pub member_cores: Vec<Option<String>>,
+    /// Brief 032: the last member of each core chain (its To), aligned with `members`.
+    pub tails: Vec<ConductorId>,
     /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
@@ -345,11 +351,14 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), .. } => {
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
+                    }
+                    if key == ecad_model::connectivity::NAME {
+                        self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
@@ -502,6 +511,12 @@ pub struct Outputs {
     /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
     links_off_strip: BTreeSet<ComponentId>,
     link_keys: BTreeMap<ComponentId, Vec<String>>,
+    /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
+    /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
+    /// generated page's sheet count moves.
+    continuation: Vec<Check>,
+    /// How many times [`Self::continuation`] was worked out (tests: an unrelated edit makes none).
+    pub continuation_builds: u64,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -530,7 +545,36 @@ impl Outputs {
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        o.refresh_continuation(doc);
         o
+    }
+
+    /// Work out the `continuation-clash` rows (design 033 §5.3).
+    fn refresh_continuation(&mut self, doc: &Document) {
+        let rows = crate::generated::continuation_checks(doc, Some(&*self));
+        self.continuation_builds += 1;
+        if rows != self.continuation {
+            self.continuation = rows;
+            self.checks_changed += 1;
+        }
+    }
+
+    /// The sheet count of each kept generated page (BOM, terminal plan, cable schedule).
+    fn generated_sheets(&self, doc: &Document) -> Vec<(PageId, usize)> {
+        self.generated.iter().map(|p| (*p, crate::generated::sheets(doc, *p, Some(self)))).collect()
+    }
+
+    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
+    /// added, removed or renumbered, a page's kind, or an issue.
+    fn moves_page_numbers(ops: &[Op]) -> bool {
+        ops.iter().any(|op| match op {
+            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == ecad_model::book::NUMBER_KEY || key == crate::generated::KEY,
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED)
+            }
+            _ => false,
+        })
     }
 
     /// The pages drawn from these models.
@@ -581,7 +625,17 @@ impl Outputs {
 
     /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
     /// committed transaction) name in this state.
-    pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
+    pub fn update(&mut self, doc: &Document, ops: &[Op], scope: Scope) {
+        let numbers = Self::moves_page_numbers(ops);
+        let before = self.generated_sheets(doc);
+        self.update_rows(doc, ops, scope);
+        if numbers || self.generated_sheets(doc) != before {
+            self.refresh_continuation(doc);
+            self.revision += 1;
+        }
+    }
+
+    fn update_rows(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
@@ -825,7 +879,7 @@ impl Outputs {
             }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-                EndCell { name: Some(format!("{name} >")), order, ..EndCell::default() }
+                EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
             }
             _ => {
                 let label = crate::interact::terminal_name(doc, t);
@@ -835,7 +889,7 @@ impl Outputs {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None }
+                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None, continuation: false }
             }
         }
     }
@@ -951,6 +1005,9 @@ impl Outputs {
             return;
         };
         let p = |key: &str| clean(cab.properties.get(key));
+        // Brief 032 §3.5: cores are counted by chain; each chain is shown by its first member,
+        // with the first stored label along it.
+        let (heads, tails) = chain_heads(doc, k, cab);
         let mut locs: BTreeSet<(LocKey, String)> = BTreeSet::new();
         let mut missing = false;
         // Brief 028: the devices at the cores' ends, per location.
@@ -1006,7 +1063,7 @@ impl Outputs {
                 cable: k,
                 tag: p("tag"),
                 kind: p("type"),
-                cores: cab.members.len(),
+                cores: heads.len(),
                 from_location: from,
                 to_location: to,
                 location_reason: reason,
@@ -1014,9 +1071,10 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &cab.members),
-                members: cab.members.iter().map(|m| m.conductor).collect(),
-                member_cores: cab.members.iter().map(|m| m.core.clone()).collect(),
+                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads),
+                members: heads.iter().map(|m| m.conductor).collect(),
+                member_cores: heads.iter().map(|m| m.core.clone()).collect(),
+                tails,
                 from_devices,
                 to_devices,
             },
@@ -1082,6 +1140,7 @@ impl Outputs {
     /// The location rows of the Checks list (design 024 §8.3).
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
+        out.extend(self.continuation.iter().cloned());
         for d in self.devices.values() {
             if let Some((_, loc)) = &d.own_box {
                 out.push(Check {
@@ -1676,6 +1735,25 @@ impl Outputs {
         t
     }
 
+    /// Brief 032 §3.5: the From and To of core `i` of cable row `r` (a core chain runs from its
+    /// first member's outer end to its last member's), in reference style `style`.
+    pub fn chain_ends(&self, r: &CableRow, i: usize, style: ecad_model::ReferenceStyle) -> (Option<String>, Option<String>) {
+        let w = r.members.get(i).and_then(|w| self.wires.get(w));
+        let tail = r.tails.get(i).filter(|t| Some(**t) != r.members.get(i).copied()).and_then(|t| self.wires.get(t));
+        match (w, tail) {
+            (Some(h), Some(t)) => {
+                let outer = |x: &WireRow, first: bool| match (x.from.continuation, x.to.continuation) {
+                    (true, false) => x.to.text(style),
+                    (false, true) => x.from.text(style),
+                    _ if first => x.from.text(style),
+                    _ => x.to.text(style),
+                };
+                (outer(h, true), outer(t, false))
+            }
+            _ => (w.and_then(|w| w.from.text(style)), w.and_then(|w| w.to.text(style))),
+        }
+    }
+
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
@@ -1684,11 +1762,12 @@ impl Outputs {
         let style = self.style;
         let member = |i: usize, label: Option<String>, state: &str| {
             let w = r.members.get(i).and_then(|w| self.wires.get(w));
+            let (from, to) = self.chain_ends(r, i, style);
             vec![
                 Cell::opt(&label, || "The core has no label.".into()),
                 Cell::ok(w.and_then(|w| w.wire_number.clone()).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.from.text(style)).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.to.text(style)).unwrap_or_default()),
+                Cell::ok(from.unwrap_or_default()),
+                Cell::ok(to.unwrap_or_default()),
                 Cell::ok(state),
             ]
         };
@@ -1712,6 +1791,43 @@ impl Outputs {
         }
         t
     }
+}
+
+/// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
+/// `c` included, read on `doc` (called on the state before and after a rename, so both the old
+/// and the new group): their core chains may join or break.
+fn continuation_group_cables(doc: &Document, c: ComponentId) -> BTreeSet<CableId> {
+    let Some(key) = doc.components.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+        return BTreeSet::new();
+    };
+    let mut group = doc.continuations_named(&key);
+    if !group.contains(&c) {
+        group.push(c);
+    }
+    let mut out = BTreeSet::new();
+    for k in group {
+        for (t, _) in doc.terminals_of(k) {
+            for (w, _) in doc.ends_at(t) {
+                out.extend(doc.cables_of(w));
+            }
+        }
+    }
+    out
+}
+
+/// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
+/// with the first stored core label along its chain, and each chain's last member.
+fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<ConductorId>) {
+    let chains = crate::references::core_chains(doc, k);
+    let mut heads = Vec::with_capacity(chains.len());
+    let mut tails = Vec::with_capacity(chains.len());
+    for ch in &chains {
+        let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
+        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
+        heads.push(ecad_model::CableMember { conductor: *first, core });
+        tails.push(*last);
+    }
+    (heads, tails)
 }
 
 /// Whether `page` exists and is drawn from the report models.

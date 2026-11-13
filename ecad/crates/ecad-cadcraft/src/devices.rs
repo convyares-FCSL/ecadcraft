@@ -154,7 +154,7 @@ impl TagHigh {
         let in_use = tag::provisional(&ecad_model::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
         let n = in_use.max(self.prov.get(&p).map_or(0, |g| g.saturating_add(1)));
         self.prov.insert(p.clone(), n);
-        tag::format_provisional(&p, n)
+        crate::defaults::print::tag_style(doc).provisional(&p, n)
     }
 
     /// The automatic tag a new device of `prefix` would get, without using it up (prompts).
@@ -201,7 +201,7 @@ impl TagHigh {
         let first = self.high.get(&prefix).copied().unwrap_or(0).saturating_add(1);
         // Bounded: a hostile file may hold many tags above the highest the log shows.
         for n in (first..=tag::MAX_TAG_NUMBER).take(10_000) {
-            let t = tag::format(&prefix, n, padding(doc));
+            let t = tag::format(&prefix, n, crate::defaults::print::tag_style(doc));
             // Devices and cables share one namespace (brief 026).
             if !doc.tag_taken(&t) {
                 return Ok((prefix, n, t));
@@ -334,7 +334,7 @@ pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -
     let doc = ledger.document();
     match typed {
         Some(t) => {
-            let t = tag::normalise(t, padding(doc))?;
+            let t = tag::normalise(t, crate::defaults::print::tag_style(doc))?;
             if let Some((p, 0)) = tag::provisional(&t) {
                 return Ok(high.next_provisional_in(doc, &p));
             }
@@ -1281,7 +1281,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, String> {
 pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if key == TAG_KEY {
-        return tag::normalise(v, padding(doc)).map(Some);
+        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some);
     }
     if v.chars().count() > MAX_PROPERTY_CHARS || v.chars().any(char::is_control) {
         return Err(format!("`{key}` can be at most {MAX_PROPERTY_CHARS} characters, with no control characters"));

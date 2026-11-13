@@ -29,6 +29,31 @@ Disconnect; its look comes with the new UI shell.
 - *Automated checks:* see section 7D.
 - *Agent-observed:* none yet; no agent has watched the live window with Claude Code.
 
+**Brief 033 (design `ecad/docs/design/033.md`), on `feature/print-project`, not yet in `dev`:**
+Print Book's PDF holds on each page only what lies on that page (an approved upstream patch to
+CADCraft's PDF writer), so a book grows in step with its sheets: the 25-page bench book went from
+7,897 KB to 335 KB. A missing value in a generated table is `?` in a thin box, yellow on screen and
+black when printed in either colour mode. An automatic contact table that would run into the title
+block goes right of its coil, else is lifted above the title block; a table placed by hand stays
+and Checks lists `Contact table over the title block` with **Move table…**. `table` on an ECAD
+page is refused, nothing written: `Tables can't be placed on ECAD pages yet. Draw it with lines
+and text, or add a generated page for lists (New Page ▸ Generated).` Generated pages number their
+continuation sheets in sequence (`400, 401`). Project settings gain **Tags** (leading `-`, case
+as typed; changing the dash rewrites every tag in one undoable step) and **Revisions** (pending
+changes marker `D*` / `E (draft)` / off, and the revision table's columns with custom fields such
+as ECR). The Rev box shows `D*` when the drawing changed after the newest issue. Section 5-033
+describes it.
+- *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
+  20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
+  `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
+  colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
+  `table`, the Checks row, `table` refused, writes off), `print_project_q7_contracts.rs` (pending
+  marker with undo and save/reopen, revision columns and custom fields, tag style and its
+  rewrite, renumber under `typed`, writes off), unit tests in `revisions.rs` (column grammar,
+  hostile settings) and `ecad-model/src/tag.rs` (the tag style table).
+- *Agent-observed:* the worker ran the 25-page print bench before and after (release build).
+- *Owner-tried:* not yet.
+
 **Brief 034 (design `ecad/docs/design/034.md`), on `feature/component-library`, not yet in
 `dev`:** the built-in symbols grow from 21 to 81 so a control-panel pack needs no hand-drawn boxes:
 change-over contacts (`co`, `swco`: `11`/`12`/`14`, then `21`/`22`/`24`… when joined), 4-pole power
@@ -1243,7 +1268,8 @@ by location**. The trial has no file dialogs: where a file is asked for, type it
    **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
    cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
    its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
-   number is listed under the field and left out.
+   number is listed under the field and left out. A device without a part number shows `?` in a
+   box in the BOM, black in the PDF (brief 033); the file is a few hundred KB, not megabytes.
 
 Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
 `setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
@@ -1516,6 +1542,78 @@ Typed instead: `textstyle {}` (reads: the font, what draws it, every kind),
 `moved` and `overlaps`), `movetext {"representation":"<id>","kind":"tag","to":[130,170],"justify":"LT"}`
 (`"reset":true` instead of `to` puts it back).
 `projectprops`, `pageprops` and `setprop` refuse `text.` keys.
+
+## 5-032. Wires join, cables cross pages, wire labels (by clicking)
+
+Brief 032, design `ecad/docs/design/032.md`. Checked by the automated tests named in the design
+(§12); the steps below have not been tried by the owner yet.
+
+1. **Wire** tool: draw a wire from `0,0` to `50,0`, Enter; then start **Wire** again and click
+   on the first wire's open end, then `50,-20`, Enter. Expected: the echo says `end A joins wire …
+   (now one wire)`; the two parts are one wire with one label; Checks has no Open end row for the
+   corner. While the cursor is over an open end the Wire tool shows a green ring and `join`.
+2. Type `J` while drawing: the prompt reads `Specify next point (join off) [Undo/Join]:` and ends
+   that meet another wire stay open. Expected after the wire: a yellow ring on the open end, a
+   **Looks connected** row in Checks with **Join**; **Join** makes them one wire.
+3. **Join Wires** (Wiring tools): click where two open ends meet. Expected: one wire; on an open
+   end lying on a wire's middle, a junction.
+4. A wire drawn from a `0V` wire's open end with potential `24V` is refused: `That wire carries
+   0V and this one 24V; joining them would short them. …`; nothing is drawn.
+5. Cable across pages: on one page wires from a terminal to continuations `A1…A3`, slashed as
+   `-W04`; on another page continuations `A1…A3` and wires on. Slash them there with tag `-W04`.
+   Expected: no new cable; Reports ▸ Cables shows `-W04` with 3 cores from the first page's
+   terminals to the second's.
+6. **Project panel ▸ Project settings ▸ Wires**: **Labels** `One per net per page` (default) or
+   `Every wire`, and **Shortest labelled wire** (enabled with Every wire). Expected: with the
+   default a net is labelled once per page; Every wire with 10 mm leaves short drops unlabelled.
+
+Typed instead: `wire {"points":[[0,0],[50,0]]}`, `wire {"points":[[50,0],[50,-20]],"join":false}`,
+`joinwires {"at":[50,0]}`, `cableslash {"from":[50,-5],"to":[50,25],"tag":"-W04"}`,
+`wiresettings {"label_rule":"each","label_min_length":10}`. `defaults {"group":"Wires"}` lists
+`wire.join`.
+
+## 5-033. Print and project (by clicking)
+
+Brief 033, on `feature/print-project`. Start from the demo project of section 5K (it has a BOM
+page and devices without part numbers).
+
+1. **Book size.** Click **Print Book**, keep **All pages**, check **File**, **Print**. Expected:
+   `Printed n sheets (… generated) to … (… KB).`: a few hundred KB, not megabytes. Each PDF page
+   looks as before.
+2. **Missing values.** Show the BOM page: a missing part number is `?` in a thin yellow box. Print
+   Book with **Colour: Screen**: in the PDF the `?` and its box are black.
+3. **Contact table and the title block.** On a drawing page place a coil low on the sheet (just
+   above the title block) with two contacts on another page. Expected: its contact table sits to
+   the right of the coil, or is lifted above the title block; never over it. Move the table into
+   the title block with **Move Mirror Table**: it stays there, and Checks lists `Contact table over
+   the title block` with **Move table…**.
+4. **Continuation numbers.** Number the BOM page `400` (Pages list, double-click its number). With
+   enough devices for two sheets, the second sheet's Page box reads `401` and the first sheet's
+   Next reads `401`; Contents lists `400–401`. Typing `401` as another page's number is refused:
+   `Number 401 is sheet 2 of page 400 (BOM by location).` Print Book **Pages** `401` prints the
+   whole BOM page and says why.
+5. **`table`.** Type `table` on a drawing page and place it: refused, `Tables can't be placed on
+   ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸
+   Generated).` Nothing is added.
+
+6. **Tag style.** Project settings ▸ Tags: untick **Leading - on tags** (the line under it reads
+   `k5 is written K05`), **OK**. Every device and cable tag loses its `-` in one step (`Tag style:
+   no leading -. n tags rewritten.`); one **u** puts them all back. **Case ▸ As typed**: tags
+   typed from then on keep their letters (`M02a`); existing tags stay upper case.
+7. **Revision columns.** Project settings ▸ Revisions ▸ **Columns**: type
+   `rev, date, ecr:ECR, description, drawn`, **OK**. The title block's revision table now has an
+   ECR column and no Checked or Approved. In the Revisions window the pending row has an ECR
+   input. A wrong list says why under the field and is not written.
+8. **Pending changes.** Issue Rev A, then draw a line: the Rev box reads `A*`, the cover
+   `Revision A, … (changed since)`, and the Print Book dialog (and its result) notes `The drawing
+   has changed since Rev A; the title block shows A*.` Undo the line: `A` again. Filling in the next revision's fields
+   does not count. **Pending changes ▸ E (draft)** shows `B (draft)`; **Off** shows `A`.
+
+Typed instead: `projectprops {"tag_dash":false}`, `projectprops {"tag_case":"typed"}`,
+`projectprops {"revision_columns":"rev, date, ecr:ECR, description, drawn"}`,
+`revision {"fields":{"ecr":"ECR-114"}}`, `projectprops {"revision_pending":"draft"}`,
+`contacts {"component":"<id>"}` (its `table` says where the table went and why),
+`pageprops {"page":"<id>"}` (`sheet_numbers`), `printbook {"scope":{"pages":"401"}}` (`notes`).
 
 ## 5-034. Component library (by clicking)
 
