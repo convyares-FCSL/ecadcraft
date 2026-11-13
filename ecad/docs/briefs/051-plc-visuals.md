@@ -108,6 +108,10 @@ unchanged; 045-era DI/DQ cells 10 mm apart overlap until redrawn, pre-v1); FP4 a
 also deletes the wire pieces it trims (existing ops); FP5 registry entries `plc.frame.show`,
 `plc.page.title`. No op, no record field, nothing in `ecad-model`.
 
+**Approved (overseer, 2026-11-13): FP1–FP5.** FP1: the two kinds become text styles on 050's model;
+051 builds after 050a merges into `dev`, or merge-trains onto `feature/style-model`. FP3: changing
+how existing drawings look is accepted (pre-v1).
+
 ## Tester
 
 No (design §14, Q17): no format or op change. The reviewer checks the update maps and the trim
