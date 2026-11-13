@@ -10,7 +10,7 @@
 
 use crate::shell::Hosted;
 use cadcraft_ui_egui::theme::Tokens;
-use ecad_cadcraft::outputs::{Group, Table};
+use ecad_cadcraft::outputs::{BomView, Group, Table};
 use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
 
 /// The tabs.
@@ -127,7 +127,24 @@ pub struct Reports {
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
     pub terminals: crate::lists::terminals::TerminalsView,
+    /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
+    /// them; ticking writes `setdefault`), whether the project can be written (Columns and
+    /// + Item are greyed when not), each BOM row's item when it lists one item only, and the BOM
+    /// as CSV (Qty a number, a Unit column), row for row with the shown table.
+    pub view: BomView,
+    pub writable: bool,
+    pub items: Vec<Option<ecad_model::ComponentId>>,
+    csv: Option<Table>,
 }
+
+/// Brief 047's element names (design 047 §11).
+pub const COLUMNS: &str = "ecad.reports.columns";
+pub const COLUMN_ARTICLE: &str = "ecad.reports.columns.article";
+pub const COLUMN_NESTED: &str = "ecad.reports.columns.nested";
+pub const ADD_ITEM: &str = "ecad.reports.additem";
+/// The status words for an item row (it is on no page).
+pub const ITEM_NO_PAGE: &str = "Items are on no page.";
+pub const READ_ONLY: &str = "The project is read-only.";
 
 impl Reports {
     /// The table shown now (all rows; [`Reports::shown`] says which are visible).
@@ -161,6 +178,14 @@ impl Reports {
             return;
         }
         self.gos.clear();
+        self.view = o.view;
+        self.items.clear();
+        self.csv = None;
+        if self.tab == Tab::Bom {
+            self.items =
+                o.bom(self.group).iter().map(|r| if r.item && r.entries.len() == 1 { r.entries.first().map(|e| e.0) } else { None }).collect();
+            self.csv = Some(o.bom_table_with(self.group, o.view, true));
+        }
         self.table = match (self.tab, self.cores_of) {
             (Tab::Bom, _) => o.bom_table(self.group),
             (Tab::Wires, _) => o.wire_table(),
@@ -217,9 +242,43 @@ impl Reports {
         self.shown.get(i).copied()
     }
 
-    /// The table as shown (grouping, sort and filter), for CSV.
+    /// The table as shown (grouping, sort and filter), for CSV. Brief 047: the BOM in its CSV
+    /// form (design 047 §6.4), the same rows.
     pub fn shown_table(&self) -> Table {
-        Table { headers: self.table.headers.clone(), rows: self.shown.iter().filter_map(|i| self.table.rows.get(*i).cloned()).collect() }
+        let t = self.csv.as_ref().filter(|_| self.tab == Tab::Bom).unwrap_or(&self.table);
+        Table { headers: t.headers.clone(), rows: self.shown.iter().filter_map(|i| t.rows.get(*i).cloned()).collect() }
+    }
+
+    /// Brief 047: the BOM tab's Columns menu and + Item (design 047 §6.1).
+    fn bom_tools(&mut self, ui: &mut egui::Ui, out: &mut Option<Out>) {
+        let writable = self.writable;
+        let r = ui.add_enabled_ui(writable, |ui| {
+            ui.menu_button(RichText::new("Columns v").small(), |ui| {
+                let mut article = self.view.article;
+                if ui.checkbox(&mut article, "Article number").accessible_name(COLUMN_ARTICLE).changed() {
+                    let v = if article { "on" } else { "off" };
+                    *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
+                    ui.close();
+                }
+                if self.group == Group::Location {
+                    let mut nested = self.view.nested;
+                    if ui.checkbox(&mut nested, "Lines under devices").accessible_name(COLUMN_NESTED).changed() {
+                        let v = if nested { "nested" } else { "flat" };
+                        *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.lines", "level": "project", "value": v}))));
+                        ui.close();
+                    }
+                }
+            })
+            .response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, COLUMNS));
+            let add = ui.button("+ Item").accessible_name(ADD_ITEM);
+            if add.clicked() {
+                *out = Some(Out::Run("bomitem".into()));
+            }
+        });
+        if !writable {
+            r.response.on_hover_text(READ_ONLY);
+        }
     }
 
     /// The window. Returns what it asks for.
@@ -315,6 +374,7 @@ impl Reports {
                         })
                         .response
                         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.group"));
+                        self.bom_tools(ui, &mut out);
                     }
                     ui.label(RichText::new("Find").small());
                     let find = ui.add(egui::TextEdit::singleline(&mut self.find).desired_width(120.0)).accessible_name("ecad.reports.find");
@@ -394,6 +454,9 @@ impl Reports {
                     x += w;
                 }
                 let tab = self.tab;
+                let items = std::mem::take(&mut self.items);
+                let writable = self.writable;
+                let mut note = None;
                 let mut drawn = 0;
                 egui::ScrollArea::vertical().id_salt("ecad.reports.rows").auto_shrink([false, false]).show_rows(
                     ui,
@@ -424,7 +487,21 @@ impl Reports {
                             let resp = resp.accessible_name(format!("ecad.reports.{}.row.{i}", tab.name()));
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
                             let resp = if tip.is_empty() { resp } else { resp.on_hover_text(tip.join("\n")) };
-                            if resp.double_clicked() {
+                            // Brief 047: an item row has no page; its menu deletes it.
+                            let item = if tab == Tab::Bom { self.shown.get(i).and_then(|k| items.get(*k).copied().flatten()) } else { None };
+                            if let Some(c) = item {
+                                if resp.clicked() || resp.double_clicked() {
+                                    note = Some(ITEM_NO_PAGE.to_string());
+                                }
+                                resp.context_menu(|ui| {
+                                    let d = ui.add_enabled(writable, egui::Button::new("Delete item"));
+                                    let d = d.accessible_name(format!("ecad.reports.bom.row.{i}.delete"));
+                                    if d.clicked() {
+                                        out = Some(Out::Run(format!("bomitem {}", serde_json::json!({"item": c.hex(), "delete": true}))));
+                                        ui.close();
+                                    }
+                                });
+                            } else if resp.double_clicked() {
                                 out = Some(Out::Select(tab, i));
                             } else if resp.clicked() {
                                 out = Some(Out::Goto(tab, i));
@@ -432,6 +509,10 @@ impl Reports {
                         }
                     },
                 );
+                self.items = items;
+                if note.is_some() {
+                    self.note = note;
+                }
                 self.rows_drawn = drawn;
             });
         if !open {
@@ -443,7 +524,11 @@ impl Reports {
     fn widths(&self, ui: &egui::Ui) -> Vec<f32> {
         let total = ui.available_width().max(200.0);
         let weights: Vec<f32> = match self.tab {
-            Tab::Bom => vec![1.2, 0.5, 2.0, 2.5, 1.2, 1.6],
+            Tab::Bom => {
+                let mut v = vec![1.2, 0.6, 2.0, 2.5, 1.2, 1.6];
+                v.extend(std::iter::repeat_n(1.2, self.table.headers.len().saturating_sub(6)));
+                v
+            }
             Tab::Wires => vec![1.0, 1.4, 1.0, 1.4, 1.0, 0.9, 0.8, 0.8, 1.2, 0.9],
             Tab::Cables if self.cores_of.is_some() => vec![0.6, 1.0, 1.4, 1.4, 0.6],
             Tab::Cables => {

@@ -460,6 +460,61 @@ fn next_line(used: &BTreeSet<u8>) -> Option<u8> {
     }
 }
 
+/// One row of a device's part set as the inspector shows it (design 047 §6.2): line 0 the main
+/// part, then the part lines.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartSetRow {
+    pub n: u8,
+    /// `1`, `3`, `2.5 m`; a `for` line's total (per sub-item × names).
+    pub qty: String,
+    pub maker: Option<String>,
+    pub part_number: Option<String>,
+    pub description: Option<String>,
+    pub article_number: Option<String>,
+    /// `kit Starter set`, `for 1,2,4`.
+    pub note: Option<String>,
+}
+
+/// The part set of `c`, line 0 first; empty when `c` has no part lines (the section is then not
+/// shown).
+pub fn part_set(doc: &Document, c: ComponentId) -> Vec<PartSetRow> {
+    let Some(comp) = doc.components.get(&c) else { return Vec::new() };
+    let props = &comp.properties;
+    let (lines, _) = lines(props);
+    if lines.is_empty() {
+        return Vec::new();
+    }
+    let mut out = vec![PartSetRow {
+        n: 0,
+        qty: "1".into(),
+        maker: clean(props.get("maker")),
+        part_number: clean(props.get("part_number")),
+        description: clean(props.get("description")),
+        article_number: clean(props.get(ARTICLE_KEY)),
+        note: None,
+    }];
+    for l in lines {
+        let n_subs = l.subs.len();
+        let total = if l.for_text.is_some() { l.qty.checked_mul(n_subs).unwrap_or(l.qty) } else { l.qty };
+        let note = match (&l.kit, &l.for_text) {
+            (Some(k), Some(f)) => Some(format!("kit {k}, for {f}")),
+            (Some(k), None) => Some(format!("kit {k}")),
+            (None, Some(f)) => Some(format!("for {f}")),
+            (None, None) => None,
+        };
+        out.push(PartSetRow {
+            n: l.n,
+            qty: if l.metres { format!("{total} m") } else { total.to_string() },
+            maker: l.maker,
+            part_number: l.part_number,
+            description: l.description,
+            article_number: l.article_number,
+            note,
+        });
+    }
+    out
+}
+
 // ---------------------------------------------------------------- items (§3)
 
 /// Whether `c` is an item.

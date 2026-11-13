@@ -2754,7 +2754,9 @@ impl Trial {
         {
             self.reports_view();
         }
+        let writable = !self.header().read_only;
         if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            r.writable = writable;
             let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
         }
         let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
