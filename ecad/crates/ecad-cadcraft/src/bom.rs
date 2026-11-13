@@ -534,6 +534,28 @@ pub fn is_item(doc: &Document, c: ComponentId) -> bool {
     crate::wires::kind_of(doc, c) == Some(ITEM_KIND)
 }
 
+/// An item's stored `qty` and `unit` that do not parse (a file made elsewhere, or a merge that
+/// brought a fractional `qty` without `unit m`): the item then counts as 1 piece, and these are
+/// listed for the `bad-part-key` check, as `qty 3.6`.
+pub fn item_bad_keys(props: &Properties) -> Vec<String> {
+    let short = |v: &str| -> String { v.chars().take(20).collect() };
+    let mut bad = Vec::new();
+    let metres = match props.get(UNIT_KEY).map(|u| (u, parse_unit(u))) {
+        None => false,
+        Some((_, Ok(m))) => m,
+        Some((u, Err(_))) => {
+            bad.push(format!("unit {}", short(u)));
+            false
+        }
+    };
+    if let Some(q) = props.get(QTY_KEY)
+        && parse_qty(q, metres).is_err()
+    {
+        bad.push(format!("qty {}", short(q)));
+    }
+    bad
+}
+
 /// Whether a component's properties make it an item.
 pub fn is_item_component(c: &Component) -> bool {
     c.properties.get(ecad_model::connectivity::KIND).map(String::as_str) == Some(ITEM_KIND)

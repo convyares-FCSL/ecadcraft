@@ -6,3 +6,4 @@ crates/ecad-file/tests/golden/*.ecad -text
 # `lanes_are_in_brief_order` test catch the order. Only for files that lanes add lines to.
 **/tests/all/lanes/mod.rs merge=union
 crates/ecad-cadcraft/src/lanes.rs merge=union
+crates/ecad-cadcraft/src/defaults/mod.rs merge=union

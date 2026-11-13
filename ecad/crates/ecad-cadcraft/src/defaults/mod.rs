@@ -7,8 +7,8 @@
 //! ([`crate::default_cmds`]) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
-//! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034), `bom.rs` (U, 047). [`all`] reads
-//! one line per file and does not change when a lane adds an entry, so two lanes never edit one file.
+//! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
+//! not change when a lane adds an entry, so two lanes never edit one file.
 //!
 //! Not entries: hostile-input bounds (most candidates, most texts per page…). They are guards, not
 //! preferences, and stay constants beside the code they guard.
@@ -26,10 +26,11 @@ use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, Project
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
 /// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `strippage.` (brief 046,
 /// design 046 §7.2) and `bom.` (brief 047). Keys already approved before the registry keep their
-/// names; the key-rule test reads this one list. One line per area, so lanes adding an area add a
-/// line (design 047 FP6, overseer 2026-11-13).
+/// names; the key-rule test reads this one list.
+/// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
+/// this file with `merge=union`.
+#[rustfmt::skip]
 pub const AREAS: &[&str] = &[
-    // One area per line, below this one.
     "text",
     "wiring",
     "wire",
@@ -301,22 +302,22 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
     }
 }
 
-/// Each lane's entries, one line per lane file (design 047 FP6, overseer 2026-11-13): a lane that
-/// adds a registry file adds its line here, so two lanes never edit one chain.
-const LANE_ENTRIES: &[&[&Entry]] = &[
-    // One lane file per line, below this one.
-    text::ENTRIES,
-    wires::ENTRIES,
-    print::ENTRIES,
-    symbols::ENTRIES,
-    terminals::ENTRIES,
-    strip_pages::ENTRIES,
-    bom::ENTRIES,
-];
-
-/// Every registered entry, lane by lane.
+/// Every registered entry, lane by lane: one line per area (overseer ruling, 2026-11-13), so lanes
+/// adding an area each add one line and merge without conflict.
+#[rustfmt::skip]
 pub fn all() -> impl Iterator<Item = &'static Entry> {
-    LANE_ENTRIES.iter().flat_map(|e| e.iter()).copied()
+    [
+        text::ENTRIES,
+        wires::ENTRIES,
+        print::ENTRIES,
+        symbols::ENTRIES,
+        terminals::ENTRIES,
+        strip_pages::ENTRIES,
+        bom::ENTRIES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
 }
 
 /// The entry with this key.

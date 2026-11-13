@@ -1084,7 +1084,8 @@ impl Outputs {
     fn set_entries(&mut self, doc: &Document, c: ComponentId, main: Option<Entry>) {
         let Some(comp) = doc.components.get(&c) else { return };
         let item = main.as_ref().is_some_and(|e| e.item);
-        let (lines, bad) = if item { (Vec::new(), Vec::new()) } else { bom::lines(&comp.properties) };
+        // Review of #83, 1: an item's `qty` or `unit` that does not parse is listed, not silently 1.
+        let (lines, bad) = if item { (Vec::new(), bom::item_bad_keys(&comp.properties)) } else { bom::lines(&comp.properties) };
         if !bad.is_empty() {
             self.bad_part_keys.insert(c, bad);
             self.checks_changed += 1;
@@ -1787,12 +1788,18 @@ impl Outputs {
             let main = self.devices.get(c).and_then(|d| d.main);
             let first = keys.first().cloned().unwrap_or_default();
             let more = if keys.len() > 1 { format!(" (and {} more)", keys.len() - 1) } else { String::new() };
+            let which = match self.entries.get(&(*c, 0)).filter(|e| e.item) {
+                Some(e) => {
+                    format!("The item {} has {first}{more}, which ECAD does not read; it counts as 1 piece", e.description.as_deref().unwrap_or("?"))
+                }
+                None => format!("{tag} has {first}{more}, which ECAD does not read"),
+            };
             out.push(Check {
                 kind: Kind::BadPartKey,
                 page: main.map(|(_, p, _)| p),
                 at: main.and_then(|(_, _, a)| a),
                 object: Object::Component(*c),
-                which: format!("{tag} has {first}{more}, which ECAD does not read"),
+                which,
                 fix: None,
             });
         }

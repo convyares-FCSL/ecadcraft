@@ -153,7 +153,7 @@ pub enum Kind {
     ArticleConflict,
     /// A part line's `for` names a fuse or position the device does not have.
     PartForMissing,
-    /// A `part.` key ECAD does not read.
+    /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
     BadPartKey,
 }
 
@@ -318,7 +318,7 @@ impl Kind {
             Kind::FuseNoInsert => "Fuses without an insert",
             Kind::ArticleConflict => "One part number, two article numbers",
             Kind::PartForMissing => "Part line names a fuse or position the device lacks",
-            Kind::BadPartKey => "Part line key ECAD does not read",
+            Kind::BadPartKey => "Part line or item value ECAD does not read",
         }
     }
 

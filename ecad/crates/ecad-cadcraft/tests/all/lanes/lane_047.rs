@@ -557,3 +557,40 @@ fn the_bom_page_shows_units_articles_and_nested_lines() {
     assert!(t.iter().any(|x| x.contains("\u{21b3} Suppressor (kit: Starter set)")), "{t:?}");
     same_as_built(&mut f.h);
 }
+
+/// Review of #83, 1: an item's `qty` or `unit` that does not parse (here `qty 3.6` with no unit,
+/// written straight through an op as a merge would) counts as 1 piece and is listed in Checks,
+/// never silently.
+#[test]
+fn an_item_value_that_does_not_parse_is_checked() {
+    let mut f = fixture(0x47_0f);
+    let item: ComponentId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
+    f.h.cfg(|p| {
+        let ops = vec![
+            ecad_model::Op::SetProperty {
+                object: ecad_model::ObjectRef::Component(item),
+                key: "qty".into(),
+                before: Some("2".into()),
+                after: Some("3.6".into()),
+            },
+            ecad_model::Op::SetProperty {
+                object: ecad_model::ObjectRef::Component(item),
+                key: "unit".into(),
+                before: None,
+                after: Some("yards".into()),
+            },
+        ];
+        p.ledger.commit(ecad_model::Author::User, "a merge", ops).unwrap();
+    });
+    let rows = bom(&mut f.h, json!({}));
+    let r = rows.iter().find(|r| r["description"] == "Cable tray").unwrap();
+    assert_eq!((r["qty"].clone(), r["unit"].clone()), (json!(1), json!("pcs")));
+    let c = checks(&mut f.h, "bad-part-key");
+    assert_eq!(c.len(), 1, "{c:?}");
+    assert_eq!(c[0]["which"], "The item Cable tray has unit yards (and 1 more), which ECAD does not read; it counts as 1 piece");
+    // Put right through the command: the row is gone from Checks.
+    f.h.s.execute("bomitem", &json!({"item": item.hex(), "set": {"unit": "m"}})).unwrap();
+    assert!(checks(&mut f.h, "bad-part-key").is_empty());
+    let rows = bom(&mut f.h, json!({}));
+    assert_eq!(rows.iter().find(|r| r["description"] == "Cable tray").unwrap()["qty"], json!(3.6));
+}
