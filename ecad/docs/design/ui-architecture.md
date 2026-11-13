@@ -651,6 +651,30 @@ files: U4a owns the page view and canvas code, U4b the tool strip, wheel and act
 the right panel and Settings, U4d the banner and History. Shared touch points (the shell's
 `show` order, `ShellState`) are append-only, coordinated by the overseer.
 
+### 11.1 U4 file ownership (briefs 040–043, 2026-11-13)
+
+Each lane owns its new files and the files listed as owned in its brief's §0. The per-lane layout
+(#72) covers tests (`tests/all/lanes/lane_04N.rs`), commands (`ecad-cadcraft/src/lanes.rs`),
+quick start (`docs/quick-start/04N-*.md`) and new `ecad.*` tokens (the lane's design section).
+These files are shared, and each lane touches only the hunk named:
+
+| Shared file | 040 canvas | 041 wheel and tools | 042 inspector and Standards | 043 agent |
+| --- | --- | --- | --- | --- |
+| `ecad-trial/src/shell/mod.rs` | `main_view`: one `canvas::paint` call | `shell_ui`: the `show_command_line` line; `main_view`: the `take_secondary_click` line | `settings_overlay` removed, one `settings::show` call | `shell_ui`: banner block; `main_view`: one `last_write::paint` call |
+| `ecad-trial/src/lib.rs` | `pub mod canvas;` | — | `pub mod settings;`; popout openers | — |
+| `ecad-trial/src/shell/top_bar.rs` | — | search handler | — | `agent_pill` |
+| `ecad-trial/src/shell/state.rs` | `sheet` field | — | — | — |
+| `ecad-trial/src/shell/layout.rs` | — | `intent` row | — | — |
+| `ecad-trial/src/shell/text_panel.rs` | `ui.sheet` arm | — | — | — |
+| `ecad-cadcraft/src/interact/mod.rs` | `overlay_marks` body | two `mod` lines | — | — |
+| `ecad-cadcraft/src/lib.rs` | — | `pub mod actions;` | `mod default_cmds;` | — |
+| `ecad-tokens/src/icon.rs` | — | appended block `// 041` | appended block `// 042` if needed | — |
+| `ecad/UPSTREAM-PATCHES.md` | appended U4a block (US3, US1 line) | — | — | — |
+
+Order: 041, 042 and 043 start now; 040 starts when the redraw fix (O1) has merged. Merge order
+does not matter for correctness; the merge train takes them as they are ready and merges `dev`
+into each remaining branch locally (the union merge of the `lanes` files needs a local merge).
+
 Later, not in this programme: the companion pop-out window; Library and Publish main views
 beyond hosting today's content (symbol builder 1.1, report generator M2); the proposal row
 state for list import (M2).
