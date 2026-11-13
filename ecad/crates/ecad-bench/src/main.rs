@@ -78,8 +78,8 @@ fn main() -> ExitCode {
         return match r {
             Ok(t) => {
                 println!(
-                    "symbolnew {:.2} ms, symbolimpact {:.2} ms, symboledit {:.1} ms, wiredraw {:.2} ms ({} copies on {} pages, 50 lineages)",
-                    t.symbolnew_ms, t.symbolimpact_ms, t.symboledit_ms, t.wiredraw_ms, t.copies, t.pages
+                    "symbolnew {:.2} ms, symbolimpact {:.2} ms, symboledit {:.1} ms, wiredraw {:.2} ms (baseline {:.2} ms) ({} copies on {} pages, 50 lineages)",
+                    t.symbolnew_ms, t.symbolimpact_ms, t.symboledit_ms, t.wiredraw_ms, t.wiredraw_base_ms, t.copies, t.pages
                 );
                 ExitCode::SUCCESS
             }

@@ -31,6 +31,8 @@ pub struct SymbolEntry {
     pub place: String,
     /// `NO contact`, `Contactor / relay coil`, or `drawn` for a converted outline.
     pub name: String,
+    /// Brief 048 (design §8.4): its project symbol has a newer version.
+    pub update: bool,
 }
 
 /// One device in the list.
@@ -120,6 +122,19 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
                     component(&r.subject);
                 }
             }
+            // Brief 048: a project symbol's new or removed version changes "update available" on
+            // the devices showing its lineage.
+            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
+                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
+                    for v in crate::symbols::versions_of(doc, o.definition) {
+                        for item in doc.items_using(v.id) {
+                            if let Some((_, r)) = doc.representation_of_item(item) {
+                                component(&r.subject);
+                            }
+                        }
+                    }
+                }
+            }
             Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
             // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
             // order (folders) or the project's grid may change every place.
@@ -207,6 +222,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
             row: place.as_ref().map(|p| p.row),
             place: place.map_or_else(|| ecad_model::derive::unlocated(style).to_string(), |p| p.text(style)),
             name,
+            update: crate::symbol_cmds::update_available(doc, rid).is_some(),
         },
     )
 }

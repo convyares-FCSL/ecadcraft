@@ -8,7 +8,8 @@
 //! - **symbolnew**: a symbol of 200 shapes and 40 points saved (then undone).
 //! - **symbolimpact**: the impact of moving one point on the lineage with 500 copies (read only).
 //! - **symboledit**: that edit saved with `update: all` (then undone).
-//! - **wiredraw**: an ordinary wire drawn with the 50 lineages in the project (then undone).
+//! - **wiredraw**: an ordinary wire drawn with the 50 lineages in the project (then undone);
+//!   **wiredraw_base** the same before any project symbol is added.
 
 use std::path::Path;
 use std::time::Instant;
@@ -31,6 +32,8 @@ pub struct MeasuredSymbols {
     pub symbolimpact_ms: f64,
     pub symboledit_ms: f64,
     pub wiredraw_ms: f64,
+    /// The same wire drawn before any project symbol was added (the baseline).
+    pub wiredraw_base_ms: f64,
     /// Placed copies of the measured lineage, and the pages they are on.
     pub copies: usize,
     pub pages: usize,
@@ -56,6 +59,19 @@ fn content(key: &str, shapes: usize, points: usize, second_y: f64) -> Value {
         "slots": [{"text": "tag", "at": [-5, 0], "h": "right"}], "defaults": {"prefix": "A"}})
 }
 
+/// An ordinary wire drawn on the page shown, `runs` times (each undone): the median.
+fn wiredraw(s: &mut Session, runs: usize) -> Result<f64, String> {
+    let mut v = Vec::new();
+    for i in 0..runs {
+        let x = X0 + 200.0 + i as f64 * 5.0;
+        let t = Instant::now();
+        run(s, "wire", json!({"points": [[x, 50.0], [x, 10.0]]}))?;
+        v.push(ms(t));
+        run(s, "undo", json!({}))?;
+    }
+    Ok(median(&mut v))
+}
+
 /// Measure brief 048 on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
@@ -71,6 +87,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredSymbo
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
         let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let page1 = *pages.first().ok_or("the project has no pages")?;
+        run(&mut s, "openpage", json!({"page": page1.hex()}))?;
+        project.configure(&mut s, |p| {
+            p.outputs();
+        })?;
+        out.wiredraw_base_ms = wiredraw(&mut s, runs)?;
         // The measured lineage, placed 500 times: at most 10 per page.
         let v = run(&mut s, "symbolnew", content("bench0", 4, 2, -5.0))?;
         let def = v["definition"].as_str().ok_or("no definition")?.to_string();
@@ -123,15 +144,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredSymbo
             run(&mut s, "undo", json!({}))?;
         }
         out.symboledit_ms = median(&mut v);
-        let mut v = Vec::new();
-        for i in 0..runs {
-            let x = X0 + 200.0 + i as f64 * 5.0;
-            let t = Instant::now();
-            run(&mut s, "wire", json!({"points": [[x, 50.0], [x, 10.0]]}))?;
-            v.push(ms(t));
-            run(&mut s, "undo", json!({}))?;
-        }
-        out.wiredraw_ms = median(&mut v);
+        run(&mut s, "openpage", json!({"page": page1.hex()}))?;
+        out.wiredraw_ms = wiredraw(&mut s, runs)?;
         Ok(out)
     })();
     remove(&copy);

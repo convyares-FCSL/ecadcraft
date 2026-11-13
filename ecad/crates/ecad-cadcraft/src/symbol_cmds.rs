@@ -420,10 +420,12 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn json(&self, doc: &Document) -> Value {
+    /// The row as data; `book` is the project's page book, built once per listing (a page's
+    /// number alone walks the book).
+    pub fn json(&self, doc: &Document, book: &ecad_model::book::Book) -> Value {
         json!({
             "rep": self.rep.hex(), "item": self.item.hex(), "page": self.page.hex(),
-            "page_number": crate::references::page_number(doc, self.page), "component": self.component.hex(),
+            "page_number": book.number(doc, self.page), "component": self.component.hex(),
             "tag": self.tag, "from": self.from.hex(), "changes": self.changes, "clash": self.clash, "builtin": self.builtin,
         })
     }
@@ -775,10 +777,11 @@ fn run_symbolimpact(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         let shown: Vec<&Row> = rows.iter().filter(|r| !r.builtin || builtins || e.builtin).collect();
         let problems = problems(&content, &Rules { doc, lineage: (!e.builtin).then_some(e.lineage), grid: true });
         let pages: BTreeSet<PageId> = shown.iter().map(|r| r.page).collect();
+        let book = ecad_model::book::Book::of(doc);
         Ok(json!({
             "name": content.name, "version": e.seq, "builtin": e.builtin,
             "copies": shown.len(), "pages": pages.len(), "clashes": shown.iter().filter(|r| r.clash.is_some()).count(),
-            "rows": shown.iter().map(|r| r.json(doc)).collect::<Vec<_>>(),
+            "rows": shown.iter().map(|r| r.json(doc, &book)).collect::<Vec<_>>(),
             "problems": problems,
         }))
     })

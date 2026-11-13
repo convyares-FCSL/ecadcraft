@@ -263,6 +263,8 @@ pub struct Inspector {
     /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
     /// no part lines.
     pub parts: Vec<ecad_cadcraft::bom::PartSetRow>,
+    /// Brief 048: "update available" for the selected symbol.
+    pub symbol_update: Option<SymbolUpdate>,
 }
 
 /// The kinds of a symbol's own texts.
@@ -280,7 +282,19 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::lists::standards::value_text(e, r)
 }
 
-type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>);
+type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>, Option<SymbolUpdate>);
+
+/// Brief 048 (design 048 §8.4): the selected symbol shows an older version of its project
+/// symbol than the newest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolUpdate {
+    pub rep: RepresentationId,
+    pub shown: u64,
+    pub newest: u64,
+}
+
+/// The update row's element name.
+pub const SYMBOL_UPDATE: &str = "ecad.props.symbol.update";
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let mut deps = BTreeSet::from([ObjectRef::Project]);
@@ -344,7 +358,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, _) => ecad_cadcraft::bom::part_set(doc, c),
         _ => Vec::new(),
     };
-    (rows, deps, placements, connector, parts)
+    let update = match what {
+        What::Symbol(_, rep) => ecad_cadcraft::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
+        _ => None,
+    };
+    (rows, deps, placements, connector, parts, update)
 }
 
 /// Bring the inspector's rows up to date (its update map).
@@ -390,8 +408,8 @@ fn sync(t: &mut Trial) {
                 i.errors.clear();
             }
             i.what = what;
-            let (rows, deps, placements, connector, parts) = rows.unwrap_or_default();
-            (i.rows, i.deps, i.placements, i.connector, i.parts) = (rows, deps, placements, connector, parts);
+            let (rows, deps, placements, connector, parts, update) = rows.unwrap_or_default();
+            (i.rows, i.deps, i.placements, i.connector, i.parts, i.symbol_update) = (rows, deps, placements, connector, parts, update);
             i.connector_edits.clear();
             i.rebuilds += 1;
             i.seen = Some((serial, count, page, selection));
@@ -439,6 +457,7 @@ impl Inspector {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<InspectorAction> {
         let mut out = Vec::new();
         self.show_connector(ui, writable, &mut out);
+        self.show_symbol_update(ui, writable, &mut out);
         self.show_parts(ui);
         if self.rows.is_empty() {
             return out;
@@ -565,6 +584,24 @@ impl Inspector {
                 }
             }
         }
+    }
+
+    /// Brief 048 (design 048 §8.4): `Symbol: v2 · update available` with Update, which brings this
+    /// copy to the newest version (refused with the reason when it would clash).
+    fn show_symbol_update(&self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>) {
+        let Some(u) = &self.symbol_update else { return };
+        ui.add_space(space::M);
+        ui.horizontal(|ui| {
+            let text = format!("Symbol: v{} · update available (v{})", u.shown, u.newest);
+            ui.label(RichText::new(text).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, SYMBOL_UPDATE));
+            if writable {
+                let r = ui.small_button("Update");
+                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.button")));
+                if r.clicked() {
+                    out.push(InspectorAction::RunLine(format!("symbolupdate {}", serde_json::json!({"copies": [u.rep.hex()]}))));
+                }
+            }
+        });
     }
 
     /// Brief 047 (design 047 §6.2): the part set, one grey row per line, line 0 first; nothing to

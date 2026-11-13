@@ -406,3 +406,22 @@ fn hostile_inputs_never_panic() {
     let d = h.doc();
     assert!(symbols::project_symbols(&d).len() == 1);
 }
+
+#[test]
+fn update_available_reaches_the_devices_list_through_its_update_map() {
+    let mut h = H::new(4815);
+    let def: DefinitionId = id(&h.run("symbolnew", float(json!({}))).unwrap(), "definition");
+    let a: ComponentId = id(&place(&mut h, 100.0, 100.0), "component");
+    let entry = |d: &Document| ecad_cadcraft::device_list::device_entry(d, a).unwrap();
+    assert!(!entry(&h.doc()).symbols[0].update);
+    let before = h.doc();
+    let moved = json!([{"key": "1", "label": "BN", "at": [0, 10]}, {"key": "2", "label": "BU", "at": [0, -5]}]);
+    h.run("symboledit", float(json!({"definition": def.hex(), "points": moved, "update": "none"}))).unwrap();
+    let ops = last_ops(&mut h);
+    // The list's and the properties' update maps name the device for the new version.
+    let touched = ecad_cadcraft::device_list::devices_touched(&before, &ops);
+    assert!(format!("{touched:?}").contains(&format!("{a:?}")), "{touched:?}");
+    let props = ecad_cadcraft::props::touched(&before, &ops).unwrap();
+    assert!(props.contains(&ecad_model::ObjectRef::Component(a)));
+    assert!(entry(&h.doc()).symbols[0].update, "update available");
+}
