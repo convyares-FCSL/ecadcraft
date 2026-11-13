@@ -21,7 +21,7 @@ use ecad_trial::window::{self, STENCIL_BITS};
 use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
-struct App(Trial, Option<Timing>);
+struct App(Trial, Option<Timing>, window::FirstFit);
 
 /// Start-up timing still running (only with `ECAD_STARTUP_TIMING` on).
 struct Timing {
@@ -34,6 +34,12 @@ struct Timing {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The first launch grows to fit its monitor, once (a restored window keeps its size).
+        if self.2.pending() {
+            for c in self.2.commands(&ctx.input(|i| i.viewport().clone())) {
+                ctx.send_viewport_cmd(c);
+            }
+        }
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -115,7 +121,8 @@ fn main() -> eframe::Result {
         cfg!(all(unix, not(target_os = "macos"))),
     );
     // The window's size and position are remembered between sessions (brief 023).
-    let mut options = window::options(window::restores_window());
+    let restoring = window::restores_window();
+    let mut options = window::options(restoring);
     options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface);
     // As in CADCraft's desktop app: large command previews outgrow wgpu's default buffer cap.
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
@@ -164,7 +171,7 @@ fn main() -> eframe::Result {
             }
             let timing =
                 timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()), built: false });
-            Ok(Box::new(App(trial, timing)))
+            Ok(Box::new(App(trial, timing, window::FirstFit::new(restoring))))
         }),
     )
 }

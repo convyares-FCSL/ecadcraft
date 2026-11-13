@@ -82,6 +82,41 @@ fn devices_table_follows_the_page_and_edits_a_tag_in_one_transaction() {
     let _ = q1;
 }
 
+/// U3 follow-up: a device row selects all of the device's symbols on the first symbol's page
+/// (not only the first), and none of its symbols on other pages. Nothing is recorded.
+#[test]
+fn a_device_row_selects_all_its_symbols_on_the_page() {
+    let mut h = build(trial(), None);
+    let (coil, page1, _page2) = devices_fixture(&mut h);
+    // A second symbol of the coil's device on page 1 (the fixture's contact is on page 2).
+    let t = h.state_mut();
+    let device = coil.hex();
+    t.cad.run("place", serde_json::json!({"symbol": "no", "at": [45, 40], "device": device})).unwrap();
+    h.run_steps(3);
+    let reps: Vec<_> = h.state().panel.devices.source.row(coil).unwrap().entry.symbols.iter().map(|s| (s.rep, s.page)).collect();
+    assert_eq!(reps.len(), 3, "{reps:?}");
+    let on_page1: Vec<_> = reps.iter().filter(|(_, pg)| *pg == page1).map(|(r, _)| *r).collect();
+    assert_eq!(on_page1.len(), 2);
+    h.state_mut().cad.session.set_selection(Vec::new());
+    h.run_steps(2);
+    let before = head(&mut h);
+
+    click(&mut h, "Device -K01: Contactor / relay coil");
+    assert_eq!(active(&mut h), Some(page1), "the first symbol's page");
+    let mut selected = h.state().cad.session.selection();
+    selected.sort();
+    // Each symbol's own handles on the page now shown.
+    let t = h.state_mut();
+    let p = t.project().unwrap().clone();
+    let targets: Vec<_> =
+        reps.iter().map(|(rep, _)| p.read(&mut t.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, *rep)).unwrap().unwrap()).collect();
+    let mut expected: Vec<_> = targets.iter().filter(|(pg, _, _)| *pg == page1).flat_map(|(_, _, hs)| hs.clone()).collect();
+    expected.sort();
+    assert!(targets.iter().filter(|(pg, _, hs)| *pg == page1 && !hs.is_empty()).count() == 2, "both page-1 symbols are drawn");
+    assert_eq!(selected, expected, "both symbols on page 1, not the one on page 2");
+    assert_eq!(head(&mut h), before, "a selection change records nothing");
+}
+
 /// Criterion 3: a refused tag edit shows its reason under the cell; the value stays.
 #[test]
 fn devices_table_shows_a_refusal_under_the_cell() {

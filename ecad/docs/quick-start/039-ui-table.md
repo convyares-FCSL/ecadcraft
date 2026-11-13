@@ -32,8 +32,8 @@ Until the new shell (U2) gives Lists its place, the tables sit where the old lis
 1. Open a project with devices, checks and a terminal strip, for example
    `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\<project>.ecad`, or the demo
    project built in `docs/quick-start.md`.
-2. **Devices.** Project panel ▸ Devices. Click a row: its first symbol's page is shown and the
-   symbol selected. Select a symbol on the page: its row is selected and scrolled to. With a row
+2. **Devices.** Project panel ▸ Devices. Click a row: its first symbol's page is shown and all
+   the device's symbols on that page are selected (follow-up to 039). Select a symbol on the page: its row is selected and scrolled to. With a row
    selected, press Enter, type a new tag, Enter: the page shows the new tag, the Tag cell tints,
    and History has one entry. Type a tag another device has: the reason shows under the cell.
 3. **Checks.** Project panel ▸ Checks. Click a row to go to it; the fix buttons sit at the row's
