@@ -259,7 +259,7 @@ pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value,
 // ---------------------------------------------------------------- Place Terminals (§3.2)
 
 /// The definition ID of starter `s` in `doc`, embedding it in `ops` when it is not yet there.
-fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols::Starter, ops: &mut Vec<Op>) -> Result<DefinitionId, String> {
+pub(crate) fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols::Starter, ops: &mut Vec<Op>) -> Result<DefinitionId, String> {
     if let Some(d) = crate::symbols::embedded(doc, s) {
         return Ok(d);
     }
@@ -848,17 +848,83 @@ fn side_json(c: &strips::SideCell, outside: bool) -> Value {
     Value::Object(o)
 }
 
-/// One plan row as JSON (the keys 027 exports; design 028 §10).
+/// The terminal plan's fields (design 036 §9): the row model the terminal manager (2.6, the U3
+/// table) and strip pages (1.8) draw. Each is `(group, key, editable, the command that writes it)`;
+/// the groups mirror the strip: `inside` | `strip` | `outside`, and `either` for the row's place.
+pub const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
+    ("inside", "inside[].target", false, None),
+    ("inside", "inside[].wire", false, None),
+    ("inside", "inside[].conductor", false, None),
+    ("strip", "position", true, Some("termlabel {position}")),
+    ("strip", "level", false, None),
+    ("strip", "level_name", false, None),
+    ("strip", "label", true, Some("termlabel {text}")),
+    ("strip", "type", false, None),
+    ("strip", "type_name", false, None),
+    ("strip", "state", false, None),
+    ("strip", "rating", true, Some("setprop rating.<position>")),
+    ("strip", "links", true, Some("jumper")),
+    ("strip", "internal_bridge", false, None),
+    ("strip", "breaks", false, None),
+    ("strip", "bridge_group", false, None),
+    ("strip", "marker", true, Some("accessory")),
+    ("outside", "outside[].target", false, None),
+    ("outside", "outside[].wire", false, None),
+    ("outside", "outside[].cable", false, None),
+    ("outside", "outside[].core", false, None),
+    ("outside", "outside[].conductor", false, None),
+    ("either", "place", false, None),
+    ("either", "terminal", false, None),
+];
+
+/// [`PLAN_FIELDS`] as JSON: `[{group, key, editable, command?}]`.
+pub fn plan_fields_json() -> Value {
+    Value::Array(
+        PLAN_FIELDS
+            .iter()
+            .map(|(g, k, e, c)| {
+                let mut v = json!({"group": g, "key": k, "editable": e});
+                if let Some(c) = c {
+                    v["command"] = json!(c);
+                }
+                v
+            })
+            .collect(),
+    )
+}
+
+/// One plan row as JSON (the keys 027 exports; design 028 §10, brief 036 §9): `label` is the shown
+/// label (the position for a one-level position, as before); `type` keeps 028's `feed-through` and
+/// `pe` and is the type code otherwise.
 pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     let mut o = serde_json::Map::new();
     put(&mut o, "terminal", r.terminal.map(|t| t.hex()));
-    o.insert("label".into(), json!(r.label));
-    o.insert("type".into(), json!(if r.pe { "pe" } else { "feed-through" }));
-    o.insert("state".into(), json!(if r.spare() { "spare" } else { "drawn" }));
+    put(&mut o, "out", r.out.map(|t| t.hex()));
+    o.insert("label".into(), json!(r.shown));
+    o.insert("position".into(), json!(r.label));
+    o.insert("level".into(), json!(r.level));
+    o.insert("level_name".into(), json!(r.level_name));
+    let ty = match r.ty.code {
+        "ft" => "feed-through",
+        "pe" => "pe",
+        c => c,
+    };
+    o.insert("type".into(), json!(ty));
+    o.insert("type_name".into(), json!(r.ty.name));
+    o.insert("state".into(), json!(r.state()));
+    o.insert("label_overridden".into(), json!(r.label_overridden));
+    o.insert("breaks".into(), json!(r.breaks()));
+    put(&mut o, "rating", r.rating.as_ref());
+    put(&mut o, "internal_bridge", r.internal_bridge);
     o.insert("inside".into(), Value::Array(r.inside.iter().map(|c| side_json(c, false)).collect()));
     o.insert("outside".into(), Value::Array(r.outside.iter().map(|c| side_json(c, true)).collect()));
     put(&mut o, "bridge_group", r.bridge_group);
     put(&mut o, "place", r.place.as_ref().map(|p| p.text(style)));
+    let mut editable = vec!["position", "label", "links", "marker"];
+    if r.breaks() {
+        editable.push("rating");
+    }
+    o.insert("editable".into(), json!(editable));
     Value::Object(o)
 }
 
@@ -887,6 +953,19 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
     put(&mut o, "offered", s.offer.map(|x| x.text()));
     o.insert("drawn".into(), json!(s.drawn));
     o.insert("spare".into(), json!(s.spare));
+    // Brief 036: positions per type, with their BOM part.
+    let types: Vec<Value> = s
+        .types
+        .iter()
+        .map(|t| {
+            let mut v = json!({"code": t.ty.code, "name": t.ty.name, "drawn": t.drawn, "spare": t.spare, "description": t.description});
+            if let Some(pn) = &t.part_number {
+                v["part_number"] = json!(pn);
+            }
+            v
+        })
+        .collect();
+    o.insert("types".into(), Value::Array(types));
     if first > 0 {
         o.insert("first_row".into(), json!(first));
     }
@@ -902,7 +981,8 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
                 if accessories {
                     v["kind"] = json!("terminal");
                     v["marker"] = json!(s.acc.markers.contains(&r.label));
-                    let links: Vec<Value> = s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane})).collect();
+                    let links: Vec<Value> =
+                        s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level})).collect();
                     v["links"] = Value::Array(links);
                 }
                 v
@@ -919,7 +999,10 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
             .links
             .iter()
             .map(|l| {
-                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars});
+                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars, "level": l.level});
+                if let Some((lo, hi)) = l.cross {
+                    v["levels"] = json!([lo, hi]);
+                }
                 if let Some(pn) = &l.part_number {
                     v["part_number"] = json!(pn);
                 }
@@ -970,7 +1053,7 @@ fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             left -= end - skip;
             skip = 0;
         }
-        let mut v = json!({"strips": out, "total": total});
+        let mut v = json!({"strips": out, "total": total, "fields": plan_fields_json()});
         let shown_rows = limit - left;
         if after.saturating_add(shown_rows) < total {
             v["next"] = json!(after + shown_rows);

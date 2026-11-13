@@ -516,6 +516,14 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
         let long = n.chars().nth(MAX_FUSE_LABEL).is_some();
         let more = if long { "…" } else { "" };
+        // Brief 036 (FP5): on a terminal strip, `rating.<p>` is a fuse position's rating.
+        if crate::strips::is_strip(doc, c) {
+            let fuse = !long && crate::terminal_types::positions(doc, c).iter().any(|p| p.label == n && p.ty.code == "fuse");
+            if !fuse {
+                return Err(format!("{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."));
+            }
+            return crate::devices::property_value(doc, key, value);
+        }
         // The device's head (its one exclusive symbol), and only when that is a fuse bank.
         let bank = doc
             .representations_of(Subject::Component(c))

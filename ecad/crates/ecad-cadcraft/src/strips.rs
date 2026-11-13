@@ -1567,13 +1567,15 @@ mod tests {
 
     #[test]
     fn offers_read_and_refuse_with_a_way_forward() {
-        assert_eq!(parse_offer("12"), Ok(Offer { positions: 12, pe: 0 }));
-        assert_eq!(parse_offer(" 12 + 2pe "), Ok(Offer { positions: 14, pe: 2 }), "12 feed-through and 2 PE");
-        assert_eq!(parse_offer("0+2PE"), Ok(Offer { positions: 2, pe: 2 }));
+        let pos = |t: &str| parse_offer(t).map(|o| (o.positions, o.pe));
+        assert_eq!(pos("12"), Ok((12, 0)));
+        assert_eq!(pos(" 12 + 2pe "), Ok((14, 2)), "12 feed-through and 2 PE");
+        assert_eq!(pos("0+2PE"), Ok((2, 2)));
+        assert_eq!(pos("12+2PE+4x3"), Ok((18, 2)), "brief 036: type codes");
         assert!(parse_offer("990+10PE").is_err(), "999 in all");
         assert_eq!(offer_value(Some("12 + 2 PE")), Ok(Some("12+2PE".into())));
         assert_eq!(offer_value(Some("  ")), Ok(None));
-        assert!(parse_offer("12X").unwrap_err().contains("Write 12, or 12+2PE"));
+        assert!(parse_offer("12X").unwrap_err().contains("Write 12, 12+2PE or 12+4x3"));
         assert!(parse_offer("1000").is_err());
         assert!(parse_offer("0").is_err());
         assert_eq!(parse_offer("2+3PE").map(Offer::text), Ok("2+3PE".into()));

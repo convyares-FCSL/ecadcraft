@@ -312,12 +312,21 @@ pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result
 /// # Errors
 /// Fewer than 2 positions.
 pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
+    // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
+    if p.crosses_levels() {
+        return Ok(p.text());
+    }
     let sel = p.select(order);
     let missing = p.missing(order);
     if sel.len() + missing.len() < 2 {
         return Err("A link joins at least 2 positions. Write positions like 1-4 or 7, 9, 11.".into());
     }
-    Ok(if missing.is_empty() { links::canonical(&sel, order) } else { p.text() })
+    // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
+    // whose items name different levels, stays as written.
+    Ok(match (missing.is_empty(), p.crosses_levels(), p.level()) {
+        (true, false, Some(n)) => crate::terminal_types::link_text(&sel, order, n),
+        _ => p.text(),
+    })
 }
 
 /// The `setprop` rule for strip keys (FP1, FP2, FP5, FP6): `Ok(None)` when `key` is not one of
@@ -841,6 +850,27 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
                 }
             }
         }
+        // Brief 036 (FP7): a level's own label and a fuse position's rating move with their position.
+        for prefix in [crate::terminal_types::LABEL_PREFIX, crate::terminal_types::RATING_PREFIX] {
+            for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
+                let Some(rest) = k.strip_prefix(prefix) else { continue };
+                // `term_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.
+                let (pos, tail) = if prefix == crate::terminal_types::LABEL_PREFIX {
+                    match rest.rsplit_once('.') {
+                        Some((pos, n)) => (pos, format!(".{n}")),
+                        None => continue,
+                    }
+                } else {
+                    (rest, String::new())
+                };
+                was.insert(k.clone(), v.clone());
+                let nk = format!("{prefix}{}{tail}", moved(pos));
+                if nk != *k {
+                    lines.push(format!("{tag}: {} {} \u{2192} {}", if tail.is_empty() { "rating" } else { "label" }, k, nk));
+                }
+                now.insert(nk, v.clone());
+            }
+        }
         for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
             let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
             if b != a {
@@ -860,6 +890,27 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
         for (n, p) in links::of(props) {
             let key = links::key(n);
             let Some(before) = props.get(&key).cloned() else { continue };
+            // Brief 036: a cross-level link follows its position.
+            if p.crosses_levels() {
+                let after = p
+                    .spans()
+                    .iter()
+                    .map(|sp| match sp {
+                        links::Span::Levels { position, lo, hi } => {
+                            let q = moved(position);
+                            format!("{}-{}", crate::terminal_types::link_end(&q, *lo, None), crate::terminal_types::link_end(&q, *hi, None))
+                        }
+                        links::Span::Positions { a, level, point, .. } => crate::terminal_types::link_end(&moved(a), *level, *point),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if after != before {
+                    lines.push(format!("{tag}: link {before} \u{2192} {after}"));
+                    out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
+                }
+                continue;
+            }
+            let level = p.level().unwrap_or(1);
             let selected: Vec<&String> = p.select(&old_order);
             let dropped: Vec<&String> = selected.iter().copied().filter(|l| taken.contains(l)).collect();
             let mut labels: Vec<String> = selected.iter().filter(|l| !taken.contains(*l)).map(|l| moved(l)).collect();
@@ -881,7 +932,7 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             let mut refs: Vec<&String> = labels.iter().collect();
             refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
             refs.dedup();
-            let after = links::canonical(&refs, &new_order);
+            let after = crate::terminal_types::link_text(&refs, &new_order, level);
             if after != before {
                 lines.push(format!("{tag}: link {before} \u{2192} {after}"));
                 out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });

@@ -1525,9 +1525,11 @@ impl Outputs {
                     }
                 };
                 let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
-                if r.spare() {
-                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok("spare"), Cell::default()];
-                    row.push(Cell::ok(if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) }));
+                // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+                let pe_mark = r.pe && !r.ty.multi();
+                if r.terminal.is_none() {
+                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(r.state()), Cell::default()];
+                    row.push(Cell::ok(if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) }));
                     row.push(Cell::ok(s.bridge_cell(ri)));
                     row.extend(std::iter::repeat_n(Cell::default(), 5));
                     t.rows.push(row);
@@ -1541,13 +1543,13 @@ impl Outputs {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };
-                    let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { format!("{}{marker}", r.shown) } else { format!("{}\u{2032}", r.shown) };
                     let cable = outside.and_then(|c| c.cable.as_ref());
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         side(inside, |c| c.target.clone(), "A loose far end."),
                         side(inside, |c| c.wire.clone(), "The wire has no number."),
-                        Cell::ok(if r.pe { format!("{label} PE") } else { label }),
+                        Cell::ok(if pe_mark { format!("{label} PE") } else { label }),
                         Cell::ok(if i == 0 { s.bridge_cell(ri) } else { String::new() }),
                         side(outside, |c| c.wire.clone(), "The wire has no number."),
                         Cell::ok(cable.map_or_else(String::new, |(_, t)| t.clone().unwrap_or_else(|| "?".into()))),
@@ -1616,14 +1618,18 @@ impl Outputs {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { r.shown.clone() } else { format!("{}\u{2032}", r.shown) };
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         opt(s.location.as_ref()),
                         Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default()),
                         Cell::ok(label),
-                        Cell::ok(if r.pe { "pe" } else { "feed-through" }),
-                        Cell::ok(if r.spare() { "spare" } else { "drawn" }),
+                        Cell::ok(match r.ty.code {
+                            "ft" => "feed-through",
+                            "pe" => "pe",
+                            c => c,
+                        }),
+                        Cell::ok(r.state()),
                         opt(inside.and_then(|c| c.target.as_ref())),
                         opt(inside.and_then(|c| c.wire.as_ref())),
                         Cell::ok(r.bridge_group.filter(|_| i == 0).map(|g| g.to_string()).unwrap_or_default()),
