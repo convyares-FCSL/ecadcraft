@@ -20,7 +20,7 @@
 //! | I4 | A primitive item's geometry is finite | item | touched items |
 //! | I5 | A symbol item's definition exists (DOC-07) | item → definition | touched items; items placing a touched definition |
 //! | I6 | A symbol item's placement is valid | item | touched items |
-//! | I7 | A definition's geometry is finite and its terminal keys are unique | definition | touched definitions |
+//! | I7 | A definition's geometry is finite, its terminal keys are unique, and each bridge key is one of them or a placement key (`.s`, `.p`, a level key; brief 044) | definition | touched definitions |
 //! | I8 | A terminal's component exists (DOC-07) | terminal → component | touched terminals; terminals of a touched component |
 //! | I9 | A component's definition exists (DOC-07) | component → definition | touched components; components using a touched definition |
 //! | I10 | A representation's subject exists (DOC-07) | representation → component, conductor or cable | touched representations; representations of a touched subject |
@@ -511,5 +511,16 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     if keys.len() != d.terminals.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
+    // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
+    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k.as_str()) && !is_placement_key(k)) {
+        return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
+    }
     Ok(())
+}
+
+/// A terminal key a placement writes that need not be one of the definition's own keys (brief
+/// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
+/// 036). A bridge may name these; any other key it names must be one of the definition's own.
+pub fn is_placement_key(k: &str) -> bool {
+    k == ".s" || k == ".p" || (k.starts_with('.') && crate::links::level_of_key(Some(k)).is_some())
 }

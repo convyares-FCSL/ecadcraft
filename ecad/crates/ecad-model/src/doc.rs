@@ -473,7 +473,9 @@ pub struct Definition {
     pub terminals: Vec<TerminalDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
     /// group is on one net. Empty for almost every definition, and then left out of the file so
-    /// existing content hashes do not change.
+    /// existing content hashes do not change. A bridge may name a key the placement writes rather
+    /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
+    /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<String>>,
 }

@@ -455,8 +455,8 @@ use Slot as S;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[
-    // ---- Tool groups (spec §2). Lasso, Branch, Potential or bus line, Jump, Connector,
-    // Continuation arrow, Function box and Device or PLC outline have no command yet.
+    // ---- Tool groups (spec §2). Lasso, Branch, Potential or bus line, Jump, Continuation
+    // arrow, Function box and Device or PLC outline have no command yet.
     Action {
         id: "select",
         command: "",
@@ -473,6 +473,16 @@ pub const ACTIONS: &[Action] = &[
     tool("wire.tool", "wire", "Wire", Icon::Wire, ToolGroup::Wire, 0, &["draw wire", "conductor"]),
     tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Place, 0, &["place symbol", "device", "coil", "contact"]),
     tool("place.terminal", "terminals", "Terminal", Icon::Terminal, ToolGroup::Place, 1, &["place terminals", "strip"]),
+    // Brief 044 (design 044 §4.1): Place ▸ Connector.
+    tool(
+        "place.connector",
+        "connector",
+        "Connector",
+        Icon::Connector,
+        ToolGroup::Place,
+        2,
+        &["connector", "plug", "socket", "d-sub", "m12", "mated"],
+    ),
     tool("cable.slash", "cableslash", "Cable slash", Icon::Cable, ToolGroup::Cable, 0, &["new cable"]),
     tool("cable.continue", "cablecontinue", "Continue cable", Icon::GoTo, ToolGroup::Cable, 1, &["cable on another page"]),
     tool("draw.line", "line", "Line", Icon::Line, ToolGroup::Draw, 0, &["geometry"]),
@@ -743,6 +753,7 @@ const fn search_only(
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("setdefault", "Settings ▸ Standards (U4c)"),
+    ("pinlabel", "the inspector's Pin row and the terminal wheel's Rename pin (044; not built yet), and the pin-twice Checks fix"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),

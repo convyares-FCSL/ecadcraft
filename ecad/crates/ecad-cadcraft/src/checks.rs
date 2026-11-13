@@ -145,10 +145,20 @@ pub enum Kind {
     UnknownColour,
     /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
     DashesLeftOut,
+    /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
+    ConnectorPinTwice,
+    /// A connector whose whole halves are of two families.
+    ConnectorFamily,
+    /// A connector whose whole halves differ in size.
+    ConnectorSize,
+    /// A connector's pins with no mate (one count row per connector).
+    ConnectorLonePin,
+    /// A connector pin numbered beyond its `pins`.
+    ConnectorOver,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 43] = [
+    pub const ALL: [Kind; 48] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -192,6 +202,11 @@ impl Kind {
         Kind::NoFuseRating,
         Kind::UnknownColour,
         Kind::DashesLeftOut,
+        Kind::ConnectorPinTwice,
+        Kind::ConnectorFamily,
+        Kind::ConnectorSize,
+        Kind::ConnectorLonePin,
+        Kind::ConnectorOver,
     ];
 
     /// The JSON name.
@@ -240,6 +255,11 @@ impl Kind {
             Kind::NoFuseRating => "no-fuse-rating",
             Kind::UnknownColour => "unknown-colour",
             Kind::DashesLeftOut => "dashes-left-out",
+            Kind::ConnectorPinTwice => "connector-pin-twice",
+            Kind::ConnectorFamily => "connector-family",
+            Kind::ConnectorSize => "connector-size",
+            Kind::ConnectorLonePin => "connector-lone-pin",
+            Kind::ConnectorOver => "connector-over",
         }
     }
 
@@ -294,14 +314,23 @@ impl Kind {
             Kind::NoFuseRating => "Fuse positions without a rating",
             Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
             Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
+            Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
+            Kind::ConnectorFamily => "Connector halves of two families",
+            Kind::ConnectorSize => "Connector halves of two sizes",
+            Kind::ConnectorLonePin => "Connector pins without a mate",
+            Kind::ConnectorOver => "Connector pin beyond its pin count",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice | Kind::LevelTwice => {
-                Severity::Error
-            }
+            Kind::JoinsPotentials
+            | Kind::SharedNumber
+            | Kind::TwoFixed
+            | Kind::DuplicateTag
+            | Kind::TerminalTwice
+            | Kind::LevelTwice
+            | Kind::ConnectorPinTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -325,7 +354,9 @@ impl Kind {
             | Kind::ContinuationClash
             | Kind::PositionMixed
             | Kind::LevelMissing
-            | Kind::DashesLeftOut => Severity::Warning,
+            | Kind::DashesLeftOut
+            | Kind::ConnectorFamily
+            | Kind::ConnectorSize => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -393,6 +424,10 @@ pub enum Fix {
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
+    /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
+    ConnectorNextPin(TerminalId),
+    /// Brief 044: **Set pins to n** (`setprop pins`).
+    SetPins(ComponentId, u32),
 }
 
 /// One row of the Checks list.
@@ -939,6 +974,8 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
     }
+    // Brief 044 (design 044 §6.3): a connector's mating checks.
+    out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
     if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
         out.push(Check {

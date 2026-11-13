@@ -320,6 +320,11 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
+    /// Brief 044 (design 044 §7): a connector half's main symbol (a pin pair that is both
+    /// halves' main symbol: `Both`).
+    Half(crate::symbols::Side),
+    /// Brief 044: any other connector symbol, by the side it draws.
+    Pin(crate::symbols::Side),
     /// Anything else (no edges).
     Other,
 }
@@ -446,6 +451,12 @@ pub fn device(doc: &Document, c: ComponentId) -> Device {
 /// The class of member `rid` of its group, as the index keeps it.
 pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)> {
     let r = doc.representations.get(&rid)?;
+    // Brief 044: a connector's members.
+    if let Subject::Component(c) = r.subject
+        && crate::connectors::is_connector(doc, c)
+    {
+        return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
+    }
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Component(c) => match raw_class(doc, r) {
@@ -975,6 +986,56 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     parts
 }
 
+/// Most places one connector reference lists before `+n` (design 044 §7; hover lists all).
+pub const MAX_CONNECTOR_PLACES: usize = 3;
+
+/// The reference texts of connector `c` (design 044 §7): under each member with targets, their
+/// places (`/102.C4`), at most [`MAX_CONNECTOR_PLACES`] then `+n`. O(the connector's symbols).
+pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> Vec<(PageId, Part)> {
+    let list = crate::connectors::ref_classes(doc, c);
+    let edges = crate::connectors::ref_edges(doc, c, &list);
+    let mut targets: BTreeMap<RepresentationId, Vec<RepresentationId>> = BTreeMap::new();
+    for (s, t) in edges {
+        targets.entry(s).or_default().push(t);
+    }
+    let k = unit(doc);
+    let mut out = Vec::new();
+    for (rid, ts) in targets {
+        let Some(r) = doc.representations.get(&rid) else { continue };
+        let mut texts: Vec<String> = ts.iter().filter_map(|t| doc.representations.get(t)).map(|t| places.text(t.page, anchor(doc, t))).collect();
+        texts.sort();
+        texts.dedup();
+        let more = texts.len().saturating_sub(MAX_CONNECTOR_PLACES);
+        texts.truncate(MAX_CONNECTOR_PLACES);
+        let mut value = texts.join(" ");
+        if more > 0 {
+            value.push_str(&format!(" +{more}"));
+        }
+        let Some((lo, hi)) = (match (r.form, crate::devices::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl),
+            _ => None,
+        }) else {
+            continue;
+        };
+        let at = Pt::new((lo.x + hi.x) / 2.0, lo.y - 1.5 * k);
+        if !at.is_finite() {
+            continue;
+        }
+        out.push((
+            r.page,
+            Part {
+                rep: rid,
+                index: 0,
+                shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign: HAlign::Center, valign: VAlign::Top },
+                aci: None,
+                row: None,
+                bar: false,
+            },
+        ));
+    }
+    out
+}
+
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
@@ -987,6 +1048,11 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
     let mut places = Places::new(doc);
     let mut out = Vec::new();
     for (c, here) in by_component {
+        // Brief 044 (design 044 §7): a connector's half and pin references.
+        if crate::connectors::is_connector(doc, c) {
+            out.extend(connector_parts(doc, &mut places, c).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
+            continue;
+        }
         let dev = device(doc, c);
         if dev.head.is_none() {
             continue;
@@ -1008,8 +1074,15 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
 fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> BTreeMap<PageId, Vec<Part>> {
-    let dev = device(doc, c);
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
+    // Brief 044: a connector's references.
+    if crate::connectors::is_connector(doc, c) {
+        for (page, p) in connector_parts(doc, places, c) {
+            out.entry(page).or_default().push(p);
+        }
+        return out;
+    }
+    let dev = device(doc, c);
     if dev.head.is_none() {
         return out;
     }
@@ -1059,7 +1132,31 @@ impl RefIndex {
         for (g, list) in groups {
             idx.insert_group(g, list);
         }
+        // Brief 044: connectors' members and edges (design 044 §7).
+        for c in doc.components.keys() {
+            if crate::connectors::is_connector(doc, *c) {
+                idx.insert_connector(doc, *c);
+            }
+        }
         idx
+    }
+
+    /// Add connector `c`'s group (design 044 §7): its halves and pins, and their edges.
+    fn insert_connector(&mut self, doc: &Document, c: ComponentId) {
+        let list = crate::connectors::ref_classes(doc, c);
+        if list.is_empty() {
+            return;
+        }
+        let edges = crate::connectors::ref_edges(doc, c, &list);
+        let g = Group::Device(c);
+        for (r, k) in &list {
+            self.member.insert(*r, (g, *k));
+        }
+        self.members.insert(g, list.iter().map(|(r, _)| *r).collect());
+        for (s, t) in edges {
+            self.targets.entry(s).or_default().insert(t);
+            self.sources.entry(t).or_default().insert(s);
+        }
     }
 
     /// Make group `g` again from `doc`: its members, classes and edges. O(group).
@@ -1084,6 +1181,12 @@ impl RefIndex {
                     }
                 }
             }
+        }
+        if let Group::Device(c) = g
+            && crate::connectors::is_connector(doc, c)
+        {
+            self.insert_connector(doc, c);
+            return;
         }
         let list: Vec<(RepresentationId, Class)> = match g {
             Group::Cable(k) => doc

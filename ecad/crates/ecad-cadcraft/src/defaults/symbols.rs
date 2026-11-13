@@ -135,6 +135,10 @@ prefixes! {
     RJ45 = "rj45", "X", "RJ45 bulkhead";
     USBA = "usba", "X", "USB-A bulkhead";
     USBB = "usbb", "X", "USB-B bulkhead";
+    // Brief 044 (design 044 §10): the connector pins, 034's pattern.
+    PINPAIR = "pinpair", "X", "Connector pin pair";
+    PINS = "pins", "X", "Connector socket pin";
+    PINP = "pinp", "X", "Connector plug pin";
     PLCCPU = "plccpu", "A", "PLC CPU";
     PLCPS = "plcps", "A", "PLC power supply";
     PLCDI = "plcdi", "A", "PLC digital input card";

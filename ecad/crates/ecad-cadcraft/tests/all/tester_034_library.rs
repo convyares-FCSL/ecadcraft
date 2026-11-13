@@ -393,9 +393,11 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         .iter()
         .map(|s| s.key)
         .filter(|k| !OLD.iter().any(|o| o.0 == *k) && !cat.iter().any(|e| e.key == *k) && !ecad_cadcraft::terminal_types::is_level_starter(k))
+        // Brief 044's connector pins (design 044 §3.2).
+        .filter(|k| !matches!(*k, "pinpair" | "pins" | "pinp"))
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20);
+    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3);
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.

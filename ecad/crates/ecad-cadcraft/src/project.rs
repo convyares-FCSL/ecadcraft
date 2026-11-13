@@ -2922,6 +2922,13 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 }
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
+            // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
+            // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {
+                if crate::defaults::connectors::is_naming_key(key) || key.ends_with(".description") {
+                    out.extend(crate::connectors::pages_inheriting(doc, key));
+                }
+            }
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}

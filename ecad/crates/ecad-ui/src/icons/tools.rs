@@ -192,6 +192,14 @@ pub fn terminal(p: &mut Pen) {
     p.line((11.0, 8.0), (14.5, 8.0));
 }
 
+/// Connector (brief 044): a socket's cup, open downwards, over a plug's pin, each on its lead.
+pub fn connector(p: &mut Pen) {
+    p.line((8.0, 1.5), (8.0, 3.0));
+    p.arc(8.0, 6.0, 3.0, 180.0, 360.0);
+    p.rect(7.0, 7.5, 9.0, 12.0);
+    p.line((8.0, 12.0), (8.0, 14.5));
+}
+
 /// Junction: a dot where a line meets a line.
 pub fn junction(p: &mut Pen) {
     p.line((1.5, 6.0), (14.5, 6.0));

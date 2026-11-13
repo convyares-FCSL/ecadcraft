@@ -102,11 +102,14 @@ pub enum Icon {
     Cloud,
     /// Show or hide: an eye.
     Eye,
+    // 044
+    /// Connector: a socket's cup over a plug's pin.
+    Connector,
 }
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 46] = [
+    pub const ALL: [Icon; 47] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -154,6 +157,8 @@ impl Icon {
         Icon::Junction,
         Icon::Cloud,
         Icon::Eye,
+        // 044
+        Icon::Connector,
     ];
 
     /// A readable name, used as the accessible label of an icon with no label of its own.
@@ -206,6 +211,8 @@ impl Icon {
             Icon::Junction => "Junction",
             Icon::Cloud => "Revision cloud",
             Icon::Eye => "Show or hide",
+            // 044
+            Icon::Connector => "Connector",
         }
     }
 }

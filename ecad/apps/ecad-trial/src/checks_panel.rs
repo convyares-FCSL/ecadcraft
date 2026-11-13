@@ -33,6 +33,8 @@ pub const SHOW: &str = "Show";
 pub const OFFER: &str = "Offer drawn";
 pub const RENUMBER_STRIP: &str = "Renumber strip";
 pub const SET_CORES: &str = "Set cores\u{2026}";
+/// Brief 044: `connector-over`'s fix.
+pub const SET_PINS: &str = "Set pins";
 pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
@@ -217,6 +219,8 @@ impl ChecksPanel {
                 | Fix::MoveToNextFree(_)
                 | Fix::MoveToNewPosition(_)
                 | Fix::FuseDevices
+                | Fix::ConnectorNextPin(_)
+                | Fix::SetPins(..)
                 | Fix::AccessoryOrphan(..)
                 | Fix::LinkAcrossPartition(..)
                 | Fix::LinkOrphan(..)

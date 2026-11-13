@@ -86,6 +86,11 @@ fn kinds() {
         assert_eq!(s(k).kind, Kind::Contact { make: false }, "{k}");
     }
     for e in catalogue() {
+        // Brief 044 (design 044 §3.1): the 24 mating halves became connector halves.
+        if let Kind::ConnectorHalf { .. } = s(&e.key).kind {
+            assert!(e.key.contains("socket") || e.key.contains("plug") || e.key.starts_with("dsub") || e.key.starts_with("m12"), "{}", e.key);
+            continue;
+        }
         if !["co", "swco", "power4", "ssrout", "floatno", "rollerno", "interlockno", "floatnc", "rollernc", "interlocknc"].contains(&e.key.as_str()) {
             assert_eq!(s(&e.key).kind, Kind::Fixed { exclusive: true }, "{}", e.key);
         }
@@ -96,7 +101,8 @@ fn kinds() {
 #[test]
 fn quiet_lists() {
     let cat = catalogue();
-    for st in STARTERS {
+    // Brief 044's pins are quiet like 034's connector bodies (design 044 §3.2).
+    for st in STARTERS.iter().filter(|s| !matches!(s.key, "pinpair" | "pins" | "pinp")) {
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key)).map(|t| t.key.clone()).collect();
         got.sort();
@@ -152,6 +158,10 @@ fn anchors() {
         let v = symbols::anchors(st);
         if matches!(st.key, "junction" | "continuation") {
             assert!(v.is_empty(), "{}", st.key);
+            continue;
+        }
+        // Brief 044's pins (design 044 §3.2) show their half's tag only.
+        if matches!(st.key, "pinpair" | "pins" | "pinp") {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };

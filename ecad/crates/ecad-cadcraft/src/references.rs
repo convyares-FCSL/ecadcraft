@@ -725,6 +725,10 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
 /// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
 fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &ecad_model::Conductor) -> Option<String> {
     let t = End::BOTH.into_iter().filter_map(|e| c.end(e)).find(|t| shown.contains(t))?;
+    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    if let Some(name) = crate::connectors::pin_name(doc, t) {
+        return Some(name);
+    }
     let term = doc.terminals.get(&t)?;
     let comp = doc
         .components

@@ -14,6 +14,9 @@ use std::collections::{BTreeSet, HashSet};
 /// ECAD's command ids before this lane (the registry MCP's `list_commands` reads): the lane adds
 /// none, removes none (acceptance 1).
 const ECAD_COMMANDS: &[&str] = &[
+    // Brief 044.
+    "connector",
+    "pinlabel",
     "convertcomponent",
     "addterminal",
     "wire",
@@ -198,7 +201,7 @@ fn tool_groups_list_only_tools_that_start_a_command() {
         [
             vec!["Select"],
             vec!["Wire"],
-            vec!["Symbol", "Terminal"],
+            vec!["Symbol", "Terminal", "Connector"],
             vec!["Cable slash", "Continue cable"],
             vec!["Line", "Polyline", "Rectangle", "Circle", "Arc"],
             vec!["Location box"],
