@@ -52,7 +52,18 @@ pub enum Popout {
     Settings,
 }
 
-/// Element names of the two popouts.
+/// What a [`ProjectProps`] shows in its Settings section (brief 042).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    /// Settings ▸ Project ▸ Info.
+    Info,
+    /// Settings ▸ Project ▸ Settings: sheet, references, tags, revisions, numbering, wires.
+    Settings,
+    /// Settings ▸ Text styles (brief 031's Text section).
+    Text,
+}
+
+/// Element names of the two popouts (now the id salts of their Settings sections).
 pub const PROJECT_INFO_ID: &str = "ecad.projectinfo";
 pub const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
 
@@ -352,25 +363,34 @@ impl ProjectProps {
         }
     }
 
-    /// The window. Returns what was asked this frame.
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
+    /// The popout's contents drawn in place, as a Settings section (brief 042: the popouts became
+    /// Settings ▸ Project and Text styles; contents unchanged). `part` picks what is shown:
+    /// [`Part::Settings`] is the project settings without the Text section, which
+    /// [`Part::Text`] shows. OK writes every changed field of the copy, whichever part shows it.
+    /// Returns what was asked this frame.
+    pub fn show_in(&mut self, ui: &mut egui::Ui, part: Part) -> Option<Out> {
         let mut out = None;
         let ro = self.read_only;
-        let mut open = true;
-        let (title, id) = match self.popout {
-            Popout::Info => ("PROJECT INFO", PROJECT_INFO_ID),
-            Popout::Settings => ("PROJECT SETTINGS", PROJECT_SETTINGS_ID),
+        let id = match self.popout {
+            Popout::Info => PROJECT_INFO_ID,
+            Popout::Settings => PROJECT_SETTINGS_ID,
         };
         let info = self.popout == Popout::Info;
-        let max_body = (ctx.content_rect().height() * 0.55).max(200.0);
-        egui::Window::new(title).id(egui::Id::unique(id)).collapsible(false).resizable(false).default_width(420.0).open(&mut open).show(ctx, |ui| {
+        let text_only = part == Part::Text;
+        let max_body = (ui.ctx().content_rect().height() * 0.55).max(200.0);
+        ui.push_id(id, |ui| {
             // Brief 031: the Text section makes the settings taller than a small window; the
             // fields scroll, OK and Cancel stay in view. The fields take their own height up to
-            // `max_body`, not the height the window had last frame: an auto-sized window offers
-            // its last size as the room left, so the row under the fields would overflow it and
-            // the window would grow by that row every frame (U2 follow-up).
+            // `max_body`, not the height the host had last frame: an auto-sized host offers its
+            // last size as the room left, so the row under the fields would overflow it and it
+            // would grow by that row every frame (U2 follow-up).
             egui::ScrollArea::vertical().max_height(max_body).min_scrolled_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
-                if info {
+                if text_only {
+                    // Brief 031 (design §4.1): text styles.
+                    if let Some(t) = &mut self.text {
+                        t.show(ui, ro, WARNING, RED);
+                    }
+                } else if info {
                     egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
                         for (k, label) in FIELDS {
                             ui.label(label);
@@ -557,11 +577,7 @@ impl ProjectProps {
                             .accessible_name("ecad.settings.provisional")
                             .on_hover_text("New devices get -K?1, cables -W?1, new nets 24V-?; Finalise numbering numbers them in drawing order");
                     });
-                    // Brief 031 (design §4.1): text styles, after Numbering.
-                    if let Some(t) = &mut self.text {
-                        ui.separator();
-                        t.show(ui, ro, WARNING, RED);
-                    }
+                    // Brief 031's text styles are Settings ▸ Text styles (brief 042).
                     // Brief 022 (owner, 2026-11-09): wire label colours and size.
                     ui.separator();
                     ui.label(RichText::new("Wires").small().strong());
@@ -603,14 +619,11 @@ impl ProjectProps {
                         });
                     }
                 }
-                if ui.button("Cancel").accessible_name("ecad.projectprops.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ui.button("Cancel").accessible_name("ecad.projectprops.cancel").clicked() {
                     out = Some(Out::Close);
                 }
             });
         });
-        if !open {
-            out = Some(Out::Close);
-        }
         out
     }
 }

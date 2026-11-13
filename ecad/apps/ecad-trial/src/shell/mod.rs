@@ -11,9 +11,9 @@
 //!   it splits for a companion view ([`layout`]);
 //! - drawer: Checks ([`drawer`]); right panel: the ECAD properties ([`right`]), with the Text
 //!   panel over it (Ctrl+/; [`text_panel`]); status bar ([`status_bar`]);
-//! - Settings, an overlay opened from the project menu: a Developer section with the developer
-//!   switch, which shows CADCraft's own interface inside the main view (`--cad-ui`,
-//!   `ui.cadchrome`).
+//! - Settings, a full-window overlay opened from the project menu ([`crate::settings`], brief
+//!   042); its Developer section has the developer switch, which shows CADCraft's own interface
+//!   inside the main view (`--cad-ui`, `ui.cadchrome`).
 //!
 //! Panels keep their contents (design §5.6); only their framing is the shell's. The shell's state
 //! and the per-project page views persist in eframe's storage ([`state`]).
@@ -294,6 +294,8 @@ impl Trial {
         let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
+        // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
+        crate::settings::show(self, ui);
         keys::handle(self, ui.ctx(), &slots);
         self.refresh_panel();
         self.sync_props();
@@ -330,9 +332,6 @@ impl Trial {
         self.shell.frame_ms = cadcraft_ui_egui::now_ms() - t0;
         self.main_view(ui, &slots);
         self.take_props();
-        let t1 = cadcraft_ui_egui::now_ms();
-        self.settings_overlay(ui.ctx());
-        self.shell.frame_ms += cadcraft_ui_egui::now_ms() - t1;
     }
 
     /// The main view (and the companion half): the page through US1, or a hosted body.
@@ -530,24 +529,6 @@ impl Trial {
             self.open_release(None);
         }
         self.shell.publish = if i == 0 { PublishTab::Release } else { PublishTab::PrintBook };
-    }
-
-    /// Settings, over the window: a Developer section with the developer switch (U4c fills the
-    /// rest; 035's Agent access moves here in U4d).
-    fn settings_overlay(&mut self, ctx: &egui::Context) {
-        if !self.shell.settings_open {
-            return;
-        }
-        let mut open = true;
-        let mut on = self.shell.state.cad_chrome;
-        egui::Window::new(SETTINGS).id(egui::Id::unique("ecad.settings")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
-            ui.label(egui::RichText::new("Developer").strong());
-            ui.checkbox(&mut on, DEVELOPER_SWITCH).on_hover_text(
-                "CADCraft's menus, toolbar, Tool Sets, layers, layouts and command line, inside the main view. Also --cad-ui or ui.cadchrome.",
-            );
-        });
-        self.shell.state.cad_chrome = on;
-        self.shell.settings_open = open;
     }
 
     /// The dots on pages changed while another page was shown (design §8.2, Pages): from the

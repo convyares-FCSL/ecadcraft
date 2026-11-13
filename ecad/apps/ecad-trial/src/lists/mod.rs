@@ -17,6 +17,7 @@
 
 pub mod checks;
 pub mod devices;
+pub mod standards;
 pub mod terminals;
 
 use crate::project_panel::Action;
