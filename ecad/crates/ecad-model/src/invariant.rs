@@ -20,7 +20,7 @@
 //! | I4 | A primitive item's geometry is finite | item | touched items |
 //! | I5 | A symbol item's definition exists (DOC-07) | item → definition | touched items; items placing a touched definition |
 //! | I6 | A symbol item's placement is valid | item | touched items |
-//! | I7 | A definition's geometry is finite, its terminal keys are unique, and each bridge key is one of them or a placement key (`.s`, `.p`, a level key; brief 044) | definition | touched definitions |
+//! | I7 | A definition's geometry is finite, its terminal keys are unique, and each bridge key is one of them or a placement key (`.s`, `.p`, a level key; brief 044); its text slots are finite, for known device texts, one per text; its defaults use the known keys; it is not derived from its own origin (brief 048) | definition | touched definitions |
 //! | I8 | A terminal's component exists (DOC-07) | terminal → component | touched terminals; terminals of a touched component |
 //! | I9 | A component's definition exists (DOC-07) | component → definition | touched components; components using a touched definition |
 //! | I10 | A representation's subject exists (DOC-07) | representation → component, conductor or cable | touched representations; representations of a touched subject |
@@ -50,7 +50,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Cable, Component, Conductor, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal};
+use crate::doc::{
+    Cable, Component, Conductor, DEFINITION_DEFAULT_KEYS, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal,
+    TextSlot,
+};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::referrers;
@@ -104,7 +107,7 @@ impl Touched {
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 self.items.insert(*id);
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 self.components.insert(*id);
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
@@ -514,6 +517,29 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
     if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k.as_str()) && !is_placement_key(k)) {
         return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
+    }
+    // Brief 048 (FP1, FP2, FP4).
+    let mut texts = BTreeSet::new();
+    for slot in &d.texts {
+        if !slot.at.is_finite() || !slot.rotation.is_finite() {
+            return bad(format!("definition {id} has a text slot at a non-finite position"));
+        }
+        if !TextSlot::is_known_text(&slot.text) {
+            return bad(format!("definition {id} has a slot for {:?}, which is not a device text", slot.text));
+        }
+        if !texts.insert(slot.text.as_str()) {
+            return bad(format!("definition {id} has two slots for {:?}", slot.text));
+        }
+    }
+    if let Some(k) = d.defaults.keys().find(|k| !DEFINITION_DEFAULT_KEYS.contains(&k.as_str())) {
+        return bad(format!("definition {id} has a default {k:?}, which a definition does not hold"));
+    }
+    if let (Some(from), Some(own)) = (&d.derived_from, &d.origin)
+        && from.library == own.library
+        && from.definition == own.definition
+        && from.library_seq == own.library_seq
+    {
+        return bad(format!("definition {id} is derived from itself"));
     }
     Ok(())
 }

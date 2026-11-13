@@ -75,6 +75,13 @@ pub enum Op {
         id: ComponentId,
         component: Component,
     },
+    /// Change which embedded definition a component's symbols use (brief 048, FP5), keeping
+    /// its properties, terminals and representations.
+    SetComponentDefinition {
+        id: ComponentId,
+        before: Option<DefinitionId>,
+        after: Option<DefinitionId>,
+    },
     AddTerminal {
         id: TerminalId,
         terminal: Terminal,
@@ -215,6 +222,7 @@ impl Op {
             Op::ModifyItem { id, before, after } => Op::ModifyItem { id, before: after, after: before },
             Op::CreateComponent { id, component } => Op::DeleteComponent { id, component },
             Op::DeleteComponent { id, component } => Op::CreateComponent { id, component },
+            Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id, before: after, after: before },
             Op::AddTerminal { id, terminal } => Op::RemoveTerminal { id, terminal },
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
@@ -348,6 +356,18 @@ impl Op {
                 holds(&doc.components, *id, component, "component", checked)?;
                 if let Some(old) = doc.components.remove(id) {
                     doc.index.component(*id, &old, Delta::Remove);
+                }
+            }
+            Op::SetComponentDefinition { id, before, after } => {
+                let c = doc.components.get(id).ok_or_else(|| pre(format!("component {id} does not exist")))?;
+                if checked && c.definition != *before {
+                    return Err(pre(format!("component {id}'s definition differs from the recorded value")));
+                }
+                if let Some(old) = doc.components.remove(id) {
+                    doc.index.component(*id, &old, Delta::Remove);
+                    let new = Component { definition: *after, ..old };
+                    doc.index.component(*id, &new, Delta::Add);
+                    doc.components.insert(*id, new);
                 }
             }
             Op::AddTerminal { id, terminal } => {
@@ -567,6 +587,7 @@ impl Op {
             Op::RemoveItem { .. } => "RemoveItem",
             Op::CreateComponent { .. } => "CreateComponent",
             Op::DeleteComponent { .. } => "DeleteComponent",
+            Op::SetComponentDefinition { .. } => "SetComponentDefinition",
             Op::AddTerminal { .. } => "AddTerminal",
             Op::RemoveTerminal { .. } => "RemoveTerminal",
             Op::LinkRepresentation { .. } => "LinkRepresentation",

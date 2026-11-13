@@ -2927,9 +2927,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } | Op::SetComponentDefinition { id: c, .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
             }
+            // Brief 048 (FP8): a superseded version nothing shows is drawn nowhere.
+            Op::RemoveDefinition { id, .. } if doc.components_using(*id).is_empty() && doc.items_using(*id).is_empty() => {}
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));

@@ -134,13 +134,15 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             }
         }
     }
-    // Components: properties in place; another definition is a remove and an add.
+    // Components: properties in place; another definition is `SetComponentDefinition` (brief 048,
+    // FP5), after the definitions are embedded.
     for id in ids(&from.components, &to.components, scope.map(|s| &s.components)) {
         match (from.components.get(&id), to.components.get(&id)) {
-            (Some(a), Some(b)) if a.definition == b.definition => props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes),
             (Some(a), Some(b)) => {
-                removes.push(Op::DeleteComponent { id, component: a.clone() });
-                adds.push(Op::CreateComponent { id, component: b.clone() });
+                props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes);
+                if a.definition != b.definition {
+                    changes.push(Op::SetComponentDefinition { id, before: a.definition, after: b.definition });
+                }
             }
             (Some(a), None) => removes.push(Op::DeleteComponent { id, component: a.clone() }),
             (None, Some(b)) => adds.push(Op::CreateComponent { id, component: b.clone() }),
@@ -266,7 +268,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
             Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => ("component", id.0),
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => ("component", id.0),
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),

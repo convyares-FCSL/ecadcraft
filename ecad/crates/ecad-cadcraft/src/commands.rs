@@ -1119,6 +1119,7 @@ pub fn builtin_coil() -> Definition {
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
+        ..Default::default()
     }
 }
 

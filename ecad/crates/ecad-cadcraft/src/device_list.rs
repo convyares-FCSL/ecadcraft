@@ -106,7 +106,9 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
     };
     for op in ops {
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => component(&Subject::Component(*id)),
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                component(&Subject::Component(*id))
+            }
             Op::SetProperty { object: ObjectRef::Component(c), .. } => component(&Subject::Component(*c)),
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => component(&rep.subject),
             Op::ModifyRepresentation { before, after, .. } => {

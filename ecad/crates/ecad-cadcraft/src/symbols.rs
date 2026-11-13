@@ -197,7 +197,14 @@ impl Starter {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY.to_string(), PLUG_KEY.to_string()]],
             _ => crate::terminal_types::bridges(self.key),
         };
-        let mut d = Definition { bridges, name: self.name.into(), origin: None, graphics: graphics(self.key), terminals: terminals(self.key) };
+        let mut d = Definition {
+            bridges,
+            name: self.name.into(),
+            origin: None,
+            graphics: graphics(self.key),
+            terminals: terminals(self.key),
+            ..Default::default()
+        };
         let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: self.library_seq(), content_hash });
         Ok(d)

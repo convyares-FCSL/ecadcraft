@@ -1299,7 +1299,7 @@ impl Index {
                         subject(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     out.insert(*id);
                 }
                 Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
