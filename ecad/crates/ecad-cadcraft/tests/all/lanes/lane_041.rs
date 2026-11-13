@@ -106,6 +106,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "agentaccess",
     "termlabel",
     "toposition",
+    "setdefault",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
