@@ -57,6 +57,7 @@ pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
+pub mod lists;
 pub mod merge_dialog;
 pub mod outputs_ui;
 pub mod preview;
@@ -1640,6 +1641,7 @@ impl Trial {
             return;
         };
         let serial = self.project_serial;
+        let selection = if self.panel.tab == project_panel::Tab::Devices { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
         let panel_revision = &mut self.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
@@ -1671,6 +1673,8 @@ impl Trial {
             // the devices a change touched.
             if panel.tab == project_panel::Tab::Devices {
                 panel.devices.sync(serial, p);
+                // Brief 039: symbols selected on the page select their rows.
+                panel.devices.follow(p, &selection);
             }
             // The History tab's copy, only while it is shown (brief 020a; its own update map).
             if panel.tab == project_panel::Tab::History {
@@ -2772,8 +2776,12 @@ impl Trial {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
             Some(outputs_ui::Out::Run(line)) => {
-                let _ = self.run_line(&line);
+                let refusal = self.run_line(&line);
+                if let Some(r) = self.reports.as_mut() {
+                    r.ran(refusal);
+                }
             }
+            Some(outputs_ui::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)
@@ -2905,15 +2913,18 @@ impl Trial {
             Some(To::Symbol(rep)) => {
                 let _ = self.goto_symbol(rep);
             }
-            Some(To::Place(page, at)) => {
-                if self.show_page(page).is_ok()
-                    && let Ok(st) = self.cad.session.state_mut()
-                {
-                    let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
-                }
-            }
+            Some(To::Place(page, at)) => self.goto_place(page, at),
             None => {}
+        }
+    }
+
+    /// Show `page`, centred on `at` at the current zoom (kept readable).
+    pub fn goto_place(&mut self, page: PageId, at: ecad_model::Pt) {
+        if self.show_page(page).is_ok()
+            && let Ok(st) = self.cad.session.state_mut()
+        {
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
     }
 

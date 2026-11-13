@@ -199,12 +199,12 @@ fn the_tint_lasts_1_2_s_on_changed_cells_only() {
     // Through the table's update map entry point.
     let mut src = demo();
     let mut table = Table::new("tint", "Devices");
-    table.update(&src, Changed::All, 0.0);
+    table.update_at(&src, Changed::All, 0.0);
     src.set(1, 1, "Pump contactor 2");
-    table.update(&src, Changed::Keys(vec![1]), 5.0);
+    table.update_at(&src, Changed::Keys(vec![1]), 5.0);
     assert_eq!(table.tint.tinted(5.5), [(1, DESC)]);
     assert_eq!(table.view.builds, 1);
-    table.update(&src, Changed::Nothing, 6.0);
+    table.update_at(&src, Changed::Nothing, 6.0);
     assert_eq!((table.view.builds, table.view.patches), (1, 1), "nothing changed: nothing done");
 }
 
@@ -332,7 +332,9 @@ fn read_cells_do_not_edit_and_go_to() {
     h.run();
     assert!(h.state().0.edit.is_none());
     h.state_mut().2.clear();
-    h.get_all_by_label("4").next().map(|n| n.click());
+    if let Some(n) = h.get_all_by_label("4").next() {
+        n.click();
+    }
     h.run();
     assert!(h.state().2.contains(&TableEvent::GoTo { key: 5, col: PAGE }), "{:?}", h.state().2);
 }

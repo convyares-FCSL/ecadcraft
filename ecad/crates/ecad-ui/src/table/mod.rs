@@ -46,6 +46,8 @@ pub enum TableEvent<K> {
     Open(K),
     /// Export CSV was pressed: the shown rows as CSV.
     Export(String),
+    /// Button `index` of a [`Cell::Buttons`] cell was pressed.
+    Button { key: K, col: ColumnId, index: usize },
 }
 
 /// One table's state: the view, the selection, tints and the edit. The values stay in the source.
@@ -69,6 +71,8 @@ pub struct Table<K: Ord> {
     pub empty: &'static str,
     scroll_to: Option<K>,
     built: bool,
+    /// egui's time at the last frame drawn: changes reported between frames are tinted from it.
+    now: f64,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
 }
@@ -90,6 +94,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
             empty: "Nothing to list.",
             scroll_to: None,
             built: false,
+            now: 0.0,
             rows_drawn: 0,
         }
     }
@@ -109,9 +114,15 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
     }
 
     /// The update map's entry point: rebuild on [`Changed::All`] or before the first build, patch
-    /// the keys of [`Changed::Keys`] (tinting the cells whose look changed at `now`), nothing for
-    /// [`Changed::Nothing`].
-    pub fn update<S: TableSource<Key = K>>(&mut self, src: &S, changed: Changed<K>, now: f64) {
+    /// the keys of [`Changed::Keys`] (tinting the cells whose look changed), nothing for
+    /// [`Changed::Nothing`]. The tint starts at the last frame's time.
+    pub fn update<S: TableSource<Key = K>>(&mut self, src: &S, changed: Changed<K>) {
+        let now = self.now;
+        self.update_at(src, changed, now);
+    }
+
+    /// [`Table::update`] with the tint starting at `now` (egui's time, seconds).
+    pub fn update_at<S: TableSource<Key = K>>(&mut self, src: &S, changed: Changed<K>, now: f64) {
         match changed {
             _ if !self.built => {
                 self.view.rebuild(src);
@@ -290,8 +301,9 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
     /// Draw the table. Returns what happened.
     pub fn show<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S) -> Vec<TableEvent<K>> {
         let mut out = Vec::new();
+        self.now = ui.input(|i| i.time);
         if !self.built {
-            self.update(src, Changed::All, ui.input(|i| i.time));
+            self.update(src, Changed::All);
         }
         if self.toolbar {
             self.show_toolbar(ui, src, &mut out);
@@ -322,6 +334,13 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
             let g = cells::fitted(ui, self.empty, ui_type::BODY, color(GRAPHITE.text_2), ui.available_width());
             let (r, _) = ui.allocate_exact_size(g.size() + vec2(0.0, space::M), Sense::hover());
             ui.painter().galley(r.min + vec2(space::M, space::XS), g, color(GRAPHITE.text_2));
+            self.rows_drawn = 0;
+            return out;
+        }
+        // A window's first sizing pass has no real width yet: egui_extras would keep the column
+        // widths it squeezes into it. Lay out nothing then; the next pass draws.
+        if ui.is_sizing_pass() {
+            ui.allocate_space(vec2(ui.available_width(), size::ROW_TABLE * 4.0));
             self.rows_drawn = 0;
             return out;
         }
@@ -392,6 +411,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         let mut clicked: Option<(K, Option<ColumnId>, bool, Modifiers)> = None;
         let mut toggle: Option<String> = None;
         let mut goto: Option<(K, ColumnId)> = None;
+        let mut button: Option<(K, ColumnId, usize)> = None;
         let mut edit_end: Option<(bool, bool, bool)> = None; // (commit, tab, keep focus)
         table.body(|mut body| {
             let widths = body.widths().to_vec();
@@ -498,10 +518,10 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                                 } else {
                                     let cell = src.cell(k, c.id);
                                     let at_cursor = focused && selected && self.selection.cursor() == Some(k) && self.cursor_col == Some(c.id);
-                                    if let Some(go) = cells::draw(ui, rect, &cell, c.align, at_cursor)
-                                        && go.clicked()
-                                    {
-                                        goto = Some((k, c.id));
+                                    match cells::draw(ui, rect, &cell, c.align, at_cursor) {
+                                        Some(cells::Hit::Go) => goto = Some((k, c.id)),
+                                        Some(cells::Hit::Button(index)) => button = Some((k, c.id, index)),
+                                        None => {}
                                     }
                                 }
                                 if let Some(f) = self.refusal.as_ref().filter(|f| f.key == k && f.col == c.id) {
@@ -549,7 +569,9 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                 ui.memory_mut(|m| m.request_focus(self.id));
             }
         }
-        if let Some((k, col)) = goto {
+        if let Some((key, col, index)) = button {
+            out.push(TableEvent::Button { key, col, index });
+        } else if let Some((k, col)) = goto {
             self.selection.click(k);
             self.cursor_col = Some(col);
             out.push(TableEvent::Selected(vec![k]));
@@ -590,12 +612,15 @@ fn interact_unclipped(ui: &mut Ui, rect: Rect, clip: Rect, id: Id) -> Response {
 /// A refusal under its cell (spec §5: where the attempt was made), in the error colour.
 fn refusal_note(ui: &Ui, rect: Rect, message: &str, id: Id) {
     let s = GRAPHITE;
-    egui::Area::new(id.with("refusal")).order(egui::Order::Foreground).fixed_pos(rect.left_bottom()).interactable(false).show(ui.ctx(), |ui| {
-        egui::Frame::NONE.fill(color(s.raised)).stroke(Stroke::new(line::HAIRLINE_PX, color(s.error))).inner_margin(space::S).show(ui, |ui| {
-            let g = cells::fitted(ui, message, ui_type::SMALL, color(s.error), 420.0);
-            let (r, resp) = ui.allocate_exact_size(g.size(), Sense::hover());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Label, true, message));
-            ui.painter().galley(r.min, g, color(s.error));
-        });
-    });
+    egui::Area::new(id.with("refusal")).order(egui::Order::Foreground).fade_in(false).fixed_pos(rect.left_bottom()).interactable(false).show(
+        ui.ctx(),
+        |ui| {
+            egui::Frame::NONE.fill(color(s.raised)).stroke(Stroke::new(line::HAIRLINE_PX, color(s.error))).inner_margin(space::S).show(ui, |ui| {
+                let g = cells::fitted(ui, message, ui_type::SMALL, color(s.error), 420.0);
+                let (r, resp) = ui.allocate_exact_size(g.size(), Sense::hover());
+                resp.widget_info(|| WidgetInfo::labeled(Role::Label, true, message));
+                ui.painter().galley(r.min, g, color(s.error));
+            });
+        },
+    );
 }

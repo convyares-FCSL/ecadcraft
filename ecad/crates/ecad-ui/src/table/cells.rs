@@ -3,7 +3,7 @@
 
 use ecad_tokens::{GRAPHITE, line, radius, space, ui_type};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
-use egui::{Color32, Galley, Rect, Response, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{Color32, Galley, Rect, Stroke, StrokeKind, Ui, pos2, vec2};
 use std::sync::Arc;
 
 use super::source::{Align, Cell, LaneCell};
@@ -75,9 +75,17 @@ pub fn lanes(ui: &Ui, rect: Rect, l: &LaneCell) {
     }
 }
 
-/// Draw `cell` in `rect` of `ui` (the cell's own ui). Returns the go-to link's response for a
-/// read cell with a target.
-pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -> Option<Response> {
+/// What a click in a cell asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hit {
+    /// The go-to of a read cell.
+    Go,
+    /// Button `i` of a [`Cell::Buttons`] cell.
+    Button(usize),
+}
+
+/// Draw `cell` in `rect` of `ui` (the cell's own ui). Returns what was clicked in it, if anything.
+pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -> Option<Hit> {
     let s = GRAPHITE;
     match cell {
         Cell::Text(t) => text(ui, rect, t, color(s.text), align),
@@ -90,7 +98,7 @@ pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -
             }
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::M, 0.0))).layout(layout(align)));
             child.set_clip_rect(rect.intersect(ui.clip_rect()));
-            return Some(prim::read_value(&mut child, t));
+            return prim::read_value(&mut child, t).clicked().then_some(Hit::Go);
         }
         Cell::Provisional(t) => {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::M, 0.0))).layout(layout(align)));
@@ -111,6 +119,17 @@ pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -
             }
         }
         Cell::Lanes(l) => lanes(ui, rect, l),
+        Cell::Buttons(names) => {
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::XS, 0.0))).layout(layout(align)));
+            child.spacing_mut().item_spacing.x = space::XS;
+            let mut hit = None;
+            for (i, n) in names.iter().enumerate() {
+                if child.add(prim::Button::new(n).small()).clicked() {
+                    hit = Some(Hit::Button(i));
+                }
+            }
+            return hit;
+        }
         Cell::Empty => {}
     }
     None

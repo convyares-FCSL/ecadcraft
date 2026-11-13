@@ -75,8 +75,11 @@ pub enum Out {
     Select(Tab, usize),
     /// Write the shown table as CSV to this path.
     Export(String),
-    /// Brief 030: run this command line (the Accessory menu).
+    /// Brief 030: run this command line (the Accessory menu; brief 039: a terminal plan edit,
+    /// whose refusal goes back through [`Reports::ran`]).
     Run(String),
+    /// Brief 039: show this page, centred on this point (a Terminals row's place).
+    GotoAt(ecad_model::PageId, ecad_model::Pt),
     Close,
 }
 
@@ -117,6 +120,8 @@ pub struct Reports {
     pub rows_drawn: usize,
     /// The project folder and name, for the export path's default.
     pub stem: String,
+    /// Brief 039: the Terminals tab as the one table's terminal manager.
+    pub terminals: crate::lists::terminals::TerminalsView,
 }
 
 impl Reports {
@@ -127,7 +132,8 @@ impl Reports {
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
-        let style = p.ledger.document().settings.reference_style as u64;
+        let reference_style = p.ledger.document().settings.reference_style;
+        let style = reference_style as u64;
         let o = p.outputs();
         // The counts on the tabs, from kept counts (no rows made).
         if self.counted != Some((serial, o.build_id ^ o.revision, self.group)) {
@@ -141,6 +147,9 @@ impl Reports {
             _ => o.revision,
         };
         let revision = revision.wrapping_add(u64::from(self.hide_accessories));
+        if self.tab == Tab::Terminals {
+            self.terminals.sync(serial, o, self.strip, !self.hide_accessories, reference_style);
+        }
         let key = (serial, revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
             self.filter();
@@ -172,6 +181,12 @@ impl Reports {
         self.seen = None;
         self.counted = None;
         self.strips_seen = None;
+        self.terminals.invalidate();
+    }
+
+    /// The result of the last [`Out::Run`]: a terminal plan edit's refusal shows under its cell.
+    pub fn ran(&mut self, refusal: Option<String>) {
+        self.terminals.ran(refusal);
     }
 
     fn filter(&mut self) {
@@ -331,6 +346,18 @@ impl Reports {
                     ui.label(RichText::new(n).small().color(t.text_dim));
                 }
                 ui.separator();
+                // Brief 039: the terminal manager is the one table, mirrored (design 036 §9).
+                if self.tab == Tab::Terminals {
+                    for a in self.terminals.show(ui, true) {
+                        out = Some(match a {
+                            crate::lists::ListAction::Run(line) => Out::Run(line),
+                            crate::lists::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
+                            crate::lists::ListAction::Panel(_) => continue,
+                        });
+                    }
+                    self.rows_drawn = self.terminals.table.rows_drawn;
+                    return;
+                }
                 if self.table.rows.is_empty() {
                     ui.label(RichText::new(self.tab.empty()).color(t.text_dim));
                     self.rows_drawn = 0;

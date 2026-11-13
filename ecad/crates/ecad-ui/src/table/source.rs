@@ -134,6 +134,9 @@ pub enum Cell {
     Badge(String, Tone),
     /// Link lanes.
     Lanes(LaneCell),
+    /// Action buttons (a check's fixes): a click reports [`super::TableEvent::Button`] with the
+    /// button's index.
+    Buttons(Vec<String>),
     Empty,
 }
 
@@ -154,7 +157,7 @@ impl Cell {
             Cell::Read { text, .. } => Cow::Borrowed(text),
             Cell::Number(v, unit) => Cow::Owned(number_text(*v, unit)),
             Cell::Lanes(l) => Cow::Borrowed(&l.text),
-            Cell::Swatch(_) | Cell::Empty => Cow::Borrowed(""),
+            Cell::Swatch(_) | Cell::Buttons(_) | Cell::Empty => Cow::Borrowed(""),
         }
     }
 
@@ -182,6 +185,7 @@ impl Cell {
                 tone.name().hash(&mut h);
             }
             Cell::Lanes(l) => l.hash(&mut h),
+            Cell::Buttons(b) => b.hash(&mut h),
             other => other.text().hash(&mut h),
         }
         h.finish()
