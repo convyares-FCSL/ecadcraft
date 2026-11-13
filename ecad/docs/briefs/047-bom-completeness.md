@@ -1,6 +1,7 @@
 # Brief 047: BOM completeness
 
-Status: Draft (designer, 2026-11-13; FP1–FP6 approved by the overseer 2026-11-13, design §14; owner questions in §15 open)
+Status: Approved (owner, 2026-11-13: Carl answered all 12 owner questions of design §15 "as recommended";
+the overseer approved FP1–FP6 on 2026-11-13, design §14)
 Branch: `feature/bom-completeness`, from `origin/dev` `be6f4413`.
 Designer: **yes** (`docs/design/047.md`) · Size: M
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.12**, lane U, after 1.8 (graphical
@@ -87,5 +88,6 @@ locking. The reviewer covers the PR into `dev` (design §13).
 
 ## Needs owner check
 
-- The questions in design §15 and the overseer's rulings on §14.
+- Design §15's questions: answered "as recommended" by the owner on 2026-11-13. §14's FP1–FP6:
+  approved by the overseer on 2026-11-13.
 - A click-only trial on the demo (quick start `docs/quick-start/047-bom-completeness.md`).
