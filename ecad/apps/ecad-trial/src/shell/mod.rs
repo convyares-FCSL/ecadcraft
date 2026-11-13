@@ -3,7 +3,7 @@
 //!
 //! - top bar: the project menu, the four workspaces (Ctrl+1–4), search (Ctrl+K), the Checks,
 //!   revision and agent pills ([`top_bar`]);
-//! - the agent banner while an agent is connected (035's banner, unchanged);
+//! - the agent banner while an agent is connected (035's banner, styled by 043);
 //! - left panel: Pages, Devices and History, navigation only ([`left`]);
 //! - tool strip in Draw: seven groups whose flyouts list today's tools ([`tool_strip`]);
 //! - main view: the page (CADCraft's drawing through upstream seam US1, `CadApp::ui_embedded`),
@@ -290,7 +290,8 @@ impl Trial {
         // The Developer section and the Text panel are one: either opened opens both.
         let open = self.developer.open || self.shell.state.text_panel;
         (self.developer.open, self.shell.state.text_panel) = (open, open);
-        let agent = self.agent.banner.is_some();
+        // The banner's slot while an agent is shown, unless the agent pill hid it (brief 043).
+        let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
         // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
@@ -313,14 +314,14 @@ impl Trial {
             fill(ui, r, s.panel);
             let banner = self.agent.banner.clone();
             let busy = self.cad.session.running.is_some();
-            let act = in_rect(ui, r, "ecad.shell.banner", |ui| {
-                ui.add_space(ecad_ui::tokens::space::XS);
-                banner.and_then(|b| crate::agent::banner::show_line(ui, &b, busy))
-            });
+            let since = banner.as_ref().and_then(|b| self.agent.sessions.get(&b.session)).map(|x| crate::agent::last_write::wall_ms(x.since));
+            let act = in_rect(ui, r, "ecad.shell.banner", |ui| banner.and_then(|b| crate::agent::banner::show(ui, &b, busy, since)));
             if let Some(a) = act {
                 self.agent_action(a);
             }
         }
+        // History's session groups and their Undo session (brief 043).
+        self.history_agent_sync();
         status_bar::show(self, ui, slots.status);
         left::show(self, ui, &slots);
         right::show(self, ui, &slots);
@@ -358,6 +359,7 @@ impl Trial {
             }
             self.cad.ui_embedded(ui);
         });
+        crate::agent::last_write::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
         // Right-click on the page does nothing in U2 except while a command runs (the wheel is U4b).
         let _ = self.cad.take_secondary_click();
