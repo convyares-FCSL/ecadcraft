@@ -1108,7 +1108,9 @@ fn r09_cross_references_between_the_halves() {
     let refs = v["references"].as_array().cloned().unwrap_or_default();
     let from_s = refs.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
-    assert!(s(&from_s["text"]).contains(&format!("/{n102}")), "025's style: {from_s}");
+    // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
+    let want = ecad_cadcraft::xref::Places::new(&d).text(c.p102, ecad_cadcraft::xref::anchor(&d, &d.representations[&prep]));
+    assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
     let from_p = refs.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");
     // Go to Reference reaches the other half.

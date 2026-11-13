@@ -459,3 +459,33 @@ fn checks_fixes_and_typed_search() {
     assert_eq!(ecad_cadcraft::devices::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
     assert_eq!(ecad_cadcraft::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
 }
+
+/// Overseer ruling (fix round 1): `pin_names` and `ignore.<check kind>` are plain properties that
+/// survive saving and opening, and still act after it.
+#[test]
+fn pin_names_and_ignore_keys_round_trip() {
+    let mut h = H::new(4425);
+    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
+    h.run("setprop", json!({"component": c.hex(), "key": "pin_names", "value": "A,B,C,D,E,F,G,H,J"})).unwrap();
+    h.run("setprop", json!({"component": c.hex(), "key": "ignore.connector-family", "value": "yes"})).unwrap();
+    let dir = std::env::temp_dir().join(format!("ecad-044-roundtrip-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("roundtrip.ecad").display().to_string();
+    h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
+    h.s.execute("saveas", &json!({"path": path})).unwrap();
+    let before = h.doc().components[&c].properties.clone();
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    drop(h);
+    let mut s = cadcraft_engine::Session::empty();
+    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 4426).unwrap();
+    let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
+    let after = &doc.components[&c].properties;
+    assert_eq!(after.get("pin_names"), before.get("pin_names"));
+    assert_eq!(after.get("ignore.connector-family").map(String::as_str), Some("yes"));
+    assert_eq!(connectors::pin_names(&doc, c), Some(["A", "B", "C", "D", "E", "F", "G", "H", "J"].map(String::from).to_vec()));
+    assert!(connectors::ignores(&doc, c, ecad_cadcraft::checks::Kind::ConnectorFamily));
+    drop(project);
+    let _ = std::fs::remove_dir_all(&dir);
+}
