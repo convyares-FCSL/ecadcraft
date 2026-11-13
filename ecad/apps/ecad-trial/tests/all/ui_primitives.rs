@@ -32,7 +32,8 @@ fn the_trial_uses_ecad_fonts_and_shows_the_primitives_page() {
     assert_eq!(body.map(|f| f.family), Some(FontFamily::Name(ecad_ui::fonts::UI.into())));
     assert_eq!(ctx.global_style().visuals.panel_fill, ecad_ui::color(ecad_ui::SHELL.panel));
     // The page: Developer ▸ ui.primitives.
-    h.get_by_label(developer::HEADER).click();
+    // Brief 038: the Developer section is the Text panel's Commands tab (Ctrl+/).
+    h.state_mut().toggle_text_panel();
     h.run_steps(3);
     h.get_by_label(developer::PRIMITIVES).click();
     h.run_steps(5);

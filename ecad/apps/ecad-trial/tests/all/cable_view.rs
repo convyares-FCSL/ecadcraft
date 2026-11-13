@@ -19,13 +19,16 @@ fn harness() -> Harness<'static, Trial> {
     // Never the user's own settings folder: views last for this test only.
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| p.settings = Settings::none()).unwrap();
-    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }

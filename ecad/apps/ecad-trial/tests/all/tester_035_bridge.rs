@@ -1402,7 +1402,7 @@ fn the_ecad_dev_row_shows_mode_port_and_status() {
 #[test]
 fn control_flag_parses_and_writes_nothing() {
     let ok = ecad_trial::parse_args(["--control", "47823"].map(std::ffi::OsString::from)).unwrap();
-    assert_eq!(ok, ecad_trial::Invocation::Run { snapshots: None, project: None, control: Some(47823) });
+    assert_eq!(ok, ecad_trial::Invocation::Run { snapshots: None, project: None, control: Some(47823), cad_ui: false });
     for bad in [&["--control"][..], &["--control", "x"][..], &["--control", "70000"][..], &["--control", "80"][..]] {
         assert!(ecad_trial::parse_args(bad.iter().map(std::ffi::OsString::from)).is_err(), "{bad:?}");
     }

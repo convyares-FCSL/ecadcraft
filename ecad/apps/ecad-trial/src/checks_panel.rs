@@ -126,6 +126,11 @@ impl ChecksPanel {
         &self.rows
     }
 
+    /// Errors and warnings among the rows shown (the shell's Checks pill, brief 038).
+    pub fn counts(&self) -> (usize, usize) {
+        self.counts
+    }
+
     /// The title of the tab: `Checks (5)`.
     pub fn title(&self) -> String {
         if self.rows.is_empty() { CHECKS_TAB.to_string() } else { format!("{CHECKS_TAB} ({})", self.rows.len()) }

@@ -156,7 +156,8 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // The Checks tab: -M01:PE, a click goes to page 3, centres it, selects the motor, rings PE.
     click(&mut h, checks_panel::CHECKS_TAB);
-    assert_eq!(h.state().panel.tab, project_panel::Tab::Checks);
+    // Brief 038: Checks is the shell's drawer, open.
+    assert!(h.state().shell_state().drawer_open);
     let rows = h.state().panel.checks.rows().to_vec();
     // Four rows of brief 022, and brief 024's count of devices without a part number.
     assert_eq!(rows.len(), 5, "{rows:?}");
@@ -233,7 +234,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // Project settings popout, Wires (owner, 2026-11-09): colours three-letter, label height 2.5;
     // one transaction, labels follow, `u` takes both back.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("iec", "1.6"));
@@ -259,7 +260,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
     // `wiresettings` line.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     h.get_by_label("ecad.projectsettings.label_rule.each").scroll_to_me();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.label_rule.net").is_some());

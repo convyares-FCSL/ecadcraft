@@ -213,6 +213,15 @@ pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
     h.run_steps(3);
 }
 
+/// Brief 038: an entry of the top bar's project menu (the old panel header's buttons).
+pub(crate) fn project_menu(h: &mut Harness<'static, Trial>, label: &str) {
+    click(h, ecad_trial::shell::top_bar::PROJECT_MENU);
+    click(h, label);
+    // The Project info and settings popouts grow a row a frame up to their largest size; let
+    // them settle before their buttons are clicked.
+    h.run_steps(40);
+}
+
 pub(crate) fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
     h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
     h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers });
@@ -296,7 +305,9 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     h.event(Event::Text("l".into()));
     h.run_steps(2);
     assert!(!h.state().panel.armed, "another key disarms the panel");
-    assert_eq!(h.state().cad.cmd.buffer, "l", "and reaches the command line");
+    // Brief 038: typing while no command runs is the shell's (US1 `idle_typing` off), so the
+    // letter starts nothing at CADCraft's hidden command line.
+    assert_eq!(h.state().cad.cmd.buffer, "", "and does not reach the command line");
     h.state_mut().cad.cmd.buffer.clear();
 
     // Screenshot 016-panel: Field active, cursor on Spare.
@@ -451,10 +462,10 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
 
     // Collapse to the strip and back.
     click(&mut h, project_panel::COLLAPSE);
-    assert!(h.state().panel.collapsed && h.query_by_label("Page 1: Supply").is_none());
+    assert!(h.state().shell_state().left.collapsed && h.query_by_label("Page 1: Supply").is_none());
     let collapsed = take(&h, &deltas, "016-collapsed.png");
     click(&mut h, project_panel::EXPAND);
-    assert!(!h.state().panel.collapsed);
+    assert!(!h.state().shell_state().left.collapsed);
 
     if shots().is_some() {
         for (name, img) in [("panel", &panel), ("rename", &rename), ("drag", &drag), ("collapsed", &collapsed)] {
@@ -483,6 +494,10 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
         .unwrap()
         .expect("Supply's reference point")
     };
+    // Brief 038: the ECAD Tool Sets tab is behind the developer switch, in the main view.
+    h.state_mut().set_cad_chrome(true);
+    h.set_size(egui::vec2(1920.0, 1200.0));
+    h.run_steps(3);
     h.state_mut().cad.session.set_selection(vec![point]);
     click(&mut h, tools::TAB);
     let before = head(&mut h);
@@ -594,9 +609,9 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
         t.elapsed().as_secs_f64() * 1000.0 / 20.0
     };
     let shown = time(&mut h);
-    h.state_mut().panel.collapsed = true;
+    h.state_mut().shell.state.left.collapsed = true;
     let hidden = time(&mut h);
-    h.state_mut().panel.collapsed = false;
+    h.state_mut().shell.state.left.collapsed = false;
     h.run_steps(2);
     assert_eq!(h.state().panel.rebuilds, rebuilds, "no rebuild per frame");
     // One rename: one rebuild, timed.
@@ -902,7 +917,9 @@ fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
     let mut h = build(trial(), Some(deltas.clone()));
     assert!(h.query_by_label("ECAD Dev").is_none(), "no ECAD Dev tab");
     assert!(h.query_by_label(ecad_trial::developer::FIELD).is_none(), "folded by default");
-    click(&mut h, project_panel::DEVELOPER);
+    // Brief 038: the Developer section is the Text panel's Commands tab (Ctrl+/).
+    h.state_mut().toggle_text_panel();
+    h.run_steps(3);
     assert!(h.state().developer.open);
     assert!(h.query_by_label("Export Inspector Snapshot").is_none(), "only with --snapshots");
     // The command field: Run shows the reply under it; one transaction.

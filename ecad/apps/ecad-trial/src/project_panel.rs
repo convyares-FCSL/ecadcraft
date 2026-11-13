@@ -15,7 +15,6 @@
 use std::collections::BTreeSet;
 
 use cadcraft_ui_egui::icons::{self, Icon};
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::{PageRow, TreeRow};
 use ecad_model::{FolderId, PageId};
 use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, pos2, vec2};
@@ -267,7 +266,6 @@ pub struct Header {
 /// The panel's state.
 #[derive(Debug, Default)]
 pub struct ProjectPanel {
-    pub collapsed: bool,
     /// Pages or Devices.
     pub tab: Tab,
     /// The Devices tab.
@@ -300,6 +298,9 @@ pub struct ProjectPanel {
     pub note: Option<String>,
     /// Brief 019: the Pages tree (folders and pages in book order).
     tree: Vec<TreeRow>,
+    /// Pages changed by a commit while another page was shown: their rows show a dot until the
+    /// page is shown (brief 038). Kept by the shell from the change feed.
+    pub changed: BTreeSet<PageId>,
     /// Folders folded in this session.
     pub folded: BTreeSet<FolderId>,
     /// The rows drawn now (folds applied), rebuilt only after a change or a fold.
@@ -434,7 +435,7 @@ impl ProjectPanel {
 
     /// Forget the project (it was closed).
     pub fn clear(&mut self) {
-        *self = ProjectPanel { collapsed: self.collapsed, tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
+        *self = ProjectPanel { tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
     }
 
     /// The row being dragged and the gap it would land in (0 = before the first row), if any.
@@ -477,37 +478,92 @@ impl ProjectPanel {
         self.cursor.or_else(|| self.active.and_then(|a| self.index_of(a)))
     }
 
-    /// The collapsed strip: one click expands the panel.
-    pub fn strip(&mut self, ui: &mut egui::Ui) {
-        let t = Tokens::get();
-        let rect = ui.max_rect();
-        let resp = ui.interact(rect, egui::Id::unique("ecad.project.expand"), Sense::click());
-        ui.painter().rect_filled(rect, 0.0, t.chrome);
-        let icon = Rect::from_min_size(pos2(rect.left() + 2.0, rect.top() + 4.0), vec2(18.0, 18.0));
-        icons::paint(ui.painter(), icon, Icon::ChevronRight, false);
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EXPAND));
-        if resp.on_hover_text(EXPAND).clicked() {
-            self.collapsed = false;
-        }
-    }
-
-    /// The panel's contents. Returns the actions asked for this frame.
+    /// The body of the tab shown ([`ProjectPanel::tab`]) in the shell's left panel (Pages,
+    /// Devices, History) or drawer (Checks). Returns the actions asked for this frame.
     pub fn show(&mut self, ui: &mut egui::Ui, header: &Header) -> Vec<Action> {
         let mut out = Vec::new();
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
         let panel_rect = ui.max_rect();
         let writable = header.name.is_some() && !header.read_only;
+        if header.name.is_none() {
+            ecad_ui::prim::read_value(ui, "No project open.");
+            self.rows_drawn = 0;
+            return out;
+        }
+        // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
+        if let Some(bar) = &header.branch_bar {
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.branch"));
+                    let parent = header.parent.clone().unwrap_or_else(|| "main".into());
+                    let branch = header.branch.clone().unwrap_or_default();
+                    let can = writable && !header.read_only;
+                    let merge = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
+                        .on_hover_text(format!("Bring this branch's changes into {parent}: a preview first, then one step on {parent}"))
+                        .accessible_name("ecad.project.branch.merge");
+                    if merge.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
+                    }
+                    let update = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
+                        .on_hover_text(format!("Bring {parent}'s changes into this branch: a preview first, then one step here"))
+                        .accessible_name("ecad.project.branch.update");
+                    if update.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
+                    }
+                });
+            });
+            let r = shown.response.rect;
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        }
+        // The revision opened read-only (design 019 §7.3): its bar and Back to current.
+        if let Some(bar) = self.revision.clone() {
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.revision"));
+                    if ui.small_button(BACK_TO_CURRENT).clicked() {
+                        out.push(Action::BackToCurrent);
+                    }
+                });
+            });
+            // `ecad.revision-bar`: a 3 px accent bar on its left.
+            let r = shown.response.rect;
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        }
+        // Writes are off while an issued revision is open read-only.
+        let writable = writable && self.revision.is_none();
+        match self.tab {
+            Tab::Devices => {
+                out.extend(self.devices.show(ui, writable));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::Checks => {
+                out.extend(self.checks.show(ui, writable));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::History => {
+                // Writes are off while a point is shown read-only, as for the revision view.
+                out.extend(self.history.show(ui, writable, header.read_only));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::Pages => {}
+        }
         self.keyboard(ui, writable, &mut out);
 
-        // Header: PROJECT and the icon buttons.
+        // The page tools (the old header's icon buttons) and New folder.
         ui.horizontal(|ui| {
-            ui.label(RichText::new("PROJECT").small().strong().color(t.text_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, "ecad.project.collapse", Icon::ChevronLeft, COLLAPSE, true).clicked() {
-                    self.collapsed = true;
-                }
-                if header.name.is_none() {
-                    return;
+                let tip = |ok_tip: &'static str| if writable { ok_tip } else { READ_ONLY };
+                let tipf = if writable { NEW_FOLDER } else { READ_ONLY };
+                if icon_button(ui, "ecad.project.newfolder", Icon::Open, tipf, writable).clicked() {
+                    self.armed = true;
+                    out.push(Action::NewFolder(self.target_folder()));
                 }
                 let target = self.target();
                 let preview_tip = if target.is_some() { PREVIEW } else { PICK_FIRST };
@@ -519,7 +575,6 @@ impl ProjectPanel {
                 }
                 let last = self.rows.len().saturating_sub(1);
                 let down_ok = writable && target.is_some_and(|i| i < last);
-                let tip = |ok_tip: &'static str| if writable { ok_tip } else { READ_ONLY };
                 if icon_button(ui, "ecad.project.down", Icon::ChevronDown, tip(MOVE_DOWN), down_ok).clicked()
                     && let Some(i) = target
                 {
@@ -558,7 +613,7 @@ impl ProjectPanel {
                         out.push(Action::New);
                     }
                 }
-                // Brief 024: Reports and Print Book (design 024 §4.1, §6.2).
+                // Brief 024: Reports (the Lists workspace) and Print Book (Publish).
                 if icon_button(ui, "ecad.project.reports", Icon::Table, REPORTS, true).clicked() {
                     out.push(Action::Reports);
                 }
@@ -567,150 +622,13 @@ impl ProjectPanel {
                 }
             });
         });
-        // The project popouts: info, settings, revisions.
-        if header.name.is_some() {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if ui.small_button(PROJECT_INFO).on_hover_text("Title, drawing number, customer, status").clicked() {
-                    out.push(Action::ProjectInfo);
-                }
-                if ui.small_button(PROJECT_SETTINGS).on_hover_text("Sheet and grid, reference style, page numbers, tags").clicked() {
-                    out.push(Action::ProjectSettings);
-                }
-                if ui.small_button(REVISIONS).on_hover_text("Issue a revision, reopen an issued one").clicked() {
-                    out.push(Action::Revisions);
-                }
-                // Brief 027 (design 027 §3): Release, with a badge counting errors, else warnings.
-                if let Some((rev, counts)) = &header.release {
-                    let (text, hover) = match counts {
-                        Some((e, _)) if *e > 0 => (
-                            RichText::new(format!("Release \u{25cf}{e}")).small().color(Color32::from_rgb(0xFF, 0x00, 0x00)),
-                            format!("Release Rev {rev}: {e} error{} open.", if *e == 1 { "" } else { "s" }),
-                        ),
-                        Some((_, w)) if *w > 0 => (
-                            RichText::new(format!("Release \u{25b2}{w}")).small().color(Color32::from_rgb(0xFF, 0xFF, 0x00)),
-                            format!("Release Rev {rev}: {w} warning{} listed.", if *w == 1 { "" } else { "s" }),
-                        ),
-                        _ => (RichText::new("Release").small(), format!("Release Rev {rev}: check, issue and write its folder.")),
-                    };
-                    if ui.add(egui::Button::new(text).small()).on_hover_text(hover).accessible_name("ecad.project.release").clicked() {
-                        out.push(Action::Release);
-                    }
-                }
-            });
+        for w in &header.warnings {
+            ui.add(egui::Label::new(RichText::new(w).small().color(t.warn)).wrap());
         }
-        self.status(ui, header, &mut out);
-        // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
-        if let Some(bar) = &header.branch_bar {
-            let t = Tokens::get();
-            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.branch"));
-                    let parent = header.parent.clone().unwrap_or_else(|| "main".into());
-                    let branch = header.branch.clone().unwrap_or_default();
-                    let can = writable && !header.read_only;
-                    let merge = ui
-                        .add_enabled(can, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
-                        .on_hover_text(format!("Bring this branch's changes into {parent}: a preview first, then one step on {parent}"))
-                        .accessible_name("ecad.project.branch.merge");
-                    if merge.clicked() {
-                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
-                    }
-                    let update = ui
-                        .add_enabled(can, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
-                        .on_hover_text(format!("Bring {parent}'s changes into this branch: a preview first, then one step here"))
-                        .accessible_name("ecad.project.branch.update");
-                    if update.clicked() {
-                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
-                    }
-                });
-            });
-            let r = shown.response.rect;
-            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
-        }
-        // The revision opened read-only (design 019 §7.3): its bar and Back to current.
-        let writable = writable && self.revision.is_none();
-        if let Some(bar) = self.revision.clone() {
-            let t = Tokens::get();
-            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap())
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.revision"));
-                    if ui.small_button(BACK_TO_CURRENT).clicked() {
-                        out.push(Action::BackToCurrent);
-                    }
-                });
-            });
-            // `ecad.revision-bar`: a 3 px accent bar on its left.
-            let r = shown.response.rect;
-            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        if let Some(n) = &self.note {
+            ui.label(RichText::new(n).small().color(t.text_dim));
         }
         ui.separator();
-
-        if header.name.is_none() {
-            ui.label(RichText::new("No project open.").color(t.text_dim));
-            self.rows_drawn = 0;
-            return out;
-        }
-
-        // Pages | Devices, and on Pages the New folder button (owner: folders must be found).
-        ui.horizontal(|ui| {
-            let checks = self.checks.title();
-            for (tab, name) in [
-                (Tab::Pages, PAGES_TAB),
-                (Tab::Devices, DEVICES_TAB),
-                (Tab::Checks, checks.as_str()),
-                (Tab::History, crate::history_panel::HISTORY_TAB),
-            ] {
-                let resp = ui.selectable_label(self.tab == tab, RichText::new(name).small());
-                let resp = if tab == Tab::Checks {
-                    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, self.tab == tab, crate::checks_panel::CHECKS_TAB));
-                    resp
-                } else {
-                    resp
-                };
-                if resp.clicked() {
-                    if tab == Tab::Devices && self.tab != Tab::Devices {
-                        // Shown again after being hidden: rebuilt once, then kept up to date.
-                        self.devices.invalidate();
-                    }
-                    if tab == Tab::Checks && self.tab != Tab::Checks {
-                        self.checks.invalidate();
-                    }
-                    if tab == Tab::History && self.tab != Tab::History {
-                        self.history.invalidate();
-                    }
-                    self.tab = tab;
-                    self.armed = false;
-                }
-            }
-            if self.tab == Tab::Pages {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let tip = if writable { NEW_FOLDER } else { READ_ONLY };
-                    if icon_button(ui, "ecad.project.newfolder", Icon::Open, tip, writable).clicked() {
-                        self.armed = true;
-                        out.push(Action::NewFolder(self.target_folder()));
-                    }
-                });
-            }
-        });
-        if self.tab == Tab::Devices {
-            out.extend(self.devices.show(ui, writable));
-            self.rows_drawn = 0;
-            return out;
-        }
-        if self.tab == Tab::Checks {
-            out.extend(self.checks.show(ui, writable));
-            self.rows_drawn = 0;
-            return out;
-        }
-        if self.tab == Tab::History {
-            // Writes are off while a point is shown read-only, as for the revision view.
-            out.extend(self.history.show(ui, writable, header.read_only));
-            self.rows_drawn = 0;
-            return out;
-        }
 
         // The rows, virtualised: only the visible ones are laid out.
         let n = self.visible.len();
@@ -760,7 +678,7 @@ impl ProjectPanel {
                             pos2(x, rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             "(empty)",
-                            egui::FontId::monospace(12.0),
+                            egui::TextStyle::Monospace.resolve(ui.style()),
                             t.text_faint,
                         );
                     }
@@ -907,7 +825,7 @@ impl ProjectPanel {
         &mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, (id, name, depth, pages): (FolderId, &str, usize, usize), writable: bool,
         out: &mut Vec<Action>,
     ) {
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
         let label = folder_label(name, pages);
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
         let p = ui.painter_at(rect);
@@ -921,7 +839,7 @@ impl ProjectPanel {
         let chev = Rect::from_min_size(pos2(x, rect.center().y - 6.0), vec2(12.0, 12.0));
         let folded = self.folded.contains(&id);
         icons::paint(&p, chev, if folded { Icon::ChevronRight } else { Icon::ChevronDown }, false);
-        let font = egui::FontId::monospace(12.0);
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
         if self.folder_rename.as_ref().is_some_and(|r| r.of == id) {
             let field = Rect::from_min_max(pos2(chev.right() + 4.0, rect.top() + 1.0), pos2(rect.right() - 4.0, rect.bottom() - 1.0));
             self.folder_field(ui, field, out);
@@ -991,51 +909,10 @@ impl ProjectPanel {
         }
     }
 
-    /// The status, file actions and experiment note moved from the banner.
-    fn status(&mut self, ui: &mut egui::Ui, header: &Header, out: &mut Vec<Action>) {
-        let t = Tokens::get();
-        let warn = ui.visuals().warn_fg_color;
-        match &header.name {
-            Some(_) => {
-                ui.add(egui::Label::new(RichText::new(&header.status).small()).wrap());
-                for w in &header.warnings {
-                    ui.add(egui::Label::new(RichText::new(w).small().color(warn)).wrap());
-                }
-            }
-            None => {
-                ui.label(RichText::new("No ECAD project is open.").small());
-            }
-        }
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            if ui.small_button("New").on_hover_text("New project").clicked() {
-                out.push(Action::NewProject);
-            }
-            if ui.small_button("Open…").on_hover_text("Open project…").clicked() {
-                out.push(Action::OpenProject);
-            }
-            if header.name.is_some() {
-                if ui.small_button("Save").clicked() {
-                    out.push(Action::Save);
-                }
-                if ui.small_button("Save As…").clicked() {
-                    out.push(Action::SaveAs);
-                }
-                if ui.small_button("Close").on_hover_text("Close the project (asks to save changes)").clicked() {
-                    out.push(Action::CloseProject);
-                }
-            }
-        });
-        if let Some(n) = &self.note {
-            ui.label(RichText::new(n).small().color(t.text_dim));
-        }
-        ui.add(egui::Label::new(RichText::new(header.note).small().color(warn)).truncate()).on_hover_text(crate::BANNER);
-    }
-
     /// One row: number, title, states and its clicks.
     #[allow(clippy::too_many_arguments)]
     fn row(&mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, i: usize, row: &PageRow, writable: bool, out: &mut Vec<Action>) {
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
         let active = self.active == Some(row.id);
         let label = row_label(&row.number, &row.title);
         let resp = if row.duplicate { resp.on_hover_text(format!("Two pages are numbered {}.", row.number)) } else { resp };
@@ -1054,13 +931,19 @@ impl ProjectPanel {
         let fade = |c: Color32| if dragging { c.gamma_multiply(0.5) } else { c };
         let colour = fade(if active { t.text } else { t.text_dim });
         // Two pages shown with one number (only from old data): the number in `ecad.orphan`.
-        let number_colour = if row.duplicate { ORPHAN_RED } else { colour };
-        let font = egui::FontId::monospace(12.0);
+        let number_colour = if row.duplicate { crate::shell::left::colours().error } else { colour };
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
         let number = format!("{:>4}  ", row.number);
         let x0 = rect.left() + 4.0;
         let num = p.text(pos2(x0, rect.center().y), egui::Align2::LEFT_CENTER, &number, font.clone(), number_colour);
         let previewed = self.previewed == Some(row.id);
-        let right = rect.right() - if previewed { 18.0 } else { 4.0 };
+        let changed = self.changed.contains(&row.id);
+        let right = rect.right() - if previewed { 18.0 } else { 4.0 } - if changed { 10.0 } else { 0.0 };
+        if changed {
+            // Changed while elsewhere: a dot in the change tint (`accent_text`).
+            let at = pos2(right + 5.0, rect.center().y);
+            p.circle_filled(at, 3.0, t.accent_text);
+        }
         if previewed {
             let r = Rect::from_center_size(pos2(rect.right() - 10.0, rect.center().y), vec2(12.0, 12.0));
             icons::paint(&p, r, Icon::Preview, true);
@@ -1171,9 +1054,12 @@ impl ProjectPanel {
         let error = r.error.is_some();
         let edit = egui::TextEdit::singleline(&mut r.text)
             .id(id)
-            .font(egui::FontId::monospace(12.0))
+            .font(egui::TextStyle::Monospace.resolve(ui.style()))
             .margin(egui::Margin::symmetric(2, 0))
-            .frame(egui::Frame::NONE.stroke(Stroke::new(1.0, if error { ORPHAN_RED } else { Tokens::get().accent })));
+            .frame(
+                egui::Frame::NONE
+                    .stroke(Stroke::new(1.0, if error { crate::shell::left::colours().error } else { crate::shell::left::colours().accent })),
+            );
         let resp = ui.put(rect, edit).accessible_name(RENAME);
         if opening {
             resp.request_focus();
@@ -1185,7 +1071,7 @@ impl ProjectPanel {
         }
         if let Some(e) = &r.error {
             egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
-                .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+                .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
         }
         if resp.lost_focus() {
             let esc = ui.input(|i| i.key_pressed(Key::Escape));
@@ -1276,10 +1162,10 @@ impl ProjectPanel {
 fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut InPlace<T>) -> Option<(String, bool)> {
     let id = egui::Id::unique(id);
     let opening = egui::TextEdit::load_state(ui.ctx(), id).is_none();
-    let colour = if edit.error.is_some() { ORPHAN_RED } else { Tokens::get().accent };
+    let colour = if edit.error.is_some() { crate::shell::left::colours().error } else { crate::shell::left::colours().accent };
     let field = egui::TextEdit::singleline(&mut edit.text)
         .id(id)
-        .font(egui::FontId::monospace(12.0))
+        .font(egui::TextStyle::Monospace.resolve(ui.style()))
         .margin(egui::Margin::symmetric(2, 0))
         .frame(egui::Frame::NONE.stroke(Stroke::new(1.0, colour)));
     let resp = ui.put(rect, field).accessible_name(label);
@@ -1293,7 +1179,7 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
     }
     if let Some(e) = &edit.error {
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
-            .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+            .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
     }
     if !resp.lost_focus() {
         return None;
@@ -1312,7 +1198,6 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
 }
 
 /// `ecad.orphan` red (design tokens).
-const ORPHAN_RED: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 
 /// An 18 × 18 icon button, as CADCraft's file tabs draw them, with an accessible label.
 fn icon_button(ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, enabled: bool) -> egui::Response {
@@ -1320,7 +1205,7 @@ fn icon_button(ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, enabled: bo
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let resp = ui.interact(rect, egui::Id::unique(id), sense);
     if enabled && resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, Tokens::get().control_hover);
+        ui.painter().rect_filled(rect, 0.0, crate::shell::left::colours().control_hover);
     }
     icons::paint(ui.painter(), rect.shrink(1.0), icon, !enabled);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));

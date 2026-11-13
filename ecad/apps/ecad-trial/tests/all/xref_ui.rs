@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_model::PageId;
-use ecad_trial::{checks_panel, project_panel};
+use ecad_trial::checks_panel;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
@@ -125,7 +125,8 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     // The Checks tab: one too-many-contacts row; a click goes to page 105.
     h.get_by_label(checks_panel::CHECKS_TAB).click();
     h.run_steps(3);
-    assert_eq!(h.state().panel.tab, project_panel::Tab::Checks);
+    // Brief 038: Checks is the shell's drawer, open.
+    assert!(h.state().shell_state().drawer_open);
     let rows = h.state().panel.checks.rows().to_vec();
     let row = rows.iter().find(|r| r.check.kind == ecad_cadcraft::checks::Kind::TooManyContacts).expect("the too-many-contacts row").clone();
     h.get_by_label(&checks_panel::row_label(&row)).click();

@@ -56,7 +56,7 @@ impl Drop for Tmp {
 }
 
 fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
-    let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0));
+    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
     if let Some(d) = deltas {
         b = b.renderer(Collect(d));
     }
@@ -67,6 +67,9 @@ fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use ecad_trial::{Invocation, parse_args};
 
 fn run(snapshots: Option<&str>, project: Option<&str>) -> Invocation {
-    Invocation::Run { snapshots: snapshots.map(PathBuf::from), project: project.map(str::to_string), control: None }
+    Invocation::Run { snapshots: snapshots.map(PathBuf::from), project: project.map(str::to_string), control: None, cad_ui: false }
 }
 
 fn os(args: &[&str]) -> Vec<OsString> {
@@ -70,6 +70,6 @@ fn a_name_that_is_not_unicode_is_a_usage_error() {
     assert!(parse_args(vec![OsString::from("demo.ecad"), not_unicode()]).is_err());
     assert_eq!(
         parse_args(vec![OsString::from("--snapshots"), not_unicode()]),
-        Ok(Invocation::Run { snapshots: Some(PathBuf::from(not_unicode())), project: None, control: None })
+        Ok(Invocation::Run { snapshots: Some(PathBuf::from(not_unicode())), project: None, control: None, cad_ui: false })
     );
 }

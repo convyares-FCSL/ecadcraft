@@ -26,6 +26,8 @@ eframe = { version = "0.37", default-features = false, features = ["clipboard", 
 # version eframe uses, so nothing is built twice.
 ron = "0.12"
 serde_json = { workspace = true }
+# Brief 038: the shell state and page views in eframe storage.
+serde = { workspace = true }
 # Brief 035: the shared write gate and tools (the bridge's app side), and upstream's control
 # token; the included upstream control server names `egui` and `log` directly (eframe's versions).
 ecad-mcp = { path = "../ecad-mcp" }
