@@ -32,8 +32,12 @@ its chain and changes it at the level chosen, with no scattered dialogs.
   from CADCraft's Properties palette; no origin badges.
 - **Settings** (`shell/mod.rs` `settings_overlay`): an `egui::Window` with only the developer
   switch. Project settings live in two popouts of `sheets_ui` (`Popout::Info`, `Popout::Settings`,
-  with 031's Text section from `text_ui.rs`), which **grow one row per frame** until they reach the
-  window's bottom (038 open point 4; the tests wait 40 frames to cope).
+  with 031's Text section from `text_ui.rs`). Their grow-every-frame defect (038 open point 4) is
+  fixed on `fix/ui-followups` (`e415a693`): the scroll area sizes to its content
+  (`min_scrolled_height`). That branch also sets the first window to 1680 × 940, growing to the
+  largest size that fits the monitor, and keeps a user's own size (038 open point 5).
+- **Dependency:** this brief starts after `fix/ui-followups` merges, because it moves the same
+  popout code (`sheets_ui.rs` `ProjectProps`) and must keep that sizing.
 - **Agent access** (035) is a row in the Developer section, shown in the Text panel's Commands tab
   (`developer.rs`).
 - The status bar shows the standard's name (`shell/status_bar.rs`).
@@ -46,8 +50,8 @@ its chain and changes it at the level chosen, with no scattered dialogs.
 | --- | --- |
 | ● `ecad/apps/ecad-trial/src/settings/` (new: `mod.rs`, `standards.rs`, `project.rs`, `text.rs`, `agent.rs`, `display.rs`, `developer.rs`) | Settings as a place: a full-window overlay over the main view and panels, closes back to where you were; its sections |
 | ○ `ecad/apps/ecad-trial/src/shell/mod.rs` (`settings_overlay` removed; one call to `crate::settings::show`) | |
-| ○ `ecad/apps/ecad-trial/src/lib.rs` (one `pub mod settings;` line; the popout openers redirect to Settings sections) | |
-| ● `ecad/apps/ecad-trial/src/shell/right.rs`, `sheets_ui.rs`, `text_ui.rs` | Inspector: the properties section with origin badges and set-versus-read; the two popouts become Settings sections (and stop growing) |
+| ○ `ecad/apps/ecad-trial/src/lib.rs` (one `pub mod settings;` line; `open_project_popout` redirects to Settings sections) | Not the go-to code around `goto_symbol` / `goto_symbols`, which `fix/ui-followups` changed |
+| ● `ecad/apps/ecad-trial/src/shell/right.rs`, `sheets_ui.rs`, `text_ui.rs` | Inspector: the properties section with origin badges and set-versus-read; the two popouts become Settings sections, keeping `fix/ui-followups`' content-sized scroll area |
 | ● `ecad/apps/ecad-trial/src/developer.rs` | The Agent access row moves to Settings ▸ Agent access (035's element names kept) |
 | ● `ecad/apps/ecad-trial/src/shell/status_bar.rs` | "Standard: IEC" opens Settings ▸ Standards |
 | ● `ecad/apps/ecad-trial/src/lists/standards.rs` (new column set) | The Standards table on U3's component |
@@ -55,7 +59,6 @@ its chain and changes it at the level chosen, with no scattered dialogs.
 | ● `ecad/crates/ecad-cadcraft/src/default_cmds.rs` (new) | `setdefault {key, level: project\|page\|object, page?, component?, representation?, value \| reset: true}`: writes through the same properties and settings the registry reads (no new op, no new stored field); refuses a level the entry does not allow, in the designer's words |
 | ○ `ecad/crates/ecad-cadcraft/src/lanes.rs` (one line `("042", crate::default_cmds::specs),`) and `lib.rs` (one `mod` line) | |
 | ○ `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` (read-only helpers only: `chain(doc, entry, scope) -> Vec<(Level, Option<Value>)>`, `users(doc, entry) -> usize`) | No change to entries or resolution |
-| ● `ecad/apps/ecad-trial/src/window.rs` | Only if owner question Q2 is answered yes: the first launch opens maximised |
 | ● `ecad/crates/ecad-cadcraft/tests/all/lanes/lane_042.rs`, `ecad-trial/tests/all/lanes/lane_042.rs` | Tests; one `mod lane_042;` line in each `lanes/mod.rs` |
 | ● `ecad/docs/quick-start/042-ui-inspector-standards.md` | How to try it |
 
@@ -69,8 +72,8 @@ named standards and the Standard level (1.13(a)), any entry's levels.
    standard, any origin badge (at that key) (no key of its own: spec §5's key table has none); a left list of sections (Standards,
    Project, Text styles, Display, Agent access, Developer) and a body; Esc or Close returns to
    where you were. The two popouts become the Project and Text styles sections, contents
-   unchanged, fixed size: the growth defect gets a regression test (a section's height is the same
-   after 1 and 40 frames). Agent access moves from Developer to its own section (O7); the Commands
+   unchanged, keeping the content-sized scroll area from `fix/ui-followups` (its regression test
+   in `tests/all/sheets_ui.rs` keeps passing against the sections). Agent access moves from Developer to its own section (O7); the Commands
    tab no longer shows it.
 2. **`setdefault`** (no op, no format change): the one writer for the Standards screen and the
    inspector's "change at level" and reset. Table-driven contract tests: each level each entry
@@ -94,7 +97,8 @@ named standards and the Standard level (1.13(a)), any entry's levels.
    that key; an overridden value has Reset. Values set here look like fields; values read from the
    drawing are grey text that go to where they are set (spec §5). Hidden texts' rows say
    "Shown on the page" with their level (spec §3). The list of the device's other placements uses
-   040's `canvas::related` when it is in `dev`, otherwise the existing device list.
+   040's `canvas::related` when it is in `dev`, otherwise the existing device list; its go-to runs
+   `Trial::goto_symbols` (from `fix/ui-followups`).
 
 ## Out of scope
 
@@ -118,8 +122,8 @@ commit.
 
 1. **Settings** opens from the project menu, the status bar's standard and an origin badge, and
    Esc returns to the same workspace, page and selection (kittest). The Project and Text styles
-   sections keep their 031 / 019 tests passing, and their height is stable from frame 1 (regression
-   test for 038 open point 4; the 40-frame waits in the tests are removed).
+   sections keep their 031 / 019 tests passing, and `fix/ui-followups`' sizing test passes against
+   them.
 2. **Agent access** works from Settings ▸ Agent access with 035's element names; 035's tests pass
    with the new location; the Commands tab no longer has the row.
 3. **`setdefault`** contract tests pass; MCP can call it like any command; a refused level gives
@@ -141,17 +145,13 @@ None by default: `setdefault` writes existing properties through existing ops, w
 store change. If the overseer reads `setdefault` as a new op surface, the tester runs criterion 3
 only.
 
-## Owner questions
+## Owner question
 
 1. **Q1. Named standards before or after this screen?** Roadmap 1.13 splits (a) the style model
    (named standards such as IEC and US, the Standard level, stored per project) from (b) this
    screen. (a) is not built. **Recommend:** build the screen now over the registry as it is, with
    the standard shown as "IEC (built in)" and read-only; 1.13(a) then adds the Standard level and
    the IEC / US switch without changing the screen.
-2. **Q2. Default window size.** The trial opens at 1400 × 900, where the right panel is a rail
-   (038 open point 5). **Recommend:** open maximised on the first launch (later launches keep the
-   saved window, as today); done in this lane.
-
 ## Owner check
 
 Change the contactor letter in Standards and watch what the screen says before applying it.

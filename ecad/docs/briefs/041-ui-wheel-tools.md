@@ -54,6 +54,7 @@ defined twice.
 | ○ `ecad/apps/ecad-trial/src/shell/layout.rs` (one row: `intent`) | A 28 px intent strip at the bottom of the page's rect in Draw |
 | ○ `ecad/apps/ecad-trial/src/shell/mod.rs` (`shell_ui`: the `show_command_line` line; `main_view`: the `take_secondary_click` line) | The command line never shows outside the developer switch; right-click opens the wheel |
 | ○ `ecad/apps/ecad-trial/src/shell/top_bar.rs` (the search field's handler only) | Ctrl+K searches pages, tags, symbols and actions |
+| ○ `ecad/apps/ecad-trial/src/project_panel.rs` (one `Action` variant appended: open a page row's wheel) | `fix/ui-followups` renamed `Action::GotoSymbol` to `GotoSymbols(Vec<…>)`; this lane appends a variant and does not touch that one |
 | ● `ecad/apps/ecad-trial/src/search.rs` | Search over actions added beside today's symbol and page search |
 | ● `ecad/apps/ecad-trial/src/tools.rs` | Old Tool Sets buttons removed group by group as actions cover their commands; the ECAD Tool Sets tab (developer switch only) keeps what remains |
 | ● `ecad/crates/ecad-cadcraft/tests/all/lanes/lane_041.rs`, `ecad-ui/tests/all/lanes/lane_041.rs`, `ecad-trial/tests/all/lanes/lane_041.rs` | Tests; one `mod lane_041;` line in each `lanes/mod.rs` |
@@ -86,7 +87,7 @@ the banner and History (043), `project.rs`, upstream (no new seam: US1's switche
 
    | Kind | Top | Top right | Right (go to) | Bottom right (row) | Bottom (delete) | Left side (copy, turn, change) |
    | --- | --- | --- | --- | --- | --- | --- |
-   | Device | Edit tag | Properties | Go to contacts (`contacts`, `refgoto`) | Show row (Lists ▸ Devices) | Delete device (`devicedelete`) | Duplicate, Rotate, Mirror |
+   | Device | Edit tag | Properties | Go to contacts (`contacts`, `refgoto`; selects through `Trial::goto_symbols`) | Show row (Lists ▸ Devices) | Delete device (`devicedelete`) | Duplicate, Rotate, Mirror |
    | Wire | Fix number (`wirenumber`) | Add to cable (`cableadd`) | Show net (`net`) | Show row (Wires, when it exists) | Delete (`ecaddelete`) | Set potential (`potential`), Join (`joinwires`), Wire settings |
    | Wire end | Connect (`connect`) | Disconnect (`disconnect`) | Show net | — | Delete | Junction (`junction`) |
    | Terminal | Edit label (`termlabel`) | Jumper (`jumper`) | Go to strip plan (`stripplan`) | Show row (Lists ▸ Terminals) | Delete | Accessory (`accessory`), Make strip position (`toposition`) |

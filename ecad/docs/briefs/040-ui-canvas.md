@@ -50,7 +50,7 @@ This lane **owns** the files marked ●; ○ are shared, with the hunk named.
 | ○ `ecad/UPSTREAM-PATCHES.md` (append a U4a block) | US3; the US1 line |
 | ● `ecad/apps/ecad-trial/src/canvas/` (new: `mod.rs`, `sheet.rs`, `markers.rs`, `selection.rs`, `leader.rs`) | ECAD's painter layer over the page: dot grid, markers, related placements, the companion leader line; canvas preferences (paper, selection colour) and the ViewCube / UCS switches |
 | ○ `ecad/apps/ecad-trial/src/shell/mod.rs` (`main_view`, one call after `self.cad.ui_embedded(ui)`) | `crate::canvas::paint(self, ui, page_rect)` |
-| ○ `ecad/apps/ecad-trial/src/lib.rs` (one `pub mod canvas;` line; `main.rs` start-up: one `register_faces` call) | |
+| ○ `ecad/apps/ecad-trial/src/lib.rs` (one `pub mod canvas;` line; `main.rs` start-up: one `register_faces` call beside `ecad_cadcraft::install()`) | `fix/ui-followups` edits `main.rs`'s window options and timing; this lane's line is not in those hunks |
 | ● `ecad/crates/ecad-cadcraft/src/interact/mod.rs` (`overlay_marks` body only) | Mark colours and sizes from `ecad-tokens` (`sheet`, `marker`) by the sheet in use |
 | ● `ecad/crates/ecad-cadcraft/src/look.rs`, `wires.rs` (drawing of conductor and core colours) | Two-colour wires and cores (step 3) |
 | ● `ecad/crates/ecad-cadcraft/src/text_style.rs`, `defaults/text.rs` (labels and the font default) | "cap height" in labels; `text.font` default Barlow Semi Condensed |
@@ -95,7 +95,9 @@ brief), `translate.rs`.
    its `OS/2` table, not by a constant.
 5. **Selection and relations.** Hover outlines the object in the selection colour; selecting a
    placement of a device gives its other placements on the page a dashed outline and lists the rest
-   (042 shows the list; this step provides `canvas::related(project, selection)`). In a companion
+   (042 shows the list; this step provides `canvas::related(project, selection)`). Selecting a
+   device's symbols on one page already exists as `Trial::goto_symbols` (from
+   `fix/ui-followups`); this step draws the outlines and adds no second selection path. In a companion
    view, selecting a row or its object draws the one-second leader line between them (spec §5;
    038 open point 8). The page opens at the zoom where a tag is 13 px tall and remembers its zoom
    (038 already stores views; this step sets the first-open zoom).
