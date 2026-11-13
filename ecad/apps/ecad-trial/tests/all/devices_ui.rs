@@ -47,7 +47,10 @@ fn every_starter_symbol_on_one_page() {
     let mut h = harness_with(Some(deltas.clone()));
     // The 19 device symbols (brief 028 added the PE terminal); the junction and continuation
     // (brief 022) are not devices.
-    let devices = ecad_cadcraft::symbols::STARTERS.iter().filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless);
+    // (brief 022) are not devices; brief 034's families have their own tests.
+    let devices = ecad_cadcraft::symbols::STARTERS
+        .iter()
+        .filter(|s| s.kind != ecad_cadcraft::symbols::Kind::Tagless && s.family == ecad_cadcraft::symbols::Family::Basic);
     for (i, s) in devices.enumerate() {
         let (x, y) = (60 * (i % 6), -60 * (i / 6) as i64);
         ok(&mut h, &format!(r#"place {{"symbol":"{}","at":[{x},{y}]}}"#, s.key));

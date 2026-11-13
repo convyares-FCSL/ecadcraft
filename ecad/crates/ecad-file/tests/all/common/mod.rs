@@ -147,6 +147,8 @@ pub fn fixture() -> Fixture {
                     height: 2.5,
                     rotation: std::f64::consts::FRAC_PI_2,
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
+                    halign: Default::default(),
+                    valign: Default::default(),
                 }),
             },
         }],
