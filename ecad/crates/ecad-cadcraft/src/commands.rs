@@ -599,8 +599,8 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                 }
             }
             // Brief 045 (FP1, FP3): a card's rack, slot and channel count.
-            (ObjectRef::Component(c), k) if crate::plc::rack::setprop_value(doc, c, k, None).is_some() => {
-                crate::plc::rack::setprop_value(doc, c, k, value.as_deref()).unwrap_or(Ok(None))?
+            (ObjectRef::Component(c), k) if crate::plc::setprop_rule(doc, c, k, None).is_some() => {
+                crate::plc::setprop_rule(doc, c, k, value.as_deref()).unwrap_or(Ok(None))?
             }
             // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
             (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,

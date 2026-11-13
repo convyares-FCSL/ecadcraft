@@ -10,6 +10,8 @@
 //!
 //! Excludes: the PLC manager and the rack overview (brief 2.8), any PLC-vendor knowledge.
 
+pub mod address;
+pub mod channels;
 pub mod rack;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,6 +35,25 @@ slot?: number (absent: the next free slot), swap?: bool (swap with the card in t
         CommandSpec::new("plcracks", "PLC Racks", rack::run_plcracks)
             .params("{rack?: id or tag} (each rack with its slots in order, and the cards in no rack; read only)")
             .noundo(),
+        CommandSpec::new("plcchannels", "Place Channels", channels::run_plcchannels)
+            .params(
+                "{card?: id or tag (absent: a new card), type?: DI|DQ|AI|AO|RTD|IOL (a new card's), first?: channel number, from: [x,y], to: [x,y]} \
+(one channel cell on each wire the line crosses, in order; at most 256), or {card, rest: true, at?: [x,y]} (every channel not drawn yet, \
+as cells in a row, no wires)",
+            )
+            .noundo(),
+        CommandSpec::new("plcchannel", "Channel", channels::run_plcchannel)
+            .params(
+                "{card: id or tag, channel: number as shown, text?: description (null clears), address?: typed address (null clears), \
+pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy takes that channel)}",
+            )
+            .noundo(),
+        CommandSpec::new("plcaddress", "PLC Addresses", address::run_plcaddress)
+            .params(
+                "{rack: id or tag, style?: byte.bit|iec|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
+current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}",
+            )
+            .noundo(),
     ]
 }
 
@@ -47,22 +68,103 @@ pub enum PlcFix {
     SlotRange,
     /// `unracked`: **Show** the cards in no rack, each with **Put in rack…**.
     Unracked,
+    /// `channel-twice`: **Move to channel n** (the channel's index).
+    ChannelTwice(u32),
+    /// `channel-over`: **Raise to n channels** (the highest drawn index).
+    ChannelOver(u32),
+    /// `address-overlap`: **Move after** (pin at this byte), **Unpin**.
+    Overlap(u32),
+    /// `address-overflow`: **Unpin**.
+    Unpin,
+    /// `address-twice`: **Clear the typed address** (the channel's index).
+    ClearTyped(u32),
+    /// `no-address`: **Show** the racks with style `none`.
+    NoAddress,
 }
 
-/// The type of device `c` as a PLC card or rack: its card body's.
+/// The type of device `c` as a PLC card or rack: its card body's, else (a card drawn only by
+/// channel symbols) its first channel symbol's (design 045 §3.2).
 pub fn card_type_of(doc: &Document, c: ComponentId) -> Option<CardType> {
-    rack::body_type(doc, c)
+    let mut by_channel = None;
+    for (_, r) in doc.representations_of(Subject::Component(c)) {
+        let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
+        if let Some(t) = CardType::of_body(s.key) {
+            return Some(t);
+        }
+        if by_channel.is_none() {
+            by_channel = channels::cell_type(s);
+        }
+    }
+    by_channel
+}
+
+/// Every racked card's block, read in one pass (for counting what a change moves).
+pub fn all_blocks(doc: &Document) -> BTreeMap<ComponentId, address::Block> {
+    let racks: BTreeSet<ComponentId> = doc
+        .components
+        .values()
+        .filter_map(|x| x.properties.get(rack::RACK_KEY))
+        .filter_map(|v| ComponentId::parse(v.trim()))
+        .filter(|r| rack::is_rack(doc, *r))
+        .collect();
+    racks.into_iter().flat_map(|r| address::snapshot(doc, r)).collect()
 }
 
 /// The cards whose automatic addresses a move of `card` may shift, before it (a snapshot to compare
-/// with [`moved_cards`]). Brief 045a has no addresses yet: empty.
-pub fn moved_blocks_before(_doc: &Document, _card: ComponentId) -> BTreeMap<ComponentId, String> {
-    BTreeMap::new()
+/// with [`moved_cards`]).
+pub fn moved_blocks_before(doc: &Document, _card: ComponentId) -> BTreeMap<ComponentId, address::Block> {
+    all_blocks(doc)
 }
 
 /// How many cards other than `card` changed address since `before`.
-pub fn moved_cards(_doc: &Document, _card: ComponentId, _before: &BTreeMap<ComponentId, String>) -> usize {
-    0
+pub fn moved_cards(doc: &Document, card: ComponentId, before: &BTreeMap<ComponentId, address::Block>) -> usize {
+    let after = all_blocks(doc);
+    let keys: BTreeSet<&ComponentId> = before.keys().chain(after.keys()).collect();
+    keys.into_iter()
+        .filter(|c| **c != card)
+        .filter(|c| before.get(c).map(|b| (b.input, b.output)) != after.get(c).map(|b| (b.input, b.output)))
+        .count()
+}
+
+/// The drawn copies of channel `i` of card `c`: the points of each symbol showing it.
+pub fn copies(doc: &Document, c: ComponentId, i: u32) -> Vec<Vec<ecad_model::TerminalId>> {
+    let mut by_rep: BTreeMap<ecad_model::RepresentationId, Vec<ecad_model::TerminalId>> = BTreeMap::new();
+    let mut loose = Vec::new();
+    for (t, _) in doc.terminals_of(c) {
+        if channels::point_of(doc, t).is_some_and(|(j, _)| j == i) {
+            match doc.representations_showing(t).next() {
+                Some((rid, _)) => by_rep.entry(rid).or_default().push(t),
+                None => loose.push(t),
+            }
+        }
+    }
+    let mut out: Vec<Vec<ecad_model::TerminalId>> = by_rep.into_values().collect();
+    if !loose.is_empty() {
+        out.push(loose);
+    }
+    out
+}
+
+/// One channel of a card in the kept model (design 045 §4, §6).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ChannelData {
+    /// (role, terminal, pin), roles in cell order; a role twice when the channel is drawn twice.
+    pub points: Vec<(&'static str, ecad_model::TerminalId, String)>,
+    /// The symbols drawing it: (representation, page, the symbol's card type).
+    pub cells: Vec<(ecad_model::RepresentationId, PageId, Option<CardType>)>,
+    /// A point is on a net with another connection point.
+    pub used: bool,
+    pub text: Option<String>,
+    pub typed: Option<String>,
+}
+
+/// A channel's state (design 045 §6).
+pub fn state_word(used: bool, text: Option<&str>) -> &'static str {
+    match (used, text.is_some_and(|t| !t.is_empty())) {
+        (true, _) => "used",
+        (false, true) => "reserved",
+        (false, false) => "spare",
+    }
 }
 
 /// A rack in the kept model.
@@ -90,6 +192,10 @@ pub struct CardData {
     pub page: Option<PageId>,
     pub part_number: Option<String>,
     pub maker: Option<String>,
+    /// Brief 045b: its channels with points, text or a typed address, by index.
+    pub chans: BTreeMap<u32, ChannelData>,
+    /// Its first channel number (`plc.channel.first`).
+    pub first: u32,
 }
 
 /// The group a Checks row belongs to: a rack (its cards' slot rows) or a card (its own rows).
@@ -106,6 +212,10 @@ pub struct Plc {
     checks: BTreeMap<Group, Vec<Check>>,
     /// Cards in no rack (the `unracked` count row).
     unracked: BTreeSet<ComponentId>,
+    /// Brief 045b: each racked card's address block (design 045 §5.1), worked out per rack.
+    pub blocks: BTreeMap<ComponentId, address::Block>,
+    /// Used channels without an address, by rack (the `no-address` count row).
+    no_address: BTreeMap<Group, usize>,
     /// The racks and cards the last update recomputed.
     pub last_changed: BTreeSet<ComponentId>,
     /// How many racks and cards the last update recomputed (tests and bench).
@@ -116,7 +226,13 @@ pub struct Plc {
 
 impl PartialEq for Plc {
     fn eq(&self, o: &Self) -> bool {
-        self.racks == o.racks && self.cards == o.cards && self.naming == o.naming && self.checks == o.checks && self.unracked == o.unracked
+        self.racks == o.racks
+            && self.cards == o.cards
+            && self.naming == o.naming
+            && self.checks == o.checks
+            && self.unracked == o.unracked
+            && self.blocks == o.blocks
+            && self.no_address == o.no_address
     }
 }
 
@@ -158,6 +274,7 @@ impl Plc {
         self.recomputed += 1;
         self.last_work += 1;
         // Out with the old.
+        self.blocks.remove(&c);
         if let Some(old) = self.cards.remove(&c) {
             if let RackRef::Rack(r) | RackRef::Missing(r) = old.rack {
                 groups.insert(r);
@@ -208,6 +325,8 @@ impl Plc {
                 page,
                 part_number: text("part_number"),
                 maker: text("maker"),
+                chans: channel_data(doc, c),
+                first: channels::first_number(doc, c),
             },
         );
     }
@@ -237,7 +356,23 @@ impl Plc {
                         out.insert(c);
                     }
                 }
-                Op::AddPage { .. } | Op::RemovePage { .. } => {}
+                // Brief 045b: a card's channel points, and the nets they are on (used or spare).
+                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                    out.insert(terminal.component);
+                }
+                Op::AttachEnd { conductor, before, after, .. } => {
+                    for t in [before, after].into_iter().flatten() {
+                        if let Some(x) = doc.terminals.get(t) {
+                            out.insert(x.component);
+                        }
+                    }
+                    let conn = doc.connectivity();
+                    if let Some(net) = conn.net_of_conductor(*conductor).and_then(|n| conn.net(n)) {
+                        out.extend(
+                            net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                        );
+                    }
+                }
                 _ => {}
             }
         }
@@ -255,6 +390,8 @@ impl Plc {
             out.extend(self.racks.keys().filter(|c| inherits(c)).copied());
             out.extend(self.cards.keys().filter(|c| inherits(c)).copied());
         }
+        // Only racks and cards, before or now (a device that is neither is not touched).
+        out.retain(|c| self.cards.contains_key(c) || self.racks.contains_key(c) || card_type_of(doc, *c).is_some());
         // A rack's cards read its tag and slot range.
         let racks: Vec<ComponentId> = out.iter().filter(|c| self.racks.contains_key(c)).copied().collect();
         for r in racks {
@@ -293,9 +430,58 @@ impl Plc {
 
     /// Work out group `g`'s Checks rows; returns whether they changed.
     fn set_checks(&mut self, doc: &Document, g: Group) -> bool {
+        let mut moved = false;
+        if self.racks.contains_key(&g) {
+            let members: Vec<address::Member> = self.cards_of(g).into_iter().filter_map(|c| Some((c.id, c.ty, c.channels, c.slot?))).collect();
+            for (c, b) in address::blocks(doc, g, &members) {
+                if self.blocks.insert(c, b) != Some(b) {
+                    moved = true;
+                    self.last_changed.insert(c);
+                }
+            }
+            let n = self.no_address_of(doc, g);
+            if n > 0 {
+                self.no_address.insert(g, n);
+            } else {
+                self.no_address.remove(&g);
+            }
+        }
         let rows = self.group_checks(doc, g);
         let old = if rows.is_empty() { self.checks.remove(&g) } else { self.checks.insert(g, rows.clone()) };
-        old.unwrap_or_default() != rows
+        moved || old.unwrap_or_default() != rows
+    }
+
+    /// The address of channel `i` of card `c` as shown (typed, else automatic) and whether typed.
+    pub fn address_of(&self, doc: &Document, c: ComponentId, i: u32) -> (Option<String>, bool) {
+        let Some(card) = self.cards.get(&c) else { return (None, false) };
+        if let Some(t) = card.chans.get(&i).and_then(|x| x.typed.clone()) {
+            return (Some(t), true);
+        }
+        (self.automatic(doc, c, i, address::shows_output(card.ty)), false)
+    }
+
+    /// The automatic address of channel `i` of card `c` (`output`: its output address).
+    pub fn automatic(&self, doc: &Document, c: ComponentId, i: u32, output: bool) -> Option<String> {
+        let card = self.cards.get(&c)?;
+        let RackRef::Rack(r) = card.rack else { return None };
+        let b = self.blocks.get(&c)?;
+        let slot = card.slot?;
+        let style = address::Style::of(doc, r);
+        let shown = i.saturating_add(channels::first_number(doc, c));
+        address::automatic(style, card.ty, b, slot, i, shown, address::word_size(doc, c, card.ty), output)
+    }
+
+    /// Used channels of rack `r`'s cards with no address.
+    fn no_address_of(&self, doc: &Document, r: ComponentId) -> usize {
+        let mut n = 0;
+        for card in self.cards_of(r) {
+            for (i, ch) in &card.chans {
+                if ch.used && ch.typed.is_none() && self.automatic(doc, card.id, *i, address::shows_output(card.ty)).is_none() {
+                    n += 1;
+                }
+            }
+        }
+        n
     }
 
     fn tag_of(&self, c: ComponentId) -> String {
@@ -309,8 +495,11 @@ impl Plc {
         (rack.first..rack.first.saturating_add(rack.slots)).find(|s| !taken.contains(s))
     }
 
-    fn group_checks(&self, _doc: &Document, g: Group) -> Vec<Check> {
+    fn group_checks(&self, doc: &Document, g: Group) -> Vec<Check> {
         let mut out = Vec::new();
+        if let Some(card) = self.cards.get(&g) {
+            self.channel_checks(doc, card, &mut out);
+        }
         if let Some(card) = self.cards.get(&g)
             && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)
         {
@@ -347,6 +536,7 @@ impl Plc {
                 }),
             }
         }
+        self.address_checks(doc, rack, &mut out);
         for (s, mut cards) in by_slot {
             if cards.len() < 2 {
                 continue;
@@ -367,6 +557,146 @@ impl Plc {
         out
     }
 
+    /// Brief 045b's rows of one card (design 045 §9): a channel drawn twice, beyond the count, or by a
+    /// symbol of another type.
+    fn channel_checks(&self, doc: &Document, card: &CardData, out: &mut Vec<Check>) {
+        let first = channels::first_number(doc, card.id);
+        let place = |rid: ecad_model::RepresentationId| -> String {
+            let Some(r) = doc.representations.get(&rid) else { return "?".into() };
+            let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
+            at.and_then(|a| ecad_model::wiring::place(doc, r.page, a))
+                .map_or_else(|| crate::references::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style))
+        };
+        let mut highest: Option<u32> = None;
+        for (i, ch) in &card.chans {
+            if ch.points.is_empty() {
+                continue;
+            }
+            if ch.cells.len() > 1 {
+                let places: Vec<String> = ch.cells.iter().take(4).map(|(r, _, _)| place(*r)).collect();
+                let (r, page, _) = ch.cells.get(1).copied().unwrap_or((ch.cells[0].0, ch.cells[0].1, None));
+                let _ = r;
+                out.push(Check {
+                    kind: Kind::ChannelTwice,
+                    page: Some(page),
+                    at: None,
+                    object: Object::Component(card.id),
+                    which: format!("{} channel {} is drawn twice ({})", card.tag, i + first, places.join(", ")),
+                    fix: Some(Fix::Plc(card.id, PlcFix::ChannelTwice(*i))),
+                });
+            }
+            if *i >= card.channels {
+                highest = Some(highest.map_or(*i, |h| h.max(*i)));
+            }
+            for (_, page, t) in &ch.cells {
+                if let Some(t) = t
+                    && *t != card.ty
+                {
+                    out.push(Check {
+                        kind: Kind::ChannelType,
+                        page: Some(*page),
+                        at: None,
+                        object: Object::Component(card.id),
+                        which: format!("{} is a {}; channel {} is drawn as {}", card.tag, card.ty.noun(), i + first, t.code()),
+                        fix: None,
+                    });
+                }
+            }
+        }
+        if let Some(h) = highest {
+            out.push(Check {
+                kind: Kind::ChannelOver,
+                page: card.page,
+                at: None,
+                object: Object::Component(card.id),
+                which: format!("{} has channel {} drawn; it has {} channels", card.tag, h + first, card.channels),
+                fix: Some(Fix::Plc(card.id, PlcFix::ChannelOver(h))),
+            });
+        }
+    }
+
+    /// Brief 045b's rows of one rack (design 045 §9): blocks that overlap or overflow, an address
+    /// given twice.
+    fn address_checks(&self, doc: &Document, rack: &RackData, out: &mut Vec<Check>) {
+        let style = address::Style::of(doc, rack.id);
+        let cards = self.cards_of(rack.id);
+        for card in &cards {
+            if self.blocks.get(&card.id).is_some_and(|b| b.overflow) {
+                out.push(Check {
+                    kind: Kind::AddressOverflow,
+                    page: card.page,
+                    at: None,
+                    object: Object::Component(card.id),
+                    which: format!("{}'s block passes byte {}", card.tag, address::MAX_BYTE),
+                    fix: Some(Fix::Plc(card.id, PlcFix::Unpin)),
+                });
+            }
+        }
+        for output in [false, true] {
+            let spans: Vec<(&CardData, (u32, u32))> = cards
+                .iter()
+                .filter_map(|c| {
+                    let b = self.blocks.get(&c.id)?;
+                    Some((*c, if output { b.output? } else { b.input? }))
+                })
+                .collect();
+            // The row goes on the later card in slot order, naming the first earlier one it overlaps.
+            for (k, (later, (s, n))) in spans.iter().enumerate() {
+                let earlier = spans.iter().take(k).find(|(_, (s2, n2))| s2.saturating_add(*n2) > *s && *s2 < s.saturating_add(*n));
+                if let Some((e, span)) = earlier {
+                    let dir = if output { "outputs" } else { "inputs" };
+                    let free = spans.iter().map(|(_, (a, b))| a.saturating_add(*b)).max().unwrap_or(0);
+                    out.push(Check {
+                        kind: Kind::AddressOverlap,
+                        page: later.page,
+                        at: None,
+                        object: Object::Component(later.id),
+                        which: format!(
+                            "{} {dir} {} overlap {} {dir} {} ({})",
+                            later.tag,
+                            address::block_words(style, output, (*s, *n)),
+                            e.tag,
+                            address::block_words(style, output, *span),
+                            rack.tag
+                        ),
+                        fix: Some(Fix::Plc(later.id, PlcFix::Overlap(free))),
+                    });
+                }
+            }
+        }
+        // An address given twice in this rack (at least one of them typed).
+        let mut seen: BTreeMap<String, Vec<(&CardData, u32, bool)>> = BTreeMap::new();
+        for card in &cards {
+            let typed: BTreeSet<u32> = card.chans.iter().filter(|(_, ch)| ch.typed.is_some()).map(|(i, _)| *i).collect();
+            for i in 0..card.channels.max(card.chans.keys().next_back().map_or(0, |x| x + 1)) {
+                let (a, t) = self.address_of(doc, card.id, i);
+                if let Some(a) = a {
+                    seen.entry(a).or_default().push((card, i, t || typed.contains(&i)));
+                }
+            }
+        }
+        for (a, who) in seen {
+            if who.len() < 2 || !who.iter().any(|(_, _, t)| *t) {
+                continue;
+            }
+            let words: Vec<String> = who
+                .iter()
+                .take(4)
+                .map(|(c, i, t)| format!("{} channel {}{}", c.tag, i + channels::first_number(doc, c.id), if *t { " (typed)" } else { "" }))
+                .collect();
+            if let Some((c, i, _)) = who.iter().find(|(_, _, t)| *t) {
+                out.push(Check {
+                    kind: Kind::AddressTwice,
+                    page: c.page,
+                    at: None,
+                    object: Object::Component(c.id),
+                    which: format!("{a} is the address of {}", words.join(" and ")),
+                    fix: Some(Fix::Plc(c.id, PlcFix::ClearTyped(*i))),
+                });
+            }
+        }
+    }
+
     /// Every PLC Checks row (design 045 §9), from the kept rows.
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.checks.values().flatten().cloned().collect();
@@ -380,6 +710,18 @@ impl Plc {
                 object: Object::None,
                 which,
                 fix: Some(Fix::Plc(ComponentId(0), PlcFix::Unracked)),
+            });
+        }
+        let n: usize = self.no_address.values().sum();
+        if n > 0 {
+            let which = if n == 1 { "1 used channel has no address".to_string() } else { format!("{n} used channels have no address") };
+            out.push(Check {
+                kind: Kind::NoAddress,
+                page: None,
+                at: None,
+                object: Object::None,
+                which,
+                fix: Some(Fix::Plc(ComponentId(0), PlcFix::NoAddress)),
             });
         }
         out
@@ -422,12 +764,49 @@ impl Plc {
                 }
                 out
             }
+            PlcFix::ChannelTwice(i) => {
+                let Some(card) = self.cards.get(&c) else { return Vec::new() };
+                let free = (0..channels::MAX_INDEX).find(|j| !card.chans.get(j).is_some_and(|x| !x.points.is_empty())).unwrap_or(0);
+                let (first, i_shown) = (self.first_of(c), i);
+                vec![(
+                    format!("Move to channel {}", free + first),
+                    "plcchannel",
+                    json!({"card": c.hex(), "channel": i_shown + first, "move_to": free + first}),
+                )]
+            }
+            PlcFix::ChannelOver(h) => {
+                let n = h.saturating_add(1);
+                if n > rack::MAX_CHANNELS {
+                    return Vec::new();
+                }
+                vec![(format!("Raise to {n} channels"), "setprop", json!({"component": c.hex(), "key": rack::CHANNELS_KEY, "value": n.to_string()}))]
+            }
+            PlcFix::Overlap(free) => vec![
+                (format!("Move {tag} after the others (pin at byte {free})"), "plcaddress", json!({"card": c.hex(), "start": free})),
+                (format!("Unpin {tag}"), "plcaddress", json!({"card": c.hex(), "start": null})),
+            ],
+            PlcFix::Unpin => vec![(format!("Unpin {tag}"), "plcaddress", json!({"card": c.hex(), "start": null}))],
+            PlcFix::ClearTyped(i) => {
+                let first = self.first_of(c);
+                vec![("Clear the typed address".to_string(), "plcchannel", json!({"card": c.hex(), "channel": i + first, "address": null}))]
+            }
+            PlcFix::NoAddress => self
+                .racks_by_tag()
+                .into_iter()
+                .filter(|r| self.no_address.contains_key(&r.id))
+                .map(|r| (format!("Set {}'s address style", r.tag), "plcaddress", json!({"rack": r.id.hex(), "style": "byte.bit"})))
+                .collect(),
             PlcFix::Unracked => self
                 .unracked_by_tag()
                 .into_iter()
                 .map(|c| (format!("Put {} in rack…", self.tag_of(c)), "plcslot", json!({"card": c.hex()})))
                 .collect(),
         }
+    }
+
+    /// The first channel number of card `c` as the model last read it.
+    fn first_of(&self, c: ComponentId) -> u32 {
+        self.cards.get(&c).map_or(0, |x| x.first)
     }
 
     /// The racks by tag.
@@ -467,6 +846,12 @@ impl Plc {
             "rack": rack,
             "slot": card.slot,
             "channels": card.channels,
+            "used": card.chans.values().filter(|x| x.used).count(),
+            "reserved": card.chans.values().filter(|x| !x.used && x.text.is_some()).count(),
+            "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.text.is_some()).count()).unwrap_or(0)),
+            "inputs": self.blocks.get(&c).and_then(|b| b.input).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
+            "outputs": self.blocks.get(&c).and_then(|b| b.output).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
+            "pinned": self.blocks.get(&c).is_some_and(|b| b.pinned),
             "part_number": card.part_number,
             "maker": card.maker,
         })
@@ -506,14 +891,33 @@ impl Plc {
 
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
 /// slot range shows in its cards' captions.
-pub fn pages_touched(doc: &Document, c: ComponentId, key: &str) -> Vec<PageId> {
-    if !(key == ecad_model::tag::TAG_KEY || key.starts_with("plc.")) || !rack::is_rack(doc, c) {
+pub fn pages_touched(doc: &Document, c: ComponentId, key: &str, after: Option<&str>) -> Vec<PageId> {
+    if !(key == ecad_model::tag::TAG_KEY || key.starts_with("plc.")) {
         return Vec::new();
     }
-    rack::cards_naming(doc, c)
-        .into_iter()
-        .flat_map(|(card, _)| doc.representations_of(Subject::Component(card)).map(|(_, r)| r.page).collect::<Vec<_>>())
-        .collect()
+    let pages_of = |r: ComponentId| -> Vec<PageId> {
+        rack::cards_naming(doc, r)
+            .into_iter()
+            .flat_map(|(card, _)| doc.representations_of(Subject::Component(card)).map(|(_, x)| x.page).collect::<Vec<_>>())
+            .collect()
+    };
+    if rack::is_rack(doc, c) {
+        return pages_of(c);
+    }
+    // A card's own text or typed address shows on its own cells only.
+    if key == ecad_model::tag::TAG_KEY || key.starts_with(channels::CH_PREFIX) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    if let rack::RackRef::Rack(r) = rack::rack_ref(doc, c) {
+        out.extend(pages_of(r));
+    }
+    if key == rack::RACK_KEY
+        && let Some(r) = after.and_then(|v| ComponentId::parse(v.trim())).filter(|r| rack::is_rack(doc, *r))
+    {
+        out.extend(pages_of(r));
+    }
+    out
 }
 
 /// Card `c`'s caption (design 045 §7.2) and whether it is shown: the registry pattern with the
@@ -631,7 +1035,194 @@ pub fn edit_line(c: ComponentId, key: &str, value: Option<&str>) -> Option<Strin
             None => json!({"card": c.hex()}),
             Some(t) => json!({"card": c.hex(), "slot": t}),
         },
-        _ => return None,
+        k => {
+            // Properties ▸ Channel: a pin row (`plc.pin#<i>#<role>`) writes `plcchannel {pins}`.
+            let (i, role) = k.strip_prefix("plc.pin#")?.split_once('#')?;
+            let i: u32 = i.parse().ok()?;
+            return Some(format!("plcchannel {}", json!({"card": c.hex(), "index": i, "pins": {role: v.unwrap_or_default()}})));
+        }
     };
     Some(format!("plcslot {j}"))
+}
+
+/// Card `c`'s channels read from the document: points, cells, net state, text and typed address.
+pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData> {
+    let mut out: BTreeMap<u32, ChannelData> = BTreeMap::new();
+    let conn = doc.connectivity();
+    for (t, term) in doc.terminals_of(c) {
+        let Some((i, role)) = channels::point_of(doc, t) else { continue };
+        let ch = out.entry(i).or_default();
+        ch.points.push((role, t, term.label.clone().unwrap_or_default()));
+        let used = conn.net_of_terminal(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1);
+        ch.used |= used;
+        for (rid, r) in doc.representations_showing(t) {
+            if !ch.cells.iter().any(|(x, _, _)| *x == rid) {
+                let ty = crate::devices::rep_starter(doc, r).and_then(channels::cell_type);
+                ch.cells.push((rid, r.page, ty));
+            }
+        }
+    }
+    if let Some(x) = doc.components.get(&c) {
+        for (k, v) in x.properties.range(channels::CH_PREFIX.to_string()..) {
+            if !k.starts_with(channels::CH_PREFIX) {
+                break;
+            }
+            let Some((i, what)) = channels::parse_ch_key(k) else { continue };
+            let v = v.trim();
+            if v.is_empty() {
+                continue;
+            }
+            let ch = out.entry(i).or_default();
+            if what == "text" {
+                ch.text = Some(v.to_string());
+            } else {
+                ch.typed = Some(v.to_string());
+            }
+        }
+    }
+    for ch in out.values_mut() {
+        ch.points.sort_by_key(|(r, t, _)| (channels::ROLES.iter().position(|x| x == r), *t));
+    }
+    out
+}
+
+/// The channel texts of cell `rid` (representation `r` at `pl`) of card `c` (design 045 §7.1): its
+/// channel number, its address and its description (`Spare` for a drawn spare), at the cell's
+/// anchors. `cache` holds the racks' blocks for one page draw.
+pub fn channel_texts(
+    doc: &Document, c: ComponentId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
+    cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, address::Block>>,
+) -> Vec<crate::devices::PageText> {
+    use crate::devices::{DerivedText, PageText, TextOf};
+    use crate::symbols::TextRole;
+    let Some(s) = crate::devices::rep_starter(doc, r) else { return Vec::new() };
+    if channels::cell_type(s).is_none() {
+        return Vec::new();
+    }
+    // The channel this symbol shows: its first point's.
+    let shown_points = crate::devices::shown_terminals(doc, c, r);
+    let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
+    let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
+    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).word() == "on";
+    let first = channels::first_number(doc, c);
+    let (auto, _) = address::of_channel(doc, c, i, cache);
+    let (addr, _) = address::shown(doc, c, i, auto);
+    let text =
+        doc.components.get(&c).and_then(|x| x.properties.get(&channels::ch_key(i, "text"))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let conn = doc.connectivity();
+    let used = doc
+        .terminals_of(c)
+        .filter(|(t, _)| channels::point_of(doc, *t).is_some_and(|x| x.0 == i))
+        .any(|(t, _)| conn.net_of_terminal(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1));
+    let description = match (&text, used) {
+        (Some(t), _) => Some(t.clone()),
+        (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
+        (None, true) => None,
+    };
+    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
+    let anchors = crate::symbols::anchors(s);
+    let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
+    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Description).height;
+    let mut out = Vec::new();
+    let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
+        let Some(a) = anchors.iter().find(|x| x.role == role) else { return };
+        let p = pl.apply(a.at);
+        if !p.is_finite() {
+            return;
+        }
+        let (h, v) = if horizontal && role == TextRole::ChannelText {
+            (cadcraft_engine::doc::HAlign::Center, cadcraft_engine::doc::VAlign::Top)
+        } else {
+            let h = match a.h {
+                crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Left,
+                crate::symbols::HAlign::Centre => cadcraft_engine::doc::HAlign::Center,
+                crate::symbols::HAlign::Right => cadcraft_engine::doc::HAlign::Right,
+            };
+            let v = match a.v {
+                crate::symbols::VAlign::Bottom => cadcraft_engine::doc::VAlign::Bottom,
+                crate::symbols::VAlign::Middle => cadcraft_engine::doc::VAlign::Middle,
+                crate::symbols::VAlign::Top => cadcraft_engine::doc::VAlign::Top,
+            };
+            (h, v)
+        };
+        out.push(PageText {
+            text: DerivedText { rep: rid, of, value, at: p, height, halign: h, valign: v, aci: None },
+            shown,
+            moved: false,
+            overlaps: false,
+        });
+    };
+    push(TextRole::ChannelNo, TextOf::ChannelNo, (i + first).to_string(), label, on(&crate::defaults::plc::CHANNEL_SHOW), false);
+    if let Some(a) = addr {
+        push(TextRole::Address, TextOf::Address, a, label, on(&crate::defaults::plc::ADDRESS_SHOW), false);
+    }
+    if let Some(d) = description {
+        push(TextRole::ChannelText, TextOf::ChannelText { rotated }, d, desc_h, true, !rotated);
+    }
+    out
+}
+
+/// The one value rule of `plc.*` keys written with `setprop` (design 045 §4.6), called where 034's
+/// is: a card's rack, slot and channel count, a channel's text and typed address, and the registry's
+/// object-level entries. `None`: not a key of this brief.
+pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+    if let Some(r) = rack::setprop_value(doc, c, key, value) {
+        return Some(r);
+    }
+    if let Some(r) = channels::setprop_value(key, value) {
+        return Some(r);
+    }
+    if key == address::START_KEY || key == address::SIZE_KEY {
+        let v = value.map(str::trim).filter(|v| !v.is_empty());
+        let max = if key == address::START_KEY { address::MAX_BYTE } else { address::MAX_SIZE };
+        return Some(match v {
+            None => Ok(None),
+            Some(t) if t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit()) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
+            Some(_) => Err(format!("{key} is a whole number of bytes from 0 to {max}.")),
+        });
+    }
+    let entry = crate::defaults::find(key).filter(|e| e.key.starts_with("plc."))?;
+    let v = value.map(str::trim).filter(|v| !v.is_empty());
+    Some(match v {
+        None => Ok(None),
+        Some(_) if !entry.allows(crate::defaults::Level::Object) => {
+            Err(format!("{key} is a project setting; set it with setdefault at project level."))
+        }
+        Some(t) if entry.parse(t).is_some() => Ok(Some(t.to_string())),
+        Some(t) => Err(format!("{t} is not a value of {key}.")),
+    })
+}
+
+/// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
+/// description and typed address (placeholder: the automatic one), and one pin per role.
+pub fn channel_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::props::Row>) {
+    let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
+    if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
+        return;
+    }
+    let shown = crate::devices::shown_terminals(doc, c, r);
+    let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
+    let first = channels::first_number(doc, c);
+    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::props::Row {
+        key,
+        label: label.into(),
+        value,
+        editable,
+        inherited,
+        varies: false,
+        choices: Vec::new(),
+    };
+    rows.push(row(format!("plc.channel#{i}"), "Channel", (i + first).to_string(), false, false));
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
+    rows.push(row(channels::ch_key(i, "text"), "Description", own(&channels::ch_key(i, "text")).unwrap_or_default(), true, false));
+    let typed = own(&channels::ch_key(i, "address"));
+    let auto = address::of_channel(doc, c, i, &mut BTreeMap::new()).0.unwrap_or_default();
+    let inherited = typed.is_none();
+    rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));
+    for (t, _) in &shown {
+        if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.terminals.get(t)) {
+            rows.push(row(format!("plc.pin#{i}#{role}"), &format!("Pin {role}"), term.label.clone().unwrap_or_default(), true, false));
+        }
+    }
 }

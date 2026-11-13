@@ -64,3 +64,26 @@ fn a7_reads_work_with_writes_off() {
     r.exec("checks", json!({}));
     assert_eq!(r.log(), log, "reads record nothing");
 }
+
+#[test]
+fn b7_channel_and_address_writes_by_the_agent_and_refused_with_writes_off() {
+    let mut c = writer(4572);
+    by_agent(&mut c, "place", json!({"symbol": "plccpu", "at": [50, 300]}));
+    let card = by_agent(&mut c, "place", json!({"symbol": "plcdi", "at": [100, 300]}));
+    let card = card["component"].as_str().unwrap().to_string();
+    for i in 0..4 {
+        let x = 100 + 10 * i;
+        by_agent(&mut c, "wire", json!({"points": [[x, 250], [x, 150]]}));
+    }
+    let v = by_agent(&mut c, "plcchannels", json!({"card": card, "from": [95, 200], "to": [135, 200]}));
+    assert_eq!(v["channels"], json!([0, 1, 2, 3]), "{v}");
+    by_agent(&mut c, "place", json!({"symbol": "chdi", "at": [200, 200], "device": card}));
+    by_agent(&mut c, "plcchannel", json!({"card": card, "channel": 1, "text": "Door closed", "address": "I9.9"}));
+    by_agent(&mut c, "plcaddress", json!({"rack": "-A01", "style": "iec"}));
+    by_agent(&mut c, "plcchannels", json!({"card": card, "rest": true}));
+
+    refused_with_writes_off("plcchannels", json!({"type": "DI", "from": [0, 0], "to": [10, 0]}));
+    refused_with_writes_off("plcchannel", json!({"card": "-A02", "channel": 0, "text": "x"}));
+    refused_with_writes_off("plcaddress", json!({"rack": "-A01", "fix": true}));
+    refused_with_writes_off("place", json!({"symbol": "chdi", "at": [0, 0], "device": "-A02", "channel": 3}));
+}

@@ -67,6 +67,10 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     if crate::terminal_types::is_level_starter(starter.key) {
         return crate::terminal_cmds::run_place_level(s, params, starter, at, degrees, mirror);
     }
+    // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
+    if crate::plc::channels::cell_type(starter).is_some() {
+        return crate::plc::channels::run_place_channel(s, params, starter, at, degrees, mirror);
+    }
     let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
     let tag = match params.get("tag") {
         None | Some(Value::Null) => None,

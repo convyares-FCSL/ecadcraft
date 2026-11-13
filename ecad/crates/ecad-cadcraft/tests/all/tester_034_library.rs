@@ -623,9 +623,10 @@ fn e_fixed_symbols_join_by_the_018_rules() {
     let a = place(&mut h, "plcdi", (250.0, 250.0));
     assert_eq!(a["tag"], json!("-A01"));
     let a1: ComponentId = id(&a, "component");
-    assert_eq!(labels(&join(&mut h, "di", (240.0, 200.0), a1).unwrap()), ["I0.0"]);
-    assert_eq!(labels(&join(&mut h, "di", (260.0, 200.0), a1).unwrap()), ["I0.1"]);
-    assert_eq!(device_labels(&h.doc(), a1), set(&["L+", "M", "I0.0", "I0.1"]));
+    // Brief 045 (FP7): channels are labelled with pins.
+    assert_eq!(labels(&join(&mut h, "di", (240.0, 200.0), a1).unwrap()), ["1"]);
+    assert_eq!(labels(&join(&mut h, "di", (260.0, 200.0), a1).unwrap()), ["2"]);
+    assert_eq!(device_labels(&h.doc(), a1), set(&["L+", "M", "1", "2"]));
 }
 
 // ---------------------------------------------------------------------------------------------

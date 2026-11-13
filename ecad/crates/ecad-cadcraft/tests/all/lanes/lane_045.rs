@@ -1,5 +1,6 @@
 //! Brief 045 (PLC racks and cards, design 045): contract tests by part.
 
+mod channels;
 mod rack;
 
 use ecad_cadcraft::outputs::Outputs;

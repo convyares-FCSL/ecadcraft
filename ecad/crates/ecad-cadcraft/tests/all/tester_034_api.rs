@@ -158,6 +158,10 @@ fn anchors() {
             assert!(v.is_empty(), "{}", st.key);
             continue;
         }
+        // Brief 045's channel cells have design 045 §7.1's anchors (`lanes::lane_045`).
+        if crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch") {
+            continue;
+        }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let (lo, hi) = symbols::bounds(d);
         let mid = (lo.y + hi.y) / 2.0;

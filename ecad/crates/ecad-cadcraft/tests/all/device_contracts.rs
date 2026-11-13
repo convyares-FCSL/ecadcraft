@@ -127,7 +127,12 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         assert_eq!(r["tag"], json!(t), "{key}");
         assert_eq!(r["joined"], json!(false));
         let s = symbols::by_key(key).unwrap();
-        assert_eq!(labels(&r), s.labels(), "{key}: the definition's terminal names");
+        // Brief 045 (FP7): a channel's labels are pins (1…), not its definition's names.
+        if ecad_cadcraft::plc::channels::cell_type(s).is_some() {
+            assert_eq!(labels(&r), ["1"], "{key}: its first pin");
+        } else {
+            assert_eq!(labels(&r), s.labels(), "{key}: the definition's terminal names");
+        }
     }
     // Each definition is embedded once, with its origin; a second coil reuses it.
     let r = place(&mut h, "coil", [400.0, 0.0]);

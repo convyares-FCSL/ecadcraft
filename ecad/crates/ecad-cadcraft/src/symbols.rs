@@ -36,8 +36,9 @@ pub enum Kind {
     Contact { make: bool },
     /// A single terminal: numbered 1, 2, 3…
     Terminal,
-    /// A PLC channel: the next address of its letter (`I0.0`…`I0.7`, `I1.0`…).
-    Plc { letter: char },
+    /// A PLC channel of a card of this type (brief 045, FP7): it joins a card as its next free
+    /// channel, its points labelled with pins and keyed `.<i>.<role>` ([`crate::plc::channels`]).
+    Channel(crate::plc::rack::CardType),
     /// A change-over contact (brief 034): common, NC and NO, numbered by the next IEC sequence
     /// digit (`11`/`12`/`14`, `21`/`22`/`24`…), see [`changeover_labels`].
     ChangeOver,
@@ -246,8 +247,8 @@ pub const STARTERS: &[Starter] = &[
     st("terminal", "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
     st("terminalpe", "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
-    st("di", "PLC digital input", &["plc", "input", "di"], Kind::Plc { letter: 'I' }, def_id(17)),
-    st("do", "PLC digital output", &["plc", "output", "do"], Kind::Plc { letter: 'Q' }, def_id(18)),
+    st("di", "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
+    st("do", "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
     st("junction", "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
     st("continuation", "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
     // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
@@ -344,7 +345,62 @@ pub const STARTERS: &[Starter] = &[
     card("plcim", "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
     card("plcpm", "PLC power module", &["plc", "pm", "power", "card"], pc(10)),
     card("plccm", "PLC communication module", &["plc", "cm", "communication", "fieldbus", "card"], pc(11)).quiet_at(Quiet::All),
+    // ---- Brief 045 (design 045 §4.1): one channel cell per card type with channels; cells side
+    // by side read as the card. Every point is quiet (a spare channel is normal).
+    cell("chdi", "PLC digital input channel", &["plc", "di", "input", "channel"], CT::Di, pc(12)),
+    cell("chdq", "PLC digital output channel", &["plc", "dq", "do", "output", "channel"], CT::Dq, pc(13)),
+    cell("chai", "PLC analogue input channel", &["plc", "ai", "analogue", "channel"], CT::Ai, pc(14)),
+    cell("chao", "PLC analogue output channel", &["plc", "ao", "analogue", "channel"], CT::Ao, pc(15)),
+    cell("chrtd", "PLC RTD channel", &["plc", "rtd", "temperature", "channel"], CT::Rtd, pc(16)),
+    cell("chiol", "PLC IO-Link port", &["plc", "io-link", "iol", "port", "channel"], CT::Iol, pc(17)),
 ];
+
+use crate::plc::rack::CardType as CT;
+
+/// A PLC channel cell (brief 045): `Kind::Channel`, every point quiet.
+const fn cell(key: &'static str, name: &'static str, aliases: &'static [&'static str], t: CT, id: DefinitionId) -> Starter {
+    st(key, name, aliases, Kind::Channel(t), id).of(Family::Plc).quiet_at(Quiet::All)
+}
+
+/// A cell's width and its points (role, x) (design 045 §4.1).
+fn cell_shape(key: &str) -> Option<(f64, &'static [(&'static str, f64)])> {
+    Some(match key {
+        "chdi" => (10.0, &[("in", 0.0)]),
+        "chdq" => (10.0, &[("out", 0.0)]),
+        "chai" | "chao" => (20.0, &[("+", -5.0), ("-", 5.0)]),
+        "chrtd" => (40.0, &[("I+", -15.0), ("S+", -5.0), ("S-", 5.0), ("I-", 15.0)]),
+        "chiol" => (30.0, &[("L+", -10.0), ("C/Q", 0.0), ("L-", 10.0)]),
+        _ => return None,
+    })
+}
+
+/// A cell's graphics (design 045 §4.1): a lead from each point down to the cell's top edge, the
+/// cell box (top, bottom and both sides, so adjacent cells share an edge), the role names, and its
+/// mark.
+fn cell_graphics(key: &str) -> Vec<Primitive> {
+    let Some((w, points)) = cell_shape(key) else { return Vec::new() };
+    let h = w / 2.0;
+    let mut g = vec![rect((-h, -15.0), (h, 0.0))];
+    for (role, x) in points {
+        g.push(line((*x, 5.0), (*x, 0.0)));
+        if points.len() > 1 {
+            g.push(text((*x - 0.5 * 0.8 * 1.6 * role.chars().count() as f64, -2.5), 1.6, role));
+        }
+    }
+    let into = poly(&[(-1.5, -6.5), (0.0, -8.0), (1.5, -6.5)], false);
+    let out = poly(&[(-1.5, -8.0), (0.0, -6.5), (1.5, -8.0)], false);
+    let tilde = poly(&[(-3.0, -11.0), (-1.5, -10.0), (0.0, -11.0), (1.5, -12.0), (3.0, -11.0)], false);
+    match key {
+        "chdi" => g.push(into),
+        "chdq" => g.push(out),
+        "chai" => g.extend([into, tilde]),
+        "chao" => g.extend([out, tilde]),
+        "chrtd" => g.push(text((-3.0, -10.0), 2.5, "RTD")),
+        "chiol" => g.push(text((-3.0, -10.0), 2.5, "IOL")),
+        _ => {}
+    }
+    g
+}
 
 // Brief 036's aliases.
 const TWO: &[&str] = &["two-level", "double-deck", "stacked", "terminal"];
@@ -558,6 +614,10 @@ pub enum TextRole {
     RatingOf(String),
     /// Brief 045 (design 045 §7.2): a card body's caption (`-A01 slot 2`), under the body.
     Caption,
+    /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description.
+    ChannelNo,
+    Address,
+    ChannelText,
 }
 
 /// Horizontal alignment of text at its anchor.
@@ -616,6 +676,16 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             a(TextRole::Rating, lo.x - ANCHOR_GAP, mid - ANCHOR_LINE, HAlign::Right, VAlign::Top),
             a(TextRole::Description, lo.x - ANCHOR_GAP, mid - 2.0 * ANCHOR_LINE, HAlign::Right, VAlign::Top),
         ],
+        // Brief 045 (design 045 §7.1): a channel cell's texts in the cell's frame.
+        _ if cell_shape(s.key).is_some() => {
+            let h = cell_shape(s.key).map_or(5.0, |(w, _)| w / 2.0);
+            vec![
+                tag,
+                a(TextRole::ChannelNo, -h + 1.0, -2.0, HAlign::Left, VAlign::Top),
+                a(TextRole::Address, 0.0, -12.0, HAlign::Centre, VAlign::Middle),
+                Anchor { role: TextRole::ChannelText, at: p(0.0, -17.0), h: HAlign::Right, v: VAlign::Middle, rotation: 90.0 },
+            ]
+        }
         // Card bodies: the tag above, the description inside under the header.
         // Brief 045 (design 045 §7.2): and the caption under the body.
         _ if s.family == Family::Plc => vec![
@@ -1164,6 +1234,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
         "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
         "plccm" => card_body("CM", &[(-5.0, -25.0), (5.0, -25.0)]),
         k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
+        k if cell_shape(k).is_some() => cell_graphics(k),
         _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
@@ -1225,6 +1296,13 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
         // ---- Brief 045 (design 045 §3.1).
         "plcim" | "plcpm" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
         "plccm" => vec![t("P1", -5.0, -25.0), t("P2", 5.0, -25.0)],
+        // Brief 045 (design 045 §4.1, FP2): a cell's points are keyed by role; the pin is the
+        // label given when it joins a card.
+        k if cell_shape(k).is_some() => cell_shape(k)
+            .map(|(_, pts)| {
+                pts.iter().map(|(role, x)| TerminalDef { key: format!(".{role}"), label: Some((*role).to_string()), at: p(*x, 5.0) }).collect()
+            })
+            .unwrap_or_default(),
         _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
@@ -1292,8 +1370,8 @@ mod tests {
         }
         // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
         // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
-        // multi-level terminals (20), brief 045's modules (3).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3);
+        // multi-level terminals (20), brief 045's modules (3) and channel cells (6).
+        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3 + 6);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -1374,6 +1452,12 @@ mod tests {
         ("plcim", 30.0, 45.0, "L+/M"),
         ("plcpm", 30.0, 45.0, "L+/M"),
         ("plccm", 30.0, 45.0, "P1/P2"),
+        ("chdi", 10.0, 20.0, ".in"),
+        ("chdq", 10.0, 20.0, ".out"),
+        ("chai", 20.0, 20.0, ".+/.-"),
+        ("chao", 20.0, 20.0, ".+/.-"),
+        ("chrtd", 40.0, 20.0, ".I+/.S+/.S-/.I-"),
+        ("chiol", 30.0, 20.0, ".L+/.C/Q/.L-"),
     ];
 
     #[test]
@@ -1513,8 +1597,14 @@ mod tests {
         let keys = |q: &str| search(q).into_iter().map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("-Q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
         // A bare letter is also a substring of an alias (`dq`).
-        assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq"]);
-        assert_eq!(keys("plc"), ["di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol", "plcim", "plcpm", "plccm"]);
+        assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq", "chdq"]);
+        assert_eq!(
+            keys("plc"),
+            [
+                "di", "do", "plccpu", "plcps", "plcdi", "plcdq", "plcai", "plcao", "plcrtd", "plciol", "plcim", "plcpm", "plccm", "chdi", "chdq",
+                "chai", "chao", "chrtd", "chiol"
+            ]
+        );
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
         assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
         assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);

@@ -40,7 +40,8 @@ fn embeds(ops: &[Op]) -> Vec<&ecad_model::Definition> {
 fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
     let mut c = writer();
     let mut next: std::collections::BTreeMap<&str, u32> = Default::default();
-    for (i, s) in STARTERS.iter().filter(|s| s.family != Family::Basic).enumerate() {
+    // Brief 045's channel cells join cards (`lanes::lane_045`).
+    for (i, s) in STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_cadcraft::plc::channels::cell_type(s).is_none()).enumerate() {
         let at = json!([80.0 * (i % 8) as f64, -80.0 * (i / 8) as f64]);
         let n = c.log().len();
         let r = c.exec("place", json!({"symbol": s.key, "at": at}));
