@@ -17,9 +17,11 @@ and the CSV) is in [024-outputs.md](024-outputs.md).
 | Inspector | A selected device with part lines shows **Parts**: its main part, then each line (quantity, maker, part number, description, article number, kit or `for`), read only |
 | Checks | `5 devices and 3 part lines have no part number`, `2 items have no part number`, `6 fuses have no insert` (only once the project lists any insert), `AB-1NO has two article numbers` (**Use … for all**), a `for` naming a fuse the device lacks (**Remove 9**), and a `part.` key ECAD does not read |
 
-Not yet in this branch: the Article column and nested lines on the **BOM-by-location page**
-(waits for brief 046's strip pages to reach `dev`), and article numbers on strip parts (terminal
-types, accessories, jumpers) with renumbering keeping a strip line's `for` (waits for brief 045).
+| BOM-by-location page | Qty with its unit (`2.5 m`), an **Article** column when the column is on (the others narrower), nested lines under their device. This branch carries brief 046 (strip pages) until 046's pull request merges |
+
+Not in 047 (a follow-up after brief 045): article numbers on strip parts (terminal types,
+accessories, jumpers) and renumbering keeping a strip line's `for`. Until then `article` leaves
+strip parts alone and says so, and a strip's part line with `for` is refused with the reason.
 
 ## Try it
 
@@ -42,7 +44,7 @@ types, accessories, jumpers) with renumbering keeping a strip line's `for` (wait
 ## Checks
 
 - *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-cadcraft --test all
-  lane_047` (11 tests: items in metres and undo; refusals on items; one line on four devices;
+  lane_047` (12 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
   fuse inserts per fuse and the uncovered-fuse check; the article column, command and conflict
   with its fix; kits and the nested layout; missing `for` names and unread keys; the update map;
   hostile values; save and reopen), `cargo test -p ecad-mcp --test all lane_047` (2 tests: every

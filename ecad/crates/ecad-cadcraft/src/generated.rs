@@ -562,7 +562,14 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
             (cols, rows)
         }
         GenKind::BomLocation => {
-            let cols = vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)];
+            // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
+            // others narrower, still 390 mm), Qty with its unit, nested lines indented.
+            let article = outputs.is_some_and(|o| o.view.article);
+            let cols = if article {
+                vec![("Qty", 15.0), ("Tags", 60.0), ("Description", 120.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
+            } else {
+                vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)]
+            };
             let Some(o) = outputs else { return (cols, Vec::new()) };
             let mut rows = Vec::new();
             let mut last: Option<Option<String>> = None;
@@ -572,7 +579,11 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
                     rows.push(TRow { cells: vec![q(&r.location)], heading: true, ..TRow::default() });
                     last = Some(r.location.clone());
                 }
-                rows.push(row(vec![r.qty.to_string(), r.tags.join(", "), q(&r.description), q(&r.maker), q(&r.part_number)]));
+                let mut cells = vec![r.qty_text(), r.tags.join(", "), q(&r.description_text()), q(&r.maker), q(&r.part_number)];
+                if article {
+                    cells.push(r.article_number.clone().unwrap_or_default());
+                }
+                rows.push(row(cells));
             }
             if rows.is_empty() {
                 rows.push(row(vec![String::new(), "No devices yet.".into()]));

@@ -524,3 +524,36 @@ fn everything_survives_save_and_reopen() {
     assert_eq!(strip(&after), strip(&before));
     assert!(after.iter().any(|r| r["article_number"] == "A-0301" && r["qty"] == json!(2.5)));
 }
+
+/// Design 047 §6.3: the BOM-by-location page shows Qty with its unit, the Article column when it
+/// is on, and nested lines indented; its sheet count follows the layout from kept counts.
+#[test]
+fn the_bom_page_shows_units_articles_and_nested_lines() {
+    let mut f = fixture(0x47_0e);
+    let page: ecad_model::PageId = id(&f.h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
+    f.h.run("bomitem", json!({"description": "DIN rail", "qty": 2.5, "unit": "m", "article_number": "A-0301"})).unwrap();
+    f.h.run("partline", json!({"component": f.k[0].hex(), "kit": "Starter set", "add": {"part_number": "SUP-1", "description": "Suppressor"}}))
+        .unwrap();
+    let texts = |h: &mut H| -> Vec<String> {
+        h.cfg(|p| {
+            let o = p.outputs().clone();
+            ecad_cadcraft::generated::parts_of(p.ledger.document(), page, Some(&o))
+                .into_iter()
+                .filter_map(|p| match p.kind {
+                    cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                    _ => None,
+                })
+                .collect()
+        })
+    };
+    let t = texts(&mut f.h);
+    assert!(t.contains(&"2.5 m".to_string()), "{t:?}");
+    assert!(!t.contains(&"Article".to_string()) && !t.contains(&"A-0301".to_string()), "{t:?}");
+    f.h.run("setdefault", json!({"key": "bom.column.article", "level": "project", "value": "on"})).unwrap();
+    let t = texts(&mut f.h);
+    assert!(t.contains(&"Article".to_string()) && t.contains(&"A-0301".to_string()), "{t:?}");
+    f.h.run("setdefault", json!({"key": "bom.lines", "level": "project", "value": "nested"})).unwrap();
+    let t = texts(&mut f.h);
+    assert!(t.iter().any(|x| x.contains("\u{21b3} Suppressor (kit: Starter set)")), "{t:?}");
+    same_as_built(&mut f.h);
+}
