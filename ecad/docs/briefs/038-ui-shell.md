@@ -1,7 +1,7 @@
 # Brief 038: The shell (U2)
 
-Status: Draft (U0, 2026-11-13), for the overseer and the owner.
-Branch: `feature/ui-shell`, from `origin/dev` after 037 has merged.
+Status: Approved (owner, 2026-11-13).
+Branch: `feature/ui-shell`, from `origin/dev` (037, 035, 036 and the per-lane layout, PR #72, have merged).
 Designer: done (`docs/design/ui-architecture.md` §1, §5, §8, §9, §10; the look is spec §2) ·
 Size: L
 Roadmap: M1 **1.5** (UI shell), second part. Runs beside U3 (039), which owns the table.
@@ -26,13 +26,26 @@ behind a developer switch; nothing is deleted.
 | `ecad/apps/ecad-trial/src/project_panel.rs`, `devices_panel.rs`, `history_panel.rs`, `checks_panel.rs`, `developer.rs`, `sheets_ui.rs` (section only), `outputs_ui.rs`, `release_ui.rs`, `search.rs`, `tools.rs` | Hosted in slots (design §5.6); contents unchanged except framing; allowlist entries removed where restyled |
 | `ecad/apps/ecad-trial/src/window.rs` | Shell state and per-project views in eframe storage (design §5.4) |
 | `ecad/apps/ecad-trial/src/main.rs` | `--cad-ui` flag |
-| `ecad/apps/ecad-trial/tests/all/shell_ui.rs` (new module) | Shell tests |
-| `ecad/docs/quick-start.md` | New layout, keys, the developer switch |
-| If 035 is in `dev`: `ecad/apps/ecad-trial/src/agent/banner.rs` (placement only) | The banner moves to the banner slot; its data contract and element names stay (design §12 O2) |
+| `ecad/apps/ecad-trial/tests/all/lanes/lane_038.rs` (new lane module, one line in `lanes/mod.rs`) | Shell tests |
+| `ecad/docs/quick-start/038-ui-shell.md` (per-lane file) | New layout, keys, the developer switch |
+| `ecad/crates/ecad-cadcraft/src/lanes.rs` | One line, `("038", …)`, only if the shell adds ECAD commands (per-lane registration) |
+| `ecad/apps/ecad-trial/src/agent/banner.rs` (placement only) | 035 has merged: the banner (`agent::AgentBanner`, `Trial::agent_banner()`, `Trial::agent_action`) moves to the shell's agent banner slot; its data contract and element names stay (design §12 O2) |
 
 Not touched: `ecad-cadcraft` (including `project.rs`; the redraw issue is overseer item O1), the
 canvas look (U4a), new tools or the wheel (U4b), the table (U3; this brief hosts U3's views
 through `lists::show` once it exists, design §12 O4).
+
+## Since this brief was drafted
+
+- 035 (live MCP bridge) and 036 (multi-level terminals) have merged into `dev`. 035's banner
+  (`agent::AgentBanner`, `Trial::agent_banner()`, `Trial::agent_action`) goes into the shell's
+  agent banner slot with its data contract and element names unchanged (design §12 O2); the top
+  bar's agent pill reads the same banner state.
+- 035's Agent access setting stays in the Developer section until the shell gives settings a
+  home; U2 builds the Settings overlay as a slot, and the setting moves out of the Developer fold
+  into Settings ▸ Agent access in U4d (design §12 O2 and O7).
+- Per-lane files (PR #72): quick-start text in `docs/quick-start/038-ui-shell.md`, tests in
+  `tests/all/lanes/lane_038.rs`, any new command module registered in `ecad-cadcraft/src/lanes.rs`.
 
 ## Scope
 
