@@ -278,7 +278,9 @@ fn nothing_from_the_old_panels_is_lost() {
     assert!(h.query_by_label_contains(top_bar::CHECKS_PILL).is_some() && h.query_by_label_contains(top_bar::AGENT_PILL).is_some());
     // The Developer fold: the Text panel's Commands tab.
     keys(&mut h, Modifiers::COMMAND, Key::Slash);
-    for label in [developer::FIELD, developer::DEBUGGER, developer::INSPECT, developer::AGENT_MODE, developer::PRIMITIVES] {
+    // Agent access is in Settings since brief 042: the Commands tab no longer has it.
+    assert!(h.query_by_label(developer::AGENT_MODE).is_none(), "Agent access is in Settings");
+    for label in [developer::FIELD, developer::DEBUGGER, developer::INSPECT, developer::PRIMITIVES] {
         assert!(h.query_by_label(label).is_some(), "Commands: {label}");
     }
     keys(&mut h, Modifiers::COMMAND, Key::Slash);

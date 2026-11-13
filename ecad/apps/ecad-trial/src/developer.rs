@@ -5,8 +5,8 @@
 //!   template buttons of Tool Sets fill this field);
 //! - the read-only debugger ([`crate::debugger`]) drawn inline;
 //! - **Inspect Project**: a readable, copyable summary of the project;
-//! - **Agent access** (brief 035, design §3.2): Off, Read only or Read and change, the port, and
-//!   what listens (until the UI shell gives settings a home).
+//! - **Agent access** (brief 035, design §3.2) moved to Settings ▸ Agent access (brief 042, U0
+//!   O7); [`agent_row`] is drawn there.
 //! - `ui.primitives`: the hidden page showing every primitive of `ecad-ui` in every state (brief
 //!   037), for screenshots; it needs no project.
 //!
@@ -112,11 +112,11 @@ pub struct Parts<'a> {
     pub running: bool,
     pub snapshots: bool,
     pub project: bool,
-    pub agent: AgentRow<'a>,
 }
 
-/// The Agent access row: mode, port and status (design 035 §3.2).
-fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
+/// The Agent access row: mode, port and status (design 035 §3.2). Since brief 042 it is drawn
+/// by Settings ▸ Agent access ([`crate::settings::agent`]), not by this section.
+pub fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Agent access").small());
         let mut mode = a.mode;
@@ -202,7 +202,6 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
         if !p.dev.open {
             return out;
         }
-        agent_row(ui, p.agent, &mut out);
         // The command field and Run, the template's note and the last reply.
         let mut submit = None;
         ui.horizontal(|ui| {

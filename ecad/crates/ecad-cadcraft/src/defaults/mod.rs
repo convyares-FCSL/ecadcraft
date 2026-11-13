@@ -2,9 +2,9 @@
 //!
 //! Every default a v0.15 lane adds (a size, a weight, a show rule, a gap…) is **one entry** here.
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
-//! [`crate::text_style::text_style`]); it never writes the number where it is used. A later
-//! Standards screen lists and overrides the entries; today the read-only `defaults` command lists
-//! them.
+//! [`crate::text_style::text_style`]); it never writes the number where it is used. The read-only
+//! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
+//! ([`crate::default_cmds`]) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
 //! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does

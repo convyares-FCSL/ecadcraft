@@ -39,8 +39,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let running = t.cad.session.running.is_some();
     let project = t.project_open();
     let snapshots = t.snapshots.is_some();
-    // The Developer section is the Commands tab: folding it closes the panel (Agent access
-    // stays here until U4d moves it to Settings).
+    // The Developer section is the Commands tab: folding it closes the panel (Agent access is
+    // in Settings since brief 042).
     let actions = super::in_rect(ui, body, "ecad.shell.text.body", |ui| {
         developer::show(
             ui,
@@ -53,18 +53,6 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 running,
                 snapshots,
                 project,
-                agent: developer::AgentRow {
-                    mode: t.agent.pref.mode,
-                    status: t.agent.status_text(),
-                    warning: t.agent.author_pending || matches!(t.agent.listen(), crate::agent::Listen::InUse(_)),
-                    locked: t.agent.this_run,
-                    port_warning: t.agent.port_warning,
-                    restart_note: t.agent.restart_note,
-                    // The banner has its own slot under the top bar.
-                    banner: None,
-                    busy: running,
-                    port: &mut t.agent.port_text,
-                },
             },
         )
     });

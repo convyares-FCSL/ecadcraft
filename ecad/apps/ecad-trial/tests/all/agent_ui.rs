@@ -20,12 +20,13 @@ fn dir(what: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("ecad-035-{what}-{}", ecad_cadcraft::session_seed()))
 }
 
-/// A trial with its own settings folder, the Developer section open.
+/// A trial with its own settings folder, Settings ▸ Agent access open (brief 042 moved the row
+/// there from the Developer section).
 fn trial_with(settings: &std::path::Path) -> H {
     ecad_cadcraft::install();
     let mut t = Trial::new(None).unwrap();
     t.agent.use_settings(Settings::at(settings));
-    t.developer.open = true;
+    t.open_settings(ecad_trial::settings::Section::AgentAccess);
     let mut h = Harness::builder().with_size(eframe::egui::vec2(1400.0, 900.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());

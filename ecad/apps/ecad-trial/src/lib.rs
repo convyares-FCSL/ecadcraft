@@ -65,6 +65,7 @@ pub mod project_panel;
 pub mod release_ui;
 pub mod renumber_dialog;
 pub mod search;
+pub mod settings;
 pub mod sheets_ui;
 pub mod shell;
 pub mod startup;
@@ -392,6 +393,8 @@ pub struct Trial {
     pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
     pub project_props: Option<sheets_ui::ProjectProps>,
+    /// Brief 042: Settings, a place you visit (its section, the Standards screen, the inspector's rows).
+    pub settings: settings::Settings,
     pub revisions: Option<sheets_ui::Revisions>,
     /// The merge dialog (brief 020b), when open.
     pub merge: Option<merge_dialog::MergeDialog>,
@@ -552,6 +555,7 @@ impl Trial {
             props_seen: None,
             props_rebuilds: 0,
             project_props: None,
+            settings: settings::Settings::default(),
             revisions: None,
             merge: None,
             renumber: None,
@@ -2491,21 +2495,12 @@ impl Trial {
         r
     }
 
-    /// Open the Project info or Project settings popout, filled from `projectprops {}` (reads only).
+    /// Open the Project info or Project settings popout: since brief 042, Settings ▸ Project at
+    /// that tab, filled from `projectprops {}` (reads only).
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
-        let read_only = self.header().read_only;
-        match self.run_value("projectprops", json!({})) {
-            Ok(v) => {
-                let mut d = sheets_ui::ProjectProps::from_json(&v, read_only, popout);
-                // Brief 031: the Text section reads `textstyle {}` (reads only).
-                if popout == sheets_ui::Popout::Settings {
-                    d.text = self.run_value("textstyle", json!({})).ok().map(|t| text_ui::TextSection::from_json(&t));
-                    // Brief 032 §4.4: the wire label rows read `wiresettings {}` (reads only).
-                    d.labels = self.run_value("wiresettings", json!({})).ok().map(|w| sheets_ui::WireLabels::from_json(&w));
-                }
-                self.project_props = Some(d);
-            }
-            Err(e) => self.cad.session.echo(e),
+        self.fill_project_props(popout);
+        if self.project_props.is_some() {
+            self.open_settings(settings::Section::Project);
         }
     }
 
@@ -3084,33 +3079,10 @@ impl Trial {
         }
     }
 
-    /// The Project Properties and Revisions windows and the question a plain undo across an issue
+    /// The Revisions window and the question a plain undo across an issue
     /// stops at.
     fn sheet_windows(&mut self, ctx: &egui::Context) {
-        if let Some(d) = &mut self.project_props {
-            match d.show(ctx) {
-                // Brief 031: OK may write two lines (`projectprops`, `textstyle`); the first refusal
-                // stops and is shown.
-                Some(sheets_ui::Out::Run(lines)) => match lines.lines().find_map(|l| self.run_line(l)) {
-                    None => self.project_props = None,
-                    Some(e) => {
-                        if let Some(d) = &mut self.project_props {
-                            d.error = Some(e);
-                        }
-                    }
-                },
-                Some(sheets_ui::Out::Close) => self.project_props = None,
-                Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(
-                    sheets_ui::Out::Open(_)
-                    | sheets_ui::Out::SwitchToMain
-                    | sheets_ui::Out::MergeIntoMain
-                    | sheets_ui::Out::Release(_)
-                    | sheets_ui::Out::OpenFolder(_),
-                )
-                | None => {}
-            }
-        }
+        // Brief 042: the project popouts are Settings sections (`settings::project`).
         self.refresh_revisions();
         if let Some(d) = &mut self.revisions {
             match d.show(ctx) {
