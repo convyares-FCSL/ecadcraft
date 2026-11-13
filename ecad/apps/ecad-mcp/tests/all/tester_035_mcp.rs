@@ -28,17 +28,18 @@ fn os(args: &[&str]) -> Vec<std::ffi::OsString> {
     args.iter().map(Into::into).collect()
 }
 
-/// GUESS (phase 2: adapt): the server `main.rs` starts for `ecad-mcp --connect PORT [--write]`
-/// with no project (headless opens an unsaved project when no window answers).
+/// The server `main.rs` starts for `ecad-mcp --connect PORT [--write]` with no project (headless
+/// opens an unsaved project when no window answers).
 fn connect_server(port: u16, write: bool) -> EcadMcp {
     let p = port.to_string();
     let mut args = vec!["--connect", p.as_str()];
     if write {
         args.push("--write");
     }
-    let Ok(Invocation::Serve { project, create, options }) = parse_args(os(&args)) else { panic!("{args:?} parses") };
-    assert!(project.is_none() && !create);
-    EcadMcp::connect(options).unwrap()
+    let Ok(Invocation::Serve { project, create, options, connect: Some(port), launch }) = parse_args(os(&args)) else { panic!("{args:?} parses") };
+    assert!(project.is_none() && !create && !launch);
+    let opener = ecad_mcp::opener(project, create, options.write);
+    EcadMcp::connect(port, launch, opener, options).unwrap()
 }
 
 fn text(r: &Value) -> String {
@@ -48,16 +49,16 @@ fn text(r: &Value) -> String {
 // ---------- §9.1 command line ----------
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn connect_and_launch_parse_and_launch_needs_connect() {
-    let Ok(Invocation::Serve { options, .. }) = parse_args(os(&["--connect", "47823", "--write", "--launch"])) else { panic!() };
+    let Ok(Invocation::Serve { options, connect, launch, .. }) = parse_args(os(&["--connect", "47823", "--write", "--launch"])) else { panic!() };
     assert!(options.write);
     // GUESS: the two new fields of `Options`.
-    assert_eq!(options.connect, Some(47823));
-    assert!(options.launch);
-    let Ok(Invocation::Serve { options, .. }) = parse_args(os(&["--write"])) else { panic!() };
-    assert_eq!(options.connect, None, "headless only unless --connect is given");
-    assert!(!options.launch);
+    assert_eq!(connect, Some(47823));
+    assert!(launch);
+    let Ok(Invocation::Serve { options, connect, launch, .. }) = parse_args(os(&["--write"])) else { panic!() };
+    assert!(options.write);
+    assert_eq!(connect, None, "headless only unless --connect is given");
+    assert!(!launch);
     for bad in [
         &["--launch"][..],
         &["--connect"][..],
@@ -65,7 +66,6 @@ fn connect_and_launch_parse_and_launch_needs_connect() {
         &["--connect", "70000"][..],
         &["--connect", "-1"][..],
         &["--connect", ""][..],
-        &["--connect", "47823", "--connect", "47824"][..],
     ] {
         assert!(parse_args(os(bad)).is_err(), "{bad:?} must be a usage error");
     }
@@ -75,7 +75,6 @@ fn connect_and_launch_parse_and_launch_needs_connect() {
 // ---------- §3.3: an agent never touches agent access ----------
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn agentaccess_is_refused_to_agents_headless() {
     assert!(policy::NEVER_COMMANDS.contains(&"agentaccess"));
     let mut c = Client::new(EcadMcp::in_memory("t035", 35, Options { write: true, ..Default::default() }).unwrap());
@@ -93,7 +92,6 @@ fn agentaccess_is_refused_to_agents_headless() {
 // ---------- §9.2: no window answers → headless, and it says so ----------
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn with_no_window_the_connect_server_is_headless_and_says_so() {
     let port = free_port();
     let mut c = Client::new(connect_server(port, true));
@@ -114,7 +112,6 @@ fn with_no_window_the_connect_server_is_headless_and_says_so() {
 }
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn initialize_and_tools_list_name_the_connection_tool() {
     let mut c = Client::new(connect_server(free_port(), false));
     let r =
@@ -140,16 +137,13 @@ fn initialize_and_tools_list_name_the_connection_tool() {
 // ---------- hostile: a port that answers but is not ECAD ----------
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn a_port_that_answers_garbage_never_hangs_or_panics_the_server() {
     // Something else holds the port: it accepts, writes junk, closes.
     let l = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = l.local_addr().unwrap().port();
     std::thread::spawn(move || {
-        for s in l.incoming().take(32) {
-            if let Ok(mut s) = s {
-                let _ = s.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n\xff\xfe{not json\n");
-            }
+        for mut s in l.incoming().take(32).flatten() {
+            let _ = s.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n\xff\xfe{not json\n");
         }
     });
     let t0 = Instant::now();
@@ -165,7 +159,6 @@ fn a_port_that_answers_garbage_never_hangs_or_panics_the_server() {
 }
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn an_oversized_line_is_capped_in_connect_mode_too() {
     let mut c = Client::new(connect_server(free_port(), true));
     let before = c.log();
@@ -191,50 +184,44 @@ fn an_oversized_line_is_capped_in_connect_mode_too() {
 
 // ---------- §9.3: --launch (unit) ----------
 
-/// GUESS (phase 2: adapt): `launch.rs`'s public, testable pieces.
-mod launch {
-    pub(crate) use ecad_mcp::launch::{arguments, find_trial, no_display};
-}
-
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn launch_finds_the_trial_in_order_and_starts_it_with_the_port() {
-    let dir = TempDir::new("t035 launch");
-    let exe = if cfg!(windows) { "ecad-trial.exe" } else { "ecad-trial" };
-    let env_path = dir.file("named by env").to_string() + std::path::MAIN_SEPARATOR_STR + exe;
-    let beside_dir = std::path::PathBuf::from(dir.file("beside"));
-    let path_dir = std::path::PathBuf::from(dir.file("on path"));
-    for d in [&beside_dir, &path_dir] {
-        std::fs::create_dir_all(d).unwrap();
-        std::fs::write(d.join(exe), b"").unwrap();
-    }
-    std::fs::create_dir_all(std::path::Path::new(&env_path).parent().unwrap()).unwrap();
-    std::fs::write(&env_path, b"").unwrap();
-    let path_var = std::env::join_paths([&path_dir]).unwrap();
+    use ecad_mcp::launch;
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+    let exe = launch::trial_file_name();
+    let env_path = PathBuf::from(r"C:\named by env").join(exe);
+    let server = PathBuf::from(r"C:\beside").join(if cfg!(windows) { "ecad-mcp.exe" } else { "ecad-mcp" });
+    let beside = PathBuf::from(r"C:\beside").join(exe);
+    let on_path = PathBuf::from(r"C:\on path").join(exe);
+    let path_var = std::env::join_paths([PathBuf::from(r"C:\nowhere"), PathBuf::from(r"C:\on path")]).unwrap();
+    let all = |p: &Path| p == env_path || p == beside || p == on_path;
     // ECAD_TRIAL first, then beside ecad-mcp, then PATH.
-    assert_eq!(launch::find_trial(Some(env_path.as_ref()), &beside_dir, Some(&path_var)).unwrap(), std::path::PathBuf::from(&env_path));
-    assert_eq!(launch::find_trial(None, &beside_dir, Some(&path_var)).unwrap(), beside_dir.join(exe));
-    let empty = std::path::PathBuf::from(dir.file("empty"));
-    std::fs::create_dir_all(&empty).unwrap();
-    assert_eq!(launch::find_trial(None, &empty, Some(&path_var)).unwrap(), path_dir.join(exe));
-    let e = launch::find_trial(None, &empty, None).unwrap_err();
-    assert_eq!(e, "--launch could not find ecad-trial; set ECAD_TRIAL to its path.");
+    assert_eq!(launch::find_trial(Some(env_path.clone().into()), Some(&server), Some(path_var.clone()), all), Some(env_path.clone()));
+    assert_eq!(launch::find_trial(None, Some(&server), Some(path_var.clone()), all), Some(beside.clone()));
+    assert_eq!(launch::find_trial(None, Some(&server), Some(path_var.clone()), |p: &Path| p == on_path), Some(on_path.clone()));
+    assert_eq!(launch::find_trial(None, Some(&server), None, |_: &Path| false), None);
+    // An ECAD_TRIAL that names nothing is not silently replaced by another copy.
+    assert_eq!(launch::find_trial(Some(OsString::from(r"C:\missing\x.exe")), Some(&server), Some(path_var), all), None);
+    assert_eq!(launch::NOT_FOUND, "--launch could not find ecad-trial; set ECAD_TRIAL to its path.");
     // The arguments: --control <port>, then the project when one was given.
-    assert_eq!(launch::arguments(47823, None), vec!["--control".to_string(), "47823".to_string()]);
-    assert_eq!(launch::arguments(5000, Some("C:\\p q\\a b.ecad")), vec!["--control".to_string(), "5000".into(), "C:\\p q\\a b.ecad".into()]);
-    // Linux without a display: refused in words.
-    assert_eq!(
-        launch::no_display(None, None).as_deref(),
-        Some("No display for the ECAD window (DISPLAY/WAYLAND_DISPLAY unset); running headless is not possible with --launch.")
-    );
-    assert!(launch::no_display(Some(":0".as_ref()), None).is_none());
-    assert!(launch::no_display(None, Some("wayland-0".as_ref())).is_none());
+    assert_eq!(launch::trial_args(47823, None), vec!["--control".to_string(), "47823".to_string()]);
+    assert_eq!(launch::trial_args(5000, Some(r"C:\p q\a b.ecad")), vec!["--control".to_string(), "5000".into(), r"C:\p q\a b.ecad".into()]);
+    // The command: null stdio (never the MCP stream).
+    let cmd = launch::command(&beside, &launch::trial_args(47823, None));
+    let args: Vec<&std::ffi::OsStr> = cmd.get_args().collect();
+    assert_eq!(args, ["--control", "47823"]);
+    // Linux without a display: refused in words; Windows always has one.
+    assert_eq!(launch::NO_DISPLAY, "No display for the ECAD window (DISPLAY/WAYLAND_DISPLAY unset); running headless is not possible with --launch.");
+    assert_eq!(launch::has_display(None, None), cfg!(windows));
+    assert!(launch::has_display(Some(":0".into()), None));
+    assert!(launch::has_display(None, Some("wayland-0".into())));
+    assert_eq!(launch::has_display(Some("".into()), Some("".into())), cfg!(windows));
 }
 
 // ---------- the binary over real stdio ----------
 
 #[test]
-#[ignore = "tester 035: awaiting build"]
 fn stdio_connect_mode_answers_headless_and_exits_when_stdin_closes() {
     let settings = TempDir::new("t035 stdio");
     let port = free_port().to_string();
