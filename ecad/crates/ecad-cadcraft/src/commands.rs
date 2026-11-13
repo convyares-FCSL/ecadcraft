@@ -181,7 +181,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage)
             .params(
-                "{title, number?, folder?: id, generated?: kind, strip?: id} (number: default the next after the page before it; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip) or \"cables\")",
+                "{title, number?, folder?: id, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (number: default the next after the page before it; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
             )
             .noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
@@ -1177,7 +1177,26 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         ),
         Some(_) => return Err(err("`generated` must be a string")),
     };
-    let title = params.get("title").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| generated.map_or("new", |g| g.title()).to_string());
+    // Brief 046 (design 046 §8.1): a terminal plan page's style, stored as its page-level
+    // `terminal.plan.style` in the AddPage, so the page is one transaction.
+    let style = match params.get("style") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(
+            crate::defaults::strip_pages::STYLE
+                .parse(t)
+                .and_then(|v| if let crate::defaults::Value::Choice(w) = v { Some(w.to_string()) } else { None })
+                .ok_or_else(|| err("`style` is \"table\" or \"graphic\""))?,
+        ),
+        Some(_) => return Err(err("`style` must be a string: \"table\" or \"graphic\"")),
+    };
+    if style.is_some() && generated != Some(crate::generated::GenKind::Terminals) {
+        return Err(err("`style` is for a terminal plan page (`generated: \"terminals\"`)"));
+    }
+    let default_title = match (generated, style.as_deref()) {
+        (Some(crate::generated::GenKind::Terminals), Some(crate::defaults::strip_pages::GRAPHIC)) => crate::strip_page::TITLE,
+        (g, _) => g.map_or("new", |g| g.title()),
+    };
+    let title = params.get("title").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| default_title.to_string());
     let number = match params.get("number") {
         None | Some(Value::Null) => None,
         Some(Value::String(t)) => Some(t.clone()),
@@ -1202,6 +1221,9 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                     page.properties.insert(crate::generated::KEY.into(), g.value().into());
                     if let Some(c) = strip {
                         page.properties.insert(crate::generated::STRIP_KEY.into(), c.hex());
+                    }
+                    if let Some(v) = &style {
+                        page.properties.insert(crate::defaults::strip_pages::STYLE.key.into(), v.clone());
                     }
                 }
             }

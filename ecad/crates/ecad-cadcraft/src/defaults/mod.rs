@@ -24,9 +24,10 @@
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036) and `bom.` (brief 047). Keys
-/// already approved before the registry keep their names; the key-rule test reads this one list.
-/// One line per area, so lanes adding an area add a line (design 047 FP6, overseer 2026-11-13).
+/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `strippage.` (brief 046,
+/// design 046 §7.2) and `bom.` (brief 047). Keys already approved before the registry keep their
+/// names; the key-rule test reads this one list. One line per area, so lanes adding an area add a
+/// line (design 047 FP6, overseer 2026-11-13).
 pub const AREAS: &[&str] = &[
     // One area per line, below this one.
     "text",
@@ -37,11 +38,13 @@ pub const AREAS: &[&str] = &[
     "print",
     "symbol",
     "terminal",
+    "strippage",
     "bom",
 ];
 
 pub mod bom;
 pub mod print;
+pub mod strip_pages;
 pub mod symbols;
 pub mod terminals;
 pub mod text;
@@ -307,6 +310,7 @@ const LANE_ENTRIES: &[&[&Entry]] = &[
     print::ENTRIES,
     symbols::ENTRIES,
     terminals::ENTRIES,
+    strip_pages::ENTRIES,
     bom::ENTRIES,
 ];
 
@@ -395,6 +399,10 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
 /// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
 pub fn users_noun(entry: &Entry) -> &'static str {
     let area = entry.key.split('.').next().unwrap_or_default();
+    // Brief 046: a page style is counted by page, though its key is in the `terminal` area.
+    if entry.key == strip_pages::STYLE.key {
+        return "pages";
+    }
     match area {
         "text" | "symbol" | "terminal" | "tags" if entry.key != text::WIRE_LABEL_HEIGHT.key => "devices",
         "wire" | "wiring" | "text" => "wires",
