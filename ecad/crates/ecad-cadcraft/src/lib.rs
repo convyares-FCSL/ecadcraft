@@ -70,6 +70,7 @@ pub mod release;
 pub mod revisions;
 pub mod sheet_cmds;
 pub mod slash;
+pub mod strip_page;
 pub mod strips;
 pub mod symbols;
 pub mod terminal_cmds;

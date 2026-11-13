@@ -489,6 +489,8 @@ pub struct Outputs {
     no_location: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
     pub strips: crate::strips::Strips,
+    /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
+    pub strip_pages: crate::strip_page::StripPages,
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
@@ -543,6 +545,7 @@ impl Outputs {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.strip_pages = crate::strip_page::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -630,6 +633,8 @@ impl Outputs {
         let numbers = Self::moves_page_numbers(ops);
         let before = self.generated_sheets(doc);
         self.update_rows(doc, ops, scope);
+        // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
+        self.strip_pages.update(doc, ops, &self.strips);
         if numbers || self.generated_sheets(doc) != before {
             self.refresh_continuation(doc);
             self.revision += 1;
@@ -771,8 +776,14 @@ impl Outputs {
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips(&mut self, doc: &Document) -> Option<String> {
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
+        // Brief 046: the graphic pages' kept data against a rebuild from the kept strips.
+        let pages = crate::strip_page::StripPages::build(doc, &self.strips);
+        let pages_ok = self.strip_pages.same_as(&pages);
+        if !pages_ok {
+            self.strip_pages.adopt(pages);
+        }
         if self.strips.same_as(&built) {
-            return None;
+            return (!pages_ok).then(|| "the terminal strip page layout was out of step; rebuilt".into());
         }
         let work = self.strips.last_work;
         self.strips = built;

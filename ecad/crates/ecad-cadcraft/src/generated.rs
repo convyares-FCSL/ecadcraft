@@ -224,6 +224,10 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Contents) => doc.page_order.len(),
         Some(GenKind::Revisions) => crate::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
+        // Brief 046: a graphic page counts its strips' kept graphic sheets.
+        Some(GenKind::Terminals) if crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic => {
+            return outputs.map_or(1, |o| crate::strip_page::sheets(doc, page, o));
+        }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
     };
@@ -340,6 +344,27 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
     })
 }
 
+/// Whether the content of `terminals` page `page` changed in the last update of `o` (design 046
+/// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
+/// shows was drawn again, or the layout settings changed. Either style redraws when the project's
+/// style changed and the page has no style of its own. O(strips shown).
+pub fn terminals_rewritten(doc: &Document, page: PageId, o: &Outputs) -> bool {
+    let sp = &o.strip_pages;
+    let own_style = doc.pages.get(&page).is_some_and(|p| p.properties.contains_key(crate::defaults::strip_pages::STYLE.key));
+    if sp.style_changed && !own_style {
+        return true;
+    }
+    let (changed, layout) = match crate::strip_page::style_of(doc, page) {
+        crate::strip_page::Style::Table => (&o.strips.last_changed, false),
+        crate::strip_page::Style::Graphic => (&sp.last_changed, sp.layout_changed),
+    };
+    layout
+        || match strip_of(doc, page) {
+            Some(c) => changed.contains(&c),
+            None => !changed.is_empty(),
+        }
+}
+
 /// The refusal of `ops` when they would draw on a generated page (design 024 §5.3), before
 /// anything is written.
 pub fn refusal(doc: &Document, ops: &[Op]) -> Option<String> {
@@ -429,7 +454,7 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextLook) -> V
 }
 
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
-fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
+pub(crate) fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
     (MARGIN_MM + 5.0, MARGIN_MM + TITLE_BLOCK_MM + 5.0, w - MARGIN_MM - 5.0, h - TOP_MARGIN_MM - 5.0)
 }
@@ -776,6 +801,10 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
         }
         return d.out;
     }
+    // Brief 046: a graphic terminal plan draws its strip sheet.
+    if kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic {
+        return outputs.map_or_else(Vec::new, |o| crate::strip_page::content(doc, page, input, i, x0, o));
+    }
     let (cols, mut rows) = table(doc, kind, outputs);
     if kind == GenKind::Terminals
         && let Some(o) = outputs
@@ -860,11 +889,20 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     let Some(kind) = kind_of(doc, page) else { return crate::frame::parts(input) };
     let n = sheets(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
+    // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
+    let graphic =
+        (kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic).then_some(outputs).flatten();
     let mut out = Vec::new();
     for i in 0..n {
         let mut inp = input.clone();
-        if n > 1 {
+        if let Some(o) = graphic {
+            if let Some(t) = crate::strip_page::sheet_title(doc, page, o, i) {
+                inp.page_title = format!("{}: {t}", input.page_title);
+            }
+        } else if n > 1 {
             inp.page_title = format!("{} ({}/{n})", input.page_title, i + 1);
+        }
+        if n > 1 {
             // Design 033 §5.2: each sheet its own number; Next is the next sheet's.
             inp.page = sheet_number(&input.page, i);
             if i + 1 < n {

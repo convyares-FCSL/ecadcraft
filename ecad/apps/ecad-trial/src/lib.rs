@@ -1900,6 +1900,14 @@ impl Trial {
                 }
                 let _ = self.run_line(&format!("newpage {v}"));
             }
+            // Brief 046: New page ▸ Terminal strips.
+            A::NewStripPage => {
+                let mut v = json!({"generated": "terminals", "style": "graphic"});
+                if let Some(f) = self.panel.target_folder() {
+                    v["folder"] = json!(f.hex());
+                }
+                let _ = self.run_line(&format!("newpage {v}"));
+            }
             A::MoveInto { page, folder, index } => {
                 let mut v = json!({"page": page.hex(), "folder": folder.map(|f| f.hex())});
                 if let Some(i) = index {

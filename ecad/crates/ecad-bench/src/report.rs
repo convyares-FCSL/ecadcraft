@@ -386,6 +386,12 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
              toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
             t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
         ));
+        // Brief 046 (design 046 §10).
+        out.push_str(&format!(
+            "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1),              spagetype {:.2} ms (< 16; {} strips marked)
+",
+            t.spage_ms, t.spageupd_ms, t.spageoff_ms, t.spageoff_projections, t.spagetype_ms, t.spagetype_work
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -581,6 +587,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "work": t.work,
                     // Brief 030.
                     "acc": acc_json(t),
+                    // Brief 046.
+                    "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
+                    "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work,
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
